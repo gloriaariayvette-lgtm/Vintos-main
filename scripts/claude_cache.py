@@ -31,13 +31,15 @@ WRITE = 2.0             # what a one-hour cache write costs, times input (for th
 MAX_POINTS = 4          # the API's limit on cache points in one request
 # $ per million tokens: input, output, cache read
 PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-opus-4-8": (5.0, 25.0, 0.50),
-          "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-sonnet-5": (2.0, 10.0, 0.20)}
+          "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-sonnet-5": (2.0, 10.0, 0.20),
+          "claude-sonnet-5-5": (2.0, 10.0, 0.10), "claude-haiku-5-5": (0.10, 0.50, 0.01)}
 
 
 class Prompt(str):
     """Text as every model reads it; `pieces`, what Claude is sent, in order."""
-    def __new__(cls, text, pieces=None):
+    def __new__(cls, text, pieces=None, cache_indices=None):
         p = str.__new__(cls, text)
+        p.cache_indices = None if cache_indices is None else set(cache_indices)
         p.pieces = [str(x) for x in (pieces if pieces is not None else [text]) if str(x or "").strip()]
         return p
 
@@ -49,7 +51,9 @@ def _blocks(value, mark_last, points):
     out = []
     for i, text in enumerate(pieces):
         block = {"type": "text", "text": text}
-        if points > 0 and (mark_last or i < len(pieces) - 1):
+        selected = getattr(value, "cache_indices", None)
+        cacheable = (mark_last or i < len(pieces) - 1) if selected is None else i in selected
+        if points > 0 and cacheable:
             block["cache_control"] = dict(CACHE); points -= 1
         out.append(block)
     return out, points
@@ -134,6 +138,8 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
 
 def cost(row):
     p_in, p_out, p_read = PRICES.get(row.get("model"), (0.0, 0.0, 0.0))
+    if row.get("model") == "claude-haiku-5-5" and sum(row[k] for k in ("in", "cache_write", "cache_read")) > 100000:
+        p_in, p_out, p_read = 0.50, 2.50, 0.05
     return (row["in"] * p_in + row["cache_write"] * p_in * WRITE + row["cache_read"] * p_read + row["out"] * p_out) / 1e6
 
 

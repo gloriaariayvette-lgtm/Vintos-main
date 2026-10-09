@@ -3,6 +3,40 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — Slack model costs and Lab churn audit
+
+Slack only: Opus 5.5 calls alternate with Haiku 5.5, including kickoff, tool follow-up and promise
+extraction calls. The existing paid-turn pool stays bounded; separate lounge passes keep their own alternating
+counter. Legacy `opus` slots (10:00 and 16:00) now use Sonnet 5.5; legacy `fable` uses Astra. There is one
+scheduled Fable slot (20:00), potentially two calls with a tool lookup, not two scheduled slots. Lounge
+Opus 4.8 and Fable routes use the same replacements without changing the avatar/chat selector or Forge review.
+Only the stable Slack prompt prefix is marked for the one-hour cache. Changing day/context and conversation
+blocks no longer incur cache-write premiums. Other callers retain their existing caching behavior.
+Provider model-list HTTP 200 confirmed both requested Claude IDs. Bounded live calls to Sonnet 5.5, Haiku 5.5
+and Astra each returned `OK`; no Slack message was posted. Full-suite and deployment verification pending.
+
+Live record, 8 October: 38 Opus 5.5 Slack calls, 1,614,307 input tokens, 20% cache reads, estimated $10.72.
+Recent cache hits reused 11,451 tokens but rewrote 33k–39k changing tokens at the one-hour write premium.
+An 84-minute gap missed even the stable prefix. No evidence that changing the Lab's model fixes this Slack cost.
+Anthropic source: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+
+Lab, 7 October (investigated; these broader fixes remain open):
+- 203/204 inquiry refusals were repeats; one was off the frontier plan. The code asks for a rewrite once,
+  then returns to `orient`; it has no progressive recovery after consecutive repeat refusals. The repeat
+  comparison looks back seven days while the prompt lists only ten recent lookups. This is an observed
+  retry loop, not proof the rejection threshold itself is wrong.
+- 151 source failures include 58 empty UniProt searches, 19 lookups rejected as "no human gene named SLC26A19",
+  12 missing exact NCBI accession.version, 12 unsupported source names, seven HTTP 400s, seven invalid flank
+  lengths, and four expired Claude connector OAuth errors. Examples requested `ncbi_nuccore` and
+  `ncbi_rt_locus_screen`; one named human pendrin while claiming to select a phage sequence. The guard refused it.
+- All 539 protein-representation rows were nonempty: 1,033 embedding entries, only 181 distinct hashes.
+  These row counts are activity receipts, not counts of new findings. Whether identical embeddings were
+  recomputed or reused was not established by this audit.
+- Atlas scores are predicted effects of variants in a fixed gene-start window, not measured accessibility.
+  The quoted G6PC1 reading overstates that distinction; calling it a reflection does not validate it.
+- The old digest's zero owed/settled receipts reflected the missing-reading bug repaired in `6493829`:
+  the completed pendrin run was not queued. It has since been recovered without a new fold.
+
 ## 8 October — completed Lab experiments survive an empty frontier reading
 
 Claude's `80f2b35` adds fallback readers. Follow-up validates the actual `reading` field before accepting

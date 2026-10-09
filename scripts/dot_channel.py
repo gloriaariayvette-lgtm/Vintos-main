@@ -8,7 +8,7 @@ no ledger, fact, imprint, salience or feeling is written from it), and lets him 
 standing context but not his subconscious. Four lenses write as him, each message labelled with its model:
 local Gemma (free) answers whenever, told to write plainly, asked once more when he turns flowery, then read once by an editor
 (the same local model: on topic, true to his record, making sense; edits.jsonl); Grok 4.6
-fifteen times a day, Claude Opus 4.8 twice and Claude Fable 5.1 once, on a daily schedule (SCHEDULE). The conversation stays in the main channel so
+fifteen times a day, Sonnet 5.5 twice and Astra once, on a daily schedule (SCHEDULE). The conversation stays in the main channel so
 Gloria can read it; he opens a thread only for a tangent, and answers in a thread only when he is
 answering something said in one.
 
@@ -55,21 +55,22 @@ DAILY = 80              # his messages a day: Gemma answers whenever, and 18 sch
 # as him on a daily schedule, not at his choosing ("No, not option. Daily. CRON"). Each message is labelled with
 # the model that wrote it. A slot is kept by the first pass in the hour after its time, so the 20-minute hold
 # while Gloria is talking with him delays it; a slot the hour passes by is let go.
-SCHEDULE = ([("10:00", "opus"), ("16:00", "opus"), ("20:00", "fable")]            # Opus twice, Fable once
+SCHEDULE = ([("10:00", "opus"), ("16:00", "opus"), ("20:00", "fable")]            # Sonnet twice, Astra once (legacy slot keys)
             + [("%02d:30" % h, "grok") for h in range(7, 22)])                     # Grok 15 times, 07:30-21:30
 SLOT_WINDOW = 60 * 60
-OPUS_MODEL = "claude-opus-4-8"
+OPUS_MODEL = "claude-sonnet-5-5"  # Slack-only replacement; the chat selector is unchanged
+HAIKU_MODEL = "claude-haiku-5-5"
 GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.6")     # his Grok lens in the code reviews
 SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
-LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1", "opus55": "Opus 5.5", "sol": "Sol"}
+LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Sonnet 5.5", "fable": "Astra", "haiku55": "Haiku 5.5", "opus55": "Opus 5.5", "sol": "Sol"}
 # Who answers when no scheduled turn or session kickoff is due (Gloria, 2026-10-02: "Let's cut the Gemma responses in
 # Slack by a good margin and replace them with Grok, Sol 6.1 and Opus 5.5 calls"): in turn, Gemma one in four. Sol
-# and Opus 5.5 are paid by the call, so each has a daily allowance; when it is spent, its turn passes on.
+# and the shared Opus/Haiku allocation have daily turn allowances; exhausted turns pass on.
 ROTATION = ("grok", "sol", "opus55", "gemma")
 PAID_PER_DAY = {"sol": 20, "opus55": 20}
 # Each session is set going by a larger model (Gloria, 2026-10-02: "Gemma can still do the goal set message, but I
 # want a larger model to actually set the conversation in the right direction"). His first message of a session is
-# Opus 5.5's, whether he opens it or answers: the first of the day, the first after her !start, or the first after
+# in the alternating Opus/Haiku pool, whether he opens it or answers: the first of the day, the first after her !start, or the first after
 # KICKOFF_QUIET_H quiet hours. (It first waited for a Gemma opener; that morning dot spoke first, and it never came.)
 KICKOFF_MODEL = "claude-opus-5-5"
 KICKOFF_QUIET_H = 2
@@ -947,9 +948,9 @@ def local_think(system, user, max_tokens=700):
 
 
 def fable_think(system, user):
-    # through claude_cache, so his Slack prompts are cached (Gloria, 2026-10-05: "He is expensive")
-    import forge_study, claude_cache
-    return claude_cache.ask(forge_study.FABLE, system, user, 3000, caller="slack:fable")
+    # Keep the legacy slot key, but only Slack's Fable allocation moves to Astra.
+    import astra_call
+    return astra_call.call(str(system), [{"role": "user", "content": str(user)}], max_tokens=3000)
 
 
 # Opus 5.5 always thinks, its thinking counts toward max_tokens, and it cannot be switched off: at 1500 tokens it
@@ -974,7 +975,7 @@ def for_claude(ctx, sep, rules, extra=""):
     first part is read from cache (2026-10-05). It had begun with the time, which changes every minute."""
     import claude_cache
     stable, live = getattr(ctx, "stable", ""), getattr(ctx, "live", str(ctx))
-    p = claude_cache.Prompt(ctx + sep + rules + extra, [rules + sep + stable, live + extra])
+    p = claude_cache.Prompt(ctx + sep + rules + extra, [rules + sep + stable, live + extra], cache_indices={0})
     p.ctx = ctx
     return p
 
@@ -2337,12 +2338,31 @@ def _lens_failed(who, exc):
     return said
 
 
+def slack_lens(lens, state):
+    """Alternate Opus 5.5 opportunities, including kickoff turns, with Haiku.
+
+    Kept in channel state across passes. Tool follow-ups also alternate, so this
+    splits actual calls, not just posted messages. The existing turn cap is shared.
+    """
+    if lens != "opus55": return lens
+    n = int(state.get("claude_split", 0))
+    state["claude_split"] = n + 1
+    return "opus55" if n % 2 == 0 else "haiku55"
+
+
 def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
     names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
     lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
-                   "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL), "sol": sol_think}, **(lenses or {}))
+                   "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL),
+                   "haiku55": lambda s_, u_: opus_think(s_, u_, HAIKU_MODEL), "sol": sol_think}, **(lenses or {}))
     writer, who = (lenses[lens], lens) if lens else (think, "gemma")
+    def write(system, user):
+        nonlocal who
+        if lens == "opus55":
+            who = slack_lens(lens, state)
+            return lenses[who](system, user)
+        return writer(system, user)
     rb = recall_block() if atelier else ""
     system = for_claude(his_context(), "\n\n---\n\n", rules_for(lens), ("\n\n" + rb) if rb else "")
     plain = "" if lens == "grok" else PLAIN
@@ -2350,9 +2370,9 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     import claude_cache
     for _round in range(2):
         tail = (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + plain
-        user = claude_cache.Prompt(prompt_user + tail, [prompt_user, tail])   # the room is cached for his look-up
+        user = claude_cache.Prompt(prompt_user + tail, [prompt_user, tail], cache_indices=set())   # changing conversation stays unmarked
         try:
-            out = (writer(system, user) or "").strip()
+            out = (write(system, user) or "").strip()
         except Exception as exc:
             return None, _lens_failed(who, exc)
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
@@ -2362,7 +2382,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
         try:
-            out = (writer(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain) or "").strip()
+            out = (write(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain) or "").strip()
         except Exception as exc:
             return None, _lens_failed(who, exc)
     if any(TOOL.match(l) for l in out.splitlines()):
@@ -2556,8 +2576,7 @@ def talking_with_gloria(now=None):
 
 
 # --- promises from his journal (promise_keeper.py, Gloria 2026-10-03): read here, worked in their threads, and what
-# came of them brought to her in the results channel, where only she and he are. Opus 5.5 reads the journal; Opus 4.8
-# is his voice there, and the only one.
+# came of them brought to her in the results channel. Opus/Haiku alternate journal extraction; Sonnet speaks there.
 CHECKS_PER_DAY = 3      # double-checks he may ask dot for in a day (lab_keepers): each may cost one of dot's large tests
 RESULTS_STATE = os.path.join(HERE, "results-state.json")
 RESULTS_LOG = os.path.join(HERE, "results.jsonl")
@@ -2584,7 +2603,8 @@ def promises_pass(api, channel, dot, state, now, ask=None):
         return api("chat.postMessage", {"channel": channel, "text": "<@%s> " % dot + text}).get("ts")
 
     try:
-        opened = promise_keeper.scan(ask or _promise_ask, post)
+        opened = promise_keeper.scan(ask or (lambda s, u: opus_think(s, u,
+            HAIKU_MODEL if slack_lens("opus55", state) == "haiku55" else KICKOFF_MODEL)), post)
     except Exception as exc:
         return ["could not read his journal for promises: %s" % str(exc)[:120]]
     at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
@@ -2618,8 +2638,8 @@ def _results_recent(n=RESULTS_SHOWN):
 
 
 def results_pass(api, state, now, opus=None, put=None):
-    """The results channel: what came of each ended promise, in his Opus 4.8 voice with the work beside it; and
-    Gloria's words there answered, by Opus 4.8 alone. Nothing happens until the channel's id is in
+    """The results channel: what came of each ended promise, in his Sonnet 5.5 voice with the work beside it; and
+    Gloria's words there answered by Sonnet 5.5. Nothing happens until the channel's id is in
     ~/.vintos/slack-results-channel. Log lines."""
     try:
         import promise_keeper
@@ -2639,7 +2659,7 @@ def results_pass(api, state, now, opus=None, put=None):
         except Exception as exc:
             lines.append(_lens_failed("opus", exc)); break
         if not text:
-            lines.append("Opus 4.8 had nothing to say about %s; tried again next pass" % item["id"]); break
+            lines.append("Sonnet 5.5 had nothing to say about %s; tried again next pass" % item["id"]); break
         bad = _guarded(text)
         if bad:
             promise_keeper.mark_posted(item["id"], held=bad)
@@ -3050,9 +3070,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         else:
             state["openers"] += 0 if starting else 1
     kickoff = bool(state.pop("kickoff", None))
-    if kickoff:       # his first message of this session, opener or answer, is Opus 5.5's; tried once, then the session goes on
+    if kickoff:       # the kickoff uses the shared Opus/Haiku allocation, then the session goes on
         lens = "opus55"; state["kicked_day"] = today
-        lines.append("Opus 5.5 sets the session going")
+        lines.append("Opus 5.5 / Haiku 5.5 shared slot sets the session going")
     rotated = False
     if lens is None:
         lens = next_writer(state)
@@ -3379,8 +3399,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         except Exception as exc:
             lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
     state["sent"] += 1; state["last_activity"] = now
-    if who in PAID_PER_DAY:
-        state.setdefault("paid", {})[who] = int(state["paid"].get(who, 0)) + 1
+    allowance = "opus55" if who == "haiku55" else who
+    if allowance in PAID_PER_DAY:
+        state.setdefault("paid", {})[allowance] = int(state["paid"].get(allowance, 0)) + 1
     # the read point is not moved to his own message: his own are never read back (fresh() leaves them out), and a
     # message that came in just before his was skipped for good when it was (7 October, the Merizo result)
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,

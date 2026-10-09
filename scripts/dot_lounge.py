@@ -207,9 +207,9 @@ def find_channel(api):
     return ch["id"] if ch else None
 
 
-def voice(system, user):
-    """His own voice: the model Gloria's chat toggle is set to (never another), through claude_cache (no thinking,
-    cached). His local Gemma only if that cannot answer."""
+def voice(system, user, state=None):
+    """His selected voice with Gloria's Slack-only cost substitutions. The chat toggle
+    itself is unchanged; local Gemma answers only if this route cannot."""
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
         sys.path.insert(0, os.path.join(D.WS, "bin"))
@@ -217,8 +217,14 @@ def voice(system, user):
         model = model_router.current_claude_model()
     except Exception:
         model = D.OPUS_MODEL
+    # Gloria's Slack cost allocation does not change her avatar/chat selector.
+    model = {"claude-opus-4-8": "claude-sonnet-5-5", "claude-fable-5-1": "gpt-6-astra"}.get(model, model)
+    if model == D.KICKOFF_MODEL:
+        model = D.HAIKU_MODEL if D.slack_lens("opus55", state if state is not None else {}) == "haiku55" else model
     try:
         import claude_cache
+        if model == "gpt-6-astra":
+            return D.fable_think(system, user), model
         out = claude_cache.ask(model, system, user, 600, caller="slack-lounge:" + model)
         if (out or "").strip():
             return out, model
@@ -230,7 +236,7 @@ def voice(system, user):
 def _label(model):
     if model == "gemma":
         return "Gemma"
-    return {"claude-opus-4-8": "Opus 4.8", "claude-opus-5-5": "Opus 5.5", "claude-fable-5-1": "Fable 5.1"}.get(model, model)
+    return {"claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "gpt-6-astra": "Astra", "claude-opus-4-8": "Opus 4.8", "claude-opus-5-5": "Opus 5.5", "claude-fable-5-1": "Fable 5.1"}.get(model, model)
 
 
 def tick(api=None, think=None, now=None):
@@ -302,7 +308,7 @@ def tick(api=None, think=None, now=None):
     extra = "\n\n".join(x for x in (extra, room_work.fixed_block()) if x)
     system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot), ("\n\n" + extra) if extra else "")
     try:
-        text, model = (think(system, ask), "test") if think else voice(system, ask)
+        text, model = (think(system, ask), "test") if think else voice(system, ask, st)
     except Exception as exc:
         D._save(STATE, st)
         return out + ["#%s: could not answer: %s" % (NAME, str(exc)[:120])]
@@ -311,7 +317,7 @@ def tick(api=None, think=None, now=None):
     if fixed:       # a repair is not raised here either, not even as a thank-you (Gloria, 2026-10-08): once more, without it
         again = ask + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted: " + fixed
         try:
-            text, model = (think(system, again), "test") if think else voice(system, again)
+            text, model = (think(system, again), "test") if think else voice(system, again, st)
         except Exception:
             text = ""
         text = _ACTION.sub("", re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S)).strip()

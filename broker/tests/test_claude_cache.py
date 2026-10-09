@@ -85,8 +85,8 @@ def lens(system, user):
     SEEN.append((system, user))
     return "SEARCH: cats" if len(SEEN) == 1 else "I looked it up and I want to paint a cat."
 out, who = D.compose("THE ROOM: Gloria said hello.", lambda s, u: "", None, {}, "2026-10-05",
-                     search=lambda q: [{"title": "Cats", "description": "cats are cats", "url": "https://cats.invalid"}], lenses={"opus55": lens}, lens="opus55")
-check("a Slack turn with a look-up still writes", out and who == "opus55", (out, who))
+                     search=lambda q: [{"title": "Cats", "description": "cats are cats", "url": "https://cats.invalid"}], lenses={"opus55": lens, "haiku55": lens}, lens="opus55")
+check("a Slack turn with a look-up still writes", out and who == "haiku55", (out, who))
 (s1, u1), (s2, u2) = SEEN
 check("other models read the prompt as before: the time, his context, then the rules",
       str(s1).startswith("== NOW ==") and str(s1).endswith("\n\n---\n\n" + D.rules_for("opus55"))
@@ -100,11 +100,9 @@ check("his look-up sends the same start again, so it is read from cache",
 SENT.clear()
 D_ask = C.ask
 C.ask = lambda model, system, user, max_tokens, caller="", **k: D_ask(model, system, user, max_tokens, caller=caller, post=post, key="k-test")
-D.opus_think(s1, u1, "claude-opus-5-5"); D.fable_think(s1, u1)
-check("his Opus and Fable lenses go through the cache, each logged by name",
-      [x["body"]["model"] for x in SENT] == ["claude-opus-5-5", "claude-fable-5-1"]
-      and marks(SENT[0]["body"]) == [True, True, True, False]
-      and [json.loads(l)["caller"] for l in open(C.USAGE).read().splitlines()[-2:]] == ["slack:claude-opus-5-5", "slack:fable"])
+D.opus_think(s1, u1, "claude-opus-5-5")
+check("Slack caches only its stable prefix, not the changing day and room",
+      marks(SENT[0]["body"]) == [True, False, False, False], marks(SENT[0]["body"]))
 
 # --- the Study fix's Fable rounds -----------------------------------------------------------------------------------
 import study_fix as S

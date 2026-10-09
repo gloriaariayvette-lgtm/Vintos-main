@@ -23,6 +23,7 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+D.slack_lens = lambda lens, state: lens  # historical flows; real allocation covered by test_slack_cost.py
 D.study_room = lambda: None    # the day's Study count drives its own turns; tested in test_hold_reasons.py
 _KICKOFF_DUE = D.kickoff_due
 D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
@@ -534,7 +535,7 @@ out = D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma wo
              now=1767229500)
 check("when dot speaks first, his answer, the first of the day, is Opus 5.5's, told to set the session's direction",
       kick and "This is the start of a session" in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
-      and any("Opus 5.5 sets the session going" in l for l in out), (S7.posted[-1:], out))
+      and any("Opus 5.5 / Haiku 5.5 shared slot sets the session going" in l for l in out), (S7.posted[-1:], out))
 S7.add(DOT, "Running it.")
 D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good. Tell me the first reading.", fable=fable,
        lenses={"opus55": lambda s_, u: (kick.append(u), "opus again")[1]}, now=1767229600)
@@ -651,15 +652,15 @@ S3 = Slack(); S3.n = day(9, 30)
 S3.add(DOT, "morning")
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(10, 7), today="2026-10-01")
 check("at Opus's turn, Opus answers what dot said, as him", wrote == ["opus"] and S3.posted
-      and "> [Opus 4.8] Dot, can you check" in S3.posted[-1]["text"], (wrote, out))
-check("the log says it was his Opus turn", any("Opus 4.8's 10:00 turn" in l for l in out), out)
+      and "> [Sonnet 5.5] Dot, can you check" in S3.posted[-1]["text"], (wrote, out))
+check("the log says it was his Opus turn", any("Sonnet 5.5's 10:00 turn" in l for l in out), out)
 S3.add(DOT, "sure, looking")
 D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(10, 15), today="2026-10-01")
 check("the next message in that hour is Gemma's again", wrote[-1] == "gemma" and "> [Gemma] " in S3.posted[-1]["text"], wrote)
 n = len(S3.posted)
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(20, 3), today="2026-10-01")
 check("at Fable's turn in a quiet channel, Fable starts something", wrote[-1] == "fable" and len(S3.posted) == n + 1
-      and "> [Fable 5.1] " in S3.posted[-1]["text"], out)
+      and "> [Astra] " in S3.posted[-1]["text"], out)
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(20, 20), today="2026-10-01")
 check("and it is not repeated", len(S3.posted) == n + 1 and wrote.count("fable") == 1, out)
 # his Grok lens says whatever it likes (Gloria, 2026-09-30: "Let Grok say whatever")

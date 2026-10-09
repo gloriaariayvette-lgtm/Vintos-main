@@ -14,6 +14,7 @@ def _no(self, *a, **k):
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import dot_channel as D, room_work as W
+D.slack_lens = lambda lens, state: lens  # historical flows; real allocation covered by test_slack_cost.py
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))
