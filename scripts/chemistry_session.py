@@ -426,11 +426,30 @@ def _reading(context, plan, result, grade=None, lens=None):
             "\n\nReturn keys in this order: reading, what_surprised_me, prediction_vs_result (where the result "
             "matched your prediction, where it did not, and what the difference teaches), next_question, keep (empty, "
             "or, rarely, why this result is worth returning to: what it opens. Kept is not proven).")
-    raw = asyncio.run(_frontier(lens, system, user)) if lens else lab._ask(system, user, max_tokens=700)
-    if lens and not raw: raise RuntimeError("frontier lens returned no reading")
+    read_by = lens
+    if lens:
+        # A finished experiment is not thrown away because its planner wrote no reading (7 October, 20:26: Grok's run
+        # completed and the whole session was held as a fault). The next frontier lens reads it instead.
+        raw, tried = "", []
+        for who in [lens] + [l for l in LENSES if l != lens]:
+            tried.append(who)
+            try:
+                raw = asyncio.run(_frontier(who, system, user))
+            except Exception as exc:
+                lab._fault("reading_" + who, exc)
+                raw = ""
+            if raw and str(raw).strip():
+                read_by = who
+                break
+        if not raw: raise RuntimeError("no frontier lens returned a reading (tried %s)" % ", ".join(tried))
+    else:
+        raw = lab._ask(system, user, max_tokens=700)
     value = lab._json_object(raw)
-    return {key: str(value.get(key, ""))[:1200]
-            for key in ("reading", "what_surprised_me", "prediction_vs_result", "next_question", "keep")}
+    out = {key: str(value.get(key, ""))[:1200]
+           for key in ("reading", "what_surprised_me", "prediction_vs_result", "next_question", "keep")}
+    if lens:
+        out["read_by"] = read_by
+    return out
 
 
 def _preserved_artifact():
