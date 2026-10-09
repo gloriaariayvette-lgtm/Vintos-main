@@ -28,7 +28,10 @@ checkouts instead of reverting; the lost absolute-model-path fix and its isolate
 here, retaining artifact allowlist validation. Original Study history is not rewritten as a success.
 All 303 isolated suites passed on Aegis (232 seconds); mandatory ownership checks passed.
 Live read-only replay confirms the two SLC26A11 routes match and P50443 is already reviewed despite
-changed papers. Deployment verification pending. Overall failure/repetition rates still unacceptable;
+changed papers. Deployed 83fbece through the normal foreground deploy, which passed its full suite
+again and reported deploy OK (release 20261009-091916-83fbece.json). All four installed modules
+match the tested checkout. Lab restarted at 09:19:09 CDT and is active; Slack still reports Gloria's
+pause at 09:22. Overall failure/repetition rates still unacceptable;
 no agreement on a numerical answer-rate target yet.
 
 ## 9 October — Lab failed-run repairs
