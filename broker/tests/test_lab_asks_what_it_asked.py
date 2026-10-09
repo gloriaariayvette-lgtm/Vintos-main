@@ -200,6 +200,7 @@ def fake_urlopen(req, timeout=0):
     asked.append(q)
     if "gene:RPS16" in q or "gene:KaiC" in q:
         return _R({"results": [{"primaryAccession": "P62249", "uniProtkbId": "RS16_HUMAN",
+                                "genes": [{"geneName": {"value": "RPS16"}}],
                                 "sequence": {"length": 146, "value": "M" * 146}}]})
     return _R({"results": []})
 _real = M.urllib.request.urlopen
@@ -223,6 +224,7 @@ def length_aware_urlopen(req, timeout=0):
     asked.append(q)
     if "KaiC" in q and "length:[" not in q:
         return _R({"results": [{"primaryAccession": "Q79PF4", "uniProtkbId": "KAIC_SYNE7",
+                                "genes": [{"geneName": {"value": "kaiC"}}],
                                 "sequence": {"length": 519, "value": "A" * 519}}]})
     if "PFOR" in q and "length:[" not in q:
         return _R({"results": [{"primaryAccession": "P0PFOR", "uniProtkbId": "PFOR_TEST",

@@ -33,6 +33,7 @@ check("the Lab's store is a scratch one", M.ROOT.startswith(HOME), M.ROOT)
 SEQ = ("MDLRRRDYHMERPLLNQEHLEELGRWGSAPRTHQWRTWLQCSRARAYALLLQHLPVLVWLPRYPVRDWLLGDLLSGLSVAI" * 10)[:759]
 def uniprot_row(acc, seq):
     return {"primaryAccession": acc, "uniProtkbId": acc + "_HUMAN",
+            "genes": [{"geneName": {"value": "MUC16" if acc == "Q8WXI7" else "SLC26A6"}}],
             "proteinDescription": {"recommendedName": {"fullName": {"value": "Solute carrier family 26 member 6"}}},
             "organism": {"scientificName": "Homo sapiens"}, "sequence": {"value": seq, "length": len(seq)},
             "comments": [{"commentType": "FUNCTION", "texts": [{"value": "Apical membrane anion exchanger. " * 20}]}],
@@ -117,8 +118,9 @@ check("UniProt asked for as a connector becomes the UniProt lookup he meant", q[
       "protein_name:Pendrin AND taxonomy_id:9606 AND reviewed:true", q)
 import lab_sources
 check("... a query UniProt accepts", lab_sources.validate_uniprot(q["source_query"]["query"]))
-check("... and a real connector call is left as it was", M._inquiry({"plugin_query": {"plugin": "pubmed",
-      "tool": "pubmed.search_articles", "arguments": {"query": "SLC26A4"}}})["plugin_query"]["plugin"] == "pubmed")
+check("the catalog PubMed tool also uses the direct public source", M._inquiry({"plugin_query": {"plugin": "pubmed",
+      "tool": "pubmed.search_articles", "arguments": {"query": "SLC26A4"}}})["source_query"] ==
+      {"source":"pubmed_abstracts", "terms":["SLC26A4"]})
 M._append(M.NOTEBOOK, {"at": "2026-10-06T13:49:00+00:00", "kind": "reflection",
                        "text": "the record ends at MAAPGGRSEPPQLPEYSCSYMVSRPV, truncated"})
 ctx6 = M.lab_context()[0]

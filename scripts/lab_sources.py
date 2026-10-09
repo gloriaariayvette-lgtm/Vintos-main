@@ -92,6 +92,57 @@ def _strip_html(value, cap):
     return re.sub(r'<[^>]+>', '', str(value or ''))[:cap]
 
 
+def normalize_uniprot_subjects(query):
+    """Preserve complete unquoted subject values instead of reading only their first word."""
+    pattern = r'\b(protein_name|gene|keyword):("[^"\n]*"|[^()]+?)(?=\s+(?:AND|OR|NOT)\b|\s+[A-Za-z_]+:|[()]|$)'
+    human = False
+    def subject(m):
+        nonlocal human
+        field, value = m[1], m[2].strip().strip('"').strip()
+        match = re.fullmatch(r'human\s+([A-Za-z][A-Za-z0-9-]*)(?:\s+and)?', value, re.I)
+        if match and re.search(r'[0-9]', match[1]):
+            human = True
+            return 'gene:' + match[1]
+        return field + ':' + ('"' + value + '"' if ' ' in value else value)
+    query = re.sub(pattern, subject, query)
+    if human:
+        taxa = re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)', query)
+        if any(t != '9606' for t in taxa): raise ValueError('human subject conflicts with query taxonomy')
+        if not taxa: query += ' AND taxonomy_id:9606'
+    return query
+
+
+def uniprot_identity_symbols(query):
+    query = normalize_uniprot_subjects(str(query or ''))
+    symbols = []
+    for field, value in _TERM.findall(query):
+        if field not in ('gene', 'protein_name'): continue
+        value = value.strip('"')
+        for token in re.findall(r'[A-Za-z][A-Za-z0-9-]*', value):
+            if field == 'protein_name' and re.search(r'\b' + re.escape(token) + r'\s+family\b', value, re.I):
+                continue
+            if ((field == 'gene' and ' ' not in value) or
+                    re.fullmatch(r'[A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*', token)):
+                symbols.append(token.upper())
+    return list(dict.fromkeys(symbols))
+
+
+def verify_uniprot_identity(query, records):
+    """An exact gene request is evidence only when the returned record names that gene."""
+    symbols = uniprot_identity_symbols(query)
+    if not symbols: return
+    for row in records:
+        names = set()
+        for gene in row.get('genes') or []:
+            for key in ('geneName', 'synonyms', 'orderedLocusNames', 'orfNames'):
+                values = gene.get(key) or []
+                if isinstance(values, dict): values = [values]
+                names.update(str(v.get('value', '')).upper() for v in values)
+        if not names.intersection(symbols):
+            raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
+                             + '; returned ' + str(row.get('primaryAccession')))
+
+
 def validate_uniprot(query):
     """Validate a UniProt query and return it normalized. Callers must use the returned query."""
     if not isinstance(query, str) or not query.strip() or len(query) > 600:
@@ -100,6 +151,7 @@ def validate_uniprot(query):
         raise ValueError('malformed UniProt query')
     # "organism_id : 1224" is not a field to UniProt; it is three free-text words, and matches nothing.
     query = re.sub(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*:\s*', r'\1:', query)
+    query = normalize_uniprot_subjects(query)
     fields = re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*):', query)
     unknown = set(fields) - FIELDS
     if unknown: raise ValueError('unsupported UniProt fields: ' + ', '.join(sorted(unknown)))
@@ -134,7 +186,7 @@ def uniprot_relaxations(query):
     and he asks again (Gloria, 2026-09-28: "just give him the ability to get the info he needs").
     Every form keeps his organism, length and review filters and the words he asked about; only the
     field they must sit in is loosened. The caller records which form answered."""
-    query = str(query or '')
+    query = normalize_uniprot_subjects(str(query or ''))
     out = []
     symbol = re.search(r'\bprotein_name:(?:"([A-Za-z][A-Za-z0-9-]{1,11})"|([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$))', query)
     if symbol:   # KaiC, slpA, RPS16: a gene symbol written as a protein name
@@ -166,6 +218,9 @@ def uniprot_relaxations(query):
         return '(%s OR %s)' % (word, single) if single else word
     words_all = ' AND '.join(group(w) for w in subject)
     words_any = ' OR '.join(group(w) for w in subject)
+    anchors = uniprot_identity_symbols(query)
+    if anchors:
+        words_any = '(' + ' OR '.join(anchors) + ') AND (' + words_any + ')'
     def join(filters, text):
         return ' AND '.join(filters + ['(' + text + ')'])
     out.append(('all_words_reviewed', join(keep, words_all)))
@@ -409,6 +464,7 @@ class Sources:
                         break
             if rejected is not None and not relaxed: raise rejected
             records = data['results'][:limit]
+            verify_uniprot_identity(spec.get('query'), records)
             if relaxed:
                 records = [dict(row, found_by=relaxed,
                                 partial_match=relaxed == 'partial_any_word',

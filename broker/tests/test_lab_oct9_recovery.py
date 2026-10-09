@@ -107,9 +107,9 @@ with patch.object(PG,'call',side_effect=AssertionError('plugin relay forbidden')
      patch.object(CS,'configured_sources',return_value=client) as configured, \
      patch.object(FB,'assess',return_value={'fixture':True}) as assessment:
     assert CS.configured_sources is configured and FB.assess is assessment
-    for args in (failed['arguments'], {'terms':['SLC26A4','STAS'], 'limit':2}):
+    for tool, args in (('search_articles',failed['arguments']), ('pubmed.search_articles',{'query':'human SLC26A4 STAS'}), ('search_articles',{'terms':['SLC26A4','STAS'], 'limit':2})):
         C._atomic(os.path.join(C.ROOT,'source-throttle.json'),{})
-        result=CS.query_plugin('pubmed','search_articles',args,'recorded failed inquiry')
+        result=CS.query_plugin('pubmed',tool,args,'recorded failed inquiry')
         assert result['receipt']['source']=='pubmed_abstracts'
         assert result['receipt']['records']==[]
         assert result['candidate']['receipt_id']==result['receipt']['receipt_id']

@@ -81,6 +81,35 @@ class Tests(unittest.TestCase):
         raw['uniprot_query'] = 'gene:SLC26A4 AND taxonomy_id:10090'
         self.assertIn('conflicts', lab._ground_inquiry(raw, client)['reason'])
 
+    def test_multiword_human_subject_cannot_escape(self):
+        client = sources.Sources(fetch=self.fetch)
+        for spelling in ('protein_name:human SLC26A28', 'protein_name:"human SLC26A28"',
+                         'protein_name:human SLC26A28 and', 'protein_name:human SLC26A28 transporter'):
+            raw = {'question':'What is the topology of human SLC26A28?',
+                   'uniprot_query':spelling+' AND reviewed:true'}
+            inquiry = lab._inquiry(raw)
+            self.assertIn('SLC26A28', inquiry['uniprot_query'])
+            self.assertEqual(lab._ground_inquiry(inquiry, client)['status'], 'unresolved')
+            for label, query in sources.uniprot_relaxations(inquiry['uniprot_query']):
+                self.assertIn('SLC26A28', query)
+                self.assertNotIn('(human)', query)
+    def test_wrong_protein_never_reaches_review(self):
+        wrong = {'primaryAccession':'O95905', 'genes':[{'geneName':{'value':'ECD'}}],
+                 'proteinDescription':{'recommendedName':{'fullName':{'value':'Protein ecdysoneless homolog'}}}}
+        query = 'protein_name:human SLC26A16 AND reviewed:true AND taxonomy_id:9606'
+        with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
+            sources.Sources(fetch=lambda url: ({'results':[wrong]},{})).query({'source':'uniprot','query':query})
+        import json, io
+        with patch.object(lab.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps({'results':[wrong]}).encode())) as sender:
+            self.assertIs(lab.urllib.request.urlopen, sender)
+            with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
+                lab._browse(query, 4)
+        valid = {'primaryAccession':'O43511', 'genes':[{'geneName':{'value':'SLC26A4'},'synonyms':[{'value':'PDS'}]}]}
+        for symbol in ('SLC26A4','PDS'):
+            sources.verify_uniprot_identity('gene:'+symbol,[valid])
+        with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
+            sources.verify_uniprot_identity('gene:SLC26A16',[valid])
+
     def test_symbols_in_human_queries_only(self):
         client = sources.Sources(fetch=self.fetch)
         for query in ('gene:SLC26A28 AND taxonomy_id:9606', 'protein_name:SLC26A28 AND organism_id:9606'):

@@ -896,6 +896,8 @@ def _safe_query(query):
     query = re.sub(r"\(\s*\)", "", query)
     query = re.sub(r"\s+", " ", query).strip()
     query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
+    from lab_sources import normalize_uniprot_subjects
+    query = normalize_uniprot_subjects(query)
     # A named protein must not disappear merely because it is longer than the wandering
     # window (S-layer protein A is 1,231 aa). The random browse fallback remains bounded;
     # ESM-C trims its own copy to 350 residues; the record keeps the whole sequence.
@@ -1180,10 +1182,8 @@ def _ground_inquiry(inquiry, client=None):
         if human_question and any(t != '9606' for t in taxa):
             return {'status': 'unresolved', 'reason': 'human question conflicts with nonhuman query taxonomy'}
         if not (human_question or '9606' in taxa): continue
-        for field, quoted, bare in re.findall(r'\b(gene|protein_name):(?:"([A-Za-z][A-Za-z0-9-]{0,29})"|([A-Za-z][A-Za-z0-9-]{0,29})(?=\s|\)|$))', query):
-            symbol = quoted or bare
-            if field == 'gene' or re.fullmatch(r'[A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*', symbol):
-                symbols.append(symbol)
+        from lab_sources import uniprot_identity_symbols
+        symbols.extend(uniprot_identity_symbols(query))
     symbols = list(dict.fromkeys(s.upper() for s in symbols))
     if not symbols: return {'status': 'not_applicable'}
     if len(symbols) > 4: return {'status': 'unresolved', 'reason': 'too many human gene identities in one inquiry'}
@@ -1294,7 +1294,7 @@ def uniprot_from_plugin(pq):
 
 def pubmed_from_plugin(pq):
     """Normalize the public search at both planning and execution boundaries."""
-    if not isinstance(pq, dict) or pq.get('plugin') != 'pubmed' or pq.get('tool') != 'search_articles':
+    if not isinstance(pq, dict) or pq.get('plugin') != 'pubmed' or pq.get('tool') not in ('search_articles', 'pubmed.search_articles'):
         return None
     args = pq.get('arguments') or {}
     if not isinstance(args, dict) or set(args) - {'term', 'query', 'terms', 'limit'}:
@@ -1361,7 +1361,7 @@ def _browse(query, limit):
     fallback_reason = None
     def fetch(value):
         params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
-                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function,ft_domain,xref_pdb,xref_chembl"})
+                                         "fields": "accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function,ft_domain,xref_pdb,xref_chembl"})
         req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                      headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
         with urllib.request.urlopen(req, timeout=45) as response:
@@ -1400,6 +1400,8 @@ def _browse(query, limit):
     exact = re.fullmatch(r'accession:([A-Z0-9]+)', requested_query)
     if exact and any(item.get("primaryAccession") != exact[1] for item in raw.get("results", [])):
         raise ValueError("source_accession_mismatch: requested " + exact[1])
+    from lab_sources import verify_uniprot_identity
+    verify_uniprot_identity(requested_query, raw.get("results", [])[:limit])
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
