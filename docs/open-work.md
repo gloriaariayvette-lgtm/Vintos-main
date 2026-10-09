@@ -3,6 +3,15 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — completed Lab experiments survive an empty frontier reading
+
+Claude's `80f2b35` adds fallback readers. Follow-up validates the actual `reading` field before accepting
+any reader, preserves admission timeouts, and queues a completed result when all readers fail.
+The owed-reading queue refuses empty interpretations without retiring the debt. Kept findings name the
+actual fallback reader. Late readings return to the shared frontier log and daily digest; the owed reader
+receives the same compact result view as frontier readers. Regression tests use scratch stores, fake providers/Mac, and deny network access.
+Deployment and recovery of CHEM-ff9d36002fae remain pending verification; no fold needs rerunning.
+
 ## 8 October — Opus 5.5's kickoff was all thinking and no text; a failed kickoff now falls to Gemma
 
 After the restart fix the log showed "Opus 5.5 sets the session going" then "he let it be", twice: at 23:55 on

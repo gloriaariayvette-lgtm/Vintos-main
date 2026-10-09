@@ -70,6 +70,17 @@ def shared_log(limit=LOG_ENTRIES):
             entry["blind_readers_asked"] = [{"lens": r.get("lens"), "question": str(r.get("question", ""))[:200]}
                                             for r in div.get("readings", []) if r.get("state") == "read"]
         rows.append(entry)
+    # Late readings are distinct acts over preserved results, not new experiments.
+    for row in lab._jsonl(lab.NOTEBOOK):
+        if not isinstance(row, dict) or row.get("kind") != "owed_reading": continue
+        if not isinstance(row.get("reading"), str) or not row["reading"].strip(): continue
+        rows.append({"kind": "recovered_experiment_reading", "at": row.get("at"),
+                     "session_id": row.get("session_id"), "by": row.get("read_by") or "local",
+                     "planner": row.get("lens"), "experiment": row.get("experiment"),
+                     "reading": row["reading"][:400],
+                     "prediction_vs_result": str(row.get("prediction_vs_result") or "")[:300],
+                     "next_question": str(row.get("next_question") or "")[:240],
+                     "reread_of_preserved_result": True})
     for row in lab._jsonl(LOG):
         if not (isinstance(row, dict) and row.get("state") == "completed"): continue
         rows.append({"kind": "alignment", "at": row.get("at"), "alignment_id": row.get("alignment_id"),

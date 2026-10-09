@@ -175,6 +175,7 @@ def _retire(session_id, how, detail=""):
 
 def default_reader(debt):
     """A later, separate occasion — not a re-run, and he is told which it is."""
+    from chemistry_session import _result_view
     plan, result, grade = debt.get("plan") or {}, debt.get("result") or {}, debt.get("grade")
     verdict = ""
     if isinstance(grade, dict) and not grade.get("refused"):
@@ -187,9 +188,11 @@ def default_reader(debt):
         "honestly — a completed run is not a good answer. Return JSON only.",
         context + "\n\nTHIS EXPERIMENT RAN ON " + str(debt.get("at"))[:19] + " AND WAS NEVER READ." +
         "\n\nPLAN:\n" + json.dumps(plan)[:3000] +
-        "\n\nRESULT:\n" + json.dumps(result, ensure_ascii=False)[:9000] + verdict +
+        "\n\nRESULT:\n" + json.dumps(_result_view(result), ensure_ascii=False)[:12000] + verdict +
         "\n\nReturn keys in this order: reading, what_surprised_me, next_question.", max_tokens=600)
     value = lab._json_object(raw)
+    if not isinstance(value.get("reading"), str) or not value["reading"].strip():
+        raise ValueError("owed reader returned no usable reading")
     return {key: str(value.get(key, ""))[:1200] for key in ("reading", "what_surprised_me", "next_question")}
 
 
@@ -213,6 +216,8 @@ def settle_one(already_admitted=False, wait_s=300, reader=None):
             with admit("background", organ="chemistry-reading-owed", wait_s=wait_s,
                        provider="local", model=lab.LLM_MODEL, stage="owed_reading"):
                 reading = (reader or default_reader)(debt)
+        if not isinstance(reading, dict) or not isinstance(reading.get("reading"), str) or not reading["reading"].strip():
+            raise ValueError("owed reader returned no usable reading")
     except TimeoutError:
         _release(session_id); return {"outcome": STILL_HELD, "session_id": session_id}
     except Exception as exc:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Scheduled Chemistry session: scratch stores and fake frontier/Mac only."""
-import contextlib, importlib.util, json, os, sys, tempfile, types
+import contextlib, importlib.util, json, os, sys, tempfile, types, socket
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-chem-session-")
@@ -13,6 +13,12 @@ def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec); sys.modules[name] = mod; spec.loader.exec_module(mod); return mod
 
+network_attempts = []
+def no_network(sock, *args, **kwargs):
+    if sock.family != socket.AF_UNIX: network_attempts.append(args)
+    raise OSError("test network forbidden")
+socket.socket.connect = no_network
+sys.modules["line_prospect"] = types.SimpleNamespace(prospect=lambda: None)
 lab = load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 lab.set_enabled(True)
 mac = types.SimpleNamespace(
@@ -219,4 +225,23 @@ assert planner._plan("ctx", ["protein"], "grok")["parameters"]["fragment"] == "v
 answers(json.dumps({"experiment": "fold", "parameters": {}}))
 assert planner._plan("ctx", ["fold"], "grok")["experiment"] == "fold", "other experiments are not asked again"
 
-print("43/43 passed")
+# A successful bench result survives exhausted frontier readers and is queued once.
+def no_reading(*args, **kwargs): raise RuntimeError("no frontier lens returned a reading")
+session._reading = no_reading
+preserved = session.run()
+assert preserved["state"] == "experiment_completed_reading_held", preserved
+assert preserved["mac_result"]["ok"] and preserved["grade"]
+assert all(str(p).startswith(HOME) for p in (session.SESSIONS, session.SESSION_STATE,
+    owed_mod.OWED, owed_mod.OWED_LOCK, lab.NOTEBOOK, lab.FAULTS))
+assert owed_mod.settle_one(reader=lambda debt: {"reading": " "})["outcome"] == "REFUSED"
+recovered = owed_mod.settle_one(reader=lambda debt: {"reading": "The preserved result was read."})
+assert recovered["outcome"] == "READ" and recovered["session_id"] == preserved["session_id"]
+assert owed_mod.settle_one()["outcome"] != "READ", "the result is not read twice"
+import chemistry_alignment, chemistry_digest
+assert chemistry_alignment.SESSIONS.startswith(HOME) and chemistry_digest.NOTEBOOK.startswith(HOME)
+late = [r for r in chemistry_alignment.shared_log(limit=100) if r.get("session_id") == preserved["session_id"]]
+assert len(late) == 1 and late[0]["kind"] == "recovered_experiment_reading" and late[0]["by"] == "local"
+assert any("The preserved result was read." in x for x in chemistry_digest._frontier_lines(lab._jsonl(lab.NOTEBOOK)))
+assert not network_attempts, network_attempts
+assert session.mac is mac and probe_mod.probe_aegis is _fake_probe_aegis
+print("Chemistry session regressions passed")

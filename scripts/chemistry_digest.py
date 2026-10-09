@@ -102,7 +102,8 @@ def _reading_lines(notebook, n=2):
 def _frontier_lines(notebook):
     """The day's frontier session in his own words: what he read, and what surprised him."""
     for row in reversed(notebook):
-        if row.get("kind") != "frontier_session": continue
+        if row.get("kind") not in ("frontier_session", "owed_reading"): continue
+        if not isinstance(row.get("reading"), str): continue
         reading = _clip(row.get("reading")); surprised = _clip(row.get("what_surprised_me"))
         if not (reading or surprised): continue
         lines = []

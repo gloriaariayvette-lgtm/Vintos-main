@@ -435,13 +435,18 @@ def _reading(context, plan, result, grade=None, lens=None):
             tried.append(who)
             try:
                 raw = asyncio.run(_frontier(who, system, user))
+                value = lab._json_object(raw)
+                if not isinstance(value.get("reading"), str) or not value["reading"].strip():
+                    raise ValueError("frontier lens returned no usable reading")
+            except TimeoutError:
+                raise  # Yield to the house; the completed result is owed, not rerun.
             except Exception as exc:
                 lab._fault("reading_" + who, exc)
                 raw = ""
             if raw and str(raw).strip():
                 read_by = who
                 break
-        if not raw: raise RuntimeError("no frontier lens returned a reading (tried %s)" % ", ".join(tried))
+        if not raw or not str(raw).strip(): raise RuntimeError("no frontier lens returned a reading (tried %s)" % ", ".join(tried))
     else:
         raw = lab._ask(system, user, max_tokens=700)
     value = lab._json_object(raw)
@@ -705,7 +710,7 @@ def run():
             lab._append(SESSIONS, row)
             try:   # the frontier model reading it judged it worth keeping: into his kept findings
                 import lab_keepers
-                kept = lab_keepers.keep_from_session(session_id, plan, reading, by=lens)
+                kept = lab_keepers.keep_from_session(session_id, plan, reading, by=reading.get("read_by") or lens)
                 if kept: row["kept"] = kept["id"]
             except Exception as exc: lab._fault("lab_keepers_session", exc, session_id=session_id)
             if plan.get("line_id"):   # the day's experiment, as a step on the line it tests
@@ -751,8 +756,13 @@ def run():
                 try: owed.owe(session_id, lens, plan, result, grade, receipt["context_sha256"])
                 except Exception as exc: lab._fault("owe_reading", exc, session_id=session_id)
         except Exception as exc:
-            row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_fault",
+            held = bool(result and result.get("ok"))
+            row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens,
+                   "state": "experiment_completed_reading_held" if held else "held_fault",
                    "error": exc.__class__.__name__, "detail": str(exc)[:300]}
+            if held:
+                try: owed.owe(session_id, lens, plan, result, grade, receipt["context_sha256"])
+                except Exception as debt_exc: lab._fault("owe_reading", debt_exc, session_id=session_id)
         if offered_interest and not delivery_recorded:
             try:
                 bridge.record_delivery(session_id, lens, offered_interest, [], state="response_failed")

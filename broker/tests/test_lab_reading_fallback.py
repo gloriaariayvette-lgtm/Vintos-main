@@ -55,6 +55,28 @@ asked.clear()
 S._frontier = frontier({"claude": READING})
 out = S._reading("ctx", {}, {"ok": True}, lens="claude")
 check("a planner that reads its own run costs one call, as before", asked == ["claude"] and out["read_by"] == "claude", asked)
+for invalid in ("   ", "not JSON", "{}", '{"reading": null}', '{"reading": []}', '{"reading": "  "}'):
+    asked.clear()
+    S._frontier = frontier({"grok": invalid, "claude": READING})
+    out = S._reading("ctx", {}, {"ok": True}, lens="grok")
+    check("invalid reading falls through: " + invalid, out["read_by"] == "claude" and asked == ["grok", "claude"])
+asked.clear()
+S._frontier = frontier({"grok": TimeoutError("yield to house"), "claude": READING})
+try:
+    S._reading("ctx", {}, {"ok": True}, lens="grok")
+    raise AssertionError("must yield")
+except TimeoutError:
+    check("admission timeout does not launch another reader", asked == ["grok"])
+check("all session and debt stores are scratch", all(str(p).startswith(HOME) for p in
+      (S.SESSIONS, S.SESSION_STATE, S.owed.OWED, S.owed.OWED_LOCK, lab.NOTEBOOK, lab.FAULTS)))
+lab.lab_context = lambda **kw: ("scratch context", {})
+for invalid in ('{"reading": null}', '{"reading": []}', '{"reading": " "}'):
+    lab._ask = lambda *a, **kw: invalid
+    try:
+        S.owed.default_reader({"plan": {}, "result": {"ok": True}})
+        raise AssertionError("invalid local reading accepted")
+    except ValueError:
+        check("local reading validates before coercing: " + invalid, True)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
