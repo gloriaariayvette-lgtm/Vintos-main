@@ -13,7 +13,12 @@ Opus 4.8 and Fable routes use the same replacements without changing the avatar/
 Only the stable Slack prompt prefix is marked for the one-hour cache. Changing day/context and conversation
 blocks no longer incur cache-write premiums. Other callers retain their existing caching behavior.
 Provider model-list HTTP 200 confirmed both requested Claude IDs. Bounded live calls to Sonnet 5.5, Haiku 5.5
-and Astra each returned `OK`; no Slack message was posted. Full-suite and deployment verification pending.
+and Astra each returned `OK`; no Slack message was posted. Deployed `89703a1` on Aegis: all 300 suites
+passed in the scratch run and again in the deployment gate; deploy exited zero with `deploy OK`.
+Installed `dot_channel.py`, `dot_lounge.py`, and `claude_cache.py` match the commit byte for byte.
+Slack timer is active/waiting; Lab and house services active/running.
+Release: `20261008-210418-89703a1.json`. Realized savings and the new cache rate require subsequent traffic;
+the bounded smoke calls verify routing, not a full day of billing.
 
 Live record, 8 October: 38 Opus 5.5 Slack calls, 1,614,307 input tokens, 20% cache reads, estimated $10.72.
 Recent cache hits reused 11,451 tokens but rewrote 33k–39k changing tokens at the one-hour write premium.
@@ -29,6 +34,9 @@ Lab, 7 October (investigated; these broader fixes remain open):
   12 missing exact NCBI accession.version, 12 unsupported source names, seven HTTP 400s, seven invalid flank
   lengths, and four expired Claude connector OAuth errors. Examples requested `ncbi_nuccore` and
   `ncbi_rt_locus_screen`; one named human pendrin while claiming to select a phage sequence. The guard refused it.
+- Of 631 reflections, 555 explicitly answered `no` to whether they answered the question, six answered
+  `yes`, 60 omitted the field, and ten used other wording. This is self-reported progress, not scientific
+  validation; high reflection volume does not establish that his questions were answered.
 - All 539 protein-representation rows were nonempty: 1,033 embedding entries, only 181 distinct hashes.
   These row counts are activity receipts, not counts of new findings. Whether identical embeddings were
   recomputed or reused was not established by this audit.
