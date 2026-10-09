@@ -343,18 +343,18 @@ try:
     moved = REAL_ORIENT("context")
 finally:
     M._ask, M.NOTEBOOK = real_ask, real_nb
-check("the orient prompt names the spent run", "LAST 3 QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE" in prompts[0]
+check("the orient prompt names the spent run", "LAST 3 QUESTIONS ENDED WITHOUT AN ANSWER" in prompts[0]
       and "SPENT FOR TODAY" in prompts[0] and "KaiC." in prompts[0], prompts[0][-400:])
 check("choosing KaiC again is asked once more, and the new subject is kept",
       len(prompts) == 2 and moved["question"] == "How long is slpA?", (len(prompts), moved.get("question")))
 open(nb, "w").write(json.dumps(review) + "\n")
-prompts[:] = []; answers[0] = answers[1]
+prompts[:] = []; answers[0] = json.dumps({"browse_lane": "protein", "uniprot_query": "gene:katA", "question": "How long is catalase KatA?"})
 M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or answers[0]
 M.NOTEBOOK = nb
 try: REAL_ORIENT("context")
 finally: M._ask, M.NOTEBOOK = real_ask, real_nb
 check("with a fresh review behind him the run warning is gone and one call is made",
-      len(prompts) == 1 and "WITHOUT NEW EVIDENCE" not in prompts[0])
+      len(prompts) == 1 and "ENDED WITHOUT AN ANSWER" not in prompts[0])
 check("but KaiC stays spent for the day, so a review on another protein does not reopen it",
       "SPENT FOR TODAY" in prompts[0] and "KaiC" in M.spent_subjects() and M.spent_subjects(time.time() + 25 * 3600) == [])
 
@@ -404,7 +404,7 @@ def pm_fetch(url):
     if q["db"][0] == "taxonomy": return {"esearchresult": {"idlist": ["1883"]}}, {}
     if "esummary" in url: return {"result": {}}, {}
     hit = "marine" not in q["term"][0]                      # four terms find nothing; three do
-    return {"esearchresult": {"idlist": ["31000001"] if hit else []}}, {}
+    return {"esearchresult": {"count": "1" if hit else "0", "idlist": ["31000001"] if hit else []}}, {}
 client = LS2.Sources(fetch=pm_fetch, fetch_record=lambda url: urls.append(url) or PUBMED_XML)
 got = client.query({"source": "pubmed_abstracts", "terms": ["polyketide synthase", "Streptomyces", "module (KS)", "marine"]})
 rec = got["records"][0] if got["records"] else {}

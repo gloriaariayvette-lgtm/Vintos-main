@@ -124,13 +124,14 @@ def assess(reflection, *, source_query_succeeded=False):
     reasons = [name for name, value in components.items() if value > 0]
     if repeated_question: reasons.append("repeated_question_penalty")
     if repeated_evidence: reasons.append("duplicate_evidence_suppressed")
+    if not lab.review_answered(reflection): reasons.append("unanswered_not_a_finding")
     row = {
         "entry_id": entry_id, "at": reflection.get("at") or lab.now_iso(),
         "finding": finding, "reflection": reading, "next_question": question, "question": asked[:600],
         **({"line_id": line_id} if line_id else {}),
         "source_accessions": accessions, "interest_score": score,
         "reason_for_score": reasons, "score_components": components,
-        "flagged_for_next_lab_session": score >= FLAG_THRESHOLD and not repeated_evidence,
+        "flagged_for_next_lab_session": score >= FLAG_THRESHOLD and not repeated_evidence and lab.review_answered(reflection),
         "source_query_succeeded": bool(source_query_succeeded),
         "collision_id": collision_id, "question_sha256": _digest(question.lower().strip()) if question else None,
         "evidence_sha256": evidence_sha256,
@@ -161,6 +162,8 @@ def _redirect_entry_ids():
     for row in lab._jsonl(lab.NOTEBOOK):
         if not isinstance(row, dict) or row.get("kind") != "reflection":
             continue
+        if not lab.review_answered(row) and row.get("entry_id"):
+            rejected.add(str(row["entry_id"]))
         inquiry = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
         source_query = inquiry.get("source_query") if isinstance(inquiry.get("source_query"), dict) else {}
         if source_query.get("source") not in ("pdb", "chembl"):

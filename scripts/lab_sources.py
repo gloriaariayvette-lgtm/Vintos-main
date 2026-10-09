@@ -308,7 +308,8 @@ class Sources:
                 pause()
                 found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
                     'db': 'pubmed', 'term': '(%s)' % term, 'retmode': 'json', 'retmax': 0, 'tool': 'vintos_lab'}))
-                if str((found.get('esearchresult') or {}).get('count', '0')) != '0': counted.append(term)
+                if term == terms[0] or str((found.get('esearchresult') or {}).get('count', '0')) != '0':
+                    counted.append(term)  # never discard the named subject to obtain unrelated hits
             terms = counted or terms
         ids, used = [], terms
         for n in range(len(terms), min(2, len(terms)) - 1, -1):
@@ -331,7 +332,7 @@ class Sources:
             for article in root.findall('.//PubmedArticle')[:limit]:
                 abstract = ' '.join(''.join(node.itertext()).strip() for node in article.findall('.//Abstract/AbstractText'))
                 records.append({'pmid': article.findtext('.//PMID') or '',
-                                'title': ''.join((article.find('.//ArticleTitle') or ET.Element('x')).itertext())[:300],
+                                'title': ''.join((article.find('.//ArticleTitle') if article.find('.//ArticleTitle') is not None else ET.Element('x')).itertext())[:300],
                                 'journal': (article.findtext('.//Journal/Title') or '')[:160],
                                 'year': article.findtext('.//JournalIssue/PubDate/Year') or '',
                                 'abstract': abstract[:1800]})

@@ -83,6 +83,9 @@ def lookup_key(inquiry):
             return "atlas:" + str(q.get("gene") or q.get("chromosome", "") + ":" + str(q.get("start", ""))).upper()
         clean = {k: v for k, v in q.items() if k not in ("purpose", "why", "question")}
         return field + ":" + json.dumps(clean, sort_keys=True, default=str).lower()
+    query = str(inq.get("uniprot_query") or "").strip()
+    if query:
+        return "uniprot:" + re.sub(r"\s+", " ", query).lower()
     return ""
 
 
@@ -94,6 +97,17 @@ def _recent(now=None):
     now = now or _now()
     since = now - timedelta(days=REPEAT_DAYS)
     return [r for r in _tail(LOOKUPS) if (_when(r) or since) >= since]
+
+
+def _lookup_route(key):
+    kind, _, body = key.partition(":")
+    if kind in ("source_query", "plugin_query", "instrument_query"):
+        try:
+            spec = json.loads(body)
+            return (kind, spec.get("source"), spec.get("plugin"), spec.get("tool"))
+        except (ValueError, AttributeError):
+            pass
+    return kind
 
 
 def repeat(inquiry, now=None):
@@ -108,6 +122,10 @@ def repeat(inquiry, now=None):
     mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
     if len(mine) >= 4:
         for r in reversed(rows):
+            # The same unresolved question may legitimately need another instrument/source.
+            # A wording change on the same retrieval is still refused by the exact key above.
+            if key and r.get("lookup") and _lookup_route(key) != _lookup_route(r["lookup"]):
+                continue
             theirs = set(r.get("words") or [])
             if theirs and len(mine & theirs) / len(mine) >= SIMILAR:
                 return "you already asked this on %s, in other words: %s" % (

@@ -3,6 +3,36 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 9 October — Lab failed-run repairs
+
+The 12:22–12:30 UTC failures exposed concrete causes, independent of the expired connector:
+- UniProt-only inquiries had no repeat lookup key. A changed question could repeat the same fetch.
+- Any reflection reset dead-end recovery, even an explicit no. Unanswered reviews now count;
+  recent failed subjects take precedence. Another source/instrument may still test the same question.
+- PubMed dropped zero-hit terms including the subject, returning unrelated ERK literature for
+  SLC26A19. The first subject term is now retained. Plain XML article titles also survive parsing.
+- Empty UniProt responses were marked successful, and explicit no/empty verdicts were treated as
+  findings in journal retrieval and frontier scoring. They are now lessons, with their next evidence
+  step preserved; historical failed entries are excluded from frontier promotion without rewriting history.
+- Pendrin review claimed a sequence interval was missing despite holding all 780 residues. Requested
+  intervals are now extracted directly with accession and one-based inclusive coordinates before review.
+- The answer verdict was near the end of a 500-token prose response. It is now first, with a bounded
+  800-token allowance, and unanswered reviews are instructed not to invent speculative readings.
+- The actual PubMed plugin search shape now uses the existing direct public Aegis client, with its
+  material terms when present. Other Claude connector operations still require valid authentication.
+
+Live diagnostic proof (not written into his Lab journal): real UniProt O43511 has 780 residues;
+local Gemma returned yes and the exact 51-residue 485–535 interval
+`TCIVSIILGLDLGLLAGLIFGLLTVVLRVQFPSWNGLGSIPSTDIYKSTKN`. The prior text called it 50 residues.
+Direct PubMed with SLC26A19 retained returned zero records, not ERK papers. The actual SLC26A5
+plugin inquiry and its material terms returned four papers directly, including PMID 20471983
+(prestin STAS-domain structure), receipt 46acb60cb542e8b2ca31cdf32462d0c80ded820de0826003bb53db00e9aa6e7b.
+Those papers are material to review, not an assertion that the full question is answered. Isolated regression
+replays cover these cases, same-query rejection, alternate-source allowance, and failed-finding gates.
+All 301 isolated suites passed against the final candidate on Aegis (225.5 seconds). Required
+ownership reports and follow-up checks passed. Deployment verification pending; sustained answer-rate
+improvement remains unverified.
+
 ## 9 October — overnight Lab and Forge review
 
 Lab 23:30–06:46: 187 inquiries, 172 reflections (4 yes, 144 no, 24 empty/unusable answers),

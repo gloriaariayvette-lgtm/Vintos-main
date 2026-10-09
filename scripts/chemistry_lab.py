@@ -231,6 +231,13 @@ def _read_excerpt(path, cap):
 FRONTIER_KINDS = ("frontier_session", "divergence")
 
 
+def review_answered(row):
+    """Legacy rows without a verdict remain readable; an explicit failed/empty verdict is not a finding."""
+    if "answers_question" not in row:
+        return True
+    return bool(re.match(r"^yes\b", str(row.get("answers_question") or "").strip(), re.I))
+
+
 def journal_threads(include_frontier=True):
     """A reproducible retrieval view; the notebook remains the complete authority. Without the frontier
     rows it is Gemma's own journal: her log and the frontier's are kept apart (Gloria, 2026-09-28)."""
@@ -285,12 +292,12 @@ def journal_threads(include_frontier=True):
             identifier_linked = (not identifier_followup or
                                  (lineage.get("source") == source_query.get("source") and lineage.get("id")))
             supported = bool(sources and factual and row.get("source_query_succeeded") is not False
-                             and identifier_linked)
+                             and identifier_linked and review_answered(row))
             lesson = not supported
             observation = factual if supported else ("The follow-up identifier was not tied to the source protein; its association is rejected."
                 if identifier_followup and not identifier_linked else
-                "No source-backed observation recorded; interpretation needs a receipt.")
-            if lesson:
+                str(row.get("answers_question") or "No source-backed observation recorded; interpretation needs a receipt."))
+            if lesson and (review_answered(row) or not next_question):
                 next_question = "Which new source receipt could resolve this before another interpretation?"
         previous = threads.get(thread_id)
         if previous is None:
@@ -447,7 +454,7 @@ def dead_ends(rows=None):
     rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
     asked = []
     for row in reversed(rows):
-        if row.get("kind") in ("reflection", "genome_reflection"): break
+        if row.get("kind") in ("reflection", "genome_reflection") and review_answered(row): break
         if row.get("kind") in ("inquiry", "inquiry_refused"):
             inquiry = row.get("inquiry")
             if isinstance(inquiry, dict):
@@ -457,7 +464,7 @@ def dead_ends(rows=None):
     asked.reverse()
     if len(asked) < DEAD_END_RUN: return {"count": len(asked), "questions": [], "subjects": []}
     subjects = []
-    for inq in asked:
+    for inq in reversed(asked):
         sq = inq.get("source_query") if isinstance(inq.get("source_query"), dict) else {}
         for term in _intent_terms(inq.get("uniprot_query")) + _intent_terms(sq.get("query")):
             subjects.append(term.split(":", 1)[1].strip('"'))
@@ -1125,7 +1132,7 @@ def _orient(context, lean=None):
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
                  "uniprot_query 'gene:SYMBOL AND organism_id:9606', source_query {source:atlas, gene:SYMBOL}.")
     if spent["questions"]:
-        task += ("\n\nYOUR LAST %d QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE — no review came of any of them:\n- %s\n"
+        task += ("\n\nYOUR LAST %d QUESTIONS ENDED WITHOUT AN ANSWER — reviews saying no do not reset this:\n- %s\n"
                  "That thread is spent for now. Choose a different protein, organism or instrument; "
                  "do not rephrase the same question. Do not invent a new accession or gene symbol by changing "
                  "digits in a failed one. Choose a documented subject from sourced context or a plain-name "
@@ -1230,6 +1237,19 @@ def _inquiry(value, lean=None):
     if not source_query:
         source_query = uniprot_from_plugin(value.get("plugin_query"))
         if source_query:
+            value = dict(value, plugin_query=None)
+    # Public PubMed search already has an Aegis client. It must not depend on the
+    # Claude account's OAuth session (26 expired-token failures on 9 October).
+    pq = value.get("plugin_query") or {}
+    args = pq.get("arguments") or {} if isinstance(pq, dict) else {}
+    if (not source_query and isinstance(pq, dict) and pq.get("plugin") == "pubmed"
+            and pq.get("tool") == "search_articles" and isinstance(args, dict)
+            and set(args) <= {"term", "query"}):
+        term = str(args.get("term") or args.get("query") or "").strip()
+        if term:
+            terms = [t.strip() for t in (value.get("material_terms") or [])
+                     if isinstance(t, str) and t.strip()][:5]
+            source_query = {"source": "pubmed_abstracts", "terms": terms or [term]}
             value = dict(value, plugin_query=None)
     requested_lane = value.get('browse_lane')
     lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
@@ -1576,6 +1596,24 @@ def source_summary(records, budget=1800):
     return observed(walk(records), budget)
 
 
+def sequence_regions(inquiry, observations):
+    """Expose exact requested intervals without asking the model to count sequence characters."""
+    text = " ".join(str(inquiry.get(k) or "") for k in ("question", "why_now"))
+    spans = list(dict.fromkeys(re.findall(r"\b(\d{1,5})\s*[-–]\s*(\d{1,5})\b", text)))[:4]
+    rows = observations.get("records", []) if isinstance(observations, dict) else observations
+    result = []
+    for row in (rows if isinstance(rows, list) else [])[:8]:
+        seq = row.get("sequence") or ""
+        if not isinstance(seq, str): continue
+        for lo, hi in spans:
+            start, end = int(lo), int(hi)
+            if 1 <= start <= end <= len(seq) and end - start < 350:
+                result.append({"accession": row.get("accession"), "source": "retrieved protein record",
+                               "start": start, "end": end, "coordinates": "one-based inclusive",
+                               "sequence": seq[start-1:end], "length": end-start+1})
+    return result
+
+
 def _reflect(context, inquiry, records):
     line = None
     try:   # the line this test belongs to, and how he may end it
@@ -1599,19 +1637,24 @@ def _reflect(context, inquiry, records):
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
         "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
         "and keep them apart from what the database records state. Return JSON only.",
-        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(records) +
-        "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
+        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(records) +
+        "\n\nFirst decide answers_question: yes or no, with the precise missing evidence if no. "
+        "A sequence interval can be read directly from a complete sequence; use the computed intervals above. "
+        "Do not invent a missing-data claim for a supplied sequence or its subsequence. "
+        "If no, leave speculative_reading empty and make next_question a bounded evidence-gathering step "
+        "that could resolve the missing evidence, not another interpretation of the same material. "
+        "Return keys in this order: answers_question, attention (the one record or feature you are staying with, and why), "
         "factual_observation (only what the records actually state — this is the core; be specific and "
         "quantitative wherever the record lets you), speculative_reading (ONE specific, falsifiable hypothesis "
         "that follows from that observation — name the measurement that would confirm or refute it; a real "
-        "conjecture with a next step, never metaphor or mood), next_question (the sharper question this leaves, "
-        "the one worth pursuing next), answers_question (\'yes\', or \'no\' and what the records hold instead), "
+        "conjecture with a next step, never metaphor or mood; empty when unanswered), next_question (the sharper question this leaves, "
+        "the one worth pursuing next), "
         "instrument_gap (only if the next step needs a capability this Lab does not have that could be built or "
         "connected for you — a simulator, a model, a database or tool you cannot reach: name it and what it would "
         "measure. Laboratory equipment you could never operate — cryo-EM, crystallography, NMR, mass spectrometry, "
         "wet-lab assays — is not a gap; say what it would show in speculative_reading instead. Otherwise empty)."
         + _gap_text() + line_text,
-        temperature=0.35,
+        max_tokens=800, temperature=0.35,
     )
     value = _json_object(raw)
     return {k: str(value.get(k, ""))[:1000] for k in
@@ -1838,7 +1881,7 @@ def tick():
                         next_phase = "sources"      # Atlas reads the genome whether or not UniProt had the protein
                     elif empty and not stale and _gather_material(state, inquiry, fresh_only=True):
                         next_phase = "reflect"
-                    state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
+                    state["source_query_succeeded"] = bool(records) and not bool(browse_result["fallback_reason"])
                     note = {"at": now_iso(), "kind": ("browse_stale" if stale else
                             "source_unavailable" if empty else "source_read"), "source": "UniProtKB REST",
                             "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
