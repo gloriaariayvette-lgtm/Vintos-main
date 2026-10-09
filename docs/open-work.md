@@ -25,7 +25,21 @@ The failed SLC26A1 terms-list PubMed request returned four papers directly (PMID
 These establish working retrieval, not that all questions are answered. A replay through the unchanged local
 reviewer now reads O43511 rather than P40879; it correctly remains unanswered for the requested hinge evidence.
 All 304 isolated suites passed on Aegis (230.9 seconds), and the three required ownership/isolation checks passed.
-The planning, review, context-building and model-call functions are unchanged. Deployment pending.
+The planning, review, context-building and model-call functions are unchanged. Deployed d292a42 via the
+normal deploy (full suite passed again; deploy OK), release 20261009-105626-d292a42.json. All three live
+modules match the tested checkout; service active, restarted 10:56:18 CDT.
+
+Post-deployment observations remain poor: by 11:03, five accepted inquiries, two refused, two completed
+reviews both no. One fabricated human SLC26A28 request still returned no gene; a CcrA/human-receptor
+question returned unrelated literature and was correctly unanswered. No sustained improvement claimed.
+The source-routing repairs are verified; question selection and identity without an explicit accession
+remain unresolved. Do not change or truncate his prompts without Gloria's approval.
+
+An additional root cause was checked without another paid call: the 10:22 Fable alignment did NOT run
+out of output tokens. Its provider receipt at 15:22:23 UTC is stop_reason=refusal, out=0; the alignment
+log collapses this into 'the frontier model returned nothing'. No retry or provider fallback was made.
+The latest completed guidance is Astra's 05:42 alignment; it itself contains a contradictory logged
+Pendrin length (759), whereas live UniProt O43511 has 780 residues. Guidance is advice, not source truth.
 
 ## 9 October — prompt truncation reverted at Gloria's instruction
 
