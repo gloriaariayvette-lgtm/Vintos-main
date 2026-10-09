@@ -584,6 +584,51 @@ def _gap_text():
             ((" Your last gap was kept here, not sent: \"%s\" — %s" % (last["gap"][:160], last["why"][:200])) if last else ""))
 
 
+def review_evidence(state):
+    """Evidence identity excludes the wording and routing of the request."""
+    additional = state.get('additional_source') or {}
+    receipt = additional.get('receipt') or additional.get('source_receipt') or {}
+    proteins = state.get('records') or []
+    literature = (state.get('material') or {}).get('records') or []
+    extra = receipt.get('records') or []
+    if not isinstance(extra, list): extra = [extra]
+    canonical, ids = [], set()
+    for row in list(proteins) + literature + extra:
+        if not isinstance(row, dict): continue
+        if row.get('pmid'):
+            ids.add('PMID-' + str(row['pmid']))
+            item = {k: row.get(k) for k in ('pmid', 'title', 'abstract')}
+        else:
+            accession = row.get('accession') or row.get('primaryAccession')
+            if accession: ids.add(str(accession))
+            item = {k:v for k,v in row.items() if k not in ('found_by','partial_match','curated')}
+        canonical.append(json.dumps(item, sort_keys=True, default=str))
+    for key in ('instrument_result', 'instrument_receipt'):
+        if additional.get(key): canonical.append(json.dumps(additional[key],sort_keys=True,default=str))
+    if state.get('atlas_analysis'): canonical.append(json.dumps(state['atlas_analysis'],sort_keys=True,default=str))
+    digest = hashlib.sha256(json.dumps(sorted(set(canonical))).encode()).hexdigest() if canonical else None
+    return digest, ids, receipt
+
+
+def repeated_review(state):
+    # Instruments may make different measurements of the same input. This guard
+    # covers routine database rereads only, not new analyses or experiments.
+    inquiry = state.get('inquiry') or {}
+    digest, _, receipt = review_evidence(state)
+    if (not digest or inquiry.get('instrument_query') or state.get('atlas_analysis')
+            or ((inquiry.get('plugin_query') or {}).get('plugin') not in (None, 'pubmed'))
+            or receipt.get('source') not in (None, 'uniprot', 'pubmed', 'pubmed_abstracts')):
+        return False
+    for row in reversed(_tail_jsonl(NOTEBOOK, 8*1024*1024)):
+        if row.get('kind') != 'reflection' or row.get('evidence_sha256') != digest:
+            continue
+        try:
+            age = time.time() - datetime.fromisoformat(row['at']).timestamp()
+            if 0 <= age < 7*86400: return True
+        except (KeyError, ValueError, TypeError): continue
+    return False
+
+
 def journal_source_saturated(accessions, limit=5):
     """An unchanged source set cannot justify another routine reflection."""
     target = tuple(sorted({str(x)[:80] for x in accessions if x}))
@@ -2173,86 +2218,96 @@ def tick():
                 visible_records = records  # the reviewer needs the sourced sequence, not just its embedding
                 _gather_material(state, inquiry)
                 literature = (state.get("material") or {}).get("records") or []
-                reflection = _reflect(context, inquiry,
-                                      {"embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
-                                       "records": visible_records,
-                                       "esmc_receipts": state.get("embeddings", []),
-                                       "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
-                                       "LITERATURE": literature})
-                due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
-                due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
-                next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
-                followup = (state.get('additional_source', {}).get('receipt') or
-                            state.get('additional_source', {}).get('source_receipt') or {})
-                fingerprint = followup.get('response_sha256') if followup.get('records') else None
-                note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
-                        "source_query_succeeded": bool(state.get("source_query_succeeded")),
-                        "followup_receipt_id": followup.get('receipt_id'),
-                        "followup_lineage": state.get("followup_lineage"),
-                        "source_accessions": ([r.get("accession") for r in records] +
-                                              (["RESPONSE-" + fingerprint[:32]] if fingerprint else []) +
-                                              ["PMID-" + str(r.get("pmid")) for r in literature if r.get("pmid")]),
-                        "material_receipt_id": (state.get("material") or {}).get("receipt_id"),
-                        "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
-                        "truth_status": "mixed_sourced_observation_and_named_speculation"}
-                try:
-                    import chemistry_frontier_bridge
-                    assessment = chemistry_frontier_bridge.assess(
-                        note, source_query_succeeded=bool(state.get("source_query_succeeded")))
-                    note.update({"entry_id": assessment["entry_id"],
-                                 "interest_score": assessment["interest_score"],
-                                 "reason_for_score": assessment["reason_for_score"],
-                                 "flagged_for_next_lab_session": assessment["flagged_for_next_lab_session"],
-                                 "surfaced_to_frontier": False,
-                                 "interest_truth_status": assessment["truth_status"]})
-                except Exception as exc:
-                    _fault("frontier_interest", exc)
-                if inquiry.get("line_id"):   # the test joins its line; his line_status may end it
+                if repeated_review(state):
+                    next_phase = 'orient'
+                    note = {'at': now_iso(), 'kind': 'browse_stale', 'inquiry': inquiry,
+                            'reason': 'same_evidence_already_reviewed',
+                            'truth_status': 'unchanged_evidence_not_a_new_finding'}
+                    for key in ('inquiry','records','material','additional_source','embeddings',
+                                'source_query_succeeded','followup_lineage','atlas_analysis','atlas_analysis_receipt'):
+                        state.pop(key, None)
+                else:
+                    reflection = _reflect(context, inquiry,
+                                          {"embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
+                                           "records": visible_records,
+                                           "esmc_receipts": state.get("embeddings", []),
+                                           "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
+                                           "LITERATURE": literature})
+                    due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
+                    due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
+                    next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
+                    followup = (state.get('additional_source', {}).get('receipt') or
+                                state.get('additional_source', {}).get('source_receipt') or {})
+                    fingerprint = followup.get('response_sha256') if followup.get('records') else None
+                    note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
+                            "source_query_succeeded": bool(state.get("source_query_succeeded")),
+                            "followup_receipt_id": followup.get('receipt_id'),
+                            "followup_lineage": state.get("followup_lineage"),
+                            "source_accessions": ([r.get("accession") for r in records] +
+                                                  (["RESPONSE-" + fingerprint[:32]] if fingerprint else []) +
+                                                  ["PMID-" + str(r.get("pmid")) for r in literature if r.get("pmid")]),
+                            "material_receipt_id": (state.get("material") or {}).get("receipt_id"),
+                            "evidence_sha256": review_evidence(state)[0],
+                            "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
+                            "truth_status": "mixed_sourced_observation_and_named_speculation"}
                     try:
-                        import lab_lines
-                        note["line"] = lab_lines.after_reflection(inquiry["line_id"], note)
+                        import chemistry_frontier_bridge
+                        assessment = chemistry_frontier_bridge.assess(
+                            note, source_query_succeeded=bool(state.get("source_query_succeeded")))
+                        note.update({"entry_id": assessment["entry_id"],
+                                     "interest_score": assessment["interest_score"],
+                                     "reason_for_score": assessment["reason_for_score"],
+                                     "flagged_for_next_lab_session": assessment["flagged_for_next_lab_session"],
+                                     "surfaced_to_frontier": False,
+                                     "interest_truth_status": assessment["truth_status"]})
                     except Exception as exc:
-                        _fault("lab_lines_step", exc)
-                # The Lab reaches the Forge only with a genuinely missing limb: something that could be built
-                # or connected for him (Gloria, 2026-09-28). Lab equipment he could never operate is not one;
-                # a cryo-EM gap became a midnight "Feasibility Assessment" the Forge could only write about.
-                # Those are kept here, in the Lab, where she can read them.
-                gap = str(reflection.get("instrument_gap", "")).strip()
-                if gap and gap.lower() not in ("none", "no", "n/a", "null") and not instrument_gap_offered(gap):
-                    receipts = [r for r in ((state.get("additional_source", {}).get("receipt") or {}).get("receipt_id"),
-                                            (state.get("material") or {}).get("receipt_id"),
-                                            state.get("atlas_analysis_receipt")) if r]
-                    limb = missing_limb(gap)
-                    try:
-                        # Recorded first: a full Forge answers 403 and the outbox retries this one request.
-                        record_instrument_gap(gap)
-                        note["instrument_gap_recorded"] = gap[:400]
-                        # Only what is worth building reaches the Forge (Gloria, 2026-10-08): not what he already
-                        # has, not a misreading of his own source, not a large build from one question, not a vague
-                        # one, not one she cancelled (forge_gaps.py).
-                        verdict = {"send": False, "kind": "lab_equipment", "why": "laboratory equipment"}
-                        if limb:
-                            import forge_gaps
-                            verdict = forge_gaps.judge(gap, inquiry.get("question", ""),
-                                                       forge_gaps.declined_titles(cfg["forge_report_intake"])
-                                                       if cfg.get("forge_report_intake") else ())
-                            if not verdict["send"]:
-                                note["instrument_gap_kept_in_lab"] = "%s: %s" % (verdict["kind"], verdict["why"])
-                                _keep_gap_verdict(gap, verdict)
-                        if (verdict["send"] and receipts and inquiry.get('browse_lane') != 'genome_mining'
-                                and cfg.get("forge_report_intake")):
-                            import chemistry_sources
-                            note["forge_report"] = chemistry_sources.offer_report(receipts,
-                                "The Lab needs an instrument it does not have: " + gap[:900] +
-                                "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
-                                "\nBuild or connect this capability for him; do not write up the question and do not claim discovery.")
-                        elif not limb:
-                            note["instrument_gap_kept_in_lab"] = "lab_equipment_not_a_buildable_limb"
-                    except Exception as exc: _fault("forge_instrument_gap", exc)
-                if inquiry.get('browse_lane') == 'genome_mining':
-                    note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
-                state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)
-                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
+                        _fault("frontier_interest", exc)
+                    if inquiry.get("line_id"):   # the test joins its line; his line_status may end it
+                        try:
+                            import lab_lines
+                            note["line"] = lab_lines.after_reflection(inquiry["line_id"], note)
+                        except Exception as exc:
+                            _fault("lab_lines_step", exc)
+                    # The Lab reaches the Forge only with a genuinely missing limb: something that could be built
+                    # or connected for him (Gloria, 2026-09-28). Lab equipment he could never operate is not one;
+                    # a cryo-EM gap became a midnight "Feasibility Assessment" the Forge could only write about.
+                    # Those are kept here, in the Lab, where she can read them.
+                    gap = str(reflection.get("instrument_gap", "")).strip()
+                    if gap and gap.lower() not in ("none", "no", "n/a", "null") and not instrument_gap_offered(gap):
+                        receipts = [r for r in ((state.get("additional_source", {}).get("receipt") or {}).get("receipt_id"),
+                                                (state.get("material") or {}).get("receipt_id"),
+                                                state.get("atlas_analysis_receipt")) if r]
+                        limb = missing_limb(gap)
+                        try:
+                            # Recorded first: a full Forge answers 403 and the outbox retries this one request.
+                            record_instrument_gap(gap)
+                            note["instrument_gap_recorded"] = gap[:400]
+                            # Only what is worth building reaches the Forge (Gloria, 2026-10-08): not what he already
+                            # has, not a misreading of his own source, not a large build from one question, not a vague
+                            # one, not one she cancelled (forge_gaps.py).
+                            verdict = {"send": False, "kind": "lab_equipment", "why": "laboratory equipment"}
+                            if limb:
+                                import forge_gaps
+                                verdict = forge_gaps.judge(gap, inquiry.get("question", ""),
+                                                           forge_gaps.declined_titles(cfg["forge_report_intake"])
+                                                           if cfg.get("forge_report_intake") else ())
+                                if not verdict["send"]:
+                                    note["instrument_gap_kept_in_lab"] = "%s: %s" % (verdict["kind"], verdict["why"])
+                                    _keep_gap_verdict(gap, verdict)
+                            if (verdict["send"] and receipts and inquiry.get('browse_lane') != 'genome_mining'
+                                    and cfg.get("forge_report_intake")):
+                                import chemistry_sources
+                                note["forge_report"] = chemistry_sources.offer_report(receipts,
+                                    "The Lab needs an instrument it does not have: " + gap[:900] +
+                                    "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
+                                    "\nBuild or connect this capability for him; do not write up the question and do not claim discovery.")
+                            elif not limb:
+                                note["instrument_gap_kept_in_lab"] = "lab_equipment_not_a_buildable_limb"
+                        except Exception as exc: _fault("forge_instrument_gap", exc)
+                    if inquiry.get('browse_lane') == 'genome_mining':
+                        note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
+                    state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)
+                    state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()

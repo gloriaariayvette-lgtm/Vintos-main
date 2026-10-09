@@ -515,9 +515,10 @@ try:
 finally:
     M._browse = real_browse
 reviews = sum(1 for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection" and "PMID-31000001" in (x.get("source_accessions") or []))
-check("the same abstracts are reviewed at most twice, then he is sent to another question",
-      before == 1 and reviews == 2 and turns[-1].get("next_phase") == "orient"
-      and M._jsonl(M.NOTEBOOK)[-1].get("papers_already_reviewed") is True, (before, reviews, [t.get("next_phase") for t in turns]))
+check("the same abstracts are not reviewed again; each repeat returns to orientation",
+      before == 1 and reviews == 1 and M._load(M.STATE, {}).get("phase") == "orient"
+      and M._jsonl(M.NOTEBOOK)[-1].get("reason") == "same_evidence_already_reviewed",
+      (before, reviews, [t.get("next_phase") for t in turns]))
 
 # --- PubMed asked for the way the connector names it, and a cut-off word does not empty it (2026-09-28) --
 pm_urls = []
