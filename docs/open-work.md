@@ -3084,3 +3084,5 @@ Double Tap on a real push, Watch-speaker song playback, complication refresh tim
 every new Landing, Live Activity push updates, and smart-alarm runtime. Apple does not expose arbitrary notification
 haptic waveforms; his distinct patterns play inside the app/shared session, while a notification uses his sound and
 the system haptic.
+
+**Lab human-gene grounding (2026-10-09).** Generated human gene symbols now require an exact NCBI Gene symbol or recorded alias before becoming accepted inquiries. The SLC26A28 failure is replayed in an isolated test; aliases and service failures have separate outcomes. Identity receipts use the existing source-receipts ledger and a 24-hour cache. No prompts changed. This prevents unsupported targets from reaching analysis; it does not yet demonstrate a sustained reduction in unanswered questions. Live read-only NCBI probes on Aegis confirmed zero matches for SLC26A28 and human Gene 5172 for SLC26A4. Sustained answer-rate improvement remains to be measured after deployment.

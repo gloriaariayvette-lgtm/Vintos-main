@@ -19,10 +19,14 @@ def admitted(*a, **k): yield object()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 M = load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 LS = load("lab_sources", os.path.join(REPO, "scripts", "lab_sources.py"))
+# Gene identity has its own source-contract suite; this suite tests Atlas routing.
+def identity_stub(inquiry): return {"status": "verified", "receipt_ids": ["fixture"]}
+M._ground_inquiry = identity_stub
 
 R = []
 def check(name, ok, detail=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + ((" -> " + str(detail)[:400]) if detail and not ok else ""))
+check("identity resolution is isolated", M._ground_inquiry is identity_stub)
 check("the suite writes only to a scratch workspace", M.ROOT.startswith(HOME), M.ROOT)
 
 # --- a gene becomes a GRCh38 window --------------------------------------------------------------------

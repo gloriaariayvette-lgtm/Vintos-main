@@ -52,6 +52,10 @@ check("reading the O43511 model is", L.on_frontier({"question": "Which residues 
 
 print("--- Gemma's question step ---")
 import chemistry_lab as C
+# Identity resolution is independently exercised in test_lab_gene_grounding.
+def identity_stub(inquiry): return {"status": "verified", "receipt_ids": ["fixture"]}
+C._ground_inquiry = identity_stub
+check("identity resolution is isolated", C._ground_inquiry is identity_stub)
 answers, asked, systems = [], [], []
 def gemma(system, task, *a, **k):
     systems.append(system); asked.append(task); return json.dumps(answers.pop(0))

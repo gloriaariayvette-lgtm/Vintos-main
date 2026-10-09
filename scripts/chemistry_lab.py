@@ -406,7 +406,9 @@ def unsourced_ids(spec):
 def _tail_jsonl(path, nbytes=512 * 1024):
     try:
         with open(path, "rb") as f:
-            f.seek(0, 2); f.seek(max(0, f.tell() - nbytes)); lines = f.read().decode("utf-8", "replace").splitlines()[1:]
+            f.seek(0, 2); offset = max(0, f.tell() - nbytes); f.seek(offset)
+            lines = f.read().decode("utf-8", "replace").splitlines()
+            if offset: lines = lines[1:]
     except OSError:
         return []
     out = []
@@ -1164,6 +1166,52 @@ def _atlas_text():
         return "Atlas reads one fixed window where the gene starts on GRCh38; its scores are predictions"
 
 
+def _ground_inquiry(inquiry, client=None):
+    """Source-check generated human symbols before admitting them as research targets."""
+    from lab_sources import Sources
+    sq = inquiry.get('source_query') or {}
+    queries = [str(inquiry.get('uniprot_query') or '')]
+    if sq.get('source') == 'uniprot': queries.append(str(sq.get('query') or ''))
+    symbols = []
+    if sq.get('source') == 'atlas' and sq.get('gene'): symbols.append(str(sq['gene']))
+    for query in queries:
+        if not re.search(r'\b(?:taxonomy_id|organism_id):9606\b', query): continue
+        for field, quoted, bare in re.findall(r'\b(gene|protein_name):(?:"([A-Za-z][A-Za-z0-9-]{0,29})"|([A-Za-z][A-Za-z0-9-]{0,29})(?=\s|\)|$))', query):
+            symbol = quoted or bare
+            if field == 'gene' or re.fullmatch(r'[A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*', symbol):
+                symbols.append(symbol)
+    symbols = list(dict.fromkeys(s.upper() for s in symbols))
+    if not symbols: return {'status': 'not_applicable'}
+    if len(symbols) > 4: return {'status': 'unresolved', 'reason': 'too many human gene identities in one inquiry'}
+    path = os.path.join(ROOT, 'source-receipts.jsonl')
+    cached = _tail_jsonl(path, nbytes=2*1024*1024)
+    ids = []
+    for symbol in symbols:
+        result = None
+        for row in reversed(cached):
+            if row.get('source') != 'ncbi_gene_identity' or (row.get('query') or {}).get('symbol', '').upper() != symbol:
+                continue
+            try:
+                age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
+                if 0 <= age < 86400: result = row
+            except (ValueError, KeyError, TypeError): pass
+            break
+        if result is None:
+            try:
+                result = (client or Sources()).human_gene_identity(symbol)
+            except Exception as exc:
+                from urllib.error import HTTPError
+                detail = ('HTTP %s' % exc.code) if isinstance(exc, HTTPError) else type(exc).__name__
+                return {'status': 'unavailable', 'symbol': symbol,
+                        'reason': 'human gene identity check unavailable: ' + detail}
+            _append(path, result)
+        ids.append(result['receipt_id'])
+        if (result.get('metadata') or {}).get('status') != 'verified':
+            return {'status': 'unresolved', 'symbol': symbol, 'receipt_ids': ids,
+                    'reason': 'NCBI Gene did not establish an exact human symbol or alias for ' + symbol}
+    return {'status': 'verified', 'symbols': symbols, 'receipt_ids': ids}
+
+
 def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
     """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
     asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
@@ -1189,6 +1237,11 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
         why = repeats.repeat(inquiry)
         if why:
             return refuse("repeat: " + why)
+    identity = _ground_inquiry(inquiry)
+    if identity['status'] != 'not_applicable':
+        inquiry = dict(inquiry, identity_check=identity)
+    if identity['status'] in ('unresolved', 'unavailable'):
+        return refuse(identity['reason'])
     if step:
         inquiry = dict(inquiry, frontier_session=step.get("session_id"))
     repeats.record(inquiry)
@@ -1855,7 +1908,8 @@ def tick():
                     note = {"at": now_iso(), "kind": "inquiry_refused", "why": inquiry["refused"],
                             "question": inquiry.get("question"), "inquiry": inquiry,
                             "atlas_turn": bool(inquiry.get("atlas_turn")),
-                            "truth_status": "refused_before_any_source_call"}
+                            "truth_status": ("refused_after_identity_check" if inquiry.get("identity_check")
+                                             else "refused_before_any_source_call")}
                 else:
                     state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
                     note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,

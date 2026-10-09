@@ -266,6 +266,43 @@ class Sources:
         ids = (found.get('esearchresult') or {}).get('idlist') or []
         return str(ids[0]) if ids and re.fullmatch(r'[1-9][0-9]{0,9}', str(ids[0])) else None
 
+    def human_gene_identity(self, symbol):
+        """Resolve an exact human symbol/recorded alias; never guess a numbered sibling."""
+        symbol = str(symbol or '').strip()
+        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]{0,29}', symbol):
+            raise ValueError('an exact human gene symbol is required')
+        found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+            'db': 'gene', 'term': '%s[sym] AND 9606[taxid]' % symbol,
+            'retmode': 'json', 'retmax': 5, 'tool': 'vintos_lab'}))
+        result = found.get('esearchresult')
+        if not isinstance(result, dict) or not isinstance(result.get('idlist'), list):
+            raise ValueError('NCBI returned no valid gene search result')
+        ids = result['idlist']
+        if len(ids) > 5 or any(not re.fullmatch(r'[0-9]{1,12}', str(i)) for i in ids):
+            raise ValueError('NCBI returned invalid gene identifiers')
+        matched = []
+        if ids:
+            if self.fetch is fetch_json: time.sleep(0.4)
+            summary, _ = self.fetch(NCBI_BASE + 'esummary.fcgi?' + urlencode({
+                'db': 'gene', 'id': ','.join(map(str, ids)), 'retmode': 'json', 'tool': 'vintos_lab'}))
+            data = summary.get('result')
+            if not isinstance(data, dict) or any(not isinstance(data.get(str(i)), dict) for i in ids):
+                raise ValueError('NCBI returned incomplete gene summaries')
+            for uid in ids:
+                row = data[str(uid)]
+                aliases = [x.strip() for x in str(row.get('otheraliases') or '').split(',') if x.strip()]
+                names = [row.get('name'), row.get('nomenclaturesymbol')] + aliases
+                if (str((row.get('organism') or {}).get('taxid')) == '9606'
+                        and symbol.upper() in {str(x).upper() for x in names if x}
+                        and not row.get('currentid')):
+                    matched.append({'gene_id': str(uid), 'symbol': row.get('nomenclaturesymbol') or row.get('name'),
+                                    'name': row.get('description'), 'taxon_id': 9606, 'aliases': aliases})
+        verified = len(matched) == 1
+        return receipt('ncbi_gene_identity', {'symbol': symbol, 'taxon_id': 9606}, matched,
+                       metadata={'status': 'verified' if verified else 'unresolved',
+                                 'match_count': len(matched), 'service': 'NCBI_Gene',
+                                 'meaning': 'identity only; not function or experimental validation'})
+
     def _gene_window(self, symbol):
         """Where a human gene starts on GRCh38, from NCBI Gene: a 32-base window over its first base, which
         is what Atlas can read. He knows genes, not coordinates (2026-09-28)."""
