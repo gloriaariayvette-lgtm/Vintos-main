@@ -25,7 +25,11 @@ a grant. Hardware/transport/privacy choices and financial scope remain unresolve
 15 old decisions still appeared waiting while the authoritative house snapshot held only two.
 Fix: retire absent waiting cards, retain real decisions, allow reoffer if eligible again, and label
 retired cards accurately. All 300 isolated suites passed on Aegis (228 seconds), including 42 decision checks.
-Ownership/test-report generators and three required follow-up checks passed. Privileged Forge install pending.
+Ownership/test-report generators and three required follow-up checks passed. Pushed ff33ca0.
+Normal deploy passed its full suite again and staged release 20261009-070112-ff33ca0.json,
+but reported DEPLOY FAILED solely because the Forge runtime/UI need sudo. The new installer
+`sudo bash ~/.vintos/deploy/forge-install.sh` backs up and installs those two files, then restarts
+atelier-forge-loop. Until that runs, stale decisions remain live. No live retirement proof yet.
 No approvals, notifications, purchases, daily-cap resets or uncertain-cycle replays were made.
 
 Dropped example: SK-9ee141b8 (sense_gloria_presence) was withdrawn by Vintos on 7 October after
