@@ -3,13 +3,37 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 9 October — recorded source-routing failures
+
+The 09:36–10:36 CDT audit had 0/5 answered reviews, 72 refused inquiries (64 exact lookup,
+8 similar wording), and 13 source failures. Changes below do not alter his prompts or 32k model.
+- PubMed search_articles with an arguments.terms list now follows the existing direct NCBI route;
+  the earlier adapter only accepted term/query and let two requests reach expired Claude OAuth.
+- pubmed_abstracts also accepts a single term/query phrase. Relaxation can reach the first subject
+  alone, recorded in terms_matched; it never drops that subject to retrieve unrelated papers.
+- Explicit reviewed:false is preserved without adding contradictory reviewed:true; exact accessions
+  are no longer filtered by the random browse length window.
+- A protein question naming one accession retrieves that accession, recording the original query
+  and the resolution. Exact-accession responses fail on a mismatched accession. Multi-accession
+  comparisons keep their query. This fixes the recorded O43511 request that fetched P40879.
+- Similar wording about disjoint named protein IDs is not itself a repeat; exact duplicate lookup
+  rejection remains. This prevents the SLC26A1 question from making a first SLC26A2 question forbidden.
+
+Live read-only replay on Aegis: the failed O43511 question now fetches Pendrin, 780 residues, O43511.
+The failed SLC26A1 terms-list PubMed request returned four papers directly (PMIDs 28795233,
+17120758, 11087667, 12626430), receipt d7570d2e66cdcd89fe126e7185c645178a6bd3251a1a933324958992f9a1487d.
+These establish working retrieval, not that all questions are answered. A replay through the unchanged local
+reviewer now reads O43511 rather than P40879; it correctly remains unanswered for the requested hinge evidence.
+All 304 isolated suites passed on Aegis (230.9 seconds), and the three required ownership/isolation checks passed.
+The planning, review, context-building and model-call functions are unchanged. Deployment pending.
+
 ## 9 October — prompt truncation reverted at Gloria's instruction
 
 The local Slack context/message truncation introduced in 83fbece was not approved by Gloria.
 Removed it entirely; local_think again sends the complete original system and user messages.
 Regression test now asserts exact preservation. The 32k overflow remains unresolved; no replacement
 prompt policy is authorized. Lab repeat repairs and the restored Study path fix remain intact.
-Deployment pending.
+Deployed 03b38be; the live dot_channel.py exactly matches its pre-truncation version.
 
 ## 9 October — one-hour Lab check and ntfy failures
 

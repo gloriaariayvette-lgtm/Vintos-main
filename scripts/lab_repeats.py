@@ -153,6 +153,14 @@ def repeat(inquiry, now=None):
             # A wording change on the same retrieval is still refused by the exact key above.
             if key and r.get("lookup") and _lookup_route(key) != _lookup_route(canonical_lookup(r["lookup"])):
                 continue
+            # Similar wording about a different named protein is a different question.
+            # Exclude shared domain names (STAS, etc.); compare accession/gene-like IDs.
+            def identities(text):
+                return {s for s in subjects(text) if any(c.isdigit() for c in s)}
+            own_ids = identities(inquiry.get("question", ""))
+            previous_ids = identities(r.get("question", ""))
+            if own_ids and previous_ids and own_ids.isdisjoint(previous_ids):
+                continue
             theirs = set(r.get("words") or [])
             if theirs and len(mine & theirs) / len(mine) >= SIMILAR:
                 return "you already asked this on %s, in other words: %s" % (

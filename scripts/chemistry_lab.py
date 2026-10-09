@@ -897,13 +897,14 @@ def _safe_query(query):
     # A named protein must not disappear merely because it is longer than the wandering
     # window (S-layer protein A is 1,231 aa). The random browse fallback remains bounded;
     # ESM-C trims its own copy to 350 residues; the record keeps the whole sequence.
-    names_subject = bool(re.search(r"\b(?:protein_name|gene|keyword):", query, re.I))
+    names_subject = bool(re.search(r"\b(?:accession|id|protein_name|gene|keyword):", query, re.I))
     if names_subject:
         query = re.sub(r"(?:^|\s+AND\s+)length:\[[^\]]+\](?=\s+AND\s+|$)", " ", query,
                        flags=re.I)
         query = re.sub(r"\s+AND\s+(?=AND\b|$)", " ", query)
         query = re.sub(r"\s+", " ", query).strip()
-        return BASELINE_QUERY + " AND (" + query + ")"
+        return (query if re.search(r"\breviewed:(?:true|false)\b", query, re.I)
+                else BASELINE_QUERY + " AND (" + query + ")")
     return RANDOM_QUERY + " AND (" + query + ")"
 
 
@@ -1246,21 +1247,36 @@ def _inquiry(value, lean=None):
     args = pq.get("arguments") or {} if isinstance(pq, dict) else {}
     if (not source_query and isinstance(pq, dict) and pq.get("plugin") == "pubmed"
             and pq.get("tool") == "search_articles" and isinstance(args, dict)
-            and set(args) <= {"term", "query"}):
+            and set(args) <= {"term", "query", "terms", "limit"}):
         term = str(args.get("term") or args.get("query") or "").strip()
-        if term:
-            terms = [t.strip() for t in (value.get("material_terms") or [])
+        explicit_terms = args.get("terms")
+        if term or (isinstance(explicit_terms, list) and explicit_terms):
+            terms = explicit_terms if isinstance(explicit_terms, list) else [t.strip() for t in (value.get("material_terms") or [])
                      if isinstance(t, str) and t.strip()][:5]
             source_query = {"source": "pubmed_abstracts", "terms": terms or [term]}
+            if "limit" in args: source_query["limit"] = args["limit"]
             value = dict(value, plugin_query=None)
     requested_lane = value.get('browse_lane')
+    query = _safe_query(value.get("uniprot_query"))
+    from lab_repeats import _ACCESSION
+    named = sorted(set(_ACCESSION.findall(str(value.get("question") or ""))))
+    resolution = None
+    if len(named) == 1 and requested_lane not in ('microbiology', 'genome_mining'):
+        exact = "accession:" + named[0]
+        if query != exact:
+            resolution = {"requested_query": query, "executed_query": exact,
+                          "reason": "explicit_question_accession", "accession": named[0]}
+            query = exact
+        if source_query and source_query.get("source") == "uniprot":
+            source_query = dict(source_query, query=exact)
     lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
     return {"browse_lane": lane, "source_query": source_query,
             "plugin_query": (value.get("plugin_query") if isinstance(value.get("plugin_query"), dict)
                              and not source_query else None),
             "instrument_query": (value.get("instrument_query") if isinstance(value.get("instrument_query"), dict)
                                  and not source_query and not isinstance(value.get("plugin_query"), dict) else None),
-            "uniprot_query": _safe_query(value.get("uniprot_query")),
+            "uniprot_query": query,
+            **({"query_resolution": resolution} if resolution else {}),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
             "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
                                if isinstance(t, (str, int))][:5] if isinstance(value.get("material_terms"), list) else [],
@@ -1312,6 +1328,9 @@ def _browse(query, limit):
             if retried.get("results"):
                 raw, executed_query, relaxed, fallback_reason = retried, alt, label, None
                 break
+    exact = re.fullmatch(r'accession:([A-Z0-9]+)', requested_query)
+    if exact and any(item.get("primaryAccession") != exact[1] for item in raw.get("results", [])):
+        raise ValueError("source_accession_mismatch: requested " + exact[1])
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})

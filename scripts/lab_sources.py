@@ -292,6 +292,9 @@ class Sources:
         """Published abstracts for what he is asking: the reading itself, not a list of titles. All his
         terms first; if nothing matches, the last term is dropped, down to two."""
         raw = spec.get('terms')
+        if raw is None:
+            phrase = spec.get('term') or spec.get('query')
+            raw = [phrase] if isinstance(phrase, str) and phrase.strip() else []
         terms = []
         for value in (raw if isinstance(raw, list) else [])[:6]:
             try: terms.append(_plain_term(str(value)))
@@ -312,7 +315,7 @@ class Sources:
                     counted.append(term)  # never discard the named subject to obtain unrelated hits
             terms = counted or terms
         ids, used = [], terms
-        for n in range(len(terms), min(2, len(terms)) - 1, -1):
+        for n in range(len(terms), 0, -1):
             used = terms[:n]
             pause()
             search, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
