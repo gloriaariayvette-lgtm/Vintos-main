@@ -934,8 +934,34 @@ def open_text(arg, cap=OPEN_MAX):
         return text_of(f.read())
 
 
+def _local_excerpt(text, budget):
+    raw = str(text).encode('utf-8')
+    if len(raw) <= budget: return str(text)
+    marker = b"\n[older context omitted to fit the 32k model]\n"
+    room = max(0, budget - len(marker))
+    head = room // 3
+    return (raw[:head].decode('utf-8', 'ignore') + marker.decode() +
+            raw[-(room-head):].decode('utf-8', 'ignore') if room else marker.decode())
+
+
+def local_prompt(system, user, max_tokens):
+    # UTF-8 byte budgeting is deliberately conservative; reserve reply and chat-template
+    # space below the unchanged 32k model. Preserve the complete rules, trim only context.
+    if not 1 <= max_tokens <= 2048: raise ValueError("local reply must be 1..2048 tokens")
+    budget = 32000 - max_tokens - 2048
+    ctx = str(getattr(system, 'ctx', ''))
+    rules = str(system)[len(ctx):] if ctx and str(system).startswith(ctx) else str(system)
+    fixed = len(rules.encode('utf-8'))
+    if fixed + 1500 > budget: raise ValueError("local system rules exceed safe 32k prompt budget")
+    user = _local_excerpt(user, min(6000, budget - fixed - 500))
+    room = budget - fixed - len(user.encode('utf-8'))
+    system = (_local_excerpt(ctx, room) if ctx else '') + rules
+    return system, user
+
+
 def local_think(system, user, max_tokens=700):
     import requests
+    system, user = local_prompt(system, user, max_tokens)
     r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
                                        "messages": [{"role": "system", "content": system},
                                                     {"role": "user", "content": user}]}, timeout=300)

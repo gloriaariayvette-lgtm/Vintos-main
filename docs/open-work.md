@@ -3,6 +3,34 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 9 October — one-hour Lab check and ntfy failures
+
+12:58:14–14:00:17 UTC: 21 reviews, 5 yes / 16 no, 42 refused inquiries, 27 accepted inquiries,
+9 source-unavailable events. None of the 16 no reviews was promoted. Two yes reviews repeated
+previous domain findings (5 yes entries, 3 distinct proteins); the answer rate alone overstates progress.
+Equivalent UniProt conjunctions bypassed the guard by rearranging fields or using source_query;
+keys now canonicalize safe AND-only forms and normalize old ledger keys without rewriting history.
+OR/NOT stay distinct. The repeated-source guard also required exact equality: adding different PubMed
+papers hid the same protein read. It now counts earlier source sets containing the requested set,
+keeping its existing limits and allowing genuinely different instruments/sources.
+
+The ntfy digest covers yesterday, not four new Slack failures this morning. Three recorded overflows
+were 32323, 32659 and 32645 tokens on 8 October; the fourth has only the old choices error. Slack is
+paused by Gloria since 20:58 on 8 October and remains paused. Local Slack prompts now preserve the
+complete rules and bound context/conversation excerpts by UTF-8 bytes with reply/template headroom
+below the unchanged 32000-token model. Live diagnostic: 265114 input bytes reduced to 29888 bytes
+(with a 64-token reply and 2048 reserve), Gemma returned diagnostic-ok; no Slack message was sent.
+This is a conservative bound, not tokenizer-exact packing of all 32k tokens.
+
+SF-9cb9996c was reverted at 16:57 on 8 October because dot_channel.py was dirty, not because its tests
+failed. The Aegis checkout was clean at this audit. The newer Study runner already waits on dirty
+checkouts instead of reverting; the lost absolute-model-path fix and its isolated tests are restored
+here, retaining artifact allowlist validation. Original Study history is not rewritten as a success.
+All 303 isolated suites passed on Aegis (232 seconds); mandatory ownership checks passed.
+Live read-only replay confirms the two SLC26A11 routes match and P50443 is already reviewed despite
+changed papers. Deployment verification pending. Overall failure/repetition rates still unacceptable;
+no agreement on a numerical answer-rate target yet.
+
 ## 9 October — Lab failed-run repairs
 
 The 12:22–12:30 UTC failures exposed concrete causes, independent of the expired connector:

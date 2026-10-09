@@ -591,7 +591,9 @@ def journal_source_saturated(accessions, limit=5):
         if not isinstance(row, dict) or row.get("kind") not in ("reflection", "genome_reflection"):
             continue
         raw = row.get("source_accessions")
-        if isinstance(raw, list) and tuple(sorted({str(x)[:80] for x in raw if x})) == target:
+        # Literature and follow-up receipts augment a protein read; they must not
+        # disguise that the same protein/response has already been reviewed.
+        if isinstance(raw, list) and set(target).issubset({str(x)[:80] for x in raw if x}):
             seen += 1
             if seen >= limit: return True
     return False

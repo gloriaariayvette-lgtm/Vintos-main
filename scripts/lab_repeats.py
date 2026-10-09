@@ -72,6 +72,31 @@ def _tail(path, nbytes=2 * 1024 * 1024):
     return out
 
 
+def uniprot_key(query):
+    """Canonicalize conjunctions only; OR/NOT and unknown syntax retain their exact meaning."""
+    text = re.sub(r"\s+", " ", str(query or "").strip()).lower()
+    field = re.compile(r'(\w+)\s*:\s*("[^"\n]*"|\[[^\]]*\]|[^\s()]+)')
+    matches = list(field.finditer(text))
+    rest = field.sub('', text)
+    if matches and not re.sub(r'\band\b|[\s()]', '', rest):
+        terms = sorted(set((m[1], m[2].strip('"')) for m in matches))
+        return "uniprot:" + json.dumps(terms, separators=(',', ':'))
+    return "uniprot:" + text
+
+
+def canonical_lookup(key):
+    # Read older ledger entries without rewriting their history.
+    if key.startswith("uniprot:"):
+        body = key[len("uniprot:"):]
+        return key if body.startswith('[["') else uniprot_key(body)
+    if key.startswith("source_query:"):
+        try:
+            spec = json.loads(key.split(':', 1)[1])
+            if spec.get('source') == 'uniprot': return uniprot_key(spec.get('query'))
+        except (ValueError, AttributeError): pass
+    return key
+
+
 def lookup_key(inquiry):
     """The lookup an inquiry makes, written the same way whatever words it came in; '' when it makes none."""
     inq = inquiry if isinstance(inquiry, dict) else {}
@@ -79,13 +104,15 @@ def lookup_key(inquiry):
         q = inq.get(field)
         if not isinstance(q, dict) or not q:
             continue
+        if field == "source_query" and q.get("source") == "uniprot":
+            return uniprot_key(q.get("query"))
         if field == "source_query" and q.get("source") == "atlas":
             return "atlas:" + str(q.get("gene") or q.get("chromosome", "") + ":" + str(q.get("start", ""))).upper()
         clean = {k: v for k, v in q.items() if k not in ("purpose", "why", "question")}
         return field + ":" + json.dumps(clean, sort_keys=True, default=str).lower()
     query = str(inq.get("uniprot_query") or "").strip()
     if query:
-        return "uniprot:" + re.sub(r"\s+", " ", query).lower()
+        return uniprot_key(query)
     return ""
 
 
@@ -116,7 +143,7 @@ def repeat(inquiry, now=None):
     key = lookup_key(inquiry)
     if key:
         for r in reversed(rows):
-            if r.get("lookup") == key:
+            if canonical_lookup(r.get("lookup") or "") == key:
                 return ("you already ran this exact lookup on %s (%s); it would return the same thing"
                         % (str(r.get("at", ""))[:16].replace("T", " "), key[:120]))
     mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
@@ -124,7 +151,7 @@ def repeat(inquiry, now=None):
         for r in reversed(rows):
             # The same unresolved question may legitimately need another instrument/source.
             # A wording change on the same retrieval is still refused by the exact key above.
-            if key and r.get("lookup") and _lookup_route(key) != _lookup_route(r["lookup"]):
+            if key and r.get("lookup") and _lookup_route(key) != _lookup_route(canonical_lookup(r["lookup"])):
                 continue
             theirs = set(r.get("words") or [])
             if theirs and len(mine & theirs) / len(mine) >= SIMILAR:
