@@ -10,7 +10,14 @@ any reader, preserves admission timeouts, and queues a completed result when all
 The owed-reading queue refuses empty interpretations without retiring the debt. Kept findings name the
 actual fallback reader. Late readings return to the shared frontier log and daily digest; the owed reader
 receives the same compact result view as frontier readers. Regression tests use scratch stores, fake providers/Mac, and deny network access.
-Deployment and recovery of CHEM-ff9d36002fae remain pending verification; no fold needs rerunning.
+Verified on Aegis: `6493829` deployed successfully; all 299 suites passed both the final scratch run
+and the deploy gate. All four installed modules match the commit. Lab service running; session timer waiting.
+`CHEM-ff9d36002fae` / `ESMFOLD-3a4df5e0344f` recovered through the local owed reader: one notebook
+reading, shared-log entry and digest rendering; zero open debts. Original result hash unchanged, and the
+recovery explicitly disabled bench execution. Release: `20261008-204308-6493829.json`.
+Remaining distinction: recovering an interpretation does not validate its scientific claims. The recovered
+prose calls predicted structure “resolved”; experimental resolution and literature assertions are not verified
+by this repair and must not be treated as new experimental evidence.
 
 ## 8 October — Opus 5.5's kickoff was all thinking and no text; a failed kickoff now falls to Gemma
 
