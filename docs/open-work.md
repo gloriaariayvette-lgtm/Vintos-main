@@ -3,6 +3,14 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 9 October — prompt truncation reverted at Gloria's instruction
+
+The local Slack context/message truncation introduced in 83fbece was not approved by Gloria.
+Removed it entirely; local_think again sends the complete original system and user messages.
+Regression test now asserts exact preservation. The 32k overflow remains unresolved; no replacement
+prompt policy is authorized. Lab repeat repairs and the restored Study path fix remain intact.
+Deployment pending.
+
 ## 9 October — one-hour Lab check and ntfy failures
 
 12:58:14–14:00:17 UTC: 21 reviews, 5 yes / 16 no, 42 refused inquiries, 27 accepted inquiries,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""9 Oct regressions: equivalent lookups and oversized local Slack prompts. Fully isolated."""
+"""9 Oct regressions: equivalent lookups and unchanged local Slack prompts. Fully isolated."""
 import json,os,pathlib,socket,sys,tempfile,types
 from datetime import datetime, timezone
 root=pathlib.Path(__file__).resolve().parents[2]
@@ -28,15 +28,10 @@ assert 'exact lookup' in L.repeat({'source_query':{'source':'uniprot','query':q2
 for i in range(5): C._append(C.NOTEBOOK, {'kind':'reflection','source_accessions':['P50443','PMID-'+str(i)]})
 assert C.journal_source_saturated(['P50443'])
 assert not C.journal_source_saturated(['NEW-PROTEIN'])
-# A 32k overflow should be prevented before any request, with rules and newest message intact.
+# Local Slack must receive the original context and conversation unchanged.
 rules=D.rules_for('gemma')
-system=D.for_claude('old context 😃 '*15000,'\n\n',rules)
+system=D.for_claude('old context '*15000,'\n\n',rules)
 user='old conversation '*8000+' LATEST: only say diagnostic-ok'
-a,b=D.local_prompt(system,user,700)
-assert rules in a and b.endswith('LATEST: only say diagnostic-ok')
-assert len((a+b).encode('utf-8'))+700+2048 <= 32000
-assert 'older context omitted' in a
-assert D.local_prompt('short system','short user',700) == ('short system','short user')
 sent=[]
 def post(url,**kw):
  sent.append(kw['json']);return types.SimpleNamespace(json=lambda:{'choices':[{'message':{'content':'diagnostic-ok'}}]})
@@ -44,6 +39,6 @@ sys.modules['requests']=types.SimpleNamespace(post=post)
 assert sys.modules['requests'].post is post
 assert D.local_think(system,user)=='diagnostic-ok'
 payload=sent[0]
-assert sum(len(m['content'].encode('utf-8')) for m in payload['messages'])+payload['max_tokens']+2048 <=32000
+assert payload['messages'] == [{'role':'system','content':system},{'role':'user','content':user}]
 assert not net
-print('PASS: equivalent-query replay, historical keys, OR/NOT separation, 32k prompt bound, intact rules, no network')
+print('PASS: equivalent-query replay, historical keys, OR/NOT separation, unchanged full prompts, no network')
