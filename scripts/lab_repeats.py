@@ -19,6 +19,8 @@ import json
 import os
 import re
 import time
+import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -121,7 +123,12 @@ def lookup_key(inquiry):
         if field == "source_query" and q.get("source") == "atlas":
             return "atlas:" + str(q.get("gene") or q.get("chromosome", "") + ":" + str(q.get("start", ""))).upper()
         if field == "plugin_query" and str(q.get("plugin", "")).lower() in ("uniprot", "uniprotkb"):
-            from chemistry_lab import uniprot_from_plugin
+            # The daemon executes chemistry_lab as __main__; never import a second copy.
+            main = sys.modules.get('__main__')
+            if os.path.basename(getattr(main, '__file__', '')) == 'chemistry_lab.py':
+                uniprot_from_plugin = main.uniprot_from_plugin
+            else:
+                from chemistry_lab import uniprot_from_plugin
             spec = uniprot_from_plugin(q, str(inq.get("question") or ""))
             if spec: return uniprot_key(spec["query"])
         clean = {k: v for k, v in q.items() if k not in ("purpose", "why", "question")}
@@ -163,9 +170,54 @@ def _literature_route(key):
         spec.get("source") == "ncbi" and spec.get("operation") == "literature")
 
 
+def identity_refusal_key(inquiry):
+    """Semantic identity context, independent of prose and attempt bookkeeping."""
+    from lab_sources import human_question_symbols, uniprot_identity_symbols, normalize_uniprot_subjects
+    def normalized(value):
+        if isinstance(value, str): return unicodedata.normalize('NFC', value).strip()
+        if isinstance(value, dict): return {k:normalized(v) for k,v in value.items()}
+        if isinstance(value, list): return [normalized(v) for v in value]
+        return value
+    inq = normalized(dict(inquiry))
+    inq['uniprot_query'] = normalize_uniprot_subjects(inq.get('uniprot_query') or '')
+    if isinstance(inq.get('source_query'), dict) and str(inq['source_query'].get('source')).lower() == 'uniprot':
+        inq['source_query']['source'] = 'uniprot'
+        inq['source_query']['query'] = normalize_uniprot_subjects(inq['source_query'].get('query') or '')
+    for field in ('source_query', 'plugin_query', 'instrument_query'):
+        if isinstance(inq.get(field), dict):
+            inq[field] = {k:v for k,v in inq[field].items()
+                          if k not in ('attempt_id', 'request_id')}
+    symbols = human_question_symbols(str(inq.get('question') or '').upper())
+    symbol_query = re.sub(r'\b(GENE|PROTEIN_NAME):', lambda m:m[0].lower(), inq['uniprot_query'].upper())
+    symbols += uniprot_identity_symbols(symbol_query)
+    return json.dumps([lookup_key(inq), uniprot_key(inq.get('uniprot_query')),
+                       sorted(set(symbols))], sort_keys=True)
+
+
+def identity_rejection(inquiry, rows):
+    key = identity_refusal_key(inquiry)
+    for row in reversed(rows):
+        if row.get('identity_refusal') != key: continue
+        symbol = row.get('unresolved_symbol')
+        # A newly sourced exact identity is material evidence, not a cosmetic retry.
+        for receipt in reversed(_tail(os.path.join(ROOT, 'source-receipts.jsonl'))):
+            if (receipt.get('source') == 'ncbi_gene_identity'
+                    and (receipt.get('query') or {}).get('symbol', '').upper() == symbol):
+                try:
+                    fresh = datetime.fromisoformat(receipt['retrieved_at']) > _when(row)
+                except (KeyError, TypeError, ValueError): fresh = False
+                from lab_sources import verified_human_identity
+                if fresh and verified_human_identity(receipt, symbol): return ''
+                break
+        return 'unchanged unresolved human identity: ' + str(symbol)
+    return ''
+
+
 def repeat(inquiry, now=None):
     """Why this inquiry repeats one she ran in the last REPEAT_DAYS days, in words for her; '' when it does not."""
     rows = _recent(now)
+    rejected = identity_rejection(inquiry, rows)
+    if rejected: return rejected
     key = lookup_key(inquiry)
     if key:
         for r in reversed(rows):
@@ -195,14 +247,29 @@ def repeat(inquiry, now=None):
     return ""
 
 
-def record(inquiry, now=None, refused=""):
+def record(inquiry, now=None, refused="", *, identity_validated=False):
     """File an accepted inquiry's lookup and question. A refused one is filed as a cycle spent and nothing more: it
-    ran no lookup, so it can never make a later one a repeat, but it counts toward the frontier step's cycles (a
+    ran no lookup. Exact unresolved identity refusals are remembered separately; transient failures
+    remain retryable. Every refusal counts toward the frontier step's cycles (a
     Gemma who cannot find an on-plan question is not refused all day)."""
     inq = inquiry if isinstance(inquiry, dict) else {}
     row = {"at": (now or _now()).isoformat(), "lookup": "" if refused else lookup_key(inq),
            "question": str(inq.get("question", ""))[:300], "words": [] if refused else sorted(_words(inq.get("question"))),
            "frontier_session": inq.get("frontier_session"), **({"refused": refused[:200]} if refused else {})}
+    identity = inq.get('identity_check') or {}
+    evidence = identity.get('receipt_ids') or []
+    if (identity_validated and refused and identity.get('status') == 'unresolved'
+            and identity.get('symbol') and evidence):
+        key = identity_refusal_key(inq)
+        # Same evidence cannot renew an active decision. After expiry, one
+        # completed validation starts a new bounded window, even if the provider
+        # returned the same receipt. Blocked echoes never enter this branch.
+        prior = next((r for r in reversed(_tail(LOOKUPS)) if r.get('identity_refusal') == key), None)
+        prior_time = _when(prior) if prior else None
+        expired = prior_time is not None and prior_time < (now or _now()) - timedelta(days=REPEAT_DAYS)
+        if not prior or expired or prior.get('identity_receipt_id') != evidence[-1]:
+            row.update(identity_refusal=key, identity_receipt_id=evidence[-1],
+                       unresolved_symbol=str(identity['symbol']).upper())
     os.makedirs(ROOT, exist_ok=True)
     with open(LOOKUPS, "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")

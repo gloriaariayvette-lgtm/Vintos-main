@@ -74,7 +74,10 @@ for sample in replays:
 answers=iter([{'answers_question':'no','speculative_reading':'invented','next_question':'missing membrane orientation'},
               {'answers_question':'no: membrane orientation is not measured','speculative_reading':'invented','next_question':'obtain membrane orientation'}])
 def ask(*a,**k):return json.dumps(next(answers))
-with patch.object(C,'_ask',ask), patch.object(C,'_coverage_check',return_value=None):
+# This pre-identity compact fixture tests review reconciliation only; entity
+# validation has its own real-field regression suite.
+with patch.object(C,'_ask',ask), patch.object(C,'_coverage_check',return_value=None), \
+     patch.object(S,'question_entity_context',return_value={'status':'consistent','issues':[]}):
  assert C._ask is ask
  result=C._reflect('',replays[1]['inquiry'],replays[1]['after'])
  assert result['answers_question']=='no' and result['speculative_reading']==''
@@ -86,12 +89,12 @@ print('PASS: canonical RT screen, exact citations, explicit scope correction, di
 # original question; bracketed source paths resolve to the same actual strings.
 coverage=json.loads((FIX/'lab_oct10_coverage.json').read_text())
 positive=coverage['checker_responses'][0]
-with patch.object(C,'_ask',return_value=json.dumps(positive)) as grader:
+with patch.object(C,'_ask',side_effect=[json.dumps(positive),json.dumps({'sufficient':True,'missing':[],'rationale':'Offline independent fixture: original question is covered.'})]) as grader:
  result=C._coverage_check(coverage['inquiry'],coverage['evidence'])
  assert result and result['answered'] is True
  assert all(item['path'].startswith('evidence.') for item in result['supports'])
  assert all(item.get('source_citation','').startswith('PMID ') for item in result['supports'])
- grader.assert_called_once()
+ assert grader.call_count==2
 invalid=json.loads(json.dumps(positive));invalid['supports'][0]['quote']='An invented statement not present in the paper.'
 with patch.object(C,'_ask',return_value=json.dumps(invalid)):
  assert C._coverage_check(coverage['inquiry'],coverage['evidence']) is None

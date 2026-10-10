@@ -52,7 +52,7 @@ class Tests(unittest.TestCase):
             inquiry, _ = lab._held_to_plan('', '', self.query('SLC26A28'), {}, None, None, repeats)
         self.assertIn('SLC26A28', inquiry['refused'])
         self.assertEqual(inquiry['identity_check']['status'], 'unresolved')
-        self.assertEqual(repeats.repeat(self.query('SLC26A28')), '')
+        self.assertIn("unchanged unresolved human identity", repeats.repeat(self.query("SLC26A28")))
         self.assertEqual(len(self.calls), 1)
         lab._ask.assert_not_called()
     def test_wrong_symbol_or_taxon_not_accepted(self):
@@ -77,7 +77,7 @@ class Tests(unittest.TestCase):
             inquiry, _ = lab._held_to_plan('', '', lab._inquiry(raw), raw, None, None, repeats)
         self.assertEqual(inquiry['identity_check']['status'], 'unresolved')
         self.assertIn('SLC26A28', inquiry['refused'])
-        self.assertEqual(repeats.repeat(inquiry), '')
+        self.assertIn("unchanged unresolved human identity", repeats.repeat(inquiry))
         raw['uniprot_query'] = 'gene:SLC26A4 AND taxonomy_id:10090'
         self.assertIn('conflicts', lab._ground_inquiry(raw, client)['reason'])
 

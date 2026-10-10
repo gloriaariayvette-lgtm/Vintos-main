@@ -100,8 +100,17 @@ def _strip_html(value, cap):
     return re.sub(r'<[^>]+>', '', str(value or ''))[:cap]
 
 
+def normalize_protein_notation(query):
+    """Normalize beta notation before filtering; keep the named protein intact."""
+    # JSON can decode LaTeX's backslash-b as a backspace. Also accept its
+    # literal hex rendering, before an ASCII filter can turn it into x08eta.
+    query = re.sub(r'(?<![\w\\])\$?(?:\\beta|\x08eta|\\x08eta)(?!\w)\$?', 'β', str(query or ''))
+    return query
+
+
 def normalize_uniprot_subjects(query):
     """Preserve complete unquoted subject values instead of reading only their first word."""
+    query = normalize_protein_notation(query)
     # Boolean operators outside quoted names are case-insensitive in generated requests.
     query = re.sub(r'"[^"\n]*"|\b(?:and|or|not)\b',
                    lambda m: m[0] if m[0].startswith('"') else m[0].upper(), query, flags=re.I)
@@ -129,13 +138,156 @@ def uniprot_identity_symbols(query):
     for field, value in _TERM.findall(query):
         if field not in ('gene', 'protein_name'): continue
         value = value.strip('"')
-        for token in re.findall(r'[A-Za-z][A-Za-z0-9-]*', value):
+        for token in re.findall(r'(?<![\w-])[A-Za-z][A-Za-z0-9-]*(?![\w-])', value):
             if field == 'protein_name' and re.search(r'\b' + re.escape(token) + r'\s+family\b', value, re.I):
                 continue
             if ((field == 'gene' and ' ' not in value) or
                     re.fullmatch(r'[A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*', token)):
                 symbols.append(token.upper())
     return list(dict.fromkeys(symbols))
+
+
+def human_question_symbols(question):
+    """Pure question token extraction shared by admission and repeat keys."""
+    from lab_repeats import _ACCESSION, _NOT_SUBJECTS
+    text = str(question or '')
+    # Nearby channel/helix context disambiguates ranges, including "S1–S6 of TRPV1".
+    # Explicit gene assertions win over contextual notation.
+    def helix_range(m):
+        prefix, suffix = text[max(0,m.start()-40):m.start()], text[m.end():m.end()+60]
+        explicit = re.search(r'\bgene(?:\s+symbol)?[\s:]+$',prefix,re.I) or re.match(r'\s+gene\b',suffix,re.I)
+        context = re.search(r'\b(?:helices|helix|channel|transmembrane)\b',prefix+' '+suffix,re.I)
+        return m[0] if explicit or not context else ' '
+    text = re.sub(r'\bS[0-9]+\s*[-–]\s*S[0-9]+\b',helix_range,text)
+    text = re.sub(r'\b([A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*)_HUMAN\b', r'\1', text)
+    words = uniprot_identity_symbols('protein_name:"' + text.replace('"', ' ') + '"')
+    def only_domain_labels(symbol):
+        # Classify occurrences, not spellings: "HR1 domain" is a feature request,
+        # not a claim that HR1 names the target. Keep any separate/explicit target
+        # occurrence, and ambiguous domain-containing protein names. The original
+        # question is untouched and still must pass coverage/sufficiency checks.
+        occurrences = list(re.finditer(r'(?<![\w-])' + re.escape(symbol) + r'(?![\w-])', text))
+        for match in occurrences:
+            prefix, suffix = text[:match.start()], text[match.end():]
+            explicit = re.search(r'\b(?:gene(?:\s+symbol)?|protein)\s*[:=]?\s*["\']?$', prefix, re.I)
+            domain = re.match(r'\s+domains?\b', suffix, re.I)
+            if explicit or not domain:
+                return False
+            # "X domain-containing protein" names a protein; do not erase X.
+            remainder = suffix[domain.end():]
+            if re.match(r'\s*(?:[-–]|(?:containing|binding|associated|protein|gene|family)\b)', remainder, re.I):
+                return False
+            # A bare "BRCA1 domain" can refer to a domain of the target BRCA1.
+            # Only the paired named region in an interface question qualifies;
+            # "in human cells" / "within the nucleus" do not identify an owner.
+            paired_region = (re.search(r'\binterface\s+between\s+(?:the\s+)?$', prefix, re.I)
+                             and re.match(r'\s+and\s+(?:the\s+)?[A-Za-z0-9-]+\s+(?:N-terminal|C-terminal)\s+region\b', remainder, re.I))
+            if not paired_region:
+                return False
+        return bool(occurrences)
+    return [w for w in words if not only_domain_labels(w) and w not in _NOT_SUBJECTS and not _ACCESSION.fullmatch(w) and not _ACCESSION.fullmatch(re.sub(r'-[0-9]+$', '', w))
+            and not re.fullmatch(r'TM[0-9]+|[ACDEFGHIKLMNPQRSTVWY][0-9]+[ACDEFGHIKLMNPQRSTVWY]', w)]
+
+
+def verified_human_identity(row, symbol):
+    """Validate the exact Sources.human_gene_identity receipt, not its verdict alone."""
+    try:
+        query, metadata, records = row['query'], row['metadata'], row['records']
+        if (row['source'] != 'ncbi_gene_identity' or query['taxon_id'] != 9606
+                or str(query['symbol']).upper() != symbol.upper()
+                or metadata.get('service') != 'NCBI_Gene'
+                or metadata.get('status') != 'verified' or metadata.get('match_count') != 1
+                or len(records) != 1): return False
+        record = records[0]
+        if (record['taxon_id'] != 9606 or not re.fullmatch(r'[0-9]+', str(record['gene_id']))
+                or symbol.upper() not in {str(x).upper() for x in
+                    [record['symbol']] + record.get('aliases', [])}): return False
+        digest = hashlib.sha256(json.dumps(records, sort_keys=True, allow_nan=False).encode()).hexdigest()
+        payload = {k:v for k,v in row.items() if k != 'receipt_id'}
+        return (row['response_sha256'] == digest and row['receipt_id'] ==
+                hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest())
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+
+
+
+def question_entity_context(inquiry, records):
+    """Conservative metadata checks for explicit expectations; never guess target mappings."""
+    from lab_repeats import _ACCESSION
+    question = str(inquiry.get('question') or '')
+    context = inquiry.get('identity_context') or {}
+    question_digest = hashlib.sha256(question.encode()).hexdigest()
+    context_current = context.get('version') == 1 and context.get('question_sha256') == question_digest
+    # A fresh _inquiry snapshots explicit intent. Later retrieval attempts are
+    # not additional original constraints. Unbound/stale history is not trusted.
+    queries = list(context.get('original_queries') or []) if context_current else [inquiry.get('uniprot_query') or '']
+    queries = list(dict.fromkeys(normalize_uniprot_subjects(str(q)) for q in queries if q))
+    q_accessions = set(_ACCESSION.findall(question))
+    query_accessions = set(a for q in queries for a in _ACCESSION.findall(q))
+    accessions = q_accessions | query_accessions
+    symbols = set(human_question_symbols(question))
+    symbols.update(s for q in queries for s in uniprot_identity_symbols(q))
+    gene_symbols = set(s for q in queries for f,v in _TERM.findall(q) if f=='gene' for s in uniprot_identity_symbols('gene:'+v))
+    taxa = set(t for q in queries for t in re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)',q))
+    # These explicit species words have unambiguous IDs; other prose species
+    # requirements remain visible to the independent full-question assessor.
+    for words,taxon in ((r'human|Homo sapiens|_HUMAN','9606'),(r'rat|Rattus norvegicus','10116'),(r'mouse|Mus musculus','10090')):
+        if re.search(r'(?:\b(?:'+words+r')\b)',question,re.I): taxa.add(taxon)
+    if re.search(r'_HUMAN\b',question): taxa.add('9606')
+    organism_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q) if f=='organism_name'}
+    protein_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q)
+                     if f=='protein_name' and not uniprot_identity_symbols('protein_name:'+v)}
+    isoforms = set(re.findall(r'\bisoform\s+([A-Za-z0-9-]+)',question,re.I))
+    for accession in accessions:
+        isoforms.update(re.findall(r'\b'+re.escape(accession)+r'-([0-9]+)\b',question+' '+' '.join(queries)))
+    issues = []
+    if len(accessions)>1:
+        issues.append('multiple or contradictory accessions require a resolved per-target mapping')
+    if len(taxa)>1: issues.append('question and query have contradictory or unresolved multi-taxon scope')
+    if len(isoforms)>1: issues.append('question and query have contradictory isoform expectations')
+    if not (accessions or symbols or taxa or organism_names or protein_names or isoforms):
+        return {'status':'not_applicable','issues':[]}
+    def metadata_names(row):
+        names = set()
+        for gene in row.get('genes') or []:
+            for key in ('geneName','synonyms','orderedLocusNames','orfNames'):
+                values=gene.get(key) or []
+                if isinstance(values,dict): values=[values]
+                names.update(str(v.get('value','')).upper() for v in values)
+        proteins = {str(v).casefold() for v in [row.get('protein_name') or ''] + list(row.get('protein_aliases') or []) if v}
+        organisms = {str(v).casefold() for v in [row.get('organism') or ''] + list(row.get('organism_aliases') or []) if v}
+        return names,proteins,organisms
+    matches = [r for r in records if not accessions or r.get('accession') in accessions]
+    # Unrelated search hits are not the selected target. If no candidate fits,
+    # retain the available rows to report the actual unresolved expectations.
+    candidates = []
+    for row in matches:
+        names,proteins,organisms = metadata_names(row)
+        if ((not symbols or symbols <= (names | {p.upper() for p in proteins}))
+                and (not taxa or str(row.get('taxon_id')) in taxa)
+                and (not protein_names or protein_names <= proteins)
+                and (not organism_names or organism_names <= organisms)):
+            candidates.append(row)
+    if candidates: matches = candidates
+    if not matches: issues.append('no retrieved record establishes the requested target')
+    if len(matches)>1: issues.append('multiple retrieved targets require an explicit expectation mapping')
+    for row in matches:
+        names,proteins,organisms = metadata_names(row)
+        absent = (symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
+        if absent: issues.append('requested names not established by '+str(row.get('accession'))+': '+','.join(sorted(absent)))
+        if protein_names and not protein_names <= proteins:
+            issues.append('requested protein name is not established by the retrieved recommended name')
+        if taxa and str(row.get('taxon_id')) not in taxa:
+            issues.append('requested taxon is not established by retrieved taxonomy; no ancestry is assumed')
+        if organism_names and not organism_names <= organisms:
+            issues.append('requested organism name differs from retrieved organism')
+        if isoforms and (not row.get('isoform') or str(row['isoform']) not in isoforms):
+            issues.append('requested isoform is not established by explicit retrieved isoform metadata')
+    return {'status':'unresolved' if issues else 'consistent','issues':issues,
+            'accessions':sorted(accessions),'symbols':sorted(symbols),'taxa':sorted(taxa),'isoforms':sorted(isoforms),
+            'context_current':context_current,'selected_accessions':[r.get('accession') for r in matches],
+            'scope':'explicit query constraints and recognized question symbols/species; full prose scope needs independent assessment'}
+
 
 
 def verify_uniprot_identity(query, records):
@@ -158,6 +310,7 @@ def validate_uniprot(query):
     """Validate a UniProt query and return it normalized. Callers must use the returned query."""
     if not isinstance(query, str) or not query.strip() or len(query) > 600:
         raise ValueError('bounded UniProt query required')
+    query = normalize_protein_notation(query)
     if any(ord(c) < 32 for c in query) or query.count('(') != query.count(')') or query.count('[') != query.count(']') or query.count('"') % 2:
         raise ValueError('malformed UniProt query')
     # "organism_id : 1224" is not a field to UniProt; it is three free-text words, and matches nothing.
@@ -208,11 +361,11 @@ def uniprot_relaxations(query):
             term = field + ':' + value
             if term not in keep: keep.append(term)
         elif field in _SUBJECT_FIELDS:
-            field_words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', value.strip('"'))
+            field_words += re.findall(r'[^\W_][\w-]*', value.strip('"'))
     # Free text can be a subject only when he did not name one in a typed field. Otherwise
     # boolean/filter residue such as an organism word must not broaden the protein search.
     if not field_words:
-        free_words = re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', _TERM.sub(' ', query))
+        free_words = re.findall(r'[^\W_][\w-]*', _TERM.sub(' ', query))
     words = field_words or free_words
     seen, subject = set(), []
     for word in words:
