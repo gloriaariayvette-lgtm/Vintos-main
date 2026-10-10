@@ -804,6 +804,11 @@ def lab_context(gemma_journal=True):
 _BAD_ESCAPE = re.compile(r'\\(?!["\\/bfnrtu])')
 DIAGNOSTIC_BYTES = 64 * 1024
 DIAGNOSTIC_FILES = 200
+# A parse that failed for good is the evidence worth keeping, and it was the first the pruner threw out: eviction went
+# by age alone (Vintos, 2026-10-09). Terminal failures sit in their own smaller, aged budget; evictions are written down.
+DIAGNOSTIC_TERMINAL_FILES = 60   # files, not groups: a terminal group is raw.txt + events.json
+DIAGNOSTIC_TERMINAL_DAYS = 14
+EVICTIONS = ".evictions.jsonl"   # below diagnostics/; dot-named so it is never counted as evidence
 
 
 class ModelJSONError(ValueError):
@@ -812,8 +817,9 @@ class ModelJSONError(ValueError):
         super().__init__(label + "; evidence=" + evidence_id)
 
 
-def _parser_evidence(evidence_id, events, *, raw=None, repaired=None):
-    """Best-effort bounded evidence; a storage failure never leaks the response or breaks parsing."""
+def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=False):
+    """Best-effort bounded evidence; a storage failure never leaks the response or breaks parsing.
+    terminal=True marks the group as a parse that failed for good, so pruning keeps its raw reply."""
     root = os.path.join(ROOT, "diagnostics")
     try:
         _ensure()
@@ -824,7 +830,8 @@ def _parser_evidence(evidence_id, events, *, raw=None, repaired=None):
         flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
         with os.fdopen(os.open(os.path.join(root, ".lock"), flags, 0o600), "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            payloads = {"events.json": json.dumps({"evidence_id": evidence_id, "events": events})}
+            payloads = {"events.json": json.dumps({"evidence_id": evidence_id, "events": events,
+                                                   "terminal": bool(terminal)})}
             if raw is not None: payloads["raw.txt"] = raw
             if repaired is not None: payloads["repaired.txt"] = repaired
             try:
@@ -839,19 +846,59 @@ def _parser_evidence(evidence_id, events, *, raw=None, repaired=None):
                         if os.path.exists(tmp): os.unlink(tmp)
             finally:
                 # Prune groups even after a partial write failure. Never prune a raw file alone.
-                groups = {}
-                for entry in os.scandir(root):
-                    if re.fullmatch(r"[0-9a-f]{32}\.(raw\.txt|repaired\.txt|events\.json)", entry.name):
-                        groups.setdefault(entry.name[:32], []).append(entry)
-                total = sum(map(len, groups.values()))
-                for key in sorted(groups, key=lambda k: min(e.stat(follow_symlinks=False).st_mtime_ns for e in groups[k])):
-                    if total <= DIAGNOSTIC_FILES: break
-                    if key == evidence_id: continue
-                    for entry in groups[key]: os.unlink(entry.path)
-                    total -= len(groups[key])
+                _prune_evidence(root, evidence_id)
         return True
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        # Not silent any more: the class and the evidence ID, never the reply or the storage error's text.
+        try:
+            _append(FAULTS, {"at": now_iso(), "stage": "parser_evidence", "error": exc.__class__.__name__,
+                             "evidence_id": evidence_id, "terminal": bool(terminal)})
+        except Exception:
+            pass
         return False
+
+
+def _prune_evidence(root, keep_id):
+    """Evict the oldest groups past the caps. Terminal groups (events.json marked terminal) have their own smaller
+    budget, turned over by count and by age, so a failed parse keeps its response until that budget is spent; every
+    eviction is written beside the evidence with its reason. The current group is never evicted."""
+    groups = {}
+    for entry in os.scandir(root):
+        if re.fullmatch(r"[0-9a-f]{32}\.(raw\.txt|repaired\.txt|events\.json)", entry.name):
+            groups.setdefault(entry.name[:32], []).append(entry)
+    def is_terminal(key):
+        try:
+            with open(os.path.join(root, key + ".events.json"), encoding="utf-8") as f:
+                return bool(json.load(f).get("terminal"))
+        except (OSError, ValueError):
+            return False
+    def age_ns(key): return min(e.stat(follow_symlinks=False).st_mtime_ns for e in groups[key])
+    terminal = {k for k in groups if is_terminal(k)}
+    now_ns = time.time_ns()
+    evicted = []
+    for pool, cap, max_age_ns in ((terminal, DIAGNOSTIC_TERMINAL_FILES, DIAGNOSTIC_TERMINAL_DAYS * 86400 * 10**9),
+                                  (set(groups) - terminal, DIAGNOSTIC_FILES, None)):
+        total = sum(len(groups[k]) for k in pool)
+        for key in sorted(pool, key=age_ns):
+            if key == keep_id: continue
+            stale = max_age_ns is not None and now_ns - age_ns(key) > max_age_ns
+            if total <= cap and not stale: break
+            for entry in groups[key]: os.unlink(entry.path)
+            total -= len(groups[key])
+            evicted.append({"at": now_iso(), "evidence_id": key, "terminal": key in terminal,
+                            "files": len(groups[key]), "reason": "age" if stale else "count",
+                            "age_seconds": (now_ns - age_ns(key)) // 10**9})
+    if not evicted: return
+    path = os.path.join(root, EVICTIONS)
+    try:
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600), "a",
+                       encoding="utf-8") as f:
+            for row in evicted: f.write(json.dumps(row, sort_keys=True) + "\n")
+        if os.path.getsize(path) > 4 * DIAGNOSTIC_BYTES:   # bounded too: keep the last 500 lines
+            with open(path, encoding="utf-8", errors="replace") as f: lines = f.readlines()[-500:]
+            with open(path, "w", encoding="utf-8") as f: f.writelines(lines)
+    except OSError:
+        pass
 
 
 def _close_open(text):
@@ -889,8 +936,8 @@ def _parse_json_object(text, keep=800):
     body = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw, flags=re.I | re.S)
     lo = body.find("{")
     if lo < 0:
-        events.append("strict_parse_failed")
-        _parser_evidence(evidence_id, events)
+        events.append("strict_parse_failed"); events.append("terminal")
+        _parser_evidence(evidence_id, events, terminal=True)
         raise ModelJSONError("model returned no JSON object", evidence_id) from None
     # Strict boundary first: exactly one complete object from the opening brace, whatever follows it. Gemma
     # sometimes keeps writing after its object (a second one, or a sentence with braces in it); taking the last
@@ -922,6 +969,8 @@ def _parse_json_object(text, keep=800):
             events.append("repaired")
             _parser_evidence(evidence_id, events, repaired=candidate)
             return value
+    events.append("terminal")
+    _parser_evidence(evidence_id, events, terminal=True)   # the mark that keeps its raw reply through pruning
     raise ModelJSONError("model returned no usable JSON object", evidence_id) from None
 
 
