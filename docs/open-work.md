@@ -3094,3 +3094,23 @@ the system haptic.
 **Lab repeated-evidence review (2026-10-09).** The live SLC26A11 cycle returned the same protein records and paper under different search wording, allowing three substantially identical answered reviews. Routine protein/literature reviews now record a content fingerprint in the existing notebook; for seven days, unchanged evidence redirects before the review model is called. Query text, receipt IDs and result order cannot manufacture new evidence. New paper/content and instrument analyses remain eligible. Existing historical reviews without content fingerprints are not retrospectively classified by accession alone. The isolated tick regression proves the second identical return never reaches the reviewer. An Aegis replay of seven stored SLC26A11 source returns retains the first and both changed paper sets, and skips the four repeated sets (including all three repeated answered rows); replay writes only a temporary notebook. This does not solve repetitive question generation or establish a healthy answer rate; both still require measurement. No prompts or model settings changed.
 
 **Lab boundary bypasses (2026-10-09, follow-up).** The first repeat fix excluded NCBI receipts. The live record then repeated the same NCBI literature evidence for SLC26A23, A24 and A14; the last reading mislabeled CIROP as A14. NCBI database rereads now use the same content check. Human gene-like symbols in the question itself are validated before acceptance, with accessions, mutation labels and transmembrane labels excluded; a named human subject replaces the unrelated baseline protein page. Query-shaped UniProt plugin requests use the validated direct public client at both planning and saved-request execution boundaries, with limits preserved. Tests replay the stored NCBI response and the actual plugin request shape with scratch stores and stubbed senders. Live candidate probes on Aegis refused SLC26A14, returned human Pendrin/O43511 (780 residues) for SLC26A4, and returned human Q96RN1 through the saved UniProt request without either relay. Lowercase Boolean operators are normalized outside quoted protein names, and explicit human requests retain their species filter. Probe receipts were disposable. No prompts or model settings changed. Sustained useful-answer recovery still needs observation after deployment.
+
+
+### 2026-10-09 — Lab repeat selection (Codex)
+
+Repair the final planning boundary: every repair choice is checked against spent
+subjects before recording a lookup or opening a line. A new instrument measurement
+or a new sourced sequence/structure/context read on that subject remains eligible
+and is itself deduplicated. Human UniProt
+organism_id:9606 and taxonomy_id:9606 now share a canonical key, including old
+serialized entries; higher taxa, OR, and reviewed:false remain distinct. Moving
+between NCBI literature and PubMed no longer exempts the same question from repeat
+checking. Legacy failed UniProt connector attempts remain retryable through the
+working direct route. Spent timestamps no longer slide forward every pass.
+
+Replay coverage includes the 9 October SLC26A10 second-choice escape, a successful
+last-choice pivot, a new measurement and its duplicate, and the VgrG literature
+route switch. No planner prompt text, model settings, journal history, or sealed
+content was changed. Production answer quality must still be measured after
+installation; blocking repeats alone is not proof that unanswered accumulation is
+resolved.

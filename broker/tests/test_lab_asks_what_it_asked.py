@@ -375,9 +375,11 @@ M.NOTEBOOK = nb
 try: stubborn = REAL_ORIENT("context")
 finally: M._ask, M.NOTEBOOK = real_ask, real_nb
 # No random wander after that (2026-09-28): it filled the Lab with reviews of unrelated human proteins.
-# He is asked once more; if he still chooses it, his question stands and the literature is read on it.
-check("KaiC chosen twice is asked once more, then his question stands, never swapped for a random one",
-      len(prompts) == 2 and not stubborn.get("dead_end_fallback") and stubborn["question"] == "KaiC, surely, once more?",
+# Preserve his question for the refusal receipt, but do not read exhausted literature
+# or swap in an unrelated random protein. The final repair passes the same gate.
+check("persistent KaiC choice is refused before retrieval, never replaced with a random protein",
+      len(prompts) == 3 and "spent subject" in stubborn.get("refused", "")
+      and not stubborn.get("dead_end_fallback") and stubborn["question"] == "KaiC, surely, once more?",
       stubborn)
 
 # the journal's KaiC finding stops pulling him back while KaiC is spent

@@ -105,6 +105,71 @@ recovered = C._orient("ctx")
 check("replayed refusal streak reaches the next planning prompt and accepts another subject",
       not recovered.get("refused") and "LAST 82 QUESTIONS" in asked[0] and "SPENT FOR TODAY" in asked[0]
       and "SLC26A4" in asked[0], recovered)
+# Replay 9 October: the second choice rationalized revisiting the spent
+# SLC26A10 question. Even the final repair must pass before a line is opened.
+spent_query = {"browse_lane": "protein", "question": "What is the primary sequence and domain architecture of human SLC26A10?",
+               "uniprot_query": "protein_name:SLC26A10 AND organism_id:9606 AND reviewed:true",
+               "new_line": {"title": "again", "question": "What is the primary sequence of human SLC26A10?"}}
+C.remember_spent(["SLC26A10"])
+asked.clear(); answers[:] = [spent_query, spent_query, spent_query]
+blocked = C._orient("ctx")
+check("spent subject cannot escape through the second or final planner choice",
+      "spent subject" in blocked.get("refused", "") and not blocked.get("line_opened"), blocked)
+check("refused planning recorded no lookup", L._tail(L.LOOKUPS)[-1]["lookup"] == "")
+# A genuine alternative selected on the last repair is admitted instead.
+asked.clear(); answers[:] = [spent_query, spent_query, {
+    "browse_lane": "microbiology", "question": "Which bacterial heme oxygenase annotations are documented?",
+    "source_query": {"source": "ncbi", "operation": "protein", "term": "bacterial heme oxygenase"}}]
+fresh = C._orient("ctx")
+check("final repair can advance a different question", not fresh.get("refused") and "heme oxygenase" in fresh["question"], fresh)
+# A new instrument measurement on that protein is allowed, but cannot run twice.
+measurement = dict(spent_query, new_line=None, instrument_query={"skill": "fold_read", "operation": "structure.read",
+                    "files": ["artifacts/esmfold/SLC26A10-model.pdb"], "range": [406, 541]})
+asked.clear(); answers[:] = [measurement]
+measured = C._orient("ctx")
+check("spent retrieval does not ban a new instrument measurement", not measured.get("refused") and len(asked) == 1, measured)
+answers[:] = [measurement]
+again, _ = C._held_to_plan("system", "task", C._inquiry(measurement), measurement, None, None, L,
+                          spent={"subjects": ["SLC26A10"]})
+check("the instrument measurement itself remains deduplicated", again.get("refused", "").startswith("repeat"), again)
+
+# A sourced structural/sequence read is a new test, not another name search.
+structure = dict(spent_query, new_line=None, source_query={"source": "pdb", "entry_id": "8ABC"})
+answers[:] = []
+structure_read, _ = C._held_to_plan("system", "task", C._inquiry(structure), structure, None, None, L,
+                                  spent={"subjects": ["SLC26A10"]})
+check("new sourced structure read remains eligible on a spent subject", not structure_read.get("refused"), structure_read)
+answers[:] = [structure]
+structure_again, _ = C._held_to_plan("system", "task", C._inquiry(structure), structure, None, None, L,
+                                   spent={"subjects": ["SLC26A10"]})
+check("same structure cannot be reread to evade the guard", structure_again.get("refused", "").startswith("repeat"), structure_again)
+
+# Same exact human query, differently spelled or routed, cannot bypass the ledger.
+a = "protein_name:SLC26A10 AND organism_id:9606 AND reviewed:true"
+b = "reviewed:true AND taxonomy_id:9606 AND protein_name:SLC26A10"
+check("human taxonomy filter aliases share a repeat key", L.uniprot_key(a) == L.uniprot_key(b))
+check("older serialized alias keys are canonicalized on read", L.canonical_lookup(
+    'uniprot:[["organism_id","9606"],["protein_name","slc26a10"],["reviewed","true"]]') == L.uniprot_key(b))
+check("plugin-shaped current UniProt requests use the same direct repeat key", L.lookup_key({
+    "question": "human SLC26A10", "plugin_query": {"plugin": "uniprot", "tool": "uniprot_query",
+    "arguments": {"query": a}}}) == L.uniprot_key(b))
+check("higher taxon organism and taxonomy filters stay distinct", L.uniprot_key("organism_id:2") != L.uniprot_key("taxonomy_id:2"))
+check("reviewed and unreviewed searches stay distinct", L.uniprot_key(a) != L.uniprot_key(a.replace("true", "false")))
+check("OR retains its meaning", L.uniprot_key("gene:A OR gene:B") != L.uniprot_key("gene:A AND gene:B"))
+# Legacy failed connector attempts must not block the first working direct read.
+legacy = 'plugin_query:{"arguments":{"query":"gene:FRESH1"},"plugin":"uniprot","tool":"uniprot_query"}'
+check("legacy connector attempts are not claimed as completed direct reads", L.canonical_lookup(legacy) == legacy)
+L.record({"question": "Which conserved motifs define the VgrG Hcp needle interface in Vibrio species?",
+          "source_query": {"source": "ncbi", "operation": "literature", "term": "Vibrio VgrG Hcp interface"}})
+check("switching literature API cannot recycle the same question", bool(L.repeat({
+    "question": "Which conserved motifs define the VgrG Hcp needle interface across Vibrio species?",
+    "source_query": {"source": "pubmed", "term": "Vibrio VgrG Hcp motifs"}})))
+C.remember_spent(["timer-test"], now=100000)
+C.remember_spent(["timer-test"], now=100100)
+check("reading a spent streak does not extend its cooldown every pass", C._load(C.SPENT, {})["timer-test"]["at"] == 100000)
+check("sender and every relevant store remain isolated", C._ask is gemma and C._ground_inquiry is identity_stub
+      and all(p.startswith(HOME) for p in (C.SPENT, C.RECEIPTS, C.ROOT, L.LOOKUPS, L.SESSIONS)))
+
 # No provider is called: inspect the actual reading prompt passed to the stub.
 answers[:] = [{"factual_observation": "No PDB cross-references in this response", "answers_question": "no"}]
 C._reflect("ctx", {}, [{"accession": "O43511", "pdb_ids": []}])

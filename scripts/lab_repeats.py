@@ -72,6 +72,13 @@ def _tail(path, nbytes=2 * 1024 * 1024):
     return out
 
 
+def _uniprot_term(field, value):
+    # For a species leaf these two filters select the same records. Do not
+    # equate organism_id and taxonomy_id for higher taxa (e.g. bacteria).
+    if field == "organism_id" and value == "9606": field = "taxonomy_id"
+    return field, value
+
+
 def uniprot_key(query):
     """Canonicalize conjunctions only; OR/NOT and unknown syntax retain their exact meaning."""
     text = re.sub(r"\s+", " ", str(query or "").strip()).lower()
@@ -79,7 +86,7 @@ def uniprot_key(query):
     matches = list(field.finditer(text))
     rest = field.sub('', text)
     if matches and not re.sub(r'\band\b|[\s()]', '', rest):
-        terms = sorted(set((m[1], m[2].strip('"')) for m in matches))
+        terms = sorted(set(_uniprot_term(m[1], m[2].strip('"')) for m in matches))
         return "uniprot:" + json.dumps(terms, separators=(',', ':'))
     return "uniprot:" + text
 
@@ -88,7 +95,12 @@ def canonical_lookup(key):
     # Read older ledger entries without rewriting their history.
     if key.startswith("uniprot:"):
         body = key[len("uniprot:"):]
-        return key if body.startswith('[["') else uniprot_key(body)
+        if body.startswith('[["'):
+            try:
+                terms = json.loads(body)
+                return "uniprot:" + json.dumps(sorted(set(_uniprot_term(k, v) for k, v in terms)), separators=(',', ':'))
+            except (ValueError, TypeError): return key
+        return uniprot_key(body)
     if key.startswith("source_query:"):
         try:
             spec = json.loads(key.split(':', 1)[1])
@@ -108,6 +120,10 @@ def lookup_key(inquiry):
             return uniprot_key(q.get("query"))
         if field == "source_query" and q.get("source") == "atlas":
             return "atlas:" + str(q.get("gene") or q.get("chromosome", "") + ":" + str(q.get("start", ""))).upper()
+        if field == "plugin_query" and str(q.get("plugin", "")).lower() in ("uniprot", "uniprotkb"):
+            from chemistry_lab import uniprot_from_plugin
+            spec = uniprot_from_plugin(q, str(inq.get("question") or ""))
+            if spec: return uniprot_key(spec["query"])
         clean = {k: v for k, v in q.items() if k not in ("purpose", "why", "question")}
         return field + ":" + json.dumps(clean, sort_keys=True, default=str).lower()
     query = str(inq.get("uniprot_query") or "").strip()
@@ -137,6 +153,16 @@ def _lookup_route(key):
     return kind
 
 
+def _literature_route(key):
+    kind, _, body = key.partition(":")
+    if kind != "source_query": return False
+    try:
+        spec = json.loads(body)
+    except (ValueError, TypeError): return False
+    return spec.get("source") in ("pubmed", "pubmed_abstracts") or (
+        spec.get("source") == "ncbi" and spec.get("operation") == "literature")
+
+
 def repeat(inquiry, now=None):
     """Why this inquiry repeats one she ran in the last REPEAT_DAYS days, in words for her; '' when it does not."""
     rows = _recent(now)
@@ -152,7 +178,8 @@ def repeat(inquiry, now=None):
             # The same unresolved question may legitimately need another instrument/source.
             # A wording change on the same retrieval is still refused by the exact key above.
             if key and r.get("lookup") and _lookup_route(key) != _lookup_route(canonical_lookup(r["lookup"])):
-                continue
+                if not (_literature_route(key) and _literature_route(canonical_lookup(r["lookup"]))):
+                    continue
             # Similar wording about a different named protein is a different question.
             # Exclude shared domain names (STAS, etc.); compare accession/gene-like IDs.
             def identities(text):

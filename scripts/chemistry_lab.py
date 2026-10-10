@@ -504,7 +504,11 @@ def remember_spent(subjects, now=None):
     if not subjects: return
     with _locked():
         rows = _load(SPENT, {})
-        for subject in subjects: rows[subject.lower()] = {"subject": subject, "at": now or time.time()}
+        stamp = now if now is not None else time.time()
+        for subject in subjects:
+            old = rows.get(subject.lower(), {})
+            if not old or stamp - float(old.get("at", 0)) >= SPENT_HOURS * 3600:
+                rows[subject.lower()] = {"subject": subject, "at": stamp}
         _atomic(SPENT, rows)
 
 
@@ -519,6 +523,15 @@ def repeats_dead_end(inquiry, spent):
     text = " ".join([str(inquiry.get("question", "")), str(inquiry.get("uniprot_query", "")),
                      json.dumps(inquiry.get("source_query") or {})])
     return mentions_spent(text, spent.get("subjects") or [])
+
+
+def spent_retrieval(inquiry, spent):
+    """Stop recycling broad searches, not a new read of sourced sequence/structure."""
+    if not repeats_dead_end(inquiry, spent): return False
+    if inquiry.get("instrument_query"): return False
+    source = (inquiry.get("source_query") or {}).get("source")
+    return source not in {"ncbi_sequence", "ncbi_protein_context", "ncbi_neighborhood",
+                          "interpro", "rt_locus_screen", "pdb", "chembl"}
 
 
 GAPS = os.path.join(ROOT, "instrument-gaps.json")
@@ -1195,11 +1208,11 @@ def _orient(context, lean=None):
     value = _json_object(_ask(system, task))
     inquiry = _inquiry(value, lean)
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
-    if spent["subjects"] and repeats_dead_end(inquiry, spent):
+    if spent["subjects"] and spent_retrieval(inquiry, spent):
         value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
         inquiry = _inquiry(value, lean)
     if lab_repeats:
-        inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats)
+        inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats, spent=spent)
     if atlas_turn:
         inquiry = dict(inquiry, atlas_turn=True)  # retain the opportunity even if a repair changed the route
     return _on_line(inquiry, value, line)
@@ -1272,7 +1285,7 @@ def _ground_inquiry(inquiry, client=None):
     return {'status': 'verified', 'symbols': symbols, 'receipt_ids': ids}
 
 
-def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
+def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None):
     """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
     asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
     nothing and she chooses again."""
@@ -1287,14 +1300,20 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
         inquiry = _inquiry(value, lean)
         if not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
-    why = repeats.repeat(inquiry)
+    def blocked(candidate):
+        # Every repaired choice passes the same gate. A new instrument can
+        # advance an exhausted subject; another database wording cannot.
+        if spent and spent_retrieval(candidate, spent):
+            return "spent subject: this retrieval already ended without an answer"
+        return repeats.repeat(candidate)
+    why = blocked(inquiry)
     if why:
         value = _json_object(_ask(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
                                   ". Choose a different question or a different source or instrument."))
         inquiry = _inquiry(value, lean)
         if step and not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
-        why = repeats.repeat(inquiry)
+        why = blocked(inquiry)
         if why:
             return refuse("repeat: " + why)
     identity = _ground_inquiry(inquiry)
@@ -1310,6 +1329,8 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
 
 def _on_line(inquiry, value, line):
     """The cycle's line on its inquiry: the line it works, or a new one he opened on a free cycle."""
+    if inquiry.get("refused"):
+        return inquiry  # rejected planning must not open or attach work to a line
     if line:
         return dict(inquiry, line_id=line["id"])
     new = value.get("new_line") if isinstance(value, dict) else None
