@@ -63,6 +63,17 @@ def _get(url, want="text", timeout=30):
     return json.loads(text) if want == "json" else text
 
 
+def _read_text(url, timeout=30, **fetch_kw):
+    """Through link_fetch like _get, but with his PDF reader given, so a paper that arrives as a PDF under any
+    address (a doi, a landing page that serves the file) is read as text, not stripped as HTML. (text, kind)
+    from the receipt; raises when the link was refused or the fetch failed."""
+    link_fetch = _link_fetch()
+    r = link_fetch.fetch(url, max_bytes=MAX_PAPER_BYTES, timeout=timeout, pdf=pdf_text, **fetch_kw)
+    if r["kind"] in ("refused", "http_failure"):
+        raise RuntimeError("%s: %s" % (r["kind"], r["why"]))
+    return r.get("text", ""), r["kind"]
+
+
 def _local(system, prompt, max_tokens=900):
     try:
         import requests
@@ -244,16 +255,19 @@ def full_text(work, get=None):
     return "", "no free full text found"
 
 
-def read_url(url, get=None):
-    """A scholarly link someone sent him: read only. Other hosts are not opened here."""
+def read_url(url, get=None, **fetch_kw):
+    """A scholarly link someone sent him: read only. Other hosts are not opened here. With no `get` injected the
+    receipt decides what the bytes are (a PDF served from a doi has no '.pdf' in its address)."""
     if not is_scholarly(url):
         return "", "not a scholarly host: needs Gloria's approval"
-    get = get or _get
     try:
-        if url.lower().endswith(".pdf") or "/pdf/" in url:
-            text = pdf_text(get(url, "bytes"))
+        if get is not None:
+            if url.lower().endswith(".pdf") or "/pdf/" in url:
+                text = pdf_text(get(url, "bytes"))
+            else:
+                text = html_text(get(url, "text"))
         else:
-            text = html_text(get(url, "text"))
+            text, _kind = _read_text(url, **fetch_kw)
     except Exception as exc:
         return "", str(exc)[:120]
     return (_clip(text), url) if len(text) > 1500 else ("", "too little text at %s" % url)
