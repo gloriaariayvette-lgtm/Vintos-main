@@ -181,7 +181,7 @@ def open_rows():
     return [r for r in rows if r.get("state") in ("open", "in work")]
 
 
-def close_lines(text, now=None, proved=None):
+def close_lines(text, now=None, proved=None, waiting_work_ids=()):
     """His PROMISE DONE EC-id: proof / PROMISE DROPPED EC-id: why lines: done, and shown as what happened.
     A promise done needs something anyone could check (proved(), from room_work). Returns (text, log lines)."""
     rows = _load()
@@ -191,6 +191,11 @@ def close_lines(text, now=None, proved=None):
         r = next((x for x in rows if x.get("id") == pid), None)
         if not r or r.get("state") not in ("open", "in work"):
             return "\U0001F4E7 (no promise %s still owed)" % pid
+        import awaiting_evidence
+        wait = awaiting_evidence.store().safe_read().get(r.get("work_id"), {})
+        if r.get("work_id") in waiting_work_ids or wait.get("status") in ("awaiting_evidence", "evidence_changed", "evidence_relevant"):
+            import evidence_delivery
+            return evidence_delivery.marker(r["work_id"])
         if word == "done" and proved is not None and not proved(said):
             log.append("promise %s not closed: no proof" % pid)
             return ("\U0001F4E7 Not closed: %s — a promise kept needs something anyone could check (the file, the "
@@ -211,9 +216,14 @@ def block():
     rows = owed[:SHOWN]
     if not rows:
         return ""
+    import awaiting_evidence
+    waits = awaiting_evidence.store().safe_read()
     out = ["== PROMISED BY EMAIL, STILL OWED (%d; oldest first. Each becomes work here, is kept, or is dropped with "
            "why. A result that answers a different question does not keep a promise) ==" % len(owed)]
     for r in rows:
+        if waits.get(r.get("work_id"), {}).get("status") in ("awaiting_evidence", "evidence_changed", "evidence_relevant"):
+            out.append("- %s: retained as %s, awaiting evidence; unresolved. Do not open a replacement, close, or chase it. Status answers to the owner remain allowed." % (r["id"], r["work_id"]))
+            continue
         out.append("- %s (%s; letter %s from %s%s): you wrote “%s”" % (
             r["id"], r["state"] + ((" as " + r["work_id"]) if r.get("work_id") else ""), r["letter_id"],
             r.get("agent") or "your agent", (", your reply " + r["reply_id"]) if r.get("reply_id") else "", r["quote"][:300]))
@@ -246,6 +256,8 @@ def sync(state, now):
                 r.update(state="in work", work_id=hit["id"]); changed = True
                 lines.append("email promise %s taken up as %s" % (r["id"], hit["id"]))
         elif r.get("state") == "in work":
+            waiting = next((w for w in items if w.get("id")==r.get("work_id") and room_work.evidence_waiting(w)),None)
+            if waiting: continue
             gone = next((w for w in history if w.get("id") == r.get("work_id")), None)
             if gone:
                 r.update(state={"done": "done"}.get(gone.get("state"), "open" if gone.get("state") == "expired" else "dropped"),

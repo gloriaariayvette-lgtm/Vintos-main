@@ -26,6 +26,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
 """
 from __future__ import annotations
 import json
+import evidence_delivery
 import os
 import re
 import shutil
@@ -2430,6 +2431,8 @@ def _owe_again(state, last, lines):
 def _settled_why(state, text, now=None):
     """Why a search, an ask or a buy about this is not run: the topic is settled. "" when it is not."""
     import room_work
+    wait = room_work.evidence_action_hold(state, text)
+    if wait: return wait
     e = room_work.settled_match(state, text, now or time.time())
     if not e:
         return ""
@@ -2737,6 +2740,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     eyes = eyes or look_at_files
     now = now or time.time()
     today = today or date.today().isoformat()
+    # Ingest trusted local arrivals before conversational/global posting holds.
+    import room_work
+    arrival_state=_load(STATE,{})
+    room_work.evidence_arrivals(arrival_state,now)
+    _save(STATE,arrival_state)
     talking = None if open_now else talking_with_gloria(now)
     if talking is not None:
         # Slack is not read either; what is said meanwhile waits for the first pass after
@@ -2785,7 +2793,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         name = _agent_name(m) if who == "agent" else None
         seen = (eyes(m, _speaker({"who": who, "name": name}))
                 if m.get("files") or media_links(m.get("text")) or media_paths(m.get("text")) else "")
-        rows.append({"ts": m["ts"], "who": who, **({"name": name} if name else {}),
+        rows.append({"evidence_owner": evidence_delivery.authenticate(m, _load(CONFIG_FILE,{}).get("owner_user_id"), channel, now) if who == "gloria" else None, "ts": m["ts"], "who": who, **({"name": name} if name else {}),
                      "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
@@ -2816,6 +2824,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             api("chat.postMessage", {"channel": channel, "text": topics_line()}); handled = True
         if handled:
             theirs.remove(r)
+    for r in theirs:
+        room_work.evidence_owner_control(state, r.get("evidence_owner"), now)
     is_paused = paused()
     if bool(is_paused) != bool(state.get("paused_said")):
         api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
@@ -2944,6 +2954,15 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
+    for r in theirs:
+        owner = r.get("evidence_owner")
+        if owner and owner.get("kind") == "status":
+            body = {"channel":channel, "text":"\n".join(evidence_delivery.marker(wid) for wid in owner["scope"])}
+            if owner["destination"][1]: body["thread_ts"] = owner["destination"][1]
+            if evidence_delivery.send(api, body, now, paused, owner=owner, waiting_work_ids=room_work.evidence_waiting_ids(state), paused_work_ids=room_work.evidence_paused_ids(state,now)):
+                lines_pre.append("answered verified owner evidence status")
+    lines_pre += room_work.evidence_recheck(state, now,
+        lambda text: evidence_delivery.send(api, {"channel": channel, "text": text}, now, paused, waiting_work_ids=room_work.evidence_waiting_ids(state), paused_work_ids=room_work.evidence_paused_ids(state,now)), paused)
     try:   # her Yes or No from her phone, posted in the thread that asked, and kept as hers so he reads it
         import gloria_asks
         for q_thread, q_by, q_said in gloria_asks.untold():
@@ -3128,6 +3147,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                             lenses=lenses, lens="grok")
     if text is not None:
+        text = evidence_delivery.prepare(text)
         text = undisplay(text)
     if text is None:
         state["last_activity"] = now
@@ -3164,7 +3184,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     lines += work_log
     try:
         import email_commitments
-        text, promise_log = email_commitments.close_lines(text, proved=room_work.proved)
+        text, promise_log = email_commitments.close_lines(text, proved=room_work.proved,
+            waiting_work_ids={w['id'] for w in room_work.open_items(state) if room_work.evidence_waiting(w)})
         lines += promise_log + email_commitments.sync(state, now)
     except Exception as exc:
         lines.append("email promises not synced: %s" % str(exc)[:120])
@@ -3352,7 +3373,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             + "[%s] " % (sol_label() if who == "sol" else LABELS.get(who, who)) + text}
     if where:
         body["thread_ts"] = where
-    posted = api("chat.postMessage", body)
+    owner = last.get("evidence_owner") if last else None
+    posted = evidence_delivery.send(api, body, time.time(), paused, owner=owner, waiting_work_ids=room_work.evidence_waiting_ids(state), paused_work_ids=room_work.evidence_paused_ids(state,now))
+    if posted is None:
+        _save(STATE, state)
+        return lines + ["only ineligible waiting-item statements omitted"]
     if q_rows:
         try:   # a question in a message that starts a thread: the thread is that message
             gloria_asks.threaded(q_rows, where or posted.get("ts"))

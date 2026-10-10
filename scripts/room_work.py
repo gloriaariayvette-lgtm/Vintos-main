@@ -34,6 +34,8 @@ State lives in the channel's own state.json under "room_work". Pure functions: n
 """
 from __future__ import annotations
 import hashlib
+import awaiting_evidence
+import evidence_delivery
 import re
 from datetime import datetime
 
@@ -112,6 +114,7 @@ def board(state):
 
 
 def open_items(state):
+    evidence_sync(state)
     return list(board(state)["open"])
 
 
@@ -124,14 +127,14 @@ def in_hand(state, now):
     """The works that take a place in his hands: a work paused for a cause waits on its own and takes none (8 October,
     01:40: two paused till morning and one out with Grok Bot left him no place for the SLC26A4 step he had named, and
     nothing was due, so he stopped)."""
-    return [w for w in open_items(state) if not paused(w, now)]
+    return [w for w in open_items(state) if not paused(w, now) and not evidence_waiting(w)]
 
 
 def all_waiting(state, now):
     """True when he has work, none of it is due, and he has a free place: everything waits on something outside him,
     so the campaign's next step is a new work beside them."""
     items = open_items(state)
-    return bool(items) and not idle(state, now) and len(in_hand(state, now)) < MAX_OPEN and len(items) < MAX_HELD
+    return bool(items) and not idle(state, now) and len(in_hand(state, now)) < MAX_OPEN and len([w for w in items if not evidence_waiting(w)]) < MAX_HELD
 
 
 def active(state):
@@ -223,8 +226,12 @@ def _pick(state, text, items=None):
 
 
 def _close(state, w, state_word, said, now):
-    if not w:
+    if not w or evidence_waiting(w):
         return None
+    if w.get("id") and evidence_finish(w["id"], state_word, now, tracked='evidence_generation' in w) == 'tracked-closure-failed':
+        w['closure_error']='tracked-closure-failed'
+        return None
+    w.pop('closure_error',None)
     w.update(state=state_word, closed_at=float(now), closed_said=str(said)[:300])
     b = board(state)
     b["open"] = [x for x in b["open"] if x is not w and x.get("id") != w.get("id")]
@@ -381,7 +388,7 @@ def idle(state, now):
     """Open work that is due a step now: nothing out with an agent, not paused for a cause."""
     out = []
     for w in open_items(state):
-        if _waiting(w, now) or paused(w, now):
+        if evidence_waiting(w) or _waiting(w, now) or paused(w, now):
             continue            # a pause kept before OWN_ORDER, for his own order of work, does not hold
         out.append(w)
     return sorted(out, key=lambda w: float(w.get("touched", w.get("opened", 0)) or 0))
@@ -394,7 +401,7 @@ def not_carried(state, text, now):
     t = str(text or "")
     for w in idle(state, now):
         taking_up = any(not r.get("used") and engages(t, r.get("text", "")) for r in w.get("returns", []))
-        if advances(t, w) or taking_up or re.search(r"^\s*(?:PAUSE|WORK DONE|WORK DROPPED)\s+%s\b" % w["id"], t, re.I | re.M) \
+        if advances(t, w) or taking_up or re.search(r"^\s*(?:PAUSE|AWAIT EVIDENCE|WORK DONE|WORK DROPPED)\s+%s\b" % w["id"], t, re.I | re.M) \
                 or (w.get("idle_pressed_at") is not None and float(now) - float(w["idle_pressed_at"]) < PRESS_EVERY_S):
             continue
         if DONE.search(t) or DROPPED.search(t):
@@ -566,6 +573,7 @@ def expire(state, now):
     expire: it stays until it is reached or shown unreachable, or Gloria closes it."""
     gone = None
     for w in open_items(state):
+        if evidence_waiting(w): continue
         last = w.get("touched", w.get("opened"))
         if last is not None and float(now) - float(last) > STALE_DAYS * 86400:
             gone = _close(state, w, "expired", "untouched for %d days" % STALE_DAYS, now)
@@ -578,6 +586,7 @@ def expire(state, now):
 def receive(state, row, now):
     """An agent's message, kept on the work (or the loose asks) it answers: an ask still out to that agent, in the
     ask's thread within a day, or in the channel within three hours of it. True when kept."""
+    evidence_sync(state)  # Slack prose is not collector provenance.
     who = owner(row)
     if not who:
         return False
@@ -704,10 +713,12 @@ def _interim(w, ask):
     return bool(got) and bool(INTERIM.search(str(got.get("text", ""))[:400]))
 
 
-def came_back(state, source, text, now, about=""):
+def came_back(state, source, text, now, about="", *, work_id=None, provenance=None):
     """A result that came back from something he ran himself (his Lab's instruments): kept on the work it is about,
     unused, so his next message takes it up."""
-    w = _pick(state, about) or loose(state)
+    evidence_incoming(state, text, now, work_id=work_id, provenance=provenance)
+    w = next((w for w in open_items(state) if w.get("id") == work_id), None) if work_id else _pick(state, about)
+    w = w or loose(state)
     w.setdefault("returns", []).append({"from": source, "ts": "%.6f" % float(now), "text": str(text)[:3000],
                                         "for": "his own run", "used": "", "pressed": 0, "at": float(now), "this_pass": True})
     w["returns"] = w["returns"][-12:]
@@ -717,7 +728,7 @@ def came_back(state, source, text, now, about=""):
 
 def unused(state):
     """[(work, return)] that came back and he has not taken up yet, oldest first."""
-    return [(w, r) for w in _tracked(state) for r in w.get("returns", []) if not r.get("used")]
+    return [(w, r) for w in _tracked(state) if not evidence_waiting(w) for r in w.get("returns", []) if not r.get("used")]
 
 
 def ignoring_all(state, draft):
@@ -789,6 +800,8 @@ def _closing(state, rx, word, icon, text, now, log):
     said = m.group(2)
     w = _pick(state, (m.group(1) or "") + " " + said)
     closed = None
+    if w and evidence_waiting(w):
+        return rx.sub(evidence_delivery.marker(w["id"]), text, count=1), None
     if not w:
         shown = "(no work in hand to close: %s)" % said
     elif word == "done" and DEFERRED.search(said):
@@ -801,6 +814,8 @@ def _closing(state, rx, word, icon, text, now, log):
     elif word == "done" and NOT_DONE.search(said):
         # said as done, and it did not happen: it is closed for what it is (7 October, the TV left alone)
         closed = _close(state, w, "dropped", "not done: " + said, now)
+        if closed is None:
+            return rx.sub('Not closed: durable evidence closure failed; work remains unresolved.',text,count=1),None
         shown = "\U0001F9F0 Dropped (it did not happen): %s — %s" % (closed["goal"][:160], said)
         log.append("work dropped %s: said done, did not happen" % closed["id"])
     elif word == "done" and HANDOFF.search(said) and not (DELIVERED.search(said) and proved(said)):
@@ -832,6 +847,8 @@ def _closing(state, rx, word, icon, text, now, log):
         log.append("work not dropped: %s has an unread answer" % w["id"])
     else:
         closed = _close(state, w, word, said, now)
+        if closed is None:
+            return rx.sub('Not closed: durable evidence closure failed; work remains unresolved.',text,count=1),None
         shown = "%s: %s — %s" % (icon, closed["goal"][:160], _strip_goal(said, closed["goal"]))
         log.append("work %s %s" % (word, closed["id"]))
     return rx.sub(lambda _m: shown, text, count=1), closed
@@ -852,6 +869,19 @@ def apply(state, text, now, by=""):
     """His GOAL / WORK / NEXT / WORK DONE / WORK DROPPED lines: done, and shown as what happened.
     (text, log lines, closed: the last work closed, or None)."""
     log = []
+    def set_aside(m):
+        work = next((w for w in open_items(state) if w.get("id") == m[1]), None)
+        store = awaiting_evidence.store()
+        if not work or not store._targets(work):
+            return "Not set aside: only exact ModelJSONError local diagnostic-file collection is supported."
+        try: item = store.enter(work, m[2], now)
+        except (awaiting_evidence.LedgerUnavailable, OSError):
+            return "Evidence handling unavailable for " + m[1] + "; unrelated work can continue."
+        log.append(("local diagnostic inspection enabled " if item['status']=='actionable' else "set aside awaiting evidence ") + work["id"])
+        return evidence_delivery.marker(m[1])
+    text = evidence_delivery.prepare(text)
+    text = AWAIT.sub(set_aside, text)
+    evidence_sync(state)
     text = _goal_lines(state, text, now, by, log)
     # A message that closes its work and names the work again (or opens the next) is read closing first: it showed
     # "still working on ... finish it with WORK DONE:" beside "✅ Work done" for the same work (2026-10-05)
@@ -871,11 +901,13 @@ def apply(state, text, now, by=""):
         items = open_items(state)
         hand = in_hand(state, now)
         same = next((w for w in items if norm(goal_text) == norm(w["goal"]) or _like(goal_text, w["goal"]) >= 0.8), None)
-        if same:
+        if same and evidence_waiting(same):
+            shown = evidence_delivery.marker(same["id"])
+        elif same:
             same["touched"] = float(now)
             shown = "\U0001F9F0 Working on: %s" % same["goal"]
-        elif len(hand) >= MAX_OPEN or len(items) >= MAX_HELD:
-            full = hand if len(hand) >= MAX_OPEN else items
+        elif len(hand) >= MAX_OPEN or len([w for w in items if not evidence_waiting(w)]) >= MAX_HELD:
+            full = hand if len(hand) >= MAX_OPEN else [w for w in items if not evidence_waiting(w)]
             shown = ("\U0001F9F0 (already %d in hand: %s — close one with WORK DONE: or WORK DROPPED: first)"
                      % (len(full), "; ".join("%s %s" % (w["id"], w["goal"][:60]) for w in full)))
             log.append("work not opened: %d in hand" % len(full))
@@ -906,6 +938,10 @@ def apply(state, text, now, by=""):
         w = next((x for x in open_items(state) if x["id"] == m.group(1)), None)
         cause = m.group(2).strip()
         if w and len(cause) >= 12 and not OWN_ORDER.search(cause):
+            if evidence_waiting(w):
+                try: awaiting_evidence.store().pause(w["id"], float(now)+PAUSE_S)
+                except (awaiting_evidence.LedgerUnavailable, OSError):
+                    continue  # Do not claim a durable pause that was not saved.
             w.update(paused_until=float(now) + PAUSE_S, pause_why=cause[:300], touched=float(now))
             shown = "\u23F8 Paused %s (%s): %s" % (w["id"], w["goal"][:120], cause)
             log.append("work paused %s" % w["id"])
@@ -1025,7 +1061,8 @@ def goal_block(state, now):
                 "until GOAL REACHED: with proof, or GOAL UNREACHABLE: after %d routes." % MIN_ROUTES
                 + (("\nLast: %s (%s: %s)" % (last.get("goal", "")[:160], last.get("state"), last.get("closed_said", "")[:160]))
                    if last.get("goal") else ""))
-    serving = [w for w in open_items(state) if w.get("goal_id") == g["id"]]
+    serving = [w for w in open_items(state) if w.get("goal_id") == g["id"] and not evidence_waiting(w)]
+    retained = [w for w in open_items(state) if w.get("goal_id") == g["id"] and evidence_waiting(w)]
     tried = goal_routes(g)
     out = ["== THE ROOM'S CAMPAIGN (yours, across every model: it stays until it is reached or shown unreachable) ==",
            "%s: %s" % (g["id"], g["goal"]) + (" | done when: %s" % g["done_when"] if g.get("done_when") else ""),
@@ -1035,6 +1072,8 @@ def goal_block(state, now):
         out.append("Route tried (%s, %s): %s — %s" % (r["state"], _ago(r["at"], now), r["what"][:120], r["said"][:160]))
     if serving:
         out.append("In hand toward it: " + "; ".join("%s %s" % (w["id"], w["goal"][:100]) for w in serving))
+    elif retained:
+        out.append("The campaign retains a route set aside for evidence. It is not absent or spent. Advance other actionable work; do not duplicate the same missing-evidence route.")
     else:
         out.append("NOTHING IN HAND TOWARD IT. Open the next route now: WORK: ... for the goal | done when: ...")
     out.append("A hiccup is a route that failed, not the goal: a refusal, a missing install or a slow agent means take "
@@ -1059,12 +1098,15 @@ def _block(state, now):
         out.append("While one waits on an agent, take a step on another. Close each with WORK DONE RW-id: the proof "
                    "(a file, a link, an ID with its status, the result), or WORK DROPPED RW-id: why. Approved, asked "
                    "or handed on is not done.")
+        out.append("For an item naming an exact ModelJSONError diagnostic ID, AWAIT EVIDENCE RW-id: missing diagnostic files sets aside only that item. Only local diagnostic-file collection is supported. Other work and progress rules remain in force. Put every generated status span in <work-status id=\"RW-id\">status only</work-status>, or a separate WORK STATUS RW-id: line. Keep independently attributed content outside that span; do not emit free-form waiting-status paraphrases.")
     for w in items:
         out.append("")
         out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
                    + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
         out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
-        if paused(w, now):
+        if evidence_waiting(w):
+            out.append("SET ASIDE awaiting evidence: this item remains owned and unresolved. Do not repeat its unchanged gap or chase it; one daily local check is reserved separately. Answer direct owner status questions normally. Keep moving on other actionable work.")
+        elif paused(w, now):
             out.append("PAUSED for a cause: %s (due again %s)" % (w.get("pause_why", ""), _ago(now, w["paused_until"]).replace("ago", "from now")))
         elif not _waiting(w, now):
             out.append("DUE ITS NEXT STEP THIS MESSAGE (nothing is out with an agent for it).")
@@ -1087,6 +1129,14 @@ def _block(state, now):
 
 
 def _returns_and_asks(w, now):
+    if evidence_waiting(w):
+        out = ["Retained context for this set-aside item (not a request to chase it):"]
+        for ret in [r for r in w.get("returns", []) if not r.get("used")][-3:]:
+            out.append("- %s: %s" % (SOURCES.get(ret["from"], ret["from"]), ret["text"][:1500]))
+        for ask in w.get("asks", [])[-6:]:
+            if not ask.get("answered"):
+                out.append("- Asked %s: %s" % (AGENTS.get(ask["to"], ask["to"]), ask["what"][:200]))
+        return out
     out = []
     fresh = [r for r in w.get("returns", []) if not r.get("used")]
     if fresh:
@@ -1103,3 +1153,124 @@ def _returns_and_asks(w, now):
             (" — no answer yet. Do not ask again: take a different step, hand it to someone else, or WORK "
              "DROPPED: why.") if waited > ASK_PATIENCE_S else " — while it works, take a step on something else."))
     return out
+
+
+AWAIT = re.compile(r'^\s*AWAIT EVIDENCE\s+(RW-[0-9a-f]{8}):\s*(.{12,600})$', re.M)
+
+
+def evidence_waiting(work):
+    return work.get('state') == 'awaiting_evidence'
+
+
+def evidence_sync(state):
+    b = board(state)
+    for wid, saved in awaiting_evidence.store().safe_read().items():
+        work = next((w for w in b['open'] if w.get('id') == wid), None)
+        if saved['status'] == 'resolved':
+            # Ledger commit may precede a lost board save. Reconcile state only:
+            # never replay completion output or settlement side effects.
+            if work is not None:
+                closed=dict(work,state=saved['resolution'],closed_at=saved['resolved_at'],
+                            closed_said='Recovered durable evidence closure')
+                closed.pop('closure_error',None)
+                b['open']=[w for w in b['open'] if w.get('id')!=wid]
+                if not any(w.get('id')==wid for w in b.get('history',[])):
+                    b['history']=(b.get('history',[])+[closed])[-12:]
+                g=b.get('goal')
+                if g and work.get('goal_id')==g.get('id'):
+                    routes=g.setdefault('routes',[])
+                    if not any(r.get('work')==wid and r.get('state')==saved['resolution'] for r in routes):
+                        routes.append({'work':wid,'what':work.get('goal','')[:200],
+                                       'state':saved['resolution'],'said':closed['closed_said'],
+                                       'by':work.get('by',''),'at':saved['resolved_at']})
+                        g['routes']=routes[-20:]
+                    g['touched']=max(float(g.get('touched',0)),saved['resolved_at'])
+            continue
+        if saved['status'] == 'cancelled':
+            if work is None and not any(w.get('id') == wid for w in b.get('history', [])):
+                work = dict(saved['work']);b['open'].append(work)
+            if work is not None:
+                work['state'] = 'cancelled'
+                _close(state, work, 'cancelled', 'Verified owner cancellation', saved['cancelled_at'])
+            continue
+        if saved['status'] not in awaiting_evidence.ACTIVE: continue
+        if work is None:
+            work = dict(saved['work']);b['open'].append(work)
+        work['state'] = 'open' if saved['status'] == 'actionable' else 'awaiting_evidence'
+        work['paused_until'] = max(float(work.get('paused_until', 0)), saved['paused_until'])
+        if saved['paused_until']:
+            work['pause_why'] = 'Explicit evidence-item pause'
+        work['evidence_generation'] = saved['generation']
+        if saved['status'] == 'actionable':
+            work['next'] = 'Inspect the saved local diagnostic files; no rerun or outreach is authorized by their arrival.'
+            work['touched'] = max(float(work.get('touched', 0)), saved['evidence_at'])
+
+
+def evidence_incoming(state, text, now, *, work_id=None, provenance=None):
+    if isinstance(provenance, awaiting_evidence.DiagnosticReceipt) and provenance.work_id == work_id:
+        try: awaiting_evidence.store().accept(provenance, now)
+        except (awaiting_evidence.LedgerUnavailable, OSError): pass
+    evidence_sync(state)
+
+
+def evidence_action_hold(state, text):
+    named = set(_ID.findall(str(text)))
+    waits = [w['id'] for w in open_items(state) if evidence_waiting(w) and w['id'] in named]
+    return ' '.join(evidence_delivery.marker(wid) for wid in waits)
+
+
+def evidence_owner_control(state, request, now):
+    if request and request.get('kind') == 'cancel':
+        try: awaiting_evidence.store().owner(request, 'cancel', now)
+        except (awaiting_evidence.LedgerUnavailable, OSError): pass
+    evidence_sync(state)
+
+
+def evidence_arrivals(state, now):
+    """Trusted local files, never Slack prose; runs even during posting pauses."""
+    store=awaiting_evidence.store()
+    for wid in store.active():
+        try:
+            receipt=store.ingest_arrival(wid,now)
+            if receipt is not None:
+                came_back(state,'lab','Local diagnostic collector checked arriving registered files for '+wid,
+                          now,work_id=wid,provenance=receipt)
+        except (awaiting_evidence.LedgerUnavailable,OSError):pass
+    evidence_sync(state)
+
+
+def evidence_recheck(state, now, post, is_paused):
+    """Production local collector; its bound receipt enters the real return path."""
+    evidence_arrivals(state,now)
+    store = awaiting_evidence.store();log = []
+    for wid, saved in store.active().items():
+        if is_paused(): break
+        try:
+            receipt = store.collect(wid, now)
+            if receipt is None:
+                if saved['status']!='actionable':post(evidence_delivery.marker(wid))
+                continue
+            body = 'Local diagnostic collector checked the registered files for ' + wid
+            came_back(state, 'lab', body, now, work_id=wid, provenance=receipt)
+            if not is_paused(): post(evidence_delivery.marker(wid))
+            log.append('tracked local diagnostic check ' + wid)
+        except (awaiting_evidence.LedgerUnavailable, OSError) as exc:
+            log.append('local diagnostic handling unavailable for ' + wid)
+    evidence_sync(state)
+    return log
+
+
+def evidence_finish(wid, state_word, now, tracked=False):
+    try:
+        result=awaiting_evidence.store().finish(wid,state_word,now)
+        return 'tracked-closure-failed' if tracked and result=='untracked' else result
+    except (awaiting_evidence.LedgerUnavailable,OSError):
+        return 'tracked-closure-failed' if tracked else 'untracked'
+
+
+def evidence_paused_ids(state, now):
+    return {w['id'] for w in board(state)['open'] if 'evidence_generation' in w and paused(w,now)}
+
+
+def evidence_waiting_ids(state):
+    return {w['id'] for w in board(state)['open'] if evidence_waiting(w)}
