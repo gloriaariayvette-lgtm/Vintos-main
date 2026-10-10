@@ -22,7 +22,8 @@ def configured_sources():
 def query_plugin(plugin, tool, arguments, purpose):
     """Run one Lab-approved connected source and enter its result into Lab provenance."""
     request = {'plugin': plugin, 'tool': tool, 'arguments': arguments}
-    direct = lab.uniprot_from_plugin(request, purpose) or lab.pubmed_from_plugin(request)
+    direct = (lab.uniprot_from_plugin(request, purpose) or lab.pubmed_from_plugin(request)
+              or lab.chembl_from_plugin(request))
     if direct:
         return query(direct, question=purpose)
     from plugin_gateway import call, load_receipt

@@ -150,3 +150,74 @@ for bad in ({'query':'gene:SLC26A8','limit':False}, {'query':'gene:SLC26A8','unk
     else: raise AssertionError('invalid direct query accepted')
 assert net==[]
 print('PASS: actual string request and saved requests use direct PubMed with journal receipts; no relay')
+
+# Real public ChEMBL target rows captured on Aegis, 9 October. The failed
+# connector's exact target_name shape now uses the direct public source.
+fixture=json.loads((pathlib.Path(__file__).parent/'fixtures/lab_oct9_chembl_targets.json').read_text())
+chembl_calls=[]
+def chembl_fetch(url):
+    chembl_calls.append(url); assert '/target.json?' in url
+    return fixture, {}
+public=S.Sources(fetch=chembl_fetch,fetch_record=no_record)
+assert public.fetch is chembl_fetch
+with patch.object(PG,'call',side_effect=AssertionError('plugin relay forbidden')) as pg, \
+     patch.object(CG,'call',side_effect=AssertionError('Claude relay forbidden')) as cg, \
+     patch.object(CS,'configured_sources',return_value=public), \
+     patch.object(FB,'assess',return_value={'fixture':True}):
+    C._atomic(os.path.join(C.ROOT,'source-throttle.json'),{})
+    result=CS.query_plugin('chembl','chembl_search_targets',{'target_name':'Ferroportin','limit':2},'identify the target')
+    assert result['receipt']['records'][0]['target_chembl_id']=='CHEMBL3392948'
+    assert result['receipt']['metadata']['interpretation']=='target_metadata_not_binding_or_structural_evidence'
+    pg.assert_not_called(); cg.assert_not_called()
+assert 'target_synonym__icontains=Ferroportin' in chembl_calls[0]
+q=C._inquiry({'question':'Identify Ferroportin target', 'plugin_query':{'plugin':'chembl',
+    'tool':'chembl_search_targets','arguments':{'target_name':'Ferroportin'}}})
+assert q['source_query']['operation']=='search_targets' and not q['plugin_query']
+assert C._sourced_followup(q['source_query'],[])[1] is None
+from urllib.error import HTTPError
+def chembl_400(url): raise HTTPError(url,400,'bad',{},None)
+try:S.Sources(fetch=chembl_400).query({'source':'chembl','operation':'search_targets','term':'Ferroportin'})
+except RuntimeError as e:assert str(e)=='chembl_http_status_400'
+else:raise AssertionError('HTTP status lost')
+# Existing model route for the exact question, never a new fold or invented target.
+import lab_instruments as I
+assert str(I.LAB).startswith(HOME)
+C._append(C.NOTEBOOK, {'kind':'source_read','source':'UniProtKB REST',
+    'requested_query':'gene:SLC26A4 AND taxonomy_id:9606',
+    'records':[{'accession':'O43511','organism':'Homo sapiens'}]})
+model='artifacts/esmfold/O43511-60e20d840671.pdb'
+with patch.object(I,'artifacts',return_value=[model]), patch.object(I,'_runs_today',return_value={'runs':[]}):
+    read=C._existing_model_read(C._inquiry({'question':'What secondary structure does human SLC26A4 have over residues 535-729?',
+                                         'uniprot_query':'gene:SLC26A4'}))
+    assert read['instrument_query']['files']==[model] and read['instrument_query']['range']==[535,729]
+    assert read['instrument_resolution']['accession']=='O43511'
+    for question in ('What is the documented secondary structure of SLC26A4?',
+                     'What is the ligand binding pocket of SLC26A4?',
+                     'Compare secondary structure of O43511 and Q86SQ4'):
+        unchanged=C._existing_model_read(C._inquiry({'question':question,'uniprot_query':'gene:SLC26A4'}))
+        assert not unchanged.get('instrument_query')
+    explicit=C._inquiry({'question':'What secondary structure does O43511 have?',
+                        'source_query':{'source':'pdb','entry_id':'8SGW'}})
+    assert C._existing_model_read(explicit)==explicit
+# Invalid NCBI accession never becomes an accepted run, nor calls the provider.
+with patch.object(C,'_ground_inquiry',side_effect=AssertionError('must refuse before identity sender')):
+    bad={'question':'What is the context?', 'source_query':{'source':'ncbi_protein_context','accession':'P01136'}}
+    out,_=C._held_to_plan('s','t',bad,bad,None,None,R)
+    assert 'accession.version' in out['refused']
+assert net==[]
+print('PASS: live-shaped ChEMBL, existing model routing, invalid accession preflight; isolated')
+
+# Appending a version to a guessed UniProt ID does not establish provenance.
+path=os.path.join(C.ROOT,'source-receipts.jsonl')
+C._append(path, {'query':{'accession':'P01234.1'}, 'records':[]})
+with patch.object(C,'_ground_inquiry',side_effect=AssertionError('unsourced ID must refuse before sender')):
+    bad={'question':'Retrieve its context', 'source_query':{'source':'ncbi_protein_context','accession':'P01234.1'}}
+    out,_=C._held_to_plan('s','t',bad,bad,None,None,R)
+    assert 'not returned by a source receipt' in out['refused']
+C._append(path, {'records':[{'accession':'WP_123456789.1'}]})
+with patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}):
+    good={'question':'Retrieve its genomic context', 'source_query':{'source':'ncbi_protein_context','accession':'WP_123456789.1'}}
+    out,_=C._held_to_plan('s','t',good,good,None,None,R)
+    assert not out.get('refused'), out
+assert net==[]
+print('PASS: a guessed version cannot substitute for a returned accession; scratch receipt provenance')

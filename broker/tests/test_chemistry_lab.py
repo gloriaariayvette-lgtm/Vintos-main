@@ -180,6 +180,24 @@ failed_followup = M.tick()
 check("a failed follow-up on saturated records redirects before embedding or reflecting",
       failed_followup["kind"] == "source_unavailable" and failed_followup["next_phase"] == "orient"
       and M._jsonl(M.NOTEBOOK)[-1]["saturation_redirect"] is True)
+# The real Oct 9 failure also happened with fresh base metadata. Failed or
+# empty requested data must not turn that metadata into an answered review.
+M._atomic(M.STATE, {"phase":"sources", "turns":5,
+                    "records":[{"accession":"FRESH-ID", "sequence":"A"*80}],
+                    "inquiry":{"browse_lane":"protein", "source_query":{"source":"pdb","entry_id":"TEST"}}})
+fresh_failure = M.tick()
+check("a failed requested source cannot review unrelated fresh metadata",
+      fresh_failure["next_phase"] == "orient"
+      and M._jsonl(M.NOTEBOOK)[-1].get("requested_source_unanswered") is True
+      and "records" not in M._load(M.STATE,{}))
+sys.modules["chemistry_sources"] = types.SimpleNamespace(query=lambda *a, **k: {"receipt":{"records":[]}})
+M._atomic(M.STATE, {"phase":"sources", "turns":5,
+                    "records":[{"accession":"OTHER-FRESH-ID", "sequence":"A"*80}],
+                    "inquiry":{"browse_lane":"protein", "source_query":{"source":"pdb","entry_id":"TEST"}}})
+empty_request = M.tick()
+check("an empty requested source redirects before an unrelated protein review",
+      empty_request["next_phase"] == "orient"
+      and M._jsonl(M.NOTEBOOK)[-1].get("requested_source_unanswered") is True)
 sys.modules["chemistry_sources"] = types.SimpleNamespace(query=lambda *a, **k: {
     "receipt":{"receipt_id":"REC-NEW", "response_sha256":"a"*64, "records":[{"value":"new"}]}})
 M._atomic(M.STATE, {"phase":"sources", "turns":6, "records":[{"accession":"P99999", "sequence":"A"*80}],

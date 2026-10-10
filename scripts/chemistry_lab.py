@@ -1007,7 +1007,7 @@ def _sourced_followup(spec, records):
     source = str(spec.get("source") or "")
     if source == "pdb":
         value, field = str(spec.get("entry_id") or "").upper(), "pdb_ids"
-    elif source == "chembl":
+    elif source == "chembl" and spec.get('operation') != 'search_targets':
         value, field = str(spec.get("target_id") or "").upper(), "chembl_ids"
     else:
         return {"source": source, "kind": "non_identifier_followup"}, None
@@ -1206,11 +1206,11 @@ def _orient(context, lean=None):
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
     value = _json_object(_ask(system, task))
-    inquiry = _inquiry(value, lean)
+    inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     if spent["subjects"] and spent_retrieval(inquiry, spent):
         value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
-        inquiry = _inquiry(value, lean)
+        inquiry = _existing_model_read(_inquiry(value, lean))
     if lab_repeats:
         inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats, spent=spent)
     if atlas_turn:
@@ -1297,7 +1297,7 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
             "\n\nREFUSED: this cycle is a step on your frontier session's next question, and yours is not. Your "
             "question this cycle works this, about %s:\n%s\nChoose the source or instrument that advances it."
             % (", ".join(step["subjects"][:6]), step["next_question"]))))
-        inquiry = _inquiry(value, lean)
+        inquiry = _existing_model_read(_inquiry(value, lean))
         if not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
     def blocked(candidate):
@@ -1310,12 +1310,24 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
     if why:
         value = _json_object(_ask(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
                                   ". Choose a different question or a different source or instrument."))
-        inquiry = _inquiry(value, lean)
+        inquiry = _existing_model_read(_inquiry(value, lean))
         if step and not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
         why = blocked(inquiry)
         if why:
             return refuse("repeat: " + why)
+    sq = inquiry.get('source_query') or {}
+    if sq.get('source') in ('ncbi_protein_context', 'ncbi_neighborhood', 'ncbi_sequence', 'rt_locus_screen'):
+        from lab_sources import _ncbi_accession
+        try: accession = _ncbi_accession(sq.get('accession'))
+        except ValueError as exc: return refuse(str(exc))
+        # A version suffix is not provenance: P01234.1 was manufactured after
+        # an earlier unversioned UniProt accession failed. Only returned data
+        # can establish an identifier; a prior attempted query cannot.
+        returned = _tail_jsonl(os.path.join(ROOT, 'source-receipts.jsonl'), nbytes=8*1024*1024)
+        pattern = r'(?<![A-Za-z0-9_])' + re.escape(accession) + r'(?![A-Za-z0-9_.])'
+        if not any(re.search(pattern, json.dumps(row.get('records') or [])) for row in returned):
+            return refuse('NCBI accession not returned by a source receipt: ' + accession)
     identity = _ground_inquiry(inquiry)
     if identity['status'] != 'not_applicable':
         inquiry = dict(inquiry, identity_check=identity)
@@ -1383,6 +1395,57 @@ def uniprot_from_plugin(pq, purpose=""):
     return {"source": "uniprot", "query": human_scope(" AND ".join(terms)), "limit": 1 if "accession" in args else 4}
 
 
+def chembl_from_plugin(pq):
+    """The named read-only target search uses public ChEMBL without account OAuth."""
+    if not isinstance(pq, dict) or pq.get('plugin') != 'chembl' or pq.get('tool') != 'chembl_search_targets':
+        return None
+    args = pq.get('arguments') or {}
+    if not isinstance(args, dict) or set(args) - {'target_name', 'limit'}:
+        raise ValueError('unsupported ChEMBL target-search arguments')
+    from lab_sources import _plain_term, _bounded_limit
+    return {'source': 'chembl', 'operation': 'search_targets', 'term': _plain_term(args.get('target_name')),
+            'limit': _bounded_limit(args.get('limit'), 4)}
+
+
+def _existing_model_read(inquiry):
+    """Read the stored model for a geometry/confidence question, not its metadata again.
+
+    Identity comes from an explicit accession or an exact prior UniProt request
+    and its returned record. No name guess, new fold, or tool-schema inference.
+    """
+    question = str(inquiry.get('question') or '')
+    if inquiry.get('instrument_query') or inquiry.get('source_query') or inquiry.get('plugin_query'):
+        return inquiry
+    if not re.search(r'secondary.structure|helic(?:es|al)|helix|strands?|pLDDT|confidence|predicted.*topology', question, re.I):
+        return inquiry
+    if re.search(r'experimental|crystal|documented', question, re.I): return inquiry
+    from lab_repeats import _ACCESSION
+    accessions = set(_ACCESSION.findall(question))
+    if not accessions:
+        symbols = _human_question_symbols(question)
+        if len(symbols) != 1: return inquiry
+        for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
+            if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
+            if not re.search(r'\b(?:gene|protein_name):"?' + re.escape(symbols[0]) + r'(?:"|\b)',
+                             str(row.get('requested_query') or ''), re.I): continue
+            records = [r for r in row.get('records', []) if r.get('organism') == 'Homo sapiens']
+            if len(records) == 1 and records[0].get('accession'): accessions.add(records[0]['accession'])
+            break
+    if len(accessions) != 1: return inquiry
+    import lab_instruments
+    if len(lab_instruments._runs_today()['runs']) >= lab_instruments.DAILY_RUNS: return inquiry
+    accession = next(iter(accessions))
+    models = [f for f in lab_instruments.artifacts('structure', 50)
+              if f.startswith('artifacts/esmfold/' + accession + '-') and f.endswith('.pdb')]
+    if not models: return inquiry
+    match = re.search(r'\bresidues?\s+(\d+)\s*(?:-|–|to)\s*(\d+)\b', question, re.I)
+    span = [int(match[1]), int(match[2])] if match else [None, None]
+    return dict(inquiry, instrument_query={'skill': 'fold_read', 'operation': 'structure.read',
+                'files': [models[0]], 'range': span, 'question': question},
+                instrument_resolution={'accession': accession, 'model': models[0],
+                                       'reason': 'geometry_question_reads_existing_prediction'})
+
+
 def pubmed_from_plugin(pq):
     """Normalize the public search at both planning and execution boundaries."""
     if not isinstance(pq, dict) or pq.get('plugin') != 'pubmed' or pq.get('tool') not in ('search_articles', 'pubmed.search_articles'):
@@ -1412,7 +1475,7 @@ def _inquiry(value, lean=None):
         source_query = uniprot_from_plugin(value.get("plugin_query"), str(value.get("question") or ""))
         if source_query:
             value = dict(value, plugin_query=None)
-    direct = pubmed_from_plugin(value.get("plugin_query"))
+    direct = pubmed_from_plugin(value.get("plugin_query")) or chembl_from_plugin(value.get("plugin_query"))
     if not source_query and direct:
         source_query = direct
         value = dict(value, plugin_query=None)
@@ -2214,6 +2277,11 @@ def tick():
                         next_phase = 'orient'
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
+                explicit_result = (state.get('additional_source', {}).get('receipt') or
+                                   state.get('additional_source', {}).get('source_receipt') or {})
+                if not explicit_result.get('records'):
+                    next_phase = 'orient'
+                    note['requested_source_unanswered'] = True
                 if (next_phase == 'orient' and (inquiry.get('browse_lane') in _lanes or note.get('genome_question_unanswered'))
                         and not note.get('saturation_redirect')
                         and _gather_material(state, inquiry, fresh_only=True)):

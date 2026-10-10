@@ -102,6 +102,9 @@ src = lab_sources.Sources(fetch_record=phage_record)
 lab_phage_screen = lab_phage.screen
 lab_phage.screen = lambda sources, spec: lab_phage_screen(sources, spec, hmm=hmm_stub)
 r = src.query({"source": "rt_locus_screen", "accession": "WP_123456.1"})
+# The normal Chemistry source wrapper journals the returned receipt. This
+# direct fixture client must retain it too before a later planner names its ID.
+lab._append(os.path.join(lab.ROOT, "source-receipts.jsonl"), r)
 rec = r["records"][0]
 check("one query reads the protein, then its genome window", len(fetched) == 2 and "db=protein" in fetched[0] and "db=nuccore" in fetched[1])
 check("the window is placed by coded_by and kept within 12 kb", rec["coded_by"] == {"accession": "NC_099999.1", "start": 6001,

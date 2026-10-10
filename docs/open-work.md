@@ -3114,3 +3114,37 @@ route switch. No planner prompt text, model settings, journal history, or sealed
 content was changed. Production answer quality must still be measured after
 installation; blocking repeats alone is not proof that unanswered accumulation is
 resolved.
+
+
+### 2026-10-09 — Lab requested-data recovery and Atelier creation (Codex)
+
+After repeat-selection deployment, the next 57 minutes still contained 14
+unanswered reviews and no instrument use. Repeat rejection alone had not repaired
+useful work. Public ChEMBL target searches now bypass expired account OAuth at
+both planning and saved-request execution. Invalid or unsourced NCBI accessions are
+refused before an accepted run; adding a version suffix to a guessed identifier
+does not count as a returned record. Failed or empty explicit source requests return
+to orientation rather than reviewing unrelated fresh protein metadata.
+Geometry/confidence questions with one sourced accession and an existing ESMFold
+artifact can read that model with the existing local fold_read instrument; explicit
+source choices and experimental-structure questions are preserved. This does not
+claim that a predicted model answers an experimental question.
+
+The Atelier's worktable was lit, but its scheduled doorkeeper declined the visit;
+the alleged RETURN record was actually stale from September 23. Gloria's explicit
+request to fix it was carried through the existing enter command. On October 9
+at 22:07:35 it saved one real 2,650-byte artifact (SHA256
+`a16065de1b872fcf7dbf53807effc372eb8db230c9a93feab0387aeb59189378`).
+Only the manifest was checked, not sealed content. This proves that creation
+worked in that visit; continued autonomous daily creation is not yet established.
+
+Planner prompts, model settings and sealed content were not changed. Sustained
+Lab answer quality and future Atelier visits still need live observation.
+
+Live read-only candidate proof on Aegis returned ChEMBL human Ferroportin
+`CHEMBL3392948` and mouse Ferroportin `CHEMBL4523462`. The existing Pendrin
+model `O43511-60e20d840671.pdb` was read over residues 535–729: 83 helix,
+43 strand, 69 neither, mean pLDDT 83.3. These are geometric measurements of
+a prediction, not experimental structural evidence. Probe receipt
+`3a506fbf6275a694c32eb657d6f50564a753253e7525e6507346839f149f3308`
+identifies the bounded ChEMBL return.
