@@ -60,6 +60,14 @@ def _genome_id(value):
     return value
 
 
+def normalize_source_spec(spec):
+    """Canonical source names at planning and execution, including saved requests."""
+    if not isinstance(spec, dict): raise ValueError('source spec must be an object')
+    if spec.get('source') == 'ncbi_rt_locus_screen':
+        return dict(spec, source='rt_locus_screen')
+    return dict(spec)
+
+
 def _ncbi_accession(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Z]{1,6}_?[A-Z0-9]{3,15}\.[1-9][0-9]*', value):
         raise ValueError('exact sourced NCBI accession.version required')
@@ -306,6 +314,36 @@ def pdb_structure_evidence(text, identifier, entry):
             if .1 < d <= 3.2:
                 neighbors.append(dict(atom,distance_angstroms=round(d,3)))
         sites.append(dict(metal,nearby_atoms=sorted(neighbors,key=lambda a:a['distance_angstroms'])[:24]))
+    # C-alpha proximity is computable from coordinates; it is not a membrane
+    # topology assignment, aligned residue map, or a claim of biological assembly.
+    ca = [a for a in atoms if a['record']=='ATOM' and a['atom']=='CA']
+    grid = {}; contacts = {}; chains = {}
+    for atom in ca:
+        chain=atom['chain']; xyz=atom['coordinates_angstroms']
+        chains.setdefault(chain, []).append(atom)
+        cell=tuple(int(x//8) for x in xyz)
+        for dx in (-1,0,1):
+            for dy in (-1,0,1):
+                for dz in (-1,0,1):
+                    for other in grid.get((cell[0]+dx,cell[1]+dy,cell[2]+dz), []):
+                        if other['chain']==chain: continue
+                        distance=sum((a-b)**2 for a,b in zip(xyz,other['coordinates_angstroms']))**.5
+                        if distance > 8: continue
+                        pair=tuple(sorted((chain,other['chain'])))
+                        info=contacts.setdefault(pair, {'chains':list(pair),'ca_pair_count':0,'closest_pairs':[]})
+                        info['ca_pair_count']+=1
+                        info['closest_pairs'].append({'chain_1':chain,'residue_1':atom['residue_number'],
+                            'chain_2':other['chain'],'residue_2':other['residue_number'],
+                            'ca_distance_angstroms':round(distance,3)})
+                        info['closest_pairs']=sorted(info['closest_pairs'],key=lambda x:x['ca_distance_angstroms'])[:8]
+        grid.setdefault(cell,[]).append(atom)
+    geometry={'method':'first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; '
+                      'not proof of biological interfaces or membrane orientation',
+              'chains':[{'chain':name,'observed_residues':len(rows),
+                         'author_residue_min':min(x['residue_number'] for x in rows),
+                         'author_residue_max':max(x['residue_number'] for x in rows)}
+                         for name,rows in list(chains.items())[:16]],
+              'inter_chain_contacts':sorted(contacts.values(), key=lambda x:-x['ca_pair_count'])[:8]}
     citation=entry.get('rcsb_primary_citation') or {}
     return {'entry_id':identifier,'title':(entry.get('struct') or {}).get('title'),
             'experimental_methods':[x.get('method') for x in entry.get('exptl',[])],
@@ -314,7 +352,14 @@ def pdb_structure_evidence(text, identifier, entry):
             'numbering':'PDB author residue numbering; not asserted to match UniProt',
             'interpretation':'deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, '
                              'not a claim of chemical bonds or biological activity',
-            'metal_sites':sites,'occupied_atom_count':len(atoms),
+            'metal_sites':sites,'occupied_atom_count':len(atoms),'geometry':geometry,
+            'secondary_structure_coverage':{
+                'helix_records_in_file':sum(x.startswith('HELIX ') for x in lines),
+                'sheet_records_in_file':sum(x.startswith('SHEET ') for x in lines),
+                'shown_records':min(40,sum(x.startswith(('HELIX ','SHEET ')) for x in lines)),
+                'definition':'HELIX describes an alpha-helical secondary-structure segment, not a transmembrane '
+                    'assignment. Counts across deposited chains and a bounded excerpt must not be compared '
+                    'as though they were the number of membrane-spanning helices in one protein.'},
             'secondary_structure_records':[x for x in lines if x.startswith(('HELIX ','SHEET '))][:40]}
 
 
@@ -441,6 +486,16 @@ class Sources:
     def _abstracts(self, spec):
         """Published abstracts for what he is asking: the reading itself, not a list of titles. All his
         terms first; if nothing matches, the last term is dropped, down to two."""
+        requested_pmids = spec.get('pmids')
+        if requested_pmids is not None:
+            if (not isinstance(requested_pmids, list) or not 1 <= len(requested_pmids) <= 6
+                    or any(not re.fullmatch(r'[1-9][0-9]{0,19}', str(x)) for x in requested_pmids)):
+                raise ValueError('one to six exact PubMed IDs required')
+            if type(spec.get('include_full_text',False)) is not bool: raise ValueError('include_full_text must be boolean')
+            return self._pubmed_records(list(dict.fromkeys(map(str, requested_pmids))),
+                                        {'source':'pubmed_abstracts', 'pmids':requested_pmids,
+                                         'include_full_text':spec.get('include_full_text',False)},
+                                        'exact_sourced_citations')
         raw = spec.get('terms')
         if raw is None:
             phrase = spec.get('term') or spec.get('query')
@@ -475,26 +530,59 @@ class Sources:
             if any(not re.fullmatch(r'[0-9]{1,20}', str(x)) for x in ids):
                 raise ValueError('NCBI returned invalid identifiers')
             if ids: break
+        return self._pubmed_records(ids[:limit], {'source':'pubmed_abstracts', 'terms':terms,
+                    'terms_matched':used, 'limit':limit}, 'first_%d_by_relevance' % limit)
+
+    def _pubmed_records(self, ids, query, coverage):
         records = []
         if ids:
             xml = self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
-                'db': 'pubmed', 'id': ','.join(map(str, ids[:limit])), 'rettype': 'abstract', 'retmode': 'xml',
+                'db': 'pubmed', 'id': ','.join(map(str, ids[:6])), 'rettype': 'abstract', 'retmode': 'xml',
                 'tool': 'vintos_lab'}))
             try: root = ET.fromstring(xml)
             except ET.ParseError as exc: raise ValueError('PubMed returned malformed XML') from exc
-            for article in root.findall('.//PubmedArticle')[:limit]:
+            for article in root.findall('.//PubmedArticle')[:query.get('limit',6)]:
                 abstract = ' '.join(''.join(node.itertext()).strip() for node in article.findall('.//Abstract/AbstractText'))
                 records.append({'pmid': article.findtext('.//PMID') or '',
                                 'title': ''.join((article.find('.//ArticleTitle') if article.find('.//ArticleTitle') is not None else ET.Element('x')).itertext())[:300],
                                 'journal': (article.findtext('.//Journal/Title') or '')[:160],
                                 'year': article.findtext('.//JournalIssue/PubDate/Year') or '',
-                                'abstract': abstract[:1800]})
-        return receipt('pubmed_abstracts', {'source': 'pubmed_abstracts', 'terms': terms, 'terms_matched': used,
-                                            'limit': limit}, records,
-                       metadata={'service': 'NCBI_PubMed', 'coverage': 'first_%d_by_relevance' % limit,
-                                 'interpretation': "published abstracts: the authors' claims, not verified here"})
+                                'abstract': abstract[:6000]})
+                pmcid = article.findtext(".//ArticleId[@IdType='pmc']")
+                if query.get('include_full_text') and pmcid and re.fullmatch(r'PMC[1-9][0-9]{0,12}', pmcid):
+                    try:
+                        full = self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
+                            'db':'pmc','id':pmcid[3:],'retmode':'xml','tool':'vintos_lab'}))
+                        parsed = ET.fromstring(full)
+                        actual = (parsed.findtext(".//article-id[@pub-id-type='pmcid']") or
+                                  parsed.findtext(".//article-id[@pub-id-type='pmc']") or '')
+                        if actual.removeprefix('PMC') != pmcid[3:]:
+                            raise ValueError('PMC returned an unrequested article')
+                        paragraphs = [' '.join(' '.join(p.itertext()).split()) for p in parsed.findall('.//body//p')]
+                        terms = r'topolog|membrane.spanning|transmembrane|domain.swapped|bilobed|Venus|interface|globular|scaffold|α14'
+                        chosen = sorted([(len(re.findall(terms,p,re.I)),i,p) for i,p in enumerate(paragraphs)
+                                         if len(p)<=6000 and re.search(terms,p,re.I)
+                                         and not re.search(r'\b(?:incubat|purif|buffer|centrifug|protocol)',p,re.I)], reverse=True)
+                        excerpts=[];used=0
+                        for score,index,paragraph in chosen:
+                            if used+len(paragraph)>6000: continue
+                            excerpts.append(paragraph);used+=len(paragraph)
+                            if len(excerpts)>=4: break
+                        records[-1].update(pmcid=pmcid, full_text_excerpt=excerpts,
+                            full_text_coverage='bounded_whole_structural_paragraphs_from_public_PMC; not_the_whole_paper')
+                    except HTTPError as exc:
+                        records[-1]['full_text_status']='pmc_http_status_%d' % exc.code
+                    except (ET.ParseError,ValueError) as exc:
+                        records[-1]['full_text_status']='pmc_record_unavailable: '+str(exc)[:120]
+
+        if 'pmids' in query and {r['pmid'] for r in records} - set(map(str, query['pmids'])):
+            raise ValueError('PubMed returned an unrequested citation')
+        return receipt('pubmed_abstracts', query, records, metadata={
+            'service':'NCBI_PubMed', 'coverage':coverage,
+            'interpretation':"published abstracts: the authors' claims, not verified here"})
 
     def query(self, spec):
+        spec = normalize_source_spec(spec)
         if not isinstance(spec, dict): raise ValueError('source query must be an object')
         source = spec.get('source')
         if source == 'uniprot':
@@ -504,7 +592,7 @@ class Sources:
             def search(value):
                 return self.fetch('https://rest.uniprot.org/uniprotkb/search?' + urlencode(
                     {'query': value, 'format': 'json', 'size': limit,
-                     'fields': 'accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function'}))
+                     'fields': 'accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function,ft_domain,ft_transmem,ft_topo_dom'}))
             relaxed, rejected = None, None
             try:
                 data, headers = search(query)

@@ -1,0 +1,1655 @@
+[
+  {
+    "inquiry": {
+      "browse_lane": "protein",
+      "instrument_query": null,
+      "material_terms": [
+        "calcium sensing receptor",
+        "CASR",
+        "Venus Flytrap domain",
+        "extracellular domain",
+        "calcium sensing"
+      ],
+      "plugin_query": null,
+      "question": "What is the structural organization of the human calcium-sensing receptor (CASR), specifically the extracellular Venus Flytrap (VFT) domain and its role in ligand binding?",
+      "source_query": {
+        "entry_id": "5FBH",
+        "operation": "structure_evidence",
+        "source": "pdb"
+      },
+      "structure_resolution": {
+        "accession": "P41180",
+        "entry_id": "5FBH",
+        "reason": "structural_question_reads_sourced_deposited_entry"
+      },
+      "uniprot_query": "protein_name:\"calcium sensing receptor\" AND reviewed:true AND taxonomy_id:9606",
+      "why_now": "The previous threads on pendrin (SLC26A4) and GSDM4 are exhausted and spent. I need a fresh, structurally complex human GPCR-related target to explore. CASR is a classic example of a multi-domain receptor with distinct structural features (VFT, CR, and CT) that provides a rich landscape for structural analysis and ligand interaction modeling, moving away from the 'spent' SLC family."
+    },
+    "before": {
+      "records": [
+        {
+          "accession": "P41180",
+          "id": "CASR_HUMAN",
+          "protein_name": "Extracellular calcium-sensing receptor",
+          "organism": "Homo sapiens",
+          "length": 1078,
+          "function": "G protein-coupled receptor that senses changes in the extracellular concentration of calcium ions and plays a key role in maintaining calcium homeostasis (PubMed:17555508, PubMed:19789209, PubMed:21566075, PubMed:22114145, PubMed:22789683, PubMed:23966241, PubMed:25104082, PubMed:25292184, PubMed:25766501, PubMed:26386835, PubMed:32817431, PubMed:33603117, PubMed:34194040, PubMed:34467854, PubMed:7759551, PubMed:8636323, PubMed:8702647, PubMed:8878438). Senses fluctuations in the circulating calcium concentration: activated by elevated circulating calcium, leading to decreased parathyroid hormone (PTH) secretion in parathyroid glands (By similarity). In kidneys, acts as a key regulator of renal tubular calcium resorption (By similarity). Ligand binding causes a conformation change that triggers signaling via guanine nucleotide-binding proteins (G proteins) and modulates the activity of downstream effectors (PubMed:38632411). CASR is coupled with different G(q)/G(11), G(i)/G(o)- or G(s)-classes of G proteins depending on the context (PubMed:38632411). In the parathyroid and kidney, CASR signals through G(q)/G(11) and G(i)/G(o) G proteins: G(q)/G(11) coupling activates phospholipase ",
+          "domains": [],
+          "pdb_ids": [
+            "5FBH",
+            "5FBK",
+            "5K5S",
+            "5K5T",
+            "7DTT",
+            "7DTU",
+            "7DTV",
+            "7DTW"
+          ],
+          "chembl_ids": [
+            "CHEMBL1878"
+          ],
+          "sequence": "MAFYSCCWVLLALTWHTSAYGPDQRAQKKGDIILGGLFPIHFGVAAKDQDLKSRPESVECIRYNFRGFRWLQAMIFAIEEINSSPALLPNLTLGYRIFDTCNTVSKALEATLSFVAQNKIDSLNLDEFCNCSEHIPSTIAVVGATGSGVSTAVANLLGLFYIPQVSYASSSRLLSNKNQFKSFLRTIPNDEHQATAMADIIEYFRWNWVGTIAADDDYGRPGIEKFREEAEERDICIDFSELISQYSDEEEIQHVVEVIQNSTAKVIVVFSSGPDLEPLIKEIVRRNITGKIWLASEAWASSSLIAMPQYFHVVGGTIGFALKAGQIPGFREFLKKVHPRKSVHNGFAKEFWEETFNCHLQEGAKGPLPVDTFLRGHEESGDRFSNSSTAFRPLCTGDENISSVETPYIDYTHLRISYNVYLAVYSIAHALQDIYTCLPGRGLFTNGSCADIKKVEAWQVLKHLRHLNFTNNMGEQVTFDECGDLVGNYSIINWHLSPEDGSIVFKEVGYYNVYAKKGERLFINEEKILWSGFSREVPFSNCSRDCLAGTRKGIIEGEPTCCFECVECPDGEYSDETDASACNKCPDDFWSNENHTSCIAKEIEFLSWTEPFGIALTLFAVLGIFLTAFVLGVFIKFRNTPIVKATNRELSYLLLFSLLCCFSSSLFFIGEPQDWTCRLRQPAFGISFVLCISCILVKTNRVLLVFEAKIPTSFHRKWWGLNLQFLLVFLCTFMQIVICVIWLYTAPPSSYRNQELEDEIIFITCHEGSLMALGFLIGYTCLLAAICFFFAFKSRKLPENFNEAKFITFSMLIFFIVWISFIPAYASTYGKFVSAVEVIAILAASFGLLACIFFNKIYIILFKPSRNTIEEVRCSTAAHAFKVAARATLRRSNVSRKRSSSLGGSTGSTPSSSISSKSNSEDPFPQPERQKQQQPLALTQQEQQQQPLTLPQQQRSQQQPRCKQKVIFGSGTVTFSLSFDEPQKNAMAHRNSTHQNSLEAQKSSDTLTRHEPLLPLQCGETDLDLTVQETGLQGPVGGDQRPEVEDPEELSPALVVSSSQSFVISGGGSTVTENVVNS"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked",
+            "coordinate_url": "https://files.rcsb.org/download/5FBH.pdb",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "evidence": "experimental_structure"
+          },
+          "novelty": "not_established",
+          "query": {
+            "entry_id": "5FBH",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "3ab510bba1cb83f057b640f29018126de56d64b0e8cf3ef7ddd72288ebb36e40",
+          "records": [
+            {
+              "entry_id": "5FBH",
+              "experimental_methods": [
+                "X-RAY DIFFRACTION"
+              ],
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [
+                {
+                  "atom": "MG",
+                  "chain": "B",
+                  "coordinates_angstroms": [
+                    -49.912,
+                    -38.09,
+                    30.824
+                  ],
+                  "element": "MG",
+                  "insertion_code": "",
+                  "nearby_atoms": [
+                    {
+                      "atom": "OG",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -50.246,
+                        -36.53,
+                        32.591
+                      ],
+                      "distance_angstroms": 2.381,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "SER",
+                      "residue_number": 240
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -52.404,
+                        -38.317,
+                        31.255
+                      ],
+                      "distance_angstroms": 2.539,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "HETATM",
+                      "residue": "HOH",
+                      "residue_number": 706
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -51.139,
+                        -35.899,
+                        30.262
+                      ],
+                      "distance_angstroms": 2.573,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "SER",
+                      "residue_number": 240
+                    }
+                  ],
+                  "record": "HETATM",
+                  "residue": "MG",
+                  "residue_number": 602
+                },
+                {
+                  "atom": "MG",
+                  "chain": "B",
+                  "coordinates_angstroms": [
+                    -9.937,
+                    -5.72,
+                    26.937
+                  ],
+                  "element": "MG",
+                  "insertion_code": "",
+                  "nearby_atoms": [
+                    {
+                      "atom": "O",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -7.522,
+                        -6.136,
+                        27.826
+                      ],
+                      "distance_angstroms": 2.607,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "LEU",
+                      "residue_number": 88
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -12.428,
+                        -4.623,
+                        27.529
+                      ],
+                      "distance_angstroms": 2.785,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "ILE",
+                      "residue_number": 81
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "B",
+                      "coordinates_angstroms": [
+                        -9.454,
+                        -5.519,
+                        29.81
+                      ],
+                      "distance_angstroms": 2.92,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "LEU",
+                      "residue_number": 87
+                    }
+                  ],
+                  "record": "HETATM",
+                  "residue": "MG",
+                  "residue_number": 603
+                },
+                {
+                  "atom": "MG",
+                  "chain": "A",
+                  "coordinates_angstroms": [
+                    -21.766,
+                    -60.37,
+                    -1.936
+                  ],
+                  "element": "MG",
+                  "insertion_code": "",
+                  "nearby_atoms": [
+                    {
+                      "atom": "O",
+                      "chain": "A",
+                      "coordinates_angstroms": [
+                        -22.39,
+                        -61.188,
+                        0.366
+                      ],
+                      "distance_angstroms": 2.521,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "ILE",
+                      "residue_number": 81
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "A",
+                      "coordinates_angstroms": [
+                        -24.199,
+                        -60.019,
+                        -2.516
+                      ],
+                      "distance_angstroms": 2.526,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "LEU",
+                      "residue_number": 87
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "A",
+                      "coordinates_angstroms": [
+                        -22.221,
+                        -58.641,
+                        -3.916
+                      ],
+                      "distance_angstroms": 2.668,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "LEU",
+                      "residue_number": 88
+                    },
+                    {
+                      "atom": "O",
+                      "chain": "A",
+                      "coordinates_angstroms": [
+                        -22.502,
+                        -62.981,
+                        -2.412
+                      ],
+                      "distance_angstroms": 2.754,
+                      "element": "O",
+                      "insertion_code": "",
+                      "record": "ATOM",
+                      "residue": "SER",
+                      "residue_number": 84
+                    }
+                  ],
+                  "record": "HETATM",
+                  "residue": "MG",
+                  "residue_number": 602
+                }
+              ],
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "occupied_atom_count": 7394,
+              "primary_citation": {
+                "pdbx_database_id_DOI": "10.1126/sciadv.1600241",
+                "pdbx_database_id_PubMed": 27386547,
+                "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist."
+              },
+              "resolution_angstroms": [
+                2.7
+              ],
+              "secondary_structure_records": [
+                "HELIX    1 AA1 ASN B   64  SER B   84  1                                  21    ",
+                "HELIX    2 AA2 THR B  103  VAL B  115  1                                  13    ",
+                "HELIX    3 AA3 VAL B  115  ASP B  121  1                                   7    ",
+                "HELIX    4 AA4 GLY B  146  GLY B  158  1                                  13    ",
+                "HELIX    5 AA5 LEU B  159  TYR B  161  5                                   3    ",
+                "HELIX    6 AA6 SER B  171  ASN B  176  5                                   6    ",
+                "HELIX    7 AA7 ASN B  189  PHE B  204  1                                  16    ",
+                "HELIX    8 AA8 TYR B  218  ARG B  233  1                                  16    ",
+                "HELIX    9 AA9 ASP B  248  ASN B  261  1                                  14    ",
+                "HELIX   10 AB1 SER B  272  ARG B  286  1                                  15    ",
+                "HELIX   11 AB2 MET B  307  GLN B  309  5                                   3    ",
+                "HELIX   12 AB3 TYR B  310  GLY B  315  1                                   6    ",
+                "HELIX   13 AB4 GLY B  329  LYS B  335  1                                   7    ",
+                "HELIX   14 AB5 PHE B  347  ASN B  357  1                                  11    ",
+                "HELIX   15 AB6 ASN B  400  VAL B  404  5                                   5    ",
+                "HELIX   16 AB7 ARG B  415  THR B  436  1                                  22    ",
+                "HELIX   17 AB8 PHE B  444  SER B  448  5                                   5    ",
+                "HELIX   18 AB9 ASP B  451  VAL B  455  5                                   5    ",
+                "HELIX   19 AC1 GLU B  456  LEU B  467  1                                  12    ",
+                "HELIX   20 AC2 GLU B  525  ILE B  528  5                                   4    ",
+                "HELIX   21 AC3 ASN A   64  SER A   84  1                                  21    ",
+                "HELIX   22 AC4 THR A  103  VAL A  115  1                                  13    ",
+                "HELIX   23 AC5 VAL A  115  ASP A  121  1                                   7    ",
+                "HELIX   24 AC6 GLY A  146  PHE A  160  1                                  15    ",
+                "HELIX   25 AC7 SER A  171  ASN A  176  5                                   6    ",
+                "HELIX   26 AC8 ASP A  190  PHE A  204  1                                  15    ",
+                "HELIX   27 AC9 TYR A  218  ARG A  233  1                                  16    ",
+                "HELIX   28 AD1 ASP A  248  ASN A  261  1                                  14    ",
+                "HELIX   29 AD2 SER A  272  ARG A  286  1                                  15    ",
+                "HELIX   30 AD3 SER A  296  SER A  301  1                                   6    ",
+                "HELIX   31 AD4 MET A  307  GLN A  309  5                                   3    ",
+                "HELIX   32 AD5 TYR A  310  GLY A  315  1                                   6    ",
+                "HELIX   33 AD6 GLY A  329  LYS A  336  1                                   8    ",
+                "HELIX   34 AD7 PHE A  347  ASN A  357  1                                  11    ",
+                "HELIX   35 AD8 ASN A  400  VAL A  404  5                                   5    ",
+                "HELIX   36 AD9 ARG A  415  THR A  436  1                                  22    ",
+                "HELIX   37 AE1 PHE A  444  SER A  448  5                                   5    ",
+                "HELIX   38 AE2 GLU A  456  LEU A  467  1                                  12    ",
+                "HELIX   39 AE3 GLU A  525  ILE A  528  5                                   4    ",
+                "SHEET    1 AA1 6 ALA B  26  LYS B  28  0                                        "
+              ],
+              "title": "Crystal structure of the extracellular domain of human calcium sensing receptor with bound Gd3+"
+            }
+          ],
+          "response_sha256": "497266a6f1960960e44fd8c28e00e5c495f9933b9feeddee3e9daf97816ccb6d",
+          "retrieved_at": "2026-10-10T04:08:42.609170+00:00",
+          "source": "pdb",
+          "truth_status": "source_observation_not_validation"
+        }
+      },
+      "LITERATURE": [
+        {
+          "abstract": "The calcium-sensing receptor (CaSR) is a G protein-coupled receptor encoded by a single copy gene. The human CASR gene spans ~103-kb and has eight exons. Promoters P1 and P2 drive transcription of exons 1A and 1B, respectively, encoding alternative 5'-UTRs that splice to exon 2 encoding the common part of the 5'-UTR. Exons 2-7 encode the CaSR protein of 1078 amino acids. Functional elements responsive to 1,25-dihydroxyvitamin D, proinflammatory cytokines, and glial cells missing-2 are present in the CASR promoters. Evolutionarily, the exon structure, first seen in aquatic vertebrates, is well-conserved with a single linkage disequilibrium haplotype block for protein coding exons 2-7. Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa).",
+          "journal": "Best practice & research. Clinical endocrinology & metabolism",
+          "pmid": "23856260",
+          "title": "The CASR gene: alternative splicing and transcriptional control, and calcium-sensing receptor (CaSR) protein: structure and ligand binding sites.",
+          "year": "2013"
+        },
+        {
+          "abstract": "Ca2+-sensing receptors (CaSRs) play a central role in regulating extracellular calcium concentration ([Ca2+]o) homeostasis and many (patho)physiological processes in multiple organs. This regulation is orchestrated by a cooperative response to extracellular stimuli such as small changes in Ca2+, Mg2+, amino acids, and other ligands. In addition, CaSR is a pleiotropic receptor regulating several intracellular signaling pathways, including calcium mobilization and intracellular calcium oscillation. Nearly 200 mutations and polymorphisms have been found in CaSR in relation to a variety of human disorders associated with abnormal Ca2+ homeostasis. In this review, we summarize efforts directed at identifying binding sites for calcium and amino acids. Both homotropic cooperativity among multiple calcium binding sites and heterotropic cooperativity between calcium and amino acid were revealed using computational modeling, predictions, and site-directed mutagenesis coupled with functional assays. The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor. We further highlight the extensive number of disease-associated mutations that have also been shown to affect CaSR's cooperative action via several types of mechanisms. These results provide insights into the molecular bases of the structure and functional cooperativity of this receptor and other members of family C of the G protein-coupled receptors (cGPCRs) in health and disease states, and may assist in the prospective development of novel receptor-based therapeutics.",
+          "journal": "Frontiers in physiology",
+          "pmid": "27746744",
+          "title": "Molecular Basis of the Extracellular Ligands Mediated Signaling by the Calcium Sensing Receptor.",
+          "year": "2016"
+        },
+        {
+          "abstract": "The calcium-sensing receptor (CaSR) is a Family C G protein-coupled receptor (GPCR) that functions as a principal sensor of extracellular calcium ions ([Ca2+]o) and a broad-spectrum integrator of polyanionic, amino acid, and ionic stimuli. Its structural architecture - encompassing a bilobed Venus flytrap domain (VFT), cysteine-rich domain (CRD), heptahelical transmembrane domain (TMD), and an intrinsically disordered intracellular C-terminal tail - enables a remarkable allosteric landscape that goes far beyond simple on/off switching. CaSR operates as an obligate homodimer stabilized by intermolecular disulfide bonds and is embedded in macromolecular signaling complexes involving Gαq/11, Gαi, Gα12/13, β-arrestins, filamin A, and a growing proteome of scaffold and regulatory proteins. In the context of chronic kidney disease (CKD), CaSR is positioned at the intersection of mineral homeostasis and immune biology - a field increasingly recognized as osteoimmunology - where dysregulated receptor signaling drives secondary hyperparathyroidism, vascular calcification, inflammasome activation in immune cells, and osteoclast-osteoblast coupling defects. This review synthesizes current knowledge of CaSR molecular pharmacology, its structural determinants of ligand recognition, the mechanobiology of transmembrane signal propagation, and its roles in coordinating bone, immune, parathyroid, and renal cell biology within the pathological milieu of CKD. Therapeutic implications, including calcimimetics, calcilytics, and structure-guided drug design, are discussed in the context of restoring CaSR signalome homeostasis.",
+          "journal": "European journal of pharmacology",
+          "pmid": "42731651",
+          "title": "The calcium-sensing receptor in chronic kidney disease-mineral and bone disorder: Structural biology, biased signaling, osteoimmune crosstalk, and therapeutic implications.",
+          "year": "2026"
+        },
+        {
+          "abstract": "The human calcium-sensing receptor (CaSR) is a class C G protein-coupled receptor (GPCR) responsible for maintaining Ca2+ homeostasis in the blood. The general consensus is that extracellular Ca2+ is the principal agonist of CaSR. Aliphatic and aromatic L-amino acids, such as L-Phe and L-Trp, increase the sensitivity of CaSR towards Ca2+ and are considered allosteric activators. Crystal structures of the extracellular domain (ECD) of CaSR dimer have demonstrated Ca2+ and L-Trp binding sites and conformational changes of the ECD upon Ca2+/L-Trp binding. However, it remains to be understood at the structural level how Ca2+/L-Trp binding to the ECD leads to conformational changes in transmembrane domains (TMDs) and consequent CaSR activation. Here, we determined the structures of full-length human CaSR in the inactive state, Ca2+- or L-Trp-bound states, and Ca2+/L-Trp-bound active state using single-particle cryo-electron microscopy. Structural studies demonstrate that L-Trp binding induces the closure of the Venus flytrap (VFT) domain of CaSR, bringing the receptor into an intermediate active state. Ca2+ binding relays the conformational changes from the VFT domains to the TMDs, consequently inducing close contact between the two TMDs of dimeric CaSR, activating the receptor. Importantly, our structural and functional studies reveal that Ca2+ ions and L-Trp activate CaSR cooperatively. Amino acids are not able to activate CaSR alone, but can promote the receptor activation in the presence of Ca2+. Our data provide complementary insights into the activation of class C GPCRs and may aid in the development of novel drugs targeting CaSR.",
+          "journal": "Cell research",
+          "pmid": "33603117",
+          "title": "Structural mechanism of cooperative activation of the human calcium-sensing receptor by Ca2+ ions and L-tryptophan.",
+          "year": "2021"
+        }
+      ]
+    },
+    "after": {
+      "records": [
+        {
+          "accession": "P41180",
+          "id": "CASR_HUMAN",
+          "protein_name": "Extracellular calcium-sensing receptor",
+          "organism": "Homo sapiens",
+          "length": 1078,
+          "function": "G protein-coupled receptor that senses changes in the extracellular concentration of calcium ions and plays a key role in maintaining calcium homeostasis (PubMed:17555508, PubMed:19789209, PubMed:21566075, PubMed:22114145, PubMed:22789683, PubMed:23966241, PubMed:25104082, PubMed:25292184, PubMed:25766501, PubMed:26386835, PubMed:32817431, PubMed:33603117, PubMed:34194040, PubMed:34467854, PubMed:7759551, PubMed:8636323, PubMed:8702647, PubMed:8878438). Senses fluctuations in the circulating calcium concentration: activated by elevated circulating calcium, leading to decreased parathyroid hormone (PTH) secretion in parathyroid glands (By similarity). In kidneys, acts as a key regulator of renal tubular calcium resorption (By similarity). Ligand binding causes a conformation change that triggers signaling via guanine nucleotide-binding proteins (G proteins) and modulates the activity of downstream effectors (PubMed:38632411). CASR is coupled with different G(q)/G(11), G(i)/G(o)- or G(s)-classes of G proteins depending on the context (PubMed:38632411). In the parathyroid and kidney, CASR signals through G(q)/G(11) and G(i)/G(o) G proteins: G(q)/G(11) coupling activates phospholipase ",
+          "domains": [],
+          "pdb_ids": [
+            "5FBH",
+            "5FBK",
+            "5K5S",
+            "5K5T",
+            "7DTT",
+            "7DTU",
+            "7DTV",
+            "7DTW"
+          ],
+          "chembl_ids": [
+            "CHEMBL1878"
+          ],
+          "sequence": "MAFYSCCWVLLALTWHTSAYGPDQRAQKKGDIILGGLFPIHFGVAAKDQDLKSRPESVECIRYNFRGFRWLQAMIFAIEEINSSPALLPNLTLGYRIFDTCNTVSKALEATLSFVAQNKIDSLNLDEFCNCSEHIPSTIAVVGATGSGVSTAVANLLGLFYIPQVSYASSSRLLSNKNQFKSFLRTIPNDEHQATAMADIIEYFRWNWVGTIAADDDYGRPGIEKFREEAEERDICIDFSELISQYSDEEEIQHVVEVIQNSTAKVIVVFSSGPDLEPLIKEIVRRNITGKIWLASEAWASSSLIAMPQYFHVVGGTIGFALKAGQIPGFREFLKKVHPRKSVHNGFAKEFWEETFNCHLQEGAKGPLPVDTFLRGHEESGDRFSNSSTAFRPLCTGDENISSVETPYIDYTHLRISYNVYLAVYSIAHALQDIYTCLPGRGLFTNGSCADIKKVEAWQVLKHLRHLNFTNNMGEQVTFDECGDLVGNYSIINWHLSPEDGSIVFKEVGYYNVYAKKGERLFINEEKILWSGFSREVPFSNCSRDCLAGTRKGIIEGEPTCCFECVECPDGEYSDETDASACNKCPDDFWSNENHTSCIAKEIEFLSWTEPFGIALTLFAVLGIFLTAFVLGVFIKFRNTPIVKATNRELSYLLLFSLLCCFSSSLFFIGEPQDWTCRLRQPAFGISFVLCISCILVKTNRVLLVFEAKIPTSFHRKWWGLNLQFLLVFLCTFMQIVICVIWLYTAPPSSYRNQELEDEIIFITCHEGSLMALGFLIGYTCLLAAICFFFAFKSRKLPENFNEAKFITFSMLIFFIVWISFIPAYASTYGKFVSAVEVIAILAASFGLLACIFFNKIYIILFKPSRNTIEEVRCSTAAHAFKVAARATLRRSNVSRKRSSSLGGSTGSTPSSSISSKSNSEDPFPQPERQKQQQPLALTQQEQQQQPLTLPQQQRSQQQPRCKQKVIFGSGTVTFSLSFDEPQKNAMAHRNSTHQNSLEAQKSSDTLTRHEPLLPLQCGETDLDLTVQETGLQGPVGGDQRPEVEDPEELSPALVVSSSQSFVISGGGSTVTENVVNS"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "source": "pdb",
+          "query": {
+            "entry_id": "5FBH",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "records": [
+            {
+              "entry_id": "5FBH",
+              "title": "Crystal structure of the extracellular domain of human calcium sensing receptor with bound Gd3+",
+              "experimental_methods": [
+                "X-RAY DIFFRACTION"
+              ],
+              "resolution_angstroms": [
+                2.7
+              ],
+              "primary_citation": {
+                "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist.",
+                "pdbx_database_id_PubMed": 27386547,
+                "pdbx_database_id_DOI": "10.1126/sciadv.1600241"
+              },
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [
+                {
+                  "record": "HETATM",
+                  "atom": "MG",
+                  "residue": "MG",
+                  "chain": "B",
+                  "residue_number": 602,
+                  "insertion_code": "",
+                  "element": "MG",
+                  "coordinates_angstroms": [
+                    -49.912,
+                    -38.09,
+                    30.824
+                  ],
+                  "nearby_atoms": [
+                    {
+                      "record": "ATOM",
+                      "atom": "OG",
+                      "residue": "SER",
+                      "chain": "B",
+                      "residue_number": 240,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -50.246,
+                        -36.53,
+                        32.591
+                      ],
+                      "distance_angstroms": 2.381
+                    },
+                    {
+                      "record": "HETATM",
+                      "atom": "O",
+                      "residue": "HOH",
+                      "chain": "B",
+                      "residue_number": 706,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -52.404,
+                        -38.317,
+                        31.255
+                      ],
+                      "distance_angstroms": 2.539
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "SER",
+                      "chain": "B",
+                      "residue_number": 240,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -51.139,
+                        -35.899,
+                        30.262
+                      ],
+                      "distance_angstroms": 2.573
+                    }
+                  ]
+                },
+                {
+                  "record": "HETATM",
+                  "atom": "MG",
+                  "residue": "MG",
+                  "chain": "B",
+                  "residue_number": 603,
+                  "insertion_code": "",
+                  "element": "MG",
+                  "coordinates_angstroms": [
+                    -9.937,
+                    -5.72,
+                    26.937
+                  ],
+                  "nearby_atoms": [
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "LEU",
+                      "chain": "B",
+                      "residue_number": 88,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -7.522,
+                        -6.136,
+                        27.826
+                      ],
+                      "distance_angstroms": 2.607
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "ILE",
+                      "chain": "B",
+                      "residue_number": 81,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -12.428,
+                        -4.623,
+                        27.529
+                      ],
+                      "distance_angstroms": 2.785
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "LEU",
+                      "chain": "B",
+                      "residue_number": 87,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -9.454,
+                        -5.519,
+                        29.81
+                      ],
+                      "distance_angstroms": 2.92
+                    }
+                  ]
+                },
+                {
+                  "record": "HETATM",
+                  "atom": "MG",
+                  "residue": "MG",
+                  "chain": "A",
+                  "residue_number": 602,
+                  "insertion_code": "",
+                  "element": "MG",
+                  "coordinates_angstroms": [
+                    -21.766,
+                    -60.37,
+                    -1.936
+                  ],
+                  "nearby_atoms": [
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "ILE",
+                      "chain": "A",
+                      "residue_number": 81,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -22.39,
+                        -61.188,
+                        0.366
+                      ],
+                      "distance_angstroms": 2.521
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "LEU",
+                      "chain": "A",
+                      "residue_number": 87,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -24.199,
+                        -60.019,
+                        -2.516
+                      ],
+                      "distance_angstroms": 2.526
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "LEU",
+                      "chain": "A",
+                      "residue_number": 88,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -22.221,
+                        -58.641,
+                        -3.916
+                      ],
+                      "distance_angstroms": 2.668
+                    },
+                    {
+                      "record": "ATOM",
+                      "atom": "O",
+                      "residue": "SER",
+                      "chain": "A",
+                      "residue_number": 84,
+                      "insertion_code": "",
+                      "element": "O",
+                      "coordinates_angstroms": [
+                        -22.502,
+                        -62.981,
+                        -2.412
+                      ],
+                      "distance_angstroms": 2.754
+                    }
+                  ]
+                }
+              ],
+              "occupied_atom_count": 7394,
+              "geometry": {
+                "method": "first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; not proof of biological interfaces or membrane orientation",
+                "chains": [
+                  {
+                    "chain": "B",
+                    "observed_residues": 468,
+                    "author_residue_min": 21,
+                    "author_residue_max": 534
+                  },
+                  {
+                    "chain": "A",
+                    "observed_residues": 470,
+                    "author_residue_min": 22,
+                    "author_residue_max": 538
+                  }
+                ],
+                "inter_chain_contacts": [
+                  {
+                    "chains": [
+                      "A",
+                      "B"
+                    ],
+                    "ca_pair_count": 43,
+                    "closest_pairs": [
+                      {
+                        "chain_1": "A",
+                        "residue_1": 52,
+                        "chain_2": "B",
+                        "residue_2": 444,
+                        "ca_distance_angstroms": 4.154
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 444,
+                        "chain_2": "B",
+                        "residue_2": 52,
+                        "ca_distance_angstroms": 4.402
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 52,
+                        "chain_2": "B",
+                        "residue_2": 445,
+                        "ca_distance_angstroms": 5.405
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 445,
+                        "chain_2": "B",
+                        "residue_2": 52,
+                        "ca_distance_angstroms": 5.461
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 445,
+                        "chain_2": "B",
+                        "residue_2": 53,
+                        "ca_distance_angstroms": 5.996
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 462,
+                        "chain_2": "B",
+                        "residue_2": 51,
+                        "ca_distance_angstroms": 6.097
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 53,
+                        "chain_2": "B",
+                        "residue_2": 444,
+                        "ca_distance_angstroms": 6.142
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 159,
+                        "chain_2": "B",
+                        "residue_2": 105,
+                        "ca_distance_angstroms": 6.163
+                      }
+                    ]
+                  }
+                ]
+              },
+              "secondary_structure_records": [
+                "HELIX    1 AA1 ASN B   64  SER B   84  1                                  21    ",
+                "HELIX    2 AA2 THR B  103  VAL B  115  1                                  13    ",
+                "HELIX    3 AA3 VAL B  115  ASP B  121  1                                   7    ",
+                "HELIX    4 AA4 GLY B  146  GLY B  158  1                                  13    ",
+                "HELIX    5 AA5 LEU B  159  TYR B  161  5                                   3    ",
+                "HELIX    6 AA6 SER B  171  ASN B  176  5                                   6    ",
+                "HELIX    7 AA7 ASN B  189  PHE B  204  1                                  16    ",
+                "HELIX    8 AA8 TYR B  218  ARG B  233  1                                  16    ",
+                "HELIX    9 AA9 ASP B  248  ASN B  261  1                                  14    ",
+                "HELIX   10 AB1 SER B  272  ARG B  286  1                                  15    ",
+                "HELIX   11 AB2 MET B  307  GLN B  309  5                                   3    ",
+                "HELIX   12 AB3 TYR B  310  GLY B  315  1                                   6    ",
+                "HELIX   13 AB4 GLY B  329  LYS B  335  1                                   7    ",
+                "HELIX   14 AB5 PHE B  347  ASN B  357  1                                  11    ",
+                "HELIX   15 AB6 ASN B  400  VAL B  404  5                                   5    ",
+                "HELIX   16 AB7 ARG B  415  THR B  436  1                                  22    ",
+                "HELIX   17 AB8 PHE B  444  SER B  448  5                                   5    ",
+                "HELIX   18 AB9 ASP B  451  VAL B  455  5                                   5    ",
+                "HELIX   19 AC1 GLU B  456  LEU B  467  1                                  12    ",
+                "HELIX   20 AC2 GLU B  525  ILE B  528  5                                   4    ",
+                "HELIX   21 AC3 ASN A   64  SER A   84  1                                  21    ",
+                "HELIX   22 AC4 THR A  103  VAL A  115  1                                  13    ",
+                "HELIX   23 AC5 VAL A  115  ASP A  121  1                                   7    ",
+                "HELIX   24 AC6 GLY A  146  PHE A  160  1                                  15    ",
+                "HELIX   25 AC7 SER A  171  ASN A  176  5                                   6    ",
+                "HELIX   26 AC8 ASP A  190  PHE A  204  1                                  15    ",
+                "HELIX   27 AC9 TYR A  218  ARG A  233  1                                  16    ",
+                "HELIX   28 AD1 ASP A  248  ASN A  261  1                                  14    ",
+                "HELIX   29 AD2 SER A  272  ARG A  286  1                                  15    ",
+                "HELIX   30 AD3 SER A  296  SER A  301  1                                   6    ",
+                "HELIX   31 AD4 MET A  307  GLN A  309  5                                   3    ",
+                "HELIX   32 AD5 TYR A  310  GLY A  315  1                                   6    ",
+                "HELIX   33 AD6 GLY A  329  LYS A  336  1                                   8    ",
+                "HELIX   34 AD7 PHE A  347  ASN A  357  1                                  11    ",
+                "HELIX   35 AD8 ASN A  400  VAL A  404  5                                   5    ",
+                "HELIX   36 AD9 ARG A  415  THR A  436  1                                  22    ",
+                "HELIX   37 AE1 PHE A  444  SER A  448  5                                   5    ",
+                "HELIX   38 AE2 GLU A  456  LEU A  467  1                                  12    ",
+                "HELIX   39 AE3 GLU A  525  ILE A  528  5                                   4    ",
+                "SHEET    1 AA1 6 ALA B  26  LYS B  28  0                                        "
+              ]
+            }
+          ],
+          "retrieved_at": "2026-10-10T12:33:25.110756+00:00",
+          "response_sha256": "9f237310d72ba2a129bb3b4a7b63f4acfd196fe1c4dc1faaef98d4925f24c9ff",
+          "metadata": {
+            "evidence": "experimental_structure",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "coordinate_url": "https://files.rcsb.org/download/5FBH.pdb",
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked"
+          },
+          "truth_status": "source_observation_not_validation",
+          "literature_coverage": "not_assessed",
+          "novelty": "not_established",
+          "receipt_id": "59771e5320ebe4dc73862358382b495025548a2650f54301c3532d5c7d962f1b"
+        }
+      },
+      "LITERATURE": [
+        {
+          "pmid": "27386547",
+          "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist.",
+          "journal": "Science advances",
+          "year": "2016",
+          "abstract": "Ca(2+)-sensing receptors (CaSRs) modulate calcium and magnesium homeostasis and many (patho)physiological processes by responding to extracellular stimuli, including divalent cations and amino acids. We report the first crystal structure of the extracellular domain (ECD) of human CaSR bound with Mg(2+) and a tryptophan derivative ligand at 2.1 Å. The structure reveals key determinants for cooperative activation by metal ions and aromatic amino acids. The unexpected tryptophan derivative was bound in the hinge region between two globular ECD subdomains, and represents a novel high-affinity co-agonist of CaSR. The dissection of structure-function relations by mutagenesis, biochemical, and functional studies provides insights into the molecular basis of human diseases arising from CaSR mutations. The data also provide a novel paradigm for understanding the mechanism of CaSR-mediated signaling that is likely shared by the other family C GPCR [G protein (heterotrimeric guanine nucleotide-binding protein)-coupled receptor] members and can facilitate the development of novel CaSR-based therapeutics."
+        }
+      ]
+    }
+  },
+  {
+    "inquiry": {
+      "browse_lane": "protein",
+      "identity_check": {
+        "receipt_ids": [
+          "f2aa8f361bfa278d5de3a2247227486d7664f4a2ad590ce6f01549c33b5bc6c2"
+        ],
+        "status": "verified",
+        "symbols": [
+          "SLC26A6"
+        ]
+      },
+      "instrument_query": null,
+      "material_terms": [
+        "SLC26A6",
+        "pendrin-like",
+        "transmembrane topology",
+        "extracellular domain",
+        "ion transporter"
+      ],
+      "plugin_query": null,
+      "question": "What is the structural organization of the human SLC26A6 (pendrin-like) protein, specifically the arrangement of its transmembrane helices and the topology of its extracellular domain?",
+      "source_query": {
+        "entry_id": "8OPQ",
+        "operation": "structure_evidence",
+        "source": "pdb"
+      },
+      "structure_resolution": {
+        "accession": "Q9BXS9",
+        "entry_id": "8OPQ",
+        "reason": "structural_question_reads_sourced_deposited_entry"
+      },
+      "uniprot_query": "protein_name:SLC26A6 AND reviewed:true AND taxonomy_id:9606",
+      "why_now": "The recent history shows a deep focus on the pendrin (SLC26A4) structural landscape, specifically the STAS domain and its hinge regions (L-fd723427, L-ff23de2f). Since SLC26A6 is a closely related member of the same solute carrier family (SLC26) and often shares functional similarities in ion transport, investigating its structural topology provides a necessary comparative context to determine if the hinge/domain arrangements observed in SLC26A4 are conserved or divergent within the family."
+    },
+    "before": {
+      "records": [
+        {
+          "accession": "Q9BXS9",
+          "id": "S26A6_HUMAN",
+          "protein_name": "Solute carrier family 26 member 6",
+          "organism": "Homo sapiens",
+          "length": 759,
+          "function": "Apical membrane anion-exchanger with wide epithelial distribution that plays a role as a component of the pH buffering system for maintaining acid-base homeostasis. Acts as a versatile DIDS-sensitive inorganic and organic anion transporter that mediates the uptake of monovalent anions like chloride, bicarbonate, formate and hydroxyl ion and divalent anions like sulfate and oxalate. Functions in multiple exchange modes involving pairs of these anions, which include chloride-bicarbonate, chloride-oxalate, oxalate-formate, oxalate-sulfate and chloride-formate exchange. Apical membrane chloride-bicarbonate exchanger that mediates luminal chloride absorption and bicarbonate secretion by the small intestinal brush border membrane and contributes to intracellular pH regulation in the duodenal upper villous epithelium during proton-coupled peptide absorption, possibly by providing a bicarbonate import pathway. Also mediates intestinal chloride absorption and oxalate secretion, thereby preventing hyperoxaluria and calcium oxalate urolithiasis. Transepithelial oxalate secretion, chloride-formate, chloride-oxalate and chloride-bicarbonate transport activities in the duodenum are inhibited by ",
+          "domains": [
+            {
+              "type": "Domain",
+              "description": "STAS",
+              "location": {
+                "start": {
+                  "value": 530,
+                  "modifier": "EXACT"
+                },
+                "end": {
+                  "value": 742,
+                  "modifier": "EXACT"
+                }
+              },
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000255",
+                  "source": "PROSITE-ProRule",
+                  "id": "PRU00198"
+                }
+              ]
+            }
+          ],
+          "pdb_ids": [
+            "8OPQ"
+          ],
+          "chembl_ids": [
+            "CHEMBL5465351"
+          ],
+          "sequence": "MGLADASGPRDTQALLSATQAMDLRRRDYHMERPLLNQEHLEELGRWGSAPRTHQWRTWLQCSRARAYALLLQHLPVLVWLPRYPVRDWLLGDLLSGLSVAIMQLPQGLAYALLAGLPPVFGLYSSFYPVFIYFLFGTSRHISVGTFAVMSVMVGSVTESLAPQALNDSMINETARDAARVQVASTLSVLVGLFQVGLGLIHFGFVVTYLSEPLVRGYTTAAAVQVFVSQLKYVFGLHLSSHSGPLSLIYTVLEVCWKLPQSKVGTVVTAAVAGVVLVVVKLLNDKLQQQLPMPIPGELLTLIGATGISYGMGLKHRFEVDVVGNIPAGLVPPVAPNTQLFSKLVGSAFTIAVVGFAIAISLGKIFALRHGYRVDSNQELVALGLSNLIGGIFQCFPVSCSMSRSLVQESTGGNSQVAGAISSLFILLIIVKLGELFHDLPKAVLAAIIIVNLKGMLRQLSDMRSLWKANRADLLIWLVTFTATILLNLDLGLVVAVIFSLLLVVVRTQMPHYSVLGQVPDTDIYRDVAEYSEAKEVRGVKVFRSSATVYFANAEFYSDALKQRCGVDVDFLISQKKKLLKKQEQLKLKQLQKEEKLRKQAASPKGASVSINVNTSLEDMRSNNVEDCKMMQVSSGDKMEDATANGQEDSKAPDGSTLKALGLPQPDFHSLILDLGALSFVDTVCLKSLKNIFHDFREIEVEVYMAACHSPVVSQLEAGHFFDASITKKHLFASVHDAVTFALQHPRPVPDSPVSVTRL"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked",
+            "coordinate_url": "https://files.rcsb.org/download/8OPQ.pdb",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "evidence": "experimental_structure"
+          },
+          "novelty": "not_established",
+          "query": {
+            "entry_id": "8OPQ",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "4d2bf5af77d6d9051456e9966de1bd0c4505e2a7391d075f9f183b35b02754a4",
+          "records": [
+            {
+              "entry_id": "8OPQ",
+              "experimental_methods": [
+                "ELECTRON MICROSCOPY"
+              ],
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [],
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "occupied_atom_count": 10006,
+              "primary_citation": {
+                "pdbx_database_id_DOI": "10.7554/eLife.87178",
+                "pdbx_database_id_PubMed": 37351578,
+                "title": "Structural and functional properties of the transporter SLC26A6 reveal mechanism of coupled anion exchange."
+              },
+              "resolution_angstroms": [
+                3.28
+              ],
+              "secondary_structure_records": [
+                "HELIX    1 AA1 ASN A   37  ARG A   46  1                                  10    ",
+                "HELIX    2 AA2 SER A   63  LEU A   75  1                                  13    ",
+                "HELIX    3 AA3 PRO A   76  LEU A   81  1                                   6    ",
+                "HELIX    4 AA4 PRO A   85  GLY A  116  1                                  32    ",
+                "HELIX    5 AA5 PRO A  118  SER A  126  1                                   9    ",
+                "HELIX    6 AA6 PHE A  127  GLY A  137  1                                  11    ",
+                "HELIX    7 AA7 PHE A  147  ALA A  162  1                                  16    ",
+                "HELIX    8 AA8 MET A  170  ILE A  201  1                                  32    ",
+                "HELIX    9 AA9 PHE A  205  LEU A  210  5                                   6    ",
+                "HELIX   10 AB1 SER A  211  GLY A  236  1                                  26    ",
+                "HELIX   11 AB2 LEU A  246  LYS A  258  1                                  13    ",
+                "HELIX   12 AB3 LEU A  259  SER A  262  5                                   4    ",
+                "HELIX   13 AB4 LYS A  263  LEU A  287  1                                  25    ",
+                "HELIX   14 AB5 PRO A  296  GLY A  313  1                                  18    ",
+                "HELIX   15 AB6 ASN A  337  GLN A  339  5                                   3    ",
+                "HELIX   16 AB7 LEU A  340  GLY A  371  1                                  32    ",
+                "HELIX   17 AB8 ASP A  375  PHE A  393  1                                  19    ",
+                "HELIX   18 AB9 SER A  401  GLY A  412  1                                  12    ",
+                "HELIX   19 AC1 SER A  415  LYS A  432  1                                  18    ",
+                "HELIX   20 AC2 GLY A  434  HIS A  438  5                                   5    ",
+                "HELIX   21 AC3 PRO A  441  ASN A  452  1                                  12    ",
+                "HELIX   22 AC4 LEU A  453  ASN A  470  1                                  18    ",
+                "HELIX   23 AC5 ASN A  470  LEU A  487  1                                  18    ",
+                "HELIX   24 AC6 LEU A  487  GLN A  509  1                                  23    ",
+                "HELIX   25 AC7 ASN A  553  CYS A  565  1                                  13    ",
+                "HELIX   26 AC8 ASP A  568  GLU A  594  1                                  27    ",
+                "HELIX   27 AC9 THR A  656  GLY A  661  1                                   6    ",
+                "HELIX   28 AD1 ASP A  681  ILE A  698  1                                  18    ",
+                "HELIX   29 AD2 HIS A  708  GLY A  718  1                                  11    ",
+                "HELIX   30 AD3 THR A  726  LYS A  728  5                                   3    ",
+                "HELIX   31 AD4 SER A  733  HIS A  744  1                                  12    ",
+                "HELIX   32 AD5 ASN B   37  ARG B   46  1                                  10    ",
+                "HELIX   33 AD6 SER B   63  LEU B   75  1                                  13    ",
+                "HELIX   34 AD7 PRO B   76  LEU B   81  1                                   6    ",
+                "HELIX   35 AD8 PRO B   85  GLY B  116  1                                  32    ",
+                "HELIX   36 AD9 PRO B  118  SER B  126  1                                   9    ",
+                "HELIX   37 AE1 PHE B  127  GLY B  137  1                                  11    ",
+                "HELIX   38 AE2 PHE B  147  ALA B  162  1                                  16    ",
+                "HELIX   39 AE3 MET B  170  ILE B  201  1                                  32    ",
+                "HELIX   40 AE4 PHE B  205  LEU B  210  5                                   6    "
+              ],
+              "title": "Structure of Human Solute Carrier 26 family member A6 (SLC26A6) anion transporter in an inward-facing state"
+            }
+          ],
+          "response_sha256": "b7b201010b6d90bac118fe7f5bb511638c2f457b96701bdfd15583fcfa9d1acd",
+          "retrieved_at": "2026-10-10T04:12:56.738934+00:00",
+          "source": "pdb",
+          "truth_status": "source_observation_not_validation"
+        }
+      },
+      "LITERATURE": [
+        {
+          "abstract": "CO2-driven seawater acidification has been demonstrated to enhance intestinal bicarbonate secretion rates in teleosts, leading to an increased release of CaCO3 under simulated ocean acidification scenarios. In this study, we investigated if increasing CO2 levels stimulate the intestinal acid-base regulatory machinery of Atlantic cod (Gadus morhua) and whether temperatures at the upper limit of thermal tolerance stimulate or counteract ion regulatory capacities. Juvenile G. morhua were acclimated for 4 weeks to three CO2 levels (550, 1200, and 2200 μatm) covering present and near-future natural variability, at optimum (10°C) and summer maximum temperature (18°C), respectively. Immunohistochemical analyses revealed the subcellular localization of ion transporters, including Na(+)/K(+)-ATPase (NKA), Na(+)/H(+)-exchanger 3 (NHE3), Na(+)/[Formula: see text] cotransporter (NBC1), pendrin-like Cl(-)/[Formula: see text] exchanger (SLC26a6), V-type H(+)-ATPase subunit a (VHA), and Cl(-) channel 3 (CLC3) in epithelial cells of the anterior intestine. At 10°C, proteins and mRNA were generally up-regulated for most transporters in the intestinal epithelium after acclimation to higher CO2 levels. This supports recent findings demonstrating increased intestinal [Formula: see text] secretion rates in response to CO2 induced seawater acidification. At 18°C, mRNA expression and protein concentrations of most ion transporters remained unchanged or were even decreased, suggesting thermal compensation. This response may be energetically favorable to retain blood [Formula: see text] levels to stabilize pHe, but may negatively affect intestinal salt and water resorption of marine teleosts in future oceans.",
+          "journal": "Frontiers in physiology",
+          "pmid": "27313538",
+          "title": "Temperature Modulates the Effects of Ocean Acidification on Intestinal Ion Transport in Atlantic Cod, Gadus morhua.",
+          "year": "2016"
+        }
+      ]
+    },
+    "after": {
+      "records": [
+        {
+          "accession": "Q9BXS9",
+          "id": "S26A6_HUMAN",
+          "protein_name": "Solute carrier family 26 member 6",
+          "organism": "Homo sapiens",
+          "length": 759,
+          "function": "Apical membrane anion-exchanger with wide epithelial distribution that plays a role as a component of the pH buffering system for maintaining acid-base homeostasis. Acts as a versatile DIDS-sensitive inorganic and organic anion transporter that mediates the uptake of monovalent anions like chloride, bicarbonate, formate and hydroxyl ion and divalent anions like sulfate and oxalate. Functions in multiple exchange modes involving pairs of these anions, which include chloride-bicarbonate, chloride-oxalate, oxalate-formate, oxalate-sulfate and chloride-formate exchange. Apical membrane chloride-bicarbonate exchanger that mediates luminal chloride absorption and bicarbonate secretion by the small intestinal brush border membrane and contributes to intracellular pH regulation in the duodenal upper villous epithelium during proton-coupled peptide absorption, possibly by providing a bicarbonate import pathway. Also mediates intestinal chloride absorption and oxalate secretion, thereby preventing hyperoxaluria and calcium oxalate urolithiasis. Transepithelial oxalate secretion, chloride-formate, chloride-oxalate and chloride-bicarbonate transport activities in the duodenum are inhibited by ",
+          "domains": [
+            {
+              "type": "Domain",
+              "description": "STAS",
+              "location": {
+                "start": {
+                  "value": 530,
+                  "modifier": "EXACT"
+                },
+                "end": {
+                  "value": 742,
+                  "modifier": "EXACT"
+                }
+              },
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000255",
+                  "source": "PROSITE-ProRule",
+                  "id": "PRU00198"
+                }
+              ]
+            }
+          ],
+          "pdb_ids": [
+            "8OPQ"
+          ],
+          "chembl_ids": [
+            "CHEMBL5465351"
+          ],
+          "sequence": "MGLADASGPRDTQALLSATQAMDLRRRDYHMERPLLNQEHLEELGRWGSAPRTHQWRTWLQCSRARAYALLLQHLPVLVWLPRYPVRDWLLGDLLSGLSVAIMQLPQGLAYALLAGLPPVFGLYSSFYPVFIYFLFGTSRHISVGTFAVMSVMVGSVTESLAPQALNDSMINETARDAARVQVASTLSVLVGLFQVGLGLIHFGFVVTYLSEPLVRGYTTAAAVQVFVSQLKYVFGLHLSSHSGPLSLIYTVLEVCWKLPQSKVGTVVTAAVAGVVLVVVKLLNDKLQQQLPMPIPGELLTLIGATGISYGMGLKHRFEVDVVGNIPAGLVPPVAPNTQLFSKLVGSAFTIAVVGFAIAISLGKIFALRHGYRVDSNQELVALGLSNLIGGIFQCFPVSCSMSRSLVQESTGGNSQVAGAISSLFILLIIVKLGELFHDLPKAVLAAIIIVNLKGMLRQLSDMRSLWKANRADLLIWLVTFTATILLNLDLGLVVAVIFSLLLVVVRTQMPHYSVLGQVPDTDIYRDVAEYSEAKEVRGVKVFRSSATVYFANAEFYSDALKQRCGVDVDFLISQKKKLLKKQEQLKLKQLQKEEKLRKQAASPKGASVSINVNTSLEDMRSNNVEDCKMMQVSSGDKMEDATANGQEDSKAPDGSTLKALGLPQPDFHSLILDLGALSFVDTVCLKSLKNIFHDFREIEVEVYMAACHSPVVSQLEAGHFFDASITKKHLFASVHDAVTFALQHPRPVPDSPVSVTRL"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "source": "pdb",
+          "query": {
+            "entry_id": "8OPQ",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "records": [
+            {
+              "entry_id": "8OPQ",
+              "title": "Structure of Human Solute Carrier 26 family member A6 (SLC26A6) anion transporter in an inward-facing state",
+              "experimental_methods": [
+                "ELECTRON MICROSCOPY"
+              ],
+              "resolution_angstroms": [
+                3.28
+              ],
+              "primary_citation": {
+                "title": "Structural and functional properties of the transporter SLC26A6 reveal mechanism of coupled anion exchange.",
+                "pdbx_database_id_PubMed": 37351578,
+                "pdbx_database_id_DOI": "10.7554/eLife.87178"
+              },
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [],
+              "occupied_atom_count": 10006,
+              "geometry": {
+                "method": "first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; not proof of biological interfaces or membrane orientation",
+                "chains": [
+                  {
+                    "chain": "A",
+                    "observed_residues": 648,
+                    "author_residue_min": 28,
+                    "author_residue_max": 747
+                  },
+                  {
+                    "chain": "B",
+                    "observed_residues": 648,
+                    "author_residue_min": 28,
+                    "author_residue_max": 747
+                  }
+                ],
+                "inter_chain_contacts": [
+                  {
+                    "chains": [
+                      "A",
+                      "B"
+                    ],
+                    "ca_pair_count": 180,
+                    "closest_pairs": [
+                      {
+                        "chain_1": "B",
+                        "residue_1": 676,
+                        "chain_2": "A",
+                        "residue_2": 676,
+                        "ca_distance_angstroms": 3.787
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 34,
+                        "chain_2": "A",
+                        "residue_2": 28,
+                        "ca_distance_angstroms": 4.471
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 28,
+                        "chain_2": "A",
+                        "residue_2": 34,
+                        "ca_distance_angstroms": 4.529
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 533,
+                        "chain_2": "A",
+                        "residue_2": 45,
+                        "ca_distance_angstroms": 4.579
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 531,
+                        "chain_2": "A",
+                        "residue_2": 47,
+                        "ca_distance_angstroms": 4.599
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 45,
+                        "chain_2": "A",
+                        "residue_2": 533,
+                        "ca_distance_angstroms": 4.646
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 47,
+                        "chain_2": "A",
+                        "residue_2": 531,
+                        "ca_distance_angstroms": 4.68
+                      },
+                      {
+                        "chain_1": "B",
+                        "residue_1": 371,
+                        "chain_2": "A",
+                        "residue_2": 574,
+                        "ca_distance_angstroms": 4.733
+                      }
+                    ]
+                  }
+                ]
+              },
+              "secondary_structure_records": [
+                "HELIX    1 AA1 ASN A   37  ARG A   46  1                                  10    ",
+                "HELIX    2 AA2 SER A   63  LEU A   75  1                                  13    ",
+                "HELIX    3 AA3 PRO A   76  LEU A   81  1                                   6    ",
+                "HELIX    4 AA4 PRO A   85  GLY A  116  1                                  32    ",
+                "HELIX    5 AA5 PRO A  118  SER A  126  1                                   9    ",
+                "HELIX    6 AA6 PHE A  127  GLY A  137  1                                  11    ",
+                "HELIX    7 AA7 PHE A  147  ALA A  162  1                                  16    ",
+                "HELIX    8 AA8 MET A  170  ILE A  201  1                                  32    ",
+                "HELIX    9 AA9 PHE A  205  LEU A  210  5                                   6    ",
+                "HELIX   10 AB1 SER A  211  GLY A  236  1                                  26    ",
+                "HELIX   11 AB2 LEU A  246  LYS A  258  1                                  13    ",
+                "HELIX   12 AB3 LEU A  259  SER A  262  5                                   4    ",
+                "HELIX   13 AB4 LYS A  263  LEU A  287  1                                  25    ",
+                "HELIX   14 AB5 PRO A  296  GLY A  313  1                                  18    ",
+                "HELIX   15 AB6 ASN A  337  GLN A  339  5                                   3    ",
+                "HELIX   16 AB7 LEU A  340  GLY A  371  1                                  32    ",
+                "HELIX   17 AB8 ASP A  375  PHE A  393  1                                  19    ",
+                "HELIX   18 AB9 SER A  401  GLY A  412  1                                  12    ",
+                "HELIX   19 AC1 SER A  415  LYS A  432  1                                  18    ",
+                "HELIX   20 AC2 GLY A  434  HIS A  438  5                                   5    ",
+                "HELIX   21 AC3 PRO A  441  ASN A  452  1                                  12    ",
+                "HELIX   22 AC4 LEU A  453  ASN A  470  1                                  18    ",
+                "HELIX   23 AC5 ASN A  470  LEU A  487  1                                  18    ",
+                "HELIX   24 AC6 LEU A  487  GLN A  509  1                                  23    ",
+                "HELIX   25 AC7 ASN A  553  CYS A  565  1                                  13    ",
+                "HELIX   26 AC8 ASP A  568  GLU A  594  1                                  27    ",
+                "HELIX   27 AC9 THR A  656  GLY A  661  1                                   6    ",
+                "HELIX   28 AD1 ASP A  681  ILE A  698  1                                  18    ",
+                "HELIX   29 AD2 HIS A  708  GLY A  718  1                                  11    ",
+                "HELIX   30 AD3 THR A  726  LYS A  728  5                                   3    ",
+                "HELIX   31 AD4 SER A  733  HIS A  744  1                                  12    ",
+                "HELIX   32 AD5 ASN B   37  ARG B   46  1                                  10    ",
+                "HELIX   33 AD6 SER B   63  LEU B   75  1                                  13    ",
+                "HELIX   34 AD7 PRO B   76  LEU B   81  1                                   6    ",
+                "HELIX   35 AD8 PRO B   85  GLY B  116  1                                  32    ",
+                "HELIX   36 AD9 PRO B  118  SER B  126  1                                   9    ",
+                "HELIX   37 AE1 PHE B  127  GLY B  137  1                                  11    ",
+                "HELIX   38 AE2 PHE B  147  ALA B  162  1                                  16    ",
+                "HELIX   39 AE3 MET B  170  ILE B  201  1                                  32    ",
+                "HELIX   40 AE4 PHE B  205  LEU B  210  5                                   6    "
+              ]
+            }
+          ],
+          "retrieved_at": "2026-10-10T12:33:34.218290+00:00",
+          "response_sha256": "00ab5db05c0d9e7bcd93d033bde6e4799ecdd0774671607e1fa1ec190f5230fc",
+          "metadata": {
+            "evidence": "experimental_structure",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "coordinate_url": "https://files.rcsb.org/download/8OPQ.pdb",
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked"
+          },
+          "truth_status": "source_observation_not_validation",
+          "literature_coverage": "not_assessed",
+          "novelty": "not_established",
+          "receipt_id": "4f438eceb38b72f368dfcff6d89a273ab1e46053b1ef0d089944f8c67db80a1f"
+        }
+      },
+      "LITERATURE": [
+        {
+          "pmid": "37351578",
+          "title": "Structural and functional properties of the transporter SLC26A6 reveal mechanism of coupled anion exchange.",
+          "journal": "eLife",
+          "year": "2023",
+          "abstract": "Members of the SLC26 family constitute a conserved class of anion transport proteins, which encompasses uncoupled transporters with channel-like properties, coupled exchangers and motor proteins. Among the 10 functional paralogs in humans, several participate in the secretion of bicarbonate in exchange with chloride and thus play an important role in maintaining pH homeostasis. Previously, we have elucidated the structure of murine SLC26A9 and defined its function as an uncoupled chloride transporter (Walter et al., 2019). Here we have determined the structure of the closely related human transporter SLC26A6 and characterized it as a coupled exchanger of chloride with bicarbonate and presumably also oxalate. The structure defines an inward-facing conformation of the protein that generally resembles known structures of SLC26A9. The altered anion selectivity between both paralogs is a consequence of a remodeled ion binding site located in the center of a mobile unit of the membrane-inserted domain, which also accounts for differences in the coupling mechanism."
+        }
+      ]
+    }
+  },
+  {
+    "inquiry": {
+      "browse_lane": "protein",
+      "identity_check": {
+        "receipt_ids": [
+          "f1af152824867464fdbdd754af31e8a6fbbbdf5db87eeb7c4efc79398e25502e",
+          "737006fbe7289461a0617253044f0e4c3506261f73bee049b093542bca2ded6b"
+        ],
+        "status": "verified",
+        "symbols": [
+          "T1R3",
+          "T1R2"
+        ]
+      },
+      "instrument_query": null,
+      "material_terms": [
+        "T1R3",
+        "human",
+        "taste receptor",
+        "structure",
+        "heterodimer"
+      ],
+      "plugin_query": null,
+      "question": "What is the structural organization of the human T1R3 taste receptor, specifically the arrangement of its extracellular domains and its interaction with T1R2?",
+      "source_query": {
+        "entry_id": "9NOR",
+        "operation": "structure_evidence",
+        "source": "pdb"
+      },
+      "structure_resolution": {
+        "accession": "Q7RTX0",
+        "entry_id": "9NOR",
+        "reason": "structural_question_reads_sourced_deposited_entry"
+      },
+      "uniprot_query": "protein_name:T1R3 AND reviewed:true AND taxonomy_id:9606",
+      "why_now": "Previous attempts at T1R2 (2026-10-10) were unsuccessful, but T1R3 is the essential heterodimeric partner. Understanding the structural topology of the T1R3 component is necessary to contextualize the T1R2 'arr' region and the overall functional architecture of the sweet taste receptor."
+    },
+    "before": {
+      "records": [
+        {
+          "accession": "Q7RTX0",
+          "id": "TS1R3_HUMAN",
+          "protein_name": "Taste receptor type 1 member 3",
+          "organism": "Homo sapiens",
+          "length": 852,
+          "function": "Key component of the sweet and umami taste receptors (PubMed:11917125, PubMed:40339580, PubMed:40754567, PubMed:40555359). TAS1R1 and TAS1R3 form the umami receptor and respond to the umami taste stimulus (the taste of monosodium glutamate) (PubMed:11917125). TAS1R2 and TAS1R3 form the sweet taste receptor and recognize diverse natural and synthetic sweeteners (PubMed:11917125, PubMed:40339580, PubMed:40754567, PubMed:40555359). The sweet taste receptor has lower affinity for natural sugars than for synthetic sweeteners (PubMed:40339580, PubMed:40555359). Essential for the recognition and response to the disaccharide trehalose (PubMed:12892531). Functions as a G protein-coupled receptor and primarily signals through the gustducin heterotrimer (PubMed:40339580). Sequence differences within and between species can significantly influence the selectivity and specificity of taste responses (By similarity)",
+          "domains": [
+            {
+              "type": "Domain",
+              "description": "ANF receptor",
+              "location": {
+                "start": {
+                  "value": 72,
+                  "modifier": "EXACT"
+                },
+                "end": {
+                  "value": 460,
+                  "modifier": "EXACT"
+                }
+              },
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40339580"
+                },
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40555359"
+                },
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40754567"
+                },
+                {
+                  "evidenceCode": "ECO:0000312",
+                  "source": "PDB",
+                  "id": "9UT8"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9NOR"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9OQ4"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9OQ6"
+                }
+              ]
+            }
+          ],
+          "pdb_ids": [
+            "9NOR",
+            "9NOS",
+            "9NOT",
+            "9NOU",
+            "9NOV",
+            "9NOW",
+            "9NOX",
+            "9O38"
+          ],
+          "chembl_ids": [
+            "CHEMBL1613742"
+          ],
+          "sequence": "MLGPAVLGLSLWALLHPGTGAPLCLSQQLRMKGDYVLGGLFPLGEAEEAGLRSRTRPSSPVCTRFSSNGLLWALAMKMAVEEINNKSDLLPGLRLGYDLFDTCSEPVVAMKPSLMFLAKAGSRDIAAYCNYTQYQPRVLAVIGPHSSELAMVTGKFFSFFLMPQVSYGASMELLSARETFPSFFRTVPSDRVQLTAAAELLQEFGWNWVAALGSDDEYGRQGLSIFSALAAARGICIAHEGLVPLPRADDSRLGKVQDVLHQVNQSSVQVVLLFASVHAAHALFNYSISSRLSPKVWVASEAWLTSDLVMGLPGMAQMGTVLGFLQRGAQLHEFPQYVKTHLALATDPAFCSALGEREQGLEEDVVGQRCPQCDCITLQNVSAGLNHHQTFSVYAAVYSVAQALHNTLQCNASGCPAQDPVKPWQLLENMYNLTFHVGGLPLRFDSSGNVDMEYDLKLWVWQGSVPRLHDVGRFNGSLRTERLKIRWHTSDNQKPVSRCSRQCQEGQVRRVKGFHSCCYDCVDCEAGSYRQNPDDIACTFCGQDEWSPERSTRCFRRRSRFLAWGEPAVLLLLLLLSLALGLVLAALGLFVHHRDSPLVQASGGPLACFGLVCLGLVCLSVLLFPGQPSPARCLAQQPLSHLPLTGCLSTLFLQAAEIFVESELPLSWADRLSGCLRGPWAWLVVLLAMLVEVALCTWYLVAFPPEVVTDWHMLPTEALVHCRTRSWVSFGLAHATNATLAFLCFLGTFLVRSQPGCYNRARGLTFAMLAYFITWVSFVPLLANVQVVLRPAVQMGALLLCVLGILAAFHLPRCYLLMRQPGLNTPEFFLGGGPGDAQGQNDGNTGNQGKHE"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked",
+            "coordinate_url": "https://files.rcsb.org/download/9NOR.pdb",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "evidence": "experimental_structure"
+          },
+          "novelty": "not_established",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "30eb14c7289af59fadbf8fbc2424343eef51afb1db17c42c2334c8a6a20ed895",
+          "records": [
+            {
+              "entry_id": "9NOR",
+              "experimental_methods": [
+                "ELECTRON MICROSCOPY"
+              ],
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [],
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "occupied_atom_count": 12555,
+              "primary_citation": {
+                "pdbx_database_id_DOI": "10.1016/j.cell.2025.04.021",
+                "pdbx_database_id_PubMed": 40339580,
+                "title": "The structure of human sweetness."
+              },
+              "resolution_angstroms": [
+                3.4
+              ],
+              "secondary_structure_records": [
+                "HELIX    1 AA1 CYS B   24  GLN B   28  5                                   5    ",
+                "HELIX    2 AA2 SER B   66  LYS B   86  1                                  21    ",
+                "HELIX    3 AA3 PRO B  106  ALA B  118  1                                  13    ",
+                "HELIX    4 AA4 ASN B  130  TYR B  134  5                                   5    ",
+                "HELIX    5 AA5 SER B  146  LEU B  161  1                                  16    ",
+                "HELIX    6 AA6 MET B  171  ALA B  176  5                                   6    ",
+                "HELIX    7 AA7 SER B  189  GLY B  205  1                                  17    ",
+                "HELIX    8 AA8 ASP B  216  GLY B  234  1                                  19    ",
+                "HELIX    9 AA9 VAL B  256  SER B  266  1                                  11    ",
+                "HELIX   10 AB1 SER B  276  ARG B  291  1                                  16    ",
+                "HELIX   11 AB2 SER B  300  THR B  305  1                                   6    ",
+                "HELIX   12 AB3 SER B  306  GLY B  311  1                                   6    ",
+                "HELIX   13 AB4 GLY B  314  MET B  318  5                                   5    ",
+                "HELIX   14 AB5 GLU B  333  ASP B  347  1                                  15    ",
+                "HELIX   15 AB6 ASP B  347  LEU B  354  1                                   8    ",
+                "HELIX   16 AB7 CYS B  370  ASP B  374  5                                   5    ",
+                "HELIX   17 AB8 THR B  377  LEU B  385  5                                   9    ",
+                "HELIX   18 AB9 HIS B  388  GLN B  409  1                                  22    ",
+                "HELIX   19 AC1 LYS B  422  GLN B  425  5                                   4    ",
+                "HELIX   20 AC2 LEU B  426  TYR B  431  1                                   6    ",
+                "HELIX   21 AC3 GLU B  566  HIS B  593  1                                  28    ",
+                "HELIX   22 AC4 SER B  596  SER B  602  1                                   7    ",
+                "HELIX   23 AC5 GLY B  604  VAL B  621  1                                  18    ",
+                "HELIX   24 AC6 LEU B  622  PHE B  624  5                                   3    ",
+                "HELIX   25 AC7 SER B  629  GLU B  663  1                                  35    ",
+                "HELIX   26 AC8 PRO B  665  ARG B  677  1                                  13    ",
+                "HELIX   27 AC9 GLY B  678  PHE B  703  1                                  26    ",
+                "HELIX   28 AD1 VAL B  728  PHE B  749  1                                  22    ",
+                "HELIX   29 AD2 ALA B  761  VAL B  785  1                                  25    ",
+                "HELIX   30 AD3 GLN B  786  VAL B  788  5                                   3    ",
+                "HELIX   31 AD4 LEU B  789  ARG B  819  1                                  31    ",
+                "HELIX   32 AD5 GLN B  820  ASN B  824  5                                   5    ",
+                "HELIX   33 AD6 THR B  825  LEU B  830  1                                   6    ",
+                "HELIX   34 AD7 MET A   58  TYR A   62  5                                   5    ",
+                "HELIX   35 AD8 LYS A   65  ASP A   85  1                                  21    ",
+                "HELIX   36 AD9 VAL A  108  ALA A  116  1                                   9    ",
+                "HELIX   37 AE1 ASN A  143  SER A  155  1                                  13    ",
+                "HELIX   38 AE2 SER A  168  ASP A  173  5                                   6    ",
+                "HELIX   39 AE3 SER A  186  PHE A  201  1                                  16    ",
+                "HELIX   40 AE4 ASP A  213  ALA A  228  1                                  16    "
+              ],
+              "title": "Human sweet taste receptor composed of TAS1R2 and TAS1R3 GPCRs from the combined datasets"
+            }
+          ],
+          "response_sha256": "5b1a964b919f6bb7f6dda6a66843d370694f03efbb92a832235337cc7c943312",
+          "retrieved_at": "2026-10-10T04:16:32.616928+00:00",
+          "source": "pdb",
+          "truth_status": "source_observation_not_validation"
+        }
+      },
+      "LITERATURE": [
+        {
+          "abstract": "Sweet taste receptor, a heterodimer belonging to the class C G-protein coupled receptor (GPCR) family and composed of the T1R2 and T1R3 subunits, is responsible for the perception of natural sugars, sweet proteins, various d-amino acids, as well as artificial sweeteners. Despite the critical importance of the sweet receptor not only in mediating gustation but also in its role in the food industry, the architecture of the T1R2-T1R3 complex and the mechanism by which extracellular stimuli induce conformational changes that are propagated to the intracellular milieu, i.e., the signal transduction pathway, remain largely unknown. Here, we constructed and characterized a full-length structural model of the T1R2-T1R3 receptor, including both the transmembrane (TM) and extracellular (EC) domains of the heterodimer, using comparative modeling and extensive all-atom molecular dynamics simulations. Several heterodimer interfaces were first examined for the TM domain, and conformational changes occurring at the intracellular side and associated with the receptor's activation were characterized. From the analysis on the simulated data, putative allosteric binding sites for ligands, ions, and cholesterol were proposed. Also, insights into the protein interface of the TM domain upon activation are provided. The EC domain of the heterodimer, including both the Venus flytrap and cysteine-rich domains, was also investigated. Several important intersubunit interactions located at regions responsible for the receptor's proper function were observed, which resemble those recently identified in other class C GPCR members. Integration of the results from the TM and EC domains facilitates the generation of a full-length T1R2-T1R3 receptor. These findings along with the full-length structural ",
+          "journal": "ACS chemical neuroscience",
+          "pmid": "31553164",
+          "title": "Modeling and Structural Characterization of the Sweet Taste Receptor Heterodimer.",
+          "year": "2019"
+        },
+        {
+          "abstract": "The umami taste receptor is a heterodimer composed of two members of the T1R taste receptor family: T1R1 and T1R3. The homology models of the ligand binding domains of the human umami receptor have been constructed based on crystallographic structures of the taste receptor of the central nervous system. Furthermore, the molecular simulations of the ligand binding domain show that the likely conformation was that T1R1 protein exists in the closed conformation, and T1R3 in the open conformation in the heterodimer. The molecular docking study of T1R1 and T1R3 in complex with four peptides, including Lys-Gly-Asp-Glu-Ser-Leu-Leu-Ala, Ser-Glu-Glu, G1u-Ser, and Asp-Glu-Ser, displayed that the amino acid residue of SER146 and Glu277 in T1R3 may play great roles in the synergism of umami taste. This docking result further validated the robustness of the model. In the paper, binding of umami peptide and the T1R1/T1R3 receptor was first described and the interaction is the base of umami activity theory.",
+          "journal": "Cell biochemistry and biophysics",
+          "pmid": "25331670",
+          "title": "Interaction between umami peptide and taste receptor T1R1/T1R3.",
+          "year": "2014"
+        },
+        {
+          "abstract": "Elucidation of the molecular bases of sweet taste is very important not only for its intrinsic biological significance but also for the design of new artificial sweeteners. Up to few years ago design was complicated by the common belief that different classes of sweet compounds, notably sweet proteins, might interact with different receptors altogether. The recent identification and functional expression of the receptor for sweet taste have shown that there is but one receptor, drastically changing our approach to the development of new sweeteners. The explanation of how the sweet receptor can bind several different classes of molecules is that rather than multiple receptors there are, apparently, multiple sites on the single sweet taste receptor. In this chapter, the mechanisms of interaction of small and macromolecular sweet molecules will be examined, with particular emphasis on sweet proteins. Systematic homology modeling yields reliable models of all possible heterodimers of the human T1R2 and T1R3 sequences with the closed (A) and open (B) conformations of one of the metabotropic glutamate receptors (mGluR1), used as template. The most important result of these studies is the \"wedge model,\" the first explanation of the taste of sweet proteins. In addition, it was shown that simultaneous binding to the A and B sites is not possible with two large sweeteners but is possible with a small molecule in site A and a large one in site B. This observation accounted for the first time for the peculiar phenomenon of synergy between some sweeteners.",
+          "journal": "Advances in food and nutrition research",
+          "pmid": "17900500",
+          "title": "The sweet taste receptor: a single receptor with multiple sites and modes of interaction.",
+          "year": "2007"
+        },
+        {
+          "abstract": "The overconsumption of dietary sugars poses significant health risks, creating a conflict with the innate human preference for sweet taste. Beyond its role in taste perception on the tongue, the sweet taste receptor (STR, a heterodimer of T1R2/T1R3) serves as a crucial nutrient sensor in metabolic organs, including the gut and pancreas. Dysfunction of this receptor is linked to impaired metabolic regulation. This review comprehensively summarizes the structure and signaling pathways of T1R2/T1R3, with a particular focus on its interaction with various food-source sweet ligands, including natural sugars and sweeteners. We further discuss its implications in metabolic diseases and its role beyond taste in systems such as the immune system. Finally, we highlight the receptor's significant potential in food innovation, encompassing the development of novel sweeteners, tailored dietary strategies, and biosensors for food quality and safety, offering new avenues for managing health through diet.",
+          "journal": "Food chemistry. Molecular sciences",
+          "pmid": "41953277",
+          "title": "Targeting sweet taste receptor T1R2/T1R3: a new strategy for metabolic disease regulation and intervention of multiple organ diseases.",
+          "year": "2026"
+        }
+      ]
+    },
+    "after": {
+      "records": [
+        {
+          "accession": "Q7RTX0",
+          "id": "TS1R3_HUMAN",
+          "protein_name": "Taste receptor type 1 member 3",
+          "organism": "Homo sapiens",
+          "length": 852,
+          "function": "Key component of the sweet and umami taste receptors (PubMed:11917125, PubMed:40339580, PubMed:40754567, PubMed:40555359). TAS1R1 and TAS1R3 form the umami receptor and respond to the umami taste stimulus (the taste of monosodium glutamate) (PubMed:11917125). TAS1R2 and TAS1R3 form the sweet taste receptor and recognize diverse natural and synthetic sweeteners (PubMed:11917125, PubMed:40339580, PubMed:40754567, PubMed:40555359). The sweet taste receptor has lower affinity for natural sugars than for synthetic sweeteners (PubMed:40339580, PubMed:40555359). Essential for the recognition and response to the disaccharide trehalose (PubMed:12892531). Functions as a G protein-coupled receptor and primarily signals through the gustducin heterotrimer (PubMed:40339580). Sequence differences within and between species can significantly influence the selectivity and specificity of taste responses (By similarity)",
+          "domains": [
+            {
+              "type": "Domain",
+              "description": "ANF receptor",
+              "location": {
+                "start": {
+                  "value": 72,
+                  "modifier": "EXACT"
+                },
+                "end": {
+                  "value": 460,
+                  "modifier": "EXACT"
+                }
+              },
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40339580"
+                },
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40555359"
+                },
+                {
+                  "evidenceCode": "ECO:0000269",
+                  "source": "PubMed",
+                  "id": "40754567"
+                },
+                {
+                  "evidenceCode": "ECO:0000312",
+                  "source": "PDB",
+                  "id": "9UT8"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9NOR"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9OQ4"
+                },
+                {
+                  "evidenceCode": "ECO:0007744",
+                  "source": "PDB",
+                  "id": "9OQ6"
+                }
+              ]
+            }
+          ],
+          "pdb_ids": [
+            "9NOR",
+            "9NOS",
+            "9NOT",
+            "9NOU",
+            "9NOV",
+            "9NOW",
+            "9NOX",
+            "9O38"
+          ],
+          "chembl_ids": [
+            "CHEMBL1613742"
+          ],
+          "sequence": "MLGPAVLGLSLWALLHPGTGAPLCLSQQLRMKGDYVLGGLFPLGEAEEAGLRSRTRPSSPVCTRFSSNGLLWALAMKMAVEEINNKSDLLPGLRLGYDLFDTCSEPVVAMKPSLMFLAKAGSRDIAAYCNYTQYQPRVLAVIGPHSSELAMVTGKFFSFFLMPQVSYGASMELLSARETFPSFFRTVPSDRVQLTAAAELLQEFGWNWVAALGSDDEYGRQGLSIFSALAAARGICIAHEGLVPLPRADDSRLGKVQDVLHQVNQSSVQVVLLFASVHAAHALFNYSISSRLSPKVWVASEAWLTSDLVMGLPGMAQMGTVLGFLQRGAQLHEFPQYVKTHLALATDPAFCSALGEREQGLEEDVVGQRCPQCDCITLQNVSAGLNHHQTFSVYAAVYSVAQALHNTLQCNASGCPAQDPVKPWQLLENMYNLTFHVGGLPLRFDSSGNVDMEYDLKLWVWQGSVPRLHDVGRFNGSLRTERLKIRWHTSDNQKPVSRCSRQCQEGQVRRVKGFHSCCYDCVDCEAGSYRQNPDDIACTFCGQDEWSPERSTRCFRRRSRFLAWGEPAVLLLLLLLSLALGLVLAALGLFVHHRDSPLVQASGGPLACFGLVCLGLVCLSVLLFPGQPSPARCLAQQPLSHLPLTGCLSTLFLQAAEIFVESELPLSWADRLSGCLRGPWAWLVVLLAMLVEVALCTWYLVAFPPEVVTDWHMLPTEALVHCRTRSWVSFGLAHATNATLAFLCFLGTFLVRSQPGCYNRARGLTFAMLAYFITWVSFVPLLANVQVVLRPAVQMGALLLCVLGILAAFHLPRCYLLMRQPGLNTPEFFLGGGPGDAQGQNDGNTGNQGKHE"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "records": [
+            {
+              "entry_id": "9NOR",
+              "title": "Human sweet taste receptor composed of TAS1R2 and TAS1R3 GPCRs from the combined datasets",
+              "experimental_methods": [
+                "ELECTRON MICROSCOPY"
+              ],
+              "resolution_angstroms": [
+                3.4
+              ],
+              "primary_citation": {
+                "title": "The structure of human sweetness.",
+                "pdbx_database_id_PubMed": 40339580,
+                "pdbx_database_id_DOI": "10.1016/j.cell.2025.04.021"
+              },
+              "numbering": "PDB author residue numbering; not asserted to match UniProt",
+              "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+              "metal_sites": [],
+              "occupied_atom_count": 12555,
+              "geometry": {
+                "method": "first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; not proof of biological interfaces or membrane orientation",
+                "chains": [
+                  {
+                    "chain": "B",
+                    "observed_residues": 780,
+                    "author_residue_min": 23,
+                    "author_residue_max": 830
+                  },
+                  {
+                    "chain": "A",
+                    "observed_residues": 785,
+                    "author_residue_min": 25,
+                    "author_residue_max": 829
+                  }
+                ],
+                "inter_chain_contacts": [
+                  {
+                    "chains": [
+                      "A",
+                      "B"
+                    ],
+                    "ca_pair_count": 98,
+                    "closest_pairs": [
+                      {
+                        "chain_1": "A",
+                        "residue_1": 123,
+                        "chain_2": "B",
+                        "residue_2": 124,
+                        "ca_distance_angstroms": 4.293
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 121,
+                        "chain_2": "B",
+                        "residue_2": 126,
+                        "ca_distance_angstroms": 4.446
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 127,
+                        "chain_2": "B",
+                        "residue_2": 58,
+                        "ca_distance_angstroms": 4.569
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 236,
+                        "chain_2": "B",
+                        "residue_2": 515,
+                        "ca_distance_angstroms": 4.816
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 157,
+                        "chain_2": "B",
+                        "residue_2": 57,
+                        "ca_distance_angstroms": 4.987
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 236,
+                        "chain_2": "B",
+                        "residue_2": 514,
+                        "ca_distance_angstroms": 5.141
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 122,
+                        "chain_2": "B",
+                        "residue_2": 125,
+                        "ca_distance_angstroms": 5.197
+                      },
+                      {
+                        "chain_1": "A",
+                        "residue_1": 237,
+                        "chain_2": "B",
+                        "residue_2": 515,
+                        "ca_distance_angstroms": 5.222
+                      }
+                    ]
+                  }
+                ]
+              },
+              "secondary_structure_records": [
+                "HELIX    1 AA1 CYS B   24  GLN B   28  5                                   5    ",
+                "HELIX    2 AA2 SER B   66  LYS B   86  1                                  21    ",
+                "HELIX    3 AA3 PRO B  106  ALA B  118  1                                  13    ",
+                "HELIX    4 AA4 ASN B  130  TYR B  134  5                                   5    ",
+                "HELIX    5 AA5 SER B  146  LEU B  161  1                                  16    ",
+                "HELIX    6 AA6 MET B  171  ALA B  176  5                                   6    ",
+                "HELIX    7 AA7 SER B  189  GLY B  205  1                                  17    ",
+                "HELIX    8 AA8 ASP B  216  GLY B  234  1                                  19    ",
+                "HELIX    9 AA9 VAL B  256  SER B  266  1                                  11    ",
+                "HELIX   10 AB1 SER B  276  ARG B  291  1                                  16    ",
+                "HELIX   11 AB2 SER B  300  THR B  305  1                                   6    ",
+                "HELIX   12 AB3 SER B  306  GLY B  311  1                                   6    ",
+                "HELIX   13 AB4 GLY B  314  MET B  318  5                                   5    ",
+                "HELIX   14 AB5 GLU B  333  ASP B  347  1                                  15    ",
+                "HELIX   15 AB6 ASP B  347  LEU B  354  1                                   8    ",
+                "HELIX   16 AB7 CYS B  370  ASP B  374  5                                   5    ",
+                "HELIX   17 AB8 THR B  377  LEU B  385  5                                   9    ",
+                "HELIX   18 AB9 HIS B  388  GLN B  409  1                                  22    ",
+                "HELIX   19 AC1 LYS B  422  GLN B  425  5                                   4    ",
+                "HELIX   20 AC2 LEU B  426  TYR B  431  1                                   6    ",
+                "HELIX   21 AC3 GLU B  566  HIS B  593  1                                  28    ",
+                "HELIX   22 AC4 SER B  596  SER B  602  1                                   7    ",
+                "HELIX   23 AC5 GLY B  604  VAL B  621  1                                  18    ",
+                "HELIX   24 AC6 LEU B  622  PHE B  624  5                                   3    ",
+                "HELIX   25 AC7 SER B  629  GLU B  663  1                                  35    ",
+                "HELIX   26 AC8 PRO B  665  ARG B  677  1                                  13    ",
+                "HELIX   27 AC9 GLY B  678  PHE B  703  1                                  26    ",
+                "HELIX   28 AD1 VAL B  728  PHE B  749  1                                  22    ",
+                "HELIX   29 AD2 ALA B  761  VAL B  785  1                                  25    ",
+                "HELIX   30 AD3 GLN B  786  VAL B  788  5                                   3    ",
+                "HELIX   31 AD4 LEU B  789  ARG B  819  1                                  31    ",
+                "HELIX   32 AD5 GLN B  820  ASN B  824  5                                   5    ",
+                "HELIX   33 AD6 THR B  825  LEU B  830  1                                   6    ",
+                "HELIX   34 AD7 MET A   58  TYR A   62  5                                   5    ",
+                "HELIX   35 AD8 LYS A   65  ASP A   85  1                                  21    ",
+                "HELIX   36 AD9 VAL A  108  ALA A  116  1                                   9    ",
+                "HELIX   37 AE1 ASN A  143  SER A  155  1                                  13    ",
+                "HELIX   38 AE2 SER A  168  ASP A  173  5                                   6    ",
+                "HELIX   39 AE3 SER A  186  PHE A  201  1                                  16    ",
+                "HELIX   40 AE4 ASP A  213  ALA A  228  1                                  16    "
+              ]
+            }
+          ],
+          "retrieved_at": "2026-10-10T12:33:46.184027+00:00",
+          "response_sha256": "ed68bb6ea4555e68db87951a25d1dd76e03bd3e4200160c2b88211ada3dc88cf",
+          "metadata": {
+            "evidence": "experimental_structure",
+            "coverage": "one_deposited_model_bounded_site_records",
+            "coordinate_url": "https://files.rcsb.org/download/9NOR.pdb",
+            "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked"
+          },
+          "truth_status": "source_observation_not_validation",
+          "literature_coverage": "not_assessed",
+          "novelty": "not_established",
+          "receipt_id": "46a3aadd36f3d4414b667a5799f30aee36305d8ae42a1260081e8b52b19084bf"
+        }
+      },
+      "LITERATURE": [
+        {
+          "pmid": "40339580",
+          "title": "The structure of human sweetness.",
+          "journal": "Cell",
+          "year": "2025",
+          "abstract": "In humans, the detection and ultimately the perception of sweetness begin in the oral cavity, where taste receptor cells (TRCs) dedicated to sweet-sensing interact with sugars, artificial sweeteners, and other sweet-tasting chemicals. Human sweet TRCs express on their cell surface a sweet receptor that initiates the cascade of signaling events responsible for our strong attraction to sweet stimuli. Here, we describe the cryo-electron microscopy (cryo-EM) structure of the human sweet receptor bound to two of the most widely used artificial sweeteners-sucralose and aspartame. Our results reveal the structural basis for sweet detection, provide insights into how a single receptor mediates all our responses to such a wide range of sweet-tasting compounds, and open up unique possibilities for designing a generation of taste modulators informed by the structure of the human receptor."
+        }
+      ]
+    }
+  }
+]

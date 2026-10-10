@@ -57,6 +57,8 @@ def query_protein_design_mcp(spec):
 
 
 def query(spec, *, client=None, question=''):
+    from lab_sources import normalize_source_spec
+    spec = normalize_source_spec(spec)
     if not lab.config().get('allow_public_database_reads'):
         raise RuntimeError('public database reads disabled')
     # One bounded request per source per minute; provider throttles get a longer hold.
@@ -129,7 +131,7 @@ def material_terms(inquiry):
     return out[:5]
 
 
-def material(inquiry, *, client=None):
+def material(inquiry, *, client=None, primary_pmids=None):
     """Published abstracts for his question, fetched by the Lab itself (Gloria, 2026-09-28: "Give him the
     material"). His own queries only ever returned identifiers and taxonomy lines; this is the reading."""
     if not lab.config().get('allow_public_database_reads'): return None
@@ -141,9 +143,24 @@ def material(inquiry, *, client=None):
         if time.time() < throttle.get('pubmed_abstracts', 0): return None
         throttle['pubmed_abstracts'] = time.time() + 20
         lab._atomic(throttle_path, throttle)
-    result = (client or configured_sources()).query({'source': 'pubmed_abstracts', 'terms': terms})
+    spec = ({'source':'pubmed_abstracts', 'pmids':primary_pmids, 'include_full_text':True}
+            if primary_pmids else {'source':'pubmed_abstracts','terms':terms})
+    public = client or configured_sources()
+    result = public.query(spec)
     lab._ensure()
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
+    if primary_pmids:
+        # A structure's cited paper and the domain nomenclature in the question
+        # can require different papers. Keep both with exact parent receipts.
+        supporting = public.query({'source':'pubmed_abstracts', 'terms':terms, 'limit':2})
+        lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), supporting)
+        merged = {str(r['pmid']):r for r in result['records']}
+        for row in supporting['records']: merged.setdefault(str(row['pmid']),row)
+        result = receipt('pubmed_abstracts', {'primary_pmids':primary_pmids, 'terms':terms},
+                         list(merged.values())[:4], metadata={'source_receipt_ids':[
+                             result['receipt_id'], supporting['receipt_id']],
+                             'coverage':'exact_structure_citation_plus_bounded_question_context'})
+        lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     return result
 
 def report_packet(receipt_ids):

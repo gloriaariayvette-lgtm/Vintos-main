@@ -92,7 +92,7 @@ crowded = {"records": [{"accession": "P%d" % n, "sequence": "MKVL" * 1250} for n
 end = M.observed(crowded)
 check("if it still cannot fit, it says the excerpt ends there and the records are complete",
       "EXCERPT ENDS HERE" in end and "do not report them as truncated" in end)
-check("the review uses it", "observed(records)" in open(M.__file__).read() and "json.dumps(records)[:14000]" not in
+check("the review uses it", "observed(review_observations(inquiry, records)" in open(M.__file__).read() and "json.dumps(records)[:14000]" not in
       open(M.__file__).read().split("def _reflect(", 1)[1].split("def _reflect_genome", 1)[0])
 
 # --- the third cut: the notebook's note of a source, and the excerpt of it in his context --------------------------

@@ -1,0 +1,399 @@
+{
+  "source_receipt": {
+    "source": "uniprot",
+    "query": {
+      "requested_query": "protein_name:prophenoloxidase AND reviewed:true AND taxonomy_id:9606",
+      "executed_query": "protein_name:prophenoloxidase"
+    },
+    "records": [
+      {
+        "entryType": "UniProtKB reviewed (Swiss-Prot)",
+        "primaryAccession": "Q8I6K2",
+        "uniProtkbId": "PPO2_HOLDI",
+        "organism": {
+          "scientificName": "Holotrichia diomphalia",
+          "commonName": "Korean black chafer",
+          "taxonId": 33394,
+          "evidences": [
+            {
+              "evidenceCode": "ECO:0000312",
+              "source": "EMBL",
+              "id": "BAC15602.1"
+            }
+          ],
+          "lineage": [
+            "Eukaryota",
+            "Metazoa",
+            "Ecdysozoa",
+            "Arthropoda",
+            "Altocrustacea",
+            "Allotriocarida",
+            "Hexapoda",
+            "Insecta",
+            "Pterygota",
+            "Neoptera",
+            "Eumetabola",
+            "Endopterygota",
+            "Aparaglossata",
+            "Neuropteroidea",
+            "Coleoptera",
+            "Polyphaga",
+            "Scarabaeiformia",
+            "Scarabaeidae",
+            "Melolonthinae",
+            "Holotrichia"
+          ]
+        },
+        "proteinDescription": {
+          "recommendedName": {
+            "fullName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000305"
+                }
+              ],
+              "value": "Phenoloxidase 2"
+            },
+            "ecNumbers": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "12185078"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "16362048"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "9085271"
+                  }
+                ],
+                "value": "1.14.18.-"
+              }
+            ]
+          },
+          "alternativeNames": [
+            {
+              "fullName": {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000303",
+                    "source": "PubMed",
+                    "id": "9085271"
+                  }
+                ],
+                "value": "Prophenoloxidase-II"
+              }
+            }
+          ],
+          "flag": "Precursor"
+        },
+        "genes": [
+          {
+            "geneName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000305"
+                }
+              ],
+              "value": "PPO2"
+            },
+            "synonyms": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000312",
+                    "source": "EMBL",
+                    "id": "BAC15602.1"
+                  }
+                ],
+                "value": "proPO-II"
+              }
+            ]
+          }
+        ],
+        "comments": [
+          {
+            "texts": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000250",
+                    "source": "UniProtKB",
+                    "id": "O44249"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "12185078"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "16362048"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "9085271"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "9839951"
+                  }
+                ],
+                "value": "This is a copper-containing oxidase that functions in the formation of pigments such as melanins and other polyphenolic compounds (By similarity). Catalyzes the oxidation of o-diphenols (N-acetyldopamine, 4-methylcatechol and dopamine) (PubMed:12185078, PubMed:16362048, PubMed:9085271). Cannot oxidize monophenols and p-phenols (L-tyrosine, tyramine, gentisic acid and hydroquinone) (PubMed:9085271). Binds to the surface of hemocytes and is involved in hemocyte melanization (By similarity). Activation of the enzyme in response to bacterial lipopolysaccharides (LPS) suggests it may play a role in innate immunity (PubMed:9839951)"
+              }
+            ],
+            "commentType": "FUNCTION"
+          }
+        ],
+        "features": [],
+        "uniProtKBCrossReferences": [],
+        "sequence": {
+          "value": "MSNTAVLNDLVALYDRPTEPMFRVKAKKSFKVPKEYVTDRFKNVAVEISNRFGEDDSETVTIDSVPLPDLADILTLGREENFSLFIPKHRNLSAKLINIFLQAENPKHLLSIACYAHDRVNPYLFIYALSVALIHRKDTKSLKIPNQIQTFPDKYFDSQVFSQGKEEMTVVPQGLRRPIEIPRDYTASDLEEEHRVAYWREDLGINLHHWHWHLVYPTDGGEIVTKKDRRGELFYYSHQQIVARYNFERFCNALKRVERLTDWQGPIKEAYFPKLDSLVAKRAYPARVQDMTMQDLDIPGQNIKVDVDDMIRWRDRIYRAIADGFITATNGSKMNLDDVTGIDILGNIMESSELSPNRQLYGNLHGFGHLMLSYIHDPRSHHLEPFGVIGDFTTAMRDPIFYRWHAFVDDVFQQFNGSLPRYTAEQLDYAGVQITDVNIKTPNAPDNEFRTFWQQSDVDMSRGVDFQDPGSVFVRFTHLNHEPFSYNITVNNTGNGVQEGTCRIFLAPATDERGNPWLFNNQRVMFVEMDRFKVTLRQGQNTITRNSTQSSVTIPFERTFRDLDTNRPAEGSEELDIFNFCGCGWPHHLLVPKGTPDGFKAQLFVMISNYADDKVEQDLSGSCNDAESYCGVRGGKYPDKRPMGYPFNRVARQGADTLQRFLTGNMIVQNCRIVHSDRTVRPRS",
+          "length": 684,
+          "molWeight": 78820,
+          "crc64": "3B9F9A712AA96C6F",
+          "md5": "16A8BDA40CAC4EA89702409E8A5AC8FD"
+        },
+        "extraAttributes": {
+          "uniParcId": "UPI0000085DD9"
+        }
+      },
+      {
+        "entryType": "UniProtKB reviewed (Swiss-Prot)",
+        "primaryAccession": "Q8MZM3",
+        "uniProtkbId": "PPO8_ANOGA",
+        "organism": {
+          "scientificName": "Anopheles gambiae",
+          "commonName": "African malaria mosquito",
+          "taxonId": 7165,
+          "evidences": [
+            {
+              "evidenceCode": "ECO:0000312",
+              "source": "Proteomes",
+              "id": "UP000007062"
+            }
+          ],
+          "lineage": [
+            "Eukaryota",
+            "Metazoa",
+            "Ecdysozoa",
+            "Arthropoda",
+            "Altocrustacea",
+            "Allotriocarida",
+            "Hexapoda",
+            "Insecta",
+            "Pterygota",
+            "Neoptera",
+            "Eumetabola",
+            "Endopterygota",
+            "Aparaglossata",
+            "Panorpida",
+            "Diptera",
+            "Nematocera",
+            "Culicoidea",
+            "Culicidae",
+            "Anophelinae",
+            "Anopheles"
+          ]
+        },
+        "proteinDescription": {
+          "recommendedName": {
+            "fullName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000303",
+                  "source": "PubMed",
+                  "id": "26732497"
+                }
+              ],
+              "value": "Phenoloxidase 8"
+            },
+            "ecNumbers": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "26732497"
+                  }
+                ],
+                "value": "1.10.3.-"
+              },
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "26732497"
+                  }
+                ],
+                "value": "1.14.18.-"
+              }
+            ]
+          },
+          "alternativeNames": [
+            {
+              "fullName": {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000305"
+                  }
+                ],
+                "value": "Prophenoloxidase 8"
+              }
+            }
+          ],
+          "flag": "Precursor"
+        },
+        "genes": [
+          {
+            "geneName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000303",
+                  "source": "PubMed",
+                  "id": "26732497"
+                }
+              ],
+              "value": "PPO8"
+            },
+            "synonyms": [
+              {
+                "value": "1275798"
+              }
+            ],
+            "orfNames": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000312",
+                    "source": "EMBL",
+                    "id": "EAA44337.1"
+                  }
+                ],
+                "value": "AgaP_AGAP004976"
+              }
+            ]
+          }
+        ],
+        "comments": [
+          {
+            "texts": [
+              {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000269",
+                    "source": "PubMed",
+                    "id": "26732497"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000305",
+                    "source": "PubMed",
+                    "id": "26732497"
+                  }
+                ],
+                "value": "This is a copper-containing oxidase that functions in the formation of pigments such as melanins and other polyphenolic compounds (Probable). Catalyzes the oxidation of o-diphenols such as dopamine (PubMed:26732497). Also oxidizes monophenols such as tyramine (PubMed:26732497)"
+              }
+            ],
+            "commentType": "FUNCTION"
+          }
+        ],
+        "features": [],
+        "uniProtKBCrossReferences": [
+          {
+            "database": "PDB",
+            "id": "4YZW",
+            "properties": [
+              {
+                "key": "Method",
+                "value": "X-ray"
+              },
+              {
+                "key": "Resolution",
+                "value": "2.60 A"
+              },
+              {
+                "key": "Chains",
+                "value": "A/B=1-700"
+              }
+            ]
+          }
+        ],
+        "sequence": {
+          "value": "MATLTQKFHGLLQHPLEPLFLPKNDGTLFYDLPERFLTSRYSPIGQNLANRFGPNSPASSQVSNDTGVPPTVVTIKDLDELPDLTFATWIKRRDSFSLFNPEHRKAAGKLTKLFLDQPNADRLVDVAAYARDRLNAPLFQYALSVALLHRPDTKSVSVPSLLHLFPDQFIDPAAQVRMMEEGSIVLDENRMPIPIPMNYTATDAEPEQRMAFFREDIGVNLHHWHWHLVYPASGPPDVVRKDRRGELFYYMHQQLLARYQIDRYAQGLGRIEPLANLREPVREAYYPKLLRTSNNRTFCPRYPGMTISDVARSADRLEVRIADIESWLPRVLEAIDAGFAVSDDGVRVPLDETRGIDVLGNILERSAISINRNLYGDVHNMGHVLLAFIHDPRGTYLESSGVMGGVATAMRDPIFYRWHKFIDNIFLRNKARLAPYTMAELSNSNVTLEALETQLDRAGGAVNSFVTFWQRSQVDLRAGIDFSAAGSAFVSFTHLQCAPFVYRLRINSTARSNRQDTVRIFLLPRQNEQGRPLSFEDRRLLAIELDSFRVNLRPGMNNIVRQSSNSSVTIPFERTFGNVEQANAGNAQSRFCGCGWPAHMLLPKGNANGVEFDLFAMVSRFEDDNANVNYDENAGCDDSYAFCGLRDRVYPSRRAMGFPFDRRASNGVRSVADFVAPYKNMRLATVTLRFMNTIIDRPTN",
+          "length": 700,
+          "molWeight": 79293,
+          "crc64": "3B5A42A2854338C3",
+          "md5": "91B51D140A9F33A90189B8AE12EFD7D6"
+        },
+        "extraAttributes": {
+          "uniParcId": "UPI000001FAE9"
+        }
+      }
+    ],
+    "retrieved_at": "2026-10-10T12:34:01.128390+00:00",
+    "response_sha256": "ecd226cccc472ba3b3be6338fe7c8c459afeb02d017de8c138342b5429c501f2",
+    "metadata": {
+      "coverage": "bounded_first_page",
+      "relaxed": "organism_scope_diagnostic",
+      "partial_match": false
+    },
+    "truth_status": "source_observation_not_validation",
+    "literature_coverage": "not_assessed",
+    "novelty": "not_established",
+    "receipt_id": "bde032bb5a652387ad22944e8b07863f91d49e56c4d4e743f0a4e7bcfaca03af"
+  },
+  "records": [
+    {
+      "accession": "Q8I6K2",
+      "id": "PPO2_HOLDI",
+      "protein_name": "Phenoloxidase 2",
+      "organism": "Holotrichia diomphalia",
+      "length": 684,
+      "function": "This is a copper-containing oxidase that functions in the formation of pigments such as melanins and other polyphenolic compounds (By similarity). Catalyzes the oxidation of o-diphenols (N-acetyldopamine, 4-methylcatechol and dopamine) (PubMed:12185078, PubMed:16362048, PubMed:9085271). Cannot oxidize monophenols and p-phenols (L-tyrosine, tyramine, gentisic acid and hydroquinone) (PubMed:9085271). Binds to the surface of hemocytes and is involved in hemocyte melanization (By similarity). Activation of the enzyme in response to bacterial lipopolysaccharides (LPS) suggests it may play a role in innate immunity (PubMed:9839951)",
+      "domains": [],
+      "pdb_ids": [],
+      "chembl_ids": [],
+      "sequence": "MSNTAVLNDLVALYDRPTEPMFRVKAKKSFKVPKEYVTDRFKNVAVEISNRFGEDDSETVTIDSVPLPDLADILTLGREENFSLFIPKHRNLSAKLINIFLQAENPKHLLSIACYAHDRVNPYLFIYALSVALIHRKDTKSLKIPNQIQTFPDKYFDSQVFSQGKEEMTVVPQGLRRPIEIPRDYTASDLEEEHRVAYWREDLGINLHHWHWHLVYPTDGGEIVTKKDRRGELFYYSHQQIVARYNFERFCNALKRVERLTDWQGPIKEAYFPKLDSLVAKRAYPARVQDMTMQDLDIPGQNIKVDVDDMIRWRDRIYRAIADGFITATNGSKMNLDDVTGIDILGNIMESSELSPNRQLYGNLHGFGHLMLSYIHDPRSHHLEPFGVIGDFTTAMRDPIFYRWHAFVDDVFQQFNGSLPRYTAEQLDYAGVQITDVNIKTPNAPDNEFRTFWQQSDVDMSRGVDFQDPGSVFVRFTHLNHEPFSYNITVNNTGNGVQEGTCRIFLAPATDERGNPWLFNNQRVMFVEMDRFKVTLRQGQNTITRNSTQSSVTIPFERTFRDLDTNRPAEGSEELDIFNFCGCGWPHHLLVPKGTPDGFKAQLFVMISNYADDKVEQDLSGSCNDAESYCGVRGGKYPDKRPMGYPFNRVARQGADTLQRFLTGNMIVQNCRIVHSDRTVRPRS",
+      "found_by": "organism_scope_diagnostic",
+      "curated": true,
+      "partial_match": false
+    },
+    {
+      "accession": "Q8MZM3",
+      "id": "PPO8_ANOGA",
+      "protein_name": "Phenoloxidase 8",
+      "organism": "Anopheles gambiae",
+      "length": 700,
+      "function": "This is a copper-containing oxidase that functions in the formation of pigments such as melanins and other polyphenolic compounds (Probable). Catalyzes the oxidation of o-diphenols such as dopamine (PubMed:26732497). Also oxidizes monophenols such as tyramine (PubMed:26732497)",
+      "domains": [],
+      "pdb_ids": [
+        "4YZW"
+      ],
+      "chembl_ids": [],
+      "sequence": "MATLTQKFHGLLQHPLEPLFLPKNDGTLFYDLPERFLTSRYSPIGQNLANRFGPNSPASSQVSNDTGVPPTVVTIKDLDELPDLTFATWIKRRDSFSLFNPEHRKAAGKLTKLFLDQPNADRLVDVAAYARDRLNAPLFQYALSVALLHRPDTKSVSVPSLLHLFPDQFIDPAAQVRMMEEGSIVLDENRMPIPIPMNYTATDAEPEQRMAFFREDIGVNLHHWHWHLVYPASGPPDVVRKDRRGELFYYMHQQLLARYQIDRYAQGLGRIEPLANLREPVREAYYPKLLRTSNNRTFCPRYPGMTISDVARSADRLEVRIADIESWLPRVLEAIDAGFAVSDDGVRVPLDETRGIDVLGNILERSAISINRNLYGDVHNMGHVLLAFIHDPRGTYLESSGVMGGVATAMRDPIFYRWHKFIDNIFLRNKARLAPYTMAELSNSNVTLEALETQLDRAGGAVNSFVTFWQRSQVDLRAGIDFSAAGSAFVSFTHLQCAPFVYRLRINSTARSNRQDTVRIFLLPRQNEQGRPLSFEDRRLLAIELDSFRVNLRPGMNNIVRQSSNSSVTIPFERTFGNVEQANAGNAQSRFCGCGWPAHMLLPKGNANGVEFDLFAMVSRFEDDNANVNYDENAGCDDSYAFCGLRDRVYPSRRAMGFPFDRRASNGVRSVADFVAPYKNMRLATVTLRFMNTIIDRPTN",
+      "found_by": "organism_scope_diagnostic",
+      "curated": true,
+      "partial_match": false
+    }
+  ],
+  "requested_query": "protein_name:prophenoloxidase AND reviewed:true AND taxonomy_id:9606",
+  "executed_query": "protein_name:prophenoloxidase",
+  "fallback_reason": null,
+  "relaxed": "organism_scope_diagnostic",
+  "scope_resolution": {
+    "requested_query": "protein_name:prophenoloxidase AND reviewed:true AND taxonomy_id:9606",
+    "executed_query": "protein_name:prophenoloxidase",
+    "reason": "no_records_in_requested_human_scope; other_organisms_are_not_human_evidence",
+    "requested_taxonomy_id": "9606"
+  }
+}

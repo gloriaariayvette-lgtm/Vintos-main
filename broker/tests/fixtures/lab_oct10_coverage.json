@@ -1,0 +1,1101 @@
+{
+  "inquiry": {
+    "browse_lane": "protein",
+    "instrument_query": null,
+    "material_terms": [
+      "calcium sensing receptor",
+      "CASR",
+      "Venus Flytrap domain",
+      "extracellular domain",
+      "calcium sensing"
+    ],
+    "plugin_query": null,
+    "question": "What is the structural organization of the human calcium-sensing receptor (CASR), specifically the extracellular Venus Flytrap (VFT) domain and its role in ligand binding?",
+    "source_query": {
+      "entry_id": "5FBH",
+      "operation": "structure_evidence",
+      "source": "pdb"
+    },
+    "structure_resolution": {
+      "accession": "P41180",
+      "entry_id": "5FBH",
+      "reason": "structural_question_reads_sourced_deposited_entry"
+    },
+    "uniprot_query": "protein_name:\"calcium sensing receptor\" AND reviewed:true AND taxonomy_id:9606",
+    "why_now": "The previous threads on pendrin (SLC26A4) and GSDM4 are exhausted and spent. I need a fresh, structurally complex human GPCR-related target to explore. CASR is a classic example of a multi-domain receptor with distinct structural features (VFT, CR, and CT) that provides a rich landscape for structural analysis and ligand interaction modeling, moving away from the 'spent' SLC family."
+  },
+  "evidence": {
+    "records": [
+      {
+        "accession": "P41180",
+        "id": "CASR_HUMAN",
+        "protein_name": "Extracellular calcium-sensing receptor",
+        "organism": "Homo sapiens",
+        "length": 1078,
+        "function": "G protein-coupled receptor that senses changes in the extracellular concentration of calcium ions and plays a key role in maintaining calcium homeostasis (PubMed:17555508, PubMed:19789209, PubMed:21566075, PubMed:22114145, PubMed:22789683, PubMed:23966241, PubMed:25104082, PubMed:25292184, PubMed:25766501, PubMed:26386835, PubMed:32817431, PubMed:33603117, PubMed:34194040, PubMed:34467854, PubMed:7759551, PubMed:8636323, PubMed:8702647, PubMed:8878438). Senses fluctuations in the circulating calcium concentration: activated by elevated circulating calcium, leading to decreased parathyroid hormone (PTH) secretion in parathyroid glands (By similarity). In kidneys, acts as a key regulator of renal tubular calcium resorption (By similarity). Ligand binding causes a conformation change that triggers signaling via guanine nucleotide-binding proteins (G proteins) and modulates the activity of downstream effectors (PubMed:38632411). CASR is coupled with different G(q)/G(11), G(i)/G(o)- or G(s)-classes of G proteins depending on the context (PubMed:38632411). In the parathyroid and kidney, CASR signals through G(q)/G(11) and G(i)/G(o) G proteins: G(q)/G(11) coupling activates phospholipase ",
+        "domains": [],
+        "topology": [
+          {
+            "type": "Topological domain",
+            "description": "Extracellular",
+            "location": {
+              "start": {
+                "value": 20,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 610,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=1",
+            "location": {
+              "start": {
+                "value": 611,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 636,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Cytoplasmic",
+            "location": {
+              "start": {
+                "value": 637,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 648,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=2",
+            "location": {
+              "start": {
+                "value": 649,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 668,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Extracellular",
+            "location": {
+              "start": {
+                "value": 669,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 674,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=3",
+            "location": {
+              "start": {
+                "value": 675,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 698,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Cytoplasmic",
+            "location": {
+              "start": {
+                "value": 699,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 722,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=4",
+            "location": {
+              "start": {
+                "value": 723,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 745,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Extracellular",
+            "location": {
+              "start": {
+                "value": 746,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 769,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=5",
+            "location": {
+              "start": {
+                "value": 770,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 789,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Cytoplasmic",
+            "location": {
+              "start": {
+                "value": 790,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 805,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=6",
+            "location": {
+              "start": {
+                "value": 806,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 828,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Extracellular",
+            "location": {
+              "start": {
+                "value": 829,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 832,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Transmembrane",
+            "description": "Helical; Name=7",
+            "location": {
+              "start": {
+                "value": 833,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 854,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          },
+          {
+            "type": "Topological domain",
+            "description": "Cytoplasmic",
+            "location": {
+              "start": {
+                "value": 855,
+                "modifier": "EXACT"
+              },
+              "end": {
+                "value": 1078,
+                "modifier": "EXACT"
+              }
+            },
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "34194040"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3E"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3F"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3G"
+              },
+              {
+                "evidenceCode": "ECO:0007744",
+                "source": "PDB",
+                "id": "7M3J"
+              }
+            ]
+          }
+        ],
+        "pdb_ids": [
+          "5FBH",
+          "5FBK",
+          "5K5S",
+          "5K5T",
+          "7DTT",
+          "7DTU",
+          "7DTV",
+          "7DTW"
+        ],
+        "chembl_ids": [
+          "CHEMBL1878"
+        ],
+        "sequence": "MAFYSCCWVLLALTWHTSAYGPDQRAQKKGDIILGGLFPIHFGVAAKDQDLKSRPESVECIRYNFRGFRWLQAMIFAIEEINSSPALLPNLTLGYRIFDTCNTVSKALEATLSFVAQNKIDSLNLDEFCNCSEHIPSTIAVVGATGSGVSTAVANLLGLFYIPQVSYASSSRLLSNKNQFKSFLRTIPNDEHQATAMADIIEYFRWNWVGTIAADDDYGRPGIEKFREEAEERDICIDFSELISQYSDEEEIQHVVEVIQNSTAKVIVVFSSGPDLEPLIKEIVRRNITGKIWLASEAWASSSLIAMPQYFHVVGGTIGFALKAGQIPGFREFLKKVHPRKSVHNGFAKEFWEETFNCHLQEGAKGPLPVDTFLRGHEESGDRFSNSSTAFRPLCTGDENISSVETPYIDYTHLRISYNVYLAVYSIAHALQDIYTCLPGRGLFTNGSCADIKKVEAWQVLKHLRHLNFTNNMGEQVTFDECGDLVGNYSIINWHLSPEDGSIVFKEVGYYNVYAKKGERLFINEEKILWSGFSREVPFSNCSRDCLAGTRKGIIEGEPTCCFECVECPDGEYSDETDASACNKCPDDFWSNENHTSCIAKEIEFLSWTEPFGIALTLFAVLGIFLTAFVLGVFIKFRNTPIVKATNRELSYLLLFSLLCCFSSSLFFIGEPQDWTCRLRQPAFGISFVLCISCILVKTNRVLLVFEAKIPTSFHRKWWGLNLQFLLVFLCTFMQIVICVIWLYTAPPSSYRNQELEDEIIFITCHEGSLMALGFLIGYTCLLAAICFFFAFKSRKLPENFNEAKFITFSMLIFFIVWISFIPAYASTYGKFVSAVEVIAILAASFGLLACIFFNKIYIILFKPSRNTIEEVRCSTAAHAFKVAARATLRRSNVSRKRSSSLGGSTGSTPSSSISSKSNSEDPFPQPERQKQQQPLALTQQEQQQQPLTLPQQQRSQQQPRCKQKVIFGSGTVTFSLSFDEPQKNAMAHRNSTHQNSLEAQKSSDTLTRHEPLLPLQCGETDLDLTVQETGLQGPVGGDQRPEVEDPEELSPALVVSSSQSFVISGGGSTVTENVVNS"
+      }
+    ],
+    "additional_source": {
+      "receipt": {
+        "source": "pdb",
+        "query": {
+          "entry_id": "5FBH",
+          "operation": "structure_evidence",
+          "source": "pdb"
+        },
+        "records": [
+          {
+            "entry_id": "5FBH",
+            "title": "Crystal structure of the extracellular domain of human calcium sensing receptor with bound Gd3+",
+            "experimental_methods": [
+              "X-RAY DIFFRACTION"
+            ],
+            "resolution_angstroms": [
+              2.7
+            ],
+            "primary_citation": {
+              "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist.",
+              "pdbx_database_id_PubMed": 27386547,
+              "pdbx_database_id_DOI": "10.1126/sciadv.1600241"
+            },
+            "numbering": "PDB author residue numbering; not asserted to match UniProt",
+            "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+            "metal_sites": [
+              {
+                "record": "HETATM",
+                "atom": "MG",
+                "residue": "MG",
+                "chain": "B",
+                "residue_number": 602,
+                "insertion_code": "",
+                "element": "MG",
+                "coordinates_angstroms": [
+                  -49.912,
+                  -38.09,
+                  30.824
+                ],
+                "nearby_atoms": [
+                  {
+                    "record": "ATOM",
+                    "atom": "OG",
+                    "residue": "SER",
+                    "chain": "B",
+                    "residue_number": 240,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -50.246,
+                      -36.53,
+                      32.591
+                    ],
+                    "distance_angstroms": 2.381
+                  },
+                  {
+                    "record": "HETATM",
+                    "atom": "O",
+                    "residue": "HOH",
+                    "chain": "B",
+                    "residue_number": 706,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -52.404,
+                      -38.317,
+                      31.255
+                    ],
+                    "distance_angstroms": 2.539
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "SER",
+                    "chain": "B",
+                    "residue_number": 240,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -51.139,
+                      -35.899,
+                      30.262
+                    ],
+                    "distance_angstroms": 2.573
+                  }
+                ]
+              },
+              {
+                "record": "HETATM",
+                "atom": "MG",
+                "residue": "MG",
+                "chain": "B",
+                "residue_number": 603,
+                "insertion_code": "",
+                "element": "MG",
+                "coordinates_angstroms": [
+                  -9.937,
+                  -5.72,
+                  26.937
+                ],
+                "nearby_atoms": [
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "LEU",
+                    "chain": "B",
+                    "residue_number": 88,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -7.522,
+                      -6.136,
+                      27.826
+                    ],
+                    "distance_angstroms": 2.607
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "ILE",
+                    "chain": "B",
+                    "residue_number": 81,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -12.428,
+                      -4.623,
+                      27.529
+                    ],
+                    "distance_angstroms": 2.785
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "LEU",
+                    "chain": "B",
+                    "residue_number": 87,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -9.454,
+                      -5.519,
+                      29.81
+                    ],
+                    "distance_angstroms": 2.92
+                  }
+                ]
+              },
+              {
+                "record": "HETATM",
+                "atom": "MG",
+                "residue": "MG",
+                "chain": "A",
+                "residue_number": 602,
+                "insertion_code": "",
+                "element": "MG",
+                "coordinates_angstroms": [
+                  -21.766,
+                  -60.37,
+                  -1.936
+                ],
+                "nearby_atoms": [
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "ILE",
+                    "chain": "A",
+                    "residue_number": 81,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -22.39,
+                      -61.188,
+                      0.366
+                    ],
+                    "distance_angstroms": 2.521
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "LEU",
+                    "chain": "A",
+                    "residue_number": 87,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -24.199,
+                      -60.019,
+                      -2.516
+                    ],
+                    "distance_angstroms": 2.526
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "LEU",
+                    "chain": "A",
+                    "residue_number": 88,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -22.221,
+                      -58.641,
+                      -3.916
+                    ],
+                    "distance_angstroms": 2.668
+                  },
+                  {
+                    "record": "ATOM",
+                    "atom": "O",
+                    "residue": "SER",
+                    "chain": "A",
+                    "residue_number": 84,
+                    "insertion_code": "",
+                    "element": "O",
+                    "coordinates_angstroms": [
+                      -22.502,
+                      -62.981,
+                      -2.412
+                    ],
+                    "distance_angstroms": 2.754
+                  }
+                ]
+              }
+            ],
+            "occupied_atom_count": 7394,
+            "geometry": {
+              "method": "first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; not proof of biological interfaces or membrane orientation",
+              "chains": [
+                {
+                  "chain": "B",
+                  "observed_residues": 468,
+                  "author_residue_min": 21,
+                  "author_residue_max": 534
+                },
+                {
+                  "chain": "A",
+                  "observed_residues": 470,
+                  "author_residue_min": 22,
+                  "author_residue_max": 538
+                }
+              ],
+              "inter_chain_contacts": [
+                {
+                  "chains": [
+                    "A",
+                    "B"
+                  ],
+                  "ca_pair_count": 43,
+                  "closest_pairs": [
+                    {
+                      "chain_1": "A",
+                      "residue_1": 52,
+                      "chain_2": "B",
+                      "residue_2": 444,
+                      "ca_distance_angstroms": 4.154
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 444,
+                      "chain_2": "B",
+                      "residue_2": 52,
+                      "ca_distance_angstroms": 4.402
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 52,
+                      "chain_2": "B",
+                      "residue_2": 445,
+                      "ca_distance_angstroms": 5.405
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 445,
+                      "chain_2": "B",
+                      "residue_2": 52,
+                      "ca_distance_angstroms": 5.461
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 445,
+                      "chain_2": "B",
+                      "residue_2": 53,
+                      "ca_distance_angstroms": 5.996
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 462,
+                      "chain_2": "B",
+                      "residue_2": 51,
+                      "ca_distance_angstroms": 6.097
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 53,
+                      "chain_2": "B",
+                      "residue_2": 444,
+                      "ca_distance_angstroms": 6.142
+                    },
+                    {
+                      "chain_1": "A",
+                      "residue_1": 159,
+                      "chain_2": "B",
+                      "residue_2": 105,
+                      "ca_distance_angstroms": 6.163
+                    }
+                  ]
+                }
+              ]
+            },
+            "secondary_structure_records": [
+              "HELIX    1 AA1 ASN B   64  SER B   84  1                                  21    ",
+              "HELIX    2 AA2 THR B  103  VAL B  115  1                                  13    ",
+              "HELIX    3 AA3 VAL B  115  ASP B  121  1                                   7    ",
+              "HELIX    4 AA4 GLY B  146  GLY B  158  1                                  13    ",
+              "HELIX    5 AA5 LEU B  159  TYR B  161  5                                   3    ",
+              "HELIX    6 AA6 SER B  171  ASN B  176  5                                   6    ",
+              "HELIX    7 AA7 ASN B  189  PHE B  204  1                                  16    ",
+              "HELIX    8 AA8 TYR B  218  ARG B  233  1                                  16    ",
+              "HELIX    9 AA9 ASP B  248  ASN B  261  1                                  14    ",
+              "HELIX   10 AB1 SER B  272  ARG B  286  1                                  15    ",
+              "HELIX   11 AB2 MET B  307  GLN B  309  5                                   3    ",
+              "HELIX   12 AB3 TYR B  310  GLY B  315  1                                   6    ",
+              "HELIX   13 AB4 GLY B  329  LYS B  335  1                                   7    ",
+              "HELIX   14 AB5 PHE B  347  ASN B  357  1                                  11    ",
+              "HELIX   15 AB6 ASN B  400  VAL B  404  5                                   5    ",
+              "HELIX   16 AB7 ARG B  415  THR B  436  1                                  22    ",
+              "HELIX   17 AB8 PHE B  444  SER B  448  5                                   5    ",
+              "HELIX   18 AB9 ASP B  451  VAL B  455  5                                   5    ",
+              "HELIX   19 AC1 GLU B  456  LEU B  467  1                                  12    ",
+              "HELIX   20 AC2 GLU B  525  ILE B  528  5                                   4    ",
+              "HELIX   21 AC3 ASN A   64  SER A   84  1                                  21    ",
+              "HELIX   22 AC4 THR A  103  VAL A  115  1                                  13    ",
+              "HELIX   23 AC5 VAL A  115  ASP A  121  1                                   7    ",
+              "HELIX   24 AC6 GLY A  146  PHE A  160  1                                  15    ",
+              "HELIX   25 AC7 SER A  171  ASN A  176  5                                   6    ",
+              "HELIX   26 AC8 ASP A  190  PHE A  204  1                                  15    ",
+              "HELIX   27 AC9 TYR A  218  ARG A  233  1                                  16    ",
+              "HELIX   28 AD1 ASP A  248  ASN A  261  1                                  14    ",
+              "HELIX   29 AD2 SER A  272  ARG A  286  1                                  15    ",
+              "HELIX   30 AD3 SER A  296  SER A  301  1                                   6    ",
+              "HELIX   31 AD4 MET A  307  GLN A  309  5                                   3    ",
+              "HELIX   32 AD5 TYR A  310  GLY A  315  1                                   6    ",
+              "HELIX   33 AD6 GLY A  329  LYS A  336  1                                   8    ",
+              "HELIX   34 AD7 PHE A  347  ASN A  357  1                                  11    ",
+              "HELIX   35 AD8 ASN A  400  VAL A  404  5                                   5    ",
+              "HELIX   36 AD9 ARG A  415  THR A  436  1                                  22    ",
+              "HELIX   37 AE1 PHE A  444  SER A  448  5                                   5    ",
+              "HELIX   38 AE2 GLU A  456  LEU A  467  1                                  12    ",
+              "HELIX   39 AE3 GLU A  525  ILE A  528  5                                   4    ",
+              "SHEET    1 AA1 6 ALA B  26  LYS B  28  0                                        "
+            ]
+          }
+        ],
+        "retrieved_at": "2026-10-10T12:33:25.110756+00:00",
+        "response_sha256": "9f237310d72ba2a129bb3b4a7b63f4acfd196fe1c4dc1faaef98d4925f24c9ff",
+        "metadata": {
+          "evidence": "experimental_structure",
+          "coverage": "one_deposited_model_bounded_site_records",
+          "coordinate_url": "https://files.rcsb.org/download/5FBH.pdb",
+          "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked"
+        },
+        "truth_status": "source_observation_not_validation",
+        "literature_coverage": "not_assessed",
+        "novelty": "not_established",
+        "receipt_id": "59771e5320ebe4dc73862358382b495025548a2650f54301c3532d5c7d962f1b"
+      }
+    },
+    "LITERATURE": [
+      {
+        "pmid": "27386547",
+        "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist.",
+        "journal": "Science advances",
+        "year": "2016",
+        "abstract": "Ca(2+)-sensing receptors (CaSRs) modulate calcium and magnesium homeostasis and many (patho)physiological processes by responding to extracellular stimuli, including divalent cations and amino acids. We report the first crystal structure of the extracellular domain (ECD) of human CaSR bound with Mg(2+) and a tryptophan derivative ligand at 2.1 Å. The structure reveals key determinants for cooperative activation by metal ions and aromatic amino acids. The unexpected tryptophan derivative was bound in the hinge region between two globular ECD subdomains, and represents a novel high-affinity co-agonist of CaSR. The dissection of structure-function relations by mutagenesis, biochemical, and functional studies provides insights into the molecular basis of human diseases arising from CaSR mutations. The data also provide a novel paradigm for understanding the mechanism of CaSR-mediated signaling that is likely shared by the other family C GPCR [G protein (heterotrimeric guanine nucleotide-binding protein)-coupled receptor] members and can facilitate the development of novel CaSR-based therapeutics."
+      },
+      {
+        "pmid": "23856260",
+        "title": "The CASR gene: alternative splicing and transcriptional control, and calcium-sensing receptor (CaSR) protein: structure and ligand binding sites.",
+        "journal": "Best practice & research. Clinical endocrinology & metabolism",
+        "year": "2013",
+        "abstract": "The calcium-sensing receptor (CaSR) is a G protein-coupled receptor encoded by a single copy gene. The human CASR gene spans ~103-kb and has eight exons. Promoters P1 and P2 drive transcription of exons 1A and 1B, respectively, encoding alternative 5'-UTRs that splice to exon 2 encoding the common part of the 5'-UTR. Exons 2-7 encode the CaSR protein of 1078 amino acids. Functional elements responsive to 1,25-dihydroxyvitamin D, proinflammatory cytokines, and glial cells missing-2 are present in the CASR promoters. Evolutionarily, the exon structure, first seen in aquatic vertebrates, is well-conserved with a single linkage disequilibrium haplotype block for protein coding exons 2-7. Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa)."
+      },
+      {
+        "pmid": "27746744",
+        "title": "Molecular Basis of the Extracellular Ligands Mediated Signaling by the Calcium Sensing Receptor.",
+        "journal": "Frontiers in physiology",
+        "year": "2016",
+        "abstract": "Ca2+-sensing receptors (CaSRs) play a central role in regulating extracellular calcium concentration ([Ca2+]o) homeostasis and many (patho)physiological processes in multiple organs. This regulation is orchestrated by a cooperative response to extracellular stimuli such as small changes in Ca2+, Mg2+, amino acids, and other ligands. In addition, CaSR is a pleiotropic receptor regulating several intracellular signaling pathways, including calcium mobilization and intracellular calcium oscillation. Nearly 200 mutations and polymorphisms have been found in CaSR in relation to a variety of human disorders associated with abnormal Ca2+ homeostasis. In this review, we summarize efforts directed at identifying binding sites for calcium and amino acids. Both homotropic cooperativity among multiple calcium binding sites and heterotropic cooperativity between calcium and amino acid were revealed using computational modeling, predictions, and site-directed mutagenesis coupled with functional assays. The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor. We further highlight the extensive number of disease-associated mutations that have also been shown to affect CaSR's cooperative action via several types of mechanisms. These results provide insights into the molecular bases of the structure and functional cooperativity of this receptor and other members of family C of the G protein-coupled receptors (cGPCRs) in health and disease states, and may assist in the prospective development of novel receptor-based therapeutics."
+      }
+    ]
+  },
+  "checker_responses": [
+    {
+      "answered": true,
+      "missing": [],
+      "supports": [
+        {
+          "requirement": "structural organization of the human calcium-sensing receptor (CASR)",
+          "path": "LITERATURE[1].abstract",
+          "quote": "Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa)."
+        },
+        {
+          "requirement": "extracellular Venus Flytrap (VFT) domain",
+          "path": "LITERATURE[1].abstract",
+          "quote": "an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain"
+        },
+        {
+          "requirement": "role in ligand binding",
+          "path": "LITERATURE[2].abstract",
+          "quote": "The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor."
+        }
+      ]
+    },
+    {
+      "answered": true,
+      "missing": [],
+      "supports": [
+        {
+          "requirement": "arrangement of its transmembrane helices",
+          "path": "LITERATURE.records.1.topology",
+          "quote": "Transmembrane: Helical, location: {start: {value: 116, modifier: 'EXACT'}, end: {value: 136, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 187, modifier: 'EXACT'}, end: {value: 207, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 264, modifier: 'EXACT'}, end: {value: 284, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 294, modifier: 'EXACT'}, end: {value: 314, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 348, modifier: 'EXACT'}, end: {value: 368, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 380, modifier: 'EXACT'}, end: {value: 400, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 417, modifier: 'EXACT'}, end: {value: 437, modifier: 'EXACT'}}, Transmembrane: Helical, location: {start: {value: 485, modifier: 'EXACT'}, end: {value: 505, modifier: 'EXACT'}}"
+        },
+        {
+          "requirement": "topology of its extracellular domain",
+          "path": "LITERATURE.records.1.topology",
+          "quote": "Extracellular, location: {start: {value: 137, modifier: 'EXACT'}, end: {value: 186, modifier: 'EXACT'}}, Extracellular, location: {start: {value: 285, modifier: 'EXACT'}, end: {value: 293, modifier: 'EXACT'}}, Extracellular, location: {start: {value: 369, modifier: 'EXACT'}, end: {value: 379, modifier: 'EXACT'}}, Extracellular, location: {start: {value: 438, modifier: 'EXACT'}, end: {value: 484, modifier: 'EXACT'}}"
+        }
+      ]
+    }
+  ]
+}

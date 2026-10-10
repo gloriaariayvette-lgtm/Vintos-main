@@ -1075,6 +1075,15 @@ def _orient(context, lean=None):
     held = spent_subjects()
     spent = dict(spent, subjects=list(dict.fromkeys(spent["subjects"] + held)))
     atlas_due = atlas_turn_due() and not step     # the frontier session's plan comes before a scheduled Atlas turn
+    recent = _tail_jsonl(NOTEBOOK, nbytes=64*1024)
+    if lab_repeats and not atlas_due and recent and recent[-1].get('kind') == 'inquiry_refused':
+        # A failed choice hands the next pass real pending work, instead of
+        # asking the same planner to start over from the same exhausted context.
+        candidate = _next_evidence_work({}, lab_repeats, spent, step)
+        if candidate:
+            recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
+            if not recovered.get('refused'): return recovered
+
     try:
         import lab_lines
         line = None if (atlas_due or step) else lab_lines.pick()
@@ -1285,6 +1294,53 @@ def _ground_inquiry(inquiry, client=None):
     return {'status': 'verified', 'symbols': symbols, 'receipt_ids': ids}
 
 
+def _strategy_change(inquiry, repeats):
+    """Advance a blocked retrieval using its sourced target, never just reword its query."""
+    terms = {x.lower() for x in _intent_terms(inquiry.get('uniprot_query'))}
+    from lab_repeats import _ACCESSION
+    named = set(_ACCESSION.findall(str(inquiry.get('question') or '') + ' ' +
+                                  str(inquiry.get('uniprot_query') or '')))
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=4*1024*1024)):
+        if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
+        if row.get('scope_resolution'): continue
+        if terms and not terms.intersection(x.lower() for x in _intent_terms(row.get('requested_query'))): continue
+        if not terms and not named: continue
+        taxa = set(re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)', inquiry.get('uniprot_query') or ''))
+        prior_taxa = set(re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)', row.get('requested_query') or ''))
+        if taxa and taxa != prior_taxa: continue
+        records = [r for r in row.get('records') or [] if not named or r.get('accession') in named]
+        if len(records) != 1: continue
+        record = records[0]; accession = record.get('accession')
+        if not accession: continue
+        specs = [{'source':'pdb','entry_id':pid,'operation':'structure_evidence'}
+                 for pid in record.get('pdb_ids') or [] if re.fullmatch(r'[1-9][A-Za-z0-9]{3}', str(pid))]
+        specs.append({'source':'interpro','accession':accession})
+        for spec in specs:
+            target = dict(inquiry, source_query=spec, plugin_query=None, instrument_query=None,
+                browse_lane='protein', uniprot_query='accession:'+accession,
+                strategy_resolution={'previous_lookup':repeats.lookup_key(inquiry),
+                    'reason':'blocked_retrieval_changed_to_unread_sourced_evidence',
+                    'accession':accession, 'source':spec['source']})
+            if not repeats.repeat(target): return target
+        break
+    return None
+
+
+def _next_evidence_work(inquiry, repeats, spent, step):
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
+        if row.get('kind') != 'reflection' or not row.get('next_question'): continue
+        prior = row.get('inquiry') or {}
+        if not prior.get('uniprot_query'): continue
+        proposed = dict(prior, question=row['next_question'],
+                        requested_question=prior.get('question'))
+        candidate = _strategy_change(proposed, repeats)
+        if candidate and (not spent or not spent_retrieval(candidate, spent)) and (
+                not step or repeats.on_frontier(candidate, step)):
+            candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
+            return candidate
+    return None
+
+
 def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None):
     """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
     asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
@@ -1308,6 +1364,11 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
         return repeats.repeat(candidate)
     why = blocked(inquiry)
     if why:
+        alternative = _strategy_change(inquiry, repeats)
+        if alternative and (not step or repeats.on_frontier(alternative, step)):
+            inquiry = alternative
+            why = blocked(inquiry)
+    if why:
         value = _json_object(_ask(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
                                   ". Choose a different question or a different source or instrument."))
         inquiry = _existing_model_read(_inquiry(value, lean))
@@ -1315,6 +1376,20 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
         why = blocked(inquiry)
         if why:
+            alternative = _strategy_change(inquiry, repeats)
+            if alternative and (not step or repeats.on_frontier(alternative, step)):
+                inquiry = alternative
+                why = blocked(inquiry)
+        if why:
+            candidate = _next_evidence_work(inquiry, repeats, spent, step)
+            if candidate:
+                inquiry = candidate
+                why = blocked(inquiry)
+        if why:
+            # Terminal assessment, not another pending retrieval. Preserve the missing
+            # evidence and stop feeding this failed next step back as open work.
+            inquiry = dict(inquiry, evidence_status='insufficient', strategy_resolution={
+                'reason':'no_unread_sourced_route', 'missing_evidence':why})
             return refuse("repeat: " + why)
     sq = inquiry.get('source_query') or {}
     if sq.get('source') in ('ncbi_protein_context', 'ncbi_neighborhood', 'ncbi_sequence', 'rt_locus_screen'):
@@ -1468,6 +1543,7 @@ def _existing_model_read(inquiry):
         if len(symbols) != 1: return _known_structure_followup(inquiry)
         for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
             if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
+            if row.get('scope_resolution'): continue
             if not re.search(r'\b(?:gene|protein_name):"?' + re.escape(symbols[0]) + r'(?:"|\b)',
                              str(row.get('requested_query') or ''), re.I): continue
             records = [r for r in row.get('records', []) if r.get('organism') == 'Homo sapiens']
@@ -1521,6 +1597,9 @@ def _inquiry(value, lean=None):
     if not source_query and direct:
         source_query = direct
         value = dict(value, plugin_query=None)
+    if source_query:
+        from lab_sources import normalize_source_spec
+        source_query = normalize_source_spec(source_query)
     requested_lane = value.get('browse_lane')
     query = _safe_query(value.get("uniprot_query"))
     question = str(value.get('question') or '')
@@ -1556,6 +1635,21 @@ def _inquiry(value, lean=None):
                if isinstance(lean, dict) else {})}
 
 
+def topology_summary(features):
+    """Readable counts/ranges of source annotations, never extra structural measurements."""
+    groups = {}
+    for feature in features or []:
+        location = feature.get('location') or {}
+        start, end = (location.get('start') or {}).get('value'), (location.get('end') or {}).get('value')
+        if type(start) is not int or type(end) is not int: continue
+        key = feature.get('type') or 'unknown'
+        description = feature.get('description') or ''
+        groups.setdefault(key, []).append('%d-%d%s' % (start,end, ' ('+description+')' if description else ''))
+    return ('UniProt source annotations, not a new experimental topology determination: ' + '; '.join(
+        '%s: %d annotated intervals: %s' % (key,len(spans),', '.join(spans)) for key,spans in groups.items()) +
+        '. Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure.') if groups else ''
+
+
 def _browse(query, limit):
     from lab_sources import validate_uniprot
     requested_query = query
@@ -1563,7 +1657,7 @@ def _browse(query, limit):
     fallback_reason = None
     def fetch(value):
         params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
-                                         "fields": "accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function,ft_domain,xref_pdb,xref_chembl"})
+                                         "fields": "accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function,ft_domain,ft_transmem,ft_topo_dom,xref_pdb,xref_chembl"})
         req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                      headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
         with urllib.request.urlopen(req, timeout=45) as response:
@@ -1599,11 +1693,26 @@ def _browse(query, limit):
             if retried.get("results"):
                 raw, executed_query, relaxed, fallback_reason = retried, alt, label, None
                 break
+    scope_resolution = None
+    if not raw.get('results') and not fallback_reason and re.search(r'\b(?:taxonomy_id|organism_id):9606\b', executed_query):
+        subject_terms = _intent_terms(executed_query)
+        if subject_terms and not re.search(r'\baccession:', executed_query):
+            diagnostic_query = ' AND '.join(subject_terms)
+            try: diagnostic = fetch(validate_uniprot(diagnostic_query))
+            except urllib.error.HTTPError as exc:
+                if exc.code != 400: raise
+                diagnostic = {'results':[]}
+            if diagnostic.get('results'):
+                raw = diagnostic
+                scope_resolution = {'requested_query':requested_query, 'executed_query':diagnostic_query,
+                    'reason':'no_records_in_requested_human_scope; other_organisms_are_not_human_evidence',
+                    'requested_taxonomy_id':'9606'}
+                executed_query, relaxed, fallback_reason = diagnostic_query, 'organism_scope_diagnostic', None
     exact = re.fullmatch(r'accession:([A-Z0-9]+)', requested_query)
     if exact and any(item.get("primaryAccession") != exact[1] for item in raw.get("results", [])):
         raise ValueError("source_accession_mismatch: requested " + exact[1])
     from lab_sources import verify_uniprot_identity
-    verify_uniprot_identity(requested_query, raw.get("results", [])[:limit])
+    verify_uniprot_identity(executed_query if scope_resolution else requested_query, raw.get("results", [])[:limit])
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
@@ -1619,6 +1728,9 @@ def _browse(query, limit):
                      "function": " ".join(functions)[:1200],
                      "domains": [{k: f[k] for k in ("type", "description", "location", "evidences") if k in f}
                                  for f in item.get("features", []) if f.get("type") == "Domain"][:40],
+                     "topology": [{k:f[k] for k in ('type','description','location','evidences') if k in f}
+                                  for f in item.get('features', [])
+                                  if f.get('type') in ('Transmembrane','Topological domain')][:80],
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:SEQUENCE_KEPT],
@@ -1627,15 +1739,18 @@ def _browse(query, limit):
                      **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
                          "partial_match": relaxed == "partial_any_word"}
                         if relaxed else {})})
+    for row in rows:
+        row['topology_summary'] = topology_summary(row.get('topology'))
     from lab_sources import receipt
     source_receipt = (None if fallback_reason else
         receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
                 raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page',
+                                                          **({'scope_resolution':scope_resolution} if scope_resolution else {}),
                                                           **({'relaxed': relaxed,
                                                               'partial_match': relaxed == 'partial_any_word'}
                                                              if relaxed else {})}))
     return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
-            "executed_query": executed_query, "fallback_reason": fallback_reason, "relaxed": relaxed}
+            "executed_query": executed_query, "fallback_reason": fallback_reason, "relaxed": relaxed, "scope_resolution": scope_resolution}
 
 
 def _embed_records(records):
@@ -1797,7 +1912,12 @@ def _gather_material(state, inquiry, fresh_only=False):
     if state.get("material") is None:
         try:
             import chemistry_sources
-            found = chemistry_sources.material(inquiry)
+            source = (state.get('additional_source') or {})
+            source = source.get('receipt') or source.get('source_receipt') or {}
+            pmids = list(dict.fromkeys(str((r.get('primary_citation') or {}).get('pdbx_database_id_PubMed'))
+                for r in source.get('records', []) if isinstance(r, dict)
+                and (r.get('primary_citation') or {}).get('pdbx_database_id_PubMed')))[:3]
+            found = chemistry_sources.material(inquiry, primary_pmids=pmids) if pmids else chemistry_sources.material(inquiry)
         except Exception as exc:
             _fault("material", exc); found = None
         state["material"] = found or {}
@@ -1847,6 +1967,30 @@ def embedding_coverage(embeddings, records=()):
         else:
             out.append("%s: coverage not reported" % acc)
     return out
+
+
+def review_observations(inquiry, observations):
+    """Remove receipt/embedding duplication before budgeting actual evidence."""
+    if not isinstance(observations, dict): return observations
+    source = observations.get('additional_source') or {}
+    receipt = source.get('receipt') or source.get('source_receipt') or source.get('instrument_receipt') or {}
+    result = {'embedding_coverage':observations.get('embedding_coverage'),
+              'additional_source': {'source':receipt.get('source'),
+              'receipt_id':receipt.get('receipt_id'), 'records':receipt.get('records'),
+              'instrument_result':source.get('instrument_result')},
+              'LITERATURE':observations.get('LITERATURE') or [],
+              'atlas_analysis':observations.get('atlas_analysis')}
+    proteins = []
+    sequence_requested = bool(re.search(r'sequence|residue|motif|amino.acid', str(inquiry.get('question') or ''), re.I))
+    for row in observations.get('records') or []:
+        item = dict(row)
+        seq = item.get('sequence')
+        if isinstance(seq, str) and len(seq) > 350 and not sequence_requested:
+            item['sequence'] = '[%d residues; complete sequence in source receipt; not needed for geometry]' % len(seq)
+        proteins.append(item)
+    result['records'] = proteins
+    result['embedding_coverage'] = observations.get('embedding_coverage')
+    return result
 
 
 def observed(records, budget=OBSERVED):
@@ -1908,7 +2052,67 @@ def sequence_regions(inquiry, observations):
     return result
 
 
-def _reflect(context, inquiry, records):
+def _coverage_check(inquiry, observations):
+    """Evidence-bound adjudication of the original question, not the proposed next question."""
+    evidence = review_observations(inquiry, observations)
+    # The checker can only cite strings actually in this compact evidence tree.
+    strings = {}
+    def walk(value, path):
+        if isinstance(value, str): strings[path] = value
+        elif isinstance(value, dict):
+            for key, child in value.items(): walk(child, path + '.' + str(key))
+        elif isinstance(value, list):
+            for index, child in enumerate(value): walk(child, path + '.' + str(index))
+    walk(evidence, 'evidence')
+    raw = _ask('You are a technical evidence-coverage checker, not Vintos. Adjudicate only the ORIGINAL QUESTION. '
+        'A harder follow-up is not a missing requirement of the original question. Domain organization does not '
+        'require residue coordinates unless the question requests them. Every explicit comparison, organism, '
+        'domain or relationship in the question must be covered. Empty searches and model embeddings prove no '
+        'biological properties. Geometric proximity is not proof of binding, function or membrane orientation. '
+        'Return JSON: answered (boolean), missing (list), supports (list of {requirement, path, quote}). '
+        'For answered=true, all original requirements must be supported by verbatim quotes at their exact evidence '
+        'paths, for example evidence.LITERATURE.0.abstract or evidence.records.0.function. Use at most six '
+        'supports and concise quotes of at most 300 characters, only the necessary source clause. For anything absent, '
+        'ambiguous, or conflicting, answered=false. Do not infer missing facts.',
+        json.dumps({'original_question':inquiry.get('question')}) + '\nEVIDENCE:\n' +
+        observed(evidence, budget=24000),
+        max_tokens=1100, temperature=0.0)
+    result = _json_object(raw)
+    supports = result.get('supports')
+    if (type(result.get('answered')) is not bool or not isinstance(result.get('missing'), list)
+            or not isinstance(supports, list) or not supports): return None
+    if result['answered'] and result['missing']: return None
+    if not result['answered'] and not result['missing']: return None
+    normalized = lambda x: ' '.join(str(x).split())
+    required = {str(item.get('requirement') or '') for item in supports if isinstance(item, dict)}
+    verified=[]; discarded=[]
+    for item in supports:
+        if not isinstance(item, dict): return None
+        quote, path = item.get('quote'), str(item.get('path') or '')
+        path = re.sub(r'\[(\d+)\]', r'.\1', path)
+        if not path.startswith('evidence.'): path = 'evidence.' + path
+        path = path.replace('evidence.literature.', 'evidence.LITERATURE.')
+        if not isinstance(quote, str) or len(quote.strip()) < 16 or not item.get('requirement'): return None
+        # A citation may name its excerpt list rather than a leaf. Resolve only
+        # within that container, never search a different source for a matching quote.
+        leaves=[key for key in strings if key==path or key.startswith(path+'.')]
+        matches=[key for key in leaves if normalized(quote) in normalized(strings[key])]
+        if not matches:
+            discarded.append({'requirement':item['requirement'],'path':path,'reason':'quote_not_in_cited_source'})
+            continue
+        item=dict(item,path=matches[0])
+        match = re.match(r'evidence.LITERATURE\.(\d+)\.', item['path'])
+        if match: item['source_citation'] = 'PMID ' + str(evidence['LITERATURE'][int(match[1])].get('pmid'))
+        verified.append(item)
+    if not verified or {item['requirement'] for item in verified} != required: return None
+    supports=verified
+    return {'answered':result['answered'], 'missing':result['missing'],
+            'original_question':inquiry.get('question'), 'supports':supports, 'discarded_supports':discarded,
+            'evidence_sha256':hashlib.sha256(json.dumps(evidence,sort_keys=True).encode()).hexdigest(),
+            'method':'original_question_coverage_with_verbatim_source_quotes'}
+
+
+def _reflect(context, inquiry, records, _validation_attempt=0):
     line = None
     try:   # the line this test belongs to, and how he may end it
         import lab_lines
@@ -1931,7 +2135,7 @@ def _reflect(context, inquiry, records):
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
         "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
         "and keep them apart from what the database records state. Return JSON only.",
-        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(records) +
+        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
         "\n\nFirst decide answers_question: yes or no, with the precise missing evidence if no. "
         "A sequence interval can be read directly from a complete sequence; use the computed intervals above. "
         "Do not invent a missing-data claim for a supplied sequence or its subsequence. "
@@ -1951,9 +2155,44 @@ def _reflect(context, inquiry, records):
         max_tokens=800, temperature=0.35,
     )
     value = _json_object(raw)
+    verdict = str(value.get('answers_question') or '').strip()
+    issues = []
+    if verdict.lower() == 'no':
+        issues.append('answers_question=no omits the precise missing evidence required by the review contract')
+        if value.get('speculative_reading'):
+            issues.append('unanswered review contains speculative_reading, contrary to the review contract')
+    adjudicate = bool(issues or (re.match(r'^yes\b', verdict, re.I) and
+        re.search(r'structur|topolog|domain|binding|interface', str(inquiry.get('question') or ''), re.I)))
+    if adjudicate and isinstance(records, dict) and inquiry.get('question'):
+        try: coverage = _coverage_check(inquiry, records)
+        except Exception as exc:
+            _fault('review_coverage', exc); coverage = None
+        if coverage:
+            result = {k:str(value.get(k,''))[:1000] for k in
+                ('attention','factual_observation','next_question','instrument_gap','line_status')}
+            decision = ('yes: original question supported by cited source evidence' if coverage['answered']
+                        else 'no: ' + '; '.join(str(x) for x in coverage['missing']))
+            result.update(answers_question=decision, reader_answers_question=verdict,
+                          missing_evidence='' if coverage['answered'] else '; '.join(map(str,coverage['missing'])),
+                          speculative_reading='', coverage_check=coverage)
+            # Keep the observer's reading separately; the adjudicated factual answer
+            # consists only of the exact source sentences accepted by the checker.
+            result['reader_factual_observation'] = result['factual_observation']
+            result['factual_observation'] = '\n'.join(item['requirement'] + ': ' + item['quote'] +
+                (' [' + item['source_citation'] + ']' if item.get('source_citation') else '')
+                                                for item in coverage['supports'])[:2000]
+            return result
+        if re.match(r'^yes\b', verdict, re.I):
+            value['reader_answers_question'] = verdict
+            verdict = value['answers_question'] = 'no: original-question coverage could not be established with source quotes'
+            value['factual_observation'] = 'The coverage check could not verify the requested answer against the retrieved source records.'
+    if not re.match(r'^yes\b', verdict, re.I):
+        value['speculative_reading'] = ''
+        value['missing_evidence'] = (verdict.removeprefix('no:').strip()
+            if verdict.lower() != 'no' else str(value.get('next_question') or 'review did not identify the missing evidence'))
     return {k: str(value.get(k, ""))[:1000] for k in
             ("attention", "factual_observation", "speculative_reading", "next_question",
-             "answers_question", "instrument_gap") + (("line_status",) if line else ())}
+             "answers_question", "instrument_gap", "missing_evidence", "reader_answers_question") + (("line_status",) if line else ())}
 
 
 def _reflect_genome(context, result):
@@ -2154,6 +2393,15 @@ def tick():
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
+                    if browse_result.get('scope_resolution'):
+                        inquiry = dict(inquiry, requested_question=inquiry.get('question'),
+                            scope_resolution=browse_result['scope_resolution'],
+                            material_terms=list(dict.fromkeys(str(r.get('protein_name') or '') for r in records))[:3],
+                            source_query=None,
+                            plugin_query=None, instrument_query=None,
+                            uniprot_query=browse_result['executed_query'],
+                            question='Which organisms and domain annotations do these sourced protein records establish? '
+                                     'The original human assignment is unverified: ' + str(inquiry.get('question') or ''))
                     inquiry = _structure_followup(inquiry, records)
                     state['inquiry'] = inquiry
                     stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
@@ -2187,6 +2435,7 @@ def tick():
                             "fallback_reason": browse_result["fallback_reason"],
                             **({"relaxed": browse_result["relaxed"]} if browse_result.get("relaxed") else {}),
                             **({"organism_resolved": resolved} if resolved else {}),
+                            **({"scope_resolution":browse_result["scope_resolution"]} if browse_result.get("scope_resolution") else {}),
                             **({"papers_already_reviewed": True} if state.get("material_repeated") else {}),
                             **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,

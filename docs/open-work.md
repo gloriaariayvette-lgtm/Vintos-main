@@ -3,6 +3,36 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 10 October — Lab evidence completion and strategy recovery
+
+The implemented routes now canonicalize `ncbi_rt_locus_screen` to the existing `rt_locus_screen`
+at planning and saved-request execution, before throttling and accession provenance checks.
+An empty human-scoped protein lookup performs a labelled organism diagnostic; it never labels
+other-organism records as human evidence. The inquiry retains the original question and scope
+resolution, and moves to a bounded question about the records actually returned.
+
+Repeated retrievals advance through unread PDB/InterPro evidence for their sourced target. After
+a refusal, the next pass first continues an existing self-authored next step instead of asking the
+same planner to start over. Exhausted routes retain an explicit insufficient-evidence assessment.
+Exact-lookup deduplication and the frontier-session constraint remain enforced.
+
+Structural reviews now receive UniProt topology annotations, measured deposited-chain contacts,
+explicit HELIX/excerpt coverage, the structure's exact cited paper plus bounded question context,
+and relevant whole structural paragraphs from linked public PMC articles when available.
+The original-question coverage check retains only verbatim quotes at verified source paths;
+unquoted conjectures cannot settle a question. Reader verdicts remain separately recorded.
+His authored orientation and reading instructions and model configuration are unchanged.
+
+Read-only Aegis replays: the previously rejected CASR question is supported by PMIDs 23856260 and
+27746744; an exact repeated CASR/PDB lookup instead ran InterPro and returned eight records.
+The prophenoloxidase scope diagnostic returned Holotrichia diomphalia and Anopheles gambiae.
+The saved RT spelling returned the existing NP_001503.1 screen, without screening that locus twice.
+SLC26A6's linked paper PMC10328499 supplies its opposed seven-segment repeats and cytoplasmic STAS
+organization, which the abstract omitted. Its formerly unanswered topology question now returns those
+source-quoted facts from PMID 37351578 and rejects an unsupported paraphrase. No experimental confirmation is inferred from UniProt's
+separate topology annotations. Whole-Lab longitudinal improvement must be measured after deployment;
+these replays do not establish a new daily failure rate.
+
 ## 9 October — recorded source-routing failures
 
 The 09:36–10:36 CDT audit had 0/5 answered reviews, 72 refused inquiries (64 exact lookup,
