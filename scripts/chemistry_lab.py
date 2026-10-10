@@ -1296,6 +1296,13 @@ def _ground_inquiry(inquiry, client=None):
 
 def _strategy_change(inquiry, repeats):
     """Advance a blocked retrieval using its sourced target, never just reword its query."""
+    # An unread structure is not a substitute for a regulatory measurement.
+    # Recovery must preserve the evidence type needed by the actual question.
+    question = str(inquiry.get('question') or '')
+    if (inquiry.get('atlas_turn') or
+            re.search(r'\b(?:regulatory|variants?|chromatin|enhancers?|promoters?|ATAC|expression)\b', question, re.I) or
+            not re.search(r'\b(?:structur\w*|domains?|topolog\w*|helic\w*|fold\w*|interfaces?|motifs?|annotations?|binding|conformation\w*)\b', question, re.I)):
+        return None
     terms = {x.lower() for x in _intent_terms(inquiry.get('uniprot_query'))}
     from lab_repeats import _ACCESSION
     named = set(_ACCESSION.findall(str(inquiry.get('question') or '') + ' ' +

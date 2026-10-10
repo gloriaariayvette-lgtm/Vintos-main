@@ -11,7 +11,9 @@ An empty human-scoped protein lookup performs a labelled organism diagnostic; it
 other-organism records as human evidence. The inquiry retains the original question and scope
 resolution, and moves to a bounded question about the records actually returned.
 
-Repeated retrievals advance through unread PDB/InterPro evidence for their sourced target. After
+Repeated structural retrievals advance through unread PDB/InterPro evidence for their sourced target.
+The first post-deployment pass exposed a regulatory question being redirected to structure evidence;
+recovery now refuses that substitution, including Atlas, expression and chromatin questions. After
 a refusal, the next pass first continues an existing self-authored next step instead of asking the
 same planner to start over. Exhausted routes retain an explicit insufficient-evidence assessment.
 Exact-lookup deduplication and the frontier-session constraint remain enforced.

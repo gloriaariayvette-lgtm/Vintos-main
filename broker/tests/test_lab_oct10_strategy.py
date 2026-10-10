@@ -56,6 +56,10 @@ assert '9606' in sent[0] and '9606' not in sent[-1]
 first=replays[0]['inquiry'];protein=replays[0]['after']['records'][0]
 C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','requested_query':first['uniprot_query'],'records':[protein]})
 R.record(first)
+regulatory=dict(first,atlas_turn=True,question='What are the predicted regulatory effects of single-base variants in SLC26A2?')
+assert C._strategy_change(regulatory,R) is None
+assert C._strategy_change(dict(first,question='How does chromatin accessibility affect CASR expression?'),R) is None
+assert C._strategy_change(dict(first,question='What is the genomic neighborhood of CASR?'),R) is None
 with patch.object(C,'_ask',side_effect=AssertionError('no replanning needed')),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}):
  out,_=C._held_to_plan('s','t',first,{},None,None,R)
  assert not out.get('refused') and out['strategy_resolution']
