@@ -264,6 +264,60 @@ def fetch_record(url, *, transport=None):
         return body.decode('utf-8')
 
 
+
+
+def fetch_structure(url, *, transport=None):
+    request = Request(url, headers={'Accept':'chemical/x-pdb','User-Agent':'Vintos-Lab/2.0'})
+    with (transport or open_request)(request, timeout=30) as response:
+        body=response.read(4*1024*1024+1)
+        if len(body)>4*1024*1024: raise ValueError('PDB coordinate response exceeds limit')
+        return body.decode('ascii')
+
+
+def pdb_structure_evidence(text, identifier, entry):
+    """Bounded deposited records and metal-site geometry; author numbering only."""
+    if len(str(text).encode('utf-8')) > 4*1024*1024: raise ValueError('PDB coordinate response exceeds limit')
+    lines = str(text).splitlines()
+    headers = [x for x in lines if x.startswith('HEADER')]
+    if not headers or headers[0][62:66].strip().upper() != identifier:
+        raise ValueError('PDB coordinate entry did not match request')
+    atoms = []
+    for line in lines:
+        if line.startswith('ENDMDL'): break  # one model, never mix conformations
+        if line[:6].strip() not in ('ATOM', 'HETATM') or line[16:17] not in (' ', 'A'): continue
+        try:
+            if float(line[54:60]) <= 0: continue
+            xyz = [float(line[a:b]) for a,b in ((30,38),(38,46),(46,54))]
+            number = int(line[22:26])
+        except ValueError: continue
+        atoms.append({'record':line[:6].strip(), 'atom':line[12:16].strip(),
+                      'residue':line[17:20].strip(), 'chain':line[21:22].strip(),
+                      'residue_number':number, 'insertion_code':line[26:27].strip(),
+                      'element':line[76:78].strip().upper(), 'coordinates_angstroms':xyz})
+    if not atoms: raise ValueError('PDB coordinate file has no occupied atoms')
+    metals = sorted([a for a in atoms if a['record']=='HETATM' and a['element'] in
+              ('ZN','MG','CA','MN','FE','CU','NI','CO')], key=lambda a:a['element'] != 'ZN')[:8]
+    sites=[]
+    for metal in metals:
+        neighbors=[]
+        for atom in atoms:
+            if atom is metal: continue
+            d=sum((a-b)**2 for a,b in zip(atom['coordinates_angstroms'],metal['coordinates_angstroms']))**.5
+            if .1 < d <= 3.2:
+                neighbors.append(dict(atom,distance_angstroms=round(d,3)))
+        sites.append(dict(metal,nearby_atoms=sorted(neighbors,key=lambda a:a['distance_angstroms'])[:24]))
+    citation=entry.get('rcsb_primary_citation') or {}
+    return {'entry_id':identifier,'title':(entry.get('struct') or {}).get('title'),
+            'experimental_methods':[x.get('method') for x in entry.get('exptl',[])],
+            'resolution_angstroms':(entry.get('rcsb_entry_info') or {}).get('resolution_combined'),
+            'primary_citation':{k:citation.get(k) for k in ('title','pdbx_database_id_PubMed','pdbx_database_id_DOI')},
+            'numbering':'PDB author residue numbering; not asserted to match UniProt',
+            'interpretation':'deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, '
+                             'not a claim of chemical bonds or biological activity',
+            'metal_sites':sites,'occupied_atom_count':len(atoms),
+            'secondary_structure_records':[x for x in lines if x.startswith(('HELIX ','SHEET '))][:40]}
+
+
 def _gbseq(xml, expected, translations=False):
     try: root = ET.fromstring(xml)
     except ET.ParseError as exc: raise ValueError('NCBI returned malformed sequence XML') from exc
@@ -308,9 +362,10 @@ def receipt(source, query, records, *, metadata=None):
 
 class Sources:
     def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record,
-                 imgvr=None):
+                 imgvr=None, fetch_structure=fetch_structure):
         self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
         self.imgvr = imgvr
+        self.fetch_structure = fetch_structure
 
     def _taxon(self, spec):
         """A taxon ID he was given, or the one NCBI Taxonomy returns for the organism he named. Guessed IDs
@@ -667,8 +722,21 @@ class Sources:
         if source == 'pdb':
             identifier = str(spec.get('entry_id', '')).upper()
             if not re.fullmatch(r'[0-9][A-Z0-9]{3}', identifier): raise ValueError('PDB entry ID required')
+            if spec.get('operation') == 'structure_evidence' and set(spec) - {'source','entry_id','operation'}:
+                raise ValueError('unsupported PDB structure-evidence arguments')
             data, _ = self.fetch('https://data.rcsb.org/rest/v1/core/entry/' + identifier)
             if not data.get('exptl'): raise ValueError('entry has no experimental method; not experimental evidence')
+            if spec.get('operation') == 'structure_evidence':
+                if set(spec) - {'source','entry_id','operation'}:
+                    raise ValueError('unsupported PDB structure-evidence arguments')
+                text, _ = _provider(lambda url: (self.fetch_structure(url), {}), source,
+                                    'https://files.rcsb.org/download/' + identifier + '.pdb')
+                if data.get('rcsb_id') != identifier: raise ValueError('PDB metadata entry did not match request')
+                record = pdb_structure_evidence(text, identifier, data)
+                return receipt(source, spec, [record], metadata={
+                    'evidence':'experimental_structure','coverage':'one_deposited_model_bounded_site_records',
+                    'coordinate_url':'https://files.rcsb.org/download/' + identifier + '.pdb',
+                    'comparison':'construct_species_conditions_and_residue_numbering_must_be_checked'})
             return receipt(source, spec, [data], metadata={'evidence': 'experimental_structure',
                 'comparison': 'sequence_construct_conditions_and_resolution_must_be_checked'})
         if source == 'chembl':

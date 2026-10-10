@@ -3148,3 +3148,37 @@ model `O43511-60e20d840671.pdb` was read over residues 535–729: 83 helix,
 a prediction, not experimental structural evidence. Probe receipt
 `3a506fbf6275a694c32eb657d6f50564a753253e7525e6507346839f149f3308`
 identifies the bounded ChEMBL return.
+
+
+### 2026-10-09 — Structural questions open their deposited evidence (Codex)
+
+The first new cycle after `2741083` retrieved correct MMP9/P14780 metadata
+with eight PDB cross-references, then reviewed it without opening a structure.
+The result was still unanswered. A structural question with one exact protein
+and no explicit source/tool choice now opens a PDB entry that record supplied.
+A matching previously returned target can also select that new read before the
+repeat guard; taxonomic scopes must match. Explicit choices are preserved.
+
+The public PDB read retains deposited coordinates, primary citation, experimental
+method and resolution, bounded secondary-structure records, and nearby atoms for
+up to eight metal sites. Coordinate downloads are capped at 4 MiB. Entry IDs must
+agree in metadata and the coordinate header. Distances are geometric contacts,
+not chemical bonds or proof of biological function. Author residue numbering is
+preserved and is not asserted to equal UniProt numbering. This is a source read,
+not a new folding job or a Mac viewer launch. The receipt enters the existing
+source ledger and normal Lab journal/review path.
+
+The regression uses the actual RCSB `1GKC` entry and coordinate file captured on
+Aegis. It reproduces zinc 1450 on chain A with nearby His401/His405/His411 NE2
+atoms, proves browse routes into sources, and proves the coordinates survive
+in the review state. No planner prompts changed. Sustained autonomous answer
+quality remains an observation requirement, not a claim established by this
+fixture replay.
+
+Live candidate replay of that exact failed MMP9 question resolved to `pdb /
+1GKC / structure_evidence` and returned X-ray data at 2.3 Å. Receipt
+`bfdf6f814d7fffed615472dc59ab4cc22d652dd1b1229fcf317f8b08d5a6909c`
+contains Zn coordinates [63.267, 29.950, 112.382] Å and nearby His401, His411,
+His405 NE2 atoms at 2.214, 2.223 and 2.229 Å respectively (chain A, author
+numbering). This is verified source retrieval; it does not prove that the
+broader comparison with other metalloproteinases has been answered.

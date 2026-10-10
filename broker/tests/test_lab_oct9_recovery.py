@@ -221,3 +221,79 @@ with patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}):
     assert not out.get('refused'), out
 assert net==[]
 print('PASS: a guessed version cannot substitute for a returned accession; scratch receipt provenance')
+
+# Replay the new MMP9 failure with the public entry and coordinate file captured
+# from RCSB on Aegis. Opening the source is necessary: UniProt metadata alone
+# did not carry the zinc-site coordinates. No invented PDB response shapes.
+fixtures=pathlib.Path(__file__).parent/'fixtures'
+entry=json.loads((fixtures/'lab_1GKC_entry.json').read_text())
+pdb=(fixtures/'lab_1GKC.pdb').read_text()
+record={'accession':'P14780','pdb_ids':['1GKC','1GKD']}
+question={'question':'What is the structural organization of the MMP9 catalytic domain and its zinc-binding site?',
+          'uniprot_query':'gene:MMP9'}
+routed=C._structure_followup(question,[record])
+assert routed['source_query']=={'source':'pdb','entry_id':'1GKC','operation':'structure_evidence'}
+assert routed['question']==question['question']
+assert C._sourced_followup(routed['source_query'],[record])[1] is None
+assert C._structure_followup(dict(question,source_query={'source':'pubmed','term':'MMP9'}),[record])['source_query']['source']=='pubmed'
+assert C._structure_followup(question,[dict(record,pdb_ids=[])])==question
+assert C._structure_followup(question,[record,record])==question
+def pdb_fetch(url):
+    assert url.endswith('/1GKC'); return entry, {}
+def pdb_text(url):
+    assert url=='https://files.rcsb.org/download/1GKC.pdb'; return pdb
+client=S.Sources(fetch=pdb_fetch,fetch_structure=pdb_text)
+assert client.fetch is pdb_fetch and client.fetch_structure is pdb_text
+evidence=client.query(routed['source_query'])['records'][0]
+assert evidence['entry_id']=='1GKC' and evidence['experimental_methods']==['X-RAY DIFFRACTION']
+zinc=next(x for x in evidence['metal_sites'] if x['chain']=='A' and x['residue_number']==1450)
+assert zinc['element']=='ZN'
+assert {(a['residue_number'],a['atom']) for a in zinc['nearby_atoms'] if a['residue']=='HIS' and a['atom']=='NE2'}=={(401,'NE2'),(405,'NE2'),(411,'NE2')}
+assert 'not asserted to match UniProt' in evidence['numbering']
+assert 'geometric contacts' in evidence['interpretation']
+try:S.pdb_structure_evidence(pdb,'1GKD',entry)
+except ValueError as e:assert 'did not match' in str(e)
+else:raise AssertionError('a different coordinate entry was accepted')
+# The review actually receives the measured coordinates, not only an entry ID.
+assert '1450' in C.observed({'additional_source':{'receipt':{'records':[evidence]}}})
+assert 'coordinates_angstroms' in C.observed({'additional_source':{'receipt':{'records':[evidence]}}})
+assert net==[]
+print('PASS: actual MMP9 entry, zinc contacts, matching entry and preserved explicit choices; isolated')
+# Whole tick replay: the actual question enters sources before an embedding,
+# and the coordinate receipt remains in the state handed to the reviewer.
+from contextlib import contextmanager
+import compute_admission as CA
+@contextmanager
+def admitted(*a,**k): yield None
+def browse_fixture(*a,**k):
+    return {'records':[record], 'source_receipt':None, 'requested_query':'gene:MMP9',
+            'executed_query':'gene:MMP9','fallback_reason':None}
+C._atomic(C.STATE,{'phase':'browse','turns':0,'inquiry':question})
+with patch.object(CA,'admit',admitted), \
+     patch.object(C,'config',return_value=dict(C.DEFAULTS,enabled=True,allow_public_database_reads=True,forge_report_intake='')), \
+     patch.object(C,'lab_context',return_value=('fixture',{'context_sha256':'fixture'})), \
+     patch.object(C,'resolve_taxa',return_value=('gene:MMP9',None)), \
+     patch.object(C,'_browse',browse_fixture), \
+     patch.object(CS,'query',return_value={'receipt':client.query(routed['source_query'])}) as query:
+    assert CA.admit is admitted and C._browse is browse_fixture and CS.query is query
+    first=C.tick(); assert first['next_phase']=='sources', first
+    second=C.tick(); assert second['next_phase']=='embed', second
+    state=C._load(C.STATE,{})
+    assert state['additional_source']['receipt']['records'][0]['metal_sites']
+    assert state['inquiry']['question']==question['question']
+    assert any(x.get('kind')=='additional_source' and x.get('records_returned')==1 for x in C._jsonl(C.NOTEBOOK))
+assert all(str(p).startswith(HOME) for p in (C.STATE,C.NOTEBOOK,C.ROOT)) and net==[]
+print('PASS: MMP9 failed-cycle replay reaches coordinates, journal and review state; no network')
+
+# Previously unanswered exact target can advance through a new sourced read,
+# while an entry learned for a different species must not silently substitute.
+C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST',
+                     'requested_query':'gene:MMP9','records':[record]})
+resolved=C._existing_model_read(question)
+assert resolved['source_query']['entry_id']=='1GKC'
+C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST',
+                     'requested_query':'gene:MMP9 AND taxonomy_id:10090','records':[record]})
+human=dict(question,uniprot_query='gene:MMP9 AND taxonomy_id:9606')
+assert not C._known_structure_followup(human).get('source_query')
+assert net==[]
+print('PASS: an exact historic target advances through deposited evidence; species preserved')

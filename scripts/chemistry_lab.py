@@ -1407,6 +1407,48 @@ def chembl_from_plugin(pq):
             'limit': _bounded_limit(args.get('limit'), 4)}
 
 
+
+def _structure_followup(inquiry, records):
+    """A structural question opens a deposited entry the protein source named.
+
+    Preserve an explicit source/tool choice. This reads experimental evidence,
+    not a new fold, a guessed PDB id, or an assertion about the native protein.
+    """
+    if inquiry.get('source_query') or inquiry.get('plugin_query') or inquiry.get('instrument_query'): return inquiry
+    if len(records) != 1 or not re.search(r'structur|topolog|helix|helic|binding.site|coordinat',
+                                         str(inquiry.get('question') or ''), re.I): return inquiry
+    ids=records[0].get('pdb_ids') or []
+    if not ids: return inquiry
+    identifier=str(ids[0]).upper()
+    if not re.fullmatch(r'[0-9][A-Z0-9]{3}',identifier): return inquiry
+    return dict(inquiry,source_query={'source':'pdb','entry_id':identifier,'operation':'structure_evidence'},
+                structure_resolution={'accession':records[0].get('accession'),'entry_id':identifier,
+                                      'reason':'structural_question_reads_sourced_deposited_entry'})
+
+
+
+def _known_structure_followup(inquiry):
+    """A previously returned exact target can open new deposited evidence now."""
+    if inquiry.get('source_query') or inquiry.get('plugin_query') or inquiry.get('instrument_query'): return inquiry
+    query = str(inquiry.get('uniprot_query') or '')
+    accession = re.fullmatch(r'accession:([A-Z0-9]+)', query)
+    terms = _intent_terms(query)
+    if not accession and len(terms) != 1: return inquiry
+    wanted = terms[0].split(':',1)[1].strip('"').casefold() if terms else None
+    for row in reversed(_tail_jsonl(NOTEBOOK,nbytes=2*1024*1024)):
+        if row.get('kind')!='source_read' or row.get('source')!='UniProtKB REST': continue
+        records=row.get('records') or []
+        if accession:
+            matched=len(records)==1 and records[0].get('accession')==accession[1]
+        else:
+            prior=_intent_terms(str(row.get('requested_query') or ''))
+            scope = lambda q: set(re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)',q))
+            matched=(len(prior)==1 and prior[0].split(':',1)[1].strip('"').casefold()==wanted
+                     and scope(query)==scope(str(row.get('requested_query') or '')))
+        if matched: return _structure_followup(inquiry, records)
+    return inquiry
+
+
 def _existing_model_read(inquiry):
     """Read the stored model for a geometry/confidence question, not its metadata again.
 
@@ -1417,13 +1459,13 @@ def _existing_model_read(inquiry):
     if inquiry.get('instrument_query') or inquiry.get('source_query') or inquiry.get('plugin_query'):
         return inquiry
     if not re.search(r'secondary.structure|helic(?:es|al)|helix|strands?|pLDDT|confidence|predicted.*topology', question, re.I):
-        return inquiry
-    if re.search(r'experimental|crystal|documented', question, re.I): return inquiry
+        return _known_structure_followup(inquiry)
+    if re.search(r'experimental|crystal|documented', question, re.I): return _known_structure_followup(inquiry)
     from lab_repeats import _ACCESSION
     accessions = set(_ACCESSION.findall(question))
     if not accessions:
         symbols = _human_question_symbols(question)
-        if len(symbols) != 1: return inquiry
+        if len(symbols) != 1: return _known_structure_followup(inquiry)
         for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
             if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
             if not re.search(r'\b(?:gene|protein_name):"?' + re.escape(symbols[0]) + r'(?:"|\b)',
@@ -1431,13 +1473,13 @@ def _existing_model_read(inquiry):
             records = [r for r in row.get('records', []) if r.get('organism') == 'Homo sapiens']
             if len(records) == 1 and records[0].get('accession'): accessions.add(records[0]['accession'])
             break
-    if len(accessions) != 1: return inquiry
+    if len(accessions) != 1: return _known_structure_followup(inquiry)
     import lab_instruments
-    if len(lab_instruments._runs_today()['runs']) >= lab_instruments.DAILY_RUNS: return inquiry
+    if len(lab_instruments._runs_today()['runs']) >= lab_instruments.DAILY_RUNS: return _known_structure_followup(inquiry)
     accession = next(iter(accessions))
     models = [f for f in lab_instruments.artifacts('structure', 50)
               if f.startswith('artifacts/esmfold/' + accession + '-') and f.endswith('.pdb')]
-    if not models: return inquiry
+    if not models: return _known_structure_followup(inquiry)
     match = re.search(r'\bresidues?\s+(\d+)\s*(?:-|–|to)\s*(\d+)\b', question, re.I)
     span = [int(match[1]), int(match[2])] if match else [None, None]
     return dict(inquiry, instrument_query={'skill': 'fold_read', 'operation': 'structure.read',
@@ -2112,6 +2154,8 @@ def tick():
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
+                    inquiry = _structure_followup(inquiry, records)
+                    state['inquiry'] = inquiry
                     stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
                                                   or inquiry.get("instrument_query")) and
                                  journal_source_saturated([r.get("accession") for r in records]))
