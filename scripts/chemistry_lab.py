@@ -2177,15 +2177,45 @@ def embedding_coverage(embeddings, records=()):
     return out
 
 
+NUMERIC_ARRAY = 64   # numbers in a row past which an array is named rather than written out
+
+
+def _named_numeric_arrays(value, receipt_id, _depth=0):
+    """A long run of numbers named instead of written out, the way a long sequence already is.
+
+    11 October 09:15, HSP90AA1: the evidence was 8 KB of records and abstracts beside a 1.37 MB numeric payload in
+    the instrument receipt, and the reading was deferred at an estimated 1,487,450 tokens. A model reading text can
+    neither quote nor cite a float array; this keeps its length and where it lives, and the array itself stays whole
+    in its source receipt and in the deferred snapshot. No prose, record field, abstract or citation is touched.
+    """
+    if isinstance(value, (list, tuple)):
+        flat = []
+        def numbers(node):
+            if isinstance(node, bool) or node is None: return False
+            if isinstance(node, (int, float)): flat.append(node); return True
+            return isinstance(node, (list, tuple)) and all(numbers(child) for child in node)
+        if value and numbers(value) and len(flat) >= NUMERIC_ARRAY:
+            return ('[%d numeric values%s; complete array in source receipt%s; not quotable text]'
+                    % (len(flat), ', shape %d' % len(value) if len(value) != len(flat) else '',
+                       ' ' + str(receipt_id) if receipt_id else ''))
+        if _depth >= 6: return value
+        return [_named_numeric_arrays(child, receipt_id, _depth + 1) for child in value]
+    if isinstance(value, dict) and _depth < 6:
+        return {key: _named_numeric_arrays(child, receipt_id, _depth + 1) for key, child in value.items()}
+    return value
+
+
 def review_observations(inquiry, observations):
     """Remove receipt/embedding duplication before budgeting actual evidence."""
     if not isinstance(observations, dict): return observations
     source = observations.get('additional_source') or {}
     receipt = source.get('receipt') or source.get('source_receipt') or source.get('instrument_receipt') or {}
+    _receipt_id = receipt.get('receipt_id')
     result = {'embedding_coverage':observations.get('embedding_coverage'),
               'additional_source': {'source':receipt.get('source'),
-              'receipt_id':receipt.get('receipt_id'), 'records':receipt.get('records'),
-              'instrument_result':source.get('instrument_result')},
+              'receipt_id':_receipt_id,
+              'records':_named_numeric_arrays(receipt.get('records'), _receipt_id),
+              'instrument_result':_named_numeric_arrays(source.get('instrument_result'), _receipt_id)},
               'LITERATURE':observations.get('LITERATURE') or [],
               'atlas_analysis':observations.get('atlas_analysis')}
     proteins = []
