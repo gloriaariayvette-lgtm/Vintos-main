@@ -508,6 +508,9 @@ def fetch_json(url, *, transport=None):
     with (transport or open_request)(request, timeout=30) as response:
         body = response.read(MAX_BYTES + 1)
         if len(body) > MAX_BYTES: raise ValueError('source response exceeds limit')
+        if (getattr(response, 'status', None) == 204 and not body and
+                url.startswith('https://search.rcsb.org/rcsbsearch/v2/query?')):
+            return {'result_set': [], 'total_count': 0}, dict(response.headers)
         return json.loads(body), dict(response.headers)
 
 
@@ -836,6 +839,96 @@ class Sources:
             'service':'NCBI_PubMed', 'coverage':coverage,
             'interpretation':"published abstracts: the authors' claims, not verified here"})
 
+    def _pdb_accession(self, spec):
+        """Bounded archive metadata for an exact UniProt accession, never a homology guess."""
+        if set(spec) - {'source','operation','accession','limit','exclude_entries','exclude_accessions'}:
+            raise ValueError('unsupported PDB accession-search arguments')
+        accession = _uniprot_accession(spec.get('accession'))
+        limit = _bounded_limit(spec.get('limit'), 4)
+        excluded_entries = spec.get('exclude_entries', [])
+        excluded_accessions = spec.get('exclude_accessions', [])
+        if (not isinstance(excluded_entries, list) or len(excluded_entries) > 4 or
+                any(not isinstance(x, str) or not re.fullmatch(r'[0-9][A-Z0-9]{3}', x) for x in excluded_entries)):
+            raise ValueError('invalid excluded PDB entries')
+        if not isinstance(excluded_accessions, list) or len(excluded_accessions) > 4:
+            raise ValueError('invalid excluded accessions')
+        excluded_accessions = [_uniprot_accession(x) for x in excluded_accessions]
+        if accession in excluded_accessions: raise ValueError('requested accession is excluded')
+        prefix = 'rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.'
+        search = {'query': {'type':'group', 'logical_operator':'and', 'nodes':[
+            {'type':'terminal','service':'text','parameters':{'attribute':prefix+'database_name', 'operator':'exact_match','value':'UniProt'}},
+            {'type':'terminal','service':'text','parameters':{'attribute':prefix+'database_accession', 'operator':'exact_match','value':accession}}]},
+            'return_type':'polymer_entity', 'request_options':{'paginate':{'start':0,'rows':limit},
+                                                             'results_content_type':['experimental']}}
+        result, _ = self.fetch('https://search.rcsb.org/rcsbsearch/v2/query?' + urlencode({'json':json.dumps(search)}))
+        hits = result.get('result_set') if isinstance(result, dict) else None
+        if not isinstance(hits, list): raise ValueError('RCSB returned no valid search result')
+        identifiers = [x.get('identifier') for x in hits[:limit] if isinstance(x, dict)]
+        if len(identifiers) != min(len(hits), limit) or any(not isinstance(x, str) or
+                not re.fullmatch(r'[0-9][A-Z0-9]{3}_[1-9][0-9]*', x) for x in identifiers):
+            raise ValueError('RCSB returned invalid polymer entity identifiers')
+        records, rejected = [], []
+        for identifier in dict.fromkeys(identifiers):
+            entry_id, entity_id = identifier.split('_')
+            if entry_id in excluded_entries:
+                rejected.append({'entity_id':identifier,'reason':'explicitly_excluded_entry'}); continue
+            entity, _ = self.fetch('https://data.rcsb.org/rest/v1/core/polymer_entity/' + entry_id + '/' + entity_id)
+            ids = entity.get('rcsb_polymer_entity_container_identifiers') or {}
+            if ids.get('entry_id') != entry_id or ids.get('entity_id') != entity_id:
+                raise ValueError('RCSB entity identity did not match requested identifier')
+            refs = [x for x in ids.get('reference_sequence_identifiers', []) if x.get('database_name') == 'UniProt']
+            matched = [x for x in refs if x.get('database_accession') == accession]
+            if not matched or any(x.get('database_accession') in excluded_accessions for x in refs):
+                rejected.append({'entity_id':identifier,'reason':'requested_accession_not_exclusively_established'}); continue
+            entry, _ = self.fetch('https://data.rcsb.org/rest/v1/core/entry/' + entry_id)
+            if entry.get('rcsb_id') != entry_id: raise ValueError('RCSB entry identity did not match request')
+            methods = [x['method'] for x in entry.get('exptl', []) if isinstance(x.get('method'), str)]
+            if not methods: raise ValueError('RCSB entry has no experimental method')
+            alignments = []
+            for alignment in entity.get('rcsb_polymer_entity_align', []):
+                if alignment.get('reference_database_name') != 'UniProt' or alignment.get('reference_database_accession') != accession: continue
+                for region in alignment.get('aligned_regions', []):
+                    if all(type(region.get(k)) is int and region[k] > 0 for k in ('entity_beg_seq_id','ref_beg_seq_id','length')):
+                        alignments.append({k:region[k] for k in ('entity_beg_seq_id','ref_beg_seq_id','length')})
+            chains = ids.get('asym_ids') or []
+            if not isinstance(chains, list) or any(not isinstance(x, str) or not re.fullmatch(r'[A-Za-z0-9]{1,8}', x) for x in chains):
+                raise ValueError('RCSB returned invalid chain identifiers')
+            coverage = []
+            for chain in chains[:2]:
+                try:
+                    instance, _ = self.fetch('https://data.rcsb.org/rest/v1/core/polymer_entity_instance/' + entry_id + '/' + chain)
+                except HTTPError as exc:
+                    if exc.code != 404: raise
+                    coverage.append({'chain':chain,'status':'unavailable','reason':'instance_metadata_404'}); continue
+                identity = instance.get('rcsb_polymer_entity_instance_container_identifiers') or {}
+                if identity.get('entry_id') != entry_id or identity.get('entity_id') != entity_id or identity.get('asym_id') != chain:
+                    raise ValueError('RCSB chain identity did not match request')
+                mapping = identity.get('auth_to_entity_poly_seq_mapping')
+                if not isinstance(mapping, list) or not mapping or len(mapping) > 20000 or any(not isinstance(x,str) for x in mapping):
+                    coverage.append({'chain':chain,'status':'unavailable','reason':'modeled_residue_mapping_unavailable'}); continue
+                observed = [i for i,x in enumerate(mapping, 1) if x not in ('?', '.', '')]
+                intervals = []
+                for position in observed:
+                    if intervals and position == intervals[-1][1] + 1: intervals[-1][1] = position
+                    else: intervals.append([position,position])
+                coverage.append({'chain':chain,'status':'reported_mapping','modeled_entity_intervals':intervals,
+                    'numbering':'deposited polymer entity positions, not asserted to be UniProt numbering',
+                    'mapping_field':'rcsb_polymer_entity_instance_container_identifiers.auth_to_entity_poly_seq_mapping'})
+            records.append({'entry_id':entry_id,'entity_id':entity_id,'mapped_accession':accession,
+                'organisms':[{k:x.get(k) for k in ('ncbi_taxonomy_id','scientific_name')} for x in entity.get('rcsb_entity_source_organism', [])],
+                'experimental_methods':methods,'resolution_angstroms':(entry.get('rcsb_entry_info') or {}).get('resolution_combined'),
+                'construct_coverage':{'status':'reported_alignment' if alignments else 'unavailable',
+                    'alignment_regions':alignments,'reference_sequence_coverage':[x.get('reference_sequence_coverage') for x in matched],
+                    'sample_sequence_length':(entity.get('entity_poly') or {}).get('rcsb_sample_sequence_length')},
+                'modeled_residue_coverage':coverage or [{'status':'unavailable','reason':'chain_metadata_unavailable'}],
+                'chains_truncated':len(chains)>2,
+                'interpretation':'archive metadata; unavailable fields are not inferred; not a fold or mechanism determination'})
+        return receipt('pdb', spec, records, metadata={'service':'RCSB_Search_and_Data',
+            'requested_accession':accession,'coverage':'bounded_first_page', 'total_count':result.get('total_count'),
+            'limit':limit,'chains_per_entity_limit':2,'excluded_or_mismatched':rejected,
+            'status':'matched' if records else 'no_matching_entries_in_returned_page',
+            'meaning':'source search result, not an assertion of biological absence'})
+
     def query(self, spec):
         spec = normalize_source_spec(spec)
         if not isinstance(spec, dict): raise ValueError('source query must be an object')
@@ -1063,6 +1156,7 @@ class Sources:
                 'coverage': 'bounded_first_eight_rows', 'taxon_match': taxon_match, 'interpretation':
                 'database_annotations_and_sample_metadata_not_confirmed_phenotype'})
         if source == 'pdb':
+            if spec.get('operation') == 'search_accession': return self._pdb_accession(spec)
             identifier = str(spec.get('entry_id', '')).upper()
             if not re.fullmatch(r'[0-9][A-Z0-9]{3}', identifier): raise ValueError('PDB entry ID required')
             if spec.get('operation') == 'structure_evidence' and set(spec) - {'source','entry_id','operation'}:
