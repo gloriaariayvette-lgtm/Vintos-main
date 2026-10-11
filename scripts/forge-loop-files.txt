@@ -10,3 +10,5 @@ store_guard.py
 lab_http.py
 plugin_catalog.py
 forge_house.py
+forge_cycle_failure.py
+claude_connector_catalog.py
