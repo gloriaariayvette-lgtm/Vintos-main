@@ -35,6 +35,10 @@ class ClaimProgress(unittest.TestCase):
             "How do tannase structural motifs relate to its hydrolytic activity in %s?" % self._testMethodName,
             "follow the relationship")
 
+    def tearDown(self):
+        if self.line:
+            L.end(self.line["id"], "dropped", "test cleanup")
+
     def test_line_retains_established_and_open_claims(self):
         L.record_step(self.line["id"], {"question": "What is established?", "entry_id": "R1",
             "supports": [{"requirement": "hydrolytic activity", "quote": "Hydrolyzes ester bonds",
@@ -75,6 +79,13 @@ class ClaimProgress(unittest.TestCase):
         attached = C._on_line(inquiry, {}, None)
         self.assertTrue(attached.get("line_opened"), attached)
         self.assertEqual(L.get(attached["line_id"])["state"], "open")
+        L.end(attached["line_id"], "dropped", "test cleanup")
+
+    def test_planner_interaction_wording_is_attached_to_a_line(self):
+        inquiry = C._inquiry({"question": "Which KCNH2 motifs interact with regulatory proteins like KCNE1?",
+                              "uniprot_query": "gene:KCNH2 AND organism_id:9606"})
+        attached = C._on_line(inquiry, {}, None)
+        self.assertTrue(attached.get("line_opened"), attached)
         L.end(attached["line_id"], "dropped", "test cleanup")
 
     def test_open_line_can_change_strategy_on_spent_subject(self):

@@ -2027,7 +2027,7 @@ def _on_line(inquiry, value, line):
         except Exception as exc:
             _fault("lab_lines_open", exc)
     question = str(inquiry.get("question") or "")
-    if re.search(r'\b(?:how does|relationship|associated with|connect\w*|compare\w*|relate\w*)\b', question, re.I):
+    if re.search(r'\b(?:how does|relationship|associated with|connect\w*|compare\w*|relate\w*|interact\w*|influenc\w*|affect\w*)\b', question, re.I):
         try:
             import lab_lines
             opened = lab_lines.opened_by(question[:120], question, inquiry.get("why_now"), origin="vintos:auto-claim")
