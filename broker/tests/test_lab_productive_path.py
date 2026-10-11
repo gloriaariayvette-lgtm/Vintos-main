@@ -252,6 +252,50 @@ class Productive(unittest.TestCase):
   with patch.object(C,'_strategy_change',return_value=None):
    self.assertIsNone(C._planning_hold(q['planning_scope'],R,{'subjects':[]},None))
 
+ def test_context_expansion_resumes_preserved_coverage_before_sourced_fallback(self):
+  self.line=None
+  q=C._inquiry({'question':'What does the saved literature establish about P12345?',
+                'uniprot_query':'accession:P12345'})
+  observations=None
+  for size in range(24000,34001,250):
+   candidate={'records':[{'accession':'P12345','function':'E'*size}],
+              'LITERATURE':[{'pmid':'123','abstract':'Saved literature evidence.'}]}
+   prepared=C._coverage_request(q,candidate)
+   totals=[C._coverage_budget(prepared[3])['conservative_total'],
+           C._coverage_budget(C._coverage_sufficiency_request(q,prepared[0]))['conservative_total']]
+   if max(totals)>32000 and max(totals)<=35000:
+    observations=candidate;break
+  self.assertIsNotNone(observations)
+  with patch.object(C,'COVERAGE_CONTEXT_BUDGET',32000),patch.object(C,'_ask',side_effect=forbidden):
+   deferred=C._coverage_check(q,observations)
+  self.assertTrue(deferred['coverage_deferred'])
+  held=dict(q,refused=deferred['missing_evidence'],evidence_status='insufficient',coverage_deferred=True,
+            planning_evidence=C._planning_evidence(q))
+  C._append(C.NOTEBOOK,dict(deferred,kind='reflection',inquiry=held))
+  C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':held,'why':held['refused']})
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_sourced_record',side_effect=forbidden),patch.object(C,'_ask',side_effect=forbidden):
+   resumed=C._orient('offline scientific context')
+  self.assertEqual(resumed['assignment_resolution']['reason'],'deferred_coverage_now_fits')
+  payload,digest=C._coverage_snapshot(resumed['coverage_retry_snapshot'])
+  self.assertEqual(payload['observations'],observations);self.assertEqual(digest,resumed['coverage_retry_sha256'])
+  with patch.object(C,'_orient',return_value=resumed):
+   result=C.tick()
+  self.assertEqual(result['next_phase'],'reflect')
+  state=C._load(C.STATE,{})
+  self.assertEqual(state['coverage_retry_observations'],observations)
+  self.assertEqual(state['records'],observations['records'])
+  answer={'answers_question':'yes: saved evidence','factual_observation':'Saved literature evidence. [PMID 123]',
+          'speculative_reading':'','next_question':'','instrument_gap':'','line_status':'continue',
+          'evidence_status':'answered','missing_evidence':'','truth_status':'saved_evidence_test'}
+  with patch.object(C,'repeated_review',return_value=True),patch.object(C,'_gather_material',return_value=None),patch.object(C,'_reflect',return_value=answer) as reader:
+   result=C.tick()
+  self.assertTrue(result.get('ok'),result)
+  self.assertEqual(result['kind'],'reflection');self.assertEqual(result['next_phase'],'orient')
+  reader.assert_called_once_with('offline scientific context',resumed,observations)
+  note=C._tail_jsonl(C.NOTEBOOK)[-1]
+  self.assertEqual(note['coverage_retry_sha256'],digest)
+  self.assertNotIn('coverage_retry_observations',C._load(C.STATE,{}))
+
  def test_post_refusal_alternate_admission_refreshes_scope(self):
   q=self.exhaust()
   alternate={'question':'Unrelated actionable work','planning_scope':{'stale':True},'planning_evidence':'stale'}

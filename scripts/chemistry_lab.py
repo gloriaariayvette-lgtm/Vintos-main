@@ -1336,6 +1336,8 @@ def _orient(context, lean=None):
             recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
             if not recovered.get('refused'): return scoped(recovered)
     if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
+        deferred = _next_fitting_deferred_coverage()
+        if deferred: return deferred
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return grounded
     waiting = None
@@ -1641,6 +1643,49 @@ def _next_evidence_work(inquiry, repeats, spent, step):
                 not step or repeats.on_frontier(candidate, step)):
             candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
             return candidate
+    return None
+
+
+def _coverage_snapshot(path):
+    """Read one durable deferred-coverage packet and verify its content address."""
+    directory = os.path.realpath(os.path.join(ROOT, 'coverage-deferred'))
+    resolved = os.path.realpath(path)
+    if os.path.dirname(resolved) != directory or not resolved.endswith('.json'):
+        raise ValueError('coverage snapshot outside the durable store')
+    payload = _load(resolved, None)
+    if (not isinstance(payload, dict) or not isinstance(payload.get('inquiry'), dict)
+            or not isinstance(payload.get('observations'), dict)):
+        raise ValueError('invalid deferred coverage snapshot')
+    digest = hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    if os.path.basename(resolved) != digest + '.json':
+        raise ValueError('deferred coverage snapshot hash mismatch')
+    return payload, digest
+
+
+def _next_fitting_deferred_coverage():
+    """Resume preserved evidence when a larger verified context makes it fit."""
+    directory = os.path.join(ROOT, 'coverage-deferred')
+    completed = {row.get('coverage_retry_sha256') for row in _tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)
+                 if row.get('kind') == 'reflection' and row.get('coverage_retry_sha256')
+                 and not row.get('coverage_deferred')}
+    try:
+        paths = [os.path.join(directory, name) for name in os.listdir(directory) if name.endswith('.json')]
+        paths.sort(key=lambda path:os.stat(path).st_mtime_ns, reverse=True)
+    except OSError:
+        return None
+    for path in paths:
+        payload, digest = _coverage_snapshot(path)
+        if digest in completed: continue
+        inquiry, observations = payload['inquiry'], payload['observations']
+        prepared = _coverage_request(inquiry, observations)
+        if _coverage_preflight(inquiry, observations, prepared) is not None: continue
+        resumed = dict(inquiry)
+        for key in ('refused','planning_wait','evidence_status','coverage_deferred'):
+            resumed.pop(key, None)
+        resumed['coverage_retry_snapshot'] = path
+        resumed['coverage_retry_sha256'] = digest
+        resumed['assignment_resolution'] = {'reason':'deferred_coverage_now_fits','snapshot_sha256':digest}
+        return resumed
     return None
 
 
@@ -3122,9 +3167,32 @@ def tick():
                     state["inquiry"] = inquiry
                     # An explicit saved local step already identifies its input;
                     # do not precede it with an unrelated default UniProt browse.
-                    next_phase = ("sources" if (inquiry.get('assignment_resolution') or {}).get('reason') in
-                                  ('explicit_saved_model_step', 'explicit_saved_archive_step') else "browse")
+                    assignment_reason = (inquiry.get('assignment_resolution') or {}).get('reason')
+                    if assignment_reason == 'deferred_coverage_now_fits':
+                        payload, digest = _coverage_snapshot(inquiry['coverage_retry_snapshot'])
+                        if digest != inquiry.get('coverage_retry_sha256'):
+                            raise ValueError('deferred coverage retry changed after selection')
+                        observations = payload['observations']
+                        state['coverage_retry_observations'] = observations
+                        state['records'] = observations.get('records') or []
+                        state['embeddings'] = observations.get('esmc_receipts') or []
+                        if isinstance(observations.get('additional_source'), dict):
+                            state['additional_source'] = observations['additional_source']
+                        else:
+                            state.pop('additional_source', None)
+                        if isinstance(observations.get('atlas_analysis'), dict):
+                            state['atlas_analysis'] = observations['atlas_analysis']
+                        else:
+                            state.pop('atlas_analysis', None)
+                        state['material'] = {'records': observations.get('LITERATURE') or []}
+                        state['source_query_succeeded'] = True
+                        next_phase = 'reflect'
+                    else:
+                        next_phase = ("sources" if assignment_reason in
+                                      ('explicit_saved_model_step', 'explicit_saved_archive_step') else "browse")
                     state.pop("material", None); state.pop("material_repeated", None)
+                    if assignment_reason == 'deferred_coverage_now_fits':
+                        state['material'] = {'records': observations.get('LITERATURE') or []}
                     if next_phase == 'sources':
                         for key in ('records', 'embeddings', 'additional_source', 'source_query_succeeded',
                                     'followup_lineage', 'atlas_analysis', 'atlas_analysis_receipt'):
@@ -3398,7 +3466,8 @@ def tick():
                 visible_records = records  # the reviewer needs the sourced sequence, not just its embedding
                 _gather_material(state, inquiry)
                 literature = (state.get("material") or {}).get("records") or []
-                if repeated_review(state):
+                coverage_retry = state.get('coverage_retry_observations')
+                if repeated_review(state) and not coverage_retry:
                     next_phase = 'orient'
                     note = {'at': now_iso(), 'kind': 'browse_stale', 'inquiry': inquiry,
                             'reason': 'same_evidence_already_reviewed',
@@ -3407,12 +3476,13 @@ def tick():
                                 'source_query_succeeded','followup_lineage','atlas_analysis','atlas_analysis_receipt'):
                         state.pop(key, None)
                 else:
-                    reflection = _reflect(context, inquiry,
-                                          {"embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
-                                           "records": visible_records,
-                                           "esmc_receipts": state.get("embeddings", []),
-                                           "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
-                                           "LITERATURE": literature})
+                    observations = coverage_retry or {
+                        "embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
+                        "records": visible_records,
+                        "esmc_receipts": state.get("embeddings", []),
+                        "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
+                        "LITERATURE": literature}
+                    reflection = _reflect(context, inquiry, observations)
                     if reflection.get('coverage_deferred'):
                         inquiry = dict(inquiry, refused=reflection['missing_evidence'], evidence_status='insufficient',
                                        coverage_deferred=True, planning_evidence=_planning_evidence(inquiry))
@@ -3430,6 +3500,8 @@ def tick():
                                                   (["RESPONSE-" + fingerprint[:32]] if fingerprint else []) +
                                                   ["PMID-" + str(r.get("pmid")) for r in literature if r.get("pmid")]),
                             "material_receipt_id": (state.get("material") or {}).get("receipt_id"),
+                            **({'coverage_retry_sha256': inquiry['coverage_retry_sha256']}
+                               if inquiry.get('coverage_retry_sha256') else {}),
                             "evidence_sha256": review_evidence(state)[0],
                             "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
                             "truth_status": reflection.get('truth_status', 'mixed_sourced_observation_and_named_speculation')}
@@ -3491,6 +3563,7 @@ def tick():
                         note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                     state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)
                     state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
+                    state.pop('coverage_retry_observations', None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()
