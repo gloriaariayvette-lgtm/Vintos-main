@@ -3156,6 +3156,10 @@ def tick():
                             scope_resolution=browse_result['scope_resolution'],
                             source_query=None,
                             plugin_query=None, instrument_query=None)
+                    elif (inquiry.get('assignment_resolution') or {}).get('reason') == 'exact_previously_sourced_record':
+                        # This recovery question asks only what the exact UniProt row establishes.
+                        # Do not inflate it with an unrelated structure follow-up.
+                        inquiry = dict(inquiry, source_query=None, plugin_query=None, instrument_query=None)
                     else:
                         inquiry = _structure_followup(inquiry, records)
                     state['inquiry'] = inquiry
@@ -3175,6 +3179,11 @@ def tick():
                     next_phase = ("orient" if stale or empty else
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")
                                                 or inquiry.get("instrument_query")) else "embed")
+                    if (records and not stale and
+                            (inquiry.get('assignment_resolution') or {}).get('reason') == 'exact_previously_sourced_record'):
+                        # The exact row is the whole requested evidence product. Embeddings do not answer
+                        # organism, source length, or annotation fields and can overflow coverage context.
+                        next_phase = 'reflect'
                     # No protein record is not no material: the published abstracts on his question are read
                     # instead of the question being dropped (2026-09-28).
                     if empty and not stale and (inquiry.get("source_query") or {}).get("source") == "atlas":

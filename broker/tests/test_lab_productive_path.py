@@ -280,6 +280,23 @@ class Productive(unittest.TestCase):
   self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
   self.assertEqual(inquiry['planning_scope'],{'sourced_fallback':'Q16740'})
 
+ def test_exact_sourced_record_browse_goes_directly_to_reflection(self):
+  inquiry=C._inquiry({'question':'What does the curated UniProt record for a protein (Q16740) establish about its organism, sequence length, annotated domains, and membrane topology?',
+                      'uniprot_query':'accession:Q16740'})
+  inquiry['assignment_resolution']={'reason':'exact_previously_sourced_record','accession':'Q16740'}
+  C._atomic(C.STATE,{'phase':'browse','inquiry':inquiry})
+  record={'accession':'Q16740','protein_name':'Protein','organism':'Homo sapiens','taxon_id':9606,
+          'length':277,'domains':[],'topology':[],'topology_summary':'','pdb_ids':['1TG6'],'sequence':'A'*277}
+  browse={'records':[record],'source_receipt':None,'requested_query':'accession:Q16740',
+          'executed_query':'accession:Q16740','fallback_reason':None}
+  with patch.object(C,'_browse',return_value=browse),patch.object(C,'_embed_records',side_effect=forbidden):
+   result=C.tick()
+  self.assertEqual(result['kind'],'source_read')
+  self.assertEqual(result['next_phase'],'reflect')
+  state=C._load(C.STATE,{})
+  self.assertEqual(state['phase'],'reflect')
+  self.assertIsNone(state['inquiry']['source_query'])
+
  def test_recovered_route_actual_overflow_next_cycle_waits_without_generation(self):
   old=self.exhaust()
   def recover(inquiry,repeats):return dict(inquiry,source_query={'source':'interpro','accession':'O43511'})
