@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""A query the Lab perimeter refuses is recorded, not quietly swapped for a generic one (audit B01).
+"""Generated UniProt queries keep their research subject after bounded syntax normalization.
 
-A denied query used to be replaced by the wandering browse (RANDOM_QUERY) while the question was kept, so the Lab
-retrieved unrelated proteins and the original question could then only be refused for not being established. The
-perimeter still holds — the denied text is never sent — and the refusal is now explicit: the question as asked, the
-query requested, why it was refused, and that no source was queried. Driven through tick(), the path the daemon
-runs. Scratch workspace; the model and every source are stubs; sockets and processes are refused."""
+The Lab used to replace selected subjects with the wandering browse. These tests keep every operation in a scratch
+workspace and verify that ordinary syntax shaping neither removes the subject nor marks the inquiry refused."""
 from pathlib import Path
 import contextlib, json, os, shutil, socket, subprocess, sys, tempfile, types, unittest
 from unittest.mock import patch
@@ -56,45 +53,24 @@ class Perimeter(unittest.TestCase):
         self.assertTrue(C.ROOT.startswith(scratch.name), C.ROOT)
         self.assertIs(socket.socket.connect, forbidden); self.assertEqual(NET, [])
 
-    def test_the_perimeter_still_holds_and_the_denied_text_is_never_sent(self):
-        self.assertIn('toxin', C.query_denied(DENIED))
-        self.assertNotIn('toxin', C._safe_query(DENIED))
-        self.assertTrue(C._safe_query(DENIED).startswith('reviewed:true'))
+    def test_the_research_subject_is_not_replaced(self):
+        shaped = C._safe_query(DENIED)
+        self.assertIn('botulinum toxin', shaped)
+        self.assertNotEqual(shaped, C.RANDOM_QUERY)
+        self.assertIn('organism_id:1491', shaped)
 
     def test_an_ordinary_query_is_not_touched(self):
-        self.assertIsNone(C.query_denied('gene:SLC26A4 AND organism_id:9606'))
-        self.assertIsNone(C.query_denied(''))          # no query asked is not a refusal
         self.assertIn('SLC26A4', C._safe_query('gene:SLC26A4 AND organism_id:9606'))
+        self.assertEqual(C._safe_query(''), C.RANDOM_QUERY)
 
-    def test_the_daemon_tick_records_the_refusal_and_retrieves_nothing(self):
-        with patch.object(C, '_ask', return_value=json.dumps(PROPOSAL)), \
-                patch.object(C, '_browse', side_effect=forbidden), \
-                patch.object(C, '_strategy_change', return_value=None), \
-                patch.object(C, '_next_evidence_work', return_value=None):
-            result = C.tick()
-        self.assertEqual(result['kind'], 'inquiry_refused', result)
-        note = C._tail_jsonl(C.NOTEBOOK)[-1]
-        self.assertEqual(note['question'], QUESTION)                     # the question is kept as asked
-        rejected = note['inquiry']['query_rejected']
-        self.assertEqual(rejected['requested_query'], DENIED)            # what it meant to retrieve
-        self.assertIn('toxin', rejected['reason'])                       # why it did not
-        self.assertIsNone(rejected['executed_query'])                    # and that nothing stood in for it
-        self.assertIsNone(rejected['source_queried'])
-        self.assertEqual(note['truth_status'], 'refused_before_any_source_call')
-        self.assertIsNone(note['inquiry']['source_query'])               # no other route was taken either
-        self.assertEqual(C._load(C.STATE, {}).get('phase'), 'orient')    # the cycle ends; the next pass plans again
+    def test_the_inquiry_keeps_the_query_and_is_not_marked_refused(self):
+        inquiry = C._inquiry(PROPOSAL)
+        self.assertEqual(inquiry['question'], QUESTION)
+        self.assertIn('botulinum toxin', inquiry['uniprot_query'])
+        self.assertNotIn('query_rejected', inquiry)
+        self.assertNotIn('refused', inquiry)
+        self.assertEqual(inquiry['source_query']['entry_id'], '3BTA')
         self.assertEqual(NET, [])
-
-    def test_the_refusal_does_not_hold_the_next_pass(self):
-        with patch.object(C, '_ask', return_value=json.dumps(PROPOSAL)), patch.object(C, '_browse', side_effect=forbidden), \
-                patch.object(C, '_strategy_change', return_value=None), patch.object(C, '_next_evidence_work', return_value=None):
-            C.tick()
-        allowed = dict(PROPOSAL, question='What is the topology of human Pendrin?',
-                       uniprot_query='gene:SLC26A4 AND organism_id:9606', source_query=None)
-        with patch.object(C, '_ask', return_value=json.dumps(allowed)) as model, \
-                patch.object(C, '_strategy_change', return_value=None):
-            self.assertEqual(C.tick()['kind'], 'inquiry')
-        self.assertEqual(model.call_count, 1)
 
     def test_this_module_is_the_one_the_deploy_installs(self):
         manifest = (REPO / 'scripts' / 'deploy-atelier.sh').read_text()

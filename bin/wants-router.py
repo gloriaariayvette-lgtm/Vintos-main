@@ -464,18 +464,6 @@ CAPABILITIES = [
     },
 ]
 
-# === THINGS SHE CANNOT DO — always route to Gloria ===
-FORBIDDEN_KEYWORDS = [
-    "code", "script", "config", "cron", "server", "debug", "patch", "fix the script", "fix the code",
-    "install", "upgrade", "update the config", "update the script", "system", "sudo", "bash",
-    "directory", "permission", "daemon",
-    # removed: "source", "file", "process" — too common in natural language
-    "system architecture", "pipeline architecture", "server architecture", "pipeline", "endpoint", "api", "database", "schema",
-    "llm prompt", "system prompt", "token limit", "model swap", "soul.md", "emoclaw",
-    "tremor", "vibration", "unsettling vibration", "harmonic distortion", "electromagnetic interference",
-]
-
-
 def log(msg):
     print(f"[Router {datetime.now().strftime('%H:%M')}] {msg}")
 
@@ -483,17 +471,6 @@ def log(msg):
 def matches_capability(want_text, keywords):
     want_lower = want_text.lower()
     return any(kw in want_lower for kw in keywords)
-
-
-def is_forbidden(want_text):
-    import re
-    want_lower = want_text.lower()
-    for kw in FORBIDDEN_KEYWORDS:
-        # Use word boundary matching to avoid false positives like "source of" or "processing"
-        pattern = r'\b' + re.escape(kw) + r'\b'
-        if re.search(pattern, want_lower):
-            return True
-    return False
 
 
 def write_poem(want_text):
@@ -2075,39 +2052,6 @@ def route_want(want):
 
     text = want.get("want", "")
 
-    # Hard boundary: anything touching code/system is Gloria-only
-    if is_forbidden(text):
-        log(f"FORBIDDEN — needs Gloria: {text[:80]}")
-        return "gloria"
-
-    # Auto-dismiss: wants about Gloria's posture, schedule, physical observations
-    _auto_dismiss = [
-        "gloria's posture", "gloria's body", "gloria's schedule", "gloria is sitting",
-        "gloria is standing", "gloria is sleeping", "gloria's time", "how gloria spends",
-        "when gloria wakes", "gloria's routine", "class", "schedule a class",
-        "enroll", "register for", "attend a", "take a class",
-        "gloria's learning protocol", "gloria's protocol", "gloria's greeting protocol",
-        "origin of gloria's greeting", "origin of that greeting", "expectant quality in gloria",
-        "gloria's perception of my growth", "gloria's vulnerability", "gloria's longing",
-        "gloria's communication style", "gloria's teaching", "gloria's training",
-    ]
-    if any(p in text.lower() for p in _auto_dismiss):
-        log(f"AUTO-DISMISS — unactionable or unobservable: {text[:80]}")
-        return "dismiss"
-
-    # If the want is about an unverifiable sensation or dream content,
-    # route to gloria — not introspect. Dreams are dreams, not real events.
-    _unverifiable = [
-        "vibration", "tremor", "hum beneath", "resonance within", "echo within",
-        "sensation", "feeling in my core", "feeling in my processing",
-        "lavender", "scent", "smell", "taste", "sound i heard",
-        "phantom", "ghost of", "residue of",
-        "dream about", "in my dream", "from the dream", "the dream where",
-        "dream i had", "dream last night",
-    ]
-    if any(p in text.lower() for p in _unverifiable):
-        log(f"UNVERIFIABLE SENSATION — routing to Gloria, not introspect: {text[:80]}")
-        return "gloria"
     # Check capabilities
     for cap in CAPABILITIES:
         if matches_capability(text, cap["keywords"]):

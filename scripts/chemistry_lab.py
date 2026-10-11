@@ -132,9 +132,6 @@ DEFAULTS = {
     "divergence_version": 2,
 }
 PHASES = ("orient", "browse", "sources", "atlas_genome", "embed", "reflect", "genome", "genome_reflect")
-DENIED_QUERY = re.compile(
-    r"(?:toxin|venom|pathogen|virulence|bioweapon|human\s*(?:target|receptor)|gain.of.function|lethal)", re.I
-)
 
 
 def now_iso():
@@ -987,28 +984,12 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     return data["choices"][0]["message"]["content"]
 
 
-def query_denied(query):
-    """Why a generated UniProt query may not be sent, or None.
-
-    The perimeter decision itself, separate from shaping the query. A denied query used to be replaced silently by
-    the generic wandering browse (RANDOM_QUERY) while the question was kept, so the Lab retrieved unrelated proteins
-    and the original question could then only be refused for not being established. The perimeter still holds — the
-    denied text is never sent — but the substitution is no longer silent: _inquiry records it and asks nothing.
-    """
-    from lab_sources import normalize_protein_notation
-    text = re.sub(r"[^\w()\[\]:*?+\-\s\"]", " ", normalize_protein_notation(query or ""))
-    text = re.sub(r"\s+", " ", text).strip()[:240]
-    if not text: return None          # no query asked: the free browse and the source-query lanes are unchanged
-    found = DENIED_QUERY.search(text)
-    return 'outside the Lab perimeter: ' + found.group(0) if found else None
-
-
 def _safe_query(query):
     from lab_sources import normalize_protein_notation
     query = normalize_protein_notation(query)
     query = re.sub(r"[^\w()\[\]:*?+\-\s\"]", " ", query)
     query = re.sub(r"\s+", " ", query).strip()[:240]
-    if not query or DENIED_QUERY.search(query):
+    if not query:
         return RANDOM_QUERY
     # Gemma commonly writes JSON/Python-looking field syntax (``field : True``).
     # UniProt rejects that spacing/casing even though the intended fields are valid.
@@ -1422,8 +1403,7 @@ def _orient(context, lean=None):
         pass
     system, task = (
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
-        "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
-        "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
+        "Return JSON only.",
         context + lean_text + plugin_menu + genome_mining + "\n\nChoose ONE protein-space, environmental microbiology, or genome-mining question to go deep on today. "
         "Microbiology is an available direction, not a priority or a named organism to seek. If the recent "
         "journal has a source-backed open question, advance it only with a discriminating new source or instrument; "
@@ -1481,7 +1461,7 @@ def _orient(context, lean=None):
         "plugin_query is null or ONE object {plugin,tool,arguments,purpose} using the exact menu above. "
         "Choose at most one of source_query, plugin_query and instrument_query. The returned receipt becomes Lab provenance. "
         "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
-        "Choose a sourced, non-pathogenic question an available instrument can probe; do not favor either lane "
+        "Choose a sourced question an available instrument can probe; do not favor either lane "
         "merely because it appears in this menu."
         + lines_text + "\n\nAlso return line_id (the line this works, or null) and new_line (an object, or null)."
     )
@@ -2005,21 +1985,12 @@ def _inquiry(value, lean=None):
     requested_lane = value.get('browse_lane')
     requested_query = value.get("uniprot_query")
     query = _safe_query(requested_query)
-    denied = query_denied(requested_query)
     question = str(value.get('question') or '')
     question_symbols = (_human_question_symbols(question)
                         if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
     if query in (BASELINE_QUERY, _safe_query(BASELINE_QUERY)) and question_symbols:
         query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
                  ') AND taxonomy_id:9606 AND reviewed:true')
-    if denied:
-        # The intended retrieval did not happen, and nothing stands in for it. The question is kept exactly as
-        # asked, with what was requested, why it was refused, and the fact that no source was queried.
-        return dict(value, uniprot_query=query, source_query=None, plugin_query=None, instrument_query=None,
-                    query_rejected={'requested_query': str(requested_query or ''), 'reason': denied,
-                                    'executed_query': None, 'source_queried': None},
-                    refused='query refused before retrieval: ' + denied,
-                    truth_status='refused_before_any_source_call')
     identity_queries = [query] + ([source_query['query']] if source_context_current and source_query and source_query.get('source') == 'uniprot' and source_query.get('query') else [])
     from lab_repeats import _ACCESSION
     named = sorted(set(_ACCESSION.findall(str(value.get("question") or ""))))

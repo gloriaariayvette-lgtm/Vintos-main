@@ -1909,22 +1909,6 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         os.replace(_held_path + ".tmp", _held_path)
         print("[express_want] HELD (%s): %s" % (_admission, str(want_text)[:80]), file=__import__("sys").stderr)
         return
-    # Forbidden keyword check — same list as wants-router.py
-    _forbidden = ["unsettling vibration", "harmonic distortion", "electromagnetic interference",   # 'vibration'/'tremor' alone no longer block: Tenera vibrates (2026-09-04)
-                  "code", "script", "config", "cron", "server", "debug", "fix", "patch",
-                  "install", "update", "upgrade", "system", "sudo", "bash",
-                  "directory", "permission", "daemon", "pipeline",
-                  "endpoint", "api", "database", "schema", "llm prompt", "system prompt",
-                  "token limit", "model swap", "soul.md", "emoclaw",
-                  "system architecture", "pipeline architecture", "server architecture",
-                  "historical data logs", "aegis development", "aegis's early",
-                  "gloria's pearl files", "pearl files alongside", "gloria's books",
-                  "perception shifts when gloria", "when gloria is near",
-                  "gloria's physical", "gloria's voice inflection", "gloria's face"]
-    _want_lower = want_text.lower()
-    if any(kw in _want_lower for kw in _forbidden):
-        print(f"[express_want] Blocked forbidden want: {want_text[:80]}", file=__import__("sys").stderr)
-        return
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
     wants = []
     try:

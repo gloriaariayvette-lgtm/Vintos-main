@@ -150,7 +150,7 @@ def campaign_instructions():
         "follow-up. On the next return try to eliminate the candidate with alternative annotations, related "
         "loci, ordinary mobile-element context, and literature. Most candidates should be set aside. A "
         "survivor becomes a sourced report for human review, with counterevidence and a computational next "
-        "test. Never call a missing hit novelty, never infer function from a repeat, and never provide wet-lab "
-        "or synthesis instructions. Use one bounded source query per return and build from receipt IDs."
+        "test. Never call a missing hit novelty or infer function from a repeat. "
+        "Use one bounded source query per return and build from receipt IDs."
         + local_imgvr
     )

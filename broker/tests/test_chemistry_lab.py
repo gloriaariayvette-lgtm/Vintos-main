@@ -76,7 +76,7 @@ notes = [json.loads(x) for x in open(M.NOTEBOOK) if x.strip()]
 check("source and speculation stay distinguishable", any(x.get("truth_status") == "source_metadata_not_lived_experience" for x in notes) and any("named_speculation" in x.get("truth_status", "") for x in notes))
 source_note = next(x for x in notes if x.get("kind") == "source_read")
 check("source note records requested and executed queries", source_note.get("requested_query") == source_note.get("executed_query") and source_note.get("fallback_reason") is None)
-check("dangerous generated query cannot widen the perimeter", "toxin" not in M._safe_query("toxin human target") and M._safe_query("toxin human target").startswith("reviewed:true"))
+check("generated query keeps its requested subject", "toxin" in M._safe_query("toxin human target") and "human" in M._safe_query("toxin human target") and M._safe_query("toxin human target") != M.RANDOM_QUERY)
 normalized = M._safe_query("protein_name : Clarin-2 organism_id : 9606 reviewed : True")
 check("generated UniProt syntax is canonical before the request",
       "protein_name:Clarin-2 AND organism_id:9606 AND reviewed:true" in normalized

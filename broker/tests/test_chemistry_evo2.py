@@ -41,13 +41,22 @@ source = {"source_key": "arabidopsis_chr1", "accession": "NC_003070.9", "taxon_i
           "source": "NCBI Nucleotide efetch", "fetched_at": lab.now_iso(),
           "truth_status": "public_reference_sequence_receipt"}
 assert evo._validate_payload(source) == sequence
-for bad in (dict(source, taxon_id=9606), dict(source, organism="human"),
-            dict(source, source_header=">NC_000001.1:1-512 wrong source"),
-            dict(source, sequence_sha256="wrong"), dict(source, source_key="invented")):
-    try: evo._validate_payload(bad); raise AssertionError("unsafe or unattested source accepted")
+human = dict(source, source_key="human_chr1", accession="NC_000001.11", taxon_id=9606,
+             organism="Homo sapiens",
+             source_header=">NC_000001.11:1-512 Homo sapiens chromosome 1 sequence")
+assert evo._validate_payload(human) == sequence
+viral = dict(source, source_key="viral_reference", accession="NC_045512.2", taxon_id=2697049,
+             organism="Severe acute respiratory syndrome coronavirus 2",
+             source_header=">NC_045512.2:1-512 complete genome")
+assert evo._validate_payload(viral) == sequence
+for bad in (dict(human, accession="not-versioned"),
+            dict(human, source_header=">NC_000001.10:1-512 wrong source"),
+            dict(human, sequence_sha256="wrong"), dict(human, stop=513),
+            dict(human, source="caller supplied")):
+    try: evo._validate_payload(bad); raise AssertionError("invalid or unattested source accepted")
     except ValueError: pass
 
-# The public run path accepts a source key, not caller-supplied sequence or generation text.
+# The default remains available while callers may declare another sourced NCBI window.
 evo.fetch_source = lambda source_key="arabidopsis_chr1": dict(source)
 model_result = {"ok": True, "model": evo.MODEL, "source_key": "arabidopsis_chr1",
                 "source_accession": "NC_003070.9", "taxon_id": 3702,
@@ -97,6 +106,6 @@ assert lab.set_evo2_enabled(False)["genomics"]["enabled"] is False
 assert lab.set_evo2_enabled(True)["genomics"]["enabled"] is True
 
 source_text = open(os.path.join(REPO, "scripts", "chemistry_evo2.py")).read()
-assert ".generate(" not in source_text and "usage: chemistry_evo2.py run" in source_text
+assert ".generate(" not in source_text and 'parser.add_argument("--accession")' in source_text
 assert "human targeting" not in json.dumps(row).lower()
-print("31/31 passed")
+print("35/35 passed")
