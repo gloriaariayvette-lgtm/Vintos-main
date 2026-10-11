@@ -314,7 +314,8 @@ class Productive(unittest.TestCase):
   C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','records':records})
   used=C._inquiry({'question':'What does the curated UniProt record for Synaptotagmin-1 (P21579) in Homo sapiens establish about its sequence length, annotated domains, and membrane topology?',
                    'uniprot_query':'accession:P21579'})
-  R.record(used)
+  C._append(C.NOTEBOOK,{'kind':'reflection','inquiry':used,'source_accessions':['P21579'],
+                        'evidence_status':'answered','factual_observation':'saved test review'})
   C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':{'question':'held'},'why':'no eligible proposal'})
   with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',side_effect=forbidden):
    inquiry=C._orient('offline scientific context')
@@ -328,6 +329,7 @@ class Productive(unittest.TestCase):
   self.line=None
   C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','records':[
    {'accession':'P02792','protein_name':'Ferritin light chain','organism':'Homo sapiens'}]})
+  R.record(C._inquiry({'question':'Prior unfinished review of P02792','uniprot_query':'accession:P02792'}))
   C._append(C.NOTEBOOK,{'kind':'old_context','payload':'x'*(9*1024*1024)})
   C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':{'question':'held'},'why':'no eligible proposal'})
   self.assertFalse(any(row.get('kind')=='source_read' for row in C._tail_jsonl(C.NOTEBOOK,nbytes=8*1024*1024)))

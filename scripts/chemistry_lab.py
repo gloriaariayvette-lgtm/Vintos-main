@@ -1776,13 +1776,13 @@ def _next_sourced_record(repeats, spent, lean=None):
                             'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
                             'source_query':None, 'plugin_query':None,
                             'material_terms':[]}, lean)
-        if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
-        admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
-                                    spent=spent, replan=False)
-        if admitted.get('refused'): continue
-        return dict(admitted,
+        if _held_question(inquiry) or spent_retrieval(inquiry, spent): continue
+        # A prior inquiry/source_read is not a completed review. The index only
+        # offers accessions absent from every reflection, so finish that saved
+        # evidence offline instead of letting the retrieval-repeat gate strand it.
+        return dict(inquiry,
                     planning_scope={'sourced_fallback':accession},
-                    planning_evidence=_planning_evidence(admitted),
+                    planning_evidence=_planning_evidence(inquiry),
                     assignment_resolution={'reason':'exact_previously_sourced_record',
                                            'accession':accession})
     return None
