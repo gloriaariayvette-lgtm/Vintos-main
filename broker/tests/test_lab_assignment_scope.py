@@ -23,10 +23,11 @@ GASDERMIN = {'question': 'What does Gasdermin D pore assembly need?', 'requested
 class AssignmentScope(unittest.TestCase):
     def setUp(self):
         os.makedirs(C.ROOT, exist_ok=True)
+        Path(C.ROOT, "question-holds.json").unlink(missing_ok=True)
         with open(C.NOTEBOOK, 'w') as f:
             f.write(json.dumps({'kind': 'inquiry_refused', 'inquiry': {'question': 'earlier'}}) + '\n')
         import lab_repeats as real
-        repeats = types.SimpleNamespace(frontier_step=lambda: None, on_frontier=lambda *a: True, record=lambda *a, **k: None,
+        repeats = types.SimpleNamespace(canonical_lookup=real.canonical_lookup, lookup_key=real.lookup_key, frontier_step=lambda: None, on_frontier=lambda *a: True, record=lambda *a, **k: None,
                                         **{k: getattr(real, k) for k in dir(real) if k.isupper() or k.startswith('_A')})
         lines = types.SimpleNamespace(pick=lambda: dict(AUDIT))
         self.mods = patch.dict(sys.modules, {'lab_repeats': repeats, 'lab_lines': lines}); self.mods.start()
@@ -70,7 +71,7 @@ class AssignmentScope(unittest.TestCase):
     HELD = 'What is the structural basis for GSDM4 pore formation?'
 
     def _hold_on(self, resolution, scope):
-        row = {'question': self.HELD, 'evidence_status': 'insufficient',
+        row = {'question': self.HELD, 'uniprot_query': 'gene:GSDMD', 'evidence_status': 'insufficient',
                'refused': 'repeat: spent subject: this retrieval already ended without an answer',
                'strategy_resolution': resolution, 'planning_scope': scope}
         row['planning_evidence'] = C._planning_evidence(row)

@@ -1160,47 +1160,88 @@ def _planning_evidence(inquiry):
     return hashlib.sha256(json.dumps(sorted(payloads)).encode()).hexdigest()
 
 
-def _question_holds():
-    """Read legacy and current question holds without rewriting their evidence or scope."""
-    path = os.path.join(ROOT, 'question-holds.json')
-    # Once a held slot yields, its wait echoes stop. Preserve its decision when
-    # unrelated progress moves the original record out of the notebook tail.
-    # Unreadable/corrupt ownership must fail closed, never silently release work.
-    saved = {}
-    if os.path.exists(path):
-        with open(path, encoding='utf-8') as stream: saved = json.load(stream)
-        if not isinstance(saved, dict) or any(not isinstance(v, dict) or not v.get('planning_evidence')
-                                             for v in saved.values()):
-            raise ValueError('invalid saved question holds')
-    seen, holds = set(), []
-    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
-        old = row.get('inquiry') or {}
-        key = ' '.join(str(old.get('question') or '').casefold().split())
-        if not key or key in seen or old.get('selection_idle'): continue
-        if old.get('refused') and old.get('evidence_status') == 'insufficient' and old.get('planning_evidence'):
-            seen.add(key); holds.append(old)
-        elif row.get('kind') == 'reflection':
-            # A later scientific assessment supersedes the earlier decision for this question.
-            seen.add(key)
-    holds.extend(old for key,old in saved.items() if key not in seen)
-    current = {' '.join(str(old.get('question') or '').casefold().split()):old for old in holds}
-    if current != saved: _atomic(path, current)
-    return holds
-
-
-def _held_question(inquiry):
-    """An ID/context change or paraphrase is not new evidence. A different instrument may be."""
+def _hold_lookup(inquiry):
     import lab_repeats as repeats
     def clean(value):
         if isinstance(value, dict):
             return {k:clean(v) for k,v in value.items() if k not in ('attempt_id','request_id')}
         if isinstance(value, list): return [clean(v) for v in value]
         return value
-    key = repeats.lookup_key(clean(inquiry))
+    return repeats.canonical_lookup(repeats.lookup_key(clean(inquiry)))
+
+
+def _hold_owner(inquiry):
+    """A decision belongs to the original question AND its retrieval, never a shared slot."""
+    question = ' '.join(str(inquiry.get('question') or '').casefold().split())
+    lookup = _hold_lookup(inquiry)
+    for field, names in (('source_query', ('source',)), ('plugin_query', ('plugin','tool')),
+                         ('instrument_query', ('skill','operation'))):
+        spec = inquiry.get(field)
+        if spec:
+            if not isinstance(spec, dict) or any(not isinstance(spec.get(name), str) or not spec[name].strip()
+                                                 for name in names):
+                raise ValueError('question hold lacks a named retrieval route')
+            break
+    if not question or not lookup: raise ValueError('question hold lacks question or retrieval')
+    return json.dumps([question, lookup], ensure_ascii=False)
+
+
+def _question_holds():
+    """Retain independent question/retrieval decisions and each decision's evidence revision."""
+    path = os.path.join(ROOT, 'question-holds.json')
+    # Once a held slot yields, its wait echoes stop. Preserve its decision when
+    # unrelated progress moves the original record out of the notebook tail.
+    # Unreadable/corrupt ownership must fail closed, never silently release work.
+    saved, previous = {}, {}
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as stream: previous = json.load(stream)
+        if not isinstance(previous, dict): raise ValueError('invalid saved question holds')
+        for key, old in previous.items():
+            if (not isinstance(old, dict) or not isinstance(old.get('question'), str)
+                    or not isinstance(old.get('planning_evidence'), str) or not old['planning_evidence']
+                    or not old.get('refused') or old.get('evidence_status') != 'insufficient'
+                    or any(old.get(field) is not None and not isinstance(old[field], dict)
+                           for field in ('source_query','plugin_query','instrument_query'))
+                    or old.get('uniprot_query') is not None and not isinstance(old['uniprot_query'], str)):
+                raise ValueError('invalid saved question hold')
+            owner = _hold_owner(old)
+            legacy = ' '.join(old['question'].casefold().split())
+            if key not in (owner, legacy): raise ValueError('saved question hold owner mismatch')
+            saved[owner] = old  # migrate the uninstalled v1 index without losing its route/evidence
+    seen, current = set(), {}
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
+        old = row.get('inquiry') or {}
+        if not old.get('question') or old.get('selection_idle'): continue
+        held = old.get('refused') and old.get('evidence_status') == 'insufficient' and old.get('planning_evidence')
+        coverage = row.get('coverage_check') or {}
+        sufficiency = coverage.get('independent_sufficiency') or {}
+        completed = (row.get('kind') == 'reflection' and row.get('evidence_status') == 'answered'
+                     and coverage.get('answered') is True and coverage.get('missing') == []
+                     and coverage.get('original_question') == old['question']
+                     and bool(coverage.get('supports')) and sufficiency.get('sufficient') is True
+                     and sufficiency.get('missing') == [] and not row.get('coverage_deferred')
+                     and row.get('assessment_status') != 'incomplete')
+        if not held and not completed: continue
+        owner = _hold_owner(old)
+        if owner in seen: continue
+        seen.add(owner)
+        if held: current[owner] = old
+        # Even a validated answer on another route cannot erase this route's
+        # decision. Partial/failed assessments release nothing. Changed evidence
+        # and genuinely different instruments still use _held_question's checks.
+    current.update((owner, old) for owner,old in saved.items() if owner not in seen)
+    if current != previous: _atomic(path, current)
+    return list(current.values())
+
+
+def _held_question(inquiry):
+    """An ID/context change or paraphrase is not new evidence. A different instrument may be."""
+    import lab_repeats as repeats
+    key = _hold_lookup(inquiry)
     question = ' '.join(str(inquiry.get('question') or '').casefold().split())
     words = repeats._words(question)
     for old in _question_holds():
-        old_key = repeats.lookup_key(clean(old))
+        old_key = _hold_lookup(old)
         old_question = ' '.join(str(old.get('question') or '').casefold().split())
         same_route = repeats._lookup_route(key) == repeats._lookup_route(old_key)
         if repeats._literature_route(key) and repeats._literature_route(old_key): same_route = True

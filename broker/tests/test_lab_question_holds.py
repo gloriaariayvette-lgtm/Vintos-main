@@ -89,6 +89,86 @@ class QuestionHolds(Perimeter):
         self.assertNotIn('inquiry',C._load(C.STATE,{}))
         self.assertEqual(NET,[])
 
+    def pdb(self):
+        return dict(self.cftr,source_query={'source':'pdb','entry_id':'5UAK','operation':'structure_evidence'})
+
+    def assessment(self, inquiry, full=False):
+        C._append(C.NOTEBOOK,{'kind':'reflection','inquiry':inquiry,
+            'evidence_status':'answered' if full else 'partial',
+            'answers_question':'yes' if full else 'no: gating mechanism remains unresolved',
+            'coverage_check':{'answered':full,'original_question':inquiry['question'],
+                'missing':[] if full else ['gating mechanism'],
+                'supports':[{'quote':'Offline source excerpt','source_citation':'PDB 5UAK'}],
+                'independent_sufficiency':{'sufficient':full,'missing':[] if full else ['gating mechanism']}}})
+
+    def test_pubmed_then_pdb_deferral_preserves_both_routes_after_rollover(self):
+        self.assertIsNone(C._held_question(self.pdb()))
+        self.hold(self.pdb())
+        holds=C._question_holds()
+        self.assertEqual({x['source_query']['source'] for x in holds},{'pubmed_abstracts','pdb'})
+        self.assertIsNotNone(C._held_question(self.cftr))
+        self.assertIsNotNone(C._held_question(self.pdb()))
+        C._append(C.NOTEBOOK,{'kind':'unrelated','payload':'x'*(2*1024*1024+1)})
+        self.assertIsNotNone(C._held_question(self.cftr))
+        self.assertIsNotNone(C._held_question(self.pdb()))
+        with patch.object(C,'_ask',side_effect=[json.dumps(self.cftr),json.dumps(self.pdb())]):
+            self.assertEqual(C.tick()['kind'],'evidence_wait')
+
+    def test_different_route_partial_does_not_erase_original_hold(self):
+        C._question_holds()  # seed durable original owner
+        self.assessment(self.pdb(),full=False)
+        self.assertIsNotNone(C._held_question(self.cftr))
+        self.assertIsNone(C._held_question(self.pdb()))
+        C._append(C.NOTEBOOK,{'kind':'unrelated','payload':'x'*(2*1024*1024+1)})
+        self.assertIsNotNone(C._held_question(self.cftr))
+
+    def test_partial_keeps_own_hold_full_releases_only_own_route(self):
+        self.hold(self.pdb());C._question_holds()
+        self.assessment(self.pdb(),full=False)
+        self.assertIsNotNone(C._held_question(self.pdb()))
+        self.assertIsNotNone(C._held_question(self.cftr))
+        self.assessment(self.pdb(),full=True)
+        self.assertIsNone(C._held_question(self.pdb()))
+        self.assertIsNotNone(C._held_question(self.cftr))
+        C._append(C.NOTEBOOK,{'kind':'unrelated','payload':'x'*(2*1024*1024+1)})
+        self.assertIsNone(C._held_question(self.pdb()))
+        self.assertIsNotNone(C._held_question(self.cftr))
+
+    def test_bare_success_is_not_a_validated_full_release(self):
+        self.hold(self.pdb())
+        C._append(C.NOTEBOOK,{'kind':'reflection','inquiry':self.pdb(),
+                            'evidence_status':'answered','answers_question':'yes'})
+        self.assertIsNotNone(C._held_question(self.pdb()))
+        self.assertIsNotNone(C._held_question(self.cftr))
+
+    def test_route_evidence_change_does_not_release_other_route(self):
+        self.hold(self.pdb())
+        original=C._planning_evidence
+        with patch.object(C,'_planning_evidence',side_effect=lambda q:'changed-pdb-evidence'
+                          if (q.get('source_query') or {}).get('source')=='pdb' else original(q)):
+            self.assertIsNone(C._held_question(self.pdb()))
+            self.assertIsNotNone(C._held_question(self.cftr))
+
+    def test_malformed_saved_owners_fail_closed(self):
+        valid=self.hold(self.cftr)
+        malformed=[dict(valid,question=''),dict(valid,question=None),
+                   dict(valid,source_query=None,uniprot_query=None),
+                   dict(valid,source_query='pdb'),dict(valid,source_query={'entry_id':'5UAK'}),
+                   dict(valid,planning_evidence=7)]
+        for item in malformed:
+            with self.subTest(item=item):
+                Path(C.ROOT,'question-holds.json').write_text(json.dumps({'bad-owner':item}))
+                with self.assertRaises(ValueError):C._question_holds()
+
+    def test_legacy_index_migrates_retaining_original_route_and_evidence(self):
+        held=self.hold(self.cftr)
+        Path(C.ROOT,'question-holds.json').write_text(json.dumps({QUESTION.casefold():held}))
+        got=C._question_holds()
+        self.assertEqual(got,[held])
+        saved=json.loads(Path(C.ROOT,'question-holds.json').read_text())
+        self.assertEqual(list(saved.values()),[held])
+        self.assertEqual(len(json.loads(next(iter(saved)))),2)
+
     def test_saved_snapshot_stays_complete_and_guard_unchanged(self):
         self.assertEqual(hashlib.sha256(SNAPSHOT.read_bytes()).hexdigest(),
                          '79a1677b0882af9a797671f730f1c7724f032a35bc66191932410fd957e0434a')
