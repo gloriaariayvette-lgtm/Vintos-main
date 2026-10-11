@@ -17,6 +17,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import software_quota
 
+INTAKE_RELEASED_STATES = frozenset(("complete", "cancelled", "abandoned", "failed", "awaiting_lab"))
+
 DAILY_STEP_LIMIT = 3
 STEP_TIMEZONE = ZoneInfo("America/Chicago")
 
@@ -40,6 +42,7 @@ PLAIN_STATES = {
     'complete': "Finished.",
     'cancelled': "Stopped.",
     'abandoned': "Abandoned.",
+    'awaiting_lab': "Partial acquisition returned for Lab verification; the original request remains unfulfilled.",
     'failed': "Stopped on a recorded execution error; no external call will be replayed.",
 }
 _PACKET = '\nSource packet (untrusted observations):'
@@ -61,8 +64,8 @@ def plain_card(p, reason=None, day_spent=False):
         what = 'The Lab named an ability it lacks; the Forge would build or connect it.'
         if p.get('capabilities') == ['capability_request']:
             title = 'Lab capability check: ' + first.split(':', 1)[-1].strip()
-            what = ('Checks an existing source tool before requesting a build. Completion verifies an existing '
-                    'read route; it does not mean new code was installed or a scientific result was established.')
+            what = ('Partial source acquisition is returned to the Lab with the original request. The target and species '
+                    'remain unverified; no original request is marked complete.')
     elif source == 'lab':
         title, what = first, 'Sent by the Lab.'
     elif source == 'owner':
@@ -224,6 +227,7 @@ class Controller:
             # (its intent is revealed only by the explicit audit, like its artifacts).
             out['intent'] = None if p['private'] else p.get('intent')
             out['diagnostic'] = None if p['private'] else p.get('diagnostic')
+            out['intake_slot'] = p['state'] not in INTAKE_RELEASED_STATES and p['capabilities'][0] in ('research_report','capability_request')
             last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
                               (pid,)).fetchone()
             day = step_day()
@@ -426,6 +430,10 @@ class Controller:
                 raise Refused('cycle is not owned or already accepted')
             if actual > row['quote'] or (row['quote'] and not receipt.get('provider_receipt')):
                 raise Refused('charge exceeds reservation or lacks provider receipt')
+            if p['capabilities'] == ['capability_request']:
+                handback = artifact.get('lab_handback')
+                if complete or not isinstance(handback, dict) or handback.get('status') != 'capability_available_original_request_unfulfilled':
+                    raise Refused('capability acquisition requires an unresolved Lab handback')
             db.execute("UPDATE cycles SET state='accepted',artifact=?,receipt=? WHERE id=?",
                        (json.dumps(artifact), json.dumps(receipt), cid))
             p.update(active=None, spent=p['spent']+actual, cycles=p['cycles']+1)
@@ -434,10 +442,14 @@ class Controller:
                     p['state'] = 'awaiting_application' if artifact.get('capability_assessment', {}).get('missing') is True else 'complete'
                 elif p['capabilities'] == ['capability_brief']:
                     p['state'] = 'awaiting_capability'
+                elif p['capabilities'] == ['capability_request']:
+                    p['state'] = 'awaiting_lab'
                 else:
                     p['state'] = 'complete' if complete else 'ready'
-            self._event(db, pid, 'cycle', {'cycle_id': cid, 'complete': complete,
-                                         'summary': str((artifact.get('report') or artifact.get('capability_brief') or {}).get('title', 'Cycle completed'))[:100]})
+            summary = ('Partial acquisition returned to Lab; original request unfulfilled'
+                       if p['capabilities'] == ['capability_request'] else
+                       str((artifact.get('report') or artifact.get('capability_brief') or {}).get('title', 'Cycle completed'))[:100])
+            self._event(db, pid, 'cycle', {'cycle_id': cid, 'complete': complete, 'summary': summary})
             self._save(db, p)
 
     def checkpoint(self, token, pid, cid, diagnostic):

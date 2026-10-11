@@ -105,11 +105,12 @@ class Tests(unittest.TestCase):
         plugin=Mock(return_value=receipt(query()))
         model=self.builder([{"plugin_query":query()},draft(),critique()],plugin)
         self.assertTrue(self.r.step(p["id"]))
-        self.assertEqual(self.status(p)["state"],"complete")
+        self.assertEqual(self.status(p)["state"],"awaiting_lab")
+        self.assertFalse(self.status(p)["intake_slot"])
         artifact=json.loads(self.c.artifacts(self.c.owner_token,p["id"])[0]["artifact"])
         self.assertNotIn("report",artifact)
-        self.assertEqual(artifact["capability_resolution"]["status"],"reference_sequence_acquired")
-        self.assertIn("not_new_capability_built",artifact["truth_status"])
+        self.assertEqual(artifact["capability_resolution"]["status"],"partial_acquisition_identity_unverified")
+        self.assertEqual(artifact["lab_handback"]["status"],"capability_available_original_request_unfulfilled")
         plugin.assert_called_once_with(*query().values())
         second=self.project();self.assertTrue(self.r.step(second["id"]))
         self.assertEqual(self.status(second)["state"],"complete")
@@ -249,9 +250,128 @@ class Tests(unittest.TestCase):
             dict(valid,summary="truncated ..."),
             dict(valid,summary=json.dumps({"ref":"seq_other","name":"SLC26A19","length":1000})),
             receipt(query(),{"message":"connected"}),
-            receipt(query(),{"ref":"seq_fixture","name":"SLC26A9","length":1000}),
         ):
             with self.assertRaises(ValidationFailure):verified_result(invalid,query())
+
+    def intake_payload(self, index=0):
+        records=[{"id":"source-"+str(index)}]
+        item={"source":"fixture","records":records,"response_sha256":hashlib.sha256(json.dumps(records,sort_keys=True).encode()).hexdigest()}
+        item["receipt_id"]=hashlib.sha256(json.dumps(item,sort_keys=True).encode()).hexdigest()
+        return {"intent":"The Lab needs an instrument it does not have: verify human SLC26A19 exists",
+                "source_packet":{"kind":"lab_research_report","source_receipts":[item]}}
+    def test_real_intake_partial_result_is_handed_back_and_never_completes_request(self):
+        from contextlib import nullcontext
+        from forge_lab_handback import collect
+        payload=self.intake_payload()
+        p=self.r.intake("i"*40,payload)
+        self.builder([{"plugin_query":query()}],Mock(return_value=receipt(query())))
+        self.assertTrue(self.r.step(p["id"]))
+        self.assertEqual(self.status(p)["state"],"awaiting_lab")
+        self.assertFalse(self.r.step(p["id"]))
+        outbox=self.root/"forge-report-outbox.json"
+        outbox.write_text(json.dumps({"owned":{"state":"accepted","project_id":p["id"],"question":payload["intent"]}}))
+        def load(path,default):return json.loads(Path(path).read_text()) if Path(path).exists() else default
+        def atomic(path,value):Path(path).write_text(json.dumps(value))
+        records=[];fetch=Mock(side_effect=lambda cfg,pid:self.c.artifacts(self.c.owner_token,pid))
+        def pull():return collect({},self.root,self.c.projects(self.c.owner_token),load=load,atomic=atomic,
+                                  locked=nullcontext,fetch=fetch,record=records.append)
+        returned=pull();self.assertEqual(len(returned),1)
+        self.assertEqual(returned[0]["original_request"],payload["intent"])
+        self.assertFalse(returned[0]["original_request_fulfilled"])
+        self.assertIn("accepted_receipt",returned[0])
+        saved=json.loads(outbox.read_text());saved["owned"].pop("capability_handback")
+        outbox.write_text(json.dumps(saved))  # simulate crash after ledger but before pointer
+        self.assertEqual(pull(),[]);self.assertEqual(len(records),1)
+        self.assertEqual(fetch.call_count,1)
+        self.assertFalse(json.loads(outbox.read_text())["owned"]["capability_handback"]["original_request_fulfilled"])
+        with self.c.db() as db:
+            event=json.loads(db.execute("SELECT body FROM events WHERE project=? AND kind='cycle'",(p["id"],)).fetchone()[0])
+        self.assertIs(event["complete"],False)
+    def test_four_terminal_failures_release_capacity_but_keep_owned_evidence(self):
+        projects=[]
+        with patch("forge_loop.software_quota.limit",return_value=20):
+            for index in range(4):
+                p=self.r.intake("i"*40,self.intake_payload(index));projects.append(p)
+                self.builder([{"unsupported":True}])
+                with self.assertRaises(ValidationFailure):self.r.step(p["id"])
+                self.assertEqual(self.status(p)["state"],"failed")
+                self.assertFalse(self.status(p)["intake_slot"])
+            fifth=self.r.intake("i"*40,self.intake_payload(4))
+            self.assertEqual(self.status(fifth)["state"],"ready")
+            self.assertEqual(self.c.step_budget(self.c.owner_token)["used"],4)
+            for index,p in enumerate(projects):
+                replay=self.r.intake("i"*40,self.intake_payload(index))
+                self.assertEqual(replay["id"],p["id"]);self.assertTrue(replay["replayed"])
+                self.assertEqual(len(self.c.artifacts(self.c.owner_token,p["id"])),1)
+                self.assertIsNotNone(self.status(p)["diagnostic"])
+    def test_uncertain_requests_still_occupy_capacity_without_replay(self):
+        with patch("forge_loop.software_quota.limit",return_value=20):
+            for index in range(4):
+                p=self.r.intake("i"*40,self.intake_payload(index))
+                self.r.builder=Mock(side_effect=TimeoutError("unknown"))
+                with self.assertRaises(TimeoutError):self.r.step(p["id"])
+                self.assertTrue(self.status(p)["intake_slot"])
+            with self.assertRaises(Refused):self.r.intake("i"*40,self.intake_payload(4))
+    def test_species_omission_and_fuzzy_result_names_cannot_fulfill(self):
+        from forge_genomic_result import validate_request,verified_result
+        q=query();q["arguments"]={"gene":"TP53"}
+        with self.assertRaises(ValidationFailure):validate_request(q,{"intent":"Fetch mouse TP53 sequence"})
+        q["arguments"]={"gene":"TP53","species":"human"}
+        with self.assertRaises(ValidationFailure):validate_request(q,{"intent":"Fetch mouse TP53 sequence"})
+        q["arguments"]={"gene":"TP53","species":"mouse"}
+        validate_request(q,{"intent":"Fetch mouse TP53 sequence"})
+        for name in ("TP531 human","TP53 human","TP53 mouse","unknown"):
+            value=verified_result(receipt(q,{"ref":"seq_fixture","name":name,"length":1000}),q)
+            self.assertEqual(value["identity_status"],"unverified")
+            self.assertFalse(value["original_request_fulfilled"])
+    def test_report_cannot_send_mail_or_run_hosted_inference(self):
+        forbidden=[{"plugin":"gmail","tool":tool,"arguments":{},"purpose":"fixture"}
+                   for tool in ("gmail.send_email","gmail.create_draft","gmail.forward_emails")]
+        forbidden.append({"plugin":"nvidia_nim","tool":"nvidia_nim.boltz2","arguments":{},"purpose":"fixture"})
+        with patch("forge_loop.software_quota.limit",return_value=20):
+            for q in forbidden:
+                p=self.project();plugin=Mock();model=self.builder([{"plugin_query":q}],plugin)
+                with self.assertRaises(ValidationFailure):self.r.step(p["id"])
+                plugin.assert_not_called();self.assertEqual(model.call_count,1)
+                self.assertEqual(self.status(p)["diagnostic"]["code"],"report_effect_scope")
+    def test_report_literature_read_remains_available(self):
+        p=self.project();q={"plugin":"pubmed","tool":"get_article_metadata","arguments":{"pmids":["123"]},"purpose":"Read source evidence"}
+        plugin=Mock(return_value=receipt(q,{"title":"fixture paper"}))
+        self.builder([{"plugin_query":q},draft(),critique()],plugin)
+        self.assertTrue(self.r.step(p["id"]));plugin.assert_called_once()
+        self.assertEqual(self.status(p)["state"],"complete")
+
+    def test_real_lab_collector_records_owned_partial_receipt_once(self):
+        import importlib.util
+        import types
+        from contextlib import nullcontext
+        from forge_lab_handback import collect
+        payload=self.intake_payload();p=self.r.intake("i"*40,payload)
+        self.builder([{"plugin_query":query()}],Mock(return_value=receipt(query())))
+        self.r.step(p["id"])
+        (self.root/"forge-report-outbox.json").write_text(json.dumps({"owned":{"state":"accepted","project_id":p["id"],"question":payload["intent"]}}))
+        def load(path,default):return json.loads(Path(path).read_text()) if Path(path).exists() else default
+        def atomic(path,value):Path(path).write_text(json.dumps(value))
+        def tail(path,**kwargs):return [json.loads(line) for line in Path(path).read_text().splitlines()] if Path(path).exists() else []
+        def append(path,value):
+            with Path(path).open("a") as stream:stream.write(json.dumps(value)+"\n")
+        fake_lab=types.SimpleNamespace(ROOT=str(self.root),_load=load,_atomic=atomic,_locked=nullcontext,_tail_jsonl=tail,_append=append)
+        fake_sources=types.SimpleNamespace(Sources=Mock(),AtlasProcess=Mock(),collision_descriptor=Mock(),followups=Mock(),
+                                         receipt=lambda source,query,records,metadata=None:dict(source=source,query=query,records=records,metadata=metadata))
+        path=Path(__file__).resolve().parents[2]/"scripts/chemistry_sources.py"
+        spec=importlib.util.spec_from_file_location("fixture_chemistry_sources",path)
+        module=importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules,{"chemistry_lab":fake_lab,"lab_sources":fake_sources}):
+            spec.loader.exec_module(module)
+        module.fetch_projects=lambda:self.c.projects(self.c.owner_token)
+        with patch("forge_lab_handback.fetch_artifacts",side_effect=lambda cfg,pid:self.c.artifacts(self.c.owner_token,pid)):
+            self.assertEqual(len(module.collect_forge_handbacks({})),1)
+            self.assertEqual(module.collect_forge_handbacks({}),[])
+        lines=tail(self.root/"source-receipts.jsonl")
+        self.assertEqual(len(lines),1)
+        self.assertFalse(lines[0]["metadata"]["original_request_fulfilled"])
+        self.assertEqual(lines[0]["records"]["original_request"],payload["intent"])
+        self.assertEqual(module.forge_open({}),[])
 
     def test_paid_claim_still_refused(self):
         p=self.project()
