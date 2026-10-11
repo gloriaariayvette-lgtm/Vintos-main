@@ -1739,11 +1739,36 @@ function _labReviewCard(row) {
     const observation = row.factual_observation || row.attention || '';
     const speculation = row.speculative_reading || '';
     const score = _labNum(row.interest_score);
+    const coverage = row.coverage || {};
+    const supports = Array.isArray(coverage.supports) ? coverage.supports : [];
+    const missing = (Array.isArray(coverage.missing) ? coverage.missing : []).filter(Boolean);
+    const missingText = missing.join('; ') || row.missing_evidence || '';
+    let state = row.evidence_status || row.assessment_status || coverage.assessment_status || '';
+    if (!state && coverage.answered === true) state = 'answered';
+    if (!state && coverage.answered === false && supports.length) state = 'partial';
+    if (!state && String(row.answers_question || '').toLowerCase().startsWith('no:')) state = 'rejected';
+    const stateMarks = {
+        answered: ['answered', 'var(--accent)'], partial: ['partial answer', 'var(--text)'],
+        deferred: ['waiting for assessment', 'var(--text-dim)'],
+        incomplete: ['assessment incomplete', '#c46a5a'], insufficient: ['source insufficient', '#c46a5a'],
+        rejected: ['target rejected', '#c46a5a']
+    };
+    const mark = stateMarks[state] || [state || 'unclassified', 'var(--text-dim)'];
+    const evidence = supports.length ? supports.map(s =>
+        '<div style="margin-top:8px;">' +
+          '<div style="font-size:0.56rem;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;">' + _esc(s.requirement || 'supported evidence') + '</div>' +
+          '<div style="font-size:0.68rem;color:var(--text);line-height:1.55;margin-top:2px;overflow-wrap:anywhere;">' + _esc(s.quote || '') +
+            (s.source_citation ? ' <span style="color:var(--text-dim);">[' + _esc(s.source_citation) + ']</span>' : '') + '</div></div>').join('')
+        : (observation ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(observation) + '</div>' : '');
     return '<div class="gallery-item" style="padding:14px;">' +
         '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">' +
           '<div style="font-size:0.74rem;color:var(--text-bright);">' + _esc(row.kind === 'genome_reflection' ? 'genome review' : 'protein review') + '</div>' +
           '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(_atelierDate(row.at)) + '</time></div>' +
-        (observation ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(observation) + '</div>' : '') +
+        '<div style="margin-top:7px;">' + _labChip(mark[0], mark[1]) + '</div>' +
+        (row.original_question ? '<div style="font-size:0.61rem;color:var(--text-dim);line-height:1.5;margin-top:7px;font-style:italic;">asked — ' + _esc(row.original_question) + '</div>' : '') +
+        evidence +
+        (missingText ? '<div style="font-size:0.61rem;color:#c46a5a;line-height:1.5;margin-top:8px;">still missing — ' + _esc(missingText) + '</div>' : '') +
+        (row.validation_failure ? '<div style="font-size:0.56rem;color:var(--text-dim);line-height:1.45;margin-top:6px;">assessment note — ' + _esc(row.validation_failure) + '</div>' : '') +
         (speculation ? '<div style="font-size:0.63rem;color:var(--text-dim);line-height:1.55;margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere;">speculative — ' + _esc(speculation) + '</div>' : '') +
         (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next — ' + _esc(row.next_question) + '</div>' : '') +
         '<div style="font-size:0.52rem;color:var(--text-dim);margin-top:8px;">' +

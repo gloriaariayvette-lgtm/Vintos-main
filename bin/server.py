@@ -6931,10 +6931,23 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
         rows = []
         for row in module._jsonl_tail(os.path.join(module.ROOT, "notebook.jsonl"), limit,
                                       kinds=("reflection", "genome_reflection")):
-            rows.append({key: row.get(key) for key in
-                         ("at", "kind", "entry_id", "factual_observation", "speculative_reading",
-                          "attention", "next_question", "interest_score", "reason_for_score", "line",
-                          "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")})
+            coverage = row.get("coverage_check") if isinstance(row.get("coverage_check"), dict) else {}
+            supports = []
+            for support in (coverage.get("supports") or row.get("validated_source_excerpts") or [])[:6]:
+                if not isinstance(support, dict): continue
+                supports.append({key: support.get(key) for key in
+                                 ("requirement", "quote", "source_citation")})
+            visible = {key: row.get(key) for key in
+                       ("at", "kind", "entry_id", "original_question", "factual_observation",
+                        "speculative_reading", "attention", "next_question", "interest_score",
+                        "reason_for_score", "line", "answers_question", "missing_evidence",
+                        "evidence_status", "assessment_status", "validation_failure",
+                        "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")}
+            visible["coverage"] = {"answered": coverage.get("answered"),
+                                   "missing": coverage.get("missing") or [],
+                                   "assessment_status": coverage.get("assessment_status"),
+                                   "supports": supports}
+            rows.append(visible)
         return {"ok": True, "reviews": rows, "limit": 20}
     except Exception as exc:
         return {"ok": False, "reviews": [], "limit": 20, "error": str(exc)[:180]}

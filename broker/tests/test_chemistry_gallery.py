@@ -75,9 +75,18 @@ for entry_id in ("FIND-1", "FIND-2"):
 for index in range(25):
     lab._append(lab.NOTEBOOK, {"at": "2026-09-13T04:%02d:00+00:00" % index,
                                "kind": "reflection", "entry_id": "REVIEW-%02d" % index,
+                               "original_question": "What is established about P%05d?" % index,
                                "factual_observation": "observation %d" % index,
                                "speculative_reading": "speculation %d" % index,
                                "next_question": "question %d" % index,
+                               "answers_question": "no: membrane topology is absent",
+                               "missing_evidence": "membrane topology",
+                               "evidence_status": "partial",
+                               "coverage_check": {"answered": False, "missing": ["membrane topology"],
+                                  "supports": [{"requirement": "organism", "quote": "Homo sapiens",
+                                                "source_citation": "UniProt P%05d" % index,
+                                                "path": "evidence.records.0.organism"}],
+                                  "checker_raw": "must never reach the phone"},
                                "interest_score": index / 25.0,
                                "truth_status": "mixed_sourced_observation_and_named_speculation"})
 lab._atomic(os.path.join(lab.ROOT, "taste.json"),
@@ -139,6 +148,15 @@ check("the visible review ledger is a rolling maximum of twenty",
 check("the review endpoint omits mechanical turns and heavy payloads",
       all(row["kind"] in ("reflection", "genome_reflection") for row in reviews["reviews"])
       and all("embeddings" not in row and "records" not in row for row in reviews["reviews"]), reviews)
+check("review cards receive labelled support, question, outcome and missing fields",
+      reviews["reviews"][-1]["original_question"].startswith("What is established")
+      and reviews["reviews"][-1]["evidence_status"] == "partial"
+      and reviews["reviews"][-1]["coverage"]["supports"][0] == {
+          "requirement": "organism", "quote": "Homo sapiens", "source_citation": "UniProt P00024"}
+      and reviews["reviews"][-1]["coverage"]["missing"] == ["membrane topology"],
+      reviews["reviews"][-1])
+check("review projection does not expose checker transcripts or source paths",
+      "checker_raw" not in json.dumps(reviews) and "evidence.records" not in json.dumps(reviews), reviews)
 activity = asyncio.run(scope["chemistry_lab_activity"](req, limit=12))
 check("the live activity endpoint fills the space between reviews without promoting redirects",
       activity["ok"] and len(activity["activity"]) <= 12
@@ -172,6 +190,9 @@ check("the structure view says what it is epistemically",
       "computational artifact, not biological fact" in PAGE and "atoms plus backbone trace" in PAGE)
 check("taste is labelled as taste, not as score", "grades are a separate ledger" in PAGE)
 check("what he wants to try next is shown", "what I want to try next" in PAGE)
+check("review cards label supported evidence and show partial-answer gaps",
+      "coverage.supports" in PAGE and "still missing" in PAGE and "partial answer" in PAGE
+      and "asked —" in PAGE)
 check("the phone pane renders a rolling twenty-review log",
       "LAB_REVIEW_LIMIT = 20" in PAGE and "reviews?limit=" in PAGE and "RECENT REVIEWS" in PAGE)
 check("the phone pane renders live Lab turns on the existing refresh",
