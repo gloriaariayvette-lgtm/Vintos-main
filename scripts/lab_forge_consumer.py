@@ -17,14 +17,17 @@ def identity(row, owner):
                    'outbox_key':row.get('outbox_key'), 'original_request':row.get('original_request'),
                    'artifact':row.get('artifact'), 'accepted_receipt':row.get('accepted_receipt'),
                    'sequence_handle':row.get('sequence_handle'),
+                   'ownership_sha256':row.get('ownership_sha256'), 'source_receipt_ids':row.get('source_receipt_ids'),
                    'owner':{key:owner.get(key) for key in ('project_id','state','question','receipt_ids')}})
 
 
 def owned(row, owner, cycle):
+    from forge_lab_handback import ownership
     return (isinstance(row, dict) and isinstance(owner, dict) and row.get('cycle_id') == cycle
             and isinstance(row.get('original_request'), str) and bool(row['original_request'])
             and owner.get('state') == 'accepted' and owner.get('project_id') == row.get('project_id')
-            and isinstance(owner.get('question'), str) and owner['question'][:2000] == row['original_request'])
+            and isinstance(owner.get('question'), str) and owner['question'][:2000] == row['original_request']
+            and row.get('ownership_sha256') == ownership(owner))
 
 
 def validate(row, owner):
@@ -96,14 +99,16 @@ def consume_one(lab, *, verify=None):
             if prior:
                 if not isinstance(prior,dict):continue
                 # Recover projection after canonical write without re-verifying.
-                if prior.get('state') == 'recorded' and prior.get('input_sha256') == identity(row,owner):
+                if prior.get('consumer_status') == 'recorded' and prior.get('input_sha256') == identity(row,owner):
                     _project(lab,row,owner,outbox,owners,ledger,rows)
-                continue
+                if prior.get('state') != 'pending':continue
             if row.get('state') != PENDING:continue
             try:fingerprint=identity(row,owner)
             except (TypeError,ValueError):continue
             snapshot=copy.deepcopy(row); owner_snapshot=copy.deepcopy(owner)
-            row['verification']={'state':'processing','input_sha256':fingerprint,'started_at':lab.now_iso(),
+            row['verification']={'state':'running','input_sha256':fingerprint,'started_at':lab.now_iso(),
+                                 'ownership_sha256':row['ownership_sha256'],'evidence_receipt_ids':[],
+                                 'original_request_fulfilled':False,
                                  'meaning':'durable claim; if interrupted, do not replay automatically'}
             row['state']='verification_in_progress'
             lab._atomic(ledger,rows)
@@ -142,7 +147,11 @@ def consume_one(lab, *, verify=None):
                 or (current.get('verification') or {}).get('input_sha256') != fingerprint):
             return {'kind':'forge_handback_stale','cycle_id':cycle,'original_request_fulfilled':False}
         current['state']='verification_recorded_original_request_pending'
-        current['verification']={'state':'recorded','input_sha256':fingerprint,'finished_at':lab.now_iso(),
+        current['verification']={'state':'partial' if result['target_identity_status']=='verified' else 'unresolved',
+                                 'consumer_status':'recorded','input_sha256':fingerprint,'finished_at':lab.now_iso(),
+                                 'ownership_sha256':current['ownership_sha256'],
+                                 'evidence_receipt_ids':[receipt['receipt_id']] if receipt else [],
+                                 'original_request_fulfilled':False,
                                  'outcome':result,'source_receipt':receipt}
         current['acknowledgement']={'kind':'verification_recorded','cycle_id':cycle,
                                     'original_request_fulfilled':False,'target_identity_status':result['target_identity_status']}
@@ -159,6 +168,7 @@ def _project(lab,row,owner,outbox,owners,ledger,rows):
         if not any(old.get('receipt_id')==receipt['receipt_id'] for old in lab._tail_jsonl(path,nbytes=8*1024*1024)):
             lab._append(path,receipt)
         verification['receipt_published']=True;lab._atomic(ledger,rows)
-    pointer={'cycle_id':row['cycle_id'],'state':row['state'],'original_request_fulfilled':False}
+    from forge_lab_handback import pointer as project_pointer
+    pointer=project_pointer(row)
     if owner.get('capability_handback') != pointer:
         owner['capability_handback']=pointer;lab._atomic(outbox,owners)

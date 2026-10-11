@@ -8,6 +8,7 @@ from unittest.mock import patch,Mock
 import lab_forge_consumer as F
 from lab_sources import receipt,Sources
 from forge_genomic_result import verified_result
+from forge_lab_handback import ownership,collect,pointer
 
 class Consumer(unittest.TestCase):
     def setUp(self):
@@ -30,6 +31,10 @@ class Consumer(unittest.TestCase):
               'status':'capability_available_original_request_unfulfilled'}}}
         C._atomic(self.ledger,{self.cycle:self.row})
         C._atomic(self.outbox,{'owned':{'project_id':self.row['project_id'],'state':'accepted','question':self.question}})
+        self.row['ownership_sha256']=ownership(C._load(self.outbox,{})['owned'])
+        self.row['verification']={'state':'pending','ownership_sha256':self.row['ownership_sha256'],
+                                  'evidence_receipt_ids':[],'original_request_fulfilled':False}
+        C._atomic(self.ledger,{self.cycle:self.row})
         self.verify=Mock(side_effect=lambda symbol:receipt('ncbi_gene_identity',{'symbol':symbol,'taxon_id':9606},
             [{'gene_id':'123','symbol':symbol,'taxon_id':9606,'aliases':[]}],metadata={'status':'verified'}))
         self.assertTrue(str(self.ledger).startswith(C.WS))
@@ -43,7 +48,7 @@ class Consumer(unittest.TestCase):
         self.assertIsNone(F.consume_one(C,verify=self.verify));self.verify.assert_called_once_with('SLC26A19')
         row=C._load(self.ledger,{})[self.cycle]
         self.assertFalse(row['acknowledgement']['original_request_fulfilled'])
-        self.assertEqual(row['state'],C._load(self.outbox,{})['owned']['capability_handback']['state'])
+        self.assertEqual(pointer(row),C._load(self.outbox,{})['owned']['capability_handback'])
 
     def test_real_source_adapter_empty_identity_is_honest_and_not_repeated(self):
         fetch=Mock(return_value=({'esearchresult':{'idlist':[]}},{}))
@@ -95,6 +100,7 @@ class Consumer(unittest.TestCase):
         outcome=row['artifact']['capability_resolution']['result']
         outcome['receipt']['arguments_sha256']=F.digest(request['arguments'])
         row['sequence_handle']=verified_result(outcome,request)
+        row['ownership_sha256']=ownership(owner['owned'])
         C._atomic(self.outbox,owner);C._atomic(self.ledger,{self.cycle:row})
         got=F.consume_one(C,verify=self.verify)
         self.assertEqual(got['target_identity_status'],'unsupported_verification');self.verify.assert_not_called()
@@ -120,7 +126,7 @@ class Consumer(unittest.TestCase):
         owners=C._load(self.outbox,{});owners['owned'].pop('capability_handback');C._atomic(self.outbox,owners)
         self.assertIsNone(F.consume_one(C,verify=self.verify));self.verify.assert_called_once()
         self.assertEqual(len(C._tail_jsonl(str(Path(C.ROOT)/'source-receipts.jsonl'))),1)
-        self.assertEqual(C._load(self.outbox,{})['owned']['capability_handback']['state'],rows[self.cycle]['state'])
+        self.assertEqual(C._load(self.outbox,{})['owned']['capability_handback'],pointer(rows[self.cycle]))
 
     def test_two_distinct_cycles_progress_without_repeating_first(self):
         second=copy.deepcopy(self.row);cycle='c'*32
@@ -128,9 +134,26 @@ class Consumer(unittest.TestCase):
         second['accepted_receipt']['cycle_id']=cycle;second['artifact']['lab_handback']['cycle_id']=cycle
         C._atomic(self.ledger,{self.cycle:self.row,cycle:second})
         owners=C._load(self.outbox,{});owners['second']={**owners['owned'],'project_id':second['project_id']};C._atomic(self.outbox,owners)
+        second['ownership_sha256']=ownership(owners['second'])
+        C._atomic(self.ledger,{self.cycle:self.row,cycle:second})
         self.assertEqual(F.consume_one(C,verify=self.verify)['cycle_id'],self.cycle)
         self.assertEqual(F.consume_one(C,verify=self.verify)['cycle_id'],cycle)
         self.assertIsNone(F.consume_one(C,verify=self.verify));self.assertEqual(self.verify.call_count,2)
+
+    def test_real_collector_consumer_collector_keeps_partial_ack_and_never_reacquires(self):
+        C._atomic(self.ledger,{})
+        fetch=Mock(return_value=[{'id':self.cycle,'state':'accepted','artifact':json.dumps(self.row['artifact']),
+                                 'receipt':json.dumps(self.row['accepted_receipt'])}])
+        projects=[{'id':self.row['project_id'],'state':'awaiting_lab'}]
+        def pull():return collect({},C.ROOT,projects,load=C._load,atomic=C._atomic,locked=C._locked,fetch=fetch)
+        self.assertEqual(len(pull()),1)
+        self.assertEqual(F.consume_one(C,verify=self.verify)['target_identity_status'],'verified')
+        expected=C._load(self.outbox,{})['owned']['capability_handback']
+        self.assertEqual(expected['state'],'partial');self.assertFalse(expected['original_request_fulfilled'])
+        self.assertEqual(pull(),[])
+        self.assertEqual(C._load(self.outbox,{})['owned']['capability_handback'],expected)
+        self.assertIsNone(F.consume_one(C,verify=self.verify))
+        fetch.assert_called_once();self.verify.assert_called_once()
 
     def test_real_tick_consumes_one_checkpoint_without_model_or_connector(self):
         cfg=dict(C.DEFAULTS,enabled=True,evo2_enabled=False,forge_report_intake={'url':'http://127.0.0.1:8612/api/lab-intake'})
