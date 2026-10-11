@@ -38,6 +38,16 @@ sys.modules["chemistry_mac"] = types.SimpleNamespace(
     status=lambda: {"ok": True, "experiments": ["molecule"]},
     run=lambda *a, **k: {"ok": False, "error": "the bench must not be touched here"},
     reading=lambda *a, **k: {"ok": True})
+# 11 October: session.run() prospected a line through want_email.web_search and sent three live Brave searches.
+# The prospector is its own suite (test_line_prospect.py); here it is a stub, and no socket reaches the world.
+PROSPECTED = []
+sys.modules["line_prospect"] = types.SimpleNamespace(prospect=lambda *a, **k: PROSPECTED.append(a))
+import socket
+NET = []
+def _no_net(self, *a, **k):
+    if self.family != socket.AF_UNIX: NET.append(a)
+    raise OSError("this suite reaches nothing")
+socket.socket.connect = _no_net
 
 lab = load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 lab._ask = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no local model in this suite"))
@@ -211,6 +221,8 @@ check("a lens reading goes to the frontier lens with the prediction in front of 
       asked and asked[0][0] == "grok" and "fold A is lowest" in asked[0][1]
       and out["prediction_vs_result"] == "it missed", (asked[:1], out))
 del sys.modules["model_router"]
+check("the prospector was a stub and nothing reached the network",
+      isinstance(sys.modules["line_prospect"], types.SimpleNamespace) and socket.socket.connect is _no_net and not NET, NET)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
