@@ -2148,6 +2148,9 @@ function _wbCard(w, inCap) {
 }
 
 function _wbRender() {
+    // Keep the open panel alive while refreshing its containing card.
+    const stepsPanel = document.getElementById('wb-steps-panel');
+    if (stepsPanel) document.getElementById('wb-discussion').insertAdjacentElement('afterend', stepsPanel);
     // parked off the working board (want_board.py): blocked on a hand he lacks, or waiting quietly on Gloria
     const blocked = _wbWants.filter(w => w.board === 'blocked');
     const board = _wbWants.filter(w => w.board !== 'blocked');
@@ -2215,7 +2218,7 @@ function _wbRenderDisc() {
 async function _wbLoad() {
     if (!document._wbDelegated) {
         document._wbDelegated = true;
-        document.addEventListener('pointerup', function(e) {
+        document.addEventListener('click', function(e) {
             const btn = e.target.closest('[data-wbaction]');
             if (!btn) return;
             const action = btn.dataset.wbaction;
@@ -2231,7 +2234,8 @@ async function _wbLoad() {
             else if (action === 'steps') _wbOpenSteps(wid);
             else if (action === 'closesteps') { _wbStepWid = null; _wbStepPicker = false; _wbRender(); }
             else if (action === 'addstep') { _wbStepPicker = !_wbStepPicker; _wbRenderSteps(); }
-            else if (action === 'pickstepcap') { _wbStepCapPending = btn.dataset.cap; _wbRenderSteps(); setTimeout(() => { const cb = document.getElementById('wb-step-confirm-btn'); if (cb) cb.addEventListener('pointerup', () => _wbConfirmAddStep(wid)); }, 50); }
+            else if (action === 'pickstepcap') { _wbStepCapPending = btn.dataset.cap; _wbRenderSteps(); }
+            else if (action === 'confirmstep') _wbConfirmAddStep(wid);
             else if (action === 'removestep') _wbRemoveStep(wid, parseInt(btn.dataset.idx));
             else if (action === 'advancestep') _wbAdvanceStep(wid);
         });
@@ -2359,6 +2363,8 @@ function _wbRenderSteps() {
     if (!_wbStepWid) { el.innerHTML = ''; return; }
     const w = _wbWants.find(x => x.id === _wbStepWid);
     if (!w) { el.innerHTML = ''; return; }
+    const card = document.getElementById('wbc-' + w.id);
+    if (card) card.appendChild(el);
     const steps = w.steps || [];
     const currentIdx = w.current_step_index || 0;
     const history = w.step_history || [];
@@ -2409,8 +2415,10 @@ function _wbRenderSteps() {
 }
 
 function _wbOpenSteps(wid) {
+    _wbDisc = null;
     _wbStepWid = wid;
     _wbStepPicker = false;
+    _wbStepCapPending = null;
     _wbRender();
 }
 
@@ -2420,7 +2428,7 @@ function _wbStepConfirmForm(wid) {
         '<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em;">' + label + '</div>' +
         '<input id="wb-step-note" placeholder="Note (optional)" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.75rem;padding:5px;margin-bottom:4px;font-family:inherit;">' +
         '<input id="wb-step-params" placeholder="JSON params e.g. {target:dream,n:3}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.75rem;padding:5px;margin-bottom:6px;font-family:monospace;">' +
-        '<button id="wb-step-confirm-btn" style="width:100%;padding:7px;background:rgba(130,110,170,0.15);border:1px solid rgba(130,110,170,0.6);border-radius:4px;color:rgba(190,175,215,0.9);font-size:0.75rem;cursor:pointer;">Add</button>' +
+        '<button id="wb-step-confirm-btn" data-wbaction="confirmstep" data-wid="' + _jsArg(wid) + '" style="width:100%;padding:7px;background:rgba(130,110,170,0.15);border:1px solid rgba(130,110,170,0.6);border-radius:4px;color:rgba(190,175,215,0.9);font-size:0.75rem;cursor:pointer;">Add</button>' +
         '</div>';
 }
 

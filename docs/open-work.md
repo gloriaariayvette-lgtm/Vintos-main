@@ -3,6 +3,14 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 11 October — Wants card steps
+
+The + control opens its steps inside the selected card and clears an open discussion that would
+hide them. The panel survives board refreshes. Wants actions use semantic click activation; the
+Add confirmation uses the same delegated handler. Both mobile page copies carry the correction.
+The isolated regression exercises opening, switching, refresh, step selection and closing without
+account writes. Native installation and live deployment are verified separately.
+
 ## 10 October — Lab evidence completion and strategy recovery
 
 The implemented routes now canonicalize `ncbi_rt_locus_screen` to the existing `rt_locus_screen`
