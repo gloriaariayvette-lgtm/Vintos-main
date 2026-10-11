@@ -324,6 +324,20 @@ class Productive(unittest.TestCase):
   self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
   self.assertEqual(inquiry['planning_scope'],{'sourced_fallback':'Q16740'})
 
+ def test_waiting_pass_indexes_sourced_records_outside_recent_notebook_tail(self):
+  self.line=None
+  C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','records':[
+   {'accession':'P02792','protein_name':'Ferritin light chain','organism':'Homo sapiens'}]})
+  C._append(C.NOTEBOOK,{'kind':'old_context','payload':'x'*(9*1024*1024)})
+  C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':{'question':'held'},'why':'no eligible proposal'})
+  self.assertFalse(any(row.get('kind')=='source_read' for row in C._tail_jsonl(C.NOTEBOOK,nbytes=8*1024*1024)))
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',side_effect=forbidden):
+   inquiry=C._orient('offline scientific context')
+  self.assertEqual(inquiry['uniprot_query'],'accession:P02792')
+  index=C._load(os.path.join(C.ROOT,'sourced-record-index.json'),{})
+  self.assertEqual(index['offset'],os.path.getsize(C.NOTEBOOK))
+  self.assertEqual(index['candidates'][0]['accession'],'P02792')
+
  def test_exact_sourced_record_browse_goes_directly_to_reflection(self):
   inquiry=C._inquiry({'question':'What does the curated UniProt record for a protein (Q16740) establish about its organism, sequence length, annotated domains, and membrane topology?',
                       'uniprot_query':'accession:Q16740'})

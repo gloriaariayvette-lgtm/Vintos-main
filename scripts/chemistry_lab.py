@@ -1689,30 +1689,75 @@ def _next_fitting_deferred_coverage():
     return None
 
 
+def _sourced_record_index():
+    """Incrementally index exact UniProt records from the whole append-only notebook.
+
+    The notebook is much larger than the ordinary context tail. Restricting fallback
+    selection to that tail eventually made thousands of older, unread records
+    invisible and left free passes generating another held question instead.
+    """
+    path = os.path.join(ROOT, 'sourced-record-index.json')
+    saved = _load(path, {})
+    candidates = saved.get('candidates') if isinstance(saved, dict) else None
+    if not isinstance(candidates, list): candidates = []
+    offset = saved.get('offset', 0) if isinstance(saved, dict) else 0
+    if not isinstance(offset, int) or offset < 0: offset = 0
+    try:
+        size = os.path.getsize(NOTEBOOK)
+        if offset > size:
+            offset, candidates = 0, []
+        seen = {str(item.get('accession') or '') for item in candidates if isinstance(item, dict)}
+        with open(NOTEBOOK, 'rb') as stream:
+            stream.seek(offset)
+            while True:
+                start = stream.tell()
+                raw = stream.readline()
+                if not raw: break
+                if not raw.endswith(b'\n'):
+                    stream.seek(start)
+                    break
+                offset = stream.tell()
+                try: row = json.loads(raw.decode('utf-8'))
+                except (UnicodeDecodeError, ValueError): continue
+                if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
+                for record in row.get('records') or []:
+                    if not isinstance(record, dict): continue
+                    accession = str(record.get('accession') or '').upper()
+                    name = str(record.get('protein_name') or '').strip()
+                    organism = str(record.get('organism') or '').strip()
+                    if (not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism
+                            or accession in seen):
+                        continue
+                    seen.add(accession)
+                    candidates.append({'accession':accession, 'protein_name':name, 'organism':organism})
+    except OSError:
+        return candidates
+    updated = {'version':1, 'offset':offset, 'candidates':candidates}
+    if updated != saved: _atomic(path, updated)
+    return candidates
+
+
 def _next_sourced_record(repeats, spent, lean=None):
     """Give a free pass one exact, previously returned protein when planning yields only held work."""
-    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=8*1024*1024)):
-        if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
-        for record in row.get('records') or []:
-            accession = str(record.get('accession') or '').upper()
-            name = str(record.get('protein_name') or '').strip()
-            organism = str(record.get('organism') or '').strip()
-            if not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism: continue
-            question = ('What does the curated UniProt record for %s (%s) establish about its organism, '
-                        'sequence length, annotated domains, and membrane topology?' % (name, accession))
-            inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
-                                'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
-                                'source_query':None, 'plugin_query':None,
-                                'material_terms':[]}, lean)
-            if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
-            admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
-                                        spent=spent, replan=False)
-            if admitted.get('refused'): continue
-            return dict(admitted,
-                        planning_scope={'sourced_fallback':accession},
-                        planning_evidence=_planning_evidence(admitted),
-                        assignment_resolution={'reason':'exact_previously_sourced_record',
-                                               'accession':accession})
+    for record in _sourced_record_index():
+        accession = record['accession']
+        name = record['protein_name']
+        organism = record['organism']
+        question = ('What does the curated UniProt record for %s (%s) establish about its organism, '
+                    'sequence length, annotated domains, and membrane topology?' % (name, accession))
+        inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
+                            'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
+                            'source_query':None, 'plugin_query':None,
+                            'material_terms':[]}, lean)
+        if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
+        admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
+                                    spent=spent, replan=False)
+        if admitted.get('refused'): continue
+        return dict(admitted,
+                    planning_scope={'sourced_fallback':accession},
+                    planning_evidence=_planning_evidence(admitted),
+                    assignment_resolution={'reason':'exact_previously_sourced_record',
+                                           'accession':accession})
     return None
 
 
