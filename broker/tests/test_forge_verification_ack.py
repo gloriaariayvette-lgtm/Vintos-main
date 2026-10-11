@@ -89,6 +89,58 @@ class Tests(unittest.TestCase):
         return evidence
     def assert_held(self):
         self.assertEqual(self.c.status(self.c.owner_token,self.pid)["state"],"awaiting_lab")
+    def provider_fixture(self, provider, taxon, verdict):
+        from forge_verification_ack import ownership
+        species="human" if taxon==9606 else "mouse"
+        row=copy.deepcopy(self.load("forge-capability-handbacks.json")[self.cid])
+        current=copy.deepcopy(self.load("forge-report-outbox.json")["owned"])
+        current["question"]=self.original.replace("human",species)
+        row["original_request"]=current["question"]
+        row["ownership_sha256"]=ownership(current)
+        row["artifact"]["lab_handback"]["original_request"]=current["question"]
+        row["artifact"]["capability_resolution"]["request"]["arguments"]["species"]=species
+        body={**self.body,"verdict":verdict,"ownership_sha256":row["ownership_sha256"],
+              "original_request_sha256":request_digest(current["question"])}
+        records=copy.deepcopy(self.records)
+        records["taxon_id"]=taxon;records["reference"]["provider"]=provider
+        if verdict=="verified_absent":records.update(verdict="not_found_in_reference",matches=[])
+        else:records["matches"][0]["taxon_id"]=taxon
+        query={key:body[key] for key in ("project_id","cycle_id","ownership_sha256","original_request_sha256")}
+        query.update(action="verify_gene_locus",target="TP53",species=species,taxon_id=taxon)
+        receipt={"source":"gene_locus_verification","query":query,"records":records,
+                 "response_sha256":digest(records)}
+        receipt["receipt_id"]=digest(receipt)
+        body["evidence_receipt_ids"]=[receipt["receipt_id"]]
+        row["verification"]={"state":verdict,"ownership_sha256":body["ownership_sha256"],
+            "original_request_fulfilled":True,"evidence_receipt_ids":body["evidence_receipt_ids"]}
+        return body,row,current,{receipt["receipt_id"]:receipt}
+    def test_provider_taxon_scope_applies_to_presence_and_echoed_negative(self):
+        from forge_verification_ack import validate_evidence,Refused
+        for provider,taxon in (("hgnc",10090),("unknown",9606),("unknown",10090)):
+            for verdict in ("verified_present","verified_absent"):
+                with self.subTest(provider=provider,taxon=taxon,verdict=verdict):
+                    args=self.provider_fixture(provider,taxon,verdict)
+                    with self.assertRaisesRegex(Refused,"reference for the requested taxon"):
+                        validate_evidence(*args)
+    def test_supported_provider_taxon_pairs_accept_complete_fixture_evidence(self):
+        from forge_verification_ack import validate_evidence
+        for provider,taxon in (("hgnc",9606),("ensembl",9606),("ensembl",10090),
+                               ("ncbi_gene",9606),("ncbi_gene",10090)):
+            for verdict in ("verified_present","verified_absent"):
+                with self.subTest(provider=provider,taxon=taxon,verdict=verdict):
+                    proof=validate_evidence(*self.provider_fixture(provider,taxon,verdict))
+                    self.assertEqual(proof["verdict"],verdict)
+    def test_hgnc_human_presence_through_authenticated_endpoint(self):
+        data=copy.deepcopy(self.records);data["reference"]["provider"]="hgnc"
+        self.persist_evidence(records=data)
+        self.assertEqual(self.ack()[0],200)
+    def test_hgnc_human_scoped_absence_through_authenticated_endpoint(self):
+        self.body["verdict"]="verified_absent"
+        data=copy.deepcopy(self.records);data["reference"]["provider"]="hgnc"
+        data.update(verdict="not_found_in_reference",matches=[])
+        self.persist_evidence(records=data)
+        self.assertEqual(self.ack()[0],200)
+
     def test_broader_original_action_cannot_be_completed_by_identity_lookup(self):
         from forge_verification_ack import validate_evidence, ownership, request_digest, Refused
         rows=json.loads((self.lab/"forge-capability-handbacks.json").read_text())
