@@ -166,6 +166,11 @@ def record_step(line_id, step):
             return None
         row = {"at": _now(), **{k: str(step.get(k) or "")[:700] for k in ("question", "source", "result", "answered",
                                                                         "next", "entry_id", "session_id")}}
+        row["supports"] = [{k: str(item.get(k) or "")[:700] for k in
+                            ("requirement", "quote", "source_citation")}
+                           for item in (step.get("supports") or [])[:12] if isinstance(item, dict)
+                           and item.get("requirement") and item.get("quote")]
+        row["missing"] = [str(item)[:500] for item in (step.get("missing") or [])[:12] if str(item).strip()]
         line["steps"] = (line.get("steps") or []) + [row]
         line["steps"] = line["steps"][-60:]
         if row["next"]:
@@ -284,6 +289,15 @@ def line_block(line):
         lines.append("The last frontier review (%s): %s" % (steer_note.get("by"), steer_note["note"][:400]))
     if line.get("next_step"):
         lines.append("Next step: " + line["next_step"])
+    claims = claim_state(line)
+    if claims["established"]:
+        lines.append("Established claims from verified source excerpts:\n" + "\n".join(
+            "- %s — %s%s" % (item["requirement"], item["quote"],
+                              " [%s]" % item["source_citation"] if item.get("source_citation") else "")
+            for item in claims["established"][-12:]))
+    if claims["open"]:
+        lines.append("Open claims — target the next retrieval at one of these, without re-fetching established claims:\n- "
+                     + "\n- ".join(claims["open"][-12:]))
     if int(line.get("stalls") or 0) >= 3:
         lines.append("The last %d tests answered nothing: change the test, not the words." % line["stalls"])
     return "\n".join(lines)
@@ -325,9 +339,12 @@ def after_reflection(line_id, note):
     inquiry = note.get("inquiry") or {}
     sq = inquiry.get("source_query") or inquiry.get("plugin_query") or inquiry.get("instrument_query") or {}
     source = sq.get("source") or sq.get("plugin") or sq.get("skill") or "uniprot" if isinstance(sq, dict) else ""
+    coverage = note.get("coverage_check") if isinstance(note.get("coverage_check"), dict) else {}
     line = record_step(line_id, {"question": inquiry.get("question"), "source": source,
                                  "result": note.get("factual_observation"), "answered": note.get("answers_question"),
-                                 "next": note.get("next_question"), "entry_id": note.get("entry_id")})
+                                 "next": note.get("next_question"), "entry_id": note.get("entry_id"),
+                                 "supports": coverage.get("supports") or note.get("validated_source_excerpts") or [],
+                                 "missing": coverage.get("missing") or []})
     if not line:
         return ""
     status = str(note.get("line_status") or "").strip()
@@ -336,6 +353,34 @@ def after_reflection(line_id, note):
         ended, why = end(line_id, m.group(1).lower(), m.group(2).strip())
         return ("line %s %s" % (line_id, m.group(1).lower())) if ended else ("line %s kept: %s" % (line_id, why))
     return "line %s: step %d" % (line_id, len(line["steps"]))
+
+
+def claim_state(line):
+    """Verified excerpts accumulated on one line, plus the latest unresolved claims."""
+    if not isinstance(line, dict):
+        return {"established": [], "open": []}
+    established = []
+    seen = set()
+    open_claims = []
+    for step in line.get("steps") or []:
+        for item in step.get("supports") or []:
+            if not isinstance(item, dict): continue
+            key = (str(item.get("requirement") or ""), str(item.get("quote") or ""),
+                   str(item.get("source_citation") or ""))
+            if not key[0] or not key[1] or key in seen: continue
+            seen.add(key)
+            established.append({"requirement": key[0], "quote": key[1], "source_citation": key[2],
+                                "entry_id": step.get("entry_id")})
+        if step.get("missing"):
+            open_claims = list(dict.fromkeys(str(item) for item in step["missing"] if str(item).strip()))
+    supported = {item["requirement"].casefold() for item in established}
+    open_claims = [item for item in open_claims if item.casefold() not in supported]
+    return {"established": established[-60:], "open": open_claims[-20:]}
+
+
+def validated_evidence(line_id):
+    line = get(line_id)
+    return claim_state(line)["established"] if line and line.get("state") == "open" else []
 
 
 def frontier_block(limit_steps=10, with_tests=True):

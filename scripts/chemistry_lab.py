@@ -1290,9 +1290,9 @@ def _orient(context, lean=None):
         import lab_lines
         line = None if (atlas_due or step) else lab_lines.pick()
         assigned_line = line
-        if line and repeats_dead_end({"question": str(line.get("question", "")) + " " +
-                                     str(line.get("next_step", ""))}, spent):
-            line = None  # leave the line open; an exhausted subject does not own this pass
+        # A line is unfinished work, even when its subject is spent. Keep it in
+        # front of the planner so it can target an open claim with a different
+        # source. The ordinary repeat gate still refuses an identical call.
     except Exception as exc:
         _fault("lab_lines_pick", exc); line = assigned_line = None
     scope = {'line': {k: assigned_line.get(k) for k in ('id','question','next_step')} if assigned_line else None,
@@ -1379,7 +1379,8 @@ def _orient(context, lean=None):
         if deferred: return deferred
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return grounded
-        if recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
+        if (recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait')
+                and not waiting and not _question_holds()):
             fresh = _fresh_free_inquiry(lab_repeats, spent, lean)
             if fresh: return scoped(fresh)
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -1469,6 +1470,11 @@ def _orient(context, lean=None):
         "{source:rhea,term:plain reaction or metabolite phrase,limit:1..8}, or "
         "{source:quickgo,term:plain function or process phrase,limit:1..8}. "
         "Choose one direct source for this question, not the whole menu. "
+        "A protein question must seek a connection, not merely inventory fields. Include three claim types: "
+        "a named structural feature or molecular property, a documented function, localization or comparison, "
+        "and the source-backed relationship between them. Organism, accession and sequence length may establish "
+        "identity but do not count as the connection. Match this cycle's retrieval to the claim still open; do not "
+        "ask one generic record query to settle a relationship it cannot contain. "
         "Match the requested evidence product to that source: citation metadata is discovery, not a mechanism; "
         "an isolated structure cannot establish a fragment-versus-full-length comparison without both structures. "
         "If your question names two proteins to compare, ONE query must return both, or the question cannot be "
@@ -1515,6 +1521,9 @@ def _orient(context, lean=None):
     if spent["subjects"]:
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
+        if line:
+            task += (" The assigned line is the only exception: continue it only by returning its exact line_id and "
+                     "targeting an explicitly open claim with a different source. An identical lookup remains refused.")
     held_questions = _question_holds()
     if held_questions:
         task += ("\n\nQUESTIONS WAITING ON CHANGED EVIDENCE (not answers, not a hold on other work). "
@@ -1523,7 +1532,8 @@ def _orient(context, lean=None):
     value = _json_object(_ask(system, task))
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
-    if spent["subjects"] and spent_retrieval(inquiry, spent):
+    assigned_continuation = bool(line and inquiry.get("line_id") == line.get("id"))
+    if spent["subjects"] and spent_retrieval(inquiry, spent) and not assigned_continuation:
         value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
         inquiry = _existing_model_read(_inquiry(value, lean))
     if lab_repeats:
@@ -1769,6 +1779,13 @@ def _sourced_record_snapshot(accession):
     return None
 
 
+def _record_connection_question(name, accession=None):
+    target = "%s (%s)" % (name, accession) if accession else str(name)
+    return ("What do curated UniProt records for %s establish about its annotated structural features, its "
+            "documented molecular function or cellular role, and any source-backed relationship between those "
+            "features and that function or role?" % target)
+
+
 def _next_sourced_record(repeats, spent, lean=None):
     """Give a free pass one exact, previously returned protein when planning yields only held work."""
     for record in _sourced_record_index():
@@ -1776,8 +1793,7 @@ def _next_sourced_record(repeats, spent, lean=None):
         accession = record['accession']
         name = record['protein_name']
         organism = record['organism']
-        question = ('What does the curated UniProt record for %s (%s) establish about its organism, '
-                    'sequence length, annotated domains, and membrane topology?' % (name, accession))
+        question = _record_connection_question(name, accession)
         inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
                             'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
                             'source_query':None, 'plugin_query':None,
@@ -1801,8 +1817,8 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         'Choose ONE fresh protein for a new curated-record review, from an area you have not been thinking about '
         'recently. Choose freely. Do not choose a numbered gene-family variant. Use a plain '
         'protein name that UniProt can discover; do not invent an accession, gene symbol, organism ID, structure '
-        'ID, or prior result. Ask only what the curated record establishes about organism, sequence length, '
-        'annotated domains, and membrane topology. Return: browse_lane="protein"; a uniprot_query using '
+        'ID, or prior result. Ask for its annotated structural features, its documented function or cellular role, '
+        'and any source-backed relationship between those features and that function or role. Return: browse_lane="protein"; a uniprot_query using '
         'protein_name:"plain name" AND reviewed:true; question; why_now; source_query=null; plugin_query=null; '
         'material_terms=[]; line_id=null; new_line=null.')
     for attempt in range(3):
@@ -1813,6 +1829,10 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         admitted, _ = _held_to_plan(system, prompt, inquiry, value, lean, None, repeats,
                                     spent=spent, replan=False)
         if not admitted.get('refused'): return admitted
+    if _question_holds():
+        # Changed wording must not make a held question, or its exhausted
+        # neighborhood, look like permission to start a canned substitute.
+        return None
     # The model can remain anchored even without journal text. Keep a small,
     # varied source-discovery queue so three failed choices do not become
     # another evidence_wait. These are review subjects, not claimed findings.
@@ -1820,8 +1840,7 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
                  'ferredoxin', 'lactase', 'rhodopsin', 'albumin', 'actin'):
         inquiry = _inquiry({
             'browse_lane':'protein', 'uniprot_query':'protein_name:"%s" AND reviewed:true' % name,
-            'question':('What do curated UniProt records for %s establish about organism, sequence length, '
-                        'annotated domains, and membrane topology?' % name),
+            'question':_record_connection_question(name),
             'why_now':'fresh source discovery after exhausted free selection',
             'source_query':None, 'plugin_query':None, 'material_terms':[],
             'line_id':None, 'new_line':None}, lean)
@@ -1923,7 +1942,14 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
         held = _held_question(candidate)
         if held:
             return 'question waiting on changed evidence: ' + str(held.get('refused') or '')
-        if spent and spent_retrieval(candidate, spent):
+        active_line = False
+        if candidate.get('line_id'):
+            try:
+                import lab_lines
+                active_line = (lab_lines.get(candidate['line_id']) or {}).get('state') == 'open'
+            except Exception:
+                active_line = False
+        if spent and spent_retrieval(candidate, spent) and not active_line:
             return "spent subject: this retrieval already ended without an answer"
         return repeats.repeat(candidate)
     why = blocked(inquiry)
@@ -2000,6 +2026,15 @@ def _on_line(inquiry, value, line):
                 return dict(inquiry, line_id=opened["id"], line_opened=True)
         except Exception as exc:
             _fault("lab_lines_open", exc)
+    question = str(inquiry.get("question") or "")
+    if re.search(r'\b(?:how does|relationship|associated with|connect\w*|compare\w*|relate\w*)\b', question, re.I):
+        try:
+            import lab_lines
+            opened = lab_lines.opened_by(question[:120], question, inquiry.get("why_now"), origin="vintos:auto-claim")
+            if opened:
+                return dict(inquiry, line_id=opened["id"], line_opened=True)
+        except Exception as exc:
+            _fault("lab_lines_auto_open", exc)
     return inquiry
 
 
@@ -2183,8 +2218,7 @@ def _inquiry(value, lean=None):
         protein_name = terms[0].split(':', 1)[1].strip('"')
         normal = lambda text: ' '.join(re.findall(r'[^\W_]+', str(text).casefold()))
         if normal(protein_name) not in normal(question):
-            question = ('Which curated UniProt record for %s can establish its organism, sequence length, '
-                        'annotated domains, and membrane topology?' % protein_name)
+            question = _record_connection_question(protein_name)
             question_sha256 = hashlib.sha256(question.encode()).hexdigest()
     question_symbols = (_human_question_symbols(question)
                         if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
@@ -2214,6 +2248,7 @@ def _inquiry(value, lean=None):
             "source_query_question_sha256": question_sha256 if source_context_current else value.get('source_query_question_sha256'),
             **({"query_resolution": resolution} if resolution else {}),
             "question": question or "What shape catches my attention today?",
+            **({"line_id": str(value.get("line_id"))} if value.get("line_id") else {}),
             "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
                                if isinstance(t, (str, int))][:5] if isinstance(value.get("material_terms"), list) else [],
             "why_now": str(value.get("why_now", "curiosity"))[:500],
@@ -2372,8 +2407,7 @@ def _resolve_free_record_discovery(inquiry, records):
     name = str(selected.get('protein_name') or expected).strip()
     if not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name:
         return inquiry, records, None
-    question = ('What does the curated UniProt record for %s (%s) establish about its organism, sequence length, '
-                'annotated domains, and membrane topology?' % (name, accession))
+    question = _record_connection_question(name, accession)
     exact = 'accession:' + accession
     digest = hashlib.sha256(question.encode()).hexdigest()
     resolved = dict(inquiry, question=question, uniprot_query=exact, identity_queries=[exact],
@@ -2652,6 +2686,7 @@ def review_observations(inquiry, observations):
               'records':_named_numeric_arrays(receipt.get('records'), _receipt_id),
               'instrument_result':_named_numeric_arrays(source.get('instrument_result'), _receipt_id)},
               'LITERATURE':observations.get('LITERATURE') or [],
+              'prior_validated_evidence': observations.get('prior_validated_evidence') or [],
               'atlas_analysis':observations.get('atlas_analysis')}
     proteins = []
     sequence_requested = bool(re.search(r'sequence|residue|motif|amino.acid', str(inquiry.get('question') or ''), re.I))
@@ -2875,7 +2910,9 @@ def _coverage_request(inquiry, observations):
         'Copy an emitted address exactly and quote only its adjacent text. The wrapper is metadata, '
         'not scientific evidence. '
         'Do not construct paths, count records, or use an address belonging to another source. Use at most six '
-        'supports and concise quotes of at most 300 characters, only the necessary source clause. For anything absent, '
+        'supports and concise quotes of at most 300 characters, only the necessary source clause. When none of the '
+        'requested claims has support, return answered=false, the specific missing claims, and supports=[]. An empty '
+        'or absent source field is missing evidence and must never be cited as support. For anything absent, '
         'ambiguous, or conflicting, answered=false. Original identity queries are constraints, not evidence: '
         'do not drop their taxonomy or substitute a species. If species is unspecified, retain the evidence\'s '
         'species-qualified scope as partial findings without silently generalizing. Assess causal premises '
@@ -2906,7 +2943,8 @@ def _coverage_check(inquiry, observations, prepared=None):
                 'evidence_sha256':hashlib.sha256(json.dumps(evidence,sort_keys=True).encode()).hexdigest(),
                 'method':'exact_quote_integrity_only_not_answer_sufficiency'}
     if (type(result.get('answered')) is not bool or not isinstance(result.get('missing'), list)
-            or not isinstance(supports, list) or not supports): return incomplete('coverage response lacks a valid verdict and source supports')
+            or not isinstance(supports, list)): return incomplete('coverage response lacks a valid verdict and source supports')
+    if result['answered'] and not supports: return incomplete('positive coverage response has no source supports')
     if result['answered'] and result['missing']: return incomplete('coverage verdict conflicts with its missing list')
     if not result['answered'] and not result['missing']: return incomplete('negative coverage omitted specific missing requirements')
     normalized = lambda x: ' '.join(str(x).split())
@@ -2933,8 +2971,12 @@ def _coverage_check(inquiry, observations, prepared=None):
         if match:
             accession = evidence['records'][int(match[1])].get('accession')
             if accession: item['source_citation'] = 'UniProt ' + str(accession)
+        match = re.match(r'evidence.prior_validated_evidence\.(\d+)\.quote$', item['path'])
+        if match:
+            citation = evidence['prior_validated_evidence'][int(match[1])].get('source_citation')
+            if citation: item['source_citation'] = str(citation)
         verified.append(item)
-    if discarded or not verified or {item['requirement'] for item in verified} != required:
+    if discarded or (supports and (not verified or {item['requirement'] for item in verified} != required)):
         return incomplete('source-address validation failed; full original-question coverage was not assessed')
     supports=verified
     sufficiency = None
@@ -3664,6 +3706,12 @@ def tick():
                         "esmc_receipts": state.get("embeddings", []),
                         "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
                         "LITERATURE": literature}
+                    if inquiry.get("line_id"):
+                        try:
+                            import lab_lines
+                            observations["prior_validated_evidence"] = lab_lines.validated_evidence(inquiry["line_id"])
+                        except Exception as exc:
+                            _fault("lab_line_evidence", exc)
                     reflection = _reflect(context, inquiry, observations)
                     if reflection.get('coverage_deferred'):
                         inquiry = dict(inquiry, refused=reflection['missing_evidence'], evidence_status='insufficient',

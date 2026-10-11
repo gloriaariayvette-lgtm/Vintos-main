@@ -115,6 +115,24 @@ class PartialAssessment(unittest.TestCase):
    self.assertEqual(result['factual_observation'],'');self.assertEqual(result['missing_evidence'],'')
    self.assertEqual(result['next_question'],'');self.assertEqual(result['assessment_status'],'incomplete')
 
+ def test_specific_negative_with_no_support_is_a_complete_coverage_verdict(self):
+  inquiry={'question':'Which membrane-spanning ranges are established?'}
+  obs={'records':[{'accession':'P12345','organism':'Homo sapiens'}]}
+  response={'answered':False,'missing':['membrane-spanning ranges'],'supports':[]}
+  with patch.object(C,'_ask',return_value=json.dumps(response)) as model:
+   result=C._coverage_check(inquiry,obs)
+  self.assertEqual(model.call_count,1);self.assertFalse(result['answered'])
+  self.assertEqual(result['missing'],['membrane-spanning ranges']);self.assertEqual(result['supports'],[])
+  self.assertNotIn('assessment_status',result)
+
+ def test_positive_without_support_still_fails_closed(self):
+  inquiry={'question':'Which membrane-spanning ranges are established?'}
+  response={'answered':True,'missing':[],'supports':[]}
+  with patch.object(C,'_ask',return_value=json.dumps(response)):
+   result=C._coverage_check(inquiry,{'records':[{'accession':'P12345'}]})
+  self.assertEqual(result['assessment_status'],'incomplete')
+  self.assertIn('no source supports',result['validation_failure'])
+
  def test_invalid_reader_contract_is_audit_only(self):
   raw=json.dumps({'answers_question':'perhaps','factual_observation':'UNVERIFIED','next_question':'Get Atlas'})
   result,model=self.reflect(responses=[raw])
