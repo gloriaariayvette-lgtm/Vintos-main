@@ -16,7 +16,7 @@ def protein(gene='CLCN1',accession='P35523',taxon=9606):
             'taxon_id':taxon,'organism':'Homo sapiens' if taxon==9606 else 'Rattus norvegicus','topology_summary':'119-150','sequence':'ACACA','length':5}
 def cover(answer=True):
     return {'answered':answer,'missing':[] if answer else ['computed hydropathy profile is absent'],
-            'supports':[{'requirement':'source annotated range','address':'E2aad6688','quote':'119-150'}]}
+            'supports':[{'requirement':'source annotated range','address':'UniProt:P35523/topology_summary','quote':'119-150'}]}
 def suff(answer=True):
     return {'sufficient':answer,'missing':[] if answer else ['computed hydropathy profile is absent'],
             'rationale':'Independent offline assessment of the full original question.'}
@@ -54,10 +54,10 @@ class ReviewTests(unittest.TestCase):
     def test_missing_assessment_and_invented_quote_fail_closed(self):
         q={'question':'Which range is supplied?'}
         with patch.object(C,'_ask',side_effect=[json.dumps(cover()),'{}']):
-            self.assertIsNone(C._coverage_check(q,{'records':[protein()]}))
+            self.assertEqual(C._coverage_check(q,{'records':[protein()]})['assessment_status'],'incomplete')
         invalid=cover();invalid['supports'][0]['quote']='absent'
         with patch.object(C,'_ask',return_value=json.dumps(invalid)) as calls:
-            self.assertIsNone(C._coverage_check(q,{'records':[protein()]}))
+            self.assertEqual(C._coverage_check(q,{'records':[protein()]})['assessment_status'],'incomplete')
         self.assertEqual(calls.call_count,1)
 
     def test_both_question_and_query_constraints(self):
@@ -148,7 +148,7 @@ class ReviewTests(unittest.TestCase):
         question='Hydropathy profile of P35523'
         stop={'kind':'reflection','inquiry':{'question':question},'evidence_gap':{'automatic_followup':False}}
         p=protein();p['profile_fixture']='Synthetic new evidence fixture: residue positions 1-5; scale and values supplied for assessment.'
-        support={'answered':True,'missing':[],'supports':[{'requirement':'requested profile evidence','address':'E'+hashlib.sha256(json.dumps(['evidence.records.0.profile_fixture',p['profile_fixture']],ensure_ascii=False).encode()).hexdigest()[:8],'quote':p['profile_fixture']}]}
+        support={'answered':True,'missing':[],'supports':[{'requirement':'requested profile evidence','address':'UniProt:P35523/profile_fixture','quote':p['profile_fixture']}]}
         with patch.object(C,'_tail_jsonl',return_value=[stop]),patch.object(C,'_ask',side_effect=[json.dumps({'answers_question':'yes'}),json.dumps(support),json.dumps(suff())]) as calls:
             inquiry=C._inquiry({'question':question,'uniprot_query':'accession:P35523'})
             result=C._reflect('',inquiry,{'records':[p]})

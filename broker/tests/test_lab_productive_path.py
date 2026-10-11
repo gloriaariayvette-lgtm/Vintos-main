@@ -110,7 +110,8 @@ class Productive(unittest.TestCase):
   obs={'records':[],'additional_source':{'receipt':receipts['f430']['receipt']},'LITERATURE':[]}
   with patch.object(C,'_ask',side_effect=[json.dumps({'answers_question':'no: bibliography lacks coordination and transition-state evidence'}),json.dumps({'answered':False,'missing':['coordination and transition-state evidence absent'],'supports':[]})]) as model:
    result=C._reflect('',q,obs)
-  self.assertEqual(model.call_count,2);self.assertTrue(result['answers_question'].startswith('no:'))
+  self.assertEqual(model.call_count,0);self.assertTrue(result['answers_question'].startswith('no:'))
+  self.assertIn('no substantive article evidence',result['answers_question'])
   self.assertNotIn('requested target',result['missing_evidence']);self.assertEqual(q['question'],original)
 
  def test_explicit_f430_constraints_survive(self):

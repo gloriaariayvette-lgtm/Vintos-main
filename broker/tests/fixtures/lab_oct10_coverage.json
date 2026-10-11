@@ -1067,17 +1067,17 @@
         {
           "requirement": "structural organization of the human calcium-sensing receptor (CASR)",
           "quote": "Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa).",
-          "address": "E59748379"
+          "address": "PMID:23856260/abstract"
         },
         {
           "requirement": "extracellular Venus Flytrap (VFT) domain",
           "quote": "an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain",
-          "address": "E59748379"
+          "address": "PMID:23856260/abstract"
         },
         {
           "requirement": "role in ligand binding",
           "quote": "The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor.",
-          "address": "E76c2e3de"
+          "address": "PMID:27746744/abstract"
         }
       ]
     },

@@ -222,7 +222,15 @@ def verified_human_identity(row, symbol):
 
 
 
-def question_entity_context(inquiry, records):
+def original_identity_queries(inquiry):
+    """Bound original constraints; a recovery query cannot silently replace them."""
+    context = inquiry.get('identity_context') or {}
+    digest = hashlib.sha256(str(inquiry.get('question') or '').encode()).hexdigest()
+    current = context.get('version') == 1 and context.get('question_sha256') == digest
+    return list(context.get('original_queries') or []) if current else [inquiry.get('uniprot_query') or '']
+
+
+def question_entity_context(inquiry, records, *, literature_only=False):
     """Conservative metadata checks for explicit expectations; never guess target mappings."""
     from lab_repeats import _ACCESSION
     question = str(inquiry.get('question') or '')
@@ -231,7 +239,7 @@ def question_entity_context(inquiry, records):
     context_current = context.get('version') == 1 and context.get('question_sha256') == question_digest
     # A fresh _inquiry snapshots explicit intent. Later retrieval attempts are
     # not additional original constraints. Unbound/stale history is not trusted.
-    queries = list(context.get('original_queries') or []) if context_current else [inquiry.get('uniprot_query') or '']
+    queries = original_identity_queries(inquiry)
     queries = list(dict.fromkeys(normalize_uniprot_subjects(str(q)) for q in queries if q))
     q_accessions = set(_ACCESSION.findall(question))
     query_accessions = set(a for q in queries for a in _ACCESSION.findall(q))
@@ -245,6 +253,12 @@ def question_entity_context(inquiry, records):
     for words,taxon in ((r'human|Homo sapiens|_HUMAN','9606'),(r'rat|Rattus norvegicus','10116'),(r'mouse|Mus musculus','10090')):
         if re.search(r'(?:\b(?:'+words+r')\b)',question,re.I): taxa.add(taxon)
     if re.search(r'_HUMAN\b',question): taxa.add('9606')
+    ecoli_question = bool(re.search(r'\b(?:E\.\s*coli|Escherichia coli)\b', question, re.I))
+    def ecoli_member(row):
+        # Species and strain IDs need not be equal. Only an exact species ID
+        # or the source's explicit lineage establishes the parent relationship.
+        return (str(row.get('taxon_id')) == '562' or
+                'Escherichia coli' in (row.get('organism_lineage') or []))
     organism_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q) if f=='organism_name'}
     protein_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q)
                      if f=='protein_name' and not uniprot_identity_symbols('protein_name:'+v)}
@@ -255,7 +269,19 @@ def question_entity_context(inquiry, records):
     if len(accessions)>1:
         issues.append('multiple or contradictory accessions require a resolved per-target mapping')
     if len(taxa)>1: issues.append('question and query have contradictory or unresolved multi-taxon scope')
+    if ecoli_question and '9606' in taxa:
+        issues.append('explicit E. coli question contradicts human query taxonomy 9606')
     if len(isoforms)>1: issues.append('question and query have contradictory isoform expectations')
+    if literature_only and not records and not issues and not (accessions or isoforms or gene_symbols):
+        # This route intentionally did not fetch protein records. Literature must
+        # establish its own entities and scope; absence is not a mismatched protein.
+        # Do not assert a species, accession, or a successful identity resolution.
+        return {'status':'requires_source_assessment', 'issues':[],
+                'accessions':sorted(accessions), 'symbols':sorted(symbols), 'taxa':sorted(taxa),
+                'isoforms':sorted(isoforms), 'context_current':context_current,
+                'selected_accessions':[], 'original_queries':queries,
+                'question_species':['Escherichia coli'] if ecoli_question else [],
+                'scope':'literature must establish the original entities, species and premises; no protein identity verified'}
     if not (accessions or symbols or taxa or organism_names or protein_names or isoforms):
         return {'status':'not_applicable','issues':[]}
     def metadata_names(row):
@@ -302,6 +328,8 @@ def question_entity_context(inquiry, records):
             issues.append('requested protein name is not established by the retrieved recommended name')
         if taxa and str(row.get('taxon_id')) not in taxa:
             issues.append('requested taxon is not established by retrieved taxonomy; no ancestry is assumed')
+        if ecoli_question and not ecoli_member(row):
+            issues.append('E. coli species/strain relationship is unresolved in retained taxonomy')
         if organism_names and not organism_names <= organisms:
             issues.append('requested organism name differs from retrieved organism')
         if isoforms and (not row.get('isoform') or str(row['isoform']) not in isoforms):
@@ -309,6 +337,7 @@ def question_entity_context(inquiry, records):
     return {'status':'unresolved' if issues else 'consistent','issues':issues,
             'accessions':sorted(accessions),'symbols':sorted(symbols),'taxa':sorted(taxa),'isoforms':sorted(isoforms),
             'context_current':context_current,'selected_accessions':[r.get('accession') for r in matches],
+            'question_species':['Escherichia coli'] if ecoli_question else [],
             'scope':'explicit query constraints and recognized question symbols/species; full prose scope needs independent assessment'}
 
 

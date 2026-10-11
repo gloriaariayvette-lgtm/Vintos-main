@@ -80,7 +80,7 @@ check("off the plan twice: refused, nothing runs", inq.get("refused", "").starts
 check("the week's lookups are in front of her", "LOOKUPS YOU ALREADY RAN THIS WEEK" in asked[0] and "atlas:SLC26A4" in asked[0])
 check("what an Atlas record is, in her question step and her reading", "ONE fixed window" in C._atlas_text()
       and "_atlas_text() + _atlas_scorer_hint()" in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
-      and '"instructions. " + _atlas_text()' in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
+      and '"instructions. " + atlas_guidance' in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
 for _ in range(L.FRONTIER_CYCLES):
     L.record({"question": "spent"}, refused="test")
 check("after %d cycles the step is done, refused ones included" % L.FRONTIER_CYCLES, L.frontier_step() is None)

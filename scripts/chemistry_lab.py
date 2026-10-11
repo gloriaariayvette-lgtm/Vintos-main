@@ -1377,7 +1377,11 @@ def _human_question_symbols(question):
 
 def _ground_inquiry(inquiry, client=None):
     """Source-check generated human symbols before admitting them as research targets."""
-    from lab_sources import Sources
+    from lab_sources import Sources, question_entity_context
+    constraints = question_entity_context(inquiry, [], literature_only=True)
+    conflicts = [x for x in constraints['issues'] if 'contradict' in x]
+    if conflicts:
+        return {'status':'unresolved', 'reason':'; '.join(conflicts)}
     sq = inquiry.get('source_query') or {}
     queries = [str(inquiry.get('uniprot_query') or '')]
     if sq.get('source') == 'uniprot': queries.append(str(sq.get('query') or ''))
@@ -1876,6 +1880,8 @@ def _browse(query, limit):
         rows.append({"accession": item.get("primaryAccession"), "id": item.get("uniProtkbId"),
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
                      "taxon_id": (item.get("organism") or {}).get("taxonId"),
+                     "organism_lineage": [name for name in (item.get("organism") or {}).get("lineage", [])
+                                          if isinstance(name, str)],
                      "genes": item.get("genes") or [],
                      "protein_aliases": [str((name.get('fullName') or {}).get('value')) for name in
                                          (item.get('proteinDescription') or {}).get('alternativeNames', [])
@@ -2075,6 +2081,12 @@ def _gather_material(state, inquiry, fresh_only=False):
             pmids = list(dict.fromkeys(str((r.get('primary_citation') or {}).get('pdbx_database_id_PubMed'))
                 for r in source.get('records', []) if isinstance(r, dict)
                 and (r.get('primary_citation') or {}).get('pdbx_database_id_PubMed')))[:3]
+            # PubMed search is discovery metadata. Read its returned articles
+            # through the existing bounded material path, not a new guessed search.
+            if (source.get('source') == 'ncbi' and
+                    (source.get('metadata') or {}).get('database') == 'pubmed'):
+                pmids = list(dict.fromkeys(str(r.get('uid')) for r in source.get('records', [])
+                    if isinstance(r, dict) and re.fullmatch(r'[0-9]{1,12}', str(r.get('uid') or ''))))[:3]
             found = chemistry_sources.material(inquiry, primary_pmids=pmids) if pmids else chemistry_sources.material(inquiry)
         except Exception as exc:
             _fault("material", exc); found = None
@@ -2256,6 +2268,12 @@ def _coverage_preflight(inquiry, observations, prepared):
             'truth_status':'incomplete_context_budget_no_scientific_adjudication'}
 
 
+def _coverage_scope(inquiry):
+    from lab_sources import original_identity_queries
+    return {'original_question':inquiry['question'],
+            'original_identity_queries':original_identity_queries(inquiry)}
+
+
 def _coverage_sufficiency_request(inquiry, evidence):
     return (
             'Independently assess scientific sufficiency against the FULL ORIGINAL QUESTION. '
@@ -2264,8 +2282,12 @@ def _coverage_sufficiency_request(inquiry, evidence):
             'A real source quote may be relevant yet insufficient. Topology annotations are not a hydropathy profile; '
             'an embedding is not a structure. Do not treat the presence of a label as evidence of a computation. '
             'Return JSON: sufficient (boolean), missing (list of specific unmet requirements), rationale (string). '
-            'Use sufficient=false when ambiguous or unestablished.',
-            json.dumps({'original_question':inquiry['question']}) + '\nEVIDENCE:\n' + json.dumps(evidence, ensure_ascii=False),
+            'Original identity queries are constraints, not evidence. Never silently drop a taxonomy filter or '
+            'silently choose an unspecified species from a search hit. Clearly species-qualified findings may '
+            'be useful partial evidence; do not generalize beyond that scope. Assess the question\'s causal premises too; a '
+            'signal mentioned in a question does not establish direct binding. Citation metadata alone cannot '
+            'establish a mechanism. Use sufficient=false when ambiguous or unestablished.',
+            json.dumps(_coverage_scope(inquiry)) + '\nEVIDENCE:\n' + json.dumps(evidence, ensure_ascii=False),
             800)
 
 
@@ -2284,16 +2306,49 @@ def _coverage_request(inquiry, observations):
     walk(evidence, 'evidence')
     # Addresses are deterministic for this evidence snapshot, explicitly supplied,
     # and bound to both location and content. Never repair a model's guessed index.
+    bibliography_question = bool(re.search(
+        r'\b(?:bibliograph\w*|citation metadata|publication year|article title)\b|'
+        r'\b(?:what|which|name|identify|list|give)\b.{0,45}\b(?:journal|PMID|DOI)\b',
+        inquiry['question'], re.I))
+    additional = (observations.get('additional_source') or {}) if isinstance(observations,dict) else {}
+    receipt = additional.get('receipt') or additional.get('source_receipt') or {}
+    pubmed_summary = (receipt.get('source') == 'ncbi' and
+                      (receipt.get('metadata') or {}).get('database') == 'pubmed')
+    def quotable_path(path):
+        # Known presentation paths only: a scientific field called summary,
+        # source or year elsewhere is not transport/bibliographic metadata.
+        if path in ('evidence.additional_source.source','evidence.additional_source.receipt_id'):
+            return False
+        bibliography = (re.fullmatch(r'evidence.LITERATURE\.\d+\.(?:pmid|journal|year|title|doi|url)',path)
+                        or (pubmed_summary and re.match(r'evidence.additional_source.records\.\d+\.(?:uid$|summary\.)',path)))
+        return bibliography_question or not bibliography
+    quotable = {path:text for path,text in strings.items() if quotable_path(path)}
     digests = {hashlib.sha256(json.dumps([path, text], ensure_ascii=False).encode()).hexdigest(): path
-               for path, text in strings.items()}
-    if len(digests) != len(strings): return None
+               for path, text in quotable.items()}
+    if len(digests) != len(quotable): return None
     width = 8
     while len({digest[:width] for digest in digests}) != len(digests):
         width += 1
-    addresses = {'E' + digest[:width]: path for digest, path in digests.items()}
+    def label(path):
+        match = re.match(r'evidence.LITERATURE\.(\d+)\.(.+)',path)
+        if match:
+            pmid = str(evidence['LITERATURE'][int(match[1])].get('pmid') or '')
+            if re.fullmatch(r'[0-9]+',pmid): return 'PMID:'+pmid+'/'+match[2]
+        match = re.match(r'evidence.records\.(\d+)\.(.+)',path)
+        if match:
+            accession = str(evidence['records'][int(match[1])].get('accession') or '')
+            if re.fullmatch(r'[A-Za-z0-9_-]+',accession): return 'UniProt:'+accession+'/'+match[2]
+        return 'source/'+'.'.join(part for part in path.split('.')[-2:] if not part.isdigit())
+    labels = {digest:label(path) for digest,path in digests.items()}
+    # Readable exact-leaf IDs; duplicates remain distinct and bound to full
+    # location/content digests. Never locate a quote by searching other leaves.
+    counts = {value:list(labels.values()).count(value) for value in set(labels.values())}
+    addresses = {labels[digest] + ('#'+digest[:width] if counts[labels[digest]]>1 else ''):path
+                 for digest,path in digests.items()}
     by_path = {path: address for address, path in addresses.items()}
     def addressed(value, path):
-        if isinstance(value, str): return {'address':by_path[path], 'text':value}
+        if isinstance(value, str):
+            return {'address':by_path[path], 'text':value} if path in by_path else value
         if isinstance(value, dict): return {key:addressed(child,path+'.'+str(key)) for key,child in value.items()}
         if isinstance(value, list): return [addressed(child,path+'.'+str(index)) for index,child in enumerate(value)]
         return value
@@ -2308,13 +2363,20 @@ def _coverage_request(inquiry, observations):
         'Check identity and species separately from whether the requested measurement or analysis is present. '
         'Return JSON: answered (boolean), missing (list), supports (list of {requirement, address, quote}). '
         'For answered=true, all original requirements must be supported by verbatim quotes at their exact evidence '
-        'addresses. Each original string leaf in EVIDENCE is wrapped as {address, text}. Copy its short address '
-        'exactly and quote only from its paired text. The wrapper is metadata, not scientific evidence. '
+        'addresses. Quotable source text is wrapped as {address, text}; readable addresses name the source '
+        'and exact field. Known transport metadata remains visible without quote addresses. Bibliographic '
+        'facts receive addresses when the original question requests them; they cannot establish a mechanism. '
+        'Copy an emitted address exactly and quote only its adjacent text. The wrapper is metadata, '
+        'not scientific evidence. '
         'Do not construct paths, count records, or use an address belonging to another source. Use at most six '
         'supports and concise quotes of at most 300 characters, only the necessary source clause. For anything absent, '
-        'ambiguous, or conflicting, answered=false. Do not infer missing facts.',
-        json.dumps({'original_question':inquiry.get('question')}) + '\nEVIDENCE:\n' +
-        json.dumps(addressed_evidence, ensure_ascii=False),
+        'ambiguous, or conflicting, answered=false. Original identity queries are constraints, not evidence: '
+        'do not drop their taxonomy or substitute a species. If species is unspecified, retain the evidence\'s '
+        'species-qualified scope as partial findings without silently generalizing. Assess causal premises '
+        'rather than assuming them; citation metadata does not '
+        'establish a mechanism. Do not infer missing facts.',
+        json.dumps(_coverage_scope(inquiry)) + '\nEVIDENCE:\n' +
+        json.dumps(addressed_evidence, ensure_ascii=False, separators=(',',':')),
         1100)
     return evidence, strings, addresses, coverage_request
 
@@ -2329,24 +2391,34 @@ def _coverage_check(inquiry, observations, prepared=None):
     raw = _ask(coverage_request[0], coverage_request[1], max_tokens=coverage_request[2], temperature=0.0)
     result = _json_object(raw)
     supports = result.get('supports')
+    verified=[]; discarded=[]
+    def incomplete(reason):
+        return {'answered':False, 'missing':[], 'assessment_status':'incomplete',
+                'validation_failure':reason, 'original_question':inquiry['question'],
+                'supports':verified, 'discarded_supports':discarded,
+                'checker_raw':raw, 'checker_response':result, 'independent_sufficiency':None,
+                'evidence_sha256':hashlib.sha256(json.dumps(evidence,sort_keys=True).encode()).hexdigest(),
+                'method':'exact_quote_integrity_only_not_answer_sufficiency'}
     if (type(result.get('answered')) is not bool or not isinstance(result.get('missing'), list)
-            or not isinstance(supports, list) or not supports): return None
-    if result['answered'] and result['missing']: return None
-    if not result['answered'] and not result['missing']: return None
+            or not isinstance(supports, list) or not supports): return incomplete('coverage response lacks a valid verdict and source supports')
+    if result['answered'] and result['missing']: return incomplete('coverage verdict conflicts with its missing list')
+    if not result['answered'] and not result['missing']: return incomplete('negative coverage omitted specific missing requirements')
     normalized = lambda x: ' '.join(str(x).split())
     required = {str(item.get('requirement') or '') for item in supports if isinstance(item, dict)}
-    verified=[]; discarded=[]
     for item in supports:
-        if not isinstance(item, dict): return None
+        if not isinstance(item, dict):
+            discarded.append({'support':item,'reason':'malformed_support'});continue
         quote, address = item.get('quote'), item.get('address')
-        if not isinstance(address, str) or address not in addresses: return None
+        if not isinstance(address, str) or address not in addresses:
+            discarded.append({'support':item,'reason':'unknown_or_nonquotable_address'});continue
         path = addresses[address]
-        if not isinstance(quote, str) or not quote.strip() or not item.get('requirement'): return None
+        if not isinstance(quote, str) or not quote.strip() or not item.get('requirement'):
+            discarded.append({'support':item,'path':path,'reason':'malformed_support'});continue
         # Resolve only the explicitly addressed leaf, never a different source.
         leaves=[path]
         matches=[key for key in leaves if normalized(quote) in normalized(strings[key])]
         if not matches:
-            discarded.append({'requirement':item['requirement'],'path':path,'reason':'quote_not_in_cited_source'})
+            discarded.append({'support':item,'requirement':item['requirement'],'path':path,'reason':'quote_not_in_cited_source'})
             continue
         item=dict(item,path=matches[0])
         match = re.match(r'evidence.LITERATURE\.(\d+)\.', item['path'])
@@ -2356,18 +2428,21 @@ def _coverage_check(inquiry, observations, prepared=None):
             accession = evidence['records'][int(match[1])].get('accession')
             if accession: item['source_citation'] = 'UniProt ' + str(accession)
         verified.append(item)
-    if not verified or {item['requirement'] for item in verified} != required: return None
+    if discarded or not verified or {item['requirement'] for item in verified} != required:
+        return incomplete('source-address validation failed; full original-question coverage was not assessed')
     supports=verified
     sufficiency = None
     if result['answered']:
         # Blind second assessment: it receives neither the first verdict nor its
         # self-selected requirements. Agreement is model assessment, not proof.
         request = _coverage_sufficiency_request(inquiry, evidence)
-        sufficiency = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
+        try: sufficiency = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
+        except Exception:
+            return incomplete('independent sufficiency assessment unavailable or malformed')
         if (type(sufficiency.get('sufficient')) is not bool or not isinstance(sufficiency.get('missing'),list)
-                or not isinstance(sufficiency.get('rationale'),str) or not sufficiency['rationale'].strip()): return None
-        if sufficiency['sufficient'] and sufficiency['missing']: return None
-        if not sufficiency['sufficient'] and not sufficiency['missing']: return None
+                or not isinstance(sufficiency.get('rationale'),str) or not sufficiency['rationale'].strip()): return incomplete('independent sufficiency response invalid')
+        if sufficiency['sufficient'] and sufficiency['missing']: return incomplete('independent sufficiency verdict conflicts with missing list')
+        if not sufficiency['sufficient'] and not sufficiency['missing']: return incomplete('independent sufficiency omitted missing requirements')
         if not sufficiency['sufficient']:
             result = dict(result, answered=False, missing=sufficiency['missing'])
     return {'answered':result['answered'], 'missing':result['missing'],
@@ -2378,17 +2453,47 @@ def _coverage_check(inquiry, observations, prepared=None):
 
 
 
+def _incomplete_assessment(inquiry, value, raw, coverage=None, reason=None):
+    coverage = coverage or {}
+    supports = coverage.get('supports') or []
+    return {'answers_question':'no: answer sufficiency not established because assessment validation failed',
+            'assessment_status':'incomplete', 'evidence_status':'partial' if supports else 'incomplete',
+            'original_question':inquiry.get('question'), 'missing_evidence':'',
+            'validation_failure':reason or coverage.get('validation_failure') or 'coverage assessment unavailable or invalid',
+            'attention':'', 'next_question':'', 'instrument_gap':'', 'speculative_reading':'',
+            'factual_observation':'\n'.join(item['quote'] +
+                (' ['+item['source_citation']+']' if item.get('source_citation') else '') for item in supports),
+            'validated_source_excerpts':supports, 'coverage_check':coverage,
+            'reader_audit':{'raw':raw, 'parsed':value},
+            'evidence_gap':{'kind':'assessment_validation_failure','automatic_followup':False},
+            'truth_status':'exact_source_excerpts_only_relevance_and_full_sufficiency_unestablished',
+            'line_status':'continue'}
+
+
 def _reflect(context, inquiry, records, _validation_attempt=0):
     if not str(inquiry.get('question') or '').strip():
         return {'answers_question':'no: original question is missing', 'missing_evidence':'original question is missing', 'speculative_reading':'', 'next_question':''}
     from lab_sources import question_entity_context
-    entity = question_entity_context(inquiry, records.get('records', []) if isinstance(records, dict) else records)
+    sq = inquiry.get('source_query') or {}
+    literature_route = (inquiry.get('browse_lane') in ('microbiology','genome_mining') and
+                        sq.get('source') == 'ncbi' and sq.get('operation') == 'literature')
+    proteins = records.get('records', []) if isinstance(records, dict) else records
+    entity = question_entity_context(inquiry, proteins, literature_only=literature_route)
     if entity['issues']:
         missing = '; '.join(entity['issues'])
         return {'answers_question': 'no: ' + missing, 'missing_evidence': missing,
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
                 'speculative_reading': '', 'next_question': 'Resolve the requested protein name, accession and organism against one source entry.',
                 'entity_context_check': entity}
+    if literature_route and not proteins:
+        articles = records.get('LITERATURE') or []
+        if not any(isinstance(r, dict) and str(r.get('abstract') or r.get('full_text') or '').strip()
+                   for r in articles):
+            return {'answers_question':'no: literature discovery returned no substantive article evidence',
+                    'missing_evidence':'article text establishing the original target, organism scope and mechanism',
+                    'factual_observation':'', 'speculative_reading':'',
+                    'next_question':'Read the returned PubMed article before assessing the original question.',
+                    'entity_context_check':entity, 'evidence_status':'insufficient'}
     prepared = _coverage_request(inquiry, records)
     deferred = _coverage_preflight(inquiry, records, prepared)
     if deferred: return dict(deferred, entity_context_check=entity)
@@ -2399,12 +2504,17 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
         line_text = lab_lines.reflect_text(line)
     except Exception:
         line_text = ""
+    additional = (records.get('additional_source') or {}) if isinstance(records,dict) else {}
+    instrument_receipt = additional.get('receipt') or additional.get('source_receipt') or {}
+    atlas_guidance = (_atlas_text() if (instrument_receipt.get('source') == 'atlas' and instrument_receipt.get('records'))
+                      or (isinstance(records,dict) and records.get('atlas_analysis')) else '')
+    raw = None
     try:
         raw = _ask(
             "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "
             "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
             "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
-            "instructions. " + _atlas_text() + " Evo 2 likelihood is a different quantity. Associative "
+            "instructions. " + atlas_guidance + " Evo 2 likelihood is a different quantity. Associative "
             "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. "
             "An empty pdb_ids list means UniProt supplied no PDB cross-references in this response; it does NOT "
             "establish that no experimental structures exist. Missing cross-references and empty searches are "
@@ -2437,8 +2547,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
         value = _json_object(raw)
     except Exception as exc:
         _fault('review_read',exc)
-        return {'answers_question':'no: reflection model response unavailable or malformed',
-                'missing_evidence':'reflection assessment unavailable', 'speculative_reading':'', 'next_question':''}
+        return _incomplete_assessment(inquiry, {}, raw, reason='reflection assessment unavailable or malformed')
     verdict = str(value.get('answers_question') or '').strip()
     issues = []
     if verdict.lower() == 'no':
@@ -2448,12 +2557,16 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     # A confident negative can invent a missing requirement just as a positive
     # can invent support. Check both against the unchanged original question.
     adjudicate = bool(issues or re.match(r'^(?:yes|no)\b', verdict, re.I))
+    if not adjudicate:
+        return _incomplete_assessment(inquiry,value,raw,reason='reader verdict does not meet the assessment contract')
     if adjudicate and inquiry.get('question'):
         if not isinstance(records, dict): records = {'records': records}
         try: coverage = _coverage_check(inquiry, records, prepared=prepared)
         except Exception as exc:
             _fault('review_coverage', exc); coverage = None
         if coverage and coverage.get('coverage_deferred'): return dict(coverage, entity_context_check=entity)
+        if not coverage or coverage.get('assessment_status') == 'incomplete':
+            return dict(_incomplete_assessment(inquiry,value,raw,coverage),entity_context_check=entity)
         if coverage:
             result = {k:str(value.get(k,''))[:1000] for k in
                 ('attention','factual_observation','next_question','instrument_gap','line_status')}

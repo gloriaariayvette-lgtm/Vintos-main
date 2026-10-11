@@ -1,0 +1,236 @@
+{
+  "mscs": {
+    "browse_lane": "microbiology",
+    "evidence_status": "insufficient",
+    "identity_context": {
+      "original_queries": [
+        "protein_name:MscS AND organism_id:9606 AND reviewed:true"
+      ],
+      "question_sha256": "4b5b98c27d695d89fbc74d11f389a824c9ef56f0b8e86eaef63f3e021125c89d",
+      "version": 1
+    },
+    "identity_queries": [
+      "protein_name:MscS AND organism_id:9606 AND reviewed:true"
+    ],
+    "instrument_query": null,
+    "material_terms": [
+      "MscS",
+      "mechanosensitive channel",
+      "E. coli",
+      "transmembrane gating",
+      "structural biology"
+    ],
+    "planning_evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "plugin_query": null,
+    "question": "What is the structural basis for the mechanosensitive gating of the MscS channel in E. coli, specifically the role of the 'gate' residues in the transmembrane domain?",
+    "refused": "repeat: spent subject: this retrieval already ended without an answer",
+    "source_query": {
+      "operation": "literature",
+      "source": "ncbi",
+      "term": "MscS mechanosensitive channel structural gating mechanism"
+    },
+    "source_query_question_sha256": "4b5b98c27d695d89fbc74d11f389a824c9ef56f0b8e86eaef63f3e021125c89d",
+    "strategy_resolution": {
+      "missing_evidence": "spent subject: this retrieval already ended without an answer",
+      "reason": "no_unread_sourced_route"
+    },
+    "uniprot_query": "protein_name:MscS AND organism_id:9606 AND reviewed:true"
+  },
+  "soxr": {
+    "browse_lane": "microbiology",
+    "identity_context": {
+      "original_queries": [
+        "protein_name:SoxR AND organism_id:9606 AND reviewed:true"
+      ],
+      "question_sha256": "689c665d4528f7569ac1c7454a440e1671b9c6ae9d6b8814830f38131835cdc4",
+      "version": 1
+    },
+    "identity_queries": [
+      "protein_name:SoxR AND organism_id:9606 AND reviewed:true"
+    ],
+    "instrument_query": null,
+    "material_terms": [
+      "SoxR",
+      "oxidative stress",
+      "DNA binding",
+      "allosteric regulation",
+      "hydrogen peroxide"
+    ],
+    "planning_evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "plugin_query": null,
+    "question": "What is the structural basis for the SoxR transcriptional regulator's interaction with the 'sox' operator, and how does the binding of specific oxidative stress signals (like hydrogen peroxide) induce the conformational shift required for DNA promoter activation?",
+    "source_query": {
+      "operation": "literature",
+      "source": "ncbi",
+      "term": "structural basis of SoxR oxidative stress response DNA binding"
+    },
+    "source_query_question_sha256": "689c665d4528f7569ac1c7454a440e1671b9c6ae9d6b8814830f38131835cdc4",
+    "uniprot_query": "protein_name:SoxR AND organism_id:9606 AND reviewed:true"
+  },
+  "soxr_receipt": {
+    "literature_coverage": "not_assessed",
+    "metadata": {
+      "coverage": "bounded_first_page",
+      "database": "pubmed",
+      "service": "NCBI_EUtilities",
+      "total_count": "1"
+    },
+    "novelty": "not_established",
+    "query": {
+      "limit": 4,
+      "operation": "literature",
+      "source": "ncbi",
+      "taxon_id": null,
+      "term": "structural basis of SoxR oxidative stress response DNA binding"
+    },
+    "receipt_id": "c46f5972b2aaa5217a7b4c7e46e62d45aa6c4ceac259146302e0699de772e3fc",
+    "records": [
+      {
+        "summary": {
+          "articleids": [
+            {
+              "idtype": "pubmed",
+              "idtypen": 1,
+              "value": "15292172"
+            },
+            {
+              "idtype": "doi",
+              "idtypen": 3,
+              "value": "10.1074/jbc.M405512200"
+            },
+            {
+              "idtype": "pii",
+              "idtypen": 4,
+              "value": "S0021-9258(20)72623-2"
+            }
+          ],
+          "attributes": [
+            "Has Abstract"
+          ],
+          "authors": [
+            {
+              "authtype": "Author",
+              "clusterid": "",
+              "name": "Chander M"
+            },
+            {
+              "authtype": "Author",
+              "clusterid": "",
+              "name": "Demple B"
+            }
+          ],
+          "availablefromurl": "",
+          "bookname": "",
+          "booktitle": "",
+          "chapter": "",
+          "doccontriblist": [],
+          "docdate": "",
+          "doctype": "citation",
+          "edition": "",
+          "elocationid": "",
+          "epubdate": "2004 Jul 29",
+          "essn": "",
+          "fulljournalname": "The Journal of biological chemistry",
+          "history": [
+            {
+              "date": "2004/08/05 05:00",
+              "pubstatus": "pubmed"
+            },
+            {
+              "date": "2004/11/16 09:00",
+              "pubstatus": "medline"
+            },
+            {
+              "date": "2004/08/05 05:00",
+              "pubstatus": "entrez"
+            }
+          ],
+          "issn": "0021-9258",
+          "issue": "40",
+          "lang": [
+            "eng"
+          ],
+          "lastauthor": "Demple B",
+          "locationlabel": "",
+          "medium": "",
+          "nlmuniqueid": "2985121R",
+          "pages": "41603-10",
+          "pmcrefcount": "",
+          "pubdate": "2004 Oct 1",
+          "publisherlocation": "",
+          "publishername": "",
+          "pubstatus": "256",
+          "pubtype": [
+            "Journal Article",
+            "Research Support, U.S. Gov't, P.H.S."
+          ],
+          "recordstatus": "PubMed - indexed for MEDLINE",
+          "references": [],
+          "reportnumber": "",
+          "sortfirstauthor": "Chander M",
+          "sortpubdate": "2004/10/01 00:00",
+          "sorttitle": "functional analysis of soxr residues affecting transduction of oxidative stress signals into gene expression",
+          "source": "J Biol Chem",
+          "srccontriblist": [],
+          "srcdate": "",
+          "title": "Functional analysis of SoxR residues affecting transduction of oxidative stress signals into gene expression.",
+          "uid": "15292172",
+          "vernaculartitle": "",
+          "volume": "279"
+        },
+        "uid": "15292172"
+      }
+    ],
+    "response_sha256": "2943310b3027ac3bbb74c00405c01f56b826386ff4c900fe79994e56c296b59a",
+    "retrieved_at": "2026-10-11T05:01:13.774594+00:00",
+    "source": "ncbi",
+    "truth_status": "source_observation_not_validation"
+  },
+  "mscs_abstracts": [
+    {
+      "abstract": "The ability to cope with and adapt to changes in the environment is essential for all organisms. Osmotic pressure is a universal threat when environmental changes result in an imbalance of osmolytes inside and outside the cell which causes a deviation from the normal turgor. Cells have developed a potent system to deal with this stress in the form of mechanosensitive ion channels. Channel opening releases solutes from the cell and relieves the stress immediately. In bacteria, these channels directly sense the increased membrane tension caused by the enhanced turgor levels upon hypoosmotic shock. The mechanosensitive channel of small conductance, MscS, from Escherichia coli is one of the most extensively studied examples of mechanically stimulated channels. Different conformational states of this channel were obtained in various detergents and membrane mimetics, highlighting an intimate connection between the channel and its lipidic environment. Associated lipids occupy distinct locations and determine the conformational states of MscS. Not all these features are preserved in the larger MscS-like homologues. Recent structures of homologues from bacteria and plants identify common features and differences. This review discusses the current structural and functional models for MscS opening, as well as the influence of certain membrane characteristics on gating.",
+      "journal": "International journal of molecular sciences",
+      "pmid": "36499396",
+      "title": "How Functional Lipids Affect the Structure and Gating of Mechanosensitive MscS-like Channels.",
+      "year": "2022"
+    },
+    {
+      "abstract": "The challenge of osmotic stress is something all living organisms must face as a result of environmental dynamics. Over the past three decades, innovative research and cooperation across disciplines have irrefutably established that cells utilize mechanically gated ion channels to release osmolytes and prevent cell lysis during hypoosmotic stress. Early electrophysiological analysis of the inner membrane of Escherichia coli identified the presence of three distinct mechanosensitive activities. The subsequent discoveries of the genes responsible for two of these activities, the mechanosensitive channels of large (MscL) and small (MscS) conductance, led to the identification of two diverse families of mechanosensitive channels. The latter of these two families, the MscS family, consists of members from bacteria, archaea, fungi, and plants. Genetic and electrophysiological analysis of these family members has provided insight into how organisms use mechanosensitive channels for osmotic regulation in response to changing environmental and developmental circumstances. Furthermore, determining the crystal structure of E. coli MscS and several homologues in several conformational states has contributed to our understanding of the gating mechanisms of these channels. Here we summarize our current knowledge of MscS homologues from all three domains of life and address their structure, proposed physiological functions, electrophysiological behaviors, and topological diversity.",
+      "journal": "Biochemistry",
+      "pmid": "23947546",
+      "title": "MscS-like mechanosensitive channels in plants and microbes.",
+      "year": "2013"
+    },
+    {
+      "abstract": "The small mechanosensitive channel, MscS, is a part of the turgor-driven solute efflux system that protects bacteria from lysis in the event of osmotic downshift. It has been identified in Escherichia coli as a product of the orphan yggB gene, now called mscS (Levina et al., 1999, EMBO J. 18:1730). Here I show that that the isolated 31-kDa MscS protein is sufficient to form a functional mechanosensitive channel gated directly by tension in the lipid bilayer. MscS-6His complexes purified in the presence of octylglucoside and lipids migrate in a high-resolution gel-filtration column as particles of approximately 200 kDa. Consistent with that, the protein cross-linking patterns predict a hexamer. The channel reconstituted in soybean asolectin liposomes was activated by pressures of 20-60 mm Hg and displayed the same asymmetric I-V curve and slight anionic preference as in situ. At the same time, the single-channel conductance is proportional to the buffer conductivity in a wide range of salt concentrations. The rate of channel activation in response to increasing pressure gradient across the patch was slower than the rate of closure in response to decreasing steps of pressure gradient. Therefore, the open probability curves were recorded with descending series of pressures. Determination of the curvature of patches by video imaging permitted measurements of the channel activity as a function of membrane tension (gamma). Po(gamma) curves had the midpoint at 5.5 +/- 0.1 dyne/cm and gave estimates for the energy of opening DeltaG = 11.4 +/- 0.5 kT, and the transition-related area change DeltaA = 8.4 +/- 0.4 nm(2) when fitted with a two-state Boltzmann model. The correspondence between channel properties in the native and reconstituted systems is discussed.",
+      "journal": "Biophysical journal",
+      "pmid": "12080120",
+      "title": "Purification of the small mechanosensitive channel of Escherichia coli (MscS): the subunit structure, conduction, and gating characteristics in liposomes.",
+      "year": "2002"
+    },
+    {
+      "abstract": "While mechanobiological processes employ diverse mechanisms, at their heart are force-induced perturbations in the structure and dynamics of molecules capable of triggering subsequent events. Among the best characterized force-sensing systems are bacterial mechanosensitive channels. These channels reflect an intimate coupling of protein conformation with the mechanics of the surrounding membrane; the membrane serves as an adaptable sensor that responds to an input of applied force and converts it into an output signal, interpreted for the cell by mechanosensitive channels. The cell can exploit this information in a number of ways: ensuring cellular viability in the presence of osmotic stress and perhaps also serving as a signal transducer for membrane tension or other functions. This review focuses on the bacterial mechanosensitive channels of large (MscL) and small (MscS) conductance and their eukaryotic homologs, with an emphasis on the outstanding issues surrounding the function and mechanism of this fascinating class of molecules.",
+      "journal": "Structure (London, England : 1993)",
+      "pmid": "22000509",
+      "title": "Mechanosensitive channels: what can they do and how do they do it?",
+      "year": "2011"
+    }
+  ],
+  "earlier_mscs": {
+    "identity_context": {
+      "original_queries": [
+        "protein_name:MscS AND reviewed:true"
+      ],
+      "question_sha256": "1c3667f6b0adada8921cd0623d2d37a0298b459a177735a61adba0eb02cbf5f0",
+      "version": 1
+    },
+    "question": "What are the structural characteristics and gating mechanisms of the mechanosensitive channel of small conductance (MscS) in the context of osmotic stress response?",
+    "source_query": {
+      "operation": "literature",
+      "source": "ncbi",
+      "term": "MscS mechanosensitive channel structure osmotic stress"
+    },
+    "uniprot_query": "protein_name:MscS AND reviewed:true",
+    "browse_lane": "microbiology"
+  }
+}

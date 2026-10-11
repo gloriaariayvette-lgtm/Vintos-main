@@ -80,8 +80,8 @@ with patch.object(C,'_ask',ask), patch.object(C,'_coverage_check',return_value=N
      patch.object(S,'question_entity_context',return_value={'status':'consistent','issues':[]}):
  assert C._ask is ask
  result=C._reflect('',replays[1]['inquiry'],replays[1]['after'])
- assert result['answers_question']=='no' and result['speculative_reading']==''
- assert 'orientation' in result['missing_evidence']
+ assert result['assessment_status']=='incomplete' and result['speculative_reading']==''
+ assert result['missing_evidence']=='' and 'orientation' in json.dumps(result['reader_audit'])
 assert socket.socket.connect is no_network and urllib.request.urlopen is no_network
 print('PASS: canonical RT screen, exact citations, explicit scope correction, distinct evidence recovery, structured review data and truthful no; isolated')
 
@@ -100,7 +100,7 @@ with patch.object(C,'_ask',side_effect=[json.dumps(positive),json.dumps({'suffic
  assert grader.call_count==2
 invalid=json.loads(json.dumps(positive));invalid['supports'][0]['quote']='An invented statement not present in the paper.'
 with patch.object(C,'_ask',return_value=json.dumps(invalid)):
- assert C._coverage_check(coverage['inquiry'],coverage_observations) is None
+ assert C._coverage_check(coverage['inquiry'],coverage_observations)['assessment_status']=='incomplete'
 # Coordinate contacts come from actual deposited atoms, with explicit measurement limits.
 structure=replays[2]['after']['additional_source']['receipt']['records'][0]
 assert structure['geometry']['inter_chain_contacts'][0]['ca_pair_count']==98

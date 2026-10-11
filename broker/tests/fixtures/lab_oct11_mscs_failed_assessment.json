@@ -1,0 +1,645 @@
+{
+  "input": {
+    "context": "",
+    "inquiry": {
+      "identity_context": {
+        "original_queries": [
+          "protein_name:MscS AND reviewed:true"
+        ],
+        "question_sha256": "1c3667f6b0adada8921cd0623d2d37a0298b459a177735a61adba0eb02cbf5f0",
+        "version": 1
+      },
+      "question": "What are the structural characteristics and gating mechanisms of the mechanosensitive channel of small conductance (MscS) in the context of osmotic stress response?",
+      "source_query": {
+        "operation": "literature",
+        "source": "ncbi",
+        "term": "MscS mechanosensitive channel structure osmotic stress"
+      },
+      "uniprot_query": "protein_name:MscS AND reviewed:true",
+      "browse_lane": "microbiology"
+    },
+    "observations": {
+      "records": [],
+      "LITERATURE": [
+        {
+          "abstract": "The ability to cope with and adapt to changes in the environment is essential for all organisms. Osmotic pressure is a universal threat when environmental changes result in an imbalance of osmolytes inside and outside the cell which causes a deviation from the normal turgor. Cells have developed a potent system to deal with this stress in the form of mechanosensitive ion channels. Channel opening releases solutes from the cell and relieves the stress immediately. In bacteria, these channels directly sense the increased membrane tension caused by the enhanced turgor levels upon hypoosmotic shock. The mechanosensitive channel of small conductance, MscS, from Escherichia coli is one of the most extensively studied examples of mechanically stimulated channels. Different conformational states of this channel were obtained in various detergents and membrane mimetics, highlighting an intimate connection between the channel and its lipidic environment. Associated lipids occupy distinct locations and determine the conformational states of MscS. Not all these features are preserved in the larger MscS-like homologues. Recent structures of homologues from bacteria and plants identify common features and differences. This review discusses the current structural and functional models for MscS opening, as well as the influence of certain membrane characteristics on gating.",
+          "journal": "International journal of molecular sciences",
+          "pmid": "36499396",
+          "title": "How Functional Lipids Affect the Structure and Gating of Mechanosensitive MscS-like Channels.",
+          "year": "2022"
+        },
+        {
+          "abstract": "The challenge of osmotic stress is something all living organisms must face as a result of environmental dynamics. Over the past three decades, innovative research and cooperation across disciplines have irrefutably established that cells utilize mechanically gated ion channels to release osmolytes and prevent cell lysis during hypoosmotic stress. Early electrophysiological analysis of the inner membrane of Escherichia coli identified the presence of three distinct mechanosensitive activities. The subsequent discoveries of the genes responsible for two of these activities, the mechanosensitive channels of large (MscL) and small (MscS) conductance, led to the identification of two diverse families of mechanosensitive channels. The latter of these two families, the MscS family, consists of members from bacteria, archaea, fungi, and plants. Genetic and electrophysiological analysis of these family members has provided insight into how organisms use mechanosensitive channels for osmotic regulation in response to changing environmental and developmental circumstances. Furthermore, determining the crystal structure of E. coli MscS and several homologues in several conformational states has contributed to our understanding of the gating mechanisms of these channels. Here we summarize our current knowledge of MscS homologues from all three domains of life and address their structure, proposed physiological functions, electrophysiological behaviors, and topological diversity.",
+          "journal": "Biochemistry",
+          "pmid": "23947546",
+          "title": "MscS-like mechanosensitive channels in plants and microbes.",
+          "year": "2013"
+        },
+        {
+          "abstract": "The small mechanosensitive channel, MscS, is a part of the turgor-driven solute efflux system that protects bacteria from lysis in the event of osmotic downshift. It has been identified in Escherichia coli as a product of the orphan yggB gene, now called mscS (Levina et al., 1999, EMBO J. 18:1730). Here I show that that the isolated 31-kDa MscS protein is sufficient to form a functional mechanosensitive channel gated directly by tension in the lipid bilayer. MscS-6His complexes purified in the presence of octylglucoside and lipids migrate in a high-resolution gel-filtration column as particles of approximately 200 kDa. Consistent with that, the protein cross-linking patterns predict a hexamer. The channel reconstituted in soybean asolectin liposomes was activated by pressures of 20-60 mm Hg and displayed the same asymmetric I-V curve and slight anionic preference as in situ. At the same time, the single-channel conductance is proportional to the buffer conductivity in a wide range of salt concentrations. The rate of channel activation in response to increasing pressure gradient across the patch was slower than the rate of closure in response to decreasing steps of pressure gradient. Therefore, the open probability curves were recorded with descending series of pressures. Determination of the curvature of patches by video imaging permitted measurements of the channel activity as a function of membrane tension (gamma). Po(gamma) curves had the midpoint at 5.5 +/- 0.1 dyne/cm and gave estimates for the energy of opening DeltaG = 11.4 +/- 0.5 kT, and the transition-related area change DeltaA = 8.4 +/- 0.4 nm(2) when fitted with a two-state Boltzmann model. The correspondence between channel properties in the native and reconstituted systems is discussed.",
+          "journal": "Biophysical journal",
+          "pmid": "12080120",
+          "title": "Purification of the small mechanosensitive channel of Escherichia coli (MscS): the subunit structure, conduction, and gating characteristics in liposomes.",
+          "year": "2002"
+        },
+        {
+          "abstract": "While mechanobiological processes employ diverse mechanisms, at their heart are force-induced perturbations in the structure and dynamics of molecules capable of triggering subsequent events. Among the best characterized force-sensing systems are bacterial mechanosensitive channels. These channels reflect an intimate coupling of protein conformation with the mechanics of the surrounding membrane; the membrane serves as an adaptable sensor that responds to an input of applied force and converts it into an output signal, interpreted for the cell by mechanosensitive channels. The cell can exploit this information in a number of ways: ensuring cellular viability in the presence of osmotic stress and perhaps also serving as a signal transducer for membrane tension or other functions. This review focuses on the bacterial mechanosensitive channels of large (MscL) and small (MscS) conductance and their eukaryotic homologs, with an emphasis on the outstanding issues surrounding the function and mechanism of this fascinating class of molecules.",
+          "journal": "Structure (London, England : 1993)",
+          "pmid": "22000509",
+          "title": "Mechanosensitive channels: what can they do and how do they do it?",
+          "year": "2011"
+        }
+      ],
+      "additional_source": {
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "coverage": "bounded_first_page",
+            "database": "pubmed",
+            "service": "NCBI_EUtilities",
+            "total_count": "42"
+          },
+          "novelty": "not_established",
+          "query": {
+            "limit": 4,
+            "operation": "literature",
+            "source": "ncbi",
+            "taxon_id": null,
+            "term": "MscS mechanosensitive channel structure osmotic stress"
+          },
+          "receipt_id": "ddbb689fd06e5b742b885ed2082d981ecbf8bae8d26b44b77df47acfcb06735b",
+          "records": [
+            {
+              "summary": {
+                "articleids": [
+                  {
+                    "idtype": "pubmed",
+                    "idtypen": 1,
+                    "value": "41175643"
+                  },
+                  {
+                    "idtype": "doi",
+                    "idtypen": 3,
+                    "value": "10.1016/j.plaphy.2025.110657"
+                  },
+                  {
+                    "idtype": "pii",
+                    "idtypen": 4,
+                    "value": "S0981-9428(25)01185-4"
+                  }
+                ],
+                "attributes": [
+                  "Has Abstract"
+                ],
+                "authors": [
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Zhang X"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Cheng M"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Hu C"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Yang Y"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Jia J"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Wen Q"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Li J"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Wang J"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Li R"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Baltaevich AM"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Mao L"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Song X"
+                  }
+                ],
+                "availablefromurl": "",
+                "bookname": "",
+                "booktitle": "",
+                "chapter": "",
+                "doccontriblist": [],
+                "docdate": "",
+                "doctype": "citation",
+                "edition": "",
+                "elocationid": "doi: 10.1016/j.plaphy.2025.110657",
+                "epubdate": "2025 Oct 25",
+                "essn": "1873-2690",
+                "fulljournalname": "Plant physiology and biochemistry : PPB",
+                "history": [
+                  {
+                    "date": "2025/07/06 00:00",
+                    "pubstatus": "received"
+                  },
+                  {
+                    "date": "2025/08/21 00:00",
+                    "pubstatus": "revised"
+                  },
+                  {
+                    "date": "2025/10/18 00:00",
+                    "pubstatus": "accepted"
+                  },
+                  {
+                    "date": "2025/12/12 07:20",
+                    "pubstatus": "medline"
+                  },
+                  {
+                    "date": "2025/11/02 00:34",
+                    "pubstatus": "pubmed"
+                  },
+                  {
+                    "date": "2025/11/01 19:07",
+                    "pubstatus": "entrez"
+                  }
+                ],
+                "issn": "0981-9428",
+                "issue": "Pt D",
+                "lang": [
+                  "eng"
+                ],
+                "lastauthor": "Song X",
+                "locationlabel": "",
+                "medium": "",
+                "nlmuniqueid": "9882449",
+                "pages": "110657",
+                "pmcrefcount": "",
+                "pubdate": "2025 Dec",
+                "publisherlocation": "",
+                "publishername": "",
+                "pubstatus": "256",
+                "pubtype": [
+                  "Journal Article"
+                ],
+                "recordstatus": "PubMed - indexed for MEDLINE",
+                "references": [],
+                "reportnumber": "",
+                "sortfirstauthor": "Zhang X",
+                "sortpubdate": "2025/12/01 00:00",
+                "sorttitle": "analysis of the mechanosensitive channel of small conductance like msl gene family in cotton and the role of ghmsl2 3 in response to salt tolerance in upland cotton",
+                "source": "Plant Physiol Biochem",
+                "srccontriblist": [],
+                "srcdate": "",
+                "title": "Analysis of the mechanosensitive channel of small conductance-like (MSL) gene family in cotton and the role of GhMSL2-3 in response to salt tolerance in upland cotton.",
+                "uid": "41175643",
+                "vernaculartitle": "",
+                "volume": "229"
+              },
+              "uid": "41175643"
+            },
+            {
+              "summary": {
+                "articleids": [
+                  {
+                    "idtype": "pubmed",
+                    "idtypen": 1,
+                    "value": "39919733"
+                  },
+                  {
+                    "idtype": "doi",
+                    "idtypen": 3,
+                    "value": "10.1016/j.str.2025.01.014"
+                  },
+                  {
+                    "idtype": "pii",
+                    "idtypen": 4,
+                    "value": "S0969-2126(25)00014-0"
+                  }
+                ],
+                "attributes": [
+                  "Has Abstract"
+                ],
+                "authors": [
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Lane BJ"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Dionysopoulou M"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Yan N"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Lippiat JD"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Muench SP"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Pliotas C"
+                  }
+                ],
+                "availablefromurl": "",
+                "bookname": "",
+                "booktitle": "",
+                "chapter": "",
+                "doccontriblist": [],
+                "docdate": "",
+                "doctype": "citation",
+                "edition": "",
+                "elocationid": "doi: 10.1016/j.str.2025.01.014",
+                "epubdate": "2025 Feb 6",
+                "essn": "1878-4186",
+                "fulljournalname": "Structure (London, England : 1993)",
+                "history": [
+                  {
+                    "date": "2024/10/08 00:00",
+                    "pubstatus": "received"
+                  },
+                  {
+                    "date": "2024/12/13 00:00",
+                    "pubstatus": "revised"
+                  },
+                  {
+                    "date": "2025/01/13 00:00",
+                    "pubstatus": "accepted"
+                  },
+                  {
+                    "date": "2025/04/05 15:57",
+                    "pubstatus": "medline"
+                  },
+                  {
+                    "date": "2025/02/08 00:30",
+                    "pubstatus": "pubmed"
+                  },
+                  {
+                    "date": "2025/02/07 20:01",
+                    "pubstatus": "entrez"
+                  }
+                ],
+                "issn": "0969-2126",
+                "issue": "4",
+                "lang": [
+                  "eng"
+                ],
+                "lastauthor": "Pliotas C",
+                "locationlabel": "",
+                "medium": "",
+                "nlmuniqueid": "101087697",
+                "pages": "652-662.e3",
+                "pmcrefcount": "",
+                "pubdate": "2025 Apr 3",
+                "publisherlocation": "",
+                "publishername": "",
+                "pubstatus": "256",
+                "pubtype": [
+                  "Journal Article"
+                ],
+                "recordstatus": "PubMed - indexed for MEDLINE",
+                "references": [],
+                "reportnumber": "",
+                "sortfirstauthor": "Lane BJ",
+                "sortpubdate": "2025/04/03 00:00",
+                "sorttitle": "mechanosensitive channel ybio has a conductance equivalent to the largest gated pore",
+                "source": "Structure",
+                "srccontriblist": [],
+                "srcdate": "",
+                "title": "The mechanosensitive channel YbiO has a conductance equivalent to the largest gated pore.",
+                "uid": "39919733",
+                "vernaculartitle": "",
+                "volume": "33"
+              },
+              "uid": "39919733"
+            },
+            {
+              "summary": {
+                "articleids": [
+                  {
+                    "idtype": "pubmed",
+                    "idtypen": 1,
+                    "value": "36499396"
+                  },
+                  {
+                    "idtype": "pmc",
+                    "idtypen": 8,
+                    "value": "PMC9739000"
+                  },
+                  {
+                    "idtype": "pmcid",
+                    "idtypen": 5,
+                    "value": "pmc-id: PMC9739000;"
+                  },
+                  {
+                    "idtype": "doi",
+                    "idtypen": 3,
+                    "value": "10.3390/ijms232315071"
+                  },
+                  {
+                    "idtype": "pii",
+                    "idtypen": 4,
+                    "value": "ijms232315071"
+                  }
+                ],
+                "attributes": [
+                  "Has Abstract"
+                ],
+                "authors": [
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Flegler VJ"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Rasmussen T"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "B\u00f6ttcher B"
+                  }
+                ],
+                "availablefromurl": "",
+                "bookname": "",
+                "booktitle": "",
+                "chapter": "",
+                "doccontriblist": [],
+                "docdate": "",
+                "doctype": "citation",
+                "edition": "",
+                "elocationid": "doi: 10.3390/ijms232315071",
+                "epubdate": "2022 Dec 1",
+                "essn": "1422-0067",
+                "fulljournalname": "International journal of molecular sciences",
+                "history": [
+                  {
+                    "date": "2022/10/28 00:00",
+                    "pubstatus": "received"
+                  },
+                  {
+                    "date": "2022/11/21 00:00",
+                    "pubstatus": "revised"
+                  },
+                  {
+                    "date": "2022/11/23 00:00",
+                    "pubstatus": "accepted"
+                  },
+                  {
+                    "date": "2022/12/11 01:19",
+                    "pubstatus": "entrez"
+                  },
+                  {
+                    "date": "2022/12/12 06:00",
+                    "pubstatus": "pubmed"
+                  },
+                  {
+                    "date": "2022/12/15 06:00",
+                    "pubstatus": "medline"
+                  },
+                  {
+                    "date": "2022/12/01 00:00",
+                    "pubstatus": "pmc-release"
+                  }
+                ],
+                "issn": "",
+                "issue": "23",
+                "lang": [
+                  "eng"
+                ],
+                "lastauthor": "B\u00f6ttcher B",
+                "locationlabel": "",
+                "medium": "",
+                "nlmuniqueid": "101092791",
+                "pages": "",
+                "pmcrefcount": 139,
+                "pubdate": "2022 Dec 1",
+                "publisherlocation": "",
+                "publishername": "",
+                "pubstatus": "3",
+                "pubtype": [
+                  "Journal Article",
+                  "Review"
+                ],
+                "recordstatus": "PubMed - indexed for MEDLINE",
+                "references": [],
+                "reportnumber": "",
+                "sortfirstauthor": "Flegler VJ",
+                "sortpubdate": "2022/12/01 00:00",
+                "sorttitle": "how functional lipids affect the structure and gating of mechanosensitive mscs like channels",
+                "source": "Int J Mol Sci",
+                "srccontriblist": [],
+                "srcdate": "",
+                "title": "How Functional Lipids Affect the Structure and Gating of Mechanosensitive MscS-like Channels.",
+                "uid": "36499396",
+                "vernaculartitle": "",
+                "volume": "23"
+              },
+              "uid": "36499396"
+            },
+            {
+              "summary": {
+                "articleids": [
+                  {
+                    "idtype": "pubmed",
+                    "idtypen": 1,
+                    "value": "35941834"
+                  },
+                  {
+                    "idtype": "pmc",
+                    "idtypen": 8,
+                    "value": "PMC9367656"
+                  },
+                  {
+                    "idtype": "pmcid",
+                    "idtypen": 5,
+                    "value": "pmc-id: PMC9367656;"
+                  },
+                  {
+                    "idtype": "doi",
+                    "idtypen": 3,
+                    "value": "10.1080/19336950.2022.2098661"
+                  }
+                ],
+                "attributes": [
+                  "Has Abstract"
+                ],
+                "authors": [
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Dionysopoulou M"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Yan N"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Wang B"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Pliotas C"
+                  },
+                  {
+                    "authtype": "Author",
+                    "clusterid": "",
+                    "name": "Diallinas G"
+                  }
+                ],
+                "availablefromurl": "",
+                "bookname": "",
+                "booktitle": "",
+                "chapter": "",
+                "doccontriblist": [],
+                "docdate": "",
+                "doctype": "citation",
+                "edition": "",
+                "elocationid": "doi: 10.1080/19336950.2022.2098661",
+                "epubdate": "",
+                "essn": "1933-6969",
+                "fulljournalname": "Channels (Austin, Tex.)",
+                "history": [
+                  {
+                    "date": "2022/08/09 01:52",
+                    "pubstatus": "entrez"
+                  },
+                  {
+                    "date": "2022/08/10 06:00",
+                    "pubstatus": "pubmed"
+                  },
+                  {
+                    "date": "2022/08/11 06:00",
+                    "pubstatus": "medline"
+                  },
+                  {
+                    "date": "2022/08/08 00:00",
+                    "pubstatus": "pmc-release"
+                  }
+                ],
+                "issn": "1933-6950",
+                "issue": "1",
+                "lang": [
+                  "eng"
+                ],
+                "lastauthor": "Diallinas G",
+                "locationlabel": "",
+                "medium": "",
+                "nlmuniqueid": "101321614",
+                "pages": "148-158",
+                "pmcrefcount": 51,
+                "pubdate": "2022 Dec",
+                "publisherlocation": "",
+                "publishername": "",
+                "pubstatus": "4",
+                "pubtype": [
+                  "Journal Article",
+                  "Research Support, Non-U.S. Gov't"
+                ],
+                "recordstatus": "PubMed - indexed for MEDLINE",
+                "references": [],
+                "reportnumber": "",
+                "sortfirstauthor": "Dionysopoulou M",
+                "sortpubdate": "2022/12/01 00:00",
+                "sorttitle": "genetic and cellular characterization of mscs like putative channels in the filamentous fungus aspergillus nidulans",
+                "source": "Channels (Austin)",
+                "srccontriblist": [],
+                "srcdate": "",
+                "title": "Genetic and cellular characterization of MscS-like putative channels in the filamentous fungus Aspergillus nidulans.",
+                "uid": "35941834",
+                "vernaculartitle": "",
+                "volume": "16"
+              },
+              "uid": "35941834"
+            }
+          ],
+          "response_sha256": "f288a0ce144a1661e5402690d253dd6110da6ac62afabe12815bbc57e8426528",
+          "retrieved_at": "2026-10-10T23:39:36.054297+00:00",
+          "source": "ncbi",
+          "truth_status": "source_observation_not_validation"
+        }
+      }
+    }
+  },
+  "coverage_request": {
+    "model": "google/gemma-4-12b-qat",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a technical evidence-coverage checker, not Vintos. Adjudicate only the ORIGINAL QUESTION. A harder follow-up is not a missing requirement of the original question. Domain organization does not require residue coordinates unless the question requests them. Every explicit comparison, organism, domain or relationship in the question must be covered. Empty searches and model embeddings prove no biological properties. Geometric proximity is not proof of binding, function or membrane orientation. Enumerate every requested evidence product separately before deciding coverage. Source topology annotations do not supply a computed hydropathy profile; a sequence alone is not a computed profile. Check identity and species separately from whether the requested measurement or analysis is present. Return JSON: answered (boolean), missing (list), supports (list of {requirement, address, quote}). For answered=true, all original requirements must be supported by verbatim quotes at their exact evidence addresses. Each original string leaf in EVIDENCE is wrapped as {address, text}. Copy its short address exactly and quote only from its paired text. The wrapper is metadata, not scientific evidence. Do not construct paths, count records, or use an address belonging to another source. Use at most six supports and concise quotes of at most 300 characters, only the necessary source clause. For anything absent, ambiguous, or conflicting, answered=false. Original identity queries are constraints, not evidence: do not drop their taxonomy or substitute a species. If species is unspecified, retain the evidence's species-qualified scope as partial findings without silently generalizing. Assess causal premises rather than assuming them; citation metadata does not establish a mechanism. Do not infer missing facts."
+      },
+      {
+        "role": "user",
+        "content": "{\"original_question\": \"What are the structural characteristics and gating mechanisms of the mechanosensitive channel of small conductance (MscS) in the context of osmotic stress response?\", \"original_identity_queries\": [\"protein_name:MscS AND reviewed:true\"]}\nEVIDENCE:\n{\"embedding_coverage\": null, \"additional_source\": {\"source\": {\"address\": \"Ec2e77620\", \"text\": \"ncbi\"}, \"receipt_id\": {\"address\": \"E8b8cebb5\", \"text\": \"ddbb689fd06e5b742b885ed2082d981ecbf8bae8d26b44b77df47acfcb06735b\"}, \"records\": [{\"summary\": {\"articleids\": [{\"idtype\": {\"address\": \"Ec0c05b43\", \"text\": \"pubmed\"}, \"idtypen\": 1, \"value\": {\"address\": \"E9c5c0847\", \"text\": \"41175643\"}}, {\"idtype\": {\"address\": \"E52a746d8\", \"text\": \"doi\"}, \"idtypen\": 3, \"value\": {\"address\": \"Ee2c6510e\", \"text\": \"10.1016/j.plaphy.2025.110657\"}}, {\"idtype\": {\"address\": \"E0b6363b0\", \"text\": \"pii\"}, \"idtypen\": 4, \"value\": {\"address\": \"E06388dea\", \"text\": \"S0981-9428(25)01185-4\"}}], \"attributes\": [{\"address\": \"Efe9d6eff\", \"text\": \"Has Abstract\"}], \"authors\": [{\"authtype\": {\"address\": \"Ea47bf4c3\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E77bee663\", \"text\": \"\"}, \"name\": {\"address\": \"Eee91fd39\", \"text\": \"Zhang X\"}}, {\"authtype\": {\"address\": \"E830d3083\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ef06791b4\", \"text\": \"\"}, \"name\": {\"address\": \"E5b1c2c2c\", \"text\": \"Cheng M\"}}, {\"authtype\": {\"address\": \"Ed73515f1\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E8ec0b1a3\", \"text\": \"\"}, \"name\": {\"address\": \"E56574f74\", \"text\": \"Hu C\"}}, {\"authtype\": {\"address\": \"Ed98c1a30\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E3a6f474b\", \"text\": \"\"}, \"name\": {\"address\": \"E87b1e5f6\", \"text\": \"Yang Y\"}}, {\"authtype\": {\"address\": \"Edb7da070\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ed49c1908\", \"text\": \"\"}, \"name\": {\"address\": \"Eab2b83cd\", \"text\": \"Jia J\"}}, {\"authtype\": {\"address\": \"E7d512c79\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ead876d16\", \"text\": \"\"}, \"name\": {\"address\": \"E148f0f22\", \"text\": \"Wen Q\"}}, {\"authtype\": {\"address\": \"E7a5d149d\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ee1878053\", \"text\": \"\"}, \"name\": {\"address\": \"Efa6ac555\", \"text\": \"Li J\"}}, {\"authtype\": {\"address\": \"E8b0b31f8\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ec742cdfa\", \"text\": \"\"}, \"name\": {\"address\": \"E35d2e817\", \"text\": \"Wang J\"}}, {\"authtype\": {\"address\": \"Ef15b9b2f\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E881a40c0\", \"text\": \"\"}, \"name\": {\"address\": \"Eeec46c63\", \"text\": \"Li R\"}}, {\"authtype\": {\"address\": \"Ef56717ba\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Eb826b611\", \"text\": \"\"}, \"name\": {\"address\": \"E50e6ec16\", \"text\": \"Baltaevich AM\"}}, {\"authtype\": {\"address\": \"E15402d1a\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Edd02bcae\", \"text\": \"\"}, \"name\": {\"address\": \"E81efb166\", \"text\": \"Mao L\"}}, {\"authtype\": {\"address\": \"E8b7b8524\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E54af2ec0\", \"text\": \"\"}, \"name\": {\"address\": \"E5ccafde3\", \"text\": \"Song X\"}}], \"availablefromurl\": {\"address\": \"E16161728\", \"text\": \"\"}, \"bookname\": {\"address\": \"Ee29aa848\", \"text\": \"\"}, \"booktitle\": {\"address\": \"E94e65b42\", \"text\": \"\"}, \"chapter\": {\"address\": \"E932c10a5\", \"text\": \"\"}, \"doccontriblist\": [], \"docdate\": {\"address\": \"E8313efa7\", \"text\": \"\"}, \"doctype\": {\"address\": \"E3715826e\", \"text\": \"citation\"}, \"edition\": {\"address\": \"Ec843ba7e\", \"text\": \"\"}, \"elocationid\": {\"address\": \"Eaf7cd4b2\", \"text\": \"doi: 10.1016/j.plaphy.2025.110657\"}, \"epubdate\": {\"address\": \"E79559e94\", \"text\": \"2025 Oct 25\"}, \"essn\": {\"address\": \"E3a127ae1\", \"text\": \"1873-2690\"}, \"fulljournalname\": {\"address\": \"E5698d3a1\", \"text\": \"Plant physiology and biochemistry : PPB\"}, \"history\": [{\"date\": {\"address\": \"E7f728a0a\", \"text\": \"2025/07/06 00:00\"}, \"pubstatus\": {\"address\": \"Eb72e7095\", \"text\": \"received\"}}, {\"date\": {\"address\": \"E4a8f768f\", \"text\": \"2025/08/21 00:00\"}, \"pubstatus\": {\"address\": \"Ea5e15eac\", \"text\": \"revised\"}}, {\"date\": {\"address\": \"E7c8e7bb1\", \"text\": \"2025/10/18 00:00\"}, \"pubstatus\": {\"address\": \"E32a42e32\", \"text\": \"accepted\"}}, {\"date\": {\"address\": \"E107963a2\", \"text\": \"2025/12/12 07:20\"}, \"pubstatus\": {\"address\": \"E4e306850\", \"text\": \"medline\"}}, {\"date\": {\"address\": \"E9547720a\", \"text\": \"2025/11/02 00:34\"}, \"pubstatus\": {\"address\": \"Edfedec49\", \"text\": \"pubmed\"}}, {\"date\": {\"address\": \"Ea4e176f2\", \"text\": \"2025/11/01 19:07\"}, \"pubstatus\": {\"address\": \"E44e740bf\", \"text\": \"entrez\"}}], \"issn\": {\"address\": \"Ebb19bef7\", \"text\": \"0981-9428\"}, \"issue\": {\"address\": \"E277f79b2\", \"text\": \"Pt D\"}, \"lang\": [{\"address\": \"E59558d36\", \"text\": \"eng\"}], \"lastauthor\": {\"address\": \"E9c182943\", \"text\": \"Song X\"}, \"locationlabel\": {\"address\": \"E36f469c4\", \"text\": \"\"}, \"medium\": {\"address\": \"E80a19a0e\", \"text\": \"\"}, \"nlmuniqueid\": {\"address\": \"E7736a507\", \"text\": \"9882449\"}, \"pages\": {\"address\": \"Efc66aa10\", \"text\": \"110657\"}, \"pmcrefcount\": {\"address\": \"E7d02c969\", \"text\": \"\"}, \"pubdate\": {\"address\": \"E5e3123f6\", \"text\": \"2025 Dec\"}, \"publisherlocation\": {\"address\": \"E1912fab8\", \"text\": \"\"}, \"publishername\": {\"address\": \"E24071754\", \"text\": \"\"}, \"pubstatus\": {\"address\": \"E20efe6e1\", \"text\": \"256\"}, \"pubtype\": [{\"address\": \"E09ceca21\", \"text\": \"Journal Article\"}], \"recordstatus\": {\"address\": \"Ea70f020c\", \"text\": \"PubMed - indexed for MEDLINE\"}, \"references\": [], \"reportnumber\": {\"address\": \"Ec0a3a158\", \"text\": \"\"}, \"sortfirstauthor\": {\"address\": \"E2256ac52\", \"text\": \"Zhang X\"}, \"sortpubdate\": {\"address\": \"E62af81d9\", \"text\": \"2025/12/01 00:00\"}, \"sorttitle\": {\"address\": \"E8b93f611\", \"text\": \"analysis of the mechanosensitive channel of small conductance like msl gene family in cotton and the role of ghmsl2 3 in response to salt tolerance in upland cotton\"}, \"source\": {\"address\": \"Ead4df308\", \"text\": \"Plant Physiol Biochem\"}, \"srccontriblist\": [], \"srcdate\": {\"address\": \"E6b2d1685\", \"text\": \"\"}, \"title\": {\"address\": \"E46ba7f28\", \"text\": \"Analysis of the mechanosensitive channel of small conductance-like (MSL) gene family in cotton and the role of GhMSL2-3 in response to salt tolerance in upland cotton.\"}, \"uid\": {\"address\": \"E818fd85c\", \"text\": \"41175643\"}, \"vernaculartitle\": {\"address\": \"Ee1b174aa\", \"text\": \"\"}, \"volume\": {\"address\": \"Ecd1337c7\", \"text\": \"229\"}}, \"uid\": {\"address\": \"E65f341db\", \"text\": \"41175643\"}}, {\"summary\": {\"articleids\": [{\"idtype\": {\"address\": \"Eab39772b\", \"text\": \"pubmed\"}, \"idtypen\": 1, \"value\": {\"address\": \"E986d0443\", \"text\": \"39919733\"}}, {\"idtype\": {\"address\": \"E668d0afa\", \"text\": \"doi\"}, \"idtypen\": 3, \"value\": {\"address\": \"E9b8cc5dc\", \"text\": \"10.1016/j.str.2025.01.014\"}}, {\"idtype\": {\"address\": \"E0d4e3cca\", \"text\": \"pii\"}, \"idtypen\": 4, \"value\": {\"address\": \"Ef40804b2\", \"text\": \"S0969-2126(25)00014-0\"}}], \"attributes\": [{\"address\": \"E7bfa2e38\", \"text\": \"Has Abstract\"}], \"authors\": [{\"authtype\": {\"address\": \"Ecf25caed\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E0f6c9c21\", \"text\": \"\"}, \"name\": {\"address\": \"Ea16aef7a\", \"text\": \"Lane BJ\"}}, {\"authtype\": {\"address\": \"E290b0afa\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ed7f27a11\", \"text\": \"\"}, \"name\": {\"address\": \"E9b24e80c\", \"text\": \"Dionysopoulou M\"}}, {\"authtype\": {\"address\": \"E2e1c8088\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ea0723fd3\", \"text\": \"\"}, \"name\": {\"address\": \"E65c8d2fc\", \"text\": \"Yan N\"}}, {\"authtype\": {\"address\": \"E7046118c\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E762c1eef\", \"text\": \"\"}, \"name\": {\"address\": \"Eb8d3aae0\", \"text\": \"Lippiat JD\"}}, {\"authtype\": {\"address\": \"Ebf384447\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E308bde5b\", \"text\": \"\"}, \"name\": {\"address\": \"E027f01f1\", \"text\": \"Muench SP\"}}, {\"authtype\": {\"address\": \"Ef17b0854\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E4f8b5c58\", \"text\": \"\"}, \"name\": {\"address\": \"E3c5980c5\", \"text\": \"Pliotas C\"}}], \"availablefromurl\": {\"address\": \"E2844a0c7\", \"text\": \"\"}, \"bookname\": {\"address\": \"Ea16138ef\", \"text\": \"\"}, \"booktitle\": {\"address\": \"E3d146c18\", \"text\": \"\"}, \"chapter\": {\"address\": \"E9b057e2f\", \"text\": \"\"}, \"doccontriblist\": [], \"docdate\": {\"address\": \"E14822c77\", \"text\": \"\"}, \"doctype\": {\"address\": \"Ebc5a7020\", \"text\": \"citation\"}, \"edition\": {\"address\": \"E7aa8e687\", \"text\": \"\"}, \"elocationid\": {\"address\": \"E5bfd9102\", \"text\": \"doi: 10.1016/j.str.2025.01.014\"}, \"epubdate\": {\"address\": \"E0ca2b8fc\", \"text\": \"2025 Feb 6\"}, \"essn\": {\"address\": \"E4932ca0f\", \"text\": \"1878-4186\"}, \"fulljournalname\": {\"address\": \"Ebf084c06\", \"text\": \"Structure (London, England : 1993)\"}, \"history\": [{\"date\": {\"address\": \"Eb14992e2\", \"text\": \"2024/10/08 00:00\"}, \"pubstatus\": {\"address\": \"Ead9c0377\", \"text\": \"received\"}}, {\"date\": {\"address\": \"Efdb2480f\", \"text\": \"2024/12/13 00:00\"}, \"pubstatus\": {\"address\": \"E2e7035df\", \"text\": \"revised\"}}, {\"date\": {\"address\": \"E5b2254a8\", \"text\": \"2025/01/13 00:00\"}, \"pubstatus\": {\"address\": \"E40c19e6a\", \"text\": \"accepted\"}}, {\"date\": {\"address\": \"E0d5cad57\", \"text\": \"2025/04/05 15:57\"}, \"pubstatus\": {\"address\": \"E777c9d2c\", \"text\": \"medline\"}}, {\"date\": {\"address\": \"Ee22a10a6\", \"text\": \"2025/02/08 00:30\"}, \"pubstatus\": {\"address\": \"E65e6395b\", \"text\": \"pubmed\"}}, {\"date\": {\"address\": \"E7bde34d5\", \"text\": \"2025/02/07 20:01\"}, \"pubstatus\": {\"address\": \"E73cec039\", \"text\": \"entrez\"}}], \"issn\": {\"address\": \"Eec729ce5\", \"text\": \"0969-2126\"}, \"issue\": {\"address\": \"Eb5dca023\", \"text\": \"4\"}, \"lang\": [{\"address\": \"E92f0761b\", \"text\": \"eng\"}], \"lastauthor\": {\"address\": \"E45ef555b\", \"text\": \"Pliotas C\"}, \"locationlabel\": {\"address\": \"E9faffd01\", \"text\": \"\"}, \"medium\": {\"address\": \"Ea0fd8496\", \"text\": \"\"}, \"nlmuniqueid\": {\"address\": \"E597c5983\", \"text\": \"101087697\"}, \"pages\": {\"address\": \"E2bdcad34\", \"text\": \"652-662.e3\"}, \"pmcrefcount\": {\"address\": \"E24d5bd79\", \"text\": \"\"}, \"pubdate\": {\"address\": \"Eed6b3224\", \"text\": \"2025 Apr 3\"}, \"publisherlocation\": {\"address\": \"E2e1bb31a\", \"text\": \"\"}, \"publishername\": {\"address\": \"E567bfad3\", \"text\": \"\"}, \"pubstatus\": {\"address\": \"E5106bb17\", \"text\": \"256\"}, \"pubtype\": [{\"address\": \"E24397af4\", \"text\": \"Journal Article\"}], \"recordstatus\": {\"address\": \"Ea0a33a41\", \"text\": \"PubMed - indexed for MEDLINE\"}, \"references\": [], \"reportnumber\": {\"address\": \"Ec2ecf858\", \"text\": \"\"}, \"sortfirstauthor\": {\"address\": \"Ec923107f\", \"text\": \"Lane BJ\"}, \"sortpubdate\": {\"address\": \"Eb2ff1ea4\", \"text\": \"2025/04/03 00:00\"}, \"sorttitle\": {\"address\": \"E5cbbd557\", \"text\": \"mechanosensitive channel ybio has a conductance equivalent to the largest gated pore\"}, \"source\": {\"address\": \"Ed1ffae42\", \"text\": \"Structure\"}, \"srccontriblist\": [], \"srcdate\": {\"address\": \"Ef87a4e73\", \"text\": \"\"}, \"title\": {\"address\": \"E067ad05d\", \"text\": \"The mechanosensitive channel YbiO has a conductance equivalent to the largest gated pore.\"}, \"uid\": {\"address\": \"Eb8c96369\", \"text\": \"39919733\"}, \"vernaculartitle\": {\"address\": \"E481aa8a0\", \"text\": \"\"}, \"volume\": {\"address\": \"E6d667061\", \"text\": \"33\"}}, \"uid\": {\"address\": \"E6c6645e2\", \"text\": \"39919733\"}}, {\"summary\": {\"articleids\": [{\"idtype\": {\"address\": \"Eb91394b3\", \"text\": \"pubmed\"}, \"idtypen\": 1, \"value\": {\"address\": \"E5ec77fbc\", \"text\": \"36499396\"}}, {\"idtype\": {\"address\": \"E5a917b4f\", \"text\": \"pmc\"}, \"idtypen\": 8, \"value\": {\"address\": \"E8a80e077\", \"text\": \"PMC9739000\"}}, {\"idtype\": {\"address\": \"E386b3cde\", \"text\": \"pmcid\"}, \"idtypen\": 5, \"value\": {\"address\": \"Eb4a7efdf\", \"text\": \"pmc-id: PMC9739000;\"}}, {\"idtype\": {\"address\": \"Ef727025a\", \"text\": \"doi\"}, \"idtypen\": 3, \"value\": {\"address\": \"E21d949b5\", \"text\": \"10.3390/ijms232315071\"}}, {\"idtype\": {\"address\": \"Ef681c0ac\", \"text\": \"pii\"}, \"idtypen\": 4, \"value\": {\"address\": \"E2d5725c6\", \"text\": \"ijms232315071\"}}], \"attributes\": [{\"address\": \"E76bfbbb9\", \"text\": \"Has Abstract\"}], \"authors\": [{\"authtype\": {\"address\": \"Ec2311f66\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Ee984872b\", \"text\": \"\"}, \"name\": {\"address\": \"Eaf2d55bb\", \"text\": \"Flegler VJ\"}}, {\"authtype\": {\"address\": \"E3e3c5830\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E531a53de\", \"text\": \"\"}, \"name\": {\"address\": \"E85adeee1\", \"text\": \"Rasmussen T\"}}, {\"authtype\": {\"address\": \"Ecd330174\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E51a96088\", \"text\": \"\"}, \"name\": {\"address\": \"E3d6f4297\", \"text\": \"B\u00f6ttcher B\"}}], \"availablefromurl\": {\"address\": \"E6103a45f\", \"text\": \"\"}, \"bookname\": {\"address\": \"Ed4f6c699\", \"text\": \"\"}, \"booktitle\": {\"address\": \"E20707fed\", \"text\": \"\"}, \"chapter\": {\"address\": \"E75ab5d22\", \"text\": \"\"}, \"doccontriblist\": [], \"docdate\": {\"address\": \"E0448f053\", \"text\": \"\"}, \"doctype\": {\"address\": \"Ec9efe231\", \"text\": \"citation\"}, \"edition\": {\"address\": \"E1ae88c6a\", \"text\": \"\"}, \"elocationid\": {\"address\": \"E141cd1d4\", \"text\": \"doi: 10.3390/ijms232315071\"}, \"epubdate\": {\"address\": \"E74eafe92\", \"text\": \"2022 Dec 1\"}, \"essn\": {\"address\": \"Eb1e8c7b2\", \"text\": \"1422-0067\"}, \"fulljournalname\": {\"address\": \"E2fd778d9\", \"text\": \"International journal of molecular sciences\"}, \"history\": [{\"date\": {\"address\": \"Ede2e0879\", \"text\": \"2022/10/28 00:00\"}, \"pubstatus\": {\"address\": \"Ea44aaf10\", \"text\": \"received\"}}, {\"date\": {\"address\": \"Efa5bfa71\", \"text\": \"2022/11/21 00:00\"}, \"pubstatus\": {\"address\": \"Edf0d227d\", \"text\": \"revised\"}}, {\"date\": {\"address\": \"E1bd4c55b\", \"text\": \"2022/11/23 00:00\"}, \"pubstatus\": {\"address\": \"E2596a8fa\", \"text\": \"accepted\"}}, {\"date\": {\"address\": \"E0171e516\", \"text\": \"2022/12/11 01:19\"}, \"pubstatus\": {\"address\": \"Ef68909f7\", \"text\": \"entrez\"}}, {\"date\": {\"address\": \"E71cb171b\", \"text\": \"2022/12/12 06:00\"}, \"pubstatus\": {\"address\": \"E58a946d6\", \"text\": \"pubmed\"}}, {\"date\": {\"address\": \"Eddf1a1de\", \"text\": \"2022/12/15 06:00\"}, \"pubstatus\": {\"address\": \"E24495a2c\", \"text\": \"medline\"}}, {\"date\": {\"address\": \"E5c66f547\", \"text\": \"2022/12/01 00:00\"}, \"pubstatus\": {\"address\": \"E93e3ed47\", \"text\": \"pmc-release\"}}], \"issn\": {\"address\": \"E38c2621d\", \"text\": \"\"}, \"issue\": {\"address\": \"E1249bef6\", \"text\": \"23\"}, \"lang\": [{\"address\": \"E5d695338\", \"text\": \"eng\"}], \"lastauthor\": {\"address\": \"E16a4362d\", \"text\": \"B\u00f6ttcher B\"}, \"locationlabel\": {\"address\": \"Ef1f74042\", \"text\": \"\"}, \"medium\": {\"address\": \"E4c74b918\", \"text\": \"\"}, \"nlmuniqueid\": {\"address\": \"Edf99bf69\", \"text\": \"101092791\"}, \"pages\": {\"address\": \"Eac3f823d\", \"text\": \"\"}, \"pmcrefcount\": 139, \"pubdate\": {\"address\": \"E0fbc77d5\", \"text\": \"2022 Dec 1\"}, \"publisherlocation\": {\"address\": \"E598b128b\", \"text\": \"\"}, \"publishername\": {\"address\": \"E02481960\", \"text\": \"\"}, \"pubstatus\": {\"address\": \"E95693519\", \"text\": \"3\"}, \"pubtype\": [{\"address\": \"E423fa2aa\", \"text\": \"Journal Article\"}, {\"address\": \"E9676ec9b\", \"text\": \"Review\"}], \"recordstatus\": {\"address\": \"Ef519a362\", \"text\": \"PubMed - indexed for MEDLINE\"}, \"references\": [], \"reportnumber\": {\"address\": \"E007d8fb0\", \"text\": \"\"}, \"sortfirstauthor\": {\"address\": \"E30c4f081\", \"text\": \"Flegler VJ\"}, \"sortpubdate\": {\"address\": \"E9b9fbc13\", \"text\": \"2022/12/01 00:00\"}, \"sorttitle\": {\"address\": \"E4242a596\", \"text\": \"how functional lipids affect the structure and gating of mechanosensitive mscs like channels\"}, \"source\": {\"address\": \"E9a493cc9\", \"text\": \"Int J Mol Sci\"}, \"srccontriblist\": [], \"srcdate\": {\"address\": \"E85b14baa\", \"text\": \"\"}, \"title\": {\"address\": \"E4594aea1\", \"text\": \"How Functional Lipids Affect the Structure and Gating of Mechanosensitive MscS-like Channels.\"}, \"uid\": {\"address\": \"E86fa79b5\", \"text\": \"36499396\"}, \"vernaculartitle\": {\"address\": \"Ebd1ad5d3\", \"text\": \"\"}, \"volume\": {\"address\": \"E21c6eb22\", \"text\": \"23\"}}, \"uid\": {\"address\": \"E0ed58ba7\", \"text\": \"36499396\"}}, {\"summary\": {\"articleids\": [{\"idtype\": {\"address\": \"E58bb2d8d\", \"text\": \"pubmed\"}, \"idtypen\": 1, \"value\": {\"address\": \"E64081785\", \"text\": \"35941834\"}}, {\"idtype\": {\"address\": \"E72e8fc00\", \"text\": \"pmc\"}, \"idtypen\": 8, \"value\": {\"address\": \"E340869b9\", \"text\": \"PMC9367656\"}}, {\"idtype\": {\"address\": \"E3766e7a1\", \"text\": \"pmcid\"}, \"idtypen\": 5, \"value\": {\"address\": \"E20c4caf4\", \"text\": \"pmc-id: PMC9367656;\"}}, {\"idtype\": {\"address\": \"E2dc74736\", \"text\": \"doi\"}, \"idtypen\": 3, \"value\": {\"address\": \"Eaf4df173\", \"text\": \"10.1080/19336950.2022.2098661\"}}], \"attributes\": [{\"address\": \"E79deeff0\", \"text\": \"Has Abstract\"}], \"authors\": [{\"authtype\": {\"address\": \"Ea7d8afb0\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E0fd59983\", \"text\": \"\"}, \"name\": {\"address\": \"E03a8dbeb\", \"text\": \"Dionysopoulou M\"}}, {\"authtype\": {\"address\": \"E84be53ce\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E440c3b5a\", \"text\": \"\"}, \"name\": {\"address\": \"E27db9c21\", \"text\": \"Yan N\"}}, {\"authtype\": {\"address\": \"E3b0679ad\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E35a24fcc\", \"text\": \"\"}, \"name\": {\"address\": \"Ef1cb10bf\", \"text\": \"Wang B\"}}, {\"authtype\": {\"address\": \"Ecf2baa2d\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"Eff75bcaf\", \"text\": \"\"}, \"name\": {\"address\": \"Ec81a4ece\", \"text\": \"Pliotas C\"}}, {\"authtype\": {\"address\": \"E7a88b054\", \"text\": \"Author\"}, \"clusterid\": {\"address\": \"E9d534d96\", \"text\": \"\"}, \"name\": {\"address\": \"E2d3b8315\", \"text\": \"Diallinas G\"}}], \"availablefromurl\": {\"address\": \"Ef062f557\", \"text\": \"\"}, \"bookname\": {\"address\": \"Eea1f63e7\", \"text\": \"\"}, \"booktitle\": {\"address\": \"Eeea9ab48\", \"text\": \"\"}, \"chapter\": {\"address\": \"E24edc9d4\", \"text\": \"\"}, \"doccontriblist\": [], \"docdate\": {\"address\": \"E607cdb17\", \"text\": \"\"}, \"doctype\": {\"address\": \"Eb885b8cf\", \"text\": \"citation\"}, \"edition\": {\"address\": \"Efcd00ccc\", \"text\": \"\"}, \"elocationid\": {\"address\": \"E1b99e015\", \"text\": \"doi: 10.1080/19336950.2022.2098661\"}, \"epubdate\": {\"address\": \"Ed6422a3f\", \"text\": \"\"}, \"essn\": {\"address\": \"E353d0add\", \"text\": \"1933-6969\"}, \"fulljournalname\": {\"address\": \"Ec96f2f5b\", \"text\": \"Channels (Austin, Tex.)\"}, \"history\": [{\"date\": {\"address\": \"Ed6f8dba3\", \"text\": \"2022/08/09 01:52\"}, \"pubstatus\": {\"address\": \"Ee98f2752\", \"text\": \"entrez\"}}, {\"date\": {\"address\": \"Eb27bad87\", \"text\": \"2022/08/10 06:00\"}, \"pubstatus\": {\"address\": \"E9551eba6\", \"text\": \"pubmed\"}}, {\"date\": {\"address\": \"E82502ea0\", \"text\": \"2022/08/11 06:00\"}, \"pubstatus\": {\"address\": \"Eb4dd023d\", \"text\": \"medline\"}}, {\"date\": {\"address\": \"E4913e348\", \"text\": \"2022/08/08 00:00\"}, \"pubstatus\": {\"address\": \"E3080bbf4\", \"text\": \"pmc-release\"}}], \"issn\": {\"address\": \"Ec4bbfc83\", \"text\": \"1933-6950\"}, \"issue\": {\"address\": \"E5c38dbb9\", \"text\": \"1\"}, \"lang\": [{\"address\": \"Ee6e93099\", \"text\": \"eng\"}], \"lastauthor\": {\"address\": \"Eadba9706\", \"text\": \"Diallinas G\"}, \"locationlabel\": {\"address\": \"E6de99583\", \"text\": \"\"}, \"medium\": {\"address\": \"E6b145e06\", \"text\": \"\"}, \"nlmuniqueid\": {\"address\": \"E500b3b8c\", \"text\": \"101321614\"}, \"pages\": {\"address\": \"Edeb94576\", \"text\": \"148-158\"}, \"pmcrefcount\": 51, \"pubdate\": {\"address\": \"E7ecd6e9c\", \"text\": \"2022 Dec\"}, \"publisherlocation\": {\"address\": \"E4ac8ece9\", \"text\": \"\"}, \"publishername\": {\"address\": \"E95eebc21\", \"text\": \"\"}, \"pubstatus\": {\"address\": \"E923c7da5\", \"text\": \"4\"}, \"pubtype\": [{\"address\": \"Ecd6a73c2\", \"text\": \"Journal Article\"}, {\"address\": \"E161891bf\", \"text\": \"Research Support, Non-U.S. Gov't\"}], \"recordstatus\": {\"address\": \"Eab4b6313\", \"text\": \"PubMed - indexed for MEDLINE\"}, \"references\": [], \"reportnumber\": {\"address\": \"E109ab7c1\", \"text\": \"\"}, \"sortfirstauthor\": {\"address\": \"E001fec88\", \"text\": \"Dionysopoulou M\"}, \"sortpubdate\": {\"address\": \"E52ba9a94\", \"text\": \"2022/12/01 00:00\"}, \"sorttitle\": {\"address\": \"Ef5a3f30d\", \"text\": \"genetic and cellular characterization of mscs like putative channels in the filamentous fungus aspergillus nidulans\"}, \"source\": {\"address\": \"Ee7da51eb\", \"text\": \"Channels (Austin)\"}, \"srccontriblist\": [], \"srcdate\": {\"address\": \"Efe6a2317\", \"text\": \"\"}, \"title\": {\"address\": \"Ec00f8230\", \"text\": \"Genetic and cellular characterization of MscS-like putative channels in the filamentous fungus Aspergillus nidulans.\"}, \"uid\": {\"address\": \"Ec5f64e1b\", \"text\": \"35941834\"}, \"vernaculartitle\": {\"address\": \"E19df99ac\", \"text\": \"\"}, \"volume\": {\"address\": \"Eb9df0c99\", \"text\": \"16\"}}, \"uid\": {\"address\": \"E7a37c76b\", \"text\": \"35941834\"}}], \"instrument_result\": null}, \"LITERATURE\": [{\"abstract\": {\"address\": \"Ed566ee5b\", \"text\": \"The ability to cope with and adapt to changes in the environment is essential for all organisms. Osmotic pressure is a universal threat when environmental changes result in an imbalance of osmolytes inside and outside the cell which causes a deviation from the normal turgor. Cells have developed a potent system to deal with this stress in the form of mechanosensitive ion channels. Channel opening releases solutes from the cell and relieves the stress immediately. In bacteria, these channels directly sense the increased membrane tension caused by the enhanced turgor levels upon hypoosmotic shock. The mechanosensitive channel of small conductance, MscS, from Escherichia coli is one of the most extensively studied examples of mechanically stimulated channels. Different conformational states of this channel were obtained in various detergents and membrane mimetics, highlighting an intimate connection between the channel and its lipidic environment. Associated lipids occupy distinct locations and determine the conformational states of MscS. Not all these features are preserved in the larger MscS-like homologues. Recent structures of homologues from bacteria and plants identify common features and differences. This review discusses the current structural and functional models for MscS opening, as well as the influence of certain membrane characteristics on gating.\"}, \"journal\": {\"address\": \"Edf709fd6\", \"text\": \"International journal of molecular sciences\"}, \"pmid\": {\"address\": \"E2deeac5e\", \"text\": \"36499396\"}, \"title\": {\"address\": \"Ebe2c9b85\", \"text\": \"How Functional Lipids Affect the Structure and Gating of Mechanosensitive MscS-like Channels.\"}, \"year\": {\"address\": \"E055b59e8\", \"text\": \"2022\"}}, {\"abstract\": {\"address\": \"Ef62dd05e\", \"text\": \"The challenge of osmotic stress is something all living organisms must face as a result of environmental dynamics. Over the past three decades, innovative research and cooperation across disciplines have irrefutably established that cells utilize mechanically gated ion channels to release osmolytes and prevent cell lysis during hypoosmotic stress. Early electrophysiological analysis of the inner membrane of Escherichia coli identified the presence of three distinct mechanosensitive activities. The subsequent discoveries of the genes responsible for two of these activities, the mechanosensitive channels of large (MscL) and small (MscS) conductance, led to the identification of two diverse families of mechanosensitive channels. The latter of these two families, the MscS family, consists of members from bacteria, archaea, fungi, and plants. Genetic and electrophysiological analysis of these family members has provided insight into how organisms use mechanosensitive channels for osmotic regulation in response to changing environmental and developmental circumstances. Furthermore, determining the crystal structure of E. coli MscS and several homologues in several conformational states has contributed to our understanding of the gating mechanisms of these channels. Here we summarize our current knowledge of MscS homologues from all three domains of life and address their structure, proposed physiological functions, electrophysiological behaviors, and topological diversity.\"}, \"journal\": {\"address\": \"E33ca3145\", \"text\": \"Biochemistry\"}, \"pmid\": {\"address\": \"E9204c301\", \"text\": \"23947546\"}, \"title\": {\"address\": \"E41559a98\", \"text\": \"MscS-like mechanosensitive channels in plants and microbes.\"}, \"year\": {\"address\": \"E97e5d84c\", \"text\": \"2013\"}}, {\"abstract\": {\"address\": \"E28c436bb\", \"text\": \"The small mechanosensitive channel, MscS, is a part of the turgor-driven solute efflux system that protects bacteria from lysis in the event of osmotic downshift. It has been identified in Escherichia coli as a product of the orphan yggB gene, now called mscS (Levina et al., 1999, EMBO J. 18:1730). Here I show that that the isolated 31-kDa MscS protein is sufficient to form a functional mechanosensitive channel gated directly by tension in the lipid bilayer. MscS-6His complexes purified in the presence of octylglucoside and lipids migrate in a high-resolution gel-filtration column as particles of approximately 200 kDa. Consistent with that, the protein cross-linking patterns predict a hexamer. The channel reconstituted in soybean asolectin liposomes was activated by pressures of 20-60 mm Hg and displayed the same asymmetric I-V curve and slight anionic preference as in situ. At the same time, the single-channel conductance is proportional to the buffer conductivity in a wide range of salt concentrations. The rate of channel activation in response to increasing pressure gradient across the patch was slower than the rate of closure in response to decreasing steps of pressure gradient. Therefore, the open probability curves were recorded with descending series of pressures. Determination of the curvature of patches by video imaging permitted measurements of the channel activity as a function of membrane tension (gamma). Po(gamma) curves had the midpoint at 5.5 +/- 0.1 dyne/cm and gave estimates for the energy of opening DeltaG = 11.4 +/- 0.5 kT, and the transition-related area change DeltaA = 8.4 +/- 0.4 nm(2) when fitted with a two-state Boltzmann model. The correspondence between channel properties in the native and reconstituted systems is discussed.\"}, \"journal\": {\"address\": \"Ee5083bb4\", \"text\": \"Biophysical journal\"}, \"pmid\": {\"address\": \"Ecbba8150\", \"text\": \"12080120\"}, \"title\": {\"address\": \"Ee6ef52f9\", \"text\": \"Purification of the small mechanosensitive channel of Escherichia coli (MscS): the subunit structure, conduction, and gating characteristics in liposomes.\"}, \"year\": {\"address\": \"Ef8d32cab\", \"text\": \"2002\"}}, {\"abstract\": {\"address\": \"Edefb11df\", \"text\": \"While mechanobiological processes employ diverse mechanisms, at their heart are force-induced perturbations in the structure and dynamics of molecules capable of triggering subsequent events. Among the best characterized force-sensing systems are bacterial mechanosensitive channels. These channels reflect an intimate coupling of protein conformation with the mechanics of the surrounding membrane; the membrane serves as an adaptable sensor that responds to an input of applied force and converts it into an output signal, interpreted for the cell by mechanosensitive channels. The cell can exploit this information in a number of ways: ensuring cellular viability in the presence of osmotic stress and perhaps also serving as a signal transducer for membrane tension or other functions. This review focuses on the bacterial mechanosensitive channels of large (MscL) and small (MscS) conductance and their eukaryotic homologs, with an emphasis on the outstanding issues surrounding the function and mechanism of this fascinating class of molecules.\"}, \"journal\": {\"address\": \"E1f97144b\", \"text\": \"Structure (London, England : 1993)\"}, \"pmid\": {\"address\": \"Ed6e5b657\", \"text\": \"22000509\"}, \"title\": {\"address\": \"Ebff023c3\", \"text\": \"Mechanosensitive channels: what can they do and how do they do it?\"}, \"year\": {\"address\": \"E79a09b58\", \"text\": \"2011\"}}], \"atlas_analysis\": null, \"records\": []}"
+      }
+    ],
+    "max_tokens": 1100,
+    "temperature": 0.0
+  },
+  "reader": {
+    "status": "received",
+    "text": "```json\n{\n  \"answers_question\": \"no\",\n  \"attention\": \"The structural characteristics and gating mechanisms of MscS in the context of osmotic stress are described qualitatively in the literature (PMIDs: 36499396, 23947546, 12080120, 22000509), but the specific Atlas record for the MscS gene is missing from the provided source observations.\",\n  \"factual_observation\": \"Literature records state that MscS is a hexameric protein (PMID: 12080120) that forms a functional mechanosensitive channel gated directly by tension in the lipid bilayer. It functions as a turgor-driven solute efflux system to prevent cell lysis during hypoosmotic stress (PMID: 23947546). Experimental measurements for the E. coli MscS channel show a midpoint for the open probability curve at 5.5 +/- 0.1 dyne/cm, an energy of opening DeltaG = 11.4 +/- 0.5 kT, and a transition-related area change DeltaA = 8.4 +/- 0.4 nm(2) (PMID: 12080120). The channel's conformation is intimately connected to its lipidic environment, with associated lipids occupying distinct locations (PMID: 36499396).\",\n  \"speculative_reading\": \"The specific amino acid residues forming the 'gate' or 'sensor' region of the MscS hexamer are the primary determinants of the 5.5 dyne/cm tension threshold; identifying these residues via site-directed mutagenesis and subsequent tension-jump assays would confirm the mechanical sensing site.\",\n  \"next_question\": \"What are the specific amino acid sequences and structural motifs of the MscS protein in Escherichia coli, and do the Atlas records provide any variant effect predictions for these regions?\",\n  \"instrument_gap\": \"\"\n}\n```",
+    "transport": {
+      "case": "saved_mscs",
+      "stage": "reader",
+      "max_tokens": 800,
+      "status": "received",
+      "output_tokens": null
+    }
+  },
+  "coverage": {
+    "status": "received",
+    "text": "```json\n{\n  \"answered\": true,\n  \"missing\": [],\n  \"supports\": [\n    {\n      \"requirement\": \"structural characteristics of MscS\",\n      \"address\": \"Ee5083bb4\",\n      \"quote\": \"the protein cross-linking patterns predict a hexamer.\"\n    },\n    {\n      \"requirement\": \"structural characteristics of MscS\",\n      \"address\": \"Ed566ee5b\",\n      \"quote\": \"Different conformational states of this channel were obtained in various detergents and membrane mimetics, highlighting an intimate connection between the channel and its lipidic environment. Associated lipids occupy distinct locations and determine the conformational states of MscS.\"\n    },\n    {\n      \"requirement\": \"gating mechanisms of MscS\",\n      \"address\": \"Ee5083bb4\",\n      \"quote\": \"the isolated 31-kDa MscS protein is sufficient to form a functional mechanosensitive channel gated directly by tension in the lipid bilayer.\"\n    },\n    {\n      \"requirement\": \"gating mechanisms of MscS\",\n      \"address\": \"Ee5083bb4\",\n      \"quote\": \"Po(gamma) curves had the midpoint at 5.5 +/- 0.1 dyne/cm and gave estimates for the energy of opening DeltaG = 11.4 +/- 0.5 kT, and the transition-related area change DeltaA = 8.4 +/- 0.4 nm(2) when fitted with a two-state Boltzmann model.\"\n    },\n    {\n      \"requirement\": \"context of osmotic stress response\",\n      \"address\": \"Ed566ee5b\",\n      \"quote\": \"Cells have developed a potent system to deal with this stress in the form of mechanosensitive ion channels. Channel opening releases solutes from the cell and relieves the stress immediately. In bacteria, these channels directly sense the increased membrane tension caused by the enhanced turgor levels upon hypoosmotic shock.\"\n    },\n    {\n      \"requirement\": \"context of osmotic stress response\",\n      \"address\": \"Ee5083bb4\",\n      \"quote\": \"The small mechanosensitive channel, MscS, is a part of the turgor-driven solute efflux system that protects bacteria from lysis in the event of osmotic downshift.\"\n    }\n  ]\n}\n```",
+    "transport": {
+      "case": "saved_mscs",
+      "stage": "coverage",
+      "max_tokens": 1100,
+      "status": "received",
+      "output_tokens": null
+    }
+  }
+}
