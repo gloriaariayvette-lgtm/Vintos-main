@@ -307,6 +307,34 @@ def question_entity_context(inquiry, records, *, literature_only=False):
         return any(expected == name or (resolved and len(words.split()) >= 2 and
                    (' ' + words + ' ') in (' ' + normal(name) + ' ')) for name in available)
     matches = [r for r in records if not accessions or r.get('accession') in accessions]
+    # A question that names several targets (a comparison) is established per target, not by one record
+    # carrying every name. 11 October: "SLC26A11 ... compare to ... SLC26A4" was refused whichever way it was
+    # retrieved — one record lacked the other's name, and two records read as "multiple retrieved targets".
+    # The mapping this builds is the explicit per-target mapping that message asks for. Each requested name
+    # must still be established exactly by a record of its own, in the requested taxon; nothing is fuzzy-matched,
+    # and a name no record establishes, or one claimed by more than one record, is still unresolved.
+    requested = symbols | gene_symbols
+    if len(requested) > 1 and records and not accessions and not isoforms:
+        mapping, unestablished, ambiguous = {}, [], []
+        for symbol in sorted(requested):
+            holders = [r for r in matches if symbol in metadata_names(r)[0] | {x.upper() for x in metadata_names(r)[1]}
+                       and (not taxa or str(r.get('taxon_id')) in taxa)
+                       and (not organism_names or organism_names <= metadata_names(r)[2])]
+            if not holders: unestablished.append(symbol)
+            elif len({r.get('accession') for r in holders}) > 1: ambiguous.append(symbol)
+            else: mapping[symbol] = holders[0].get('accession')
+        if unestablished:
+            issues.append('no retrieved record establishes ' + ','.join(unestablished)
+                          + ('; established: ' + ','.join('%s=%s' % kv for kv in sorted(mapping.items())) if mapping else ''))
+        for symbol in ambiguous:
+            issues.append('several retrieved records claim ' + symbol + ': an explicit per-target mapping is required')
+        if ecoli_question and not any(ecoli_member(r) for r in matches):
+            issues.append('E. coli species/strain relationship is unresolved in retained taxonomy')
+        return {'status':'unresolved' if issues else 'consistent','issues':issues,
+                'accessions':sorted(accessions),'symbols':sorted(symbols),'taxa':sorted(taxa),'isoforms':[],
+                'context_current':context_current,'selected_accessions':sorted(set(mapping.values())),
+                'target_mapping':mapping,'question_species':['Escherichia coli'] if ecoli_question else [],
+                'scope':'each named target established by its own retrieved record; full prose scope needs independent assessment'}
     # Unrelated search hits are not the selected target. If no candidate fits,
     # retain the available rows to report the actual unresolved expectations.
     candidates = []

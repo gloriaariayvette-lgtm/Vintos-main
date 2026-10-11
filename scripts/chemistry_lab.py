@@ -1342,6 +1342,9 @@ def _orient(context, lean=None):
         "Choose one direct source for this question, not the whole menu. "
         "Match the requested evidence product to that source: citation metadata is discovery, not a mechanism; "
         "an isolated structure cannot establish a fragment-versus-full-length comparison without both structures. "
+        "If your question names two proteins to compare, ONE query must return both, or the question cannot be "
+        "answered at all: write them together, e.g. uniprot_query '(gene:FIRST OR gene:SECOND) AND organism_id:ID "
+        "AND reviewed:true'. Otherwise ask about one protein only. "
         "Keep such original questions unresolved when the required evidence is unavailable. A narrower question "
         "is separate work, never an answer to the original. "
         "Use only IDs present in sourced context; never invent them. "
@@ -2516,9 +2519,17 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     entity = question_entity_context(inquiry, proteins, literature_only=literature_route)
     if entity['issues']:
         missing = '; '.join(entity['issues'])
+        step = 'Resolve the requested protein name, accession and organism against one source entry.'
+        held = [x for x in (entity.get('target_mapping') or {})]
+        absent = [x for x in entity.get('symbols', []) if x not in held]
+        if absent:   # a comparison whose second target was never retrieved: name it, and keep the question whole
+            step = ('Retrieve %s together with %s in one query, then compare them; this question is unresolved until '
+                    'one retrieval establishes every named target.'
+                    % (' and '.join(absent), ' and '.join('%s (%s)' % (k, v) for k, v in sorted((entity.get('target_mapping') or {}).items()))
+                       or 'the established target'))
         return {'answers_question': 'no: ' + missing, 'missing_evidence': missing,
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
-                'speculative_reading': '', 'next_question': 'Resolve the requested protein name, accession and organism against one source entry.',
+                'speculative_reading': '', 'next_question': step,
                 'entity_context_check': entity}
     if literature_route and not proteins:
         articles = records.get('LITERATURE') or []
