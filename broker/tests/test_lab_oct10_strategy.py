@@ -89,15 +89,18 @@ print('PASS: canonical RT screen, exact citations, explicit scope correction, di
 # original question; bracketed source paths resolve to the same actual strings.
 coverage=json.loads((FIX/'lab_oct10_coverage.json').read_text())
 positive=coverage['checker_responses'][0]
+# Use the complete normalized saved replay input, not the older duplicated raw
+# UniProt fixture whose full prompt correctly exceeds the new context bound.
+coverage_observations=json.loads((FIX/'lab_oct11_input_retained.json').read_text())['observations']
 with patch.object(C,'_ask',side_effect=[json.dumps(positive),json.dumps({'sufficient':True,'missing':[],'rationale':'Offline independent fixture: original question is covered.'})]) as grader:
- result=C._coverage_check(coverage['inquiry'],coverage['evidence'])
+ result=C._coverage_check(coverage['inquiry'],coverage_observations)
  assert result and result['answered'] is True
  assert all(item['path'].startswith('evidence.') for item in result['supports'])
  assert all(item.get('source_citation','').startswith('PMID ') for item in result['supports'])
  assert grader.call_count==2
 invalid=json.loads(json.dumps(positive));invalid['supports'][0]['quote']='An invented statement not present in the paper.'
 with patch.object(C,'_ask',return_value=json.dumps(invalid)):
- assert C._coverage_check(coverage['inquiry'],coverage['evidence']) is None
+ assert C._coverage_check(coverage['inquiry'],coverage_observations) is None
 # Coordinate contacts come from actual deposited atoms, with explicit measurement limits.
 structure=replays[2]['after']['additional_source']['receipt']['records'][0]
 assert structure['geometry']['inter_chain_contacts'][0]['ca_pair_count']==98

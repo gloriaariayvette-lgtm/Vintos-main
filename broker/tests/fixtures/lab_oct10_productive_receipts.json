@@ -1,0 +1,1360 @@
+{
+  "casr": {
+    "line": 28962,
+    "receipt": {
+      "literature_coverage": "not_assessed",
+      "metadata": {
+        "coverage": "bounded_first_page"
+      },
+      "novelty": "not_established",
+      "query": {
+        "executed_query": "protein_name:\"calcium sensing receptor\" AND reviewed:true AND taxonomy_id:9606",
+        "requested_query": "protein_name:\"calcium sensing receptor\" AND reviewed:true AND taxonomy_id:9606"
+      },
+      "receipt_id": "9260c3b7b12ef2598c0ca65220d3a96caaf0ca3ccbe8d0d5952d5adc920a258f",
+      "records": [
+        {
+          "comments": [
+            {
+              "commentType": "FUNCTION",
+              "texts": [
+                {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000250",
+                      "id": "P48442",
+                      "source": "UniProtKB"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000250",
+                      "id": "Q9QY96",
+                      "source": "UniProtKB"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "17555508",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "19789209",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "21566075",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "22114145",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "22789683",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "23966241",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "25104082",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "25292184",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "25766501",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "26386835",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "27386547",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "27434672",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "32817431",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "32843625",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "33603117",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "34194040",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "34467854",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "38632411",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "7759551",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "8636323",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "8702647",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000269",
+                      "id": "8878438",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "G protein-coupled receptor that senses changes in the extracellular concentration of calcium ions and plays a key role in maintaining calcium homeostasis (PubMed:17555508, PubMed:19789209, PubMed:21566075, PubMed:22114145, PubMed:22789683, PubMed:23966241, PubMed:25104082, PubMed:25292184, PubMed:25766501, PubMed:26386835, PubMed:32817431, PubMed:33603117, PubMed:34194040, PubMed:34467854, PubMed:7759551, PubMed:8636323, PubMed:8702647, PubMed:8878438). Senses fluctuations in the circulating calcium concentration: activated by elevated circulating calcium, leading to decreased parathyroid hormone (PTH) secretion in parathyroid glands (By similarity). In kidneys, acts as a key regulator of renal tubular calcium resorption (By similarity). Ligand binding causes a conformation change that triggers signaling via guanine nucleotide-binding proteins (G proteins) and modulates the activity of downstream effectors (PubMed:38632411). CASR is coupled with different G(q)/G(11), G(i)/G(o)- or G(s)-classes of G proteins depending on the context (PubMed:38632411). In the parathyroid and kidney, CASR signals through G(q)/G(11) and G(i)/G(o) G proteins: G(q)/G(11) coupling activates phospholipase C-beta, releasing diacylglycerol (DAG) and inositol 1,4,5-trisphosphate (IP3) second messengers, while G(i)/G(o) coupling mediates inhibition of adenylate cyclase activity (PubMed:38632411, PubMed:7759551). The G protein-coupled receptor activity is activated by a co-agonist mechanism: aromatic amino acids, such as Trp or Phe, act concertedly with divalent cations, such as calcium or magnesium, to achieve full receptor activation (PubMed:27386547, PubMed:27434672, PubMed:32817431, PubMed:33603117, PubMed:34194040). Acts as an activator of the NLRP3 inflammasome via G(i)/G(o)-mediated signaling: down-regulation of cyclic AMP (cAMP) relieving NLRP3 inhibition by cAMP (PubMed:32843625). Acts as a regulator of proton-sensing receptor GPR68 in a seesaw manner: CASR-mediated signaling inhibits GPR68 signaling in response to extracellular calcium, while GPR68 inhibits CASR in presence of extracellular protons (By similarity)"
+                }
+              ]
+            }
+          ],
+          "entryType": "UniProtKB reviewed (Swiss-Prot)",
+          "extraAttributes": {
+            "uniParcId": "UPI000013E30B"
+          },
+          "features": [],
+          "genes": [
+            {
+              "geneName": {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000303",
+                    "id": "16740594",
+                    "source": "PubMed"
+                  },
+                  {
+                    "evidenceCode": "ECO:0000312",
+                    "id": "HGNC:1514",
+                    "source": "HGNC"
+                  }
+                ],
+                "value": "CASR"
+              },
+              "synonyms": [
+                {
+                  "value": "GPRC2A"
+                },
+                {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "8698326",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "PCAR1"
+                }
+              ]
+            }
+          ],
+          "organism": {
+            "commonName": "Human",
+            "lineage": [
+              "Eukaryota",
+              "Metazoa",
+              "Chordata",
+              "Craniata",
+              "Vertebrata",
+              "Euteleostomi",
+              "Mammalia",
+              "Eutheria",
+              "Euarchontoglires",
+              "Primates",
+              "Haplorrhini",
+              "Catarrhini",
+              "Hominidae",
+              "Homo"
+            ],
+            "scientificName": "Homo sapiens",
+            "taxonId": 9606
+          },
+          "primaryAccession": "P41180",
+          "proteinDescription": {
+            "alternativeNames": [
+              {
+                "fullName": {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "8698326",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "Parathyroid cell calcium-sensing receptor 1"
+                },
+                "shortNames": [
+                  {
+                    "evidences": [
+                      {
+                        "evidenceCode": "ECO:0000303",
+                        "id": "8698326",
+                        "source": "PubMed"
+                      }
+                    ],
+                    "value": "PCaR1"
+                  }
+                ]
+              }
+            ],
+            "flag": "Precursor",
+            "recommendedName": {
+              "fullName": {
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000305"
+                  }
+                ],
+                "value": "Extracellular calcium-sensing receptor"
+              },
+              "shortNames": [
+                {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "7759551",
+                      "source": "PubMed"
+                    },
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "8813042",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "CaR"
+                },
+                {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "16740594",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "CaSR"
+                },
+                {
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000303",
+                      "id": "27386547",
+                      "source": "PubMed"
+                    }
+                  ],
+                  "value": "hCasR"
+                }
+              ]
+            }
+          },
+          "sequence": {
+            "crc64": "D60C57C6C743FC06",
+            "length": 1078,
+            "md5": "ED56C66BBDE5F484A728318575909D57",
+            "molWeight": 120675,
+            "value": "MAFYSCCWVLLALTWHTSAYGPDQRAQKKGDIILGGLFPIHFGVAAKDQDLKSRPESVECIRYNFRGFRWLQAMIFAIEEINSSPALLPNLTLGYRIFDTCNTVSKALEATLSFVAQNKIDSLNLDEFCNCSEHIPSTIAVVGATGSGVSTAVANLLGLFYIPQVSYASSSRLLSNKNQFKSFLRTIPNDEHQATAMADIIEYFRWNWVGTIAADDDYGRPGIEKFREEAEERDICIDFSELISQYSDEEEIQHVVEVIQNSTAKVIVVFSSGPDLEPLIKEIVRRNITGKIWLASEAWASSSLIAMPQYFHVVGGTIGFALKAGQIPGFREFLKKVHPRKSVHNGFAKEFWEETFNCHLQEGAKGPLPVDTFLRGHEESGDRFSNSSTAFRPLCTGDENISSVETPYIDYTHLRISYNVYLAVYSIAHALQDIYTCLPGRGLFTNGSCADIKKVEAWQVLKHLRHLNFTNNMGEQVTFDECGDLVGNYSIINWHLSPEDGSIVFKEVGYYNVYAKKGERLFINEEKILWSGFSREVPFSNCSRDCLAGTRKGIIEGEPTCCFECVECPDGEYSDETDASACNKCPDDFWSNENHTSCIAKEIEFLSWTEPFGIALTLFAVLGIFLTAFVLGVFIKFRNTPIVKATNRELSYLLLFSLLCCFSSSLFFIGEPQDWTCRLRQPAFGISFVLCISCILVKTNRVLLVFEAKIPTSFHRKWWGLNLQFLLVFLCTFMQIVICVIWLYTAPPSSYRNQELEDEIIFITCHEGSLMALGFLIGYTCLLAAICFFFAFKSRKLPENFNEAKFITFSMLIFFIVWISFIPAYASTYGKFVSAVEVIAILAASFGLLACIFFNKIYIILFKPSRNTIEEVRCSTAAHAFKVAARATLRRSNVSRKRSSSLGGSTGSTPSSSISSKSNSEDPFPQPERQKQQQPLALTQQEQQQQPLTLPQQQRSQQQPRCKQKVIFGSGTVTFSLSFDEPQKNAMAHRNSTHQNSLEAQKSSDTLTRHEPLLPLQCGETDLDLTVQETGLQGPVGGDQRPEVEDPEELSPALVVSSSQSFVISGGGSTVTENVVNS"
+          },
+          "uniProtKBCrossReferences": [
+            {
+              "database": "PDB",
+              "id": "5FBH",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "X-ray"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.70 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-541"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "5FBK",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "X-ray"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.10 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-541"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "5K5S",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "X-ray"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.60 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-607"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "5K5T",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "X-ray"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.10 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A=20-607"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7DTT",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-1078"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7DTU",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "4.40 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-1078"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7DTV",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.50 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-1078"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7DTW",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "4.50 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-1078"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7E6T",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.00 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-870"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7E6U",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "6.00 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/C=20-870"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7M3E",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.20 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7M3F",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7M3G",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.50 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7M3J",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "4.10 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7SIL",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.70 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=1-870"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7SIM",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.70 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=1-870"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "7SIN",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "5.90 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=1-870"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8SZF",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8SZG",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.60 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8SZH",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.10 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8SZI",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.50 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8WPG",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.70 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-892"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "8WPU",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.10 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=20-907"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9ASB",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.40 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "Q/R=1-903"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9AVG",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.60 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "Q/R=1-903"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9AVL",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "Q/R=1-903"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9AXF",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.50 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "Q/R=1-903"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9AYF",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.60 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "Q/R=1-903"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9C1P",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9C2F",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "2.80 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A/B=19-894"
+                }
+              ]
+            },
+            {
+              "database": "PDB",
+              "id": "9J7I",
+              "properties": [
+                {
+                  "key": "Method",
+                  "value": "EM"
+                },
+                {
+                  "key": "Resolution",
+                  "value": "3.55 A"
+                },
+                {
+                  "key": "Chains",
+                  "value": "A=19-894"
+                }
+              ]
+            },
+            {
+              "database": "ChEMBL",
+              "id": "CHEMBL1878",
+              "properties": [
+                {
+                  "key": "Description",
+                  "value": "-"
+                }
+              ]
+            }
+          ],
+          "uniProtkbId": "CASR_HUMAN"
+        }
+      ],
+      "response_sha256": "39e689c26ba550699434f47d016904d1b187610659a82e08b1e49478078a204b",
+      "retrieved_at": "2026-10-10T04:08:19.809630+00:00",
+      "source": "uniprot",
+      "truth_status": "source_observation_not_validation"
+    }
+  },
+  "f430": {
+    "line": 29739,
+    "receipt": {
+      "literature_coverage": "not_assessed",
+      "metadata": {
+        "coverage": "bounded_first_page",
+        "database": "pubmed",
+        "service": "NCBI_EUtilities",
+        "total_count": "6"
+      },
+      "novelty": "not_established",
+      "query": {
+        "limit": 4,
+        "operation": "literature",
+        "source": "ncbi",
+        "taxon_id": null,
+        "term": "methanogenic methyl-coenzyme M reductase Mcr structure nickel coordination F430"
+      },
+      "receipt_id": "f29280b80d726e1d5f2fcb64913c9b0b35f7280e9f2e65c69a78831885891008",
+      "records": [
+        {
+          "summary": {
+            "articleids": [
+              {
+                "idtype": "pubmed",
+                "idtypen": 1,
+                "value": "41086358"
+              },
+              {
+                "idtype": "doi",
+                "idtypen": 3,
+                "value": "10.1021/acs.biochem.5c00494"
+              }
+            ],
+            "attributes": [
+              "Has Abstract"
+            ],
+            "authors": [
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Shelton EB"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Yavari S"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Chou CW"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Shao N"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Wang S"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Duin EC"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Whitman WB"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Mansoorabadi SO"
+              }
+            ],
+            "availablefromurl": "",
+            "bookname": "",
+            "booktitle": "",
+            "chapter": "",
+            "doccontriblist": [],
+            "docdate": "",
+            "doctype": "citation",
+            "edition": "",
+            "elocationid": "doi: 10.1021/acs.biochem.5c00494",
+            "epubdate": "2025 Oct 14",
+            "essn": "1520-4995",
+            "fulljournalname": "Biochemistry",
+            "history": [
+              {
+                "date": "2025/11/04 06:29",
+                "pubstatus": "medline"
+              },
+              {
+                "date": "2025/10/14 18:29",
+                "pubstatus": "pubmed"
+              },
+              {
+                "date": "2025/10/14 15:32",
+                "pubstatus": "entrez"
+              }
+            ],
+            "issn": "0006-2960",
+            "issue": "21",
+            "lang": [
+              "eng"
+            ],
+            "lastauthor": "Mansoorabadi SO",
+            "locationlabel": "",
+            "medium": "",
+            "nlmuniqueid": "0370623",
+            "pages": "4424-4436",
+            "pmcrefcount": "",
+            "pubdate": "2025 Nov 4",
+            "publisherlocation": "",
+            "publishername": "",
+            "pubstatus": "256",
+            "pubtype": [
+              "Journal Article",
+              "Research Support, N.I.H., Extramural",
+              "Research Support, U.S. Gov't, Non-P.H.S.",
+              "Research Support, Non-U.S. Gov't"
+            ],
+            "recordstatus": "PubMed - indexed for MEDLINE",
+            "references": [],
+            "reportnumber": "",
+            "sortfirstauthor": "Shelton EB",
+            "sortpubdate": "2025/11/04 00:00",
+            "sorttitle": "expanded molecular model for the activation of methyl coenzyme m reductase",
+            "source": "Biochemistry",
+            "srccontriblist": [],
+            "srcdate": "",
+            "title": "An Expanded Molecular Model for the Activation of Methyl-Coenzyme M Reductase.",
+            "uid": "41086358",
+            "vernaculartitle": "",
+            "volume": "64"
+          },
+          "uid": "41086358"
+        },
+        {
+          "summary": {
+            "articleids": [
+              {
+                "idtype": "pubmed",
+                "idtypen": 1,
+                "value": "20014831"
+              },
+              {
+                "idtype": "doi",
+                "idtypen": 3,
+                "value": "10.1021/ja906367h"
+              }
+            ],
+            "attributes": [
+              "Has Abstract"
+            ],
+            "authors": [
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Ebner S"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Jaun B"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Goenrich M"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Thauer RK"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Harmer J"
+              }
+            ],
+            "availablefromurl": "",
+            "bookname": "",
+            "booktitle": "",
+            "chapter": "",
+            "doccontriblist": [],
+            "docdate": "",
+            "doctype": "citation",
+            "edition": "",
+            "elocationid": "doi: 10.1021/ja906367h",
+            "epubdate": "",
+            "essn": "1520-5126",
+            "fulljournalname": "Journal of the American Chemical Society",
+            "history": [
+              {
+                "date": "2009/12/18 06:00",
+                "pubstatus": "entrez"
+              },
+              {
+                "date": "2009/12/18 06:00",
+                "pubstatus": "pubmed"
+              },
+              {
+                "date": "2010/03/27 06:00",
+                "pubstatus": "medline"
+              }
+            ],
+            "issn": "0002-7863",
+            "issue": "2",
+            "lang": [
+              "eng"
+            ],
+            "lastauthor": "Harmer J",
+            "locationlabel": "",
+            "medium": "",
+            "nlmuniqueid": "7503056",
+            "pages": "567-75",
+            "pmcrefcount": "",
+            "pubdate": "2010 Jan 20",
+            "publisherlocation": "",
+            "publishername": "",
+            "pubstatus": "4",
+            "pubtype": [
+              "Journal Article",
+              "Research Support, Non-U.S. Gov't"
+            ],
+            "recordstatus": "PubMed - indexed for MEDLINE",
+            "references": [],
+            "reportnumber": "",
+            "sortfirstauthor": "Ebner S",
+            "sortpubdate": "2010/01/20 00:00",
+            "sorttitle": "binding of coenzyme b induces a major conformational change in the active site of methyl coenzyme m reductase",
+            "source": "J Am Chem Soc",
+            "srccontriblist": [],
+            "srcdate": "",
+            "title": "Binding of coenzyme B induces a major conformational change in the active site of methyl-coenzyme M reductase.",
+            "uid": "20014831",
+            "vernaculartitle": "",
+            "volume": "132"
+          },
+          "uid": "20014831"
+        },
+        {
+          "summary": {
+            "articleids": [
+              {
+                "idtype": "pubmed",
+                "idtypen": 1,
+                "value": "19243132"
+              },
+              {
+                "idtype": "pmc",
+                "idtypen": 8,
+                "value": "PMC2667316"
+              },
+              {
+                "idtype": "pmcid",
+                "idtypen": 5,
+                "value": "pmc-id: PMC2667316;"
+              },
+              {
+                "idtype": "doi",
+                "idtypen": 3,
+                "value": "10.1021/bi900087w"
+              }
+            ],
+            "attributes": [
+              "Has Abstract"
+            ],
+            "authors": [
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Sarangi R"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Dey M"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Ragsdale SW"
+              }
+            ],
+            "availablefromurl": "",
+            "bookname": "",
+            "booktitle": "",
+            "chapter": "",
+            "doccontriblist": [],
+            "docdate": "",
+            "doctype": "citation",
+            "edition": "",
+            "elocationid": "doi: 10.1021/bi900087w",
+            "epubdate": "",
+            "essn": "1520-4995",
+            "fulljournalname": "Biochemistry",
+            "history": [
+              {
+                "date": "2009/02/27 09:00",
+                "pubstatus": "entrez"
+              },
+              {
+                "date": "2009/02/27 09:00",
+                "pubstatus": "pubmed"
+              },
+              {
+                "date": "2009/05/08 09:00",
+                "pubstatus": "medline"
+              }
+            ],
+            "issn": "0006-2960",
+            "issue": "14",
+            "lang": [
+              "eng"
+            ],
+            "lastauthor": "Ragsdale SW",
+            "locationlabel": "",
+            "medium": "",
+            "nlmuniqueid": "0370623",
+            "pages": "3146-56",
+            "pmcrefcount": 80,
+            "pubdate": "2009 Apr 14",
+            "publisherlocation": "",
+            "publishername": "",
+            "pubstatus": "4",
+            "pubtype": [
+              "Journal Article",
+              "Research Support, N.I.H., Extramural",
+              "Research Support, U.S. Gov't, Non-P.H.S."
+            ],
+            "recordstatus": "PubMed - indexed for MEDLINE",
+            "references": [],
+            "reportnumber": "",
+            "sortfirstauthor": "Sarangi R",
+            "sortpubdate": "2009/04/14 00:00",
+            "sorttitle": "geometric and electronic structures of the ni i and methyl ni iii intermediates of methyl coenzyme m reductase",
+            "source": "Biochemistry",
+            "srccontriblist": [],
+            "srcdate": "",
+            "title": "Geometric and electronic structures of the Ni(I) and methyl-Ni(III) intermediates of methyl-coenzyme M reductase.",
+            "uid": "19243132",
+            "vernaculartitle": "",
+            "volume": "48"
+          },
+          "uid": "19243132"
+        },
+        {
+          "summary": {
+            "articleids": [
+              {
+                "idtype": "pubmed",
+                "idtypen": 1,
+                "value": "18712421"
+              },
+              {
+                "idtype": "doi",
+                "idtypen": 3,
+                "value": "10.1007/s00775-008-0417-0"
+              }
+            ],
+            "attributes": [
+              "Has Abstract"
+            ],
+            "authors": [
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Hinderberger D"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Ebner S"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Mayr S"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Jaun B"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Reiher M"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Goenrich M"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Thauer RK"
+              },
+              {
+                "authtype": "Author",
+                "clusterid": "",
+                "name": "Harmer J"
+              }
+            ],
+            "availablefromurl": "",
+            "bookname": "",
+            "booktitle": "",
+            "chapter": "",
+            "doccontriblist": [],
+            "docdate": "",
+            "doctype": "citation",
+            "edition": "",
+            "elocationid": "doi: 10.1007/s00775-008-0417-0",
+            "epubdate": "2008 Aug 19",
+            "essn": "",
+            "fulljournalname": "Journal of biological inorganic chemistry : JBIC : a publication of the Society of Biological Inorganic Chemistry",
+            "history": [
+              {
+                "date": "2008/04/16 00:00",
+                "pubstatus": "received"
+              },
+              {
+                "date": "2008/07/27 00:00",
+                "pubstatus": "accepted"
+              },
+              {
+                "date": "2008/08/21 09:00",
+                "pubstatus": "pubmed"
+              },
+              {
+                "date": "2009/03/21 09:00",
+                "pubstatus": "medline"
+              },
+              {
+                "date": "2008/08/21 09:00",
+                "pubstatus": "entrez"
+              }
+            ],
+            "issn": "0949-8257",
+            "issue": "8",
+            "lang": [
+              "eng"
+            ],
+            "lastauthor": "Harmer J",
+            "locationlabel": "",
+            "medium": "",
+            "nlmuniqueid": "9616326",
+            "pages": "1275-89",
+            "pmcrefcount": "",
+            "pubdate": "2008 Nov",
+            "publisherlocation": "",
+            "publishername": "",
+            "pubstatus": "256",
+            "pubtype": [
+              "Journal Article",
+              "Research Support, Non-U.S. Gov't"
+            ],
+            "recordstatus": "PubMed - indexed for MEDLINE",
+            "references": [],
+            "reportnumber": "",
+            "sortfirstauthor": "Hinderberger D",
+            "sortpubdate": "2008/11/01 00:00",
+            "sorttitle": "coordination and binding geometry of methyl coenzyme m in the red1m state of methyl coenzyme m reductase",
+            "source": "J Biol Inorg Chem",
+            "srccontriblist": [],
+            "srcdate": "",
+            "title": "Coordination and binding geometry of methyl-coenzyme M in the red1m state of methyl-coenzyme M reductase.",
+            "uid": "18712421",
+            "vernaculartitle": "",
+            "volume": "13"
+          },
+          "uid": "18712421"
+        }
+      ],
+      "response_sha256": "e941b1d87dba91562c167b70367cdf2be5455568f6ecf580a6b9aebdb14ba6d5",
+      "retrieved_at": "2026-10-10T23:09:09.277364+00:00",
+      "source": "ncbi",
+      "truth_status": "source_observation_not_validation"
+    }
+  }
+}

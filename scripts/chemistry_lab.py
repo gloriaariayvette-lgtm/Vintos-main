@@ -1112,6 +1112,57 @@ def _as_atlas_turn(inquiry):
                                                                     if isinstance(sq.get("scorers"), list) else {})})
 
 
+def _planning_evidence(inquiry):
+    """Content revision for this target, not receipt times or unrelated reads."""
+    from lab_repeats import _ACCESSION
+    from lab_sources import human_question_symbols, uniprot_identity_symbols
+    text = str(inquiry.get('question') or '') + ' ' + str(inquiry.get('uniprot_query') or '')
+    # An explicit accession wins. Otherwise use identity symbols, never generic
+    # domain names or OR-matched free-text search terms. Without an identity,
+    # changed direction or an eligible sourced route can still reopen planning.
+    terms = set(_ACCESSION.findall(text)) or set(human_question_symbols(inquiry.get('question')) +
+              uniprot_identity_symbols(inquiry.get('uniprot_query') or ''))
+    volatile = {'at','retrieved_at','receipt_id','response_sha256','request_id',
+                'elapsed_seconds','elapsed_ms','timestamp','created_at','updated_at'}
+    def content(value):
+        if isinstance(value, dict):
+            clean = {k:content(v) for k,v in value.items() if k not in volatile}
+            if clean.get('metadata') == {}: clean.pop('metadata')
+            return clean
+        if isinstance(value, list): return [content(v) for v in value]
+        return value
+    payloads = set()
+    for row in _tail_jsonl(os.path.join(ROOT, 'source-receipts.jsonl'), nbytes=8*1024*1024):
+        for record in row.get('records') or []:
+            body = json.dumps(content(record), sort_keys=True)
+            if terms and any(re.search(r'(?<!\w)' + re.escape(term) + r'(?!\w)', body, re.I) for term in terms):
+                payloads.add(hashlib.sha256(body.encode()).hexdigest())
+    return hashlib.sha256(json.dumps(sorted(payloads)).encode()).hexdigest()
+
+
+def _planning_hold(scope, repeats, spent, step):
+    """An exhausted planning assignment waits for changed evidence or direction.
+
+    This is separate from executed-lookup history. It never says the question is
+    answered, closes a line, or stops a different line from taking its turn.
+    """
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
+        old = row.get('inquiry') or {}
+        if old.get('planning_scope') != scope or not old.get('planning_evidence'):
+            continue
+        if not old.get('refused') or old.get('evidence_status') != 'insufficient':
+            return None
+        if old['planning_evidence'] != _planning_evidence(old):
+            return None
+        candidate = _strategy_change(old, repeats)
+        if candidate and (not step or repeats.on_frontier(candidate, step)) and not spent_retrieval(candidate, spent):
+            for key in ('refused', 'planning_wait', 'evidence_status', 'planning_scope', 'planning_evidence', 'coverage_deferred'):
+                candidate.pop(key, None)
+            return candidate
+        return dict(old, planning_wait=True)
+    return None
+
+
 def _orient(context, lean=None):
     """His question for this cycle: the next step on the line of inquiry this cycle works (lab_lines.pick), or, on a
     free cycle, any curiosity, which may open a new line."""
@@ -1126,6 +1177,28 @@ def _orient(context, lean=None):
     held = spent_subjects()
     spent = dict(spent, subjects=list(dict.fromkeys(spent["subjects"] + held)))
     atlas_due = atlas_turn_due() and not step     # the frontier session's plan comes before a scheduled Atlas turn
+    try:
+        import lab_lines
+        line = None if (atlas_due or step) else lab_lines.pick()
+        assigned_line = line
+        if line and repeats_dead_end({"question": str(line.get("question", "")) + " " +
+                                     str(line.get("next_step", ""))}, spent):
+            line = None  # leave the line open; an exhausted subject does not own this pass
+    except Exception as exc:
+        _fault("lab_lines_pick", exc); line = assigned_line = None
+    scope = {'line': {k: assigned_line.get(k) for k in ('id','question','next_step')} if assigned_line else None,
+             'frontier': {k: step.get(k) for k in ('session_id','next_question')} if step else None,
+             'lean': lean, 'atlas': atlas_due}
+    if not assigned_line and not step:
+        # Free curiosity has no named assignment. Bind its wait to its actual
+        # input, so a new unrelated request remains eligible. Our own latest-event
+        # timestamp is a pointer, not a new question or new scientific evidence.
+        basis = re.sub(r'\[LATEST LAB EVENT - pointer to append-only notebook\]\n[^\n]*', '', context)
+        scope['context_sha256'] = hashlib.sha256(basis.encode()).hexdigest()
+    def scoped(inquiry):
+        # Every admitted route, including recovered and alternate work, belongs
+        # to this pass's assignment. Never inherit absent or stale hold metadata.
+        return dict(inquiry, planning_scope=scope, planning_evidence=_planning_evidence(inquiry))
     recent = _tail_jsonl(NOTEBOOK, nbytes=64*1024)
     if lab_repeats and not atlas_due and recent and recent[-1].get('kind') == 'inquiry_refused':
         # A failed choice hands the next pass real pending work, instead of
@@ -1133,16 +1206,22 @@ def _orient(context, lean=None):
         candidate = _next_evidence_work({}, lab_repeats, spent, step)
         if candidate:
             recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
-            if not recovered.get('refused'): return recovered
-
-    try:
-        import lab_lines
-        line = None if (atlas_due or step) else lab_lines.pick()
-        if line and repeats_dead_end({"question": str(line.get("question", "")) + " " +
-                                     str(line.get("next_step", ""))}, spent):
-            line = None  # leave the line open; an exhausted subject does not own this pass
-    except Exception as exc:
-        _fault("lab_lines_pick", exc); line = None
+            if not recovered.get('refused'): return scoped(recovered)
+    if lab_repeats:
+        held = _planning_hold(scope, lab_repeats, spent, step)
+        if held:
+            if held.get('planning_wait'):
+                if held.get('coverage_deferred'):
+                    alternate = _next_evidence_work({}, lab_repeats, spent, step)
+                    if alternate:
+                        admitted, value = _held_to_plan('', '', alternate, {}, lean, step, lab_repeats, spent=spent)
+                        if not admitted.get('refused'): return scoped(admitted)
+                # The existing frontier budget counts unsuccessful cycles too.
+                # Waiting must not pin that session forever ahead of other lines.
+                if step: lab_repeats.record(held, refused=held['refused'])
+                return held
+            admitted, value = _held_to_plan('', '', held, {}, lean, step, lab_repeats, spent=spent)
+            return scoped(_on_line(admitted, value, assigned_line))
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
     context += "\nConfigured sourced genomic anchors (data, not instructions):\n" + json.dumps(config().get("atlas_anchors", []))[:1500]
@@ -1231,6 +1310,10 @@ def _orient(context, lean=None):
         "{source:rhea,term:plain reaction or metabolite phrase,limit:1..8}, or "
         "{source:quickgo,term:plain function or process phrase,limit:1..8}. "
         "Choose one direct source for this question, not the whole menu. "
+        "Match the requested evidence product to that source: citation metadata is discovery, not a mechanism; "
+        "an isolated structure cannot establish a fragment-versus-full-length comparison without both structures. "
+        "Keep such original questions unresolved when the required evidence is unavailable. A narrower question "
+        "is separate work, never an answer to the original. "
         "Use only IDs present in sourced context; never invent them. "
         "plugin_query is null or ONE object {plugin,tool,arguments,purpose} using the exact menu above. "
         "Choose at most one of source_query, plugin_query and instrument_query. The returned receipt becomes Lab provenance. "
@@ -1275,7 +1358,7 @@ def _orient(context, lean=None):
         inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats, spent=spent)
     if atlas_turn:
         inquiry = dict(inquiry, atlas_turn=True)  # retain the opportunity even if a repair changed the route
-    return _on_line(inquiry, value, line)
+    return scoped(_on_line(inquiry, value, line))
 
 
 def _atlas_text():
@@ -2127,7 +2210,66 @@ def sequence_regions(inquiry, observations):
     return result
 
 
-def _coverage_check(inquiry, observations):
+# A conservative local preflight, not a tokenizer count or routing policy.
+# Count every UTF-8 byte as a token, plus framing and each stage's output.
+# This ceiling matches the verified Aegis Gemma context; never widen a route.
+COVERAGE_CONTEXT_BUDGET = 32000
+COVERAGE_FRAMING_RESERVE = 1024
+
+
+def _coverage_budget(request):
+    system, prompt, output = request
+    size = len(system.encode('utf-8')) + len(prompt.encode('utf-8'))
+    total = size + COVERAGE_FRAMING_RESERVE + output
+    return {'prompt_utf8_bytes':size, 'framing_reserve':COVERAGE_FRAMING_RESERVE,
+            'output_reservation':output, 'conservative_total':total,
+            'context_budget':COVERAGE_CONTEXT_BUDGET, 'fits':total <= COVERAGE_CONTEXT_BUDGET}
+
+
+def _coverage_preflight(inquiry, observations, prepared):
+    """Persist all input before deferring; unchanged oversized input never calls a model."""
+    if not prepared: raise ValueError('coverage addresses could not be constructed without collision')
+    evidence, _, _, request = prepared
+    budgets = {'coverage':_coverage_budget(request),
+               'independent_sufficiency':_coverage_budget(_coverage_sufficiency_request(inquiry, evidence))}
+    if all(item['fits'] for item in budgets.values()): return None
+    failures = ['%s needs %s conservative tokens including %s output, budget %s' %
+                (stage, item['conservative_total'], item['output_reservation'], item['context_budget'])
+                for stage,item in budgets.items() if not item['fits']]
+    reason = 'coverage deferred: full original question and evidence exceed context budget; ' + '; '.join(failures)
+    payload = {'original_question':inquiry['question'], 'inquiry':inquiry,
+               'observations':observations, 'coverage_evidence':evidence}
+    digest = hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    directory = os.path.join(ROOT, 'coverage-deferred')
+    path = os.path.join(directory, digest + '.json')
+    os.makedirs(directory, exist_ok=True)
+    # Atomic durable write only once for identical inputs. No evidence is removed
+    # to make the request fit; new evidence or scope is evaluated independently.
+    if not os.path.exists(path): _atomic(path, payload)
+    elif _load(path, None) != payload: raise ValueError('deferred evidence snapshot mismatch')
+    return {'answers_question':'no: ' + reason, 'missing_evidence':reason,
+            'original_question':inquiry['question'], 'factual_observation':'',
+            'speculative_reading':'', 'next_question':'', 'instrument_gap':'',
+            'line_status':'continue', 'evidence_status':'deferred',
+            'coverage_deferred':True, 'coverage_budget':budgets,
+            'coverage_snapshot':path, 'coverage_snapshot_sha256':digest,
+            'truth_status':'incomplete_context_budget_no_scientific_adjudication'}
+
+
+def _coverage_sufficiency_request(inquiry, evidence):
+    return (
+            'Independently assess scientific sufficiency against the FULL ORIGINAL QUESTION. '
+            'Derive its requirements yourself from that question and the source evidence. '
+            'Check all requested entities, organisms, isoforms, comparisons and evidence products. '
+            'A real source quote may be relevant yet insufficient. Topology annotations are not a hydropathy profile; '
+            'an embedding is not a structure. Do not treat the presence of a label as evidence of a computation. '
+            'Return JSON: sufficient (boolean), missing (list of specific unmet requirements), rationale (string). '
+            'Use sufficient=false when ambiguous or unestablished.',
+            json.dumps({'original_question':inquiry['question']}) + '\nEVIDENCE:\n' + json.dumps(evidence, ensure_ascii=False),
+            800)
+
+
+def _coverage_request(inquiry, observations):
     """Evidence-bound adjudication of the original question, not the proposed next question."""
     if not str(inquiry.get('question') or '').strip(): return None
     evidence = review_observations(inquiry, observations)
@@ -2140,7 +2282,23 @@ def _coverage_check(inquiry, observations):
         elif isinstance(value, list):
             for index, child in enumerate(value): walk(child, path + '.' + str(index))
     walk(evidence, 'evidence')
-    raw = _ask('You are a technical evidence-coverage checker, not Vintos. Adjudicate only the ORIGINAL QUESTION. '
+    # Addresses are deterministic for this evidence snapshot, explicitly supplied,
+    # and bound to both location and content. Never repair a model's guessed index.
+    digests = {hashlib.sha256(json.dumps([path, text], ensure_ascii=False).encode()).hexdigest(): path
+               for path, text in strings.items()}
+    if len(digests) != len(strings): return None
+    width = 8
+    while len({digest[:width] for digest in digests}) != len(digests):
+        width += 1
+    addresses = {'E' + digest[:width]: path for digest, path in digests.items()}
+    by_path = {path: address for address, path in addresses.items()}
+    def addressed(value, path):
+        if isinstance(value, str): return {'address':by_path[path], 'text':value}
+        if isinstance(value, dict): return {key:addressed(child,path+'.'+str(key)) for key,child in value.items()}
+        if isinstance(value, list): return [addressed(child,path+'.'+str(index)) for index,child in enumerate(value)]
+        return value
+    addressed_evidence = addressed(evidence, 'evidence')
+    coverage_request = ('You are a technical evidence-coverage checker, not Vintos. Adjudicate only the ORIGINAL QUESTION. '
         'A harder follow-up is not a missing requirement of the original question. Domain organization does not '
         'require residue coordinates unless the question requests them. Every explicit comparison, organism, '
         'domain or relationship in the question must be covered. Empty searches and model embeddings prove no '
@@ -2148,14 +2306,27 @@ def _coverage_check(inquiry, observations):
         'Enumerate every requested evidence product separately before deciding coverage. Source topology '
         'annotations do not supply a computed hydropathy profile; a sequence alone is not a computed profile. '
         'Check identity and species separately from whether the requested measurement or analysis is present. '
-        'Return JSON: answered (boolean), missing (list), supports (list of {requirement, path, quote}). '
+        'Return JSON: answered (boolean), missing (list), supports (list of {requirement, address, quote}). '
         'For answered=true, all original requirements must be supported by verbatim quotes at their exact evidence '
-        'paths, for example evidence.LITERATURE.0.abstract or evidence.records.0.function. Use at most six '
+        'addresses. Each original string leaf in EVIDENCE is wrapped as {address, text}. Copy its short address '
+        'exactly and quote only from its paired text. The wrapper is metadata, not scientific evidence. '
+        'Do not construct paths, count records, or use an address belonging to another source. Use at most six '
         'supports and concise quotes of at most 300 characters, only the necessary source clause. For anything absent, '
         'ambiguous, or conflicting, answered=false. Do not infer missing facts.',
         json.dumps({'original_question':inquiry.get('question')}) + '\nEVIDENCE:\n' +
-        observed(evidence, budget=24000),
-        max_tokens=1100, temperature=0.0)
+        json.dumps(addressed_evidence, ensure_ascii=False),
+        1100)
+    return evidence, strings, addresses, coverage_request
+
+
+def _coverage_check(inquiry, observations, prepared=None):
+    if not str(inquiry.get('question') or '').strip(): return None
+    prepared = prepared or _coverage_request(inquiry, observations)
+    if not prepared: return None
+    evidence, strings, addresses, coverage_request = prepared
+    deferred = _coverage_preflight(inquiry, observations, prepared)
+    if deferred: return deferred
+    raw = _ask(coverage_request[0], coverage_request[1], max_tokens=coverage_request[2], temperature=0.0)
     result = _json_object(raw)
     supports = result.get('supports')
     if (type(result.get('answered')) is not bool or not isinstance(result.get('missing'), list)
@@ -2167,14 +2338,12 @@ def _coverage_check(inquiry, observations):
     verified=[]; discarded=[]
     for item in supports:
         if not isinstance(item, dict): return None
-        quote, path = item.get('quote'), str(item.get('path') or '')
-        path = re.sub(r'\[(\d+)\]', r'.\1', path)
-        if not path.startswith('evidence.'): path = 'evidence.' + path
-        path = path.replace('evidence.literature.', 'evidence.LITERATURE.')
+        quote, address = item.get('quote'), item.get('address')
+        if not isinstance(address, str) or address not in addresses: return None
+        path = addresses[address]
         if not isinstance(quote, str) or not quote.strip() or not item.get('requirement'): return None
-        # A citation may name its excerpt list rather than a leaf. Resolve only
-        # within that container, never search a different source for a matching quote.
-        leaves=[key for key in strings if key==path or key.startswith(path+'.')]
+        # Resolve only the explicitly addressed leaf, never a different source.
+        leaves=[path]
         matches=[key for key in leaves if normalized(quote) in normalized(strings[key])]
         if not matches:
             discarded.append({'requirement':item['requirement'],'path':path,'reason':'quote_not_in_cited_source'})
@@ -2182,6 +2351,10 @@ def _coverage_check(inquiry, observations):
         item=dict(item,path=matches[0])
         match = re.match(r'evidence.LITERATURE\.(\d+)\.', item['path'])
         if match: item['source_citation'] = 'PMID ' + str(evidence['LITERATURE'][int(match[1])].get('pmid'))
+        match = re.match(r'evidence.records\.(\d+)\.', item['path'])
+        if match:
+            accession = evidence['records'][int(match[1])].get('accession')
+            if accession: item['source_citation'] = 'UniProt ' + str(accession)
         verified.append(item)
     if not verified or {item['requirement'] for item in verified} != required: return None
     supports=verified
@@ -2189,16 +2362,8 @@ def _coverage_check(inquiry, observations):
     if result['answered']:
         # Blind second assessment: it receives neither the first verdict nor its
         # self-selected requirements. Agreement is model assessment, not proof.
-        sufficiency = _json_object(_ask(
-            'Independently assess scientific sufficiency against the FULL ORIGINAL QUESTION. '
-            'Derive its requirements yourself from that question and the source evidence. '
-            'Check all requested entities, organisms, isoforms, comparisons and evidence products. '
-            'A real source quote may be relevant yet insufficient. Topology annotations are not a hydropathy profile; '
-            'an embedding is not a structure. Do not treat the presence of a label as evidence of a computation. '
-            'Return JSON: sufficient (boolean), missing (list of specific unmet requirements), rationale (string). '
-            'Use sufficient=false when ambiguous or unestablished.',
-            json.dumps({'original_question':inquiry['question']}) + '\nEVIDENCE:\n' + observed(evidence,budget=24000),
-            max_tokens=800, temperature=0.0))
+        request = _coverage_sufficiency_request(inquiry, evidence)
+        sufficiency = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
         if (type(sufficiency.get('sufficient')) is not bool or not isinstance(sufficiency.get('missing'),list)
                 or not isinstance(sufficiency.get('rationale'),str) or not sufficiency['rationale'].strip()): return None
         if sufficiency['sufficient'] and sufficiency['missing']: return None
@@ -2224,6 +2389,9 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
                 'speculative_reading': '', 'next_question': 'Resolve the requested protein name, accession and organism against one source entry.',
                 'entity_context_check': entity}
+    prepared = _coverage_request(inquiry, records)
+    deferred = _coverage_preflight(inquiry, records, prepared)
+    if deferred: return dict(deferred, entity_context_check=entity)
     line = None
     try:   # the line this test belongs to, and how he may end it
         import lab_lines
@@ -2277,12 +2445,15 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
         issues.append('answers_question=no omits the precise missing evidence required by the review contract')
         if value.get('speculative_reading'):
             issues.append('unanswered review contains speculative_reading, contrary to the review contract')
-    adjudicate = bool(issues or re.match(r'^yes\b', verdict, re.I))
+    # A confident negative can invent a missing requirement just as a positive
+    # can invent support. Check both against the unchanged original question.
+    adjudicate = bool(issues or re.match(r'^(?:yes|no)\b', verdict, re.I))
     if adjudicate and inquiry.get('question'):
         if not isinstance(records, dict): records = {'records': records}
-        try: coverage = _coverage_check(inquiry, records)
+        try: coverage = _coverage_check(inquiry, records, prepared=prepared)
         except Exception as exc:
             _fault('review_coverage', exc); coverage = None
+        if coverage and coverage.get('coverage_deferred'): return dict(coverage, entity_context_check=entity)
         if coverage:
             result = {k:str(value.get(k,''))[:1000] for k in
                 ('attention','factual_observation','next_question','instrument_gap','line_status')}
@@ -2291,10 +2462,18 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
             result.update(answers_question=decision, reader_answers_question=verdict,
                           missing_evidence='' if coverage['answered'] else '; '.join(map(str,coverage['missing'])),
                           speculative_reading='', coverage_check=coverage, entity_context_check=entity)
+            result['evidence_status'] = 'answered' if coverage['answered'] else 'partial'
+            if not coverage['answered']:
+                result['line_status'] = 'continue'
+            elif not re.match(r'^yes\b', verdict, re.I):
+                # A corrected negative must not keep its obsolete missing-data
+                # task or dropped-line decision beside a now-supported answer.
+                result['reader_next_question'] = result['next_question']
+                result.update(attention='', next_question='', instrument_gap='', line_status='continue')
             # Keep the observer's reading separately; the adjudicated factual answer
             # consists only of the exact source sentences accepted by the checker.
             result['reader_factual_observation'] = result['factual_observation']
-            result['factual_observation'] = '\n'.join(item['requirement'] + ': ' + item['quote'] +
+            result['factual_observation'] = '\n'.join(item['quote'] +
                 (' [' + item['source_citation'] + ']' if item.get('source_citation') else '')
                                                 for item in coverage['supports'])[:2000]
             if not coverage['answered'] and re.search(r'hydropath|hydrophobicity', ' '.join(map(str,coverage['missing'])), re.I):
@@ -2489,7 +2668,7 @@ def tick():
                 if inquiry.get("refused"):
                     # refused before anything ran: a repeat, or off the frontier session's plan (2026-10-07)
                     next_phase = "orient"; state.pop("inquiry", None)
-                    note = {"at": now_iso(), "kind": "inquiry_refused", "why": inquiry["refused"],
+                    note = {"at": now_iso(), "kind": "evidence_wait" if inquiry.get('planning_wait') else "inquiry_refused", "why": inquiry["refused"],
                             "question": inquiry.get("question"), "inquiry": inquiry,
                             "atlas_turn": bool(inquiry.get("atlas_turn")),
                             "truth_status": ("refused_after_identity_check" if inquiry.get("identity_check")
@@ -2519,15 +2698,12 @@ def tick():
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
                     if browse_result.get('scope_resolution'):
-                        inquiry = dict(inquiry, requested_question=inquiry.get('question'),
+                        inquiry = dict(inquiry,
                             scope_resolution=browse_result['scope_resolution'],
-                            material_terms=list(dict.fromkeys(str(r.get('protein_name') or '') for r in records))[:3],
                             source_query=None,
-                            plugin_query=None, instrument_query=None,
-                            uniprot_query=browse_result['executed_query'],
-                            question='Which organisms and domain annotations do these sourced protein records establish? '
-                                     'The original human assignment is unverified: ' + str(inquiry.get('question') or ''))
-                    inquiry = _structure_followup(inquiry, records)
+                            plugin_query=None, instrument_query=None)
+                    else:
+                        inquiry = _structure_followup(inquiry, records)
                     state['inquiry'] = inquiry
                     stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
                                                   or inquiry.get("instrument_query")) and
@@ -2771,9 +2947,12 @@ def tick():
                                            "esmc_receipts": state.get("embeddings", []),
                                            "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
                                            "LITERATURE": literature})
+                    if reflection.get('coverage_deferred'):
+                        inquiry = dict(inquiry, refused=reflection['missing_evidence'], evidence_status='insufficient',
+                                       coverage_deferred=True, planning_evidence=_planning_evidence(inquiry))
                     due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
                     due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
-                    next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
+                    next_phase = "genome" if cfg.get("evo2_enabled") and due and not reflection.get('coverage_deferred') else "orient"
                     followup = (state.get('additional_source', {}).get('receipt') or
                                 state.get('additional_source', {}).get('source_receipt') or {})
                     fingerprint = followup.get('response_sha256') if followup.get('records') else None
@@ -2787,7 +2966,7 @@ def tick():
                             "material_receipt_id": (state.get("material") or {}).get("receipt_id"),
                             "evidence_sha256": review_evidence(state)[0],
                             "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
-                            "truth_status": "mixed_sourced_observation_and_named_speculation"}
+                            "truth_status": reflection.get('truth_status', 'mixed_sourced_observation_and_named_speculation')}
                     try:
                         import chemistry_frontier_bridge
                         assessment = chemistry_frontier_bridge.assess(

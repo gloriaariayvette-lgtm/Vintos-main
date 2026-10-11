@@ -1041,7 +1041,7 @@
         "title": "Structural basis for regulation of human calcium-sensing receptor by magnesium ions and an unexpected tryptophan derivative co-agonist.",
         "journal": "Science advances",
         "year": "2016",
-        "abstract": "Ca(2+)-sensing receptors (CaSRs) modulate calcium and magnesium homeostasis and many (patho)physiological processes by responding to extracellular stimuli, including divalent cations and amino acids. We report the first crystal structure of the extracellular domain (ECD) of human CaSR bound with Mg(2+) and a tryptophan derivative ligand at 2.1 Å. The structure reveals key determinants for cooperative activation by metal ions and aromatic amino acids. The unexpected tryptophan derivative was bound in the hinge region between two globular ECD subdomains, and represents a novel high-affinity co-agonist of CaSR. The dissection of structure-function relations by mutagenesis, biochemical, and functional studies provides insights into the molecular basis of human diseases arising from CaSR mutations. The data also provide a novel paradigm for understanding the mechanism of CaSR-mediated signaling that is likely shared by the other family C GPCR [G protein (heterotrimeric guanine nucleotide-binding protein)-coupled receptor] members and can facilitate the development of novel CaSR-based therapeutics."
+        "abstract": "Ca(2+)-sensing receptors (CaSRs) modulate calcium and magnesium homeostasis and many (patho)physiological processes by responding to extracellular stimuli, including divalent cations and amino acids. We report the first crystal structure of the extracellular domain (ECD) of human CaSR bound with Mg(2+) and a tryptophan derivative ligand at 2.1 \u00c5. The structure reveals key determinants for cooperative activation by metal ions and aromatic amino acids. The unexpected tryptophan derivative was bound in the hinge region between two globular ECD subdomains, and represents a novel high-affinity co-agonist of CaSR. The dissection of structure-function relations by mutagenesis, biochemical, and functional studies provides insights into the molecular basis of human diseases arising from CaSR mutations. The data also provide a novel paradigm for understanding the mechanism of CaSR-mediated signaling that is likely shared by the other family C GPCR [G protein (heterotrimeric guanine nucleotide-binding protein)-coupled receptor] members and can facilitate the development of novel CaSR-based therapeutics."
       },
       {
         "pmid": "23856260",
@@ -1066,18 +1066,18 @@
       "supports": [
         {
           "requirement": "structural organization of the human calcium-sensing receptor (CASR)",
-          "path": "LITERATURE[1].abstract",
-          "quote": "Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa)."
+          "quote": "Structural features of the human CaSR protein are: an N-terminal signal peptide (19 amino acids (aa)); an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain with several Ca(2+)-binding sites; and a nine-cysteines domain that transduces the activation signal to the 7-transmembrane domain (250 aa) and the C-terminal tail (216 aa).",
+          "address": "E59748379"
         },
         {
           "requirement": "extracellular Venus Flytrap (VFT) domain",
-          "path": "LITERATURE[1].abstract",
-          "quote": "an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain"
+          "quote": "an extracellular domain (~600 aa) having a bi-lobed Venus Flytrap (VFT) domain",
+          "address": "E59748379"
         },
         {
           "requirement": "role in ligand binding",
-          "path": "LITERATURE[2].abstract",
-          "quote": "The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor."
+          "quote": "The hinge region of the bilobed Venus flytrap (VFT) domain of CaSR plays a pivotal role in coordinating multiple extracellular stimuli, leading to cooperative responses from the receptor.",
+          "address": "E76c2e3de"
         }
       ]
     },

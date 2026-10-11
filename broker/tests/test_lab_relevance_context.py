@@ -1,5 +1,5 @@
 """Offline full-question coverage and explicit entity constraints; no live calls."""
-import contextlib, json, os, pathlib, socket, sys, tempfile, types, unittest
+import hashlib, contextlib, json, os, pathlib, socket, sys, tempfile, types, unittest
 from unittest.mock import patch
 scratch=tempfile.TemporaryDirectory(prefix='lab-relevance-v2-')
 os.environ.update(HOME=scratch.name,SPARK_WORKSPACE=scratch.name+'/workspace',VINTOS_SECRETS=scratch.name+'/secrets')
@@ -16,7 +16,7 @@ def protein(gene='CLCN1',accession='P35523',taxon=9606):
             'taxon_id':taxon,'organism':'Homo sapiens' if taxon==9606 else 'Rattus norvegicus','topology_summary':'119-150','sequence':'ACACA','length':5}
 def cover(answer=True):
     return {'answered':answer,'missing':[] if answer else ['computed hydropathy profile is absent'],
-            'supports':[{'requirement':'source annotated range','path':'records.0.topology_summary','quote':'119-150'}]}
+            'supports':[{'requirement':'source annotated range','address':'E2aad6688','quote':'119-150'}]}
 def suff(answer=True):
     return {'sufficient':answer,'missing':[] if answer else ['computed hydropathy profile is absent'],
             'rationale':'Independent offline assessment of the full original question.'}
@@ -148,7 +148,7 @@ class ReviewTests(unittest.TestCase):
         question='Hydropathy profile of P35523'
         stop={'kind':'reflection','inquiry':{'question':question},'evidence_gap':{'automatic_followup':False}}
         p=protein();p['profile_fixture']='Synthetic new evidence fixture: residue positions 1-5; scale and values supplied for assessment.'
-        support={'answered':True,'missing':[],'supports':[{'requirement':'requested profile evidence','path':'records.0.profile_fixture','quote':p['profile_fixture']}]}
+        support={'answered':True,'missing':[],'supports':[{'requirement':'requested profile evidence','address':'E'+hashlib.sha256(json.dumps(['evidence.records.0.profile_fixture',p['profile_fixture']],ensure_ascii=False).encode()).hexdigest()[:8],'quote':p['profile_fixture']}]}
         with patch.object(C,'_tail_jsonl',return_value=[stop]),patch.object(C,'_ask',side_effect=[json.dumps({'answers_question':'yes'}),json.dumps(support),json.dumps(suff())]) as calls:
             inquiry=C._inquiry({'question':question,'uniprot_query':'accession:P35523'})
             result=C._reflect('',inquiry,{'records':[p]})

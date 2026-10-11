@@ -160,6 +160,17 @@ def human_question_symbols(question):
         return m[0] if explicit or not context else ' '
     text = re.sub(r'\bS[0-9]+\s*[-–]\s*S[0-9]+\b',helix_range,text)
     text = re.sub(r'\b([A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*)_HUMAN\b', r'\1', text)
+    # F430 is a cofactor when explicitly described as one, not a protein
+    # identity. Classify occurrences; an explicit/separate gene claim survives.
+    def cofactor(match):
+        prefix, suffix = text[max(0, match.start()-45):match.start()], text[match.end():match.end()+45]
+        explicit = (re.search(r'\b(?:gene(?:\s+symbol)?|protein)\s*[:=]?\s*$', prefix, re.I)
+                    or re.match(r'\s+gene\b', suffix, re.I))
+        feature = (re.match(r'\s+cofactor\b', suffix, re.I)
+                   or re.search(r'\bcofactor\s*$', prefix, re.I)
+                   or match[0].startswith('Ni-'))
+        return match[0] if explicit or not feature else ' '
+    text = re.sub(r'(?<![\w-])(?:Ni-)?F430(?![\w-])', cofactor, text)
     words = uniprot_identity_symbols('protein_name:"' + text.replace('"', ' ') + '"')
     def only_domain_labels(symbol):
         # Classify occurrences, not spellings: "HR1 domain" is a feature request,
@@ -257,6 +268,18 @@ def question_entity_context(inquiry, records):
         proteins = {str(v).casefold() for v in [row.get('protein_name') or ''] + list(row.get('protein_aliases') or []) if v}
         organisms = {str(v).casefold() for v in [row.get('organism') or ''] + list(row.get('organism_aliases') or []) if v}
         return names,proteins,organisms
+    parenthetical_symbols = set(re.findall(r'\(([A-Z][A-Z0-9-]{1,})\)', question))
+    def protein_match(expected, available, names):
+        # UniProt protein_name is a text search, not an exact recommended-name
+        # assertion. Accept a complete multiword phrase in an authoritative name,
+        # only when an independent original accession/gene resolves the target.
+        # Otherwise a longer name could be a different protein. Never fuzzy-match
+        # symbols or single words; full-question sufficiency remains separate.
+        normal = lambda s: ' '.join(re.findall(r'[^\W_]+', s.casefold()))
+        words = normal(expected)
+        resolved = bool(accessions or gene_symbols or (parenthetical_symbols & names))
+        return any(expected == name or (resolved and len(words.split()) >= 2 and
+                   (' ' + words + ' ') in (' ' + normal(name) + ' ')) for name in available)
     matches = [r for r in records if not accessions or r.get('accession') in accessions]
     # Unrelated search hits are not the selected target. If no candidate fits,
     # retain the available rows to report the actual unresolved expectations.
@@ -265,7 +288,7 @@ def question_entity_context(inquiry, records):
         names,proteins,organisms = metadata_names(row)
         if ((not symbols or symbols <= (names | {p.upper() for p in proteins}))
                 and (not taxa or str(row.get('taxon_id')) in taxa)
-                and (not protein_names or protein_names <= proteins)
+                and all(protein_match(name, proteins, names) for name in protein_names)
                 and (not organism_names or organism_names <= organisms)):
             candidates.append(row)
     if candidates: matches = candidates
@@ -275,7 +298,7 @@ def question_entity_context(inquiry, records):
         names,proteins,organisms = metadata_names(row)
         absent = (symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
         if absent: issues.append('requested names not established by '+str(row.get('accession'))+': '+','.join(sorted(absent)))
-        if protein_names and not protein_names <= proteins:
+        if not all(protein_match(name, proteins, names) for name in protein_names):
             issues.append('requested protein name is not established by the retrieved recommended name')
         if taxa and str(row.get('taxon_id')) not in taxa:
             issues.append('requested taxon is not established by retrieved taxonomy; no ancestry is assumed')

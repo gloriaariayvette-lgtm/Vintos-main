@@ -1,0 +1,11 @@
+{
+  "status": "received",
+  "text": "```json\n{\n  \"answers_question\": \"no\",\n  \"attention\": \"The PDB record 5FBH for the human calcium-sensing receptor (CASR) extracellular domain (ECD). I am focusing on the structural organization of the Venus Flytrap (VFT) domain as described in the literature and the specific metal-binding sites identified in the crystal structure.\",\n  \"factual_observation\": \"The human CASR is a 1078 amino acid G protein-coupled receptor. Its extracellular domain (ECD) is approximately 600 amino acids long and contains a bi-lobed Venus Flytrap (VFT) domain (PMID: 23856260). The crystal structure of the ECD (PDB: 5FBH) was resolved at 2.7 \u00c5 and shows the VFT domain bound with Mg2+ and a tryptophan derivative ligand (PMID: 27386547). The record identifies specific metal sites: MG (Mg2+) at residue 602 (Chain B) is coordinated by SER 240 and a water molecule; MG at residue 603 (Chain B) is coordinated by LEU 88, ILE 81, and LEU 87; and MG at residue 602 (Chain A) is coordinated by ILE 81, LEU 87, LEU 88, and SER 84. The literature notes that the hinge region between the two globular subdomains of the VFT domain plays a pivotal role in coordinating multiple stimuli and cooperative activation (PMID: 27386547, PMID: 27746744).\",\n  \"speculative_reading\": \"The coordination of Mg2+ at residues 602 and 603 in the hinge region suggests that these specific sites act as 'molecular switches' that stabilize the closed conformation of the VFT domain; a site-directed mutagenesis study measuring the $K_d$ of the tryptophan derivative ligand in the presence and absence of these specific magnesium ions would confirm this.\",\n  \"next_question\": \"What are the specific amino acid residues that constitute the 'hinge region' between the two lobes of the VFT domain in the human CASR, and how do they coordinate the binding of the tryptophan derivative co-agonist?\",\n  \"instrument_gap\": \"\"\n}\n```",
+  "transport": {
+    "case": "saved_casr",
+    "stage": "reader",
+    "max_tokens": 800,
+    "status": "received",
+    "output_tokens": null
+  }
+}

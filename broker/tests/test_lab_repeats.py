@@ -172,9 +172,10 @@ check("sender and every relevant store remain isolated", C._ask is gemma and C._
 
 # No provider is called: inspect the actual reading prompt passed to the stub.
 answers[:] = [{"factual_observation": "No PDB cross-references in this response", "answers_question": "no: cross-references are absent in this response"}]
+reading_index = len(systems)
 C._reflect("ctx", {"question":"Which PDB cross-references are supplied?"}, [{"accession": "O43511", "pdb_ids": []}])
 check("empty cross-references are explicitly bounded in the reading prompt",
-      "does NOT establish that no experimental structures exist" in systems[-1])
+      "does NOT establish that no experimental structures exist" in systems[reading_index])
 check("reflection remains a stub", C._ask is gemma)
 check("all newly used stores are scratch", all(p.startswith(HOME) for p in (C.CONFIG, C.STATE, C.NOTEBOOK, L.ROOT)))
 
