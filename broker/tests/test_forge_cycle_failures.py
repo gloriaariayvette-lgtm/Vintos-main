@@ -14,11 +14,13 @@ from forge_cycle_failure import ValidationFailure
 FIELDS = ("title","sourced_observations","hypotheses","conflicting_evidence","limitations","next_tests")
 def draft(): return dict.fromkeys(FIELDS, "fixture")
 def critique(): return {"complete":True,"reasons":"fixture evidence","reveal":False}
-def query(): return {"plugin":"genomic_intelligence","tool":"genomic_intelligence.find_genes",
+def query(): return {"plugin":"genomic_intelligence","tool":"genomic_intelligence.fetch_ensembl_sequence",
                      "arguments":{"gene":"SLC26A19","species":"human"},"purpose":"Verify original identifier without guessing."}
-def receipt(q):
-    return {"ok":True,"summary":"fixture: no matches; identifier preserved",
-            "receipt":{"receipt_id":"a"*64,"result_sha256":"a"*64,"surface":"forge","plugin":q["plugin"],"tool":q["tool"],
+def receipt(q, result=None):
+    result = result if result is not None else {"ref":"seq_fixture","name":"SLC26A19 human fixture","length":1000}
+    digest=hashlib.sha256(json.dumps(result,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    return {"ok":True,"summary":json.dumps(result),
+            "receipt":{"receipt_id":digest,"result_sha256":digest,"surface":"forge","plugin":q["plugin"],"tool":q["tool"],
                        "arguments_sha256":hashlib.sha256(json.dumps(q["arguments"],sort_keys=True).encode()).hexdigest()}}
 
 class Tests(unittest.TestCase):
@@ -106,7 +108,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.status(p)["state"],"complete")
         artifact=json.loads(self.c.artifacts(self.c.owner_token,p["id"])[0]["artifact"])
         self.assertNotIn("report",artifact)
-        self.assertEqual(artifact["capability_resolution"]["status"],"existing_read_route_verified")
+        self.assertEqual(artifact["capability_resolution"]["status"],"reference_sequence_acquired")
         self.assertIn("not_new_capability_built",artifact["truth_status"])
         plugin.assert_called_once_with(*query().values())
         second=self.project();self.assertTrue(self.r.step(second["id"]))
@@ -195,7 +197,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.status(p)["diagnostic"]["code"],"capability_scope")
 
     def test_only_never_attempted_legacy_lab_route_is_corrected(self):
-        body={"intent":"The Lab needs an instrument it does not have: genomic source lookup",
+        body={"intent":"The Lab needs an instrument it does not have: genomic source lookup for human SLC26A19",
               "kind":"research_report","origin":{"source":"lab"}}
         queued=self.r.create(self.c.owner_token,body)
         old=self.r.create(self.c.owner_token,body)
@@ -211,6 +213,45 @@ class Tests(unittest.TestCase):
         self.assertEqual(after,before)
         self.assertEqual(self.c.context(self.c.worker_token,old["id"])["capabilities"],["research_report"])
         self.assertEqual(plugin.call_count,1)
+
+    def test_gene_finder_is_inference_and_not_an_allowed_lookup(self):
+        p=self.project("capability_request");plugin=Mock()
+        q=query();q["tool"]="genomic_intelligence.find_genes"
+        self.builder([{"plugin_query":q}],plugin)
+        with self.assertRaises(ValidationFailure):self.r.step(p["id"])
+        plugin.assert_not_called()
+        self.assertEqual(self.status(p)["diagnostic"]["code"],"capability_scope")
+    def test_success_receipt_with_error_result_does_not_complete(self):
+        p=self.r.create(self.c.owner_token,{"kind":"capability_request","intent":"Fetch human SLC26A19"})
+        plugin=Mock(return_value=receipt(query(),{"error":"gene not found"}))
+        self.builder([{"plugin_query":query()}],plugin)
+        with self.assertRaises(ValidationFailure):self.r.step(p["id"])
+        self.assertEqual(self.status(p)["cycles"],0)
+        self.assertEqual(self.status(p)["state"],"failed")
+        self.assertEqual(self.status(p)["diagnostic"]["external"],"confirmed")
+        self.assertEqual(plugin.call_count,1)
+    def test_genomic_schema_and_identifier_guard_precedes_dispatch(self):
+        from forge_genomic_result import validate_request
+        good=query();validate_request(good,{"intent":"Fetch human SLC26A19"})
+        for q in (
+            dict(good,arguments={"sequence":"ACTG"}),
+            dict(good,arguments={"gene":"SLC26A9","species":"human"}),
+            dict(good,arguments={"gene":"SLC26A19","species":"mouse"}),
+            dict(good,arguments={"gene":"SLC26A19","species":"human","flank_bp":True}),
+        ):
+            with self.assertRaises(ValidationFailure):validate_request(q,{"intent":"Fetch human SLC26A19"})
+    def test_verified_result_rejects_truncation_hash_mismatch_and_missing_handle(self):
+        from forge_genomic_result import verified_result
+        valid=receipt(query());self.assertEqual(verified_result(valid,query())["ref"],"seq_fixture")
+        wrapped=receipt(query(),{"content":[{"type":"text","text":json.dumps({"ref":"seq_fixture","name":"SLC26A19","length":1000})}]})
+        self.assertEqual(verified_result(wrapped,query())["length"],1000)
+        for invalid in (
+            dict(valid,summary="truncated ..."),
+            dict(valid,summary=json.dumps({"ref":"seq_other","name":"SLC26A19","length":1000})),
+            receipt(query(),{"message":"connected"}),
+            receipt(query(),{"ref":"seq_fixture","name":"SLC26A9","length":1000}),
+        ):
+            with self.assertRaises(ValidationFailure):verified_result(invalid,query())
 
     def test_paid_claim_still_refused(self):
         p=self.project()

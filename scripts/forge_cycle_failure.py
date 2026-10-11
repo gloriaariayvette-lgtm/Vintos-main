@@ -31,6 +31,9 @@ REASONS = {'capability_already_installed': 'capability already installed',
                                                     'reasons',
  'unsubstantiated_gap': 'unsubstantiated gap'}
 REASONS.update({
+ "genomic_arguments": "Genomic source acquisition arguments do not match the declared tool schema.",
+ "genomic_identity": "Genomic acquisition must preserve the identifier and species supplied in the request.",
+ "genomic_result": "Connector receipt lacks a complete, integrity-matched reference-sequence handle; the request is not fulfilled.",
  "gateway_configuration": "Forge connector URL or protected credential is missing or invalid; repair local configuration before dispatch.",
  "report_sections": "Report is missing required sections.",
  "connector_timeout": "Connector timed out after dispatch; inspect its receipt before retrying.",
