@@ -1335,6 +1335,9 @@ def _orient(context, lean=None):
         if candidate:
             recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
             if not recovered.get('refused'): return scoped(recovered)
+    if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
+        grounded = _next_sourced_record(lab_repeats, spent, lean)
+        if grounded: return grounded
     waiting = None
     if lab_repeats:
         held = _planning_hold(scope, lab_repeats, spent, step)
@@ -1638,6 +1641,33 @@ def _next_evidence_work(inquiry, repeats, spent, step):
                 not step or repeats.on_frontier(candidate, step)):
             candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
             return candidate
+    return None
+
+
+def _next_sourced_record(repeats, spent, lean=None):
+    """Give a free pass one exact, previously returned protein when planning yields only held work."""
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=8*1024*1024)):
+        if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
+        for record in row.get('records') or []:
+            accession = str(record.get('accession') or '').upper()
+            name = str(record.get('protein_name') or '').strip()
+            organism = str(record.get('organism') or '').strip()
+            if not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism: continue
+            question = ('What does the curated UniProt record for %s (%s) in %s establish about its '
+                        'sequence length, annotated domains, and membrane topology?' % (name, accession, organism))
+            inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
+                                'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
+                                'source_query':None, 'plugin_query':None,
+                                'material_terms':[name, accession, organism]}, lean)
+            if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
+            admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
+                                        spent=spent, replan=False)
+            if admitted.get('refused'): continue
+            return dict(admitted,
+                        planning_scope={'sourced_fallback':accession},
+                        planning_evidence=_planning_evidence(admitted),
+                        assignment_resolution={'reason':'exact_previously_sourced_record',
+                                               'accession':accession})
     return None
 
 

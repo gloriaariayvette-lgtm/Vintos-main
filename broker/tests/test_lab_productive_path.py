@@ -248,6 +248,23 @@ class Productive(unittest.TestCase):
   self.assertEqual(result['planning_evidence'],C._planning_evidence(result))
   self.assertEqual(alternate['planning_scope'],{'stale':True})
 
+ def test_waiting_pass_uses_an_unread_exact_sourced_record(self):
+  self.line=None
+  records=[
+   {'accession':'P21579','protein_name':'Synaptotagmin-1','organism':'Homo sapiens'},
+   {'accession':'Q16740','protein_name':'ATP-dependent Clp protease proteolytic subunit, mitochondrial',
+    'organism':'Homo sapiens'}]
+  C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','records':records})
+  used=C._inquiry({'question':'What does the curated UniProt record for Synaptotagmin-1 (P21579) in Homo sapiens establish about its sequence length, annotated domains, and membrane topology?',
+                   'uniprot_query':'accession:P21579'})
+  R.record(used)
+  C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':{'question':'held'},'why':'no eligible proposal'})
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',side_effect=forbidden):
+   inquiry=C._orient('offline scientific context')
+  self.assertEqual(inquiry['uniprot_query'],'accession:Q16740')
+  self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
+  self.assertEqual(inquiry['planning_scope'],{'sourced_fallback':'Q16740'})
+
  def test_recovered_route_actual_overflow_next_cycle_waits_without_generation(self):
   old=self.exhaust()
   def recover(inquiry,repeats):return dict(inquiry,source_query={'source':'interpro','accession':'O43511'})
