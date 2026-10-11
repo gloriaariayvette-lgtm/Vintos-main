@@ -2516,7 +2516,7 @@ def sequence_regions(inquiry, observations):
 # A conservative local preflight, not a tokenizer count or routing policy.
 # Count every UTF-8 byte as a token, plus framing and each stage's output.
 # This ceiling matches the verified Aegis Gemma context; never widen a route.
-COVERAGE_CONTEXT_BUDGET = 32000
+COVERAGE_CONTEXT_BUDGET = 35000
 COVERAGE_FRAMING_RESERVE = 1024
 
 

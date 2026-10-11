@@ -13,6 +13,8 @@ class Budget(unittest.TestCase):
   shutil.rmtree(C.ROOT,ignore_errors=True)
   self.q={'question':'What does the supplied source establish?'}
   self.obs={'records':[],'LITERATURE':[{'pmid':'111','abstract':'Complete unique evidence.'}]}
+ def test_runtime_ceiling_matches_the_loaded_lab_model(self):
+  self.assertEqual(C.COVERAGE_CONTEXT_BUDGET,35000)
  def test_exact_boundary_and_one_byte_over_include_stage_output(self):
   prepared=C._coverage_request(self.q,self.obs)
   request=prepared[3];cost=C._coverage_budget(request)['conservative_total']
