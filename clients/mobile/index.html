@@ -1743,7 +1743,10 @@ function _labReviewCard(row) {
     const supports = Array.isArray(coverage.supports) ? coverage.supports : [];
     const missing = (Array.isArray(coverage.missing) ? coverage.missing : []).filter(Boolean);
     const missingText = missing.join('; ') || row.missing_evidence || '';
-    let state = row.evidence_status || row.assessment_status || coverage.assessment_status || '';
+    // Assessment integrity outranks the presence of excerpts. A row may contain
+    // verified quotes while the checker failed to produce a coherent verdict;
+    // that is evidence in hand, but it is not a valid partial answer yet.
+    let state = row.assessment_status || coverage.assessment_status || row.evidence_status || '';
     if (!state && coverage.answered === true) state = 'answered';
     if (!state && coverage.answered === false && supports.length) state = 'partial';
     if (!state && String(row.answers_question || '').toLowerCase().startsWith('no:')) state = 'rejected';

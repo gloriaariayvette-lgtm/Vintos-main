@@ -193,6 +193,8 @@ check("what he wants to try next is shown", "what I want to try next" in PAGE)
 check("review cards label supported evidence and show partial-answer gaps",
       "coverage.supports" in PAGE and "still missing" in PAGE and "partial answer" in PAGE
       and "asked —" in PAGE)
+check("an incomplete assessment outranks the presence of partial evidence on a card",
+      "row.assessment_status || coverage.assessment_status || row.evidence_status" in PAGE)
 check("the phone pane renders a rolling twenty-review log",
       "LAB_REVIEW_LIMIT = 20" in PAGE and "reviews?limit=" in PAGE and "RECENT REVIEWS" in PAGE)
 check("the phone pane renders live Lab turns on the existing refresh",
