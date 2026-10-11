@@ -346,7 +346,8 @@ class Tests(unittest.TestCase):
         import types
         from contextlib import nullcontext
         from forge_lab_handback import collect
-        payload=self.intake_payload();p=self.r.intake("i"*40,payload)
+        payload=self.intake_payload();payload["intent"]="The Lab needs an instrument it does not have: verify human SLC26A19 exists"
+        p=self.r.intake("i"*40,payload)
         self.builder([{"plugin_query":query()}],Mock(return_value=receipt(query())))
         self.r.step(p["id"])
         (self.root/"forge-report-outbox.json").write_text(json.dumps({"owned":{"state":"accepted","project_id":p["id"],"question":payload["intent"]}}))
@@ -369,6 +370,9 @@ class Tests(unittest.TestCase):
             self.assertEqual(module.collect_forge_handbacks({}),[])
         lines=tail(self.root/"source-receipts.jsonl")
         self.assertEqual(len(lines),1)
+        self.assertIsNone(lines[0]["records"]["sequence_handle"])
+        self.assertIsNone(lines[0]["records"]["plugin_receipt"])
+        self.assertEqual(lines[0]["metadata"]["evidence"],"reference_lookup_required")
         self.assertFalse(lines[0]["metadata"]["original_request_fulfilled"])
         self.assertEqual(lines[0]["records"]["original_request"],payload["intent"])
         self.assertEqual(module.forge_open({}),[])

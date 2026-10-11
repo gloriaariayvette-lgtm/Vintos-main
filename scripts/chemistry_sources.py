@@ -340,9 +340,9 @@ def collect_forge_handbacks(cfg):
         source = receipt('forge_capability_handback',
                          {'project_id':row['project_id'], 'cycle_id':row['cycle_id']},
                          {'sequence_handle':row['sequence_handle'], 'original_request':row['original_request'],
-                          'plugin_receipt':row['artifact']['capability_resolution']['result']['receipt']},
+                          'plugin_receipt':row['artifact']['capability_resolution'].get('result',{}).get('receipt')},
                          metadata={'forge_handback_cycle':row['cycle_id'],
-                                   'evidence':'partial_acquisition_identity_unverified',
+                                   'evidence':('reference_lookup_required' if row['sequence_handle'] is None else 'partial_acquisition_identity_unverified'),
                                    'original_request_fulfilled':False})
         lab._append(path, source)
     return collect(cfg, lab.ROOT, _forge_projects(cfg), load=lab._load, atomic=lab._atomic,
