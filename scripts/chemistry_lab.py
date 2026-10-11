@@ -987,6 +987,22 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     return data["choices"][0]["message"]["content"]
 
 
+def query_denied(query):
+    """Why a generated UniProt query may not be sent, or None.
+
+    The perimeter decision itself, separate from shaping the query. A denied query used to be replaced silently by
+    the generic wandering browse (RANDOM_QUERY) while the question was kept, so the Lab retrieved unrelated proteins
+    and the original question could then only be refused for not being established. The perimeter still holds — the
+    denied text is never sent — but the substitution is no longer silent: _inquiry records it and asks nothing.
+    """
+    from lab_sources import normalize_protein_notation
+    text = re.sub(r"[^\w()\[\]:*?+\-\s\"]", " ", normalize_protein_notation(query or ""))
+    text = re.sub(r"\s+", " ", text).strip()[:240]
+    if not text: return None          # no query asked: the free browse and the source-query lanes are unchanged
+    found = DENIED_QUERY.search(text)
+    return 'outside the Lab perimeter: ' + found.group(0) if found else None
+
+
 def _safe_query(query):
     from lab_sources import normalize_protein_notation
     query = normalize_protein_notation(query)
@@ -1791,13 +1807,23 @@ def _inquiry(value, lean=None):
         from lab_sources import normalize_source_spec
         source_query = normalize_source_spec(source_query)
     requested_lane = value.get('browse_lane')
-    query = _safe_query(value.get("uniprot_query"))
+    requested_query = value.get("uniprot_query")
+    query = _safe_query(requested_query)
+    denied = query_denied(requested_query)
     question = str(value.get('question') or '')
     question_symbols = (_human_question_symbols(question)
                         if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
     if query in (BASELINE_QUERY, _safe_query(BASELINE_QUERY)) and question_symbols:
         query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
                  ') AND taxonomy_id:9606 AND reviewed:true')
+    if denied:
+        # The intended retrieval did not happen, and nothing stands in for it. The question is kept exactly as
+        # asked, with what was requested, why it was refused, and the fact that no source was queried.
+        return dict(value, uniprot_query=query, source_query=None, plugin_query=None, instrument_query=None,
+                    query_rejected={'requested_query': str(requested_query or ''), 'reason': denied,
+                                    'executed_query': None, 'source_queried': None},
+                    refused='query refused before retrieval: ' + denied,
+                    truth_status='refused_before_any_source_call')
     identity_queries = [query] + ([source_query['query']] if source_context_current and source_query and source_query.get('source') == 'uniprot' and source_query.get('query') else [])
     from lab_repeats import _ACCESSION
     named = sorted(set(_ACCESSION.findall(str(value.get("question") or ""))))
