@@ -12,3 +12,4 @@ plugin_catalog.py
 forge_house.py
 forge_cycle_failure.py
 claude_connector_catalog.py
+forge_genomic_result.py
