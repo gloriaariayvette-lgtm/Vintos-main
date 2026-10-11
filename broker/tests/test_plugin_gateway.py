@@ -363,11 +363,17 @@ class PluginGatewayTests(unittest.TestCase):
                  {"complete":True,"reasons":"grounded in receipt","reveal":True}]
         def model(system,user):
             calls.append((system,user));return answers.pop(0)
-        receipt={"receipt_id":"a"*64,"artifact":"/scratch/result.json"}
-        builder=forge_loop_runtime.ReportBuilder(model,plugin_call=lambda *args:{"ok":True,"receipt":receipt,"summary":"issue body"})
+        transport=mock.Mock(return_value={"ok":True,"result":{"body":"issue body"}})
+        def plugin_call(plugin,tool,arguments,purpose):
+            return gateway.call("forge",plugin,tool,arguments,purpose,transport=transport)
+        self.assertEqual(gateway.MEMORY,self.tmp.name)
+        self.assertIsInstance(transport,mock.Mock)  # no real connector transport
+        builder=forge_loop_runtime.ReportBuilder(model,plugin_call=plugin_call)
         out=builder({"capability":"research_report","maximum_cents":0,"cycle_id":"C1"},{"intent":"inspect issue"})
-        self.assertIn("issue body",calls[1][1])
-        self.assertEqual(out["artifact"]["plugin_receipt"]["receipt_id"],"a"*64)
+        self.assertIn("issue body",calls[1][1]);transport.assert_called_once()
+        stored=out["artifact"]["plugin_receipt"]
+        self.assertTrue(stored["artifact"].startswith(self.tmp.name))
+        self.assertEqual(gateway.load_receipt(stored["receipt_id"],"forge")["result"],{"body":"issue body"})
 
     def test_atelier_returns_full_plugin_data_to_the_same_sealed_visit(self):
         rid="b"*64; seen={}
