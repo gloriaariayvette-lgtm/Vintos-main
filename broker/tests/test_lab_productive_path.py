@@ -262,6 +262,7 @@ class Productive(unittest.TestCase):
   with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',side_effect=forbidden):
    inquiry=C._orient('offline scientific context')
   self.assertEqual(inquiry['uniprot_query'],'accession:Q16740')
+  self.assertEqual(inquiry['material_terms'],[])
   self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
   self.assertEqual(inquiry['planning_scope'],{'sourced_fallback':'Q16740'})
 

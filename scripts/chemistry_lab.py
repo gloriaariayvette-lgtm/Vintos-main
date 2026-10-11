@@ -1658,7 +1658,7 @@ def _next_sourced_record(repeats, spent, lean=None):
             inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
                                 'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
                                 'source_query':None, 'plugin_query':None,
-                                'material_terms':[name, accession, organism]}, lean)
+                                'material_terms':[]}, lean)
             if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
             admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
                                         spent=spent, replan=False)
