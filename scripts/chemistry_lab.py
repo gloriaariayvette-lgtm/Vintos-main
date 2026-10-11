@@ -2590,6 +2590,9 @@ def _coverage_request(inquiry, observations):
     strings = {}
     def walk(value, path):
         if isinstance(value, str): strings[path] = value
+        elif (isinstance(value, (int, float)) and not isinstance(value, bool)
+              and re.fullmatch(r'evidence\.records\.\d+\.(?:length|taxon_id)', path)):
+            strings[path] = str(value)
         elif isinstance(value, dict):
             for key, child in value.items(): walk(child, path + '.' + str(key))
         elif isinstance(value, list):
@@ -2638,7 +2641,7 @@ def _coverage_request(inquiry, observations):
                  for digest,path in digests.items()}
     by_path = {path: address for address, path in addresses.items()}
     def addressed(value, path):
-        if isinstance(value, str):
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
             return {'address':by_path[path], 'text':value} if path in by_path else value
         if isinstance(value, dict): return {key:addressed(child,path+'.'+str(key)) for key,child in value.items()}
         if isinstance(value, list): return [addressed(child,path+'.'+str(index)) for index,child in enumerate(value)]

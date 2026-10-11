@@ -104,6 +104,19 @@ class Productive(unittest.TestCase):
   self.assertIn('hydropathy',result['missing_evidence']);self.assertFalse(result['evidence_gap']['automatic_followup'])
   self.assertEqual(result['coverage_check']['original_question'],q['question'])
 
+ def test_numeric_source_leaf_is_exactly_addressable(self):
+  q={'question':'What organism and sequence length does UniProt report for Q16740?',
+     'uniprot_query':'accession:Q16740'}
+  observations={'records':[{'accession':'Q16740','organism':'Homo sapiens','length':277}]}
+  verdict={'answered':False,'missing':['annotated domains'], 'supports':[
+   {'requirement':'organism','address':'UniProt:Q16740/organism','quote':'Homo sapiens'},
+   {'requirement':'sequence length','address':'UniProt:Q16740/length','quote':'277'}]}
+  with patch.object(C,'_ask',return_value=json.dumps(verdict)):
+   coverage=C._coverage_check(q,observations)
+  self.assertFalse(coverage['answered'])
+  self.assertNotEqual(coverage.get('assessment_status'),'incomplete')
+  self.assertEqual({x['quote'] for x in coverage['supports']},{'Homo sapiens','277'})
+
  def test_actual_f430_not_identity_but_bibliography_not_mechanism(self):
   q=actual[0]['inquiry']; original=q['question']
   self.assertNotIn('F430',S.human_question_symbols(original))
