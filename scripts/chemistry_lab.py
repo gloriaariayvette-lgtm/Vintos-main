@@ -1341,7 +1341,8 @@ def _orient(context, lean=None):
         # A saved, explicit local step is work already chosen. Try its exact
         # model/range before asking the planner for another exhausted subject.
         try:
-            recovered = _next_assigned_model_step(lab_repeats, spent, lean)
+            recovered = (_next_assigned_archive_step(lab_repeats, spent, lean) or
+                         _next_assigned_model_step(lab_repeats, spent, lean))
         except Exception as exc:
             _fault('saved_model_step', exc); recovered = None
         if recovered:
@@ -1657,6 +1658,28 @@ def _next_evidence_work(inquiry, repeats, spent, step):
                 not step or repeats.on_frontier(candidate, step)):
             candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
             return candidate
+    return None
+
+
+def _next_assigned_archive_step(repeats, spent, lean=None):
+    """Execute an explicit saved archive-by-accession step without replacing its question."""
+    import lab_lines
+    for line in lab_lines.open_lines():
+        question, next_step = line.get('question'), line.get('next_step')
+        if not isinstance(question, str) or not isinstance(next_step, str): continue
+        match = re.fullmatch(
+            r'Query the structure archive by UniProt accession ([A-Z0-9]+)\. Return only entry identifiers, mapped accession, organism, experimental method, reported resolution, construct coverage and modeled residue coverage\. '
+            r'Explicitly exclude ([A-Z0-9]+)/([0-9][A-Z0-9]{3}) from direct [A-Za-z0-9 -]+ evidence; report unavailable coverage fields as unavailable rather than inferring them\.', next_step.strip())
+        if not match or set(repeats._ACCESSION.findall(question)) != {match[1]}: continue
+        request = {'source':'pdb','operation':'search_accession','accession':match[1],
+                   'exclude_accessions':[match[2]],'exclude_entries':[match[3]],'limit':4}
+        inquiry = _inquiry({'question':question,'source_query':request}, lean)
+        if inquiry.get('refused') or _held_question(inquiry) or repeats.repeat(inquiry): continue
+        admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats, spent=spent, replan=False)
+        if admitted.get('refused'): continue
+        scope = {'line':{k:line.get(k) for k in ('id','question','next_step')},'frontier':None,'lean':lean,'atlas':False}
+        return dict(admitted,line_id=line['id'],planning_scope=scope,planning_evidence=_planning_evidence(admitted),
+                    assignment_resolution={'reason':'explicit_saved_archive_step','next_step':next_step})
     return None
 
 
@@ -2745,7 +2768,24 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     literature_route = (inquiry.get('browse_lane') in ('microbiology','genome_mining') and
                         sq.get('source') == 'ncbi' and sq.get('operation') == 'literature')
     proteins = records.get('records', []) if isinstance(records, dict) else records
-    entity = question_entity_context(inquiry, proteins, literature_only=literature_route)
+    identity_records = proteins
+    if sq.get('source') == 'pdb' and sq.get('operation') == 'search_accession' and isinstance(records, dict):
+        # This route has archive entity metadata, not UniProt browse rows.
+        # Normalize only the accession/organism the source actually established;
+        # retain the raw archive receipt for all scientific coverage checks.
+        archive = (records.get('additional_source') or {}).get('receipt') or {}
+        if (archive.get('source') == 'pdb' and (archive.get('query') or {}).get('operation') == 'search_accession'
+                and (archive.get('query') or {}).get('accession') == sq.get('accession')):
+            mapped = {}
+            for row in archive.get('records') or []:
+                if row.get('mapped_accession') != sq.get('accession') or row.get('entry_id') in sq.get('exclude_entries', []): continue
+                organisms = row.get('organisms') or [{}]
+                for organism in organisms:
+                    item = {'accession':row['mapped_accession'], 'organism':organism.get('scientific_name'),
+                            'taxon_id':organism.get('ncbi_taxonomy_id')}
+                    mapped[json.dumps(item, sort_keys=True)] = item
+            identity_records = list(mapped.values())
+    entity = question_entity_context(inquiry, identity_records, literature_only=literature_route)
     if entity['issues']:
         missing = '; '.join(entity['issues'])
         step = 'Resolve the requested protein name, accession and organism against one source entry.'
@@ -3065,8 +3105,8 @@ def tick():
                     state["inquiry"] = inquiry
                     # An explicit saved local step already identifies its input;
                     # do not precede it with an unrelated default UniProt browse.
-                    next_phase = ("sources" if (inquiry.get('assignment_resolution') or {}).get('reason') ==
-                                  'explicit_saved_model_step' else "browse")
+                    next_phase = ("sources" if (inquiry.get('assignment_resolution') or {}).get('reason') in
+                                  ('explicit_saved_model_step', 'explicit_saved_archive_step') else "browse")
                     state.pop("material", None); state.pop("material_repeated", None)
                     if next_phase == 'sources':
                         for key in ('records', 'embeddings', 'additional_source', 'source_query_succeeded',
@@ -3240,7 +3280,7 @@ def tick():
                                else "orient")
                               if inquiry.get('browse_lane') in _lanes else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
-                if (inquiry.get('assignment_resolution') or {}).get('reason') == 'explicit_saved_model_step':
+                if (inquiry.get('assignment_resolution') or {}).get('reason') in ('explicit_saved_model_step', 'explicit_saved_archive_step'):
                     next_phase = ('reflect' if (state.get('additional_source', {}).get('receipt') or {}).get('records')
                                   else 'orient')
                 if inquiry.get('browse_lane') in _lanes and next_phase == 'reflect':
