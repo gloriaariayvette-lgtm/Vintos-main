@@ -1,0 +1,1654 @@
+{
+  "coverage_evidence": {
+    "LITERATURE": [
+      {
+        "abstract": "Structure and Function of the CFTR Chloride Channel. Physiol. Rev. 79, Suppl.: S23-S45, 1999. - The cystic fibrosis transmembrane conductance regulator (CFTR) is a unique member of the ABC transporter family that forms a novel Cl- channel. It is located predominantly in the apical membrane of epithelia where it mediates transepithelial salt and liquid movement. Dysfunction of CFTR causes the genetic disease cystic fibrosis. The CFTR is composed of five domains: two membrane-spanning domains (MSDs), two nucleotide-binding domains (NBDs), and a regulatory (R) domain. Here we review the structure and function of this unique channel, with a focus on how the various domains contribute to channel function. The MSDs form the channel pore, phosphorylation of the R domain determines channel activity, and ATP hydrolysis by the NBDs controls channel gating. Current knowledge of CFTR structure and function may help us understand better its mechanism of action, its role in electrolyte transport, its dysfunction in cystic fibrosis, and its relationship to other ABC transporters.",
+        "journal": "Physiological reviews",
+        "pmid": "9922375",
+        "title": "Structure and function of the CFTR chloride channel.",
+        "year": "1999"
+      },
+      {
+        "abstract": "The cystic fibrosis transmembrane conductance regulator (CFTR) is an ATP-binding cassette (ABC) transporter that uniquely functions as an ion channel. Here, we present a 3.9 Å structure of dephosphorylated human CFTR without nucleotides, determined by electron cryomicroscopy (cryo-EM). Close resemblance of this human CFTR structure to zebrafish CFTR under identical conditions reinforces its relevance for understanding CFTR function. The human CFTR structure reveals a previously unresolved helix belonging to the R domain docked inside the intracellular vestibule, precluding channel opening. By analyzing the sigmoid time course of CFTR current activation, we propose that PKA phosphorylation of the R domain is enabled by its infrequent spontaneous disengagement, which also explains residual ATPase and gating activity of dephosphorylated CFTR. From comparison with MRP1, a feature distinguishing CFTR from all other ABC transporters is the helix-loop transition in transmembrane helix 8, which likely forms the structural basis for CFTR's channel function.",
+        "journal": "Cell",
+        "pmid": "28340353",
+        "title": "Molecular Structure of the Human CFTR Ion Channel.",
+        "year": "2017"
+      },
+      {
+        "abstract": "Cystic fibrosis (CF) is a fatal genetic disease primarily affecting Caucasians, although cases have been reported from other ethnic groups. CF has a complex etiology, but it is chiefly a disease of electrolyte transport and is characterized by defects in fluid secretion by several epithelia, including the sweat duct, exocrine pancreas, and the pulmonary airways. The link between CF and a defect in cAMP-mediated Cl- transport in secretory epithelia was established in the early 1980s. Since then, numerous electrophysiological studies have focused on the characterization and regulation of individual Cl- channels underlying the macroscopic Cl- currents of secretory epithelia in the airways, sweat ducts, and gut. In this review the results of these studies in the light of current knowledge of the function of the CF gene product, the CF transmembrane conductance regulator (CFTR) protein, will be analyzed. The CFTR protein is a member of a family of ATP-binding proteins that act as unidirectional solute pumps. These proteins are membrane spanning, are found in both prokaryotic and eukaryotic cells, and have two ATP-binding domains. The family includes the p-glycoproteins that are involved with the expression of multidrug resistance in certain tumor cells. The majority of CF chromosomes (70%) have a single codon deletion that translates to a missing phenylalanine residue at position 508 (delta F508) of the protein. Unique for this family of proteins, the CFTR protein possesses an additional highly charged domain (the R domain) containing several consensus polypeptide sequences for kinase phosphorylation. Although CFTR bears structural resemblance to this family of ATP-dependent pumps, overexpression of the protein in a variety of different cell types is associated with the appearence of a cAMP-sensitive Cl- channel. We critically examine current information concerning the structure-function relationships of the CFTR protein obtained from both electrophysiological and biochemical approaches. We also summarize recent evidence suggesting that the CFTR protein may act as a pump and a channel, a hypothesis in keeping with the multifaceted nature of the disease.",
+        "journal": "The American journal of physiology",
+        "pmid": "1381146",
+        "title": "CFTR!",
+        "year": "1992"
+      },
+      {
+        "abstract": "Phosphorylation controls the activity of ion channels in many tissues. In epithelia, the cystic fibrosis transmembrane conductance regulator (CFTR) chloride channel is activated by phosphorylation of serine residues in its regulatory (R) domain and then gated by binding and hydrolysis of ATP by the nucleotide-binding domains. Current models propose that the unphosphorylated R domain serves as an inhibitory particle that occludes the pore, much like the inhibitory 'ball' in Shaker K+ channels; presumably, phosphorylation relieves this inhibition. Here we test this by adding an R-domain peptide to a CFTR variant in which much of the R domain had been deleted (CFTR-deltaR/S660A): in contrast to predictions, we found that adding an unphosphorylated R domain to CFTR-deltaR/S660A did not inhibit activity, whereas a phosphorylated R-domain peptide stimulated activity. To investigate how phosphorylation controls activity, we studied channel gating and found that phosphorylation of the R domain increases the rate of channel opening by enhancing the sensitivity to ATP. Our results indicate that CFTR is regulated by a new mechanism in which phosphorylation of one domain stimulates the interaction of ATP with another domain, thereby increasing activity.",
+        "journal": "Nature",
+        "pmid": "9305845",
+        "title": "Stimulation of CFTR activity by its phosphorylated R domain.",
+        "year": "1997"
+      }
+    ],
+    "additional_source": {
+      "instrument_result": null,
+      "receipt_id": "72e50906ef5b5cc5c3c55c05a549aeaf60cf32e477d12175a481038f52ad4797",
+      "records": [
+        {
+          "abstract": "Structure and Function of the CFTR Chloride Channel. Physiol. Rev. 79, Suppl.: S23-S45, 1999. - The cystic fibrosis transmembrane conductance regulator (CFTR) is a unique member of the ABC transporter family that forms a novel Cl- channel. It is located predominantly in the apical membrane of epithelia where it mediates transepithelial salt and liquid movement. Dysfunction of CFTR causes the genetic disease cystic fibrosis. The CFTR is composed of five domains: two membrane-spanning domains (MSDs), two nucleotide-binding domains (NBDs), and a regulatory (R) domain. Here we review the structure and function of this unique channel, with a focus on how the various domains contribute to channel function. The MSDs form the channel pore, phosphorylation of the R domain determines channel activity, and ATP hydrolysis by the NBDs controls channel gating. Current knowledge of CFTR structure and function may help us understand better its mechanism of action, its role in electrolyte transport, its dysfunction in cystic fibrosis, and its relationship to other ABC transporters.",
+          "journal": "Physiological reviews",
+          "pmid": "9922375",
+          "title": "Structure and function of the CFTR chloride channel.",
+          "year": "1999"
+        },
+        {
+          "abstract": "The cystic fibrosis transmembrane conductance regulator (CFTR) is an ATP-binding cassette (ABC) transporter that uniquely functions as an ion channel. Here, we present a 3.9 Å structure of dephosphorylated human CFTR without nucleotides, determined by electron cryomicroscopy (cryo-EM). Close resemblance of this human CFTR structure to zebrafish CFTR under identical conditions reinforces its relevance for understanding CFTR function. The human CFTR structure reveals a previously unresolved helix belonging to the R domain docked inside the intracellular vestibule, precluding channel opening. By analyzing the sigmoid time course of CFTR current activation, we propose that PKA phosphorylation of the R domain is enabled by its infrequent spontaneous disengagement, which also explains residual ATPase and gating activity of dephosphorylated CFTR. From comparison with MRP1, a feature distinguishing CFTR from all other ABC transporters is the helix-loop transition in transmembrane helix 8, which likely forms the structural basis for CFTR's channel function.",
+          "journal": "Cell",
+          "pmid": "28340353",
+          "title": "Molecular Structure of the Human CFTR Ion Channel.",
+          "year": "2017"
+        },
+        {
+          "abstract": "Cystic fibrosis (CF) is a fatal genetic disease primarily affecting Caucasians, although cases have been reported from other ethnic groups. CF has a complex etiology, but it is chiefly a disease of electrolyte transport and is characterized by defects in fluid secretion by several epithelia, including the sweat duct, exocrine pancreas, and the pulmonary airways. The link between CF and a defect in cAMP-mediated Cl- transport in secretory epithelia was established in the early 1980s. Since then, numerous electrophysiological studies have focused on the characterization and regulation of individual Cl- channels underlying the macroscopic Cl- currents of secretory epithelia in the airways, sweat ducts, and gut. In this review the results of these studies in the light of current knowledge of the function of the CF gene product, the CF transmembrane conductance regulator (CFTR) protein, will be analyzed. The CFTR protein is a member of a family of ATP-binding proteins that act as unidirectional solute pumps. These proteins are membrane spanning, are found in both prokaryotic and eukaryotic cells, and have two ATP-binding domains. The family includes the p-glycoproteins that are involved with the expression of multidrug resistance in certain tumor cells. The majority of CF chromosomes (70%) have a single codon deletion that translates to a missing phenylalanine residue at position 508 (delta F508) of the protein. Unique for this family of proteins, the CFTR protein possesses an additional highly charged domain (the R domain) containing several consensus polypeptide sequences for kinase phosphorylation. Although CFTR bears structural resemblance to this family of ATP-dependent pumps, overexpression of the protein in a variety of different cell types is associated with the appearence of a cAMP-sensitive Cl- channel. We critically examine current information concerning the structure-function relationships of the CFTR protein obtained from both electrophysiological and biochemical approaches. We also summarize recent evidence suggesting that the CFTR protein may act as a pump and a channel, a hypothesis in keeping with the multifaceted nature of the disease.",
+          "journal": "The American journal of physiology",
+          "pmid": "1381146",
+          "title": "CFTR!",
+          "year": "1992"
+        },
+        {
+          "abstract": "Mutations in the gene encoding the cystic fibrosis transmembrane conductance regulator (CFTR) cause cystic fibrosis (CF) (Collins, 1992). Over 500 naturally occurring mutations have been identified in CF gene which are located in all of the domains of the protein (Kerem et al., 1990; Mercier et al., 1993; Ghanem et al., 1994; Fanen et al., 1992; Ferec et al., 1992; Cutting et al., 1990). Early studies by several investigators characterized CFTR as a chloride channel (Anderson et al.; 1991b,c; Bear et al., 1991). The complex secondary structure of the protein suggested that CFTR might possess other functions in addition to being a chloride channel. Studies have established that the CFTR functions not only as a chloride channel but is indeed a regulator of sodium channels (Stutts et al., 1995), outwardly rectifying chloride channels (ORCC) (Gray et al., 1989; Garber et al., 1992; Egan et al., 1992; Hwang et al., 1989; Schwiebert et al., 1995) and also the transport of ATP (Schwiebert et al., 1995; Reisin et al., 1994). This mini-review deals with the studies which elucidate the functions of the various domains of CFTR, namely the transmembrane domains, TMD1 and TMD2, the two cytoplasmic nucleotide binding domains, NBD1 and NBD2, and the regulatory, R, domain.",
+          "journal": "Journal of bioenergetics and biomembranes",
+          "pmid": "9511929",
+          "title": "CFTR: domains, structure, and function.",
+          "year": "1997"
+        }
+      ],
+      "source": "pubmed_abstracts"
+    },
+    "atlas_analysis": null,
+    "embedding_coverage": [
+      "P13569: the embedding covers the whole chain (1480 residues)"
+    ],
+    "records": [
+      {
+        "accession": "P13569",
+        "chembl_ids": [
+          "CHEMBL4051"
+        ],
+        "domains": [
+          {
+            "description": "ABC transmembrane type-1 1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00441",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 365
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 81
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transporter 1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00434",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 646
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 423
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transmembrane type-1 2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00441",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1155
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 859
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transporter 2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00434",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1443
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1210
+              }
+            },
+            "type": "Domain"
+          }
+        ],
+        "function": "Epithelial ion channel that plays an important role in the regulation of epithelial ion and water transport and fluid homeostasis (PubMed:26823428). Mediates the transport of chloride ions across the cell membrane (PubMed:10792060, PubMed:11524016, PubMed:11707463, PubMed:12519745, PubMed:12529365, PubMed:12588899, PubMed:12727866, PubMed:15010471, PubMed:17036051, PubMed:1712898, PubMed:17182731, PubMed:19398555, PubMed:19621064, PubMed:22178883, PubMed:25330774, PubMed:26846474, PubMed:28087700, PubMed:8910473, PubMed:9804160). Possesses an intrinsic ATPase activity and utilizes ATP to gate its channel; the passive flow of anions through the channel is gated by cycles of ATP binding and hydrolysis by the ATP-binding domains (PubMed:11524016, PubMed:15284228, PubMed:26627831, PubMed:8910473). The ion channel is also permeable to HCO(3)(-); selectivity depends on the extracellular chloride concentration (PubMed:15010471, PubMed:19019741). In vitro, mediates ATP-dependent glutathione flux (PubMed:12727866). Exerts its function also by modulating the activity of other ion channels and transporters (PubMed:12403779, PubMed:22121115, PubMed:22178883, PubMed:27941075). Plays an importan",
+        "genes": [
+          {
+            "geneName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000312",
+                  "id": "HGNC:1884",
+                  "source": "HGNC"
+                }
+              ],
+              "value": "CFTR"
+            },
+            "synonyms": [
+              {
+                "value": "ABCC7"
+              }
+            ]
+          }
+        ],
+        "id": "CFTR_HUMAN",
+        "length": 1480,
+        "organism": "Homo sapiens",
+        "organism_aliases": [
+          "Human"
+        ],
+        "organism_lineage": [
+          "Eukaryota",
+          "Metazoa",
+          "Chordata",
+          "Craniata",
+          "Vertebrata",
+          "Euteleostomi",
+          "Mammalia",
+          "Eutheria",
+          "Euarchontoglires",
+          "Primates",
+          "Haplorrhini",
+          "Catarrhini",
+          "Hominidae",
+          "Homo"
+        ],
+        "pdb_ids": [
+          "1XMI",
+          "1XMJ",
+          "2BBO",
+          "2BBS",
+          "2BBT",
+          "2LOB",
+          "2PZE",
+          "2PZF"
+        ],
+        "protein_aliases": [
+          "ATP-binding cassette sub-family C member 7",
+          "Channel conductance-controlling ATPase",
+          "cAMP-dependent chloride channel"
+        ],
+        "protein_name": "Cystic fibrosis transmembrane conductance regulator",
+        "sequence": "[1480 residues; complete sequence in source receipt; not needed for geometry]",
+        "taxon_id": 9606,
+        "topology": [
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000305"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 77
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 98
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 78
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 122
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 99
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 146
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 123
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 195
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 147
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=3",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 216
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 196
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 222
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 217
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=4",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 243
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 223
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 298
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 244
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=5",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 319
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 299
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 339
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 320
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=6",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 358
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 340
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 858
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 359
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=7",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 879
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 859
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 918
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 880
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Discontinuously helical; Name=8",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 939
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 919
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 990
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 940
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=9",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1011
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 991
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1013
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1012
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=10",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1034
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1014
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1095
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1035
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=11",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1116
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1096
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1130
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1117
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=12",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1151
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1131
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1480
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1152
+              }
+            },
+            "type": "Topological domain"
+          }
+        ],
+        "topology_summary": "UniProt source annotations, not a new experimental topology determination: Topological domain: 13 annotated intervals: 1-77 (Cytoplasmic), 99-122 (Extracellular), 147-195 (Cytoplasmic), 217-222 (Extracellular), 244-298 (Cytoplasmic), 320-339 (Extracellular), 359-858 (Cytoplasmic), 880-918 (Extracellular), 940-990 (Cytoplasmic), 1012-1013 (Extracellular), 1035-1095 (Cytoplasmic), 1117-1130 (Extracellular), 1152-1480 (Cytoplasmic); Transmembrane: 12 annotated intervals: 78-98 (Helical; Name=1), 123-146 (Helical; Name=2), 196-216 (Helical; Name=3), 223-243 (Helical; Name=4), 299-319 (Helical; Name=5), 340-358 (Helical; Name=6), 859-879 (Helical; Name=7), 919-939 (Discontinuously helical; Name=8), 991-1011 (Helical; Name=9), 1014-1034 (Helical; Name=10), 1096-1116 (Helical; Name=11), 1131-1151 (Helical; Name=12). Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure."
+      }
+    ]
+  },
+  "inquiry": {
+    "browse_lane": "protein",
+    "identity_context": {
+      "original_queries": [
+        "protein_name:\"Cystic Fibrosis Transmembrane Conductance Regulator\" AND reviewed:true AND taxonomy_id:9606"
+      ],
+      "question_sha256": "50248883893a9690ce2fb1af000a176e2b62539045a074348d1aff9e6b871237",
+      "version": 1
+    },
+    "identity_queries": [
+      "protein_name:\"Cystic Fibrosis Transmembrane Conductance Regulator\" AND reviewed:true AND taxonomy_id:9606"
+    ],
+    "instrument_query": null,
+    "material_terms": [
+      "CFTR",
+      "R-domain",
+      "AKAP",
+      "phosphorylation",
+      "chloride channel"
+    ],
+    "planning_evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "planning_scope": {
+      "atlas": false,
+      "context_sha256": "6ee6efca05c6fffe485f95e3d6d2e4e3322fa39cfdc3b76fe8730342aae32b7d",
+      "frontier": null,
+      "lean": null,
+      "line": null
+    },
+    "plugin_query": null,
+    "question": "What are the structural features of the CFTR regulatory domain (R-domain) and how does its interaction with the A-kinase anchoring protein (AKAP) influence the phosphorylation-dependent gating of the chloride channel?",
+    "source_query": {
+      "source": "pubmed_abstracts",
+      "terms": [
+        "CFTR R-domain structure",
+        "AKAP binding motif",
+        "phosphorylation gating mechanism"
+      ]
+    },
+    "source_query_question_sha256": "50248883893a9690ce2fb1af000a176e2b62539045a074348d1aff9e6b871237",
+    "uniprot_query": "protein_name:\"Cystic Fibrosis Transmembrane Conductance Regulator\" AND reviewed:true AND taxonomy_id:9606",
+    "why_now": "The previous threads on SLC26A4 (Pendrin) and other SLC transporters are spent. CFTR is the canonical chloride channel model. Given the focus on regulatory scaffolding (like the L-c218c577 line), exploring the R-domain's specific structural motifs for AKAP binding provides a high-resolution look at how phosphorylation signals are physically transduced into channel gating."
+  },
+  "observations": {
+    "LITERATURE": [
+      {
+        "abstract": "Structure and Function of the CFTR Chloride Channel. Physiol. Rev. 79, Suppl.: S23-S45, 1999. - The cystic fibrosis transmembrane conductance regulator (CFTR) is a unique member of the ABC transporter family that forms a novel Cl- channel. It is located predominantly in the apical membrane of epithelia where it mediates transepithelial salt and liquid movement. Dysfunction of CFTR causes the genetic disease cystic fibrosis. The CFTR is composed of five domains: two membrane-spanning domains (MSDs), two nucleotide-binding domains (NBDs), and a regulatory (R) domain. Here we review the structure and function of this unique channel, with a focus on how the various domains contribute to channel function. The MSDs form the channel pore, phosphorylation of the R domain determines channel activity, and ATP hydrolysis by the NBDs controls channel gating. Current knowledge of CFTR structure and function may help us understand better its mechanism of action, its role in electrolyte transport, its dysfunction in cystic fibrosis, and its relationship to other ABC transporters.",
+        "journal": "Physiological reviews",
+        "pmid": "9922375",
+        "title": "Structure and function of the CFTR chloride channel.",
+        "year": "1999"
+      },
+      {
+        "abstract": "The cystic fibrosis transmembrane conductance regulator (CFTR) is an ATP-binding cassette (ABC) transporter that uniquely functions as an ion channel. Here, we present a 3.9 Å structure of dephosphorylated human CFTR without nucleotides, determined by electron cryomicroscopy (cryo-EM). Close resemblance of this human CFTR structure to zebrafish CFTR under identical conditions reinforces its relevance for understanding CFTR function. The human CFTR structure reveals a previously unresolved helix belonging to the R domain docked inside the intracellular vestibule, precluding channel opening. By analyzing the sigmoid time course of CFTR current activation, we propose that PKA phosphorylation of the R domain is enabled by its infrequent spontaneous disengagement, which also explains residual ATPase and gating activity of dephosphorylated CFTR. From comparison with MRP1, a feature distinguishing CFTR from all other ABC transporters is the helix-loop transition in transmembrane helix 8, which likely forms the structural basis for CFTR's channel function.",
+        "journal": "Cell",
+        "pmid": "28340353",
+        "title": "Molecular Structure of the Human CFTR Ion Channel.",
+        "year": "2017"
+      },
+      {
+        "abstract": "Cystic fibrosis (CF) is a fatal genetic disease primarily affecting Caucasians, although cases have been reported from other ethnic groups. CF has a complex etiology, but it is chiefly a disease of electrolyte transport and is characterized by defects in fluid secretion by several epithelia, including the sweat duct, exocrine pancreas, and the pulmonary airways. The link between CF and a defect in cAMP-mediated Cl- transport in secretory epithelia was established in the early 1980s. Since then, numerous electrophysiological studies have focused on the characterization and regulation of individual Cl- channels underlying the macroscopic Cl- currents of secretory epithelia in the airways, sweat ducts, and gut. In this review the results of these studies in the light of current knowledge of the function of the CF gene product, the CF transmembrane conductance regulator (CFTR) protein, will be analyzed. The CFTR protein is a member of a family of ATP-binding proteins that act as unidirectional solute pumps. These proteins are membrane spanning, are found in both prokaryotic and eukaryotic cells, and have two ATP-binding domains. The family includes the p-glycoproteins that are involved with the expression of multidrug resistance in certain tumor cells. The majority of CF chromosomes (70%) have a single codon deletion that translates to a missing phenylalanine residue at position 508 (delta F508) of the protein. Unique for this family of proteins, the CFTR protein possesses an additional highly charged domain (the R domain) containing several consensus polypeptide sequences for kinase phosphorylation. Although CFTR bears structural resemblance to this family of ATP-dependent pumps, overexpression of the protein in a variety of different cell types is associated with the appearence of a cAMP-sensitive Cl- channel. We critically examine current information concerning the structure-function relationships of the CFTR protein obtained from both electrophysiological and biochemical approaches. We also summarize recent evidence suggesting that the CFTR protein may act as a pump and a channel, a hypothesis in keeping with the multifaceted nature of the disease.",
+        "journal": "The American journal of physiology",
+        "pmid": "1381146",
+        "title": "CFTR!",
+        "year": "1992"
+      },
+      {
+        "abstract": "Phosphorylation controls the activity of ion channels in many tissues. In epithelia, the cystic fibrosis transmembrane conductance regulator (CFTR) chloride channel is activated by phosphorylation of serine residues in its regulatory (R) domain and then gated by binding and hydrolysis of ATP by the nucleotide-binding domains. Current models propose that the unphosphorylated R domain serves as an inhibitory particle that occludes the pore, much like the inhibitory 'ball' in Shaker K+ channels; presumably, phosphorylation relieves this inhibition. Here we test this by adding an R-domain peptide to a CFTR variant in which much of the R domain had been deleted (CFTR-deltaR/S660A): in contrast to predictions, we found that adding an unphosphorylated R domain to CFTR-deltaR/S660A did not inhibit activity, whereas a phosphorylated R-domain peptide stimulated activity. To investigate how phosphorylation controls activity, we studied channel gating and found that phosphorylation of the R domain increases the rate of channel opening by enhancing the sensitivity to ATP. Our results indicate that CFTR is regulated by a new mechanism in which phosphorylation of one domain stimulates the interaction of ATP with another domain, thereby increasing activity.",
+        "journal": "Nature",
+        "pmid": "9305845",
+        "title": "Stimulation of CFTR activity by its phosphorylated R domain.",
+        "year": "1997"
+      }
+    ],
+    "additional_source": {
+      "candidate": {
+        "assessment": {
+          "at": "2026-10-11T09:11:45.062852+00:00",
+          "collision_id": null,
+          "entry_id": "SRC-72e50906ef5b5cc5",
+          "evidence_sha256": "150f03a5dd8c6e838ac42541ab2603edc72143f3b740b1844b3f242c3c0dcb16",
+          "finding": "{\"source\": \"pubmed_abstracts\", \"query\": {\"source\": \"pubmed_abstracts\", \"terms\": [\"CFTR R-domain structure\", \"AKAP binding motif\", \"phosphorylation gating mechanism\"], \"terms_matched\": [\"CFTR R-domain structure\"], \"limit\": 4}, \"receipt\": \"72e50906ef5b5cc5c3c55c05a549aeaf60cf32e477d12175a481038f52ad4797\", \"observations\": [{\"pmid\": \"9922375\", \"title\": \"Structure and function of the CFTR chloride channel.\", \"journal\": \"Physiological reviews\", \"year\": \"1999\", \"abstract\": \"Structure and Function of the CFTR Chloride Channel. Physiol. Rev. 79, Suppl.: S23-S45, 1999. - The cystic fibrosis transmembrane conductance regulator (CFTR) is a unique member of the ABC transporter family that forms a novel Cl- channel. It is located predominantly in the apical membrane of epithelia where it mediates transepithelial salt and liquid movement. Dysfunction of CFTR causes the genetic disease cystic fibrosis. The CFTR is composed of five domains: two membrane-spanning domains (MSDs), two nucleotide-binding d",
+          "flagged_for_next_lab_session": true,
+          "interest_score": 0.6722,
+          "next_question": "What are the structural features of the CFTR regulatory domain (R-domain) and how does its interaction with the A-kinase anchoring protein (AKAP) influence the phosphorylation-dependent gating of the chloride channel?",
+          "question": "What are the structural features of the CFTR regulatory domain (R-domain) and how does its interaction with the A-kinase anchoring protein (AKAP) influence the phosphorylation-dependent gating of the chloride channel?",
+          "question_sha256": "a341a8f30efa3c665cffaf2762521297764d86b31dfdadc63c17d89cdb573d2f",
+          "reason_for_score": [
+            "sourced_record",
+            "source_query_succeeded",
+            "new_source_accessions",
+            "new_territory"
+          ],
+          "reflection": "Prediction or source observation; not validation.",
+          "score_components": {
+            "advances_open_line": 0.0,
+            "new_source_accessions": 0.2,
+            "new_territory": 0.2222,
+            "repetition_penalty": 0.0,
+            "source_query_succeeded": 0.15,
+            "sourced_record": 0.1
+          },
+          "score_version": 2,
+          "source_accessions": [
+            "72e50906ef5b5cc5c3c55c05a549aeaf"
+          ],
+          "source_query_succeeded": true,
+          "truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance"
+        },
+        "followups": {
+          "chemiq": "requires_defined_molecule_and_supported_experiment",
+          "esmc_esmfold": "requires_sourced_gene_to_protein_mapping_and_sequence; regulatory_effect_is_not_sequence_change",
+          "evo2": "requires_exact_sourced_reference_sequence_and_bounded_comparison; no phenotype_claim",
+          "hypothesis_status": "unvalidated",
+          "novelty": "requires_documented_literature_search; no_hit_is_not_proof",
+          "source_receipt": "72e50906ef5b5cc5c3c55c05a549aeaf60cf32e477d12175a481038f52ad4797"
+        },
+        "question": "What are the structural features of the CFTR regulatory domain (R-domain) and how does its interaction with the A-kinase anchoring protein (AKAP) influence the phosphorylation-dependent gating of the chloride channel?",
+        "receipt_id": "72e50906ef5b5cc5c3c55c05a549aeaf60cf32e477d12175a481038f52ad4797"
+      },
+      "receipt": {
+        "literature_coverage": "not_assessed",
+        "metadata": {
+          "coverage": "first_4_by_relevance",
+          "interpretation": "published abstracts: the authors' claims, not verified here",
+          "service": "NCBI_PubMed"
+        },
+        "novelty": "not_established",
+        "query": {
+          "limit": 4,
+          "source": "pubmed_abstracts",
+          "terms": [
+            "CFTR R-domain structure",
+            "AKAP binding motif",
+            "phosphorylation gating mechanism"
+          ],
+          "terms_matched": [
+            "CFTR R-domain structure"
+          ]
+        },
+        "receipt_id": "72e50906ef5b5cc5c3c55c05a549aeaf60cf32e477d12175a481038f52ad4797",
+        "records": [
+          {
+            "abstract": "Structure and Function of the CFTR Chloride Channel. Physiol. Rev. 79, Suppl.: S23-S45, 1999. - The cystic fibrosis transmembrane conductance regulator (CFTR) is a unique member of the ABC transporter family that forms a novel Cl- channel. It is located predominantly in the apical membrane of epithelia where it mediates transepithelial salt and liquid movement. Dysfunction of CFTR causes the genetic disease cystic fibrosis. The CFTR is composed of five domains: two membrane-spanning domains (MSDs), two nucleotide-binding domains (NBDs), and a regulatory (R) domain. Here we review the structure and function of this unique channel, with a focus on how the various domains contribute to channel function. The MSDs form the channel pore, phosphorylation of the R domain determines channel activity, and ATP hydrolysis by the NBDs controls channel gating. Current knowledge of CFTR structure and function may help us understand better its mechanism of action, its role in electrolyte transport, its dysfunction in cystic fibrosis, and its relationship to other ABC transporters.",
+            "journal": "Physiological reviews",
+            "pmid": "9922375",
+            "title": "Structure and function of the CFTR chloride channel.",
+            "year": "1999"
+          },
+          {
+            "abstract": "The cystic fibrosis transmembrane conductance regulator (CFTR) is an ATP-binding cassette (ABC) transporter that uniquely functions as an ion channel. Here, we present a 3.9 Å structure of dephosphorylated human CFTR without nucleotides, determined by electron cryomicroscopy (cryo-EM). Close resemblance of this human CFTR structure to zebrafish CFTR under identical conditions reinforces its relevance for understanding CFTR function. The human CFTR structure reveals a previously unresolved helix belonging to the R domain docked inside the intracellular vestibule, precluding channel opening. By analyzing the sigmoid time course of CFTR current activation, we propose that PKA phosphorylation of the R domain is enabled by its infrequent spontaneous disengagement, which also explains residual ATPase and gating activity of dephosphorylated CFTR. From comparison with MRP1, a feature distinguishing CFTR from all other ABC transporters is the helix-loop transition in transmembrane helix 8, which likely forms the structural basis for CFTR's channel function.",
+            "journal": "Cell",
+            "pmid": "28340353",
+            "title": "Molecular Structure of the Human CFTR Ion Channel.",
+            "year": "2017"
+          },
+          {
+            "abstract": "Cystic fibrosis (CF) is a fatal genetic disease primarily affecting Caucasians, although cases have been reported from other ethnic groups. CF has a complex etiology, but it is chiefly a disease of electrolyte transport and is characterized by defects in fluid secretion by several epithelia, including the sweat duct, exocrine pancreas, and the pulmonary airways. The link between CF and a defect in cAMP-mediated Cl- transport in secretory epithelia was established in the early 1980s. Since then, numerous electrophysiological studies have focused on the characterization and regulation of individual Cl- channels underlying the macroscopic Cl- currents of secretory epithelia in the airways, sweat ducts, and gut. In this review the results of these studies in the light of current knowledge of the function of the CF gene product, the CF transmembrane conductance regulator (CFTR) protein, will be analyzed. The CFTR protein is a member of a family of ATP-binding proteins that act as unidirectional solute pumps. These proteins are membrane spanning, are found in both prokaryotic and eukaryotic cells, and have two ATP-binding domains. The family includes the p-glycoproteins that are involved with the expression of multidrug resistance in certain tumor cells. The majority of CF chromosomes (70%) have a single codon deletion that translates to a missing phenylalanine residue at position 508 (delta F508) of the protein. Unique for this family of proteins, the CFTR protein possesses an additional highly charged domain (the R domain) containing several consensus polypeptide sequences for kinase phosphorylation. Although CFTR bears structural resemblance to this family of ATP-dependent pumps, overexpression of the protein in a variety of different cell types is associated with the appearence of a cAMP-sensitive Cl- channel. We critically examine current information concerning the structure-function relationships of the CFTR protein obtained from both electrophysiological and biochemical approaches. We also summarize recent evidence suggesting that the CFTR protein may act as a pump and a channel, a hypothesis in keeping with the multifaceted nature of the disease.",
+            "journal": "The American journal of physiology",
+            "pmid": "1381146",
+            "title": "CFTR!",
+            "year": "1992"
+          },
+          {
+            "abstract": "Mutations in the gene encoding the cystic fibrosis transmembrane conductance regulator (CFTR) cause cystic fibrosis (CF) (Collins, 1992). Over 500 naturally occurring mutations have been identified in CF gene which are located in all of the domains of the protein (Kerem et al., 1990; Mercier et al., 1993; Ghanem et al., 1994; Fanen et al., 1992; Ferec et al., 1992; Cutting et al., 1990). Early studies by several investigators characterized CFTR as a chloride channel (Anderson et al.; 1991b,c; Bear et al., 1991). The complex secondary structure of the protein suggested that CFTR might possess other functions in addition to being a chloride channel. Studies have established that the CFTR functions not only as a chloride channel but is indeed a regulator of sodium channels (Stutts et al., 1995), outwardly rectifying chloride channels (ORCC) (Gray et al., 1989; Garber et al., 1992; Egan et al., 1992; Hwang et al., 1989; Schwiebert et al., 1995) and also the transport of ATP (Schwiebert et al., 1995; Reisin et al., 1994). This mini-review deals with the studies which elucidate the functions of the various domains of CFTR, namely the transmembrane domains, TMD1 and TMD2, the two cytoplasmic nucleotide binding domains, NBD1 and NBD2, and the regulatory, R, domain.",
+            "journal": "Journal of bioenergetics and biomembranes",
+            "pmid": "9511929",
+            "title": "CFTR: domains, structure, and function.",
+            "year": "1997"
+          }
+        ],
+        "response_sha256": "cd2538b6950744db4c725a2b78e38d3021fb92d0a84930172b7f4b810ab4abf0",
+        "retrieved_at": "2026-10-11T09:11:45.062852+00:00",
+        "source": "pubmed_abstracts",
+        "truth_status": "source_observation_not_validation"
+      }
+    },
+    "atlas_analysis": null,
+    "embedding_coverage": [
+      "P13569: the embedding covers the whole chain (1480 residues)"
+    ],
+    "esmc_receipts": [
+      {
+        "accession": "P13569",
+        "artifact": "memory/chemistry-lab/artifacts/esmc/P13569-7b061bf8d17b.npy",
+        "coverage": "whole_chain",
+        "dimension": 1152,
+        "embedded_residues": [
+          1,
+          1480
+        ],
+        "embedding_sha256": "7b061bf8d17b727dd0d04937a68b38db35e363cfea0c9e95afec41f78d12f4cb",
+        "input_length": 1480,
+        "l2_norm": 1.055101,
+        "sequence_length": 1480,
+        "truncated": false,
+        "windows": [
+          [
+            1,
+            350
+          ],
+          [
+            301,
+            650
+          ],
+          [
+            601,
+            950
+          ],
+          [
+            901,
+            1250
+          ],
+          [
+            1131,
+            1480
+          ]
+        ]
+      }
+    ],
+    "records": [
+      {
+        "accession": "P13569",
+        "chembl_ids": [
+          "CHEMBL4051"
+        ],
+        "domains": [
+          {
+            "description": "ABC transmembrane type-1 1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00441",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 365
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 81
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transporter 1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00434",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 646
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 423
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transmembrane type-1 2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00441",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1155
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 859
+              }
+            },
+            "type": "Domain"
+          },
+          {
+            "description": "ABC transporter 2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000255",
+                "id": "PRU00434",
+                "source": "PROSITE-ProRule"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1443
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1210
+              }
+            },
+            "type": "Domain"
+          }
+        ],
+        "function": "Epithelial ion channel that plays an important role in the regulation of epithelial ion and water transport and fluid homeostasis (PubMed:26823428). Mediates the transport of chloride ions across the cell membrane (PubMed:10792060, PubMed:11524016, PubMed:11707463, PubMed:12519745, PubMed:12529365, PubMed:12588899, PubMed:12727866, PubMed:15010471, PubMed:17036051, PubMed:1712898, PubMed:17182731, PubMed:19398555, PubMed:19621064, PubMed:22178883, PubMed:25330774, PubMed:26846474, PubMed:28087700, PubMed:8910473, PubMed:9804160). Possesses an intrinsic ATPase activity and utilizes ATP to gate its channel; the passive flow of anions through the channel is gated by cycles of ATP binding and hydrolysis by the ATP-binding domains (PubMed:11524016, PubMed:15284228, PubMed:26627831, PubMed:8910473). The ion channel is also permeable to HCO(3)(-); selectivity depends on the extracellular chloride concentration (PubMed:15010471, PubMed:19019741). In vitro, mediates ATP-dependent glutathione flux (PubMed:12727866). Exerts its function also by modulating the activity of other ion channels and transporters (PubMed:12403779, PubMed:22121115, PubMed:22178883, PubMed:27941075). Plays an importan",
+        "genes": [
+          {
+            "geneName": {
+              "evidences": [
+                {
+                  "evidenceCode": "ECO:0000312",
+                  "id": "HGNC:1884",
+                  "source": "HGNC"
+                }
+              ],
+              "value": "CFTR"
+            },
+            "synonyms": [
+              {
+                "value": "ABCC7"
+              }
+            ]
+          }
+        ],
+        "id": "CFTR_HUMAN",
+        "length": 1480,
+        "organism": "Homo sapiens",
+        "organism_aliases": [
+          "Human"
+        ],
+        "organism_lineage": [
+          "Eukaryota",
+          "Metazoa",
+          "Chordata",
+          "Craniata",
+          "Vertebrata",
+          "Euteleostomi",
+          "Mammalia",
+          "Eutheria",
+          "Euarchontoglires",
+          "Primates",
+          "Haplorrhini",
+          "Catarrhini",
+          "Hominidae",
+          "Homo"
+        ],
+        "pdb_ids": [
+          "1XMI",
+          "1XMJ",
+          "2BBO",
+          "2BBS",
+          "2BBT",
+          "2LOB",
+          "2PZE",
+          "2PZF"
+        ],
+        "protein_aliases": [
+          "ATP-binding cassette sub-family C member 7",
+          "Channel conductance-controlling ATPase",
+          "cAMP-dependent chloride channel"
+        ],
+        "protein_name": "Cystic fibrosis transmembrane conductance regulator",
+        "sequence": "MQRSPLEKASVVSKLFFSWTRPILRKGYRQRLELSDIYQIPSVDSADNLSEKLEREWDRELASKKNPKLINALRRCFFWRFMFYGIFLYLGEVTKAVQPLLLGRIIASYDPDNKEERSIAIYLGIGLCLLFIVRTLLLHPAIFGLHHIGMQMRIAMFSLIYKKTLKLSSRVLDKISIGQLVSLLSNNLNKFDEGLALAHFVWIAPLQVALLMGLIWELLQASAFCGLGFLIVLALFQAGLGRMMMKYRDQRAGKISERLVITSEMIENIQSVKAYCWEEAMEKMIENLRQTELKLTRKAAYVRYFNSSAFFFSGFFVVFLSVLPYALIKGIILRKIFTTISFCIVLRMAVTRQFPWAVQTWYDSLGAINKIQDFLQKQEYKTLEYNLTTTEVVMENVTAFWEEGFGELFEKAKQNNNNRKTSNGDDSLFFSNFSLLGTPVLKDINFKIERGQLLAVAGSTGAGKTSLLMVIMGELEPSEGKIKHSGRISFCSQFSWIMPGTIKENIIFGVSYDEYRYRSVIKACQLEEDISKFAEKDNIVLGEGGITLSGGQRARISLARAVYKDADLYLLDSPFGYLDVLTEKEIFESCVCKLMANKTRILVTSKMEHLKKADKILILHEGSSYFYGTFSELQNLQPDFSSKLMGCDSFDQFSAERRNSILTETLHRFSLEGDAPVSWTETKKQSFKQTGEFGEKRKNSILNPINSIRKFSIVQKTPLQMNGIEEDSDEPLERRLSLVPDSEQGEAILPRISVISTGPTLQARRRQSVLNLMTHSVNQGQNIHRKTTASTRKVSLAPQANLTELDIYSRRLSQETGLEISEEINEEDLKECFFDDMESIPAVTTWNTYLRYITVHKSLIFVLIWCLVIFLAEVAASLVVLWLLGNTPLQDKGNSTHSRNNSYAVIITSTSSYYVFYIYVGVADTLLAMGFFRGLPLVHTLITVSKILHHKMLHSVLQAPMSTLNTLKAGGILNRFSKDIAILDDLLPLTIFDFIQLLLIVIGAIAVVAVLQPYIFVATVPVIVAFIMLRAYFLQTSQQLKQLESEGRSPIFTHLVTSLKGLWTLRAFGRQPYFETLFHKALNLHTANWFLYLSTLRWFQMRIEMIFVIFFIAVTFISILTTGEGEGRVGIILTLAMNIMSTLQWAVNSSIDVDSLMRSVSRVFKFIDMPTEGKPTKSTKPYKNGQLSKVMIIENSHVKKDDIWPSGGQMTVKDLTAKYTEGGNAILENISFSISPGQRVGLLGRTGSGKSTLLSAFLRLLNTEGEIQIDGVSWDSITLQQWRKAFGVIPQKVFIFSGTFRKNLDPYEQWSDQEIWKVADEVGLRSVIEQFPGKLDFVLVDGGCVLSHGHKQLMCLARSVLSKAKILLLDEPSAHLDPVTYQIIRRTLKQAFADCTVILCEHRIEAMLECQQFLVIEENKVRQYDSIQKLLNERSLFRQAISPSDRVKLFPHRNSSKCKSKPQIAALKEETEEEVQDTRL",
+        "taxon_id": 9606,
+        "topology": [
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000305"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 77
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=1",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 98
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 78
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 122
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 99
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=2",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 146
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 123
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 195
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 147
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=3",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 216
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 196
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 222
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 217
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=4",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 243
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 223
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 298
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 244
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=5",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 319
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 299
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 339
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 320
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=6",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 358
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 340
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 858
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 359
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=7",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 879
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 859
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 918
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 880
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Discontinuously helical; Name=8",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 939
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 919
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 990
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 940
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=9",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1011
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 991
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1013
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1012
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=10",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1034
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1014
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1095
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1035
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=11",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1116
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1096
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Extracellular",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1130
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1117
+              }
+            },
+            "type": "Topological domain"
+          },
+          {
+            "description": "Helical; Name=12",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1151
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1131
+              }
+            },
+            "type": "Transmembrane"
+          },
+          {
+            "description": "Cytoplasmic",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "id": "Ref.57",
+                "source": "Reference"
+              }
+            ],
+            "location": {
+              "end": {
+                "modifier": "EXACT",
+                "value": 1480
+              },
+              "start": {
+                "modifier": "EXACT",
+                "value": 1152
+              }
+            },
+            "type": "Topological domain"
+          }
+        ],
+        "topology_summary": "UniProt source annotations, not a new experimental topology determination: Topological domain: 13 annotated intervals: 1-77 (Cytoplasmic), 99-122 (Extracellular), 147-195 (Cytoplasmic), 217-222 (Extracellular), 244-298 (Cytoplasmic), 320-339 (Extracellular), 359-858 (Cytoplasmic), 880-918 (Extracellular), 940-990 (Cytoplasmic), 1012-1013 (Extracellular), 1035-1095 (Cytoplasmic), 1117-1130 (Extracellular), 1152-1480 (Cytoplasmic); Transmembrane: 12 annotated intervals: 78-98 (Helical; Name=1), 123-146 (Helical; Name=2), 196-216 (Helical; Name=3), 223-243 (Helical; Name=4), 299-319 (Helical; Name=5), 340-358 (Helical; Name=6), 859-879 (Helical; Name=7), 919-939 (Discontinuously helical; Name=8), 991-1011 (Helical; Name=9), 1014-1034 (Helical; Name=10), 1096-1116 (Helical; Name=11), 1131-1151 (Helical; Name=12). Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure."
+      }
+    ]
+  },
+  "original_question": "What are the structural features of the CFTR regulatory domain (R-domain) and how does its interaction with the A-kinase anchoring protein (AKAP) influence the phosphorylation-dependent gating of the chloride channel?"
+}

@@ -94,9 +94,10 @@ class AssignmentScope(unittest.TestCase):
         held = self._hold_on({'reason': 'no_unread_sourced_route', 'missing_evidence': 'spent subject'}, self.LINE)
         self.assertTrue(held and held.get('planning_wait'), held)
 
-    def test_an_assessed_insufficiency_still_holds_free_curiosity(self):
+    def test_an_assessed_insufficiency_holds_its_question_not_free_curiosity(self):
         held = self._hold_on({'reason': 'assessed', 'missing_evidence': 'no record establishes the target'}, self._free())
-        self.assertTrue(held and held.get('planning_wait'), held)
+        self.assertIsNone(held)
+        self.assertEqual(C._question_holds()[0]['question'], self.HELD)
 
     def test_a_held_line_yields_its_pass_to_new_free_work(self):
         # The line is held (no call repeats it), but the pass goes on: the planner is asked for free work.

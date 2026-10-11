@@ -1160,12 +1160,71 @@ def _planning_evidence(inquiry):
     return hashlib.sha256(json.dumps(sorted(payloads)).encode()).hexdigest()
 
 
+def _question_holds():
+    """Read legacy and current question holds without rewriting their evidence or scope."""
+    path = os.path.join(ROOT, 'question-holds.json')
+    # Once a held slot yields, its wait echoes stop. Preserve its decision when
+    # unrelated progress moves the original record out of the notebook tail.
+    # Unreadable/corrupt ownership must fail closed, never silently release work.
+    saved = {}
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as stream: saved = json.load(stream)
+        if not isinstance(saved, dict) or any(not isinstance(v, dict) or not v.get('planning_evidence')
+                                             for v in saved.values()):
+            raise ValueError('invalid saved question holds')
+    seen, holds = set(), []
+    for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
+        old = row.get('inquiry') or {}
+        key = ' '.join(str(old.get('question') or '').casefold().split())
+        if not key or key in seen or old.get('selection_idle'): continue
+        if old.get('refused') and old.get('evidence_status') == 'insufficient' and old.get('planning_evidence'):
+            seen.add(key); holds.append(old)
+        elif row.get('kind') == 'reflection':
+            # A later scientific assessment supersedes the earlier decision for this question.
+            seen.add(key)
+    holds.extend(old for key,old in saved.items() if key not in seen)
+    current = {' '.join(str(old.get('question') or '').casefold().split()):old for old in holds}
+    if current != saved: _atomic(path, current)
+    return holds
+
+
+def _held_question(inquiry):
+    """An ID/context change or paraphrase is not new evidence. A different instrument may be."""
+    import lab_repeats as repeats
+    def clean(value):
+        if isinstance(value, dict):
+            return {k:clean(v) for k,v in value.items() if k not in ('attempt_id','request_id')}
+        if isinstance(value, list): return [clean(v) for v in value]
+        return value
+    key = repeats.lookup_key(clean(inquiry))
+    question = ' '.join(str(inquiry.get('question') or '').casefold().split())
+    words = repeats._words(question)
+    for old in _question_holds():
+        old_key = repeats.lookup_key(clean(old))
+        old_question = ' '.join(str(old.get('question') or '').casefold().split())
+        same_route = repeats._lookup_route(key) == repeats._lookup_route(old_key)
+        if repeats._literature_route(key) and repeats._literature_route(old_key): same_route = True
+        same_question = question == old_question
+        # Use the existing repeat threshold, retaining its distinct-target exception.
+        own_ids = {x for x in repeats.subjects(question) if any(c.isdigit() for c in x)}
+        old_ids = {x for x in repeats.subjects(old_question) if any(c.isdigit() for c in x)}
+        similar = (len(words) >= 4 and len(words & repeats._words(old_question)) / len(words) >= repeats.SIMILAR
+                   and not (own_ids and old_ids and own_ids.isdisjoint(old_ids)))
+        if not ((key and key == old_key) or (same_route and (same_question or similar))): continue
+        if old['planning_evidence'] == _planning_evidence(old): return old
+    return None
+
+
 def _planning_hold(scope, repeats, spent, step):
     """An exhausted planning assignment waits for changed evidence or direction.
 
     This is separate from executed-lookup history. It never says the question is
     answered, closes a line, or stops a different line from taking its turn.
     """
+    # A free slot is a selection opportunity, not the owner of its last question.
+    # Legacy context-only holds remain enforceable through _held_question.
+    if not scope.get('line') and not scope.get('frontier') and not scope.get('atlas'):
+        return None
     for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
         old = row.get('inquiry') or {}
         if old.get('planning_scope') != scope or not old.get('planning_evidence'):
@@ -1227,6 +1286,10 @@ def _orient(context, lean=None):
         # the audit as exhausted. A rejected proposal on other work is not proof this assignment is exhausted.
         # Never inherit absent or stale hold metadata.
         own = scope
+        if inquiry.get('selection_idle'):
+            own = {'selection_of': ' '.join(str(inquiry.get('question') or '').casefold().split())}
+        elif not scope.get('line') and not scope.get('frontier') and not scope.get('atlas'):
+            own = dict(scope, question=' '.join(str(inquiry.get('question') or '').casefold().split()))
         if ((inquiry.get('strategy_resolution') or {}).get('reason') ==
                 'continued_another_self_authored_unresolved_step'):
             own = {'followup_of': ' '.join(str(inquiry.get('requested_question') or '').casefold().split()),
@@ -1402,6 +1465,11 @@ def _orient(context, lean=None):
     if spent["subjects"]:
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
+    held_questions = _question_holds()
+    if held_questions:
+        task += ("\n\nQUESTIONS WAITING ON CHANGED EVIDENCE (not answers, not a hold on other work). "
+                 "Choose independently eligible work; do not rename or rephrase these unchanged retrievals:\n- " +
+                 "\n- ".join(str(item.get('question') or '') for item in held_questions[:10]))
     value = _json_object(_ask(system, task))
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
@@ -1563,6 +1631,9 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
     def blocked(candidate):
         # Every repaired choice passes the same gate. A new instrument can
         # advance an exhausted subject; another database wording cannot.
+        held = _held_question(candidate)
+        if held:
+            return 'question waiting on changed evidence: ' + str(held.get('refused') or '')
         if spent and spent_retrieval(candidate, spent):
             return "spent subject: this retrieval already ended without an answer"
         return repeats.repeat(candidate)
@@ -1590,6 +1661,11 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
                 inquiry = candidate
                 why = blocked(inquiry)
         if why:
+            if _held_question(inquiry):
+                # A bounded selection pass found no eligible proposal. This is not a new
+                # scientific decision and must not overwrite either question/line's hold.
+                inquiry = dict(inquiry, planning_wait=True, selection_idle=True)
+                return refuse('no eligible proposal this pass: ' + why)
             # Terminal assessment, not another pending retrieval. Preserve the missing
             # evidence and stop feeding this failed next step back as open work.
             inquiry = dict(inquiry, evidence_status='insufficient', strategy_resolution={
