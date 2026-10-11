@@ -1698,15 +1698,20 @@ def _sourced_record_index():
     """
     path = os.path.join(ROOT, 'sourced-record-index.json')
     saved = _load(path, {})
+    if not isinstance(saved, dict) or saved.get('version') != 2:
+        saved = {}
     candidates = saved.get('candidates') if isinstance(saved, dict) else None
     if not isinstance(candidates, list): candidates = []
+    reviewed = saved.get('reviewed') if isinstance(saved, dict) else None
+    if not isinstance(reviewed, list): reviewed = []
     offset = saved.get('offset', 0) if isinstance(saved, dict) else 0
     if not isinstance(offset, int) or offset < 0: offset = 0
     try:
         size = os.path.getsize(NOTEBOOK)
         if offset > size:
-            offset, candidates = 0, []
+            offset, candidates, reviewed = 0, [], []
         seen = {str(item.get('accession') or '') for item in candidates if isinstance(item, dict)}
+        reviewed = set(map(str, reviewed))
         with open(NOTEBOOK, 'rb') as stream:
             stream.seek(offset)
             while True:
@@ -1719,27 +1724,41 @@ def _sourced_record_index():
                 offset = stream.tell()
                 try: row = json.loads(raw.decode('utf-8'))
                 except (UnicodeDecodeError, ValueError): continue
-                if row.get('kind') != 'source_read' or row.get('source') != 'UniProtKB REST': continue
-                for record in row.get('records') or []:
-                    if not isinstance(record, dict): continue
-                    accession = str(record.get('accession') or '').upper()
-                    name = str(record.get('protein_name') or '').strip()
-                    organism = str(record.get('organism') or '').strip()
-                    if (not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism
-                            or accession in seen):
-                        continue
-                    seen.add(accession)
-                    candidates.append({'accession':accession, 'protein_name':name, 'organism':organism})
+                if row.get('kind') == 'source_read' and row.get('source') == 'UniProtKB REST':
+                    for record in row.get('records') or []:
+                        if not isinstance(record, dict): continue
+                        accession = str(record.get('accession') or '').upper()
+                        name = str(record.get('protein_name') or '').strip()
+                        organism = str(record.get('organism') or '').strip()
+                        if (not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism
+                                or accession in seen):
+                            continue
+                        seen.add(accession)
+                        candidates.append({'accession':accession, 'protein_name':name,
+                                           'organism':organism, 'record':record})
+                elif row.get('kind') in ('reflection', 'genome_reflection'):
+                    reviewed.update(str(item).upper() for item in row.get('source_accessions') or []
+                                    if re.fullmatch(r'[A-Za-z0-9]{6,10}', str(item)))
     except OSError:
         return candidates
-    updated = {'version':1, 'offset':offset, 'candidates':candidates}
+    for item in candidates:
+        item['reviewed'] = item.get('accession') in reviewed
+    updated = {'version':2, 'offset':offset, 'candidates':candidates, 'reviewed':sorted(reviewed)}
     if updated != saved: _atomic(path, updated)
     return candidates
+
+
+def _sourced_record_snapshot(accession):
+    for item in _sourced_record_index():
+        if item.get('accession') == accession and not item.get('reviewed') and isinstance(item.get('record'), dict):
+            return item['record']
+    return None
 
 
 def _next_sourced_record(repeats, spent, lean=None):
     """Give a free pass one exact, previously returned protein when planning yields only held work."""
     for record in _sourced_record_index():
+        if record.get('reviewed') or not isinstance(record.get('record'), dict): continue
         accession = record['accession']
         name = record['protein_name']
         organism = record['organism']
@@ -3231,6 +3250,17 @@ def tick():
                             state.pop('atlas_analysis', None)
                         state['material'] = {'records': observations.get('LITERATURE') or []}
                         state['source_query_succeeded'] = True
+                        next_phase = 'reflect'
+                    elif assignment_reason == 'exact_previously_sourced_record':
+                        accession = str((inquiry.get('assignment_resolution') or {}).get('accession') or '')
+                        record = _sourced_record_snapshot(accession)
+                        if not record:
+                            raise ValueError('saved sourced record unavailable: ' + accession)
+                        state['records'] = [record]
+                        state['embeddings'] = []
+                        state['source_query_succeeded'] = True
+                        for key in ('additional_source','followup_lineage','atlas_analysis','atlas_analysis_receipt'):
+                            state.pop(key, None)
                         next_phase = 'reflect'
                     else:
                         next_phase = ("sources" if assignment_reason in
