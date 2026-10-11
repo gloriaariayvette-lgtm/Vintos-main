@@ -69,6 +69,14 @@ class ClaimProgress(unittest.TestCase):
         self.assertIn("relationship", question)
         self.assertNotIn("sequence length", question)
 
+    def test_early_sourced_connection_is_attached_to_a_line(self):
+        inquiry = C._inquiry({"question": C._record_connection_question("Tannase", "P78581"),
+                              "uniprot_query": "accession:P78581"})
+        attached = C._on_line(inquiry, {}, None)
+        self.assertTrue(attached.get("line_opened"), attached)
+        self.assertEqual(L.get(attached["line_id"])["state"], "open")
+        L.end(attached["line_id"], "dropped", "test cleanup")
+
     def test_open_line_can_change_strategy_on_spent_subject(self):
         inquiry = C._inquiry({"question": "How do tannase motifs relate to hydrolytic activity?",
                               "uniprot_query": "protein_name:tannase", "line_id": self.line["id"]})
