@@ -1689,6 +1689,7 @@ def _next_assigned_model_step(repeats, spent, lean=None):
             if last - first > len(numbers) or not set(range(first, last + 1)) <= numbers: continue
         except (ValueError, OSError):
             continue
+        if lab_instruments.completed_fold_read(request): continue
         inquiry = _inquiry({'question': question, 'instrument_query': request}, lean)
         if inquiry.get('refused') or _held_question(inquiry) or repeats.repeat(inquiry): continue
         # Keep the shared admission gate, but a rejected saved step must not

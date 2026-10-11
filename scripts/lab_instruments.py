@@ -77,6 +77,41 @@ def save_fasta(accession, sequence, start=None, end=None, database=""):
     return str(path.relative_to(LAB))
 
 
+def completed_fold_read(req):
+    """Recognize an approved imported local readout without executing or recording it.
+
+    Readouts live under artifacts/fold-read; installing one there is a separate
+    reviewed operation, never a side effect of selection. Missing lookup history
+    is not permission to redo a delivered result. Keep its exact provenance.
+    """
+    import hashlib
+    from lab_repeats import fold_read_covers
+    if req.get('skill') != 'fold_read' or req.get('operation') != 'structure.read': return None
+    _, _, files, _ = validate(req)
+    model_hash = hashlib.sha256((LAB / files[0]).read_bytes()).hexdigest()
+    reader_hash = hashlib.sha256(Path(__file__).with_name('chemistry_fold_read.py').read_bytes()).hexdigest()
+    for path in sorted((ARTIFACTS / 'fold-read').glob('*.json')):
+        if path.is_symlink() or path.stat().st_size > 2*1024*1024: continue
+        try:
+            data = json.loads(path.read_text())
+            result = data['result']; span = result['range']
+            if data.get('sha256') != model_hash or data.get('script_sha256') != reader_hash: continue
+            if Path(str(data.get('path') or '')).name != Path(files[0]).name: continue
+            if not isinstance(span, list) or len(span) != 2 or any(type(x) is not int for x in span): continue
+            if not 0 < span[0] <= span[1] or data.get('requested_range') != span: continue
+            count = span[1] - span[0] + 1
+            if data.get('analyzed_residues') != count or data.get('missing_requested_residues') != []: continue
+            if len(result.get('secondary_structure', '')) != count or len(result.get('plddt_by_residue', [])) != count: continue
+            old = dict(req, range=span)
+            if fold_read_covers(old, req):
+                return {'artifact': str(path.relative_to(LAB)), 'artifact_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                        'model_sha256': model_hash, 'reader_sha256': reader_hash, 'range': span,
+                        'reason': 'existing_completed_model_read_not_new_work'}
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return None
+
+
 def menu_block():
     """The instrument option for his orient prompt, or '' when there is nothing real to run one on."""
     left = DAILY_RUNS - len(_runs_today()["runs"])

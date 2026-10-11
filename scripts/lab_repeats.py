@@ -213,6 +213,23 @@ def identity_rejection(inquiry, rows):
     return ''
 
 
+def fold_read_covers(previous, requested):
+    """The same immutable model read already includes this residue interval."""
+    for spec in (previous, requested):
+        if not isinstance(spec, dict) or spec.get('skill') != 'fold_read' or spec.get('operation') != 'structure.read': return False
+        if not isinstance(spec.get('files'), list) or len(spec['files']) != 1: return False
+    if str(previous['files'][0]).casefold() != str(requested['files'][0]).casefold(): return False
+    def span(spec):
+        value = spec.get('range', [None, None])
+        if not isinstance(value, list) or len(value) != 2: return None
+        if any(x is not None and (type(x) is not int or x < 1) for x in value): return None
+        lo, hi = value
+        if lo is not None and hi is not None and lo > hi: return None
+        return (lo if lo is not None else float('-inf'), hi if hi is not None else float('inf'))
+    old, new = span(previous), span(requested)
+    return old is not None and new is not None and old[0] <= new[0] <= new[1] <= old[1]
+
+
 def repeat(inquiry, now=None):
     """Why this inquiry repeats one she ran in the last REPEAT_DAYS days, in words for her; '' when it does not."""
     rows = _recent(now)
@@ -224,6 +241,15 @@ def repeat(inquiry, now=None):
             if canonical_lookup(r.get("lookup") or "") == key:
                 return ("you already ran this exact lookup on %s (%s); it would return the same thing"
                         % (str(r.get("at", ""))[:16].replace("T", " "), key[:120]))
+    requested = inquiry.get('instrument_query') or {}
+    if requested.get('skill') == 'fold_read':
+        for row in reversed(rows):
+            lookup = canonical_lookup(row.get('lookup') or '')
+            if not lookup.startswith('instrument_query:'): continue
+            try: previous = json.loads(lookup.split(':', 1)[1])
+            except ValueError: continue
+            if fold_read_covers(previous, requested):
+                return 'prior model read already includes this residue range: ' + str(row.get('at') or '')
     mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
     if len(mine) >= 4:
         for r in reversed(rows):

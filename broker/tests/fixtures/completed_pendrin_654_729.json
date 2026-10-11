@@ -1,0 +1,157 @@
+{
+  "path": "/home/gloria/.vintos/workspace/memory/chemistry-lab/artifacts/esmfold/O43511-60e20d840671.pdb",
+  "sha256": "60e20d840671aadf327b39ef287e7c4a49c46421ee4829681f61faea1c22be4e",
+  "chain": "A",
+  "native_numbering": true,
+  "model_residue_range": [
+    535,
+    729
+  ],
+  "requested_range": [
+    654,
+    729
+  ],
+  "analyzed_residues": 76,
+  "missing_requested_residues": [],
+  "script": "/home/gloria/Vintos-main/scripts/chemistry_fold_read.py",
+  "script_sha256": "682e644cc0700a29a0057291fdf6fcc64132543e742da70c7c3b5cd3fa0358ed",
+  "result": {
+    "range": [
+      654,
+      729
+    ],
+    "secondary_structure": "-EEEEEEEEE-----HHHHHHHHHHHHHHHHHHHEEEEEEEEHHHHHHHHHHHH--HHHHH--EEEEHHHHHHHHH",
+    "helices": [
+      [
+        669,
+        687
+      ],
+      [
+        696,
+        707
+      ],
+      [
+        710,
+        714
+      ],
+      [
+        721,
+        729
+      ]
+    ],
+    "strands": [
+      [
+        655,
+        663
+      ],
+      [
+        688,
+        695
+      ],
+      [
+        717,
+        720
+      ]
+    ],
+    "plddt_by_residue": [
+      92.0,
+      95.0,
+      96.0,
+      97.0,
+      97.0,
+      97.0,
+      97.0,
+      95.0,
+      96.0,
+      94.0,
+      93.0,
+      95.0,
+      94.0,
+      96.0,
+      96.0,
+      96.0,
+      96.0,
+      96.0,
+      97.0,
+      97.0,
+      96.0,
+      96.0,
+      97.0,
+      96.0,
+      95.0,
+      96.0,
+      96.0,
+      94.0,
+      94.0,
+      96.0,
+      94.0,
+      91.0,
+      92.0,
+      92.0,
+      96.0,
+      97.0,
+      98.0,
+      98.0,
+      97.0,
+      96.0,
+      96.0,
+      96.0,
+      96.0,
+      96.0,
+      97.0,
+      97.0,
+      97.0,
+      97.0,
+      96.0,
+      97.0,
+      97.0,
+      96.0,
+      96.0,
+      96.0,
+      97.0,
+      96.0,
+      93.0,
+      91.0,
+      90.0,
+      94.0,
+      95.0,
+      96.0,
+      97.0,
+      97.0,
+      98.0,
+      97.0,
+      96.0,
+      95.0,
+      94.0,
+      93.0,
+      95.0,
+      96.0,
+      95.0,
+      96.0,
+      97.0,
+      96.0
+    ],
+    "confidence_bands": [
+      [
+        "very high",
+        654,
+        729
+      ]
+    ],
+    "mean_plddt": 95.57,
+    "display": [
+      "residues 654-729: 45 helix, 21 strand, 10 neither; mean pLDDT 95.6",
+      "helices: 669-687, 696-707, 710-714, 721-729",
+      "strands: 655-663, 688-695, 717-720",
+      "confidence: very high 654-729"
+    ],
+    "method": "CA-geometry assignment (P-SEA style) on the predicted model; not DSSP, not an experimental structure"
+  },
+  "limitations": [
+    "P-SEA-style CA geometry, not DSSP or experimental evidence",
+    "Confidence read from the ESMFold B-factor field, not an independent accuracy measurement",
+    "Assignment uses the full existing chain geometry before selecting native residues 654-729",
+    "End-of-model geometry cannot establish an experimental domain boundary; terminal labels have finite-neighbor limitations",
+    "No fold, model inference, retrieval, installation, production edits, or Lab state/receipt writes"
+  ]
+}
