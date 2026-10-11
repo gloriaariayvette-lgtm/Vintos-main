@@ -147,6 +147,12 @@ def uniprot_identity_symbols(query):
     return list(dict.fromkeys(symbols))
 
 
+# Words that follow "in"/"of" without naming the protein a domain belongs to: a place, a system or a species.
+_OWNERLESS = {'HUMAN','HUMANS','HOMO','MUS','RATTUS','ESCHERICHIA','SACCHAROMYCES','ARABIDOPSIS','DROSOPHILA',
+              'CELLS','CELL','NUCLEUS','CYTOSOL','MEMBRANE','MEMBRANES','MITOCHONDRIA','NEURONS','VESICLES',
+              'BACTERIA','ARCHAEA','EUKARYOTES','VIVO','VITRO','SILICO','GENERAL','BOTH','THIS','THESE','ORDER'}
+
+
 def human_question_symbols(question):
     """Pure question token extraction shared by admission and repeat keys."""
     from lab_repeats import _ACCESSION, _NOT_SUBJECTS
@@ -193,6 +199,16 @@ def human_question_symbols(question):
             # "in human cells" / "within the nucleus" do not identify an owner.
             paired_region = (re.search(r'\binterface\s+between\s+(?:the\s+)?$', prefix, re.I)
                              and re.match(r'\s+and\s+(?:the\s+)?[A-Za-z0-9-]+\s+(?:N-terminal|C-terminal)\s+region\b', remainder, re.I))
+            # "the C2 domain IN human Synaptotagmin-1 (Syt1)" names the protein the domain belongs to, so this
+            # occurrence is the feature asked about, not the target (11 October 09:22: C2 was demanded of the
+            # retrieved record as though it were a gene, and the reading was refused). A bare "BRCA1 domain" with
+            # no other named protein still refers to its own target and is kept.
+            owner = re.match(r'\s+(?:in|of|from|within)\s+(?:the\s+)?'
+                             r'(?:human|murine|mouse|rat|bovine|yeast|bacterial|viral|phage)?\s*'
+                             r'([A-Z][A-Za-z0-9-]{2,})', remainder)
+            named_owner = bool(owner) and owner[1].upper() not in _OWNERLESS
+            if named_owner or any(w != symbol for w in words):
+                continue
             if not paired_region:
                 return False
         return bool(occurrences)
@@ -262,6 +278,11 @@ def question_entity_context(inquiry, records, *, literature_only=False):
     organism_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q) if f=='organism_name'}
     protein_names = {v.strip('"').casefold() for q in queries for f,v in _TERM.findall(q)
                      if f=='protein_name' and not uniprot_identity_symbols('protein_name:'+v)}
+    # The microbiology and genome-mining lanes screen a class ("bacteriophage reverse transcriptases associated
+    # with CRISPR arrays"), where several records are the point and a member's full name is longer than the phrase
+    # asked for. 11 October 09:29: every retrieved row was refused for not being named exactly the requested
+    # phrase, and the rows together as "multiple retrieved targets". The protein lane is unchanged.
+    discovery = str(inquiry.get('browse_lane') or '') in ('microbiology', 'genome_mining')
     isoforms = set(re.findall(r'\bisoform\s+([A-Za-z0-9-]+)',question,re.I))
     for accession in accessions:
         isoforms.update(re.findall(r'\b'+re.escape(accession)+r'-([0-9]+)\b',question+' '+' '.join(queries)))
@@ -303,7 +324,7 @@ def question_entity_context(inquiry, records, *, literature_only=False):
         # symbols or single words; full-question sufficiency remains separate.
         normal = lambda s: ' '.join(re.findall(r'[^\W_]+', s.casefold()))
         words = normal(expected)
-        resolved = bool(accessions or gene_symbols or (parenthetical_symbols & names))
+        resolved = bool(accessions or gene_symbols or (parenthetical_symbols & names) or discovery)
         return any(expected == name or (resolved and len(words.split()) >= 2 and
                    (' ' + words + ' ') in (' ' + normal(name) + ' ')) for name in available)
     matches = [r for r in records if not accessions or r.get('accession') in accessions]
@@ -347,7 +368,8 @@ def question_entity_context(inquiry, records, *, literature_only=False):
             candidates.append(row)
     if candidates: matches = candidates
     if not matches: issues.append('no retrieved record establishes the requested target')
-    if len(matches)>1: issues.append('multiple retrieved targets require an explicit expectation mapping')
+    if len(matches)>1 and not (discovery and not accessions):
+        issues.append('multiple retrieved targets require an explicit expectation mapping')
     for row in matches:
         names,proteins,organisms = metadata_names(row)
         absent = (symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
