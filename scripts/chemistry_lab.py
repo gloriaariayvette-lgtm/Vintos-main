@@ -2011,6 +2011,14 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
     return inquiry, value
 
 
+def _relational_question(question):
+    text = str(question or "")
+    direct = re.search(r'\b(?:how does|relationship|associated with|connect\w*|compare\w*|relate\w*|interact\w*|influenc\w*|affect\w*)\b', text, re.I)
+    structural = re.search(r'\b(?:structur\w*|fold\w*|motif\w*|domain\w*|residue\w*|topolog\w*)\b', text, re.I)
+    functional = re.search(r'\b(?:function\w*|role\w*|mechanism\w*|activity|locali[sz]\w*|regulat\w*|transport\w*|sequestrat\w*)\b', text, re.I)
+    return bool(direct or (structural and functional))
+
+
 def _on_line(inquiry, value, line):
     """The cycle's line on its inquiry: the line it works, or a new one he opened on a free cycle."""
     if inquiry.get("refused"):
@@ -2027,7 +2035,7 @@ def _on_line(inquiry, value, line):
         except Exception as exc:
             _fault("lab_lines_open", exc)
     question = str(inquiry.get("question") or "")
-    if re.search(r'\b(?:how does|relationship|associated with|connect\w*|compare\w*|relate\w*|interact\w*|influenc\w*|affect\w*)\b', question, re.I):
+    if _relational_question(question):
         try:
             import lab_lines
             opened = lab_lines.opened_by(question[:120], question, inquiry.get("why_now"), origin="vintos:auto-claim")

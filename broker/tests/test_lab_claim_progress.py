@@ -88,6 +88,12 @@ class ClaimProgress(unittest.TestCase):
         self.assertTrue(attached.get("line_opened"), attached)
         L.end(attached["line_id"], "dropped", "test cleanup")
 
+    def test_structural_and_functional_claim_shape_is_relational(self):
+        question = ("What are the specific structural features and functional roles of MntA in manganese "
+                    "homeostasis, and does its fold suggest a conserved mechanism for metal transport?")
+        self.assertTrue(C._relational_question(question))
+        self.assertFalse(C._relational_question("What is its organism, sequence length, and accession?"))
+
     def test_automatic_claim_pool_does_not_displace_existing_lines(self):
         opened = []
         questions = [
