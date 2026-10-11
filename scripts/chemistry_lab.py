@@ -1086,8 +1086,9 @@ def atlas_turn_due(rows=None):
     rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
     since = 0
     for row in reversed(rows):
-        if row.get("kind") == "inquiry_refused":
-            # A refused scheduled Atlas opportunity must yield, not force Atlas forever.
+        if row.get("kind") in ("inquiry_refused", "evidence_wait"):
+            # A refused or held scheduled Atlas opportunity yields this slot.
+            # Its scientific/evidence hold remains intact; nothing is retried here.
             if row.get("atlas_turn") or ((row.get("inquiry") or {}).get("source_query") or {}).get("source") == "atlas":
                 return since >= ATLAS_EVERY - 1
             continue
