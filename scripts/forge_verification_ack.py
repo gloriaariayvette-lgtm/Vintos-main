@@ -16,6 +16,9 @@ HEX = re.compile(r"[a-f0-9]{64}")
 ID = re.compile(r"[a-f0-9]{32}")
 SPECIES = {"human":9606, "homo sapiens":9606, "homo_sapiens":9606,
            "mouse":10090, "mus musculus":10090, "mus_musculus":10090}
+PROVIDER_TAXA = {"ensembl": frozenset((9606,10090)),
+                 "ncbi_gene": frozenset((9606,10090)),
+                 "hgnc": frozenset((9606,))}
 FIELDS = {"project_id","cycle_id","ownership_sha256","original_request_sha256",
           "evidence_receipt_ids","verdict"}
 
@@ -102,10 +105,11 @@ def validate_evidence(body, row, current, receipts):
             data.get("query_completed") is not True):
             raise Refused("reference query identity or completion mismatch")
         reference = data.get("reference") or {}
-        if (not isinstance(reference,dict) or reference.get("provider") not in ("ensembl","ncbi_gene","hgnc") or
+        if (not isinstance(reference,dict) or not isinstance(reference.get("provider"),str) or
+            taxon not in PROVIDER_TAXA.get(reference.get("provider"),frozenset()) or
             not isinstance(reference.get("release"),str) or
             not re.fullmatch("[A-Za-z0-9_. -]{1,80}",reference["release"])):
-            raise Refused("named authoritative reference and release required")
+            raise Refused("authoritative reference for the requested taxon and release required")
         matches = data.get("matches")
         if body["verdict"] == "verified_absent":
             if data.get("verdict") != "not_found_in_reference" or matches != []:
