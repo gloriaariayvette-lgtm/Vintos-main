@@ -285,15 +285,6 @@ Nothing else. No preamble. Start with GOAL:"""
         # Don't duplicate
         if any(next_step[:40] in t for t in existing_texts):
             continue
-        # Guard against engineering/system wants
-        forbidden = ["inject", "prompt set", "keyword", "script", "cron", "source code",
-                     "modify", "delete", "create file", "system file", "config",
-                     "designing a level", "level design", "level i've designed",
-                     "sentiment score", "baseline prediction", "prompt engineering"]
-        if any(f.lower() in next_step.lower() for f in forbidden):
-            print(f"[Ambition] Blocked forbidden next_step: {next_step[:80]}")
-            continue
-        
         # Use express_want to create properly-formed entries with all required fields
         from emoclaw_utils import nudge_emotions, express_want, enrich_want
         _ar_ctx = f"Your ambition: {g['goal']}\nNext step: {next_step}"

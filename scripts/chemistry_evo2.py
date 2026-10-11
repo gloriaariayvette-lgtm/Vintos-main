@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Read-only Evo 2 scoring behind one provenance-bearing genomic source door.
 
-This is not a sequence-design surface. The public CLI accepts no sequence, prompt,
-accession or generation arguments. It fetches one bounded window from a declared
-non-human reference source, verifies the source identity and sequence digest, then
+This is not a sequence-design surface. The public CLI accepts a declared NCBI
+reference accession and bounded coordinates, never sequence or generation text.
+It fetches the requested window, verifies the source identity and sequence digest, then
 asks Evo 2 only for comparative likelihood under one deterministic substitution.
 The result is a model preference, not a functional-impact claim. A separate
 Atlas-directed entry point accepts an observed public GRCh38 variant and a
-reference-checked window; it does not widen the legacy CLI source allowlist.
+reference-checked window using its variant-specific validator.
 
 Evo 2 7B in BF16 cannot coexist with resident Gemma on this 16 GB host. A run holds
 the house background-compute lock before reaching this module; this module holds the
@@ -48,24 +48,38 @@ RUNS = os.path.join(lab.ROOT, "evo2-runs.jsonl")
 NCBI_EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 MAX_BASES = 512
 WORKER_TIMEOUT = 900
-SAFE_SOURCES = {
-    # A fixed Arabidopsis reference window: non-human, non-pathogen, read-only.
+DEFAULT_SOURCES = {
+    # Backward-compatible default, not a perimeter on research subjects.
     "arabidopsis_chr1": {"accession": "NC_003070.9", "taxon_id": 3702,
                           "organism": "Arabidopsis thaliana", "start": 1, "stop": MAX_BASES},
 }
 DNA = re.compile(r"^[ACGTN]+$")
-DENIED_METADATA = re.compile(r"human|homo sapiens|pathogen|virus|virulence|toxin|venom", re.I)
+ACCESSION = re.compile(r"^[A-Za-z][A-Za-z0-9_]*\.[0-9]+$")
 
 
 def _sha(value):
     return hashlib.sha256(str(value).encode("utf-8", "ignore")).hexdigest()
 
 
-def fetch_source(source_key="arabidopsis_chr1"):
-    spec = SAFE_SOURCES.get(source_key)
-    if not spec: raise ValueError("source is not in the non-human reference allowlist")
-    if int(spec["taxon_id"]) == 9606 or DENIED_METADATA.search(spec["organism"]):
-        raise ValueError("source perimeter refused")
+def _source_spec(value):
+    """Validate a declared reference window without restricting its organism or topic."""
+    spec = dict(value)
+    accession = str(spec.get("accession") or "")
+    if not ACCESSION.fullmatch(accession): raise ValueError("versioned NCBI accession required")
+    taxon_id = int(spec.get("taxon_id") or 0)
+    organism = str(spec.get("organism") or "").strip()
+    start, stop = int(spec.get("start") or 0), int(spec.get("stop") or 0)
+    if taxon_id <= 0 or not organism: raise ValueError("source organism and taxon required")
+    if start < 1 or not 64 <= stop - start + 1 <= MAX_BASES:
+        raise ValueError("reference coordinates outside bounded window")
+    return {"accession": accession, "taxon_id": taxon_id, "organism": organism,
+            "start": start, "stop": stop}
+
+
+def fetch_source(source_key="arabidopsis_chr1", *, source_spec=None):
+    declared = source_spec if source_spec is not None else DEFAULT_SOURCES.get(source_key)
+    if declared is None: raise ValueError("unknown source key: declare its reference accession and coordinates")
+    spec = _source_spec(declared)
     query = urllib.parse.urlencode({"db": "nuccore", "id": spec["accession"],
                                     "seq_start": spec["start"], "seq_stop": spec["stop"],
                                     "rettype": "fasta", "retmode": "text"})
@@ -74,11 +88,12 @@ def fetch_source(source_key="arabidopsis_chr1"):
     with urllib.request.urlopen(req, timeout=45) as response:
         text = response.read(MAX_BASES * 3).decode("ascii", "replace")
     header = next((line.strip() for line in text.splitlines() if line.startswith(">")), "")
-    if not header.startswith(">" + spec["accession"] + ":"):
+    if not header.startswith(">%s:%d-%d" % (spec["accession"], spec["start"], spec["stop"])):
         raise ValueError("source returned a different accession")
     lines = [line.strip().upper() for line in text.splitlines() if line and not line.startswith(">")]
-    sequence = "".join(lines)[:MAX_BASES]
-    if len(sequence) < 64 or not DNA.fullmatch(sequence): raise ValueError("source returned unreadable DNA")
+    sequence = "".join(lines)
+    if len(sequence) != spec["stop"] - spec["start"] + 1 or not DNA.fullmatch(sequence):
+        raise ValueError("source returned unreadable or incomplete DNA window")
     return {"source_key": source_key, **spec, "sequence": sequence, "source_header": header[:180],
             "sequence_sha256": _sha(sequence), "source": "NCBI Nucleotide efetch",
             "fetched_at": lab.now_iso(), "truth_status": "public_reference_sequence_receipt"}
@@ -86,16 +101,17 @@ def fetch_source(source_key="arabidopsis_chr1"):
 
 def _validate_payload(payload):
     source_key = str(payload.get("source_key") or "")
-    spec = SAFE_SOURCES.get(source_key)
-    if not spec: raise ValueError("unapproved source")
-    if payload.get("accession") != spec["accession"] or int(payload.get("taxon_id") or 0) != spec["taxon_id"]:
-        raise ValueError("source provenance mismatch")
-    if not str(payload.get("source_header") or "").startswith(">" + spec["accession"] + ":"):
+    if not source_key: raise ValueError("source key required")
+    spec = _source_spec(payload)
+    default = DEFAULT_SOURCES.get(source_key)
+    if default and spec != default: raise ValueError("default source provenance mismatch")
+    header = str(payload.get("source_header") or "")
+    prefix = ">%s:%d-%d" % (spec["accession"], spec["start"], spec["stop"])
+    if not header.startswith(prefix) or (len(header) > len(prefix) and not header[len(prefix)].isspace()):
         raise ValueError("source header mismatch")
-    if int(payload.get("taxon_id")) == 9606 or DENIED_METADATA.search(str(payload.get("organism") or "")):
-        raise ValueError("source perimeter refused")
+    if payload.get("source") != "NCBI Nucleotide efetch": raise ValueError("source provider mismatch")
     sequence = str(payload.get("sequence") or "").upper()
-    if not (64 <= len(sequence) <= MAX_BASES) or not DNA.fullmatch(sequence):
+    if len(sequence) != spec["stop"] - spec["start"] + 1 or not DNA.fullmatch(sequence):
         raise ValueError("DNA window outside bounded alphabet or size")
     if _sha(sequence) != payload.get("sequence_sha256"): raise ValueError("sequence digest mismatch")
     return sequence
@@ -151,12 +167,17 @@ def _restore_gemma():
     if done.returncode != 0: raise RuntimeError("Gemma reload failed")
 
 
-def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True, source_payload=None):
-    """Fetch a safe public window, run one bounded pair, and preserve a typed receipt."""
-    source = source_payload if source_payload is not None else fetch_source(source_key)
-    if source_payload is not None:
+def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True, source_payload=None, source_spec=None):
+    """Fetch a declared public window, run one bounded pair, and preserve a typed receipt."""
+    if source_payload is not None and source_spec is not None:
+        raise ValueError("choose source_payload or source_spec, not both")
+    source = source_payload if source_payload is not None else (
+        fetch_source(source_key) if source_spec is None else fetch_source(source_key, source_spec=source_spec))
+    if source.get("source_key") == "atlas_grch38":
         from chemistry_genomic import validate_payload
         validate_payload(source)
+    else:
+        _validate_payload(source)
     started = time.time(); restored = None
     try:
         with _watchdog_exclusion():
@@ -204,7 +225,22 @@ if __name__ == "__main__":
         except Exception as exc:
             print(json.dumps({"ok": False, "error": exc.__class__.__name__, "detail": str(exc)[:500]}))
             raise SystemExit(1)
-    elif len(sys.argv) == 2 and sys.argv[1] == "run":
-        print(json.dumps(analyze(), ensure_ascii=False, indent=2))
+    elif len(sys.argv) >= 2 and sys.argv[1] == "run":
+        import argparse
+        parser = argparse.ArgumentParser(prog="chemistry_evo2.py run")
+        parser.add_argument("--accession")
+        parser.add_argument("--taxon-id", type=int)
+        parser.add_argument("--organism")
+        parser.add_argument("--start", type=int, default=1)
+        parser.add_argument("--bases", type=int, default=MAX_BASES)
+        args = parser.parse_args(sys.argv[2:])
+        supplied = any(arg.startswith("--") for arg in sys.argv[2:])
+        if supplied and not (args.accession and args.taxon_id and args.organism):
+            parser.error("a declared source requires --accession, --taxon-id and --organism")
+        spec = _source_spec({"accession": args.accession, "taxon_id": args.taxon_id,
+                             "organism": args.organism, "start": args.start,
+                             "stop": args.start + args.bases - 1}) if supplied else None
+        print(json.dumps(analyze(args.accession if supplied else "arabidopsis_chr1",
+                                 source_spec=spec), ensure_ascii=False, indent=2))
     else:
         raise SystemExit("usage: chemistry_evo2.py run")
