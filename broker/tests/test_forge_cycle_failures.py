@@ -373,6 +373,64 @@ class Tests(unittest.TestCase):
         self.assertEqual(lines[0]["records"]["original_request"],payload["intent"])
         self.assertEqual(module.forge_open({}),[])
 
+    def test_handback_rechecks_request_and_source_ownership_after_fetch(self):
+        from contextlib import nullcontext
+        from forge_lab_handback import collect
+        def load(path,default):return json.loads(Path(path).read_text()) if Path(path).exists() else default
+        def atomic(path,value):Path(path).write_text(json.dumps(value))
+        for field,new_value in (("question","new request after snapshot"),("receipt_ids",["replacement-source"])):
+            payload=self.intake_payload(100 if field=="question" else 101)
+            p=self.r.intake("i"*40,payload)
+            self.builder([{"plugin_query":query()}],Mock(return_value=receipt(query())))
+            self.r.step(p["id"])
+            path=self.root/"forge-report-outbox.json"
+            atomic(path,{"owned":{"state":"accepted","project_id":p["id"],"question":payload["intent"],"receipt_ids":["original-source"]}})
+            recorded=[]
+            def fetch(cfg,pid):
+                data=load(path,{})
+                data["owned"][field]=new_value
+                atomic(path,data)
+                return self.c.artifacts(self.c.owner_token,pid)
+            result=collect({},self.root,self.c.projects(self.c.owner_token),load=load,atomic=atomic,
+                           locked=nullcontext,fetch=fetch,record=recorded.append)
+            self.assertEqual(result,[]);self.assertEqual(recorded,[])
+            self.assertFalse((self.root/"forge-capability-handbacks.json").exists())
+            self.assertNotIn("capability_handback",load(path,{})["owned"])
+    def test_recollection_preserves_canonical_partial_and_verified_consumer_progress(self):
+        from contextlib import nullcontext
+        from forge_lab_handback import collect
+        payload=self.intake_payload();p=self.r.intake("i"*40,payload)
+        self.builder([{"plugin_query":query()}],Mock(return_value=receipt(query())))
+        self.r.step(p["id"])
+        path=self.root/"forge-report-outbox.json";ledger=self.root/"forge-capability-handbacks.json"
+        def load(path,default):return json.loads(Path(path).read_text()) if Path(path).exists() else default
+        def atomic(path,value):Path(path).write_text(json.dumps(value))
+        atomic(path,{"owned":{"state":"accepted","project_id":p["id"],"question":payload["intent"],"receipt_ids":["source"]}})
+        fetch=Mock(side_effect=lambda cfg,pid:self.c.artifacts(self.c.owner_token,pid));record=Mock()
+        def pull():return collect({},self.root,self.c.projects(self.c.owner_token),load=load,atomic=atomic,
+                                  locked=nullcontext,fetch=fetch,record=record)
+        row=pull()[0]
+        for state,fulfilled in (("partial",False),("verified_present",True),("verified_absent",True)):
+            rows=load(ledger,{})
+            rows[row["cycle_id"]]["verification"]={"state":state,"ownership_sha256":rows[row["cycle_id"]]["ownership_sha256"],
+                                                        "evidence_receipt_ids":["a"*64],"original_request_fulfilled":fulfilled}
+            atomic(ledger,rows)
+            outbox=load(path,{});outbox["owned"].pop("capability_handback")
+            atomic(path,outbox)
+            self.assertEqual(pull(),[])
+            pointer=load(path,{})["owned"]["capability_handback"]
+            self.assertEqual(pointer["state"],state)
+            self.assertIs(pointer["original_request_fulfilled"],fulfilled)
+            self.assertEqual(pull(),[])
+        rows=load(ledger,{})
+        rows[row["cycle_id"]]["verification"]["ownership_sha256"]="f"*64
+        atomic(ledger,rows)
+        self.assertEqual(pull(),[])
+        self.assertEqual(load(path,{})["owned"]["capability_handback"]["state"],"unresolved")
+        self.assertFalse(load(path,{})["owned"]["capability_handback"]["original_request_fulfilled"])
+        self.assertEqual(fetch.call_count,1);self.assertEqual(record.call_count,1)
+        self.assertEqual(self.status(p)["state"],"awaiting_lab") # no implicit Forge acknowledgement
+
     def test_paid_claim_still_refused(self):
         p=self.project()
         self.assertIsNone(self.c.claim(self.c.worker_token,p["id"],"research_report",quote_cents=1))

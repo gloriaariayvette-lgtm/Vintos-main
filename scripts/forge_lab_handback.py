@@ -1,5 +1,6 @@
 """Pull owned Forge partial acquisitions into Lab evidence; never fulfill or replay a request."""
 import json
+import hashlib
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -18,6 +19,29 @@ def fetch_artifacts(cfg, project):
     if len(raw) > 1024 * 1024: raise ValueError("handback exceeds limit")
     return json.loads(raw)
 
+def ownership(row):
+    """Bind the complete original outbox request and its source evidence across the fetch."""
+    fields = {key:row.get(key) for key in ("project_id", "state", "question", "receipt_ids")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
+def pointer(row):
+    """Project canonical consumer progress; never reset a durable partial/verified outcome."""
+    verification = row.get("verification") or {}
+    state = verification.get("state", "pending")
+    if state not in ("pending", "running", "verified_present", "verified_absent", "partial", "unresolved"):
+        state = "unresolved"
+    receipts = verification.get("evidence_receipt_ids")
+    bound = verification.get("ownership_sha256") == row.get("ownership_sha256") and bool(row.get("ownership_sha256"))
+    evidence = (isinstance(receipts, list) and 1 <= len(receipts) <= 8 and
+                all(isinstance(value, str) and re.fullmatch("[a-f0-9]{64}", value) for value in receipts))
+    fulfilled = (state in ("verified_present", "verified_absent") and bound and evidence and
+                 verification.get("original_request_fulfilled") is True)
+    if state in ("verified_present", "verified_absent") and not fulfilled:
+        state = "unresolved"
+    return {"cycle_id":row["cycle_id"], "state":state, "original_request_fulfilled":fulfilled}
+
+
 def collect(cfg, root, projects, *, load, atomic, locked, fetch=None, record=None):
     """One idempotent local handback per accepted cycle, tied to the Lab's original outbox."""
     fetch = fetch or fetch_artifacts
@@ -33,14 +57,15 @@ def collect(cfg, root, projects, *, load, atomic, locked, fetch=None, record=Non
             owned = next(((key,row) for key,row in outbox.items() if row.get("project_id") == pid and row.get("state") == "accepted"), None)
             stored = load(handbacks_path, {})
             if not owned: continue
+            bound = ownership(owned[1])
             existing = next((row for row in stored.values() if row.get("project_id") == pid), None)
             if existing:
-                # Recover a crash after the canonical ledger write but before the outbox pointer.
-                if existing.get("original_request") == str(owned[1]["question"])[:2000]:
-                    pointer = {"cycle_id":existing["cycle_id"], "state":existing["state"],
-                               "original_request_fulfilled":False}
-                    if owned[1].get("capability_handback") != pointer:
-                        owned[1]["capability_handback"] = pointer
+                # Canonical ownership and verification win over a stale/missing outbox pointer.
+                if (existing.get("ownership_sha256") == bound and
+                    existing.get("original_request") == str(owned[1]["question"])[:2000]):
+                    projected = pointer(existing)
+                    if owned[1].get("capability_handback") != projected:
+                        owned[1]["capability_handback"] = projected
                         atomic(outbox_path, outbox)
                 continue
         artifacts = fetch(cfg, pid)
@@ -60,19 +85,24 @@ def collect(cfg, root, projects, *, load, atomic, locked, fetch=None, record=Non
             row = {"project_id":pid, "cycle_id":cycle["id"], "outbox_key":owned[0],
                    "original_request":handback["original_request"], "original_request_fulfilled":False,
                    "state":"capability_available_verification_required", "sequence_handle":handle,
-                   "artifact":artifact, "accepted_receipt":accepted}
+                   "artifact":artifact, "accepted_receipt":accepted, "ownership_sha256":bound,
+                   "source_receipt_ids":owned[1].get("receipt_ids", []),
+                   "verification":{"state":"pending", "ownership_sha256":bound, "evidence_receipt_ids":[],
+                                   "original_request_fulfilled":False}}
             with locked():
                 # Recheck ownership after the read; never import another project's evidence.
                 outbox = load(outbox_path, {})
                 current = outbox.get(owned[0], {})
-                if current.get("project_id") != pid or current.get("state") != "accepted": continue
+                if (current.get("project_id") != pid or current.get("state") != "accepted" or
+                    ownership(current) != bound or
+                    str(current.get("question", ""))[:2000] != handback["original_request"]):
+                    continue
                 stored = load(handbacks_path, {})
                 if cycle["id"] in stored: continue
                 if record: record(row)
                 stored[cycle["id"]] = row
                 atomic(handbacks_path, stored)
-                current["capability_handback"] = {"cycle_id":cycle["id"], "state":row["state"],
-                                                  "original_request_fulfilled":False}
+                current["capability_handback"] = pointer(row)
                 atomic(outbox_path, outbox)
                 collected.append(row)
     return collected
