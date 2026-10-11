@@ -152,11 +152,33 @@ class Productive(unittest.TestCase):
   note=C._tail_jsonl(C.NOTEBOOK)[-1];self.assertIn('planning_scope',note['inquiry'])
   return note['inquiry']
 
- def test_same_exhausted_assignment_waits_without_model_or_retrieval(self):
+ FRESH=(('7DTV','What does the cryo-EM structure 7DTV show about the calcium-bound active state of human CASR?'),
+        ('5K5S','Which residues line the extracellular ligand pocket of human CASR in crystal structure 5K5S?'),
+        ('7M3F','How are the two subunits of the human CASR homodimer arranged in the nanobody complex 7M3F?'),
+        ('7DD5','Where do phosphate anions bind the inactive human CASR extracellular domain in 7DD5?'))
+ def fresh(self):
+  # distinct new work each time: an admitted proposal is itself a lookup that may not be repeated
+  self.n=getattr(self,'n',-1)+1;entry,question=self.FRESH[self.n]
+  return dict(positive['inquiry'],question=question,source_query={'source':'pdb','entry_id':entry,'operation':'structure_evidence'})
+
+ def yielded_pass(self,held):
+  # 11 October from 07:21 UTC every line was held and every pass logged evidence_wait: the Lab stood still for
+  # over an hour. A held line keeps its hold (nothing on it is asked or retrieved again) but does not take the
+  # pass; the pass plans free curiosity, which here chooses unrelated work.
+  new=self.fresh()
+  with patch.object(C,'_ask',return_value=json.dumps(new)) as model,patch.object(C,'_browse',side_effect=forbidden),patch.object(C,'_strategy_change',return_value=None),patch.object(C,'_next_evidence_work',return_value=None):
+   result=C.tick()
+  self.assertEqual(result.get('kind'),'inquiry',(result,C._tail_jsonl(C.NOTEBOOK)[-1].get('why')));self.assertEqual(model.call_count,1)
+  admitted=C._load(C.STATE,{})['inquiry']
+  self.assertEqual(admitted['question'],new['question']);self.assertNotEqual(admitted['question'],held['question'])
+  self.assertIsNone(admitted['planning_scope']['line'])
+  with patch.object(C,'_strategy_change',return_value=None):
+   self.assertTrue(C._planning_hold(held['planning_scope'],R,{'subjects':[]},None)['planning_wait'])
+  C._atomic(C.STATE,{'phase':'orient'})   # that free work's cycle is done; the next pass orients again
+
+ def test_same_exhausted_assignment_waits_and_yields_its_pass(self):
   q=self.exhaust()
-  with patch.object(C,'_ask',side_effect=forbidden),patch.object(C,'_browse',side_effect=forbidden),patch.object(C,'_strategy_change',return_value=None):
-   for _ in range(2):self.assertEqual(C.tick()['kind'],'evidence_wait')
-  self.assertEqual(C._tail_jsonl(C.NOTEBOOK)[-1]['inquiry']['question'],q['question'])
+  for _ in range(2):self.yielded_pass(q)
 
  def test_unrelated_new_assignment_proceeds(self):
   self.exhaust();self.line={'id':'L-casr','question':positive['inquiry']['question'],'next_step':'Read saved receptor evidence'}
@@ -168,8 +190,11 @@ class Productive(unittest.TestCase):
   q=copy.deepcopy(actual[2]['inquiry']);q.pop('refused',None);self.line=None;R.record(q)
   with patch.object(C,'_ask',return_value=json.dumps(q)),patch.object(C,'_strategy_change',return_value=None),patch.object(C,'_next_evidence_work',return_value=None):
    self.assertEqual(C.tick()['kind'],'inquiry_refused')
-  with patch.object(C,'_ask',side_effect=forbidden),patch.object(C,'_strategy_change',return_value=None):
-   self.assertEqual(C.tick()['kind'],'evidence_wait')
+  # A repeat refusal does not hold free curiosity (it has no assignment to exhaust): the next pass plans again.
+  with patch.object(C,'_ask',return_value=json.dumps(self.fresh())) as model,patch.object(C,'_strategy_change',return_value=None):
+   self.assertEqual(C.tick()['kind'],'inquiry')
+  self.assertEqual(model.call_count,1)
+  C._atomic(C.STATE,{'phase':'orient'})
   with patch.object(C,'_ask',return_value=json.dumps(positive['inquiry'])) as model:
    inquiry=C._orient('New unrelated CASR question with saved supporting abstracts')
   self.assertNotIn('refused',inquiry);self.assertEqual(model.call_count,1)
@@ -244,9 +269,8 @@ class Productive(unittest.TestCase):
   self.assertTrue(note['coverage_deferred'],note)
   self.assertEqual(note['inquiry']['planning_scope'],old['planning_scope'])
   self.assertTrue(pathlib.Path(note['coverage_snapshot']).is_file())
-  with patch.object(C,'_strategy_change',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ask',side_effect=forbidden):
-   self.assertEqual(C.tick()['kind'],'evidence_wait')
-   self.assertEqual(C.tick()['kind'],'evidence_wait')
+  # The deferred line is not generated again while its evidence is unchanged; the passes go to other work.
+  for _ in range(2):self.yielded_pass(note['inquiry'])
 
  def test_oversize_reflection_tick_persists_hold_and_returns_to_orient(self):
   old=self.exhaust();q={'question':'What does the supplied evidence establish?',
@@ -272,9 +296,13 @@ class Productive(unittest.TestCase):
    step={'session_id':'offline-wait','lens':'offline','at':'2026-10-10','left':6,'subjects':['O43511'],'next_question':question} if frontier else None
    with patch.object(R,'frontier_step',return_value=step):
     q=self.exhaust()
-    with patch.object(C,'_ask',side_effect=forbidden),patch.object(C,'_strategy_change',return_value=None):
-     self.assertEqual(C.tick()['kind'],'evidence_wait')
-    self.assertTrue(C._tail_jsonl(C.NOTEBOOK)[-1]['inquiry']['planning_wait'])
+    if frontier:
+     # The frontier session's plan is its budgeted cycles; it waits there, counted against that budget.
+     with patch.object(C,'_ask',side_effect=forbidden),patch.object(C,'_strategy_change',return_value=None):
+      self.assertEqual(C.tick()['kind'],'evidence_wait')
+     self.assertTrue(C._tail_jsonl(C.NOTEBOOK)[-1]['inquiry']['planning_wait'])
+    else:
+     self.yielded_pass(q)
     # Production _strategy_change copies the last waiting inquiry, not the
     # pre-wait value. Preserve that shape so stale flags cannot hide in tests.
     def recovered(old,repeats):return dict(old,source_query={'source':'interpro','accession':'O43511'})

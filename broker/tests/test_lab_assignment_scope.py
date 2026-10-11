@@ -66,6 +66,56 @@ class AssignmentScope(unittest.TestCase):
             held = C._planning_hold(audit_scope, sys.modules['lab_repeats'], {'subjects': []}, None)
         self.assertTrue(held and held.get('planning_wait'), held)
 
+    LINE = {'line': {k: AUDIT[k] for k in ('id', 'question', 'next_step')}, 'frontier': None, 'lean': None, 'atlas': False}
+    HELD = 'What is the structural basis for GSDM4 pore formation?'
+
+    def _hold_on(self, resolution, scope):
+        row = {'question': self.HELD, 'evidence_status': 'insufficient',
+               'refused': 'repeat: spent subject: this retrieval already ended without an answer',
+               'strategy_resolution': resolution, 'planning_scope': scope}
+        row['planning_evidence'] = C._planning_evidence(row)
+        with open(C.NOTEBOOK, 'a') as f:
+            for _ in range(3):   # its own evidence_wait echoes carry the same inquiry
+                f.write(json.dumps({'kind': 'evidence_wait', 'inquiry': dict(row, planning_wait=True)}) + '\n')
+        with patch.object(C, '_strategy_change', lambda *a: None):
+            return C._planning_hold(scope, sys.modules['lab_repeats'], {'subjects': []}, None)
+
+    def _free(self, context='context'):
+        import hashlib
+        return {'line': None, 'frontier': None, 'lean': None, 'atlas': False,
+                'context_sha256': hashlib.sha256(context.encode()).hexdigest()}
+
+    def test_free_curiosity_is_not_held_by_a_repeat_refusal(self):
+        # 11 October from 07:21 UTC: every pass echoed a held repeat refusal and no new question was formed
+        self.assertIsNone(self._hold_on({'reason': 'no_unread_sourced_route', 'missing_evidence': 'spent subject'},
+                                        self._free()))
+
+    def test_an_assigned_line_still_holds_on_its_repeat_refusal(self):
+        held = self._hold_on({'reason': 'no_unread_sourced_route', 'missing_evidence': 'spent subject'}, self.LINE)
+        self.assertTrue(held and held.get('planning_wait'), held)
+
+    def test_an_assessed_insufficiency_still_holds_free_curiosity(self):
+        held = self._hold_on({'reason': 'assessed', 'missing_evidence': 'no record establishes the target'}, self._free())
+        self.assertTrue(held and held.get('planning_wait'), held)
+
+    def test_a_held_line_yields_its_pass_to_new_free_work(self):
+        # The line is held (no call repeats it), but the pass goes on: the planner is asked for free work.
+        self._hold_on({'reason': 'no_unread_sourced_route', 'missing_evidence': 'spent subject'}, self.LINE)
+        asked = []
+        def ask(system, task):
+            asked.append(task)
+            return json.dumps({'browse_lane': 'protein', 'question': 'How does MscL gate under membrane tension?',
+                               'uniprot_query': 'gene:mscL', 'line_id': None, 'new_line': None})
+        with patch.object(C, '_strategy_change', lambda *a: None), patch.object(C, '_ask', ask), \
+                patch.object(C, 'dead_ends', lambda: {'subjects': [], 'questions': [], 'count': 0}):
+            got = C._orient('context')
+        self.assertEqual(len(asked), 1)
+        self.assertIn('WAITING ON NEW EVIDENCE', asked[0]); self.assertIn(self.HELD, asked[0])
+        self.assertFalse(got.get('planning_wait'), got)
+        self.assertEqual(got['question'], 'How does MscL gate under membrane tension?')
+        self.assertIsNone(got['planning_scope']['line'], got['planning_scope'])
+        self.assertNotEqual(got['question'], self.HELD)
+
     def test_local_gemma_only(self):
         self.assertIn('/gemma-aegis-local/', C.LLM_URL)
 

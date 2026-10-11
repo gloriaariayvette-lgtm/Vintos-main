@@ -1156,6 +1156,11 @@ def _planning_hold(scope, repeats, spent, step):
             continue
         if not old.get('refused') or old.get('evidence_status') != 'insufficient':
             return None
+        if ((old.get('strategy_resolution') or {}).get('reason') == 'no_unread_sourced_route'
+                and not scope.get('line') and not scope.get('frontier')):
+            # Free curiosity has no assignment to exhaust: a proposal refused as a repeat holds nothing. On
+            # 11 October from 07:21 UTC the free slot sat on one such refusal, its context barely changing.
+            return None
         if old['planning_evidence'] != _planning_evidence(old):
             return None
         candidate = _strategy_change(old, repeats)
@@ -1219,6 +1224,7 @@ def _orient(context, lean=None):
         if candidate:
             recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
             if not recovered.get('refused'): return scoped(recovered)
+    waiting = None
     if lab_repeats:
         held = _planning_hold(scope, lab_repeats, spent, step)
         if held:
@@ -1228,6 +1234,18 @@ def _orient(context, lean=None):
                     if alternate:
                         admitted, value = _held_to_plan('', '', alternate, {}, lean, step, lab_repeats, spent=spent)
                         if not admitted.get('refused'): return scoped(admitted)
+                if assigned_line and not step:
+                    # The held line keeps its hold (no repeat calls on it), but it does not take the pass: this
+                    # pass plans free curiosity. Waiting is per line, not for the whole Lab (11 October from 07:21
+                    # UTC: every line held, every pass logged evidence_wait, no new question for over an hour).
+                    waiting = (assigned_line, held)
+                    line = assigned_line = None
+                    basis = re.sub(r'\[LATEST LAB EVENT - pointer to append-only notebook\]\n[^\n]*', '', context)
+                    scope = {'line': None, 'frontier': None, 'lean': lean, 'atlas': atlas_due,
+                             'context_sha256': hashlib.sha256(basis.encode()).hexdigest()}
+                    held = _planning_hold(scope, lab_repeats, spent, step)
+        if held:
+            if held.get('planning_wait'):
                 # The existing frontier budget counts unsuccessful cycles too.
                 # Waiting must not pin that session forever ahead of other lines.
                 if step: lab_repeats.record(held, refused=held['refused'])
@@ -1347,6 +1365,11 @@ def _orient(context, lean=None):
                      "question in other words):\n- " + "\n- ".join(d[:160] for d in _done))
     except Exception:
         pass
+    if waiting:
+        task += ("\n\nWAITING ON NEW EVIDENCE — line %s is neither answered nor closed; its last proposal was refused "
+                 "(%s). Do not propose it again this cycle; choose different work:\n- %s" %
+                 (waiting[0].get("id"), str(waiting[1].get("refused") or "")[:200],
+                  str(waiting[1].get("question") or waiting[0].get("question") or "")[:300]))
     atlas_turn = atlas_due
     if atlas_turn:
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
