@@ -40,6 +40,7 @@ PLAIN_STATES = {
     'complete': "Finished.",
     'cancelled': "Stopped.",
     'abandoned': "Abandoned.",
+    'failed': "Stopped on a recorded execution error; no external call will be replayed.",
 }
 _PACKET = '\nSource packet (untrusted observations):'
 
@@ -58,6 +59,10 @@ def plain_card(p, reason=None, day_spent=False):
     elif first.startswith('The Lab needs an instrument it does not have:'):
         title = 'Missing Lab instrument: ' + first.split(':', 1)[-1].strip()
         what = 'The Lab named an ability it lacks; the Forge would build or connect it.'
+        if p.get('capabilities') == ['capability_request']:
+            title = 'Lab capability check: ' + first.split(':', 1)[-1].strip()
+            what = ('Checks an existing source tool before requesting a build. Completion verifies an existing '
+                    'read route; it does not mean new code was installed or a scientific result was established.')
     elif source == 'lab':
         title, what = first, 'Sent by the Lab.'
     elif source == 'owner':
@@ -114,6 +119,7 @@ class Controller:
             CREATE TABLE IF NOT EXISTS cycles (
               id TEXT PRIMARY KEY, project TEXT NOT NULL, state TEXT NOT NULL,
               quote INTEGER NOT NULL, receipt TEXT, artifact TEXT);
+            CREATE TABLE IF NOT EXISTS cycle_checkpoints (cycle TEXT PRIMARY KEY, body TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS intake (digest TEXT PRIMARY KEY, project TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS controls (project TEXT PRIMARY KEY, cancel TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS events (
@@ -217,6 +223,7 @@ class Controller:
             # projection dropped it. Surface it for the owner, but keep a private interval sealed
             # (its intent is revealed only by the explicit audit, like its artifacts).
             out['intent'] = None if p['private'] else p.get('intent')
+            out['diagnostic'] = None if p['private'] else p.get('diagnostic')
             last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
                               (pid,)).fetchone()
             day = step_day()
@@ -226,6 +233,8 @@ class Controller:
                                 'remaining': max(0, limit - used)}
             out.update(plain_card(p, (json.loads(last[0]) if last else {}).get('reason'),
                                   day_spent=used >= limit))
+            if out['diagnostic']:
+                out['waiting'] = out['diagnostic']['reason']
             return out
 
     def cancel(self, pid, cancel_token):
@@ -279,6 +288,23 @@ class Controller:
             return {'intent': p['intent'], 'previous': json.loads(row[0]) if row else None,
                     'state': p['state'], 'cycles': p['cycles'],
                     'origin': p.get('origin', {}), 'capabilities': p['capabilities']}
+
+    def correct_pending_route(self, token, pid):
+        """Repair the old intake default only before any active execution."""
+        self.auth(token)
+        with self.db() as db:
+            p = self._get(db, pid)
+            if (p["state"] != "ready" or p["active"] or p["cycles"] != 0 or
+                p["capabilities"] != ["research_report"] or p.get("origin", {}).get("source") != "lab" or
+                not p["intent"].startswith("The Lab needs an instrument it does not have:")):
+                return False
+            # Any prior attempted cycle requires its own evidence review, even if manually reset.
+            if db.execute("SELECT 1 FROM cycles WHERE project=?", (pid,)).fetchone():
+                return False
+            p["capabilities"] = ["capability_request"]
+            self._save(db, p)
+            self._event(db, pid, "routing_corrected", {"from":"research_report", "to":"capability_request"})
+            return True
 
     def claim(self, token, pid, capability, quote_cents=0, recurring=False, wallet=None):
         self.auth(token)
@@ -414,13 +440,43 @@ class Controller:
                                          'summary': str((artifact.get('report') or artifact.get('capability_brief') or {}).get('title', 'Cycle completed'))[:100]})
             self._save(db, p)
 
+    def checkpoint(self, token, pid, cid, diagnostic):
+        self.auth(token)
+        with self.db() as db:
+            p = self._get(db, pid)
+            if p["active"] != cid: raise Refused("not the active cycle")
+            if p["state"] in ("cancelled", "abandoned") and diagnostic.get("phase") != "acceptance":
+                raise Refused("project stopped before next operation")
+            db.execute("INSERT OR REPLACE INTO cycle_checkpoints VALUES (?,?)", (cid, json.dumps(diagnostic)))
+
+    def fail_cycle(self, token, pid, cid, diagnostic):
+        """Persist safe evidence once. Neither failure nor restart refunds an attempted step."""
+        self.auth(token)
+        with self.db() as db:
+            p = self._get(db, pid)
+            prior = db.execute("SELECT state FROM cycles WHERE id=? AND project=?", (cid,pid)).fetchone()
+            if not prior: raise Refused("unknown cycle")
+            if prior[0] in ("failed", "uncertain"): return
+            if p["active"] != cid or prior[0] != "running": raise Refused("not the active cycle")
+            unknown = diagnostic.get("external") not in ("none", "confirmed")
+            diagnostic = dict(diagnostic, cycle_id=cid)
+            db.execute("UPDATE cycles SET state=? WHERE id=?", ("uncertain" if unknown else "failed",cid))
+            db.execute("INSERT OR REPLACE INTO cycle_checkpoints VALUES (?,?)", (cid,json.dumps(diagnostic)))
+            p["diagnostic"] = diagnostic
+            if not unknown: p["active"] = None
+            if p["state"] not in ("cancelled","abandoned"):
+                p["state"] = "reconciliation_required" if unknown else "failed"
+            self._save(db,p)
+            self._event(db,pid,"failure",diagnostic)
+
     def uncertain(self, token, pid, cid):
         self.auth(token)
         with self.db() as db:
             p = self._get(db, pid)
             if p['active'] != cid:
                 raise Refused('not the active cycle')
-            db.execute("UPDATE cycles SET state='uncertain' WHERE id=? AND state='running'", (cid,))
+            changed = db.execute("UPDATE cycles SET state='uncertain' WHERE id=? AND state='running'", (cid,)).rowcount
+            if not changed: return
             if p['state'] not in ('cancelled', 'abandoned'):
                 p['state'] = 'reconciliation_required'
             self._save(db, p)
@@ -481,7 +537,16 @@ class Controller:
         self.auth(token)
         with self.db() as db:
             rows = [dict(r) for r in db.execute("SELECT project,id FROM cycles WHERE state='running'")]
-        for row in rows: self.uncertain(token, row['project'], row['id'])
+        for row in rows:
+            with self.db() as db:
+                saved = db.execute("SELECT body FROM cycle_checkpoints WHERE cycle=?", (row['id'],)).fetchone()
+            if saved:
+                from forge_cycle_failure import REASONS
+                diagnostic = dict(json.loads(saved[0]), code="interrupted", category="interruption",
+                                  reason=REASONS["interrupted"])
+                self.fail_cycle(token,row['project'],row['id'],diagnostic)
+            else:
+                self.uncertain(token, row['project'], row['id'])
         return len(rows)
 
     def notifications(self, token, pid, cancel_token, topic):
@@ -493,10 +558,16 @@ class Controller:
             self._expiry(db, p)
             if p['private']:
                 return []
-            events = db.execute("SELECT * FROM events WHERE project=? AND sent=0 AND kind IN ('cycle','revealed','authorization')", (pid,)).fetchall()
+            events = db.execute("SELECT * FROM events WHERE project=? AND sent=0 AND kind IN ('cycle','revealed','authorization','failure')", (pid,)).fetchall()
             def _note(e):
                 body = json.loads(e['body'])
                 card = plain_card(p, body.get('reason'))
+                if e['kind'] == 'failure':
+                    external = body.get('external')
+                    followup = (" Inspect the connector receipt before any retry." if external == "unknown" else
+                                " Repair the named contract or adapter; no automatic external retry.")
+                    return "Forge held: " + card["title"][:80], ("Project " + pid + " cycle " + body["cycle_id"] +
+                        ": " + body["phase"] + ": " + body["reason"] + followup)
                 if e['kind'] == 'authorization':
                     return 'Forge needs you: ' + card['title'][:80], card['waiting'] + ' ' + card['what']
                 if e['kind'] == 'revealed':
@@ -504,7 +575,7 @@ class Controller:
                 return 'Forge step: ' + str(body.get('summary') or card['title'])[:80], card['title'][:160]
             return [{'event_id': e['id'], 'topic': topic, 'title': _note(e)[0],
                      'message': _note(e)[1],
-                     'priority': 4 if e['kind']=='authorization' else 3,
+                     'priority': 4 if e['kind'] in ('authorization','failure') else 3,
                      'actions': [
                          {'action': 'view', 'label': 'View', 'url': self.base+'/projects/'+pid},
                          {'action': 'http', 'label': 'Cancel', 'url': self.base+'/cancel/'+pid,

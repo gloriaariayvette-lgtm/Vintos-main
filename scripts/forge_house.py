@@ -25,6 +25,17 @@ def reserve(proposal, attempt):
     return request('/api/build-reservation', {'proposal': proposal, 'attempt': attempt}).get('reserved') is True
 
 
+def validate_plugin_configuration():
+    """Validate local prerequisites before marking a connector as dispatched."""
+    from forge_loop_runtime import secret
+    if not os.environ.get('VINTOS_PLUGIN_GATEWAY_URL', '').strip():
+        raise ValueError('Forge plugin gateway URL missing')
+    token_file = os.environ.get('VINTOS_PLUGIN_GATEWAY_TOKEN', '').strip()
+    if not token_file:
+        raise ValueError('Forge plugin gateway credential missing')
+    secret(token_file)  # validate locally; do not return credentials to callers
+
+
 def plugin_query(plugin, tool, arguments, purpose):
     """Forge-side explicit plugin operation; the caller supplies the real project purpose."""
     gateway = os.environ.get('VINTOS_PLUGIN_GATEWAY_URL', '').strip()
