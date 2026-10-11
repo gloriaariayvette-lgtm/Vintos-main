@@ -94,6 +94,28 @@ class IdentityTests(unittest.TestCase):
         self.reject('unavailable')
         self.assertEqual(R.repeat(self.inquiry()),'')
 
+    def test_deterministic_multi_target_conflict_is_not_replanned_forever(self):
+        inquiry=self.inquiry(
+            question='Compare human STAU1 O95793 with pendrin P58743',
+            uniprot_query='accession:O95793',
+            source_query={'source':'pdb','entry_id':'4DKK','operation':'structure_evidence'})
+        conflict={'status':'unresolved','reason':'multiple or contradictory accessions require a resolved per-target mapping'}
+        with patch.object(C,'_ground_inquiry',return_value=conflict):
+            refused,_=C._held_to_plan('','',inquiry,{},None,None,R)
+        self.assertIn('refused',refused)
+        self.assertIn('unchanged unresolved identity',R.repeat(inquiry))
+        corrected=dict(inquiry,question='Describe human STAU1 O95793',source_query={'source':'pdb','entry_id':'4DKK','operation':'structure_evidence'})
+        self.assertEqual(R.repeat(corrected),'')
+
+    def test_deployed_three_part_identity_key_remains_enforced(self):
+        inquiry=self.inquiry()
+        current=json.loads(R.identity_refusal_key(inquiry))
+        pathlib.Path(R.LOOKUPS).write_text(json.dumps({
+            'at':datetime.now(timezone.utc).isoformat(),
+            'identity_refusal':json.dumps(current[:3],sort_keys=True),
+            'identity_reason':'deployed unresolved identity'})+'\n')
+        self.assertIn('unchanged unresolved identity',R.repeat(inquiry))
+
     def test_recovery_advances_and_exhausts_without_redispatch(self):
         prior=self.inquiry(uniprot_query='gene:FAKE123 AND taxonomy_id:9606')
         source={'kind':'source_read','source':'UniProtKB REST','requested_query':prior['uniprot_query'],

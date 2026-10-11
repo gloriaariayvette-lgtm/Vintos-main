@@ -192,26 +192,40 @@ def identity_refusal_key(inquiry):
     symbols = human_question_symbols(str(inq.get('question') or '').upper())
     symbol_query = re.sub(r'\b(GENE|PROTEIN_NAME):', lambda m:m[0].lower(), inq['uniprot_query'].upper())
     symbols += uniprot_identity_symbols(symbol_query)
+    accessions = sorted(set(_ACCESSION.findall(str(inq.get('question') or '').upper())))
     return json.dumps([lookup_key(inq), uniprot_key(inq.get('uniprot_query')),
-                       sorted(set(symbols))], sort_keys=True)
+                       sorted(set(symbols)), accessions], sort_keys=True)
+
+
+def _identity_refusal_keys(inquiry):
+    """Current key plus the deployed three-part form, so rollout does not release old decisions."""
+    current = identity_refusal_key(inquiry)
+    try:
+        parts = json.loads(current)
+        legacy = json.dumps(parts[:3], sort_keys=True)
+    except (ValueError, TypeError):
+        legacy = current
+    return {current, legacy}
 
 
 def identity_rejection(inquiry, rows):
-    key = identity_refusal_key(inquiry)
+    keys = _identity_refusal_keys(inquiry)
     for row in reversed(rows):
-        if row.get('identity_refusal') != key: continue
+        if row.get('identity_refusal') not in keys: continue
         symbol = row.get('unresolved_symbol')
         # A newly sourced exact identity is material evidence, not a cosmetic retry.
-        for receipt in reversed(_tail(os.path.join(ROOT, 'source-receipts.jsonl'))):
-            if (receipt.get('source') == 'ncbi_gene_identity'
-                    and (receipt.get('query') or {}).get('symbol', '').upper() == symbol):
-                try:
-                    fresh = datetime.fromisoformat(receipt['retrieved_at']) > _when(row)
-                except (KeyError, TypeError, ValueError): fresh = False
-                from lab_sources import verified_human_identity
-                if fresh and verified_human_identity(receipt, symbol): return ''
-                break
-        return 'unchanged unresolved human identity: ' + str(symbol)
+        if symbol:
+            for receipt in reversed(_tail(os.path.join(ROOT, 'source-receipts.jsonl'))):
+                if (receipt.get('source') == 'ncbi_gene_identity'
+                        and (receipt.get('query') or {}).get('symbol', '').upper() == symbol):
+                    try:
+                        fresh = datetime.fromisoformat(receipt['retrieved_at']) > _when(row)
+                    except (KeyError, TypeError, ValueError): fresh = False
+                    from lab_sources import verified_human_identity
+                    if fresh and verified_human_identity(receipt, symbol): return ''
+                    break
+            return 'unchanged unresolved human identity: ' + str(symbol)
+        return 'unchanged unresolved identity: ' + str(row.get('identity_reason') or 'conflicting target context')
     return ''
 
 
@@ -286,18 +300,20 @@ def record(inquiry, now=None, refused="", *, identity_validated=False):
            "frontier_session": inq.get("frontier_session"), **({"refused": refused[:200]} if refused else {})}
     identity = inq.get('identity_check') or {}
     evidence = identity.get('receipt_ids') or []
-    if (identity_validated and refused and identity.get('status') == 'unresolved'
-            and identity.get('symbol') and evidence):
+    if identity_validated and refused and identity.get('status') == 'unresolved':
         key = identity_refusal_key(inq)
+        keys = _identity_refusal_keys(inq)
         # Same evidence cannot renew an active decision. After expiry, one
         # completed validation starts a new bounded window, even if the provider
         # returned the same receipt. Blocked echoes never enter this branch.
-        prior = next((r for r in reversed(_tail(LOOKUPS)) if r.get('identity_refusal') == key), None)
+        prior = next((r for r in reversed(_tail(LOOKUPS)) if r.get('identity_refusal') in keys), None)
         prior_time = _when(prior) if prior else None
         expired = prior_time is not None and prior_time < (now or _now()) - timedelta(days=REPEAT_DAYS)
-        if not prior or expired or prior.get('identity_receipt_id') != evidence[-1]:
-            row.update(identity_refusal=key, identity_receipt_id=evidence[-1],
-                       unresolved_symbol=str(identity['symbol']).upper())
+        receipt_id = evidence[-1] if evidence else None
+        if not prior or expired or (receipt_id and prior.get('identity_receipt_id') != receipt_id):
+            row.update(identity_refusal=key, identity_reason=str(identity.get('reason') or '')[:200])
+            if receipt_id: row['identity_receipt_id'] = receipt_id
+            if identity.get('symbol'): row['unresolved_symbol'] = str(identity['symbol']).upper()
     os.makedirs(ROOT, exist_ok=True)
     with open(LOOKUPS, "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
