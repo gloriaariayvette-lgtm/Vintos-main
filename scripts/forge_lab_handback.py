@@ -67,6 +67,10 @@ def collect(cfg, root, projects, *, load, atomic, locked, fetch=None, record=Non
                     if owned[1].get("capability_handback") != projected:
                         owned[1]["capability_handback"] = projected
                         atomic(outbox_path, outbox)
+                elif owned[1].get("capability_handback", {}).get("cycle_id") == existing.get("cycle_id"):
+                    # Old evidence remains canonical, but must not label a changed request fulfilled.
+                    owned[1].pop("capability_handback", None)
+                    atomic(outbox_path, outbox)
                 continue
         artifacts = fetch(cfg, pid)
         for cycle in artifacts if isinstance(artifacts, list) else []:

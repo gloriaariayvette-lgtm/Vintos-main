@@ -348,12 +348,13 @@ class ReportBuilder:
 
 
 class Runtime:
-    def __init__(self, controller, projection, builder, publisher=None, topic=None, intake_token=None):
+    def __init__(self, controller, projection, builder, publisher=None, topic=None, intake_token=None, verification_evidence=None):
         self.c, self.projection, self.builder = controller, projection, builder
         self.publisher, self.topic = publisher, topic
         if intake_token and intake_token in (controller.owner_token, controller.worker_token):
             raise Refused('intake authority must use a distinct secret')
         self.intake_token = intake_token
+        self.verification_evidence = verification_evidence
         self.mutex = threading.RLock()
         self.stopping = threading.Event()
         # Cancel credentials remain within the same protected owner boundary.
@@ -410,6 +411,19 @@ class Runtime:
                                    'kind': 'capability_request' if str(data.get('intent', '')).startswith(
                                        'The Lab needs an instrument it does not have:') else 'research_report'}, dedupe_key=digest)
             return {'id': created['id'], 'replayed': False}
+
+    def acknowledge_lab_verification(self, token, body):
+        import hmac
+        from forge_verification_ack import envelope
+        if (not self.intake_token or not isinstance(token,str) or
+            not hmac.compare_digest(token,self.intake_token)):
+            raise Refused("Lab intake authority required")
+        envelope(body)
+        if self.verification_evidence is None:
+            raise Refused("canonical Lab verification reader is not configured")
+        # Existing Lab shared lock remains held through the atomic Forge transition.
+        with self.mutex, self.verification_evidence.resolve(body) as proof:
+            return self.c.acknowledge_verification(self.c.worker_token,proof)
 
     def sync_wants(self, token, rows, inventory):
         self.c.auth(token, owner=True)
@@ -662,7 +676,7 @@ class API:
         status = 200
         content_type = 'application/json'
         named = []
-        lab = (path == '/api/lab-intake' and bool(self.r.intake_token) and bool(token)
+        lab = (path in ('/api/lab-intake','/api/lab-verification') and bool(self.r.intake_token) and bool(token)
                and hmac.compare_digest(token, self.r.intake_token))
         try:
             if method == 'GET' and (path == '/' or path.startswith('/projects/')):
@@ -670,6 +684,10 @@ class API:
                 body = Path(__file__).with_name('forge_loop_ui.html').read_text()
             elif path.startswith('/cancel/'):
                 status, body = ControlAPI(self.r.c).handle(method, path, env.get('HTTP_AUTHORIZATION', ''))
+            elif path == '/api/lab-verification' and method == 'POST':
+                size = int(env.get('CONTENT_LENGTH') or 0)
+                if not 0 < size <= 8192: raise Refused('bounded acknowledgement required')
+                body = self.r.acknowledge_lab_verification(token,json.loads(env['wsgi.input'].read(size)))
             elif path == '/api/lab-intake' and method == 'POST':
                 size = int(env.get('CONTENT_LENGTH') or 0)
                 if not 0 < size <= 200000: raise Refused('intake too large')
@@ -735,6 +753,8 @@ def load(config_file, *, check_only=False):
     validate_settings(owner, worker, config['public_base'])
     intake = secret(config['lab_intake_token_file']) if config.get('lab_intake_token_file') else None
     if intake and intake in (owner, worker): raise Refused('distinct intake secret required')
+    if config.get('lab_verification_root') and not intake:
+        raise Refused('verification reader requires existing Lab intake authentication')
     import compute_admission
     compute_memory = Path(config['compute_memory']).resolve()
     if not compute_memory.is_dir(): raise ValueError('shared compute admission directory missing')
@@ -753,7 +773,12 @@ def load(config_file, *, check_only=False):
         return {'configuration':'valid','paid_execution':'disabled','ntfy_configured':True,'live_access':'not_tested'}
     c = Controller(root/'forge-loop.sqlite', owner, worker, config['public_base'])
     open_lab_privacy(c)
-    return Runtime(c, AtelierProjection(root), ReportBuilder(model), publisher, ntfy['topic'], intake), config
+    verification_evidence = None
+    if config.get("lab_verification_root"):
+        from forge_verification_ack import CanonicalLabEvidence
+        verification_evidence = CanonicalLabEvidence(config["lab_verification_root"])
+    return Runtime(c, AtelierProjection(root), ReportBuilder(model), publisher, ntfy['topic'], intake,
+                   verification_evidence=verification_evidence), config
 
 
 def main():
