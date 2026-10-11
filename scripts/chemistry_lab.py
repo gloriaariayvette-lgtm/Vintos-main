@@ -1230,8 +1230,11 @@ def _held_question(inquiry):
         # Use the existing repeat threshold, retaining its distinct-target exception.
         own_ids = {x for x in repeats.subjects(question) if any(c.isdigit() for c in x)}
         old_ids = {x for x in repeats.subjects(old_question) if any(c.isdigit() for c in x)}
+        own_targets = repeats.lookup_targets(key)
+        old_targets = repeats.lookup_targets(old_key)
+        distinct_targets = bool(own_targets and old_targets and own_targets.isdisjoint(old_targets))
         similar = (len(words) >= 4 and len(words & repeats._words(old_question)) / len(words) >= repeats.SIMILAR
-                   and not (own_ids and old_ids and own_ids.isdisjoint(old_ids)))
+                   and not distinct_targets and not (own_ids and old_ids and own_ids.isdisjoint(old_ids)))
         if not ((key and key == old_key) or (same_route and (same_question or similar))): continue
         if old['planning_evidence'] == _planning_evidence(old): return old
     return None

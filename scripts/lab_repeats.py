@@ -111,6 +111,22 @@ def canonical_lookup(key):
     return key
 
 
+def lookup_targets(key):
+    """Named UniProt targets in a canonical lookup, independent of generic question prose."""
+    key = canonical_lookup(str(key or ''))
+    if not key.startswith('uniprot:'): return set()
+    body = key[len('uniprot:'):]
+    terms = []
+    if body.startswith('[['):
+        try: terms = json.loads(body)
+        except (ValueError, TypeError): terms = []
+    if not terms:
+        field = re.compile(r'(accession|gene|protein_name)\s*:\s*("[^"\n]*"|[^\s()]+)', re.I)
+        terms = [(match[1], match[2].strip('"')) for match in field.finditer(body)]
+    return {(str(field).lower(), unicodedata.normalize('NFC', str(value)).strip().casefold())
+            for field,value in terms if str(field).lower() in ('accession','gene','protein_name') and str(value).strip()}
+
+
 def lookup_key(inquiry):
     """The lookup an inquiry makes, written the same way whatever words it came in; '' when it makes none."""
     inq = inquiry if isinstance(inquiry, dict) else {}
@@ -267,6 +283,7 @@ def repeat(inquiry, now=None):
             if fold_read_covers(previous, requested):
                 return 'prior model read already includes this residue range: ' + str(row.get('at') or '')
     mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
+    own_targets = lookup_targets(key)
     if len(mine) >= 4:
         for r in reversed(rows):
             # The same unresolved question may legitimately need another instrument/source.
@@ -281,6 +298,9 @@ def repeat(inquiry, now=None):
             own_ids = identities(inquiry.get("question", ""))
             previous_ids = identities(r.get("question", ""))
             if own_ids and previous_ids and own_ids.isdisjoint(previous_ids):
+                continue
+            previous_targets = lookup_targets(r.get('lookup') or '')
+            if own_targets and previous_targets and own_targets.isdisjoint(previous_targets):
                 continue
             theirs = set(r.get("words") or [])
             if theirs and len(mine & theirs) / len(mine) >= SIMILAR:

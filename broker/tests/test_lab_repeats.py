@@ -31,6 +31,12 @@ L.record({"question": "Which hydrophobic residues in TM14 of SLC26A4 form the in
 check("the same question in other words is refused", "in other words" in L.repeat(
     {"question": "Which TM14 hydrophobic residues of SLC26A4 form its inter-protomer interface?"}, now=NOW))
 check("a different question is not", L.repeat({"question": "Where does the STAS domain of O43511 hold its strands?"}, now=NOW) == "")
+generic = "What do curated UniProt records for %s establish about organism, sequence length, annotated domains, and membrane topology?"
+L.record({"question":generic % "myoglobin", "uniprot_query":'protein_name:"myoglobin" AND reviewed:true'}, now=NOW)
+check("generic review wording does not merge distinct protein-name targets", L.repeat(
+    {"question":generic % "catalase", "uniprot_query":'protein_name:"catalase" AND reviewed:true'}, now=NOW) == "")
+check("the same protein-name target remains a repeat", bool(L.repeat(
+    {"question":generic % "myoglobin", "uniprot_query":'reviewed:true AND protein_name:"myoglobin"'}, now=NOW)))
 L.record({"question": "x", "source_query": {"source": "pdb", "entry_id": "8SGW"}}, now=NOW, refused="repeat: test")
 check("a refused cycle ran nothing, so it makes nothing a repeat", L.repeat({"question": "y", "source_query": {"source": "pdb", "entry_id": "8SGW"}}, now=NOW) == "")
 
