@@ -83,10 +83,16 @@ check("a receipt that does not say is judged against the record's own length", "
       C.embedding_coverage([old], [{"accession": "OLD001", "length": 2500}])[0])
 seen = []
 C._ask = lambda system, user, **k: (seen.append(user), "{}")[1]
-C._reflect("ctx", {"question": "q"}, {"embedding_coverage": lines, "records": [{"accession": "LONG01", "note": "x" * 50000}],
+C._reflect("ctx", {"question": "q"}, {"embedding_coverage": lines, "records": [{"accession": "LONG01", "note": "x" * 5000}],
                                        "esmc_receipts": [long_]})
-check("Gemma's reading is told it is partial before the records, so no cut can drop it",
+check("Gemma's reading is told it is partial before the records",
       seen and seen[0].find("PARTIAL") != -1 and seen[0].find("PARTIAL") < seen[0].find('"records"'), seen[0][:300] if seen else "")
+# Since 10 October evidence over the context budget is never cut: the whole reading is deferred, unasked.
+seen.clear()
+big = C._reflect("ctx", {"question": "q"}, {"embedding_coverage": lines, "records": [{"accession": "LONG01", "note": "x" * 50000}],
+                                             "esmc_receipts": [long_]})
+check("evidence over the budget is deferred whole, never cut and asked", not seen and "deferred" in str(big.get("answers_question")),
+      (len(seen), str(big)[:300]))
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

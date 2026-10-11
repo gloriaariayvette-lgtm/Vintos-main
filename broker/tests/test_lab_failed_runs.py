@@ -69,13 +69,18 @@ for verdict in ('', 'The records do not provide the sequence', 'no'):
 # Real UniProt O43511 captured read-only on Aegis 2026-10-09: 780 residues.
 p=json.loads((REPO/'broker/tests/fixtures/pendrin-o43511.json').read_text())
 assert len(p['sequence']) == p['length'] == 780
+# The capture kept sequence only. Its UniProt identity, as the record states it, so the identity check (10 October)
+# can establish the human target before the reading is asked; the check itself is unchanged.
+p.update(protein_name='Pendrin', taxon_id=9606, organism='Homo sapiens', genes=[{'geneName': {'value': 'SLC26A4'}}])
 q={'question':'What is the primary sequence of residues 485-535 in human Pendrin?', 'why_now':'Resolve the missing interval'}
 spans=lab.sequence_regions(q, {'records':[p]})
 assert spans[0]['sequence'] == p['region_485_535'] == p['sequence'][484:535]
 assert spans[0]['accession'] == 'O43511' and spans[0]['length'] == 51
 assert lab.sequence_regions({'question':'residues 770-900'}, {'records':[p]}) == []
+n = len(calls)
 lab._reflect('replay', q, {'records':[p]})
-assert p['region_485_535'] in calls[-1] and 'one-based inclusive' in calls[-1]
-assert 'If no, leave speculative_reading empty' in calls[-1]
+reading = calls[n]   # the reading itself; the evidence-coverage check (10 October) is asked after it
+assert p['region_485_535'] in reading and 'one-based inclusive' in reading
+assert 'If no, leave speculative_reading empty' in reading
 assert not network
 print('PASS: failed-run replay, repeat recovery, PubMed subject preservation, finding gate, exact Pendrin interval; isolated')

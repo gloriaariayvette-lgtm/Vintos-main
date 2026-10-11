@@ -79,7 +79,10 @@ class Tests(unittest.TestCase):
         self.assertIn('SLC26A28', inquiry['refused'])
         self.assertIn("unchanged unresolved human identity", repeats.repeat(inquiry))
         raw['uniprot_query'] = 'gene:SLC26A4 AND taxonomy_id:10090'
-        self.assertIn('conflicts', lab._ground_inquiry(raw, client)['reason'])
+        # Refused either by the general multi-taxon check (lab_sources, 10 October) or the human-vs-nonhuman one
+        grounded = lab._ground_inquiry(raw, client)
+        self.assertEqual(grounded['status'], 'unresolved', grounded)
+        self.assertRegex(grounded['reason'], r'conflict|contradict')
 
     def test_multiword_human_subject_cannot_escape(self):
         client = sources.Sources(fetch=self.fetch)
