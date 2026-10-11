@@ -37,6 +37,8 @@ check("generic review wording does not merge distinct protein-name targets", L.r
     {"question":generic % "catalase", "uniprot_query":'protein_name:"catalase" AND reviewed:true'}, now=NOW) == "")
 check("the same protein-name target remains a repeat", bool(L.repeat(
     {"question":generic % "myoglobin", "uniprot_query":'reviewed:true AND protein_name:"myoglobin"'}, now=NOW)))
+check("a ten-character UniProt accession is parsed as one accession",
+      L._ACCESSION.findall("Read A0A6B8MBU4, then A0A023GPI8") == ["A0A6B8MBU4", "A0A023GPI8"])
 L.record({"question": "x", "source_query": {"source": "pdb", "entry_id": "8SGW"}}, now=NOW, refused="repeat: test")
 check("a refused cycle ran nothing, so it makes nothing a repeat", L.repeat({"question": "y", "source_query": {"source": "pdb", "entry_id": "8SGW"}}, now=NOW) == "")
 

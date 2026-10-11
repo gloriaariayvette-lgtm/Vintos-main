@@ -97,5 +97,15 @@ class QuestionShape(unittest.TestCase):
         self.assertEqual(explicit_gene['status'], 'unresolved', explicit_gene)
         self.assertIn('W83', '; '.join(explicit_gene['issues']))
 
+    def test_a_ten_character_uniprot_accession_is_the_record_id_not_a_second_target(self):
+        accession = 'A0A6B8MBU4'
+        question = ('What does the curated UniProt record for Lipoyl synthase (%s) establish about its organism, '
+                    'sequence length, annotated domains, and membrane topology?' % accession)
+        self.assertNotIn(accession, symbols(question))
+        got = entity({'question': question, 'uniprot_query': 'reviewed:true AND (accession:%s)' % accession},
+                     [{'accession': accession, 'protein_name': 'Lipoyl synthase',
+                       'organism': 'Candidatus Prometheoarchaeum syntrophicum'}])
+        self.assertEqual(got['status'], 'consistent', got)
+
 if __name__ == '__main__':
     unittest.main()

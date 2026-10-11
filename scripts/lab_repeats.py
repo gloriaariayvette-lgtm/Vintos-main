@@ -42,7 +42,7 @@ _WORD = re.compile(r"[a-z0-9][a-z0-9-]{3,}")
 _STOP = set("what which does that this with from into have their there about these those under within "
             "between specific structural structure protein proteins human role function sequence residues domain "
             "region regions record records known based how are the and for its whether".split())
-_ACCESSION = re.compile(r"(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}){1,2}[0-9])(?![A-Z0-9])")
+_ACCESSION = re.compile(r"(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?![A-Z0-9])")
 _SYMBOL = re.compile(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}(?![A-Za-z0-9])")
 _NOT_SUBJECTS = {"ESMFOLD", "DSSP", "PDB", "UNIPROT", "NCBI", "JSON", "DNA", "RNA", "HP", "CONFIDENT_FOLD", "TM",
                  "MODERATE_FOLD", "ATAC", "RCSB", "API", "ID", "IDS", "NMR", "SAXS", "CD", "RMSD", "TM-ALIGN", "GRCH38"}
