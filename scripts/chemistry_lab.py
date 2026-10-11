@@ -3083,6 +3083,16 @@ def tick():
                     import chemistry_sources
                     chemistry_sources.flush_reports()
                 except Exception as exc: _fault("forge_report_retry", exc)
+                if state.get("phase", "orient") == "orient":
+                    from lab_forge_consumer import consume_one
+                    handback = consume_one(sys.modules[__name__])
+                    if handback:
+                        _append(NOTEBOOK, dict(handback, at=now_iso(), truth_status="identity_check_not_task_fulfillment"))
+                        state.update(phase="orient", last_turn_at=now_iso(), last_outcome=handback["kind"],
+                                     effective_state="waiting", turns=int(state.get("turns", 0)) + 1,
+                                     fault_streak=0, fault_phase=None)
+                        _atomic(STATE, state)
+                        return {"ok":True, "state":"completed", "kind":handback["kind"], "next_phase":"orient"}
             context, receipt = lab_context()
             phase = state.get("phase", "orient")
             _inquiry_before = dict(state.get("inquiry") or {})
