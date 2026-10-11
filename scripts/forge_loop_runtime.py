@@ -231,6 +231,19 @@ class ReportBuilder:
     def _build(self, claim, context):
         if claim["capability"] == "capability_request" and not claim["maximum_cents"]:
             from forge_genomic_result import CONTRACT, validate_request, verified_result
+            from forge_genomic_result import existence_request
+            original=context["intent"].split("\nSource packet (untrusted observations):",1)[0]
+            direct=existence_request(original)
+            if direct:
+                return {"artifact":{"capability_resolution":{
+                            "route":"direct_authoritative_verification","status":"reference_lookup_required",
+                            "request":direct,"sequence_handle":None},
+                        "lab_handback":{"status":"capability_available_original_request_unfulfilled",
+                            "original_request":original,"cycle_id":claim["cycle_id"],
+                            "required_next_action":"Perform the bounded authoritative reference lookup; no sequence was acquired."},
+                        "truth_status":"reference_verification_pending_no_sequence_acquired",
+                        "evaluation":{"reveal":True}},
+                        "complete":False,"receipt":{"charged_cents":0,"payer":"local","cycle_id":claim["cycle_id"]}}
             instruction = (
                 "Resolve this capability request using the installed read tools below. Preserve the original "
                 "scientific identifiers, species and requested action. Do not silently correct a gene name. "

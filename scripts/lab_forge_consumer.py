@@ -32,9 +32,8 @@ def owned(row, owner, cycle):
 
 def validate(row, owner):
     """Revalidate untrusted handback; collector acceptance alone is not sufficient."""
-    from forge_genomic_result import validate_request, verified_result
+    from forge_genomic_result import validate_request, verified_result, direct_verification
     artifact = row['artifact']; request = artifact['capability_resolution']['request']
-    outcome = artifact['capability_resolution']['result']; rec = outcome['receipt']
     handback = artifact['lab_handback']; accepted = row['accepted_receipt']
     if (handback['cycle_id'] != row['cycle_id'] or accepted['cycle_id'] != row['cycle_id']
             or handback['original_request'] != row['original_request']
@@ -43,6 +42,12 @@ def validate(row, owner):
             or row.get('original_request_fulfilled') is not False):
         raise ValueError('handback ownership or completion claim is invalid')
     validate_request(request, {'intent':owner['question']})
+    resolution=artifact['capability_resolution']
+    if resolution.get('route') == 'direct_authoritative_verification':
+        if not direct_verification(resolution,owner['question']) or row.get('sequence_handle') is not None:
+            raise ValueError('direct verification input is not the exact original action')
+        return request
+    outcome=resolution['result'];rec=outcome['receipt']
     if (outcome.get('ok') is not True or rec.get('surface') != 'forge'
             or rec.get('plugin') != request['plugin'] or rec.get('tool') != request['tool']
             or not re.fullmatch('[a-f0-9]{64}', str(rec.get('receipt_id','')))

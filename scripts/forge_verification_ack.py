@@ -127,7 +127,7 @@ def validate_evidence(body, row, current, receipts):
             coordinate = match.get("coordinate_system")
             lower = 0 if coordinate == "0-based-half-open" else 1 if coordinate == "1-based-inclusive" else None
             if (lower is None or type(match.get("start")) is not int or type(match.get("end")) is not int or
-                not lower <= match["start"] < match["end"]):
+                (match["start"] < lower or match["end"] < match["start"] + (coordinate == "0-based-half-open"))):
                 raise Refused("verified locus coordinates required")
         normalized_evidence.append({"receipt_id":rid,"requested_target":target,"taxon_id":taxon,
             "verdict":data["verdict"],"reference":{"provider":reference["provider"],"release":reference["release"]},

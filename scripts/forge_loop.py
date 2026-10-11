@@ -64,8 +64,8 @@ def plain_card(p, reason=None, day_spent=False):
         what = 'The Lab named an ability it lacks; the Forge would build or connect it.'
         if p.get('capabilities') == ['capability_request']:
             title = 'Lab capability check: ' + first.split(':', 1)[-1].strip()
-            what = ('Partial source acquisition is returned to the Lab with the original request. The target and species '
-                    'remain unverified; no original request is marked complete.')
+            what = ('The original request is returned to the Lab for authoritative verification. '
+                    'The target and species remain unverified; no original request is marked complete.')
             if p.get('lab_verification'):
                 what = 'The original named-gene reference lookup was verified; its evidence is recorded with this project.'
     elif source == 'lab':

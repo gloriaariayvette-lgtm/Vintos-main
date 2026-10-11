@@ -70,3 +70,25 @@ def verified_result(outcome, request):
                                          "species":request["arguments"]["species"]}}
     except (ValueError, KeyError, TypeError, IndexError):
         raise ValidationFailure("genomic_result") from None
+
+
+def existence_request(original):
+    """Parse only the commissioned exact lookup; no acquisition or inferred identifiers."""
+    action=original.split("\nSource packet (untrusted observations):",1)[0]
+    action=action.removeprefix("The Lab needs an instrument it does not have:").strip()
+    species=r"(?:homo sapiens|homo_sapiens|mus musculus|mus_musculus|human|mouse)"
+    target=r"[A-Za-z][A-Za-z0-9-]{0,29}"
+    for named in (rf"(?P<species>{species})\s+(?P<gene>{target})",
+                  rf"(?P<gene>{target})\s+(?:in\s+)?(?P<species>{species})"):
+        match=re.fullmatch(rf"verify\s+(?:that\s+)?{named}\s+(?:exists|existence|locus)[.!?]?",action,re.I)
+        if match:
+            return {"plugin":"genomic_intelligence","tool":"genomic_intelligence.fetch_ensembl_sequence",
+                    "arguments":match.groupdict(),"purpose":"Exact original-action reference lookup; no sequence acquisition"}
+    return None
+
+
+def direct_verification(resolution, original):
+    expected=existence_request(original)
+    return (expected is not None and resolution == {
+        "route":"direct_authoritative_verification","status":"reference_lookup_required",
+        "request":expected,"sequence_handle":None})

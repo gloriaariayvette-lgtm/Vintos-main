@@ -67,11 +67,55 @@ class Completion(fixture.Tests):
         F.consume_one(self.ctx,locus=self.locus,acknowledge=self.deliver)
         self.assertEqual(self.c.status(self.c.owner_token,pid)['state'],'complete')
     def test_adapter_scoped_absence_completes_only_named_reference_lookup(self):
+        self.acquisition.assert_not_called();self.model.assert_not_called()
+        self.assertIsNone(self.row["sequence_handle"])
+        resolution=self.row["artifact"]["capability_resolution"]
+        self.assertEqual(resolution["route"],"direct_authoritative_verification")
+        self.assertNotIn("result",resolution)
+        self.assertNotIn("seq_",json.dumps(resolution))
         self.fetch.side_effect=lambda url:({'releases':[999]}, {}) if '/info/data?' in url else ([],{})
         got=F.consume_one(self.ctx,locus=self.locus);self.assertEqual(got['target_identity_status'],'verified_absent')
         F.consume_one(self.ctx,acknowledge=self.deliver)
         result=self.c.status(self.c.owner_token,self.pid)['lab_verification']
         self.assertEqual(result['evidence'][0]['matches'],[]);self.assertEqual(self.fetch.call_count,3)
+    def test_single_base_inclusive_locus_passes_producer_and_forge_ack(self):
+        def single(url):
+            value,meta=self.public_fixture(url)
+            if '/lookup/id/' in url:value['end']=value['start']
+            return value,meta
+        self.fetch.side_effect=single
+        got=F.consume_one(self.ctx,locus=self.locus)
+        self.assertTrue(got['original_request_fulfilled'])
+        self.assertEqual(F.consume_one(self.ctx,acknowledge=self.deliver)['kind'],'forge_verification_acknowledged')
+        saved=self.c.status(self.c.owner_token,self.pid)['lab_verification']['evidence'][0]['matches'][0]
+        self.assertEqual(saved['start'],saved['end'])
+    def test_empty_half_open_interval_refused_by_both_sides(self):
+        from forge_verification_ack import validate_evidence,Refused
+        body,row,owner,receipts=self.provider_fixture('ensembl',9606,'verified_present')
+        value=next(iter(receipts.values()))
+        match=value['records']['matches'][0]
+        match.update(coordinate_system='0-based-half-open',end=match['start'])
+        value['response_sha256']=F.digest(value['records'])
+        value.pop('receipt_id');value['receipt_id']=F.digest(value)
+        body['evidence_receipt_ids']=[value['receipt_id']]
+        row['verification']['evidence_receipt_ids']=body['evidence_receipt_ids']
+        with self.assertRaises(ValueError):G.check(value,row,{'gene':'TP53','species':'human'})
+        with self.assertRaises(Refused):validate_evidence(body,row,owner,{value['receipt_id']:value})
+    def test_direct_lookup_provider_error_and_ambiguity_remain_unfulfilled(self):
+        def ambiguous(url):
+            if '/info/data?' in url:return {'releases':[999]},{}
+            return [{'id':'ENSG00000000001','type':'gene'},{'id':'ENSG00000000002','type':'gene'}],{}
+        self.fetch.side_effect=ambiguous
+        got=F.consume_one(self.ctx,locus=self.locus)
+        self.assertFalse(got['original_request_fulfilled']);self.assert_held()
+        self.deliver.assert_not_called()
+        self.assertIsNone(F.consume_one(self.ctx,locus=self.locus,acknowledge=self.deliver))
+    def test_direct_lookup_http_error_is_not_absence(self):
+        self.fetch.side_effect=OSError('offline fixture provider unavailable')
+        got=F.consume_one(self.ctx,locus=self.locus)
+        self.assertFalse(got['original_request_fulfilled']);self.assert_held()
+        self.deliver.assert_not_called()
+
     def test_scope_mismatch_negative_and_alias_do_not_create_fulfillment(self):
         args={'gene':'TP53','species':'mouse'};row=copy.deepcopy(self.row)
         data=dict(action='verify_gene_locus',requested_target='TP53',taxon_id=10090,query_completed=True,
@@ -96,7 +140,7 @@ class Completion(fixture.Tests):
         verify=Mock(return_value=receipt('ncbi_gene_identity',{'symbol':'TP53','taxon_id':9606},[],metadata={'status':'unresolved'}))
         got=F.consume_one(self.ctx,verify=verify,locus=self.locus)
         self.assertFalse(got['original_request_fulfilled']);self.fetch.assert_not_called();self.assert_held()
-        self.assertIsNone(F.consume_one(self.ctx,verify=verify,locus=self.locus));verify.assert_called_once()
+        self.assertIsNone(F.consume_one(self.ctx,verify=verify,locus=self.locus));verify.assert_not_called()
 
 # Inherited endpoint tests require their original fully populated canonical fixture.
 for name in list(fixture.Tests.__dict__):

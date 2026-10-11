@@ -257,7 +257,7 @@ class Tests(unittest.TestCase):
         records=[{"id":"source-"+str(index)}]
         item={"source":"fixture","records":records,"response_sha256":hashlib.sha256(json.dumps(records,sort_keys=True).encode()).hexdigest()}
         item["receipt_id"]=hashlib.sha256(json.dumps(item,sort_keys=True).encode()).hexdigest()
-        return {"intent":"The Lab needs an instrument it does not have: verify human SLC26A19 exists",
+        return {"intent":"The Lab needs an instrument it does not have: acquire human SLC26A19 sequence",
                 "source_packet":{"kind":"lab_research_report","source_receipts":[item]}}
     def test_real_intake_partial_result_is_handed_back_and_never_completes_request(self):
         from contextlib import nullcontext

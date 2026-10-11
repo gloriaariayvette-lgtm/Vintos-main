@@ -28,12 +28,9 @@ class Tests(unittest.TestCase):
         self.c=Controller(self.root/"forge.sqlite","o"*40,"w"*40,"https://fixture.invalid")
         self.q={"plugin":"genomic_intelligence","tool":"genomic_intelligence.fetch_ensembl_sequence",
                 "arguments":{"gene":"TP53","species":"human"},"purpose":"Verify exact original target"}
-        raw={"ref":"seq_fixture","name":"TP531 mouse","length":1000}
-        result_hash=hashlib.sha256(json.dumps(raw,sort_keys=True).encode()).hexdigest()
-        outcome={"ok":True,"summary":json.dumps(raw),"receipt":{"receipt_id":result_hash,"result_sha256":result_hash,
-                 "surface":"forge","plugin":self.q["plugin"],"tool":self.q["tool"],
-                 "arguments_sha256":digest(self.q["arguments"])}}
-        builder=ReportBuilder(lambda *args:{"plugin_query":copy.deepcopy(self.q)},plugin_call=Mock(return_value=outcome))
+        self.acquisition=Mock(side_effect=AssertionError("exact lookup must not acquire a sequence"))
+        self.model=Mock(side_effect=AssertionError("exact lookup must not invoke a model"))
+        builder=ReportBuilder(self.model,plugin_call=self.acquisition)
         builder._menu=lambda:"fixture"
         self.r=Runtime(self.c,Mock(),builder,intake_token="i"*40,verification_evidence=CanonicalLabEvidence(self.lab))
         self.api=API(self.r)
@@ -140,6 +137,19 @@ class Tests(unittest.TestCase):
         data.update(verdict="not_found_in_reference",matches=[])
         self.persist_evidence(records=data)
         self.assertEqual(self.ack()[0],200)
+
+    def test_direct_route_is_exact_and_cannot_claim_an_acquisition(self):
+        from forge_genomic_result import existence_request,direct_verification
+        resolution=self.row["artifact"]["capability_resolution"]
+        self.assertTrue(direct_verification(resolution,self.original))
+        self.assertFalse(direct_verification(dict(resolution,result={"ok":True}),self.original))
+        self.assertFalse(direct_verification(dict(resolution,sequence_handle={"ref":"seq_fake"}),self.original))
+        for text in (self.original+" and build an assay",self.original.replace("human","rat"),
+                     self.original.replace("TP53","TP53, TP54")):
+            self.assertIsNone(existence_request(text))
+        for text in ("verify TP53 in human exists","verify that mouse Trp53 locus",
+                     "verify Homo sapiens TP53 existence"):
+            self.assertIsNotNone(existence_request(text))
 
     def test_broader_original_action_cannot_be_completed_by_identity_lookup(self):
         from forge_verification_ack import validate_evidence, ownership, request_digest, Refused

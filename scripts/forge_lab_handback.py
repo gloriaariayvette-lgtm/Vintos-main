@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request
-from forge_genomic_result import verified_result
+from forge_genomic_result import verified_result, direct_verification
 
 def fetch_artifacts(cfg, project):
     from lab_http import open_request
@@ -84,7 +84,11 @@ def collect(cfg, root, projects, *, load, atomic, locked, fetch=None, record=Non
                     handback["cycle_id"] != cycle["id"] or accepted["cycle_id"] != cycle["id"] or
                     handback["original_request"] != str(owned[1]["question"])[:2000] or accepted["charged_cents"] != 0):
                     continue
-                handle = verified_result(resolution["result"], resolution["request"])
+                if resolution.get("route") == "direct_authoritative_verification":
+                    if not direct_verification(resolution,handback["original_request"]): continue
+                    handle = None
+                else:
+                    handle = verified_result(resolution["result"], resolution["request"])
             except (ValueError, KeyError, TypeError): continue
             row = {"project_id":pid, "cycle_id":cycle["id"], "outbox_key":owned[0],
                    "original_request":handback["original_request"], "original_request_fulfilled":False,
