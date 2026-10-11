@@ -3085,7 +3085,10 @@ def tick():
                 except Exception as exc: _fault("forge_report_retry", exc)
                 if state.get("phase", "orient") == "orient":
                     from lab_forge_consumer import consume_one
-                    handback = consume_one(sys.modules[__name__])
+                    from types import SimpleNamespace
+                    # runpy-loaded entry points may have no sys.modules entry.
+                    handback = consume_one(SimpleNamespace(**{name: globals()[name] for name in
+                        ("ROOT", "config", "stop_requested", "_locked", "_load", "_atomic", "now_iso", "_tail_jsonl", "_append")}))
                     if handback:
                         _append(NOTEBOOK, dict(handback, at=now_iso(), truth_status="identity_check_not_task_fulfillment"))
                         state.update(phase="orient", last_turn_at=now_iso(), last_outcome=handback["kind"],
