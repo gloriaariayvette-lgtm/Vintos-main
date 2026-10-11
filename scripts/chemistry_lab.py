@@ -1337,6 +1337,15 @@ def _orient(context, lean=None):
                    'question': ' '.join(str(inquiry.get('question') or '').casefold().split())}
         return dict(inquiry, planning_scope=own, planning_evidence=_planning_evidence(inquiry))
     recent = _tail_jsonl(NOTEBOOK, nbytes=64*1024)
+    if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
+        # A saved, explicit local step is work already chosen. Try its exact
+        # model/range before asking the planner for another exhausted subject.
+        try:
+            recovered = _next_assigned_model_step(lab_repeats, spent, lean)
+        except Exception as exc:
+            _fault('saved_model_step', exc); recovered = None
+        if recovered:
+            return recovered
     if lab_repeats and not atlas_due and recent and recent[-1].get('kind') == 'inquiry_refused':
         # A failed choice hands the next pass real pending work, instead of
         # asking the same planner to start over from the same exhausted context.
@@ -1651,7 +1660,51 @@ def _next_evidence_work(inquiry, repeats, spent, step):
     return None
 
 
-def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None):
+def _next_assigned_model_step(repeats, spent, lean=None):
+    """Resolve only an explicit saved fold_read step; never invent a question or model."""
+    import lab_lines
+    import lab_instruments
+    if len(lab_instruments._runs_today()['runs']) >= lab_instruments.DAILY_RUNS:
+        return None
+    offered = set(lab_instruments.artifacts('structure', 50))
+    for line in lab_lines.open_lines():
+        question, next_step = line.get('question'), line.get('next_step')
+        if not isinstance(question, str) or not isinstance(next_step, str): continue
+        match = re.fullmatch(r'fold_read\s+(\d+)\s*[-–]\s*(\d+)\s+on\s+([A-Z0-9]+-[a-f0-9]{12})(?:\.pdb)?\.?',
+                             next_step.strip())
+        if not match: continue
+        first, last, model = int(match[1]), int(match[2]), match[3]
+        accession = model.split('-')[0]
+        if set(repeats._ACCESSION.findall(question)) != {accession}: continue
+        path = 'artifacts/esmfold/' + model + '.pdb'
+        if path not in offered or not 0 < first <= last: continue
+        request = {'skill': 'fold_read', 'operation': 'structure.read',
+                   'files': [path], 'range': [first, last], 'question': question}
+        try:
+            lab_instruments.validate(request)
+            from chemistry_fold_read import read_pdb
+            content = (lab_instruments.LAB / path).read_bytes()
+            if not hashlib.sha256(content).hexdigest().startswith(model.split('-')[1]): continue
+            numbers = {r[0] for r in read_pdb(content.decode('utf-8'))['residues']}
+            if last - first > len(numbers) or not set(range(first, last + 1)) <= numbers: continue
+        except (ValueError, OSError):
+            continue
+        inquiry = _inquiry({'question': question, 'instrument_query': request}, lean)
+        if inquiry.get('refused') or _held_question(inquiry) or repeats.repeat(inquiry): continue
+        # Keep the shared admission gate, but a rejected saved step must not
+        # generate a replacement and falsely attach it to this assignment.
+        admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats,
+                                    spent=spent, replan=False)
+        if admitted.get('refused'): continue
+        scope = {'line': {k: line.get(k) for k in ('id', 'question', 'next_step')},
+                 'frontier': None, 'lean': lean, 'atlas': False}
+        return dict(admitted, line_id=line['id'], planning_scope=scope,
+                    planning_evidence=_planning_evidence(admitted),
+                    assignment_resolution={'reason': 'explicit_saved_model_step', 'next_step': next_step})
+    return None
+
+
+def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None, *, replan=True):
     """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
     asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
     nothing and she chooses again."""
@@ -1679,6 +1732,8 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None)
             return "spent subject: this retrieval already ended without an answer"
         return repeats.repeat(candidate)
     why = blocked(inquiry)
+    if why and not replan:
+        return refuse('no eligible saved step: ' + why)
     if why:
         alternative = _strategy_change(inquiry, repeats)
         if alternative and (not step or repeats.on_frontier(alternative, step)):
@@ -3006,7 +3061,16 @@ def tick():
                             "truth_status": ("refused_after_identity_check" if inquiry.get("identity_check")
                                              else "refused_before_any_source_call")}
                 else:
-                    state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
+                    state["inquiry"] = inquiry
+                    # An explicit saved local step already identifies its input;
+                    # do not precede it with an unrelated default UniProt browse.
+                    next_phase = ("sources" if (inquiry.get('assignment_resolution') or {}).get('reason') ==
+                                  'explicit_saved_model_step' else "browse")
+                    state.pop("material", None); state.pop("material_repeated", None)
+                    if next_phase == 'sources':
+                        for key in ('records', 'embeddings', 'additional_source', 'source_query_succeeded',
+                                    'followup_lineage', 'atlas_analysis', 'atlas_analysis_receipt'):
+                            state.pop(key, None)
                     note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
                             "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
             elif phase == "browse":
@@ -3175,6 +3239,9 @@ def tick():
                                else "orient")
                               if inquiry.get('browse_lane') in _lanes else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
+                if (inquiry.get('assignment_resolution') or {}).get('reason') == 'explicit_saved_model_step':
+                    next_phase = ('reflect' if (state.get('additional_source', {}).get('receipt') or {}).get('records')
+                                  else 'orient')
                 if inquiry.get('browse_lane') in _lanes and next_phase == 'reflect':
                     # The saturation guard ran in the protein lane only, so the microbiology lane
                     # reflected on one identical UniProt response eight times in nine minutes
