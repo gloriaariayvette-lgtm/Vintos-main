@@ -263,6 +263,7 @@ class Productive(unittest.TestCase):
    inquiry=C._orient('offline scientific context')
   self.assertEqual(inquiry['uniprot_query'],'accession:Q16740')
   self.assertEqual(inquiry['material_terms'],[])
+  self.assertNotIn('Homo sapiens',inquiry['question'])
   self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
   self.assertEqual(inquiry['planning_scope'],{'sourced_fallback':'Q16740'})
 

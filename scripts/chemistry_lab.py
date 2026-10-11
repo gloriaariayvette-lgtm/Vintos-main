@@ -1653,8 +1653,8 @@ def _next_sourced_record(repeats, spent, lean=None):
             name = str(record.get('protein_name') or '').strip()
             organism = str(record.get('organism') or '').strip()
             if not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name or not organism: continue
-            question = ('What does the curated UniProt record for %s (%s) in %s establish about its '
-                        'sequence length, annotated domains, and membrane topology?' % (name, accession, organism))
+            question = ('What does the curated UniProt record for %s (%s) establish about its organism, '
+                        'sequence length, annotated domains, and membrane topology?' % (name, accession))
             inquiry = _inquiry({'browse_lane':'protein', 'uniprot_query':'accession:' + accession,
                                 'question':question, 'why_now':'source-grounded recovery after no eligible proposal',
                                 'source_query':None, 'plugin_query':None,
