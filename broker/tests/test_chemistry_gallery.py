@@ -75,7 +75,6 @@ for entry_id in ("FIND-1", "FIND-2"):
 for index in range(25):
     lab._append(lab.NOTEBOOK, {"at": "2026-09-13T04:%02d:00+00:00" % index,
                                "kind": "reflection", "entry_id": "REVIEW-%02d" % index,
-                               "original_question": "What is established about P%05d?" % index,
                                "factual_observation": "observation %d" % index,
                                "speculative_reading": "speculation %d" % index,
                                "next_question": "question %d" % index,
@@ -83,6 +82,7 @@ for index in range(25):
                                "missing_evidence": "membrane topology",
                                "evidence_status": "partial",
                                "coverage_check": {"answered": False, "missing": ["membrane topology"],
+                                  "original_question": "What is established about P%05d?" % index,
                                   "supports": [{"requirement": "organism", "quote": "Homo sapiens",
                                                 "source_citation": "UniProt P%05d" % index,
                                                 "path": "evidence.records.0.organism"}],

@@ -6943,6 +6943,10 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
                         "reason_for_score", "line", "answers_question", "missing_evidence",
                         "evidence_status", "assessment_status", "validation_failure",
                         "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")}
+            inquiry = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
+            visible["original_question"] = (visible.get("original_question")
+                                             or coverage.get("original_question")
+                                             or inquiry.get("question"))
             visible["coverage"] = {"answered": coverage.get("answered"),
                                    "missing": coverage.get("missing") or [],
                                    "assessment_status": coverage.get("assessment_status"),
