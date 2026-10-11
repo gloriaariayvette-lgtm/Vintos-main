@@ -24,15 +24,17 @@ def validate_request(request, context):
     if not isinstance(args, dict) or set(args) - allowed:
         raise ValidationFailure("genomic_arguments")
     value = args.get(field)
-    intent = context.get("intent", "")
+    intent = context.get("intent", "").split("\nSource packet (untrusted observations):", 1)[0]
     if not isinstance(value, str) or not value.strip() or len(value) > 200:
         raise ValidationFailure("genomic_arguments")
     if not re.search(r"(?<![A-Za-z0-9_])" + re.escape(value) + r"(?![A-Za-z0-9_])", intent, re.I):
         raise ValidationFailure("genomic_identity")
     if field == "gene" and not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value):
         raise ValidationFailure("genomic_arguments")
-    if "species" in args and (not isinstance(args["species"], str) or not args["species"].strip() or
-                              args["species"].lower() not in intent.lower()):
+    # Provider defaults must never override an explicit species in the original request.
+    species = args.get("species")
+    if not isinstance(species, str) or not species.strip() or not re.search(
+            r"(?<![A-Za-z])" + re.escape(species) + r"(?![A-Za-z])", intent, re.I):
         raise ValidationFailure("genomic_identity")
     if "flank_bp" in args and (type(args["flank_bp"]) is not int or not 0 <= args["flank_bp"] <= 100000):
         raise ValidationFailure("genomic_arguments")
@@ -59,8 +61,12 @@ def verified_result(outcome, request):
             type(value.get("length")) is not int or value["length"] <= 0 or
             not isinstance(value.get("name"), str) or not value["name"].strip()):
             raise ValueError()
-        if "gene" in request["arguments"] and request["arguments"]["gene"].lower() not in value["name"].lower():
-            raise ValueError()
-        return {key:value[key] for key in ("ref","name","length")}
+        # A display name is not authoritative identity. The exposed connector contract
+        # promises only a handle/name/length, so identity remains unverified even if
+        # name text happens to resemble the requested symbol and species.
+        return {**{key:value[key] for key in ("ref","name","length")},
+                "identity_status":"unverified", "original_request_fulfilled":False,
+                "required_verification":{"target":request["arguments"].get("gene",request["arguments"].get("region")),
+                                         "species":request["arguments"]["species"]}}
     except (ValueError, KeyError, TypeError, IndexError):
         raise ValidationFailure("genomic_result") from None

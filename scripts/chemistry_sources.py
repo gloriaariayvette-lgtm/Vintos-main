@@ -194,7 +194,7 @@ REPORT_PAUSE = os.path.join(lab.ROOT, 'forge-report-pause.json')
 # The Forge full (X-Forge-Refusal: four_unfinished) is not a fault to keep logging: the Lab loop logs the
 # refusal once, the pause record keeps how many projects the Forge had open, and no report is offered again
 # until that count changes (Vintos, 2026-10-08). Other refusals keep the timed pause.
-REPORT_DONE = ('complete', 'cancelled', 'abandoned')
+REPORT_DONE = ('complete', 'cancelled', 'abandoned', 'failed', 'awaiting_lab')
 fetch_projects = None    # tests replace this; the Lab reads the Forge's keyless project list on the loop
 
 
@@ -203,7 +203,7 @@ def forge_open(cfg):
     rows = _forge_projects(cfg)
     if rows is None: return None
     return [{'id': r.get('id'), 'title': str(r.get('title') or r.get('name') or r.get('intent') or '')[:120],
-             'state': r.get('state')} for r in rows if isinstance(r, dict) and r.get('state') not in REPORT_DONE]
+             'state': r.get('state')} for r in rows if isinstance(r, dict) and r.get('intake_slot', r.get('state') not in REPORT_DONE)]
 
 
 def forge_unfinished(cfg):
@@ -329,9 +329,30 @@ def offer_report(receipt_ids, question, *, send=None):
     return result
 
 
+def collect_forge_handbacks(cfg):
+    """Make partial acquisitions available to the Lab with original ownership and no fulfillment claim."""
+    from forge_lab_handback import collect
+    def record(row):
+        path = os.path.join(lab.ROOT, 'source-receipts.jsonl')
+        if any((old.get('metadata') or {}).get('forge_handback_cycle') == row['cycle_id']
+               for old in lab._tail_jsonl(path, nbytes=8*1024*1024)):
+            return
+        source = receipt('forge_capability_handback',
+                         {'project_id':row['project_id'], 'cycle_id':row['cycle_id']},
+                         {'sequence_handle':row['sequence_handle'], 'original_request':row['original_request'],
+                          'plugin_receipt':row['artifact']['capability_resolution']['result']['receipt']},
+                         metadata={'forge_handback_cycle':row['cycle_id'],
+                                   'evidence':'partial_acquisition_identity_unverified',
+                                   'original_request_fulfilled':False})
+        lab._append(path, source)
+    return collect(cfg, lab.ROOT, _forge_projects(cfg), load=lab._load, atomic=lab._atomic,
+                   locked=lab._locked, record=record)
+
+
 def flush_reports():
     cfg = lab.config().get('forge_report_intake')
     if not cfg: return
+    collect_forge_handbacks(cfg)
     if held(cfg) == 'four_unfinished':
         return   # the Forge was full; the loop logged that once. Nothing is offered until its open count moves
     outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
