@@ -70,6 +70,10 @@ class ParserEvidence(unittest.TestCase):
         self.assertEqual(len(self.files("raw.txt")[0].read_bytes()), lab.DIAGNOSTIC_BYTES)
         self.assertEqual(len(self.files("repaired.txt")[0].read_bytes()), lab.DIAGNOSTIC_BYTES)
         first = self.files("raw.txt")[0]
+        # Make this group strictly oldest; rapid writes can share filesystem mtimes.
+        # Assert oldest-group eviction, not incidental wall-clock ordering.
+        for evidence in self.diag.glob(first.name[:32] + ".*"):
+            os.utime(evidence, ns=(1, 1))
         for n in range(105): lab._json_object('{"fixture":%d' % n)
         evidence = [p for p in self.diag.iterdir() if not p.name.startswith(".")]
         self.assertLessEqual(len(evidence), lab.DIAGNOSTIC_FILES)
