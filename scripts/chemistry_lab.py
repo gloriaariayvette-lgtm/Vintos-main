@@ -89,7 +89,10 @@ def trace(action_type, **fields):
     with parent, _eliot.start_action(action_type=action_type, **fields) as action:
         yield action
 
-LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
+# Aegis's local Gemma only (Gloria, 2026-10-11: "Local Gemma only ... No frontier fallback, paid calls"). The shim's
+# /gemma-aegis/ path falls back to the Mac's Gemma and then to xAI when Aegis's does not answer; /gemma-aegis-local/
+# serves aegis_gemma alone, so a failure is a failure, never another model's answer.
+LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 # Named searches have no length ceiling; the bounded range is only for random wandering.
@@ -1197,9 +1200,17 @@ def _orient(context, lean=None):
         basis = re.sub(r'\[LATEST LAB EVENT - pointer to append-only notebook\]\n[^\n]*', '', context)
         scope['context_sha256'] = hashlib.sha256(basis.encode()).hexdigest()
     def scoped(inquiry):
-        # Every admitted route, including recovered and alternate work, belongs
-        # to this pass's assignment. Never inherit absent or stale hold metadata.
-        return dict(inquiry, planning_scope=scope, planning_evidence=_planning_evidence(inquiry))
+        # The assignment's own work carries the assignment's scope. Revived work from another reflection
+        # (_next_evidence_work: "continued another self-authored unresolved step") carries its own: on 11 October an
+        # unrelated Gasdermin refusal was stamped with the stored-receipt audit's scope, and _planning_hold then held
+        # the audit as exhausted. A rejected proposal on other work is not proof this assignment is exhausted.
+        # Never inherit absent or stale hold metadata.
+        own = scope
+        if ((inquiry.get('strategy_resolution') or {}).get('reason') ==
+                'continued_another_self_authored_unresolved_step'):
+            own = {'followup_of': ' '.join(str(inquiry.get('requested_question') or '').casefold().split()),
+                   'question': ' '.join(str(inquiry.get('question') or '').casefold().split())}
+        return dict(inquiry, planning_scope=own, planning_evidence=_planning_evidence(inquiry))
     recent = _tail_jsonl(NOTEBOOK, nbytes=64*1024)
     if lab_repeats and not atlas_due and recent and recent[-1].get('kind') == 'inquiry_refused':
         # A failed choice hands the next pass real pending work, instead of
