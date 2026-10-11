@@ -419,6 +419,14 @@ class Productive(unittest.TestCase):
   note=C._tail_jsonl(C.NOTEBOOK)[-1]
   self.assertEqual(note['discovery_resolution']['accession'],'A6NMY6')
 
+ def test_targetless_curated_record_wording_is_bound_to_its_query_name_before_display(self):
+  inquiry=C._inquiry({'question':'What does the curated record establish about the organism, sequence length, annotated domains, and membrane topology?',
+                      'uniprot_query':'protein_name:"Trophoblast glycoprotein" AND reviewed:true'})
+  self.assertIn('Trophoblast glycoprotein',inquiry['question'])
+  self.assertNotIn('this protein',inquiry['question'].casefold())
+  self.assertEqual(inquiry['identity_context']['question_sha256'],
+                   C.hashlib.sha256(inquiry['question'].encode()).hexdigest())
+
  def test_recovered_route_actual_overflow_next_cycle_waits_without_generation(self):
   old=self.exhaust()
   def recover(inquiry,repeats):return dict(inquiry,source_query={'source':'interpro','accession':'O43511'})

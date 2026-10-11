@@ -2177,6 +2177,15 @@ def _inquiry(value, lean=None):
     requested_query = value.get("uniprot_query")
     query = _safe_query(requested_query)
     question = str(value.get('question') or '')
+    terms = _intent_terms(query)
+    if (len(terms) == 1 and terms[0].startswith('protein_name:')
+            and re.search(r'\bcurated\s+(?:UniProt\s+)?records?\b', question, re.I)):
+        protein_name = terms[0].split(':', 1)[1].strip('"')
+        normal = lambda text: ' '.join(re.findall(r'[^\W_]+', str(text).casefold()))
+        if normal(protein_name) not in normal(question):
+            question = ('Which curated UniProt record for %s can establish its organism, sequence length, '
+                        'annotated domains, and membrane topology?' % protein_name)
+            question_sha256 = hashlib.sha256(question.encode()).hexdigest()
     question_symbols = (_human_question_symbols(question)
                         if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
     if query in (BASELINE_QUERY, _safe_query(BASELINE_QUERY)) and question_symbols:
@@ -2204,7 +2213,7 @@ def _inquiry(value, lean=None):
             "identity_context": {"version":1, "question_sha256":question_sha256, "original_queries":identity_queries},
             "source_query_question_sha256": question_sha256 if source_context_current else value.get('source_query_question_sha256'),
             **({"query_resolution": resolution} if resolution else {}),
-            "question": str(value.get("question", "What shape catches my attention today?")),
+            "question": question or "What shape catches my attention today?",
             "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
                                if isinstance(t, (str, int))][:5] if isinstance(value.get("material_terms"), list) else [],
             "why_now": str(value.get("why_now", "curiosity"))[:500],
