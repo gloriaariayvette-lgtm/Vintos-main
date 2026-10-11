@@ -395,6 +395,30 @@ class Productive(unittest.TestCase):
   self.assertEqual(state['phase'],'reflect')
   self.assertIsNone(state['inquiry']['source_query'])
 
+ def test_plain_name_discovery_selects_one_returned_record_for_review(self):
+  inquiry=C._inquiry({'question':'What does the curated record establish about the organism, sequence length, annotated domains, and membrane topology of Annexin A2?',
+                      'uniprot_query':'protein_name:"Annexin A2" AND reviewed:true'})
+  inquiry.update(planning_scope={'line':None,'frontier':None,'atlas':False,'question':'old'},
+                 planning_evidence='old')
+  C._atomic(C.STATE,{'phase':'browse','inquiry':inquiry})
+  records=[
+   {'accession':'A6NMY6','protein_name':'Annexin A2','protein_aliases':[],
+    'organism':'Canis lupus familiaris','length':339,'domains':[],'topology':[],'pdb_ids':[]},
+   {'accession':'P07355','protein_name':'Annexin A2','protein_aliases':[],
+    'organism':'Homo sapiens','length':339,'domains':[],'topology':[],'pdb_ids':[]}]
+  browse={'records':records,'source_receipt':None,'requested_query':inquiry['uniprot_query'],
+          'executed_query':inquiry['uniprot_query'],'fallback_reason':None}
+  with patch.object(C,'_browse',return_value=browse):result=C.tick()
+  self.assertEqual(result['kind'],'source_read')
+  state=C._load(C.STATE,{})
+  self.assertEqual([r['accession'] for r in state['records']],['A6NMY6'])
+  self.assertEqual(state['inquiry']['uniprot_query'],'accession:A6NMY6')
+  self.assertIn('Annexin A2 (A6NMY6)',state['inquiry']['question'])
+  self.assertEqual(state['inquiry']['identity_context']['original_queries'],['accession:A6NMY6'])
+  self.assertNotEqual(state['inquiry']['planning_evidence'],'old')
+  note=C._tail_jsonl(C.NOTEBOOK)[-1]
+  self.assertEqual(note['discovery_resolution']['accession'],'A6NMY6')
+
  def test_recovered_route_actual_overflow_next_cycle_waits_without_generation(self):
   old=self.exhaust()
   def recover(inquiry,repeats):return dict(inquiry,source_query={'source':'interpro','accession':'O43511'})

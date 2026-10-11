@@ -110,6 +110,8 @@ class Tests(unittest.TestCase):
         valid = {'primaryAccession':'O43511', 'genes':[{'geneName':{'value':'SLC26A4'},'synonyms':[{'value':'PDS'}]}]}
         for symbol in ('SLC26A4','PDS'):
             sources.verify_uniprot_identity('gene:'+symbol,[valid])
+        sources.verify_uniprot_identity('protein_name:"Annexin A2"', [wrong])
+        sources.verify_uniprot_identity('protein_name:"Lys-gingipain W83"', [wrong])
         with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
             sources.verify_uniprot_identity('gene:SLC26A16',[valid])
 

@@ -2339,6 +2339,48 @@ def _browse(query, limit, *, allow_relaxation=True):
             "executed_query": executed_query, "fallback_reason": fallback_reason, "relaxed": relaxed, "scope_resolution": scope_resolution}
 
 
+def _resolve_free_record_discovery(inquiry, records):
+    """Turn one broad plain-name discovery into one exact sourced review."""
+    query = str(inquiry.get('uniprot_query') or '')
+    terms = _intent_terms(query)
+    if (not records or len(terms) != 1 or not terms[0].startswith('protein_name:')
+            or re.search(r'\b(?:accession|gene|taxonomy_id|organism_id|organism_name):', query, re.I)):
+        return inquiry, records, None
+    if not re.search(r'\bcurated\s+(?:UniProt\s+)?records?\b', str(inquiry.get('question') or ''), re.I):
+        return inquiry, records, None
+    expected = terms[0].split(':', 1)[1].strip('"')
+    normal = lambda value: ' '.join(re.findall(r'[^\W_]+', str(value).casefold()))
+    wanted = normal(expected)
+    def rank(pair):
+        index, row = pair
+        names = [row.get('protein_name') or ''] + list(row.get('protein_aliases') or [])
+        normalized = [normal(name) for name in names if name]
+        quality = 0 if wanted in normalized else 1 if any(
+            (' ' + wanted + ' ') in (' ' + name + ' ') for name in normalized) else 2
+        return quality, index
+    _, selected = min(enumerate(records), key=rank)
+    accession = str(selected.get('accession') or '').upper()
+    name = str(selected.get('protein_name') or expected).strip()
+    if not re.fullmatch(r'[A-Z0-9]{6,10}', accession) or not name:
+        return inquiry, records, None
+    question = ('What does the curated UniProt record for %s (%s) establish about its organism, sequence length, '
+                'annotated domains, and membrane topology?' % (name, accession))
+    exact = 'accession:' + accession
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    resolved = dict(inquiry, question=question, uniprot_query=exact, identity_queries=[exact],
+                    identity_context={'version':1, 'question_sha256':digest, 'original_queries':[exact]},
+                    source_query_question_sha256=digest,
+                    query_resolution={'requested_query':query, 'executed_query':exact,
+                                      'reason':'plain_name_discovery_resolved_to_returned_record',
+                                      'accession':accession})
+    scope = resolved.get('planning_scope')
+    if isinstance(scope, dict) and not scope.get('line') and not scope.get('frontier') and not scope.get('atlas'):
+        resolved['planning_scope'] = dict(scope, question=' '.join(question.casefold().split()))
+        resolved['planning_evidence'] = _planning_evidence(resolved)
+    return resolved, [selected], {'accession':accession, 'protein_name':name,
+                                  'returned_record_count':len(records)}
+
+
 def _embed_records(records):
     if not (os.path.isfile(ESMC_PYTHON) and os.path.isfile(ESMC_WORKER)):
         return {"ok": False, "state": "adapter_unavailable", "embeddings": []}
@@ -3346,6 +3388,7 @@ def tick():
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
+                    inquiry, review_records, discovery_resolution = _resolve_free_record_discovery(inquiry, records)
                     if browse_result.get('scope_resolution'):
                         inquiry = dict(inquiry,
                             scope_resolution=browse_result['scope_resolution'],
@@ -3356,25 +3399,25 @@ def tick():
                         # Do not inflate it with an unrelated structure follow-up.
                         inquiry = dict(inquiry, source_query=None, plugin_query=None, instrument_query=None)
                     else:
-                        inquiry = _structure_followup(inquiry, records)
+                        inquiry = _structure_followup(inquiry, review_records)
                     state['inquiry'] = inquiry
-                    stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
+                    stale = bool(review_records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
                                                   or inquiry.get("instrument_query")) and
-                                 journal_source_saturated([r.get("accession") for r in records]))
-                    state["records"] = [] if stale else records
-                    followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), records)
-                    if unsourced_reason and records:
+                                 journal_source_saturated([r.get("accession") for r in review_records]))
+                    state["records"] = [] if stale else review_records
+                    followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), review_records)
+                    if unsourced_reason and review_records:
                         _append(NOTEBOOK, {"at": now_iso(), "kind": "unsourced_id",
                             "reason": unsourced_reason, "question": inquiry.get("question"),
                             "truth_status": "identifier_refused_before_source_call"})
                         inquiry = dict(inquiry); inquiry["source_query"] = None
                         state["inquiry"] = inquiry
                     state["followup_lineage"] = followup_lineage
-                    empty = not records
+                    empty = not review_records
                     next_phase = ("orient" if stale or empty else
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")
                                                 or inquiry.get("instrument_query")) else "embed")
-                    if (records and not stale and
+                    if (review_records and not stale and
                             (inquiry.get('assignment_resolution') or {}).get('reason') == 'exact_previously_sourced_record'):
                         # The exact row is the whole requested evidence product. Embeddings do not answer
                         # organism, source length, or annotation fields and can overflow coverage context.
@@ -3395,6 +3438,7 @@ def tick():
                             **({"relaxed": browse_result["relaxed"]} if browse_result.get("relaxed") else {}),
                             **({"organism_resolved": resolved} if resolved else {}),
                             **({"scope_resolution":browse_result["scope_resolution"]} if browse_result.get("scope_resolution") else {}),
+                            **({"discovery_resolution":discovery_resolution} if discovery_resolution else {}),
                             **({"papers_already_reviewed": True} if state.get("material_repeated") else {}),
                             **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,

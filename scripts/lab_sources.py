@@ -413,7 +413,22 @@ def question_entity_context(inquiry, records, *, literature_only=False):
 
 def verify_uniprot_identity(query, records):
     """An exact gene request is evidence only when the returned record names that gene."""
-    symbols = uniprot_identity_symbols(query)
+    query = normalize_uniprot_subjects(str(query or ''))
+    symbols = []
+    for field, value in _TERM.findall(query):
+        if field not in ('gene', 'protein_name'):
+            continue
+        found = uniprot_identity_symbols(field + ':' + value)
+        if field == 'gene':
+            symbols.extend(found)
+            continue
+        # A single symbol accidentally placed in protein_name still needs the
+        # exact-gene check. In an ordinary multiword protein name, short
+        # numbered tokens such as Annexin A2, Gingipain R2 and W83 are name
+        # components, not separate gene assertions.
+        words = re.findall(r'(?<![\w-])[A-Za-z][A-Za-z0-9-]*(?![\w-])', value.strip('"'))
+        symbols.extend(found if len(words) == 1 else [item for item in found if len(item) >= 4])
+    symbols = list(dict.fromkeys(symbols))
     if not symbols: return
     for row in records:
         names = set()
