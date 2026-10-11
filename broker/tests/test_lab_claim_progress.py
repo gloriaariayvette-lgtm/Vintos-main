@@ -88,6 +88,44 @@ class ClaimProgress(unittest.TestCase):
         self.assertTrue(attached.get("line_opened"), attached)
         L.end(attached["line_id"], "dropped", "test cleanup")
 
+    def test_automatic_claim_pool_does_not_displace_existing_lines(self):
+        opened = []
+        questions = [
+            "Which chlorophyll geometry controls photon capture in photosystems?",
+            "Which collagen crosslinks determine tendon tensile strength?",
+            "Which ribosomal contacts govern peptide transfer fidelity?",
+            "Which ferritin channels control iron mineral release?",
+            "Which actin interfaces determine filament branching?",
+            "Which rhodopsin residues tune retinal color sensitivity?",
+        ]
+        current = sum(1 for line in L.open_lines() if line.get("origin") != "vintos:auto-claim")
+        for index in range(L.MAX_OPEN - current):
+            line = L.opened_by("manual %d" % index,
+                questions[index],
+                "manual capacity", origin="vintos")
+            self.assertIsNotNone(line)
+            opened.append(line)
+        automatic = L.opened_by("automatic relationship",
+            "How do ATPIF1 motifs interact with the ATP synthase F1 subunit?",
+            "track verified claims", origin="vintos:auto-claim")
+        self.assertIsNotNone(automatic)
+        self.assertIsNone(L.opened_by("one manual too many",
+            "Which unrelated mechanism controls a seventh manual research subject?",
+            "manual capacity", origin="vintos"))
+        for line in opened + [automatic]:
+            L.end(line["id"], "dropped", "test cleanup")
+
+    def test_answered_automatic_claim_line_closes_itself(self):
+        automatic = L.opened_by("automatic answer",
+            "How does a verified ATPIF1 motif affect ATP synthase inhibition?",
+            "track verified claims", origin="vintos:auto-claim")
+        note = {"inquiry": {"question": automatic["question"]}, "answers_question": "yes",
+                "factual_observation": "verified relation", "coverage_check": {"answered": True,
+                "missing": [], "supports": [{"requirement": "relationship", "quote": "verified relation",
+                "source_citation": "source"}]}}
+        self.assertIn("answered", L.after_reflection(automatic["id"], note))
+        self.assertEqual(L.get(automatic["id"])["state"], "answered")
+
     def test_open_line_can_change_strategy_on_spent_subject(self):
         inquiry = C._inquiry({"question": "How do tannase motifs relate to hydrolytic activity?",
                               "uniprot_query": "protein_name:tannase", "line_id": self.line["id"]})

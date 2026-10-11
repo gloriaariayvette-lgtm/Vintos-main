@@ -35,6 +35,7 @@ NOTEBOOK = os.path.join(LAB, "notebook.jsonl")
 SESSIONS = os.path.join(LAB, "sessions.jsonl")
 
 MAX_OPEN = 6            # open lines at once; a new one waits until one is ended
+MAX_AUTO_OPEN = 6       # bounded claim threads do not consume Gloria/self-authored line capacity
 FREE_EVERY = 4          # one cycle in four is free curiosity (it may open a new line); the rest work a line
 STANDING_EVERY = 2      # Gloria's standing lines are worked at least every other line-cycle
 STALLED_AFTER = 6       # steps in a row that answered nothing: the line is flagged for the frontier review
@@ -139,7 +140,10 @@ def opened_by(title, question, why, origin="vintos"):
     with _locked():
         d = _read()
         live = [l for l in d["lines"] if l.get("state") == "open"]
-        if len(live) >= MAX_OPEN or any(_similar(question, l["question"]) >= 0.6 for l in live):
+        automatic = origin == "vintos:auto-claim"
+        same_pool = [l for l in live if (l.get("origin") == "vintos:auto-claim") == automatic]
+        limit = MAX_AUTO_OPEN if automatic else MAX_OPEN
+        if len(same_pool) >= limit or any(_similar(question, l["question"]) >= 0.6 for l in live):
             return None
         line = {"id": "L-" + uuid.uuid4().hex[:8], "title": title or question[:80], "question": question,
                 "why": str(why or "")[:600], "origin": origin, "standing": False, "state": "open",
@@ -347,6 +351,9 @@ def after_reflection(line_id, note):
                                  "missing": coverage.get("missing") or []})
     if not line:
         return ""
+    if line.get("origin") == "vintos:auto-claim" and coverage.get("answered") is True:
+        ended, why = end(line_id, "answered", "all tracked claims have verified source support")
+        return ("line %s answered" % line_id) if ended else ("line %s kept: %s" % (line_id, why))
     status = str(note.get("line_status") or "").strip()
     m = re.match(r"(answered|dropped)\s*:\s*(.+)", status, re.I | re.S)
     if m:
