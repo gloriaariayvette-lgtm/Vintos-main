@@ -31,6 +31,7 @@ REASONS = {'capability_already_installed': 'capability already installed',
                                                     'reasons',
  'unsubstantiated_gap': 'unsubstantiated gap'}
 REASONS.update({
+ "report_effect_scope": "Report-only work cannot authorize messaging, account changes or hosted inference; the generated tool request was not dispatched.",
  "genomic_arguments": "Genomic source acquisition arguments do not match the declared tool schema.",
  "genomic_identity": "Genomic acquisition must preserve the identifier and species supplied in the request.",
  "genomic_result": "Connector receipt lacks a complete, integrity-matched reference-sequence handle; the request is not fulfilled.",

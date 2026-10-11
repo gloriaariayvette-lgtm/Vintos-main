@@ -104,7 +104,7 @@ class ReportBuilder:
             return self._build(claim, context)
         except ValidationFailure as exc:
             if not trace or trace.external != "none" or trace.repair or exc.code in (
-                    "capability_unresolved", "capability_scope", "plugin_unavailable", "gateway_configuration"):
+                    "capability_unresolved", "capability_scope", "plugin_unavailable", "gateway_configuration", "report_effect_scope"):
                 raise
             trace.history.append({"code":exc.code, "phase":trace.phase})
             trace.repair = 1
@@ -130,6 +130,20 @@ class ReportBuilder:
                 claude_policy(request["plugin"], "forge", receipt_tool)
         except (ImportError, ValueError, PermissionError):
             raise ValidationFailure("plugin_unavailable") from None
+        if not read_only:
+            # Reports may read evidence. Model selection never authorizes sends or inference.
+            tool = request["tool"]
+            permitted = (
+                request["plugin"] == "github" and
+                any(tool.startswith(prefix) for prefix in ("github.get_", "github.list_", "github.search_", "github.fetch", "github.compare_"))
+            ) or (
+                request["plugin"] == "pubmed" and receipt_tool in {
+                    "search_articles", "get_article_metadata", "get_full_text_article"}
+            ) or (
+                request["plugin"] == "genomic_intelligence" and tool in {
+                    "genomic_intelligence.fetch_region", "genomic_intelligence.fetch_ensembl_sequence"}
+            )
+            if not permitted: raise ValidationFailure("report_effect_scope")
         if read_only and request["tool"] not in {
             "genomic_intelligence.fetch_region",
             "genomic_intelligence.fetch_ensembl_sequence"}:
@@ -234,11 +248,14 @@ class ReportBuilder:
             outcome = self._dispatch(request["plugin_query"], read_only=True)
             acquired = verified_result(outcome, request["plugin_query"])
             return {"artifact":{"capability_resolution":{"route":request["plugin_query"]["tool"],
-                        "status":"reference_sequence_acquired", "request":request["plugin_query"],
+                        "status":"partial_acquisition_identity_unverified", "request":request["plugin_query"],
                         "sequence_handle":acquired, "result":outcome},
-                    "truth_status":"reference_sequence_acquired_not_new_capability_built_or_locus_verified",
+                    "lab_handback":{"status":"capability_available_original_request_unfulfilled",
+                        "original_request":context["intent"].split("\nSource packet (untrusted observations):",1)[0],
+                        "cycle_id":claim["cycle_id"], "required_next_action":"Verify original target, species and locus from authoritative source metadata; do not treat the handle as fulfillment."},
+                    "truth_status":"partial_acquisition_not_locus_verification_or_new_capability",
                     "evaluation":{"reveal":True}},
-                    "complete":True, "receipt":{"charged_cents":0,"payer":"local","cycle_id":claim["cycle_id"]}}
+                    "complete":False, "receipt":{"charged_cents":0,"payer":"local","cycle_id":claim["cycle_id"]}}
         if claim['capability'] == 'capability_assessment' and not claim['maximum_cents']:
             instruction = (
                 'Assess the supplied actual standing want against its installed action inventory and existing plan. '
@@ -384,7 +401,7 @@ class Runtime:
             with self.c.db() as db:
                 prior = db.execute('SELECT project FROM intake WHERE digest=?', (digest,)).fetchone()
             if prior: return {'id': prior[0], 'replayed': True}
-            active = [p for p in self.c.projects(self.c.owner_token) if p['state'] not in ('complete','cancelled','abandoned')
+            active = [p for p in self.c.projects(self.c.owner_token) if p['intake_slot']
                       and self.c.context(self.c.worker_token, p['id'])['capabilities'][0] in ('research_report', 'capability_request')]
             if len(active) >= 4: raise Refused('four unfinished reports; retain Lab receipts until capacity returns')
             # Not private (Gloria, 2026-09-24): only the Atelier is private; the Forge is hers to see.
