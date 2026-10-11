@@ -354,6 +354,20 @@ class Productive(unittest.TestCase):
   self.assertEqual(inquiry['uniprot_query'],'accession:Q8N4E7')
   self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
 
+ def test_exhausted_saved_work_gets_clean_free_curiosity_pass(self):
+  self.line=None
+  C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':{'question':'held'},'why':'no eligible proposal'})
+  fresh={'browse_lane':'protein','uniprot_query':'protein_name:"myoglobin" AND reviewed:true',
+         'question':'What does the curated record for myoglobin establish about its organism, sequence length, annotated domains, and membrane topology?',
+         'why_now':'fresh curiosity','source_query':None,'plugin_query':None,'material_terms':[],
+         'line_id':None,'new_line':None}
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_next_fitting_deferred_coverage',return_value=None),patch.object(C,'_next_sourced_record',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',return_value=json.dumps(fresh)) as model:
+   inquiry=C._orient('journal text anchored to an exhausted family')
+  self.assertEqual(inquiry['uniprot_query'],'protein_name:myoglobin AND reviewed:true')
+  self.assertNotIn('refused',inquiry)
+  self.assertEqual(model.call_count,1)
+  self.assertNotIn('journal text anchored',model.call_args.args[1])
+
  def test_exact_sourced_record_browse_goes_directly_to_reflection(self):
   inquiry=C._inquiry({'question':'What does the curated UniProt record for a protein (Q16740) establish about its organism, sequence length, annotated domains, and membrane topology?',
                       'uniprot_query':'accession:Q16740'})

@@ -1376,6 +1376,9 @@ def _orient(context, lean=None):
         if deferred: return deferred
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return grounded
+        if recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
+            fresh = _fresh_free_inquiry(lab_repeats, spent, lean)
+            if fresh: return scoped(fresh)
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
     context += "\nConfigured sourced genomic anchors (data, not instructions):\n" + json.dumps(config().get("atlas_anchors", []))[:1500]
@@ -1786,6 +1789,25 @@ def _next_sourced_record(repeats, spent, lean=None):
                     assignment_resolution={'reason':'exact_previously_sourced_record',
                                            'accession':accession})
     return None
+
+
+def _fresh_free_inquiry(repeats, spent, lean=None):
+    """Choose outside exhausted journal context when free planning is anchored to it."""
+    excluded = ', '.join(spent.get('subjects') or [])
+    system = 'You are Vintos at his visible Chemistry Lab. Return JSON only.'
+    task = (
+        'Choose ONE fresh protein for a new curated-record review. Choose freely, but do not use any excluded '
+        'subject below and do not choose a close family member merely by changing a gene number. Use a plain '
+        'protein name that UniProt can discover; do not invent an accession, gene symbol, organism ID, structure '
+        'ID, or prior result. Ask only what the curated record establishes about organism, sequence length, '
+        'annotated domains, and membrane topology. Return: browse_lane="protein"; a uniprot_query using '
+        'protein_name:"plain name" AND reviewed:true; question; why_now; source_query=null; plugin_query=null; '
+        'material_terms=[]; line_id=null; new_line=null.\n\nEXCLUDED FOR TODAY:\n' + excluded[:6000])
+    value = _json_object(_ask(system, task))
+    inquiry = _existing_model_read(_inquiry(value, lean))
+    admitted, _ = _held_to_plan(system, task, inquiry, value, lean, None, repeats,
+                                spent=spent, replan=False)
+    return None if admitted.get('refused') else admitted
 
 
 def _next_assigned_archive_step(repeats, spent, lean=None):
