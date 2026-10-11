@@ -66,6 +66,8 @@ def plain_card(p, reason=None, day_spent=False):
             title = 'Lab capability check: ' + first.split(':', 1)[-1].strip()
             what = ('Partial source acquisition is returned to the Lab with the original request. The target and species '
                     'remain unverified; no original request is marked complete.')
+            if p.get('lab_verification'):
+                what = 'The original named-gene reference lookup was verified; its evidence is recorded with this project.'
     elif source == 'lab':
         title, what = first, 'Sent by the Lab.'
     elif source == 'owner':
@@ -227,6 +229,7 @@ class Controller:
             # (its intent is revealed only by the explicit audit, like its artifacts).
             out['intent'] = None if p['private'] else p.get('intent')
             out['diagnostic'] = None if p['private'] else p.get('diagnostic')
+            out['lab_verification'] = None if p['private'] else p.get('lab_verification')
             out['intake_slot'] = p['state'] not in INTAKE_RELEASED_STATES and p['capabilities'][0] in ('research_report','capability_request')
             last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
                               (pid,)).fetchone()
@@ -452,6 +455,41 @@ class Controller:
             self._event(db, pid, 'cycle', {'cycle_id': cid, 'complete': complete, 'summary': summary})
             self._save(db, p)
 
+    def acknowledge_verification(self, token, proof):
+        """Commit only a resolver-validated Lab outcome; no cycle replay, new spend or artifact rewrite."""
+        self.auth(token)
+        from forge_verification_ack import digest, request_digest
+        pid, cid = proof["project_id"], proof["cycle_id"]
+        with self.db() as db:
+            p = self._get(db, pid)
+            if (p.get("origin", {}).get("source") != "lab" or p["private"] or p["active"] or
+                p["capabilities"] != ["capability_request"] or p["state"] not in ("awaiting_lab","complete")):
+                raise Refused("project is not awaiting owned Lab verification")
+            cycle = db.execute("SELECT * FROM cycles WHERE id=? AND project=?", (cid,pid)).fetchone()
+            if not cycle or cycle["state"] != "accepted":
+                raise Refused("accepted handback cycle required")
+            artifact = json.loads(cycle["artifact"])
+            handback = artifact.get("lab_handback") or {}
+            original = p["intent"].split("\nSource packet (untrusted observations):",1)[0]
+            if (handback.get("cycle_id") != cid or handback.get("original_request") != original or
+                proof["original_request"] != original or request_digest(original) != proof["original_request_sha256"] or
+                digest(artifact) != proof["artifact_sha256"]):
+                raise Refused("verification does not match the immutable Forge handback")
+            previous = p.get("lab_verification")
+            if previous:
+                if previous.get("proof_sha256") != proof["proof_sha256"]:
+                    raise Refused("conflicting fulfillment acknowledgement")
+                return {"acknowledged":True,"replayed":True,"project_id":pid,"cycle_id":cid}
+            if p["state"] != "awaiting_lab":
+                raise Refused("verification transition unavailable")
+            saved = {key:proof[key] for key in ("cycle_id","ownership_sha256","original_request_sha256",
+                     "verdict","evidence_receipt_ids","proof_sha256","evidence")}
+            saved["at"] = time.time()
+            p.update(state="complete",lab_verification=saved)
+            self._save(db,p)
+            self._event(db,pid,"verification",saved)
+            return {"acknowledged":True,"replayed":False,"project_id":pid,"cycle_id":cid}
+
     def checkpoint(self, token, pid, cid, diagnostic):
         self.auth(token)
         with self.db() as db:
@@ -570,10 +608,12 @@ class Controller:
             self._expiry(db, p)
             if p['private']:
                 return []
-            events = db.execute("SELECT * FROM events WHERE project=? AND sent=0 AND kind IN ('cycle','revealed','authorization','failure')", (pid,)).fetchall()
+            events = db.execute("SELECT * FROM events WHERE project=? AND sent=0 AND kind IN ('cycle','revealed','authorization','failure','verification')", (pid,)).fetchall()
             def _note(e):
                 body = json.loads(e['body'])
                 card = plain_card(p, body.get('reason'))
+                if e['kind'] == 'verification':
+                    return "Forge verification: " + card["title"][:80], "The Lab's exact reference lookup was verified. Evidence is recorded with this project."
                 if e['kind'] == 'failure':
                     external = body.get('external')
                     followup = (" Inspect the connector receipt before any retry." if external == "unknown" else

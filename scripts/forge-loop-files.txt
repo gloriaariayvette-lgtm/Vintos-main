@@ -13,3 +13,5 @@ forge_house.py
 forge_cycle_failure.py
 claude_connector_catalog.py
 forge_genomic_result.py
+forge_lab_handback.py
+forge_verification_ack.py
