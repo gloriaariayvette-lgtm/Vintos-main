@@ -2065,7 +2065,7 @@ def topology_summary(features):
         '. Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure.') if groups else ''
 
 
-def _browse(query, limit):
+def _browse(query, limit, *, allow_relaxation=True):
     from lab_sources import validate_uniprot
     requested_query = query
     executed_query = query
@@ -2098,7 +2098,7 @@ def _browse(query, limit):
     # same forms. Whichever answered is recorded, so the reading knows how the records were found.
     from lab_sources import uniprot_relaxations
     relaxed = None
-    if not raw.get("results"):
+    if allow_relaxation and not raw.get("results"):
         for label, alt in uniprot_relaxations(executed_query):
             try:
                 retried = fetch(alt)
@@ -2109,7 +2109,7 @@ def _browse(query, limit):
                 raw, executed_query, relaxed, fallback_reason = retried, alt, label, None
                 break
     scope_resolution = None
-    if not raw.get('results') and not fallback_reason and re.search(r'\b(?:taxonomy_id|organism_id):9606\b', executed_query):
+    if allow_relaxation and not raw.get('results') and not fallback_reason and re.search(r'\b(?:taxonomy_id|organism_id):9606\b', executed_query):
         subject_terms = _intent_terms(executed_query)
         if subject_terms and not re.search(r'\baccession:', executed_query):
             diagnostic_query = ' AND '.join(subject_terms)
@@ -3088,9 +3088,9 @@ def tick():
                     from types import SimpleNamespace
                     # runpy-loaded entry points may have no sys.modules entry.
                     handback = consume_one(SimpleNamespace(**{name: globals()[name] for name in
-                        ("ROOT", "config", "stop_requested", "_locked", "_load", "_atomic", "now_iso", "_tail_jsonl", "_append")}))
+                        ("ROOT", "config", "stop_requested", "_locked", "_load", "_atomic", "now_iso", "_tail_jsonl", "_append", "_browse", "_reflect", "lab_context")}))
                     if handback:
-                        _append(NOTEBOOK, dict(handback, at=now_iso(), truth_status="identity_check_not_task_fulfillment"))
+                        _append(NOTEBOOK, dict(handback, at=now_iso(), truth_status="bounded_handback_progress; see canonical fulfillment scope"))
                         state.update(phase="orient", last_turn_at=now_iso(), last_outcome=handback["kind"],
                                      effective_state="waiting", turns=int(state.get("turns", 0)) + 1,
                                      fault_streak=0, fault_phase=None)

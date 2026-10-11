@@ -76,7 +76,7 @@ def check_identity_receipt(value, symbol):
     return verified
 
 
-def consume_one(lab, *, verify=None):
+def consume_one(lab, *, verify=None, locus=None, acknowledge=None):
     """Called at an ordinary orient boundary. Never hold the Lab lock during source work.
 
     The canonical per-cycle outcome is the acknowledgement. It acknowledges only
@@ -86,6 +86,11 @@ def consume_one(lab, *, verify=None):
     cfg=lab.config()
     if not cfg.get('enabled') or not cfg.get('allow_public_database_reads') or lab.stop_requested():return None
     root=Path(lab.ROOT); ledger=str(root/'forge-capability-handbacks.json'); outbox=str(root/'forge-report-outbox.json')
+    ack_result=_ack_one(lab,cfg,ledger,outbox,acknowledge)
+    if ack_result:return ack_result
+    from lab_forge_followup import advance
+    followup=advance(lab,ledger,outbox)
+    if followup:return followup
     selected=None
     with lab._locked():
         rows=lab._load(ledger, {}); owners=lab._load(outbox, {})
@@ -117,11 +122,19 @@ def consume_one(lab, *, verify=None):
     cycle,row,owner,fingerprint=selected
     result={'original_request':owner['question'],'original_request_fulfilled':False,
             'sequence_identity_status':'unverified','task_status':'pending_original_request'}
-    receipt=None
+    receipt=None; verdict=None
     try:
         request=validate(row,owner); args=request['arguments']
         result['acquisition_integrity']='verified'
-        if (request['tool'] != 'genomic_intelligence.fetch_ensembl_sequence'
+        from lab_gene_locus import commissioned, lookup, check
+        if commissioned(row['original_request'],args):
+            receipt=(locus or lookup)(row,args)
+            verdict=check(receipt,row,args)
+            result.update(target_identity_status=verdict,original_request_fulfilled=True,
+                          task_status='reference_lookup_complete_ack_pending',
+                          reference_scope=receipt['records']['reference'],
+                          next_step='Deliver the durable reference evidence acknowledgement; do not repeat the lookup.')
+        elif (request['tool'] != 'genomic_intelligence.fetch_ensembl_sequence'
                 or args['species'].casefold() not in ('human','homo sapiens')
                 or not re.fullmatch('[A-Za-z][A-Za-z0-9-]{0,29}',args.get('gene',''))):
             result.update(target_identity_status='unsupported_verification',
@@ -137,7 +150,8 @@ def consume_one(lab, *, verify=None):
                           next_step=('Bind the acquired sequence handle to this verified target, then resume the unchanged original request; gene identity alone does not verify the handle or fulfill the action.' if matched else
                                      'Resolve the exact original target and species from authoritative evidence; do not substitute a numbered sibling or repeat this unchanged acquisition.'))
     except Exception as exc:
-        receipt=None
+        receipt=None;verdict=None
+        result['original_request_fulfilled']=False
         result.update(target_identity_status='verification_failed',error_type=type(exc).__name__,
                       next_step='Review the failed acquisition/identity evidence before retrying; the unchanged original request remains unfulfilled.')
     with lab._locked():
@@ -147,14 +161,20 @@ def consume_one(lab, *, verify=None):
                 or (current.get('verification') or {}).get('input_sha256') != fingerprint):
             return {'kind':'forge_handback_stale','cycle_id':cycle,'original_request_fulfilled':False}
         current['state']='verification_recorded_original_request_pending'
-        current['verification']={'state':'partial' if result['target_identity_status']=='verified' else 'unresolved',
+        current['verification']={'state':verdict or ('partial' if result['target_identity_status']=='verified' else 'unresolved'),
                                  'consumer_status':'recorded','input_sha256':fingerprint,'finished_at':lab.now_iso(),
                                  'ownership_sha256':current['ownership_sha256'],
                                  'evidence_receipt_ids':[receipt['receipt_id']] if receipt else [],
-                                 'original_request_fulfilled':False,
+                                 'original_request_fulfilled':bool(verdict),
                                  'outcome':result,'source_receipt':receipt}
         current['acknowledgement']={'kind':'verification_recorded','cycle_id':cycle,
                                     'original_request_fulfilled':False,'target_identity_status':result['target_identity_status']}
+        if verdict:
+            from lab_gene_locus import request_digest
+            current['acknowledgement']={'state':'pending','attempts':0,'next_attempt':0,'body':{
+                'project_id':current['project_id'],'cycle_id':cycle,'ownership_sha256':current['ownership_sha256'],
+                'original_request_sha256':request_digest(current['original_request']),
+                'evidence_receipt_ids':[receipt['receipt_id']],'verdict':verdict}}
         lab._atomic(ledger,rows)  # canonical first; projection is recoverable
         _project(lab,current,current_owner,outbox,owners,ledger,rows)
     return {'kind':'forge_handback_verification','cycle_id':cycle,'project_id':row['project_id'],**result}
@@ -172,3 +192,39 @@ def _project(lab,row,owner,outbox,owners,ledger,rows):
     pointer=project_pointer(row)
     if owner.get('capability_handback') != pointer:
         owner['capability_handback']=pointer;lab._atomic(outbox,owners)
+
+
+def _ack_one(lab,cfg,ledger,outbox,acknowledge):
+    """Recoverable acknowledgement only; never replay public source or model work."""
+    import time
+    from lab_gene_locus import send_ack
+    claim=None
+    with lab._locked():
+        rows=lab._load(ledger,{});owners=lab._load(outbox,{})
+        for cycle,row in rows.items():
+            if not isinstance(row,dict):continue
+            owner=owners.get(row.get('outbox_key'),{})
+            if not owned(row,owner,cycle):continue
+            ack=row.get('acknowledgement') or {};v=row.get('verification') or {}
+            if (ack.get('state') not in ('pending','sending') or ack.get('next_attempt',0)>time.time()
+                    or v.get('input_sha256')!=identity(row,owner) or not v.get('original_request_fulfilled')):continue
+            ack.update(state='sending',attempts=ack.get('attempts',0)+1,next_attempt=time.time()+300)
+            lab._atomic(ledger,rows)
+            claim=(cycle,copy.deepcopy(ack['body']),identity(row,owner));break
+    if claim is None:return None
+    cycle,body,fingerprint=claim
+    try:
+        answer=(acknowledge or send_ack)(cfg,body)
+        # Server acknowledgement schema is checked below; success cannot be a local boolean.
+        if not isinstance(answer,dict) or answer.get('acknowledged') is not True or answer.get('project_id')!=body['project_id'] or answer.get('cycle_id')!=cycle:raise ValueError('completion acknowledgement missing')
+        error=None
+    except Exception as exc:error=type(exc).__name__
+    with lab._locked():
+        rows=lab._load(ledger,{});owners=lab._load(outbox,{})
+        row=rows.get(cycle,{});owner=owners.get(row.get('outbox_key'),{})
+        if not owned(row,owner,cycle) or identity(row,owner)!=fingerprint:return {'kind':'forge_handback_stale','cycle_id':cycle}
+        ack=row['acknowledgement']
+        ack.update(state='pending' if error else 'delivered',error_type=error)
+        lab._atomic(ledger,rows)
+    return {'kind':'forge_verification_ack_pending' if error else 'forge_verification_acknowledged',
+            'cycle_id':cycle,'original_request_fulfilled':not bool(error)}
