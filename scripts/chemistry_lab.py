@@ -1337,10 +1337,10 @@ def _orient(context, lean=None):
         candidate = _next_evidence_work({}, lab_repeats, spent, step)
         if candidate:
             recovered, _ = _held_to_plan('', '', candidate, {}, lean, step, lab_repeats, spent=spent)
-            if not recovered.get('refused'): return scoped(recovered)
+            if not recovered.get('refused'): return scoped(_on_line(recovered, {}, None))
     if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
         deferred = _next_fitting_deferred_coverage()
-        if deferred: return deferred
+        if deferred: return _on_line(deferred, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
     waiting = None
@@ -1352,7 +1352,7 @@ def _orient(context, lean=None):
                     alternate = _next_evidence_work({}, lab_repeats, spent, step)
                     if alternate:
                         admitted, value = _held_to_plan('', '', alternate, {}, lean, step, lab_repeats, spent=spent)
-                        if not admitted.get('refused'): return scoped(admitted)
+                        if not admitted.get('refused'): return scoped(_on_line(admitted, value, None))
                 if assigned_line and not step:
                     # The held line keeps its hold (no repeat calls on it), but it does not take the pass: this
                     # pass plans free curiosity. Waiting is per line, not for the whole Lab (11 October from 07:21
@@ -1376,7 +1376,7 @@ def _orient(context, lean=None):
         # for another proposal. Otherwise every completed fallback review was
         # followed by one predictable held proposal and one evidence_wait.
         deferred = _next_fitting_deferred_coverage()
-        if deferred: return deferred
+        if deferred: return _on_line(deferred, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
         if (recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait')
