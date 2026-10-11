@@ -315,6 +315,23 @@ def question_entity_context(inquiry, records, *, literature_only=False):
         proteins = {str(v).casefold() for v in [row.get('protein_name') or ''] + list(row.get('protein_aliases') or []) if v}
         organisms = {str(v).casefold() for v in [row.get('organism') or ''] + list(row.get('organism_aliases') or []) if v}
         return names,proteins,organisms
+    def symbols_inside_exact_record_name(row, proteins):
+        """Do not turn a token inside an exact record name into a second target.
+
+        The sourced-record fallback asks about e.g. ``Lys-gingipain W83
+        (Q51817)``.  W83 looks like a gene symbol in isolation, but here it is
+        part of the authoritative name paired with that exact accession.  This
+        exemption requires both facts; an explicit gene query or a mismatched
+        protein name is still checked normally.
+        """
+        if row.get('accession') not in accessions:
+            return set()
+        normal = lambda value: ' '.join(re.findall(r'[^\W_]+', str(value).casefold()))
+        question_words = ' ' + normal(question) + ' '
+        mentioned = [name for name in proteins
+                     if normal(name) and (' ' + normal(name) + ' ') in question_words]
+        return {symbol for symbol in symbols
+                if any(normal(symbol) in normal(name).split() for name in mentioned)}
     parenthetical_symbols = set(re.findall(r'\(([A-Z][A-Z0-9-]{1,})\)', question))
     def protein_match(expected, available, names):
         # UniProt protein_name is a text search, not an exact recommended-name
@@ -361,7 +378,8 @@ def question_entity_context(inquiry, records, *, literature_only=False):
     candidates = []
     for row in matches:
         names,proteins,organisms = metadata_names(row)
-        if ((not symbols or symbols <= (names | {p.upper() for p in proteins}))
+        name_symbols = symbols_inside_exact_record_name(row, proteins)
+        if ((not symbols or (symbols - name_symbols) <= (names | {p.upper() for p in proteins}))
                 and (not taxa or str(row.get('taxon_id')) in taxa)
                 and all(protein_match(name, proteins, names) for name in protein_names)
                 and (not organism_names or organism_names <= organisms)):
@@ -372,7 +390,8 @@ def question_entity_context(inquiry, records, *, literature_only=False):
         issues.append('multiple retrieved targets require an explicit expectation mapping')
     for row in matches:
         names,proteins,organisms = metadata_names(row)
-        absent = (symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
+        name_symbols = symbols_inside_exact_record_name(row, proteins)
+        absent = (symbols - name_symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
         if absent: issues.append('requested names not established by '+str(row.get('accession'))+': '+','.join(sorted(absent)))
         if not all(protein_match(name, proteins, names) for name in protein_names):
             issues.append('requested protein name is not established by the retrieved recommended name')

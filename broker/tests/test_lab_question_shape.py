@@ -73,5 +73,29 @@ class QuestionShape(unittest.TestCase):
         two = dict(single, question='What is the structural organization of the human calcium sensing receptor?')
         self.assertIn('multiple retrieved targets', '; '.join(entity(two, [row, dict(row, accession='Q9NZ08')])['issues']))
 
+    def test_an_exact_record_name_does_not_invent_a_second_target_from_its_suffix(self):
+        cases = [
+            ('Q51817', 'Lys-gingipain W83', 'Porphyromonas gingivalis'),
+            ('P95493', 'Gingipain R2', 'Porphyromonas gingivalis (strain ATCC BAA-308 / W83)'),
+        ]
+        for accession, name, organism in cases:
+            question = ('What does the curated UniProt record for %s (%s) establish about its organism, sequence '
+                        'length, annotated domains, and membrane topology?' % (name, accession))
+            got = entity({'question': question, 'uniprot_query': 'accession:' + accession},
+                         [{'accession': accession, 'protein_name': name, 'organism': organism}])
+            self.assertEqual(got['status'], 'consistent', got)
+
+    def test_exact_accession_does_not_excuse_a_mismatched_name_or_gene_claim(self):
+        row = {'accession': 'Q51817', 'protein_name': 'Lys-gingipain W83',
+               'organism': 'Porphyromonas gingivalis'}
+        wrong = entity({'question': 'What does Gingipain R2 (Q51817) establish?',
+                        'uniprot_query': 'accession:Q51817'}, [row])
+        self.assertEqual(wrong['status'], 'unresolved', wrong)
+        self.assertIn('R2', '; '.join(wrong['issues']))
+        explicit_gene = entity({'question': 'What does Lys-gingipain W83 (Q51817) establish?',
+                                'uniprot_query': 'accession:Q51817 AND gene:W83'}, [row])
+        self.assertEqual(explicit_gene['status'], 'unresolved', explicit_gene)
+        self.assertIn('W83', '; '.join(explicit_gene['issues']))
+
 if __name__ == '__main__':
     unittest.main()
