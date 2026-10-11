@@ -1810,6 +1810,22 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         admitted, _ = _held_to_plan(system, prompt, inquiry, value, lean, None, repeats,
                                     spent=spent, replan=False)
         if not admitted.get('refused'): return admitted
+    # The model can remain anchored even without journal text. Keep a small,
+    # varied source-discovery queue so three failed choices do not become
+    # another evidence_wait. These are review subjects, not claimed findings.
+    for name in ('myoglobin', 'lysozyme', 'catalase', 'ubiquitin', 'hemocyanin',
+                 'ferredoxin', 'lactase', 'rhodopsin', 'albumin', 'actin'):
+        inquiry = _inquiry({
+            'browse_lane':'protein', 'uniprot_query':'protein_name:"%s" AND reviewed:true' % name,
+            'question':('What do curated UniProt records for %s establish about organism, sequence length, '
+                        'annotated domains, and membrane topology?' % name),
+            'why_now':'fresh source discovery after exhausted free selection',
+            'source_query':None, 'plugin_query':None, 'material_terms':[],
+            'line_id':None, 'new_line':None}, lean)
+        if _held_question(inquiry) or spent_retrieval(inquiry, spent) or repeats.repeat(inquiry): continue
+        admitted, _ = _held_to_plan(system, task, inquiry, {}, lean, None, repeats,
+                                    spent=spent, replan=False)
+        if not admitted.get('refused'): return admitted
     return None
 
 

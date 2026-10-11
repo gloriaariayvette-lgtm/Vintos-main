@@ -368,6 +368,16 @@ class Productive(unittest.TestCase):
   self.assertEqual(model.call_count,1)
   self.assertNotIn('journal text anchored',model.call_args.args[1])
 
+ def test_three_anchored_clean_choices_advance_to_fresh_discovery(self):
+  self.line=None
+  stuck=copy.deepcopy(actual[2]['inquiry']);stuck.pop('refused',None);R.record(stuck)
+  C._append(C.NOTEBOOK,{'kind':'evidence_wait','inquiry':stuck,'why':'no eligible proposal'})
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_next_fitting_deferred_coverage',return_value=None),patch.object(C,'_next_sourced_record',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',return_value=json.dumps(stuck)) as model:
+   inquiry=C._orient('journal text anchored to an exhausted family')
+  self.assertEqual(model.call_count,3)
+  self.assertEqual(inquiry['uniprot_query'],'protein_name:myoglobin AND reviewed:true')
+  self.assertNotIn('refused',inquiry)
+
  def test_exact_sourced_record_browse_goes_directly_to_reflection(self):
   inquiry=C._inquiry({'question':'What does the curated UniProt record for a protein (Q16740) establish about its organism, sequence length, annotated domains, and membrane topology?',
                       'uniprot_query':'accession:Q16740'})
