@@ -3464,9 +3464,11 @@ def tick():
                     _fault("settle_owed", exc)
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])
                 visible_records = records  # the reviewer needs the sourced sequence, not just its embedding
-                _gather_material(state, inquiry)
-                literature = (state.get("material") or {}).get("records") or []
                 coverage_retry = state.get('coverage_retry_observations')
+                if not coverage_retry:
+                    _gather_material(state, inquiry)
+                literature = ((coverage_retry or {}).get('LITERATURE') or
+                              (state.get("material") or {}).get("records") or [])
                 if repeated_review(state) and not coverage_retry:
                     next_phase = 'orient'
                     note = {'at': now_iso(), 'kind': 'browse_stale', 'inquiry': inquiry,
