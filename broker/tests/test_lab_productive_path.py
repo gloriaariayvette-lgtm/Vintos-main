@@ -343,6 +343,15 @@ class Productive(unittest.TestCase):
   self.assertEqual(index['candidates'][0]['accession'],'P02792')
   self.assertEqual(index['candidates'][0]['record']['protein_name'],'Ferritin light chain')
 
+ def test_free_pass_uses_unread_saved_record_before_calling_planner(self):
+  self.line=None
+  C._append(C.NOTEBOOK,{'kind':'source_read','source':'UniProtKB REST','records':[
+   {'accession':'Q8N4E7','protein_name':'Ferritin, mitochondrial','organism':'Homo sapiens'}]})
+  with patch.object(C,'_next_assigned_archive_step',return_value=None),patch.object(C,'_next_assigned_model_step',return_value=None),patch.object(C,'_next_evidence_work',return_value=None),patch.object(C,'_ground_inquiry',return_value={'status':'not_applicable'}),patch.object(C,'_ask',side_effect=forbidden):
+   inquiry=C._orient('offline scientific context')
+  self.assertEqual(inquiry['uniprot_query'],'accession:Q8N4E7')
+  self.assertEqual(inquiry['assignment_resolution']['reason'],'exact_previously_sourced_record')
+
  def test_exact_sourced_record_browse_goes_directly_to_reflection(self):
   inquiry=C._inquiry({'question':'What does the curated UniProt record for a protein (Q16740) establish about its organism, sequence length, annotated domains, and membrane topology?',
                       'uniprot_query':'accession:Q16740'})
