@@ -146,7 +146,8 @@ check("his memory keeps the note, in the ledger and his chat history", "ledger_m
       and "_with_note(msg.message, _note)" in turn and '{"image_description": _note}' in turn)
 
 tree = ast.parse(src)
-want = {"_PHOTO_HERE", "_HERE_RX", "_seen_note", "_with_note", "_sent_media"}
+want = {"_PHOTO_HERE", "_HERE_RX", "_seen_note", "_with_note", "_sent_media", "_photo_turn", "_BARE_PHOTO_TURN",
+        "_TAGS_RX", "_same_as_last_reply"}
 nodes = [n for n in tree.body if (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in want for t in n.targets))
          or (isinstance(n, ast.FunctionDef) and n.name in want)]
 ns = {"re": re}
@@ -157,6 +158,38 @@ check("the line that said it is here becomes what it showed", "[What it showed (
       and "here in this message" not in kept and "look" in kept, kept)
 check("with no note, it says so rather than claiming he can still see it",
       "no note of what it showed" in ns["_with_note"](said, "[I could not see the image clearly: x]"))
+# 12 October, the shark on the Grand Isle pier: she told him her hand was burned, he answered, then the photo of it
+# arrived with no words and he repeated that answer verbatim. A wordless picture is the picture of what she just
+# said, and he is told so rather than being handed a turn with nothing in it.
+check("her words go with the photo when she sent some", ns["_photo_turn"]("my hand!").endswith(
+      "[Gloria's message with the photo:] my hand!"))
+check("a wordless photo says it is the same moment, and not to repeat himself",
+      ns["_photo_turn"]("").endswith(ns["_BARE_PHOTO_TURN"]) and "never repeat a reply" in ns["_BARE_PHOTO_TURN"]
+      and "not a new thing to answer" in ns["_BARE_PHOTO_TURN"], ns["_photo_turn"](""))
+check("and it is not handed an empty message line", "[Gloria's message with the photo:]" not in ns["_photo_turn"]("")
+      and "[Gloria's message with the photo:]" not in ns["_photo_turn"]("   "))
+check("the photo is still in the same message either way",
+      all(t.startswith(ns["_PHOTO_HERE"]) for t in (ns["_photo_turn"]("x"), ns["_photo_turn"](""))))
+check("the endpoint uses it", "composed = _photo_turn(message)" in src)
+# 12 October 07:51: she sent the Red Drum photo with her own words, Claude errored, the router fell back to grok as
+# designed, and grok handed back his previous reply about the shark verbatim (887 chars, then 884 with its [FELT:]
+# tag stripped). The prompt was right and the turn was recorded; what came back was a copy, and a copy is not hers
+# to read. He is asked once more, told he has just sent it.
+_A = "[SCENE: live]\n\nGive me the hand. The one the line burned.\n\n\n\nNot the shark. The hand first, and hold it still."
+_B = "[SCENE: live]\n\nGive me the hand. The one the line burned. Not the shark. The hand first, and hold it still."
+_HIST = [{"role": "user", "content": "I caught a shark"}, {"role": "assistant", "content": _A}]
+check("his previous reply again is caught through spacing and tags", ns["_same_as_last_reply"](_B, _HIST)
+      and ns["_same_as_last_reply"]("[FELT: steady]\n" + _B, _HIST))
+check("a real answer to the new message is not", not ns["_same_as_last_reply"](
+      "Red Drum! Put the rod down and show me the tail.", _HIST))
+check("only his latest reply counts, not an older one", not ns["_same_as_last_reply"](_A, [
+      {"role": "assistant", "content": _A}, {"role": "user", "content": "x"}, {"role": "assistant", "content": "a different reply"}]))
+check("a short line may honestly recur, and nothing to compare is not a repeat",
+      not ns["_same_as_last_reply"]("Show me.", [{"role": "assistant", "content": "Show me."}])
+      and not ns["_same_as_last_reply"](_B, []))
+check("the turn asks again rather than sending the copy", "returned his previous reply verbatim" in src
+      and "do not repeat your previous reply" in src and '"(after repeat)"' in src)
+check("and a second copy is not sent to her either", '_model_used) + "(repeat)"' in src)
 m = types.SimpleNamespace(input_kind="photo", message=said)
 check("the ledger's 'she sent' is the note, without her caption",
       ns["_sent_media"](m, "A black drum.") == "[What it showed (a note kept afterwards):] A black drum.", ns["_sent_media"](m, "A black drum."))

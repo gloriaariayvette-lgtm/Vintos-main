@@ -80,13 +80,18 @@ class QuestionHolds(Perimeter):
             self.assertEqual(C.tick()['kind'],'evidence_wait')
         self.assertEqual(NET,[])
 
-    def test_corrupt_saved_hold_does_not_release_or_run_work(self):
+    def test_corrupt_saved_hold_is_kept_aside_without_releasing_the_hold(self):
+        # The notebook establishes a hold; this file only carries the ones whose rows have rolled out of its tail.
+        # So an unreadable file releases nothing, and the pass goes on to other work. Raising instead stopped every
+        # tick: on 12 October the Lab planned nothing from 04:44 CDT onwards while reading as active.
         self.assertIsNotNone(C._held_question(self.cftr))
         Path(C.ROOT,'question-holds.json').write_text('{broken')
-        with patch.object(C,'_ask',side_effect=forbidden):
+        with patch.object(C,'_ask',return_value=json.dumps(SECOND)):
             result=C.tick()
-        self.assertNotEqual(result.get('kind'),'inquiry')
-        self.assertNotIn('inquiry',C._load(C.STATE,{}))
+        self.assertEqual(result.get('kind'),'inquiry',result)
+        self.assertEqual(C._load(C.STATE,{})['inquiry']['question'],SECOND['question'])
+        self.assertIsNotNone(C._held_question(self.cftr))        # the held question is still held
+        self.assertTrue(Path(C.ROOT,'question-holds.json.unreadable').exists())
         self.assertEqual(NET,[])
 
     def pdb(self):
@@ -149,8 +154,12 @@ class QuestionHolds(Perimeter):
             self.assertIsNone(C._held_question(self.pdb()))
             self.assertIsNotNone(C._held_question(self.cftr))
 
-    def test_malformed_saved_owners_fail_closed(self):
+    def test_malformed_saved_owners_are_quarantined_not_fatal(self):
+        # A saved entry whose owner cannot be computed keeps holding its own question under the question-only key.
+        # It is never released, and it no longer stops the Lab from doing anything else (12 October: one such entry
+        # re-raised out of this function on every tick for hours).
         valid=self.hold(self.cftr)
+        normalized=' '.join(QUESTION.casefold().split())
         malformed=[dict(valid,question=''),dict(valid,question=None),
                    dict(valid,source_query=None,uniprot_query=None),
                    dict(valid,source_query='pdb'),dict(valid,source_query={'entry_id':'5UAK'}),
@@ -158,7 +167,13 @@ class QuestionHolds(Perimeter):
         for item in malformed:
             with self.subTest(item=item):
                 Path(C.ROOT,'question-holds.json').write_text(json.dumps({'bad-owner':item}))
-                with self.assertRaises(ValueError):C._question_holds()
+                holds=C._question_holds()
+                self.assertTrue(any(h.get('question')==QUESTION for h in holds),holds)
+                self.assertIsNotNone(C._held_question(self.cftr))
+                saved=json.loads(Path(C.ROOT,'question-holds.json').read_text())
+                if str(item.get('question') or '').strip():
+                    self.assertIn(normalized,saved)        # quarantined under its question, not discarded
+                self.assertEqual(NET,[])
 
     def test_legacy_index_migrates_retaining_original_route_and_evidence(self):
         held=self.hold(self.cftr)
