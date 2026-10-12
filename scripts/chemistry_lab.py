@@ -984,6 +984,21 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     return data["choices"][0]["message"]["content"]
 
 
+def spent_families(subjects, least=2):
+    """Gene families with `least` or more spent members, as (prefix, members).
+
+    A spent subject stops that subject only. Two or more spent members of one family say the family is spent for
+    today, so the planner is told the family rather than being refused once per member it goes on to try.
+    """
+    groups = {}
+    for subject in subjects:
+        match = re.fullmatch(r'([A-Za-z][A-Za-z0-9-]*[A-Za-z])([0-9]{1,3})', str(subject).strip())
+        if match and len(match[1]) >= 3:
+            groups.setdefault(match[1].upper(), []).append(str(subject).strip())
+    return [(prefix, sorted(set(members))) for prefix, members in sorted(groups.items())
+            if len(set(members)) >= least]
+
+
 def _safe_query(query):
     from lab_sources import normalize_protein_notation
     query = normalize_protein_notation(query)
@@ -1004,7 +1019,11 @@ def _safe_query(query):
     query = re.sub(r"(?<=\()\s*AND\b|\bAND\s*$", "", query)
     query = re.sub(r"\(\s*\)", "", query)
     query = re.sub(r"\s+", " ", query).strip()
-    query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
+    # An OR is an operator too. Without this the insertion turned "(gene:A OR gene:B)" into
+    # "(gene:A OR AND gene:B)", which UniProt refuses: the malformed query faulting the Lab on 12 October
+    # 04:00 was written here, not by the planner. A doubled operator left by any other path keeps the first.
+    query = re.sub(r"(?<!AND)(?<!OR)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
+    query = re.sub(r"\b(AND|OR)(?:\s+(?:AND|OR))+\b", r"\1", query, flags=re.I)
     from lab_sources import normalize_uniprot_subjects
     query = normalize_uniprot_subjects(query)
     # A named protein must not disappear merely because it is longer than the wandering
@@ -1521,6 +1540,15 @@ def _orient(context, lean=None):
     if spent["subjects"]:
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
+        families = spent_families(spent["subjects"])
+        if families:
+            # Naming members one at a time let the planner walk a family: SLC26A11 spent, so it proposed
+            # SLC26A12 (12 October, the final hour: 256 spent-subject refusals, almost all SLC26A10-A15).
+            # Say the family is spent instead of refusing each member afterwards.
+            task += ("\n\nAND THE WHOLE FAMILY IS SPENT, including members not listed above and ones you have not "
+                     "tried: " + "; ".join("%s (%s)" % (prefix + "*", ", ".join(members))
+                                           for prefix, members in families) +
+                     ". Choose a different protein family, organism or instrument today.")
         if line:
             task += (" The assigned line is the only exception: continue it only by returning its exact line_id and "
                      "targeting an explicitly open claim with a different source. An identical lookup remains refused.")
