@@ -3378,7 +3378,18 @@ def tick():
                     chemistry_sources.flush_reports()
                 except Exception as exc: _fault("forge_report_retry", exc)
                 if state.get("phase", "orient") == "orient":
-                    from lab_forge_consumer import consume_one
+                    # The consumer is in the manifest, but a host where the deploy has not landed it has no such
+                    # file, and every tick faulted on this import before any real work (690 faults, SK-6e3a0436).
+                    # A missing consumer is written down once; the ordinary orient goes on without the handback.
+                    try:
+                        from lab_forge_consumer import consume_one
+                    except ImportError as exc:
+                        if not globals().get("_CONSUMER_MISSING"):
+                            globals()["_CONSUMER_MISSING"] = True
+                            _append(NOTEBOOK, {"at": now_iso(), "kind": "forge_handback_unavailable",
+                                               "reason": "lab_forge_consumer not installed", "detail": str(exc)[:240],
+                                               "truth_status": "operator_control"})
+                        consume_one = lambda *a, **k: None
                     from types import SimpleNamespace
                     # runpy-loaded entry points may have no sys.modules entry.
                     handback = consume_one(SimpleNamespace(**{name: globals()[name] for name in
