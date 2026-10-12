@@ -7574,6 +7574,18 @@ def _sent_media(msg, note=None):
 # Sent with no words, a photo or a video is still her turn. An empty original_text made the avatar route
 # label it "[REELROOM EVENT - not Gloria's words]" and skip her side of the before-and-after steps (2026-09-30).
 _SENT_BARE = "[Gloria sent you %s without a message]"
+# A picture sent with no words of her own is usually the picture of what she has just said, not a second thing to
+# answer. Without saying so he answered twice about one moment and repeated himself word for word (12 October, the
+# shark on the Grand Isle pier: his reply about her burned hand came back verbatim against the photo of it).
+_BARE_PHOTO_TURN = ("[She sent it with no words of her own. If it shows something she has just told you about, this "
+                    "is not a new thing to answer: say only what seeing it adds, and never repeat a reply you have "
+                    "already given.]")
+
+
+def _photo_turn(message):
+    """What he is sent when a photo arrives: her words with it, or, when there are none, why there are none."""
+    said = str(message or "").strip()
+    return _PHOTO_HERE + "\n\n" + ("[Gloria's message with the photo:] " + str(message) if said else _BARE_PHOTO_TURN)
 
 
 @app.post("/api/avatar/photo")
@@ -7608,7 +7620,7 @@ async def avatar_chat_with_photo(request: Request):
     # 2026-10-01: "I wanted the correlating model to receive it in the same message"). It used to be put into
     # words by Sonnet first, whatever the toggle, and the brain only ever read those words. Gemma writes a note
     # of what it showed afterwards, for his memory; the avatar turn returns it.
-    composed = _PHOTO_HERE + "\n\n[Gloria's message with the photo:] " + str(message or "")
+    composed = _photo_turn(message)
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
             _cr = await client.post(

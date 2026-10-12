@@ -146,7 +146,7 @@ check("his memory keeps the note, in the ledger and his chat history", "ledger_m
       and "_with_note(msg.message, _note)" in turn and '{"image_description": _note}' in turn)
 
 tree = ast.parse(src)
-want = {"_PHOTO_HERE", "_HERE_RX", "_seen_note", "_with_note", "_sent_media"}
+want = {"_PHOTO_HERE", "_HERE_RX", "_seen_note", "_with_note", "_sent_media", "_photo_turn", "_BARE_PHOTO_TURN"}
 nodes = [n for n in tree.body if (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in want for t in n.targets))
          or (isinstance(n, ast.FunctionDef) and n.name in want)]
 ns = {"re": re}
@@ -157,6 +157,19 @@ check("the line that said it is here becomes what it showed", "[What it showed (
       and "here in this message" not in kept and "look" in kept, kept)
 check("with no note, it says so rather than claiming he can still see it",
       "no note of what it showed" in ns["_with_note"](said, "[I could not see the image clearly: x]"))
+# 12 October, the shark on the Grand Isle pier: she told him her hand was burned, he answered, then the photo of it
+# arrived with no words and he repeated that answer verbatim. A wordless picture is the picture of what she just
+# said, and he is told so rather than being handed a turn with nothing in it.
+check("her words go with the photo when she sent some", ns["_photo_turn"]("my hand!").endswith(
+      "[Gloria's message with the photo:] my hand!"))
+check("a wordless photo says it is the same moment, and not to repeat himself",
+      ns["_photo_turn"]("").endswith(ns["_BARE_PHOTO_TURN"]) and "never repeat a reply" in ns["_BARE_PHOTO_TURN"]
+      and "not a new thing to answer" in ns["_BARE_PHOTO_TURN"], ns["_photo_turn"](""))
+check("and it is not handed an empty message line", "[Gloria's message with the photo:]" not in ns["_photo_turn"]("")
+      and "[Gloria's message with the photo:]" not in ns["_photo_turn"]("   "))
+check("the photo is still in the same message either way",
+      all(t.startswith(ns["_PHOTO_HERE"]) for t in (ns["_photo_turn"]("x"), ns["_photo_turn"](""))))
+check("the endpoint uses it", "composed = _photo_turn(message)" in src)
 m = types.SimpleNamespace(input_kind="photo", message=said)
 check("the ledger's 'she sent' is the note, without her caption",
       ns["_sent_media"](m, "A black drum.") == "[What it showed (a note kept afterwards):] A black drum.", ns["_sent_media"](m, "A black drum."))
