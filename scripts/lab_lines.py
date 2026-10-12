@@ -161,11 +161,46 @@ def _similar(a, b):
     return len(x & y) / float(len(x | y) or 1)
 
 
+_ENTITY = re.compile(r"\b(?:[A-Z][A-Za-z]{1,}[0-9][A-Za-z0-9-]*|[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9][A-Z][A-Z0-9]{2}[0-9])\b")
+
+
+def _entities(text):
+    """Gene and accession tokens in a text (SLC26A4, AQP1, O43511), upper-cased."""
+    return {m.upper() for m in _ENTITY.findall(str(text or ""))}
+
+
+def owns(line, text):
+    """Whether a step about `text` belongs to this line: it names a protein the line names, or either names none.
+
+    Routing, not a refusal. A step whose proteins are all different from the line's is somewhere else's work.
+    12 October: the Pendrin-versus-Prestin line carried verified SLC26A11 claims and a next step about AQP1 versus
+    AQP3, because every step of a cycle was appended to whatever line the cycle was started under."""
+    theirs = _entities(text)
+    mine = _entities(" ".join(str(line.get(k) or "") for k in ("title", "question")))
+    return not theirs or not mine or bool(theirs & mine)
+
+
+def route(d, line_id, text):
+    """The open line a step about `text` belongs to: its own if it fits, else the best-fitting other, else None."""
+    lines = [l for l in d["lines"] if l.get("state") == "open"]
+    own = next((l for l in lines if l["id"] == line_id), None)
+    if own and owns(own, text):
+        return own
+    theirs = _entities(text)
+    fits = [(len(theirs & _entities(" ".join(str(l.get(k) or "") for k in ("title", "question")))), l)
+            for l in lines if l is not own]
+    fits = [(n, l) for n, l in fits if n]
+    return max(fits, key=lambda f: f[0])[1] if fits else None
+
+
 def record_step(line_id, step):
-    """One test on a line: {question, source, result, answered, next}. The line's next step becomes what it left."""
+    """One test on a line: {question, source, result, answered, next}. The line's next step becomes what it left.
+
+    A step about other proteins goes to the line that is about them (route), or to no line; it is never appended to a
+    line it is not about. Its cycle is in the notebook either way."""
     with _locked():
         d = _read()
-        line = next((l for l in d["lines"] if l["id"] == line_id and l.get("state") == "open"), None)
+        line = route(d, line_id, step.get("question"))
         if not line:
             return None
         row = {"at": _now(), **{k: str(step.get(k) or "")[:700] for k in ("question", "source", "result", "answered",
@@ -351,6 +386,7 @@ def after_reflection(line_id, note):
                                  "missing": coverage.get("missing") or []})
     if not line:
         return ""
+    line_id = line["id"]    # the line the step was routed to, which is the one given when it fits
     if line.get("origin") == "vintos:auto-claim" and coverage.get("answered") is True:
         ended, why = end(line_id, "answered", "all tracked claims have verified source support")
         return ("line %s answered" % line_id) if ended else ("line %s kept: %s" % (line_id, why))
