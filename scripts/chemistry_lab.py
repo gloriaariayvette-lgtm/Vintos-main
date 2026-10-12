@@ -1170,8 +1170,15 @@ def _hold_lookup(inquiry):
     return repeats.canonical_lookup(repeats.lookup_key(clean(inquiry)))
 
 
-def _hold_owner(inquiry):
-    """A decision belongs to the original question AND its retrieval, never a shared slot."""
+def _hold_owner(inquiry, strict=True):
+    """A decision belongs to the original question AND its retrieval, never a shared slot.
+
+    `strict=False` returns None instead of raising, for a row that cannot own a hold at all. Such a row never held
+    anything — an unnamed route cannot be matched to any later retrieval — so passing it over releases no decision.
+    Raising on it stopped every tick instead: on 12 October the Lab spent from 04:44 CDT onwards re-raising
+    "question hold lacks a named retrieval route" out of _question_holds, which the orient phase and two tick paths
+    all call, and wrote 4.5 MB of identical faults without planning anything.
+    """
     question = ' '.join(str(inquiry.get('question') or '').casefold().split())
     lookup = _hold_lookup(inquiry)
     for field, names in (('source_query', ('source',)), ('plugin_query', ('plugin','tool')),
@@ -1180,9 +1187,12 @@ def _hold_owner(inquiry):
         if spec:
             if not isinstance(spec, dict) or any(not isinstance(spec.get(name), str) or not spec[name].strip()
                                                  for name in names):
+                if not strict: return None
                 raise ValueError('question hold lacks a named retrieval route')
             break
-    if not question or not lookup: raise ValueError('question hold lacks question or retrieval')
+    if not question or not lookup:
+        if not strict: return None
+        raise ValueError('question hold lacks question or retrieval')
     return json.dumps([question, lookup], ensure_ascii=False)
 
 
@@ -1192,22 +1202,40 @@ def _question_holds():
     # Once a held slot yields, its wait echoes stop. Preserve its decision when
     # unrelated progress moves the original record out of the notebook tail.
     # Unreadable/corrupt ownership must fail closed, never silently release work.
-    saved, previous = {}, {}
+    # An entry whose owner cannot be computed is QUARANTINED, not released and not fatal: it keeps holding its own
+    # question under the question-only key, and it no longer stops the Lab from doing anything else. Raising here
+    # was a permanent outage — on 12 October the Lab re-raised out of this function from 04:44 CDT onwards, which
+    # the orient phase and two tick paths all call, and planned nothing for hours while reading as active.
+    saved, previous, quarantined = {}, {}, []
     if os.path.exists(path):
-        with open(path, encoding='utf-8') as stream: previous = json.load(stream)
-        if not isinstance(previous, dict): raise ValueError('invalid saved question holds')
+        try:
+            with open(path, encoding='utf-8') as stream: previous = json.load(stream)
+            if not isinstance(previous, dict): raise ValueError('saved question holds are not a mapping')
+        except (ValueError, OSError) as exc:
+            # The notebook, not this file, is where holds are established; this file only carries the ones whose
+            # rows have rolled out of its tail. Keep the unreadable copy and rebuild from the notebook.
+            try: os.replace(path, path + '.unreadable')
+            except OSError: pass
+            _fault('question_holds_unreadable', exc); previous = {}
         for key, old in previous.items():
-            if (not isinstance(old, dict) or not isinstance(old.get('question'), str)
+            question = old.get('question') if isinstance(old, dict) else None
+            legacy = ' '.join(str(question or '').casefold().split())
+            structural = (not isinstance(old, dict) or not isinstance(question, str)
                     or not isinstance(old.get('planning_evidence'), str) or not old['planning_evidence']
                     or not old.get('refused') or old.get('evidence_status') != 'insufficient'
                     or any(old.get(field) is not None and not isinstance(old[field], dict)
                            for field in ('source_query','plugin_query','instrument_query'))
-                    or old.get('uniprot_query') is not None and not isinstance(old['uniprot_query'], str)):
-                raise ValueError('invalid saved question hold')
-            owner = _hold_owner(old)
-            legacy = ' '.join(old['question'].casefold().split())
-            if key not in (owner, legacy): raise ValueError('saved question hold owner mismatch')
-            saved[owner] = old  # migrate the uninstalled v1 index without losing its route/evidence
+                    or old.get('uniprot_query') is not None and not isinstance(old['uniprot_query'], str))
+            owner = None if structural else _hold_owner(old, strict=False)
+            if owner is not None and key in (owner, legacy):
+                saved[owner] = old  # migrate the uninstalled v1 index without losing its route/evidence
+            elif legacy:
+                saved[legacy] = old         # still held, under its question alone
+                quarantined.append((key, legacy))
+            # else: no question and no retrieval - there is no decision in it to keep
+    if quarantined and any(key != legacy for key, legacy in quarantined):
+        _fault('question_holds_quarantined',   # once: rewritten under the question key, so this does not repeat
+               ValueError('; '.join(str(key)[:100] for key, _legacy in quarantined[:6])), count=len(quarantined))
     seen, current = set(), {}
     for row in reversed(_tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)):
         old = row.get('inquiry') or {}
@@ -1222,7 +1250,8 @@ def _question_holds():
                      and sufficiency.get('missing') == [] and not row.get('coverage_deferred')
                      and row.get('assessment_status') != 'incomplete')
         if not held and not completed: continue
-        owner = _hold_owner(old)
+        owner = _hold_owner(old, strict=False)
+        if owner is None: continue   # an unnamed route holds nothing and must not stop the pass
         if owner in seen: continue
         seen.add(owner)
         if held: current[owner] = old
