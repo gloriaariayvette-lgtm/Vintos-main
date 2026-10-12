@@ -7574,6 +7574,25 @@ def _sent_media(msg, note=None):
 # Sent with no words, a photo or a video is still her turn. An empty original_text made the avatar route
 # label it "[REELROOM EVENT - not Gloria's words]" and skip her side of the before-and-after steps (2026-09-30).
 _SENT_BARE = "[Gloria sent you %s without a message]"
+_TAGS_RX = re.compile(r"\[(?:FELT|SCENE|RENDER|DO|TOUCH|SPEAK)[^\]]*\]", re.I)
+
+
+def _same_as_last_reply(reply, history):
+    """Whether this reply is his previous one again, tags and spacing aside.
+
+    12 October 07:51, the Grand Isle pier: she sent the Red Drum photo with her own words, Claude errored, the
+    router fell back to grok as designed, and grok handed back his previous reply about the shark verbatim. The
+    prompt was right and the turn was recorded; what came back was a copy. A copy is not an answer, so it is not
+    hers to read.
+    """
+    norm = lambda text: " ".join(_TAGS_RX.sub(" ", str(text or "")).split()).casefold()
+    said = norm(reply)
+    if len(said) < 40:
+        return False     # a short line may honestly recur
+    for item in reversed(list(history or [])):
+        if isinstance(item, dict) and item.get("role") == "assistant":
+            return said == norm(item.get("content"))
+    return False
 # A picture sent with no words of her own is usually the picture of what she has just said, not a second thing to
 # answer. Without saying so he answered twice about one moment and repeated himself word for word (12 October, the
 # shark on the Grand Isle pier: his reply about her burned hand came back verbatim against the photo of it).
@@ -9819,6 +9838,22 @@ Your current self-model (excerpt):
         except Exception as _rte:
             print("[router] fatal:", _rte, flush=True)
             reply, _claude_reasoning, _model_used = "", "", "error"
+        try:   # a fallback route sometimes echoes his last reply instead of answering: ask once more, saying so
+            if _same_as_last_reply(reply, av_history):
+                print("[router] %s returned his previous reply verbatim - asking again" % _model_used, flush=True)
+                _again = list(messages[1:]) + [{"role": "user", "content":
+                    "[You have just sent that exact message. It does not answer what she said this time. Answer "
+                    "THIS message, in your own words, and do not repeat your previous reply.]"}]
+                _r2, _cr2, _mu2 = await _mr.route_reply(
+                    "avatar", messages[0]["content"], _again, params,
+                    f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
+                    "grok-4.20-0309-non-reasoning", reason=_reason)
+                if _r2 and not _same_as_last_reply(_r2, av_history):
+                    reply, _claude_reasoning, _model_used = _r2, _cr2, str(_mu2) + "(after repeat)"
+                else:
+                    reply, _model_used = "", str(_model_used) + "(repeat)"
+        except Exception as _dup:
+            print("[router] repeat check skipped:", _dup, flush=True)
         print(f"[router] avatar served by {_model_used}", flush=True)
 
         # -- guardrail catch ------------------------------------------------
