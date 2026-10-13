@@ -83,7 +83,13 @@ inq = C._orient("ctx")
 check("the same step again is a repeat: sent back once, then the cycle is refused", inq.get("refused", "").startswith("repeat")
       and "REFUSED, IT IS A REPEAT" in asked[1] and len(asked) == 2, (inq.get("refused"), len(asked)))
 asked.clear(); answers[:] = [OFF, OFF]
-inq = C._orient("ctx")
+# The planner's "lookups this week" reads the clock itself: on the suite's own day, or the fixture recorded on
+# 6 October ages out of the week as the calendar moves (it began failing on 13 October with no code change).
+_real_now, L._now = L._now, (lambda: NOW)
+try:
+    inq = C._orient("ctx")
+finally:
+    L._now = _real_now
 check("off the plan twice: refused, nothing runs", inq.get("refused", "").startswith("off the frontier") and len(asked) == 2, inq.get("refused"))
 check("the week's lookups are in front of her", "LOOKUPS YOU ALREADY RAN THIS WEEK" in asked[0] and "atlas:SLC26A4" in asked[0])
 check("what an Atlas record is, in her question step and her reading", "ONE fixed window" in C._atlas_text()

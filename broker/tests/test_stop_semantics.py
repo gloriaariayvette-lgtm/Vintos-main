@@ -123,7 +123,7 @@ try: TL.stop_all("disk full")
 except Exception as e: raised = e
 EG._atomic_write_json = _real_aw
 check("even an unwritable disk: stop still sends zeros, never raises",
-      raised is None and len([1 for t, a in hub_sends() if a == "Stop"]) == 3 and ("stop",) in _thr.calls, hub_sends())
+      raised is None and len([1 for t, a in hub_sends() if a == "Stop"]) == len(TL.TOYS) and ("stop",) in _thr.calls, hub_sends())
 
 # ---------------------------------------------------------------- 82
 print("\n--- 82 retries and replays never resume a device ---")
