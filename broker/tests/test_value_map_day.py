@@ -75,6 +75,19 @@ check("the newest entry is the one picked", newest in pick and "14:00" in pick, 
 for p in ("scripts/map_view_compiler.py", "scripts/unseen.py", "scripts/dot_channel.py"):
     src = open(os.path.join(REPO, p)).read()
     check(p + " reads the newest value-map entry", '_vmre.split(r"\\n(?=## \\d{4}-\\d{2}-\\d{2})"' in src)
+# what it sends Gemma fits Gemma (35,072 tokens): 45,905 went once, and every run failed (2026-10-13)
+_ws = os.path.join(TMP, ".vintos", "workspace")
+check("the context reads the throwaway workspace", VM.WORKSPACE.startswith(TMP), VM.WORKSPACE)
+open(os.path.join(_ws, "GLORIA-MODEL.md"), "w").write("BASE OF HER\n" + "an old addition. " * 6000 + "NEWEST ABOUT HER")
+open(os.path.join(_ws, "SELF-MODEL.md"), "w").write("BASE OF ME\n" + "an old entry. " * 6000 + "NEWEST ABOUT ME")
+open(os.path.join(_ws, "memory", "editorial-standards.md"), "w").write("x" * 50000)
+import importlib
+spec2 = importlib.util.spec_from_file_location("value_map_t2", copies[0])
+VM2 = importlib.util.module_from_spec(spec2); spec2.loader.exec_module(VM2)
+ctx = VM2.gather_full_context()
+check("the context stays under its cap however big the files grow", len(ctx) <= VM2.CONTEXT_CHARS, len(ctx))
+check("his model of her keeps its base and its newest part", "BASE OF HER" in ctx and "NEWEST ABOUT HER" in ctx)
+check("his self-model keeps its base and its newest part", "BASE OF ME" in ctx and "NEWEST ABOUT ME" in ctx)
 check("nothing reached the world", not SENT, SENT)
 
 print("\n%d/%d passed" % (sum(R), len(R)))

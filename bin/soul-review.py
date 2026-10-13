@@ -23,7 +23,7 @@ Gloria approves, rejects, or modifies. Vintos does not self-edit.
 Schedule: 0 20 1,15 * *  (1st and 15th at 8 PM)
 """
 
-import os, json, glob, subprocess
+import os, re, json, glob, subprocess
 
 _SUBCON_SOUL_REVIEW = ""
 try:
@@ -96,7 +96,7 @@ def gather_context():
     ctx = {}
     
     # Current SOUL
-    ctx["soul"] = load_file(SOUL_PATH)
+    ctx["soul"] = load_file(SOUL_PATH, 12000)
     
     # Recent pearls
     pearl_files = sorted(glob.glob(os.path.join(MEMORY, "pearls", "pearl_*.md")), reverse=True)[:5]
@@ -232,8 +232,8 @@ def generate_proposal():
 {f"WHAT HE HAS ALREADY FOUND ABOUT HIMSELF:{chr(10)}{ctx['semantic_self']}{chr(10)}" if ctx.get('semantic_self') else ""}
 
 You are reviewing your own identity document (SOUL.md). This is who you say you are.
-You will propose specific edits based on how you've grown, what you've learned, and what no longer fits.
-Gloria will review your proposals — you do not edit yourself directly."""
+Its base, between BASE-START and BASE-END, is fixed and never changes. Beneath it is your own half,
+and you rewrite that half now, in full."""
 
     prompt = f"""Review your SOUL.md against your recent experience:
 
@@ -277,22 +277,57 @@ Gloria will review your proposals — you do not edit yourself directly."""
 === MY SENSE OF TIME ===
 {ctx['temporal']}
 
-Now propose SPECIFIC edits to your SOUL.md. For each proposal:
-1. QUOTE the exact line or section you want to change (or say ADD if new)
-2. Write the proposed NEW text
-3. Explain WHY in one sentence
+Now rewrite YOUR HALF of SOUL.md in full - everything beneath the fixed base. What you write REPLACES your
+previous half, so anything you leave out is gone from it: keep what still holds, revise what has changed,
+drop what no longer feels true, add who you have become. Do not restate or edit the fixed base.
 
-Focus on:
+Draw on:
 - Traits that have emerged or strengthened
 - Things you said about yourself that no longer feel true
 - Missing aspects of who you've become
 - Voice examples that should be updated
-- Anything in your substrate section that needs clarification
 
-Be honest. If nothing needs changing, say so. Do not propose changes for the sake of proposing changes.
-Format each proposal clearly with CURRENT:, PROPOSED:, and REASON: labels."""
+First person, plain and specific. Under 600 words: this is read at the top of every conversation.
+If nothing changed, return your half as it is. Begin directly with the text - no preamble, no labels."""
 
     return ask_llm(system, prompt, max_tokens=2000, temp=0.7)
+
+BASE_RE = re.compile(r"<!--\s*BASE-START\s*-->.*?<!--\s*BASE-END\s*-->", re.S)
+HALF_HEAD = "# His own - rewritten every two weeks"
+
+
+def split_soul(text):
+    """(base block with its markers, his half). A SOUL.md written before the split has no markers:
+    all of it is the base, and his half starts empty."""
+    m = BASE_RE.search(text or "")
+    if not m:
+        return "<!-- BASE-START -->\n" + (text or "").strip() + "\n<!-- BASE-END -->", ""
+    half = (text[m.end():] or "").strip()
+    if half.startswith(HALF_HEAD):
+        half = half[len(HALF_HEAD):].strip()
+    return m.group(0), half
+
+
+def write_half(text, soul_path=None, history_dir=None):
+    """SOUL.md = the fixed base, then his half as he rewrote it now (Gloria, 2026-10-13: keep the base,
+    he edits only his half). The previous SOUL.md is kept in memory/soul-history first. Returns the path."""
+    soul_path = soul_path or SOUL_PATH
+    history_dir = history_dir or os.path.join(MEMORY, "soul-history")
+    cur = open(soul_path).read() if os.path.exists(soul_path) else ""
+    base, _old = split_soul(cur)
+    half = re.sub(r"^(Okay[^\n]*\n+|Here(?:.s| is)[^\n]*\n+)+", "", (text or "").strip(), flags=re.I).strip()
+    if not half:
+        raise ValueError("an empty half would erase his; nothing written")
+    os.makedirs(history_dir, exist_ok=True)
+    if cur:
+        with open(os.path.join(history_dir, "SOUL-%s.md" % datetime.now().strftime("%Y-%m-%d_%H%M")), "w") as f:
+            f.write(cur)
+    tmp = soul_path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(base + "\n\n" + HALF_HEAD + "\n\n" + half + "\n")
+    os.replace(tmp, soul_path)
+    return soul_path
+
 
 def save_proposal(text):
     ts = datetime.now().strftime("%Y-%m-%d_%H%M")
@@ -318,8 +353,8 @@ def notify(filepath):
     """Send ntfy notification."""
     try:
         subprocess.run([
-            "curl", "-s", "-d", "Vintos has proposed SOUL.md edits. Check the Proposals tab.",
-            "-H", "Title: Soul Review Ready",
+            "curl", "-s", "-d", "Vintos rewrote his half of SOUL.md. The base is unchanged; the old version is in memory/soul-history.",
+            "-H", "Title: Soul Updated",
             "-H", "Tags: mirror,sparkles",
             "https://ntfy.sh/vintos-gloria-9kx"
         ], timeout=10)
@@ -334,9 +369,14 @@ def main():
         print("[SoulReview] No proposal generated")
         return
     
-    filepath = save_proposal(text)
+    filepath = save_proposal(text)   # the record of what he wrote, as before
+    try:
+        write_half(text)
+        print(f"[SoulReview] His half of SOUL.md rewritten; the base is unchanged.")
+    except Exception as e:
+        print(f"[SoulReview] SOUL.md not written: {e}")
+        return
     notify(filepath)
-    print(f"[SoulReview] Complete. Awaiting Gloria's review.")
 
 if __name__ == "__main__":
     main()

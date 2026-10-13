@@ -110,6 +110,68 @@ def complete(want, how, by, note="", evidence=None):
     row["result"] = how; _log(row); return row
 
 
+DISCUSSIONS = os.path.join(MEMORY, "want-discussions.json")
+QUIET_DAYS = 3
+
+
+def _when(v):
+    """A stored time (epoch seconds or ISO text) as epoch seconds; 0 when there is none."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(str(v).replace("Z", "+00:00")).timestamp() if v else 0.0
+    except Exception:
+        return 0.0
+
+
+def _steps_done(w):
+    steps = w.get("steps") or []
+    if not steps:
+        return False
+    if int(w.get("current_step_index") or 0) >= len(steps):
+        return True
+    return all(isinstance(x, dict) and x.get("status") == "completed" for x in steps)
+
+
+def move_on(now=None, quiet_days=QUIET_DAYS):
+    """Wants do not stay live forever (Gloria, 2026-10-13: "They need to move on after being completed or to
+    move on after me not responding for 3 days").
+
+    - a want whose steps are all done leaves: fulfilled when the fulfilment door takes it, otherwise dismissed
+      with the reason. The router's judge used to HOLD it whenever the judge model could not answer, and a held
+      want stayed live with its whole step history in every prompt that lists wants.
+    - a want she has not answered for `quiet_days` - counted from the newer of when it was made and her last
+      word in its discussion - is dismissed, with that as the reason.
+    Everything goes through complete(), so each ending is logged in want-completions.jsonl and kept in
+    dismissed-wants.json / fulfilled-wants.json. Returns the rows."""
+    now = time.time() if now is None else now
+    wants = _load(WANTS, [])
+    disc = _load(DISCUSSIONS, {})
+    disc = disc if isinstance(disc, dict) else {}
+    out = []
+    for w in list(wants if isinstance(wants, list) else []):
+        if not isinstance(w, dict) or w.get("fulfilled") or w.get("dismissed"):
+            continue
+        if _steps_done(w):
+            r = complete(w, "fulfilled", "moved-on", note="its steps are done")
+            if r.get("result") != "fulfilled":
+                r = complete(w, "dismissed", "moved-on",
+                             note="its steps are done; not credited as fulfilled (%s)" % str(r.get("result"))[:120])
+            out.append(r)
+            continue
+        made = _when(w.get("timestamp") or w.get("created") or w.get("created_at"))
+        if not made:
+            continue   # no clock to count from; left as it is
+        hers = [_when(m.get("timestamp")) for m in (disc.get(w.get("id")) or [])
+                if isinstance(m, dict) and str(m.get("role", "gloria")).lower() in ("gloria", "user", "her")]
+        last = max([made] + hers)
+        if now - last > quiet_days * 86400:
+            out.append(complete(w, "dismissed", "moved-on",
+                                note="no answer from Gloria in %d days" % quiet_days))
+    return out
+
+
 def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
     """Both screens at once: the shape screen (want_contract) and his standing stance (wants_meta).
 

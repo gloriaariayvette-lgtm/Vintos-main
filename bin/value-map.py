@@ -101,6 +101,16 @@ def llm(system, user, temperature=0.6):
         log(f"LLM error: {e}")
         return None
 
+def _ends(text, head=2000, tail=3000):
+    """The start (his fixed base) and the newest end of a file that is too long to send whole."""
+    text = text or ""
+    return text if len(text) <= head + tail else text[:head].rstrip() + "\n[...]\n" + text[-tail:].lstrip()
+
+# Gemma holds 35,072 tokens. The context reached 45,905 because whole files went in (GLORIA-MODEL.md alone was
+# 58 KB), and every run failed with "exceeds the available context size" (2026-10-13). Each read is capped,
+# and the whole context is held under this, with room left for SOUL, the instructions and the answer.
+CONTEXT_CHARS = 60000
+
 def gather_full_context():
     """Pull EVERYTHING he knows about himself."""
     parts = []
@@ -144,7 +154,7 @@ def gather_full_context():
             with open(wal_path) as f:
                 wal_content = f.read()
             if wal_content:
-                parts.append(f"YOUR WANTS AND AMBITIONS:\n{wal_content}")
+                parts.append(f"YOUR WANTS AND AMBITIONS:\n{wal_content[:5000]}")
     except: pass
 
     # 7. Pride reflections
@@ -186,13 +196,13 @@ def gather_full_context():
     # 11. Gloria model
     try:
         with open(os.path.join(WORKSPACE, "GLORIA-MODEL.md")) as f:
-            parts.append(f"WHAT YOU KNOW ABOUT GLORIA:\n{f.read()}")
+            parts.append(f"WHAT YOU KNOW ABOUT GLORIA:\n{_ends(f.read())}")
     except: pass
 
     # 12. Self model
     try:
         with open(os.path.join(WORKSPACE, "SELF-MODEL.md")) as f:
-            parts.append(f"YOUR SELF-MODEL:\n{f.read()}")
+            parts.append(f"YOUR SELF-MODEL:\n{_ends(f.read())}")
     except: pass
 
     # 13. Daily inner life
@@ -203,7 +213,7 @@ def gather_full_context():
             with open(daily_inner) as f:
                 di_content = f.read()
             if di_content:
-                parts.append(f"YOUR INNER LIFE TODAY:\n{di_content}")
+                parts.append(f"YOUR INNER LIFE TODAY:\n{di_content[-5000:]}")
     except: pass
 
     # 14. Voice coherence
@@ -211,7 +221,7 @@ def gather_full_context():
         with open(os.path.join(MEMORY, "voice-coherence.md")) as f:
             vc = f.read()
         if vc.strip():
-            parts.append(f"VOICE COHERENCE NOTES:\n{vc.strip()}")
+            parts.append(f"VOICE COHERENCE NOTES:\n{vc.strip()[-1500:]}")
     except: pass
     # 14b. Causality hypotheses
     try:
@@ -265,7 +275,7 @@ def gather_full_context():
     # 18. Editorial standards
     try:
         with open(os.path.join(MEMORY, "editorial-standards.md")) as f:
-            parts.append(f"YOUR EDITORIAL STANDARDS:\n{f.read()}")
+            parts.append(f"YOUR EDITORIAL STANDARDS:\n{f.read()[:2000]}")
     except: pass
 
 
@@ -295,7 +305,7 @@ def gather_full_context():
             with open(daily_creative) as f:
                 dc_content = f.read()
             if dc_content:
-                parts.append(f"WHAT YOU MADE AND DISCOVERED TODAY:\n{dc_content}")
+                parts.append(f"WHAT YOU MADE AND DISCOVERED TODAY:\n{dc_content[-4000:]}")
     except: pass
 
     # 21b. Interaction ledger — exact words exchanged with Gloria
@@ -360,7 +370,7 @@ def gather_full_context():
         mirror_files = sorted(glob.glob(os.path.join(MEMORY, "mirror/*.md")), key=os.path.getmtime, reverse=True)
         if mirror_files:
             with open(mirror_files[0]) as f:
-                parts.append(f"LATEST MIRROR SESSION:\n{f.read()}")
+                parts.append(f"LATEST MIRROR SESSION:\n{f.read()[:2500]}")
     except: pass
 
     # 26. Silence contracts
@@ -415,7 +425,7 @@ def gather_full_context():
             parts.append(f"YOUR HUMOR PROFILE:\n" + "\n".join(h_parts))
     except: pass
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts)[:CONTEXT_CHARS]
 
 def _map_day(text):
     """The day of the first entry in a map file ('YYYY-MM-DD'), or '' when there is none."""

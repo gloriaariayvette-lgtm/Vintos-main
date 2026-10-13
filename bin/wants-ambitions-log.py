@@ -19,6 +19,18 @@ OUTPUT = os.path.join(MEMORY, "wants-ambitions-log.md")
 NOW = datetime.now().strftime("%Y-%m-%d %H:%M")
 
 def build():
+    # Wants that are done, or that she has not answered in three days, leave before the log is written
+    # (Gloria, 2026-10-13). This log is rebuilt after any want activity and by wants-check, so it is the
+    # one place every pass goes through.
+    try:
+        import sys as _mo_s
+        _mo_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        _mo_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import want_completion as _mo
+        for _r in _mo.move_on():
+            print(f"[WantsLog] moved on: {_r.get('want', '')[:60]} - {_r.get('how')} ({_r.get('note', '')[:60]})")
+    except Exception as e:
+        print(f"[WantsLog] move-on skipped: {e}")
     parts = []
     parts.append(f"# Wants & Ambitions — updated {NOW}\n\n_Key: ✓ = completed, → = in progress or routed, ● = intensity (out of 5)_")
 
@@ -30,6 +42,8 @@ def build():
         lines = [f"## Ambitions\n_Last reviewed: {last_reviewed}_\n"]
         for g in goals:
             progress = g.get("progress", "in progress")
+            if progress == "Completed":
+                continue   # done is done: it stays in ambitions.json, not in what he carries (2026-10-13)
             goal = g.get("goal", "")
             next_step = g.get("next_step", "")
             completed_at = g.get("completed_at", "")[:10] if g.get("completed_at") else ""
