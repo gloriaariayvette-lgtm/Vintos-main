@@ -984,6 +984,34 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     return data["choices"][0]["message"]["content"]
 
 
+def _compact_names(names, cap):
+    """Names as one line under `cap` characters: whole gene families as PREFIX*, the rest as they are."""
+    names = list(dict.fromkeys(str(n) for n in names if str(n).strip()))
+    families = spent_families(names)
+    grouped = {m.casefold() for _p, members in families for m in members}
+    parts = ["%s* (%d)" % (prefix, len(members)) for prefix, members in families]
+    parts += [n for n in names if n.casefold() not in grouped]
+    out, used = [], 0
+    for part in parts:
+        if used + len(part) + 2 > cap:
+            out.append("and %d more" % (len(parts) - len(out))); break
+        out.append(part); used += len(part) + 2
+    return ", ".join(out)
+
+
+def _held_subjects(holds, cap=3000):
+    """The gene/protein symbols and accessions the held questions name, compacted for the planner."""
+    try:
+        import lab_repeats as repeats
+        names = []
+        for old in holds:
+            names += repeats.subjects(old.get('question'))
+            names += repeats.subjects(old.get('uniprot_query'))
+        return _compact_names(names, cap)
+    except Exception:
+        return ""
+
+
 def spent_families(subjects, least=2):
     """Gene families with `least` or more spent members, as (prefix, members).
 
@@ -1196,8 +1224,26 @@ def _hold_owner(inquiry, strict=True):
     return json.dumps([question, lookup], ensure_ascii=False)
 
 
+HOLD_DAYS = 7
+
+
+def _hold_age_days(old, now=None):
+    """Days since a hold was made (held_at); 0 for one with no stamp yet."""
+    try:
+        made = datetime.fromisoformat(str(old.get('held_at')).replace('Z', '+00:00'))
+        if made.tzinfo is None: made = made.replace(tzinfo=timezone.utc)
+        return ((now or datetime.now(timezone.utc)) - made).total_seconds() / 86400
+    except Exception:
+        return 0.0
+
+
 def _question_holds():
-    """Retain independent question/retrieval decisions and each decision's evidence revision."""
+    """Retain independent question/retrieval decisions and each decision's evidence revision.
+
+    A hold lasts HOLD_DAYS from when it was made (held_at), then leaves. Holds were kept until their evidence changed
+    and most never did: 665 by 13 October, the planner shown ten of them, and 58% of passes spent re-proposing the
+    rest and being refused (Gloria, 2026-10-13: nothing collects indefinitely). A question that expires may be asked
+    again; that is a new attempt a week on, not a repeat."""
     path = os.path.join(ROOT, 'question-holds.json')
     # Once a held slot yields, its wait echoes stop. Preserve its decision when
     # unrelated progress moves the original record out of the notebook tail.
@@ -1254,11 +1300,13 @@ def _question_holds():
         if owner is None: continue   # an unnamed route holds nothing and must not stop the pass
         if owner in seen: continue
         seen.add(owner)
-        if held: current[owner] = old
+        if held: current[owner] = dict(old, held_at=old.get('held_at') or row.get('at') or now_iso())
         # Even a validated answer on another route cannot erase this route's
         # decision. Partial/failed assessments release nothing. Changed evidence
         # and genuinely different instruments still use _held_question's checks.
-    current.update((owner, old) for owner,old in saved.items() if owner not in seen)
+    current.update((owner, old if old.get('held_at') else dict(old, held_at=now_iso()))
+                   for owner,old in saved.items() if owner not in seen)
+    current = {owner: old for owner, old in current.items() if _hold_age_days(old) < HOLD_DAYS}
     if current != previous: _atomic(path, current)
     return list(current.values())
 
@@ -1567,9 +1615,11 @@ def _orient(context, lean=None):
                  "digits in a failed one. Choose a documented subject from sourced context or a plain-name "
                  "discovery search instead." % (spent["count"], "\n- ".join(spent["questions"])))
     if spent["subjects"]:
-        task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
-                 + ", ".join(spent["subjects"]) + ".")
         families = spent_families(spent["subjects"])
+        in_family = {m.casefold() for _p, members in families for m in members}
+        singles = [x for x in spent["subjects"] if x.casefold() not in in_family]
+        task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
+                 + _compact_names(singles, 2500) + ".")
         if families:
             # Naming members one at a time let the planner walk a family: SLC26A11 spent, so it proposed
             # SLC26A12 (12 October, the final hour: 256 spent-subject refusals, almost all SLC26A10-A15).
@@ -1583,9 +1633,17 @@ def _orient(context, lean=None):
                      "targeting an explicitly open claim with a different source. An identical lookup remains refused.")
     held_questions = _question_holds()
     if held_questions:
+        # Ten example questions out of hundreds told the planner almost nothing: it kept proposing the other holds,
+        # each refused after several model calls, the pass ending empty a minute at a time (58% of passes, 13
+        # October). Every held subject is named, compactly, so it can steer around all of them before choosing.
         task += ("\n\nQUESTIONS WAITING ON CHANGED EVIDENCE (not answers, not a hold on other work). "
                  "Choose independently eligible work; do not rename or rephrase these unchanged retrievals:\n- " +
-                 "\n- ".join(str(item.get('question') or '') for item in held_questions[:10]))
+                 "\n- ".join(str(item.get('question') or '')[:200] for item in held_questions[-6:]))
+        _held_names = _held_subjects(held_questions)
+        if _held_names:
+            task += ("\n\nEVERY SUBJECT WITH A QUESTION WAITING (%d questions) — a question about any of these, "
+                     "by the same kind of retrieval, is refused before it runs; choose a subject not on this list, "
+                     "or a genuinely different instrument: %s." % (len(held_questions), _held_names))
     value = _json_object(_ask(system, task))
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
@@ -2398,7 +2456,8 @@ def _browse(query, limit, *, allow_relaxation=True):
     if exact and any(item.get("primaryAccession") != exact[1] for item in raw.get("results", [])):
         raise ValueError("source_accession_mismatch: requested " + exact[1])
     from lab_sources import verify_uniprot_identity
-    verify_uniprot_identity(executed_query if scope_resolution else requested_query, raw.get("results", [])[:limit])
+    raw = dict(raw, results=verify_uniprot_identity(executed_query if scope_resolution else requested_query,
+                                                    raw.get("results", [])[:limit]))   # only records naming the gene
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})

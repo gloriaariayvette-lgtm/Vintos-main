@@ -179,10 +179,26 @@ class QuestionHolds(Perimeter):
         held=self.hold(self.cftr)
         Path(C.ROOT,'question-holds.json').write_text(json.dumps({QUESTION.casefold():held}))
         got=C._question_holds()
-        self.assertEqual(got,[held])
+        # a hold now carries when it was made, so it can expire (HOLD_DAYS); everything else is kept exactly
+        unstamp=lambda rows:[{k:v for k,v in r.items() if k!='held_at'} for r in rows]
+        self.assertEqual(unstamp(got),[held])
+        self.assertTrue(all(r.get('held_at') for r in got))
         saved=json.loads(Path(C.ROOT,'question-holds.json').read_text())
-        self.assertEqual(list(saved.values()),[held])
+        self.assertEqual(unstamp(saved.values()),[held])
         self.assertEqual(len(json.loads(next(iter(saved)))),2)
+
+    def test_a_hold_expires_after_hold_days(self):
+        held=self.hold(self.cftr)
+        long_ago=(C.datetime.now(C.timezone.utc)-__import__('datetime').timedelta(days=C.HOLD_DAYS+1)).isoformat()
+        # the journal row that made the hold is a week and a day old, as it would be on the host
+        Path(C.NOTEBOOK).write_text(json.dumps({'at':long_ago,'kind':'reflection','inquiry':held,'coverage_deferred':True})+'\n')
+        old=dict(held,held_at=long_ago)
+        fresh=dict(held,question=held['question']+' (fresh)',held_at=C.now_iso())
+        Path(C.ROOT,'question-holds.json').write_text(json.dumps({QUESTION.casefold():old}))
+        self.assertEqual(C._question_holds(),[])
+        self.assertEqual(json.loads(Path(C.ROOT,'question-holds.json').read_text()),{})
+        Path(C.ROOT,'question-holds.json').write_text(json.dumps({fresh['question'].casefold():fresh}))
+        self.assertEqual(len(C._question_holds()),1)
 
     def test_saved_snapshot_stays_complete_and_guard_unchanged(self):
         self.assertEqual(hashlib.sha256(SNAPSHOT.read_bytes()).hexdigest(),

@@ -114,6 +114,13 @@ class Tests(unittest.TestCase):
         sources.verify_uniprot_identity('protein_name:"Lys-gingipain W83"', [wrong])
         with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
             sources.verify_uniprot_identity('gene:SLC26A16',[valid])
+        # several records back, one of them some other gene: the wrong one is dropped, the right one kept
+        # (13 October: one stray record failed the whole retrieval, the right record with it)
+        self.assertEqual(sources.verify_uniprot_identity('gene:SLC26A4', [wrong, valid]), [valid])
+        kept = sources.Sources(fetch=lambda url: ({'results':[wrong, valid]},{})).query(
+            {'source':'uniprot','query':'gene:SLC26A4 AND reviewed:true AND taxonomy_id:9606'})
+        self.assertNotIn('O95905', json.dumps(kept))
+        self.assertIn('O43511', json.dumps(kept))
 
     def test_literature_only_human_question_is_grounded(self):
         client = sources.Sources(fetch=self.fetch)

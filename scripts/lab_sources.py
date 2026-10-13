@@ -412,7 +412,11 @@ def question_entity_context(inquiry, records, *, literature_only=False):
 
 
 def verify_uniprot_identity(query, records):
-    """An exact gene request is evidence only when the returned record names that gene."""
+    """An exact gene request is evidence only from returned records that name that gene. Returns those records.
+
+    A search returns several records, and one of them naming some other gene used to fail the whole retrieval as a
+    mismatch, the right records with it: 107 of 367 Lab reviews ended on a target mismatch by 13 October. The records
+    that do not name the gene are dropped; the retrieval fails only when none of them does."""
     query = normalize_uniprot_subjects(str(query or ''))
     symbols = []
     for field, value in _TERM.findall(query):
@@ -429,7 +433,8 @@ def verify_uniprot_identity(query, records):
         words = re.findall(r'(?<![\w-])[A-Za-z][A-Za-z0-9-]*(?![\w-])', value.strip('"'))
         symbols.extend(found if len(words) == 1 else [item for item in found if len(item) >= 4])
     symbols = list(dict.fromkeys(symbols))
-    if not symbols: return
+    if not symbols: return list(records)
+    kept = []
     for row in records:
         names = set()
         for gene in row.get('genes') or []:
@@ -437,9 +442,12 @@ def verify_uniprot_identity(query, records):
                 values = gene.get(key) or []
                 if isinstance(values, dict): values = [values]
                 names.update(str(v.get('value', '')).upper() for v in values)
-        if not names.intersection(symbols):
-            raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
-                             + '; returned ' + str(row.get('primaryAccession')))
+        if names.intersection(symbols):
+            kept.append(row)
+    if records and not kept:
+        raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
+                         + '; returned ' + ','.join(str(r.get('primaryAccession')) for r in records[:5]))
+    return kept
 
 
 def validate_uniprot(query):
@@ -992,7 +1000,7 @@ class Sources:
                         break
             if rejected is not None and not relaxed: raise rejected
             records = data['results'][:limit]
-            verify_uniprot_identity(spec.get('query'), records)
+            records = verify_uniprot_identity(spec.get('query'), records)
             if relaxed:
                 records = [dict(row, found_by=relaxed,
                                 partial_match=relaxed == 'partial_any_word',
