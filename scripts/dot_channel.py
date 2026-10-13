@@ -1007,12 +1007,16 @@ def sol_think(system, user):
     key = env_file.value("OPENAI_API_KEY")
     if not key:
         raise RuntimeError("no OpenAI key")
-    d = requests.post("https://api.openai.com/v1/responses", timeout=300,
-                      headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-                      json={"model": sol_model(), "max_output_tokens": 4000, "reasoning": {"effort": "low"},
-                            "input": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                            # the same job's repeats go to the server that holds its start (2026-10-13)
-                            "prompt_cache_key": "vintos-" + __import__("hashlib").md5(str(system)[:2000].encode()).hexdigest()[:16]}).json()
+    _body = {"model": sol_model(), "max_output_tokens": 4000, "reasoning": {"effort": "low"},
+             "input": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+             # the same job's repeats go to the server that holds its start, kept a day (2026-10-13)
+             "prompt_cache_key": "vintos-" + __import__("hashlib").md5(str(system)[:2000].encode()).hexdigest()[:16],
+             "prompt_cache_retention": "24h"}
+    _h = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    d = requests.post("https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
+    if "prompt_cache_retention" in str(d.get("error") or ""):   # a model that refuses the option: ask again without it
+        _body.pop("prompt_cache_retention", None)
+        d = requests.post("https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
     try:
         import astra_call as _ac
         _ac._openai_usage("slack-sol", sol_model(), d)

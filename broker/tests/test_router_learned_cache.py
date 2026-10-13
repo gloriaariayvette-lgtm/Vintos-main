@@ -82,5 +82,32 @@ check("the old per-call marks are gone from the router's Claude paths",
       '"system": _sysblocks(' not in open(os.path.join(REPO, "bin", "model_router.py")).read()
       and "_cachetail(for_anthropic" not in open(os.path.join(REPO, "bin", "model_router.py")).read())
 
+# Sol (OpenAI): named per job, kept a day, never shown the split marker; a refused option is dropped, not fatal
+import io, urllib.request, urllib.error
+SOL = []
+REFUSE = {"on": False}
+class _OResp(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def fake_urlopen(req, timeout=None):
+    b = json.loads(req.data.decode()); SOL.append(b)
+    if REFUSE["on"] and "prompt_cache_retention" in b:
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {},
+                                     io.BytesIO(b'{"error":{"message":"Unsupported parameter: prompt_cache_retention"}}'))
+    return _OResp(json.dumps({"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": "sol says"}]}],
+                              "usage": {"input_tokens": 3000, "output_tokens": 4, "input_tokens_details": {"cached_tokens": 2048}}}).encode())
+urllib.request.urlopen = fake_urlopen
+MR._openai_key = lambda: "test-openai"
+os.makedirs(os.path.join(TMP, ".vintos", "logs"), exist_ok=True)
+t, _ = asyncio.run(MR.sol_draft(HEAD + "[[CACHESPLIT]]\nlive", [{"role": "user", "content": "hi"}]))
+sb = SOL[-1]
+check("Sol answers", t == "sol says", t)
+check("Sol is asked to keep its cache a day, under its job's name", sb.get("prompt_cache_retention") == "24h" and str(sb.get("prompt_cache_key", "")).startswith("vintos-"), sb.keys())
+check("Sol never sees the split marker", "[[CACHESPLIT]]" not in json.dumps(sb))
+REFUSE["on"] = True; SOL.clear()
+t2, _ = asyncio.run(MR.sol_draft(HEAD, [{"role": "user", "content": "again"}]))
+check("a model that refuses the day-long option is asked again without it, and still answers",
+      t2 == "sol says" and len(SOL) == 2 and "prompt_cache_retention" not in SOL[1], (t2, [list(x.keys()) for x in SOL]))
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -144,8 +144,12 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
     k = _openai_key()
     if not k: return None, ""
     chosen = model or SOL_MODEL
+    system_text = str(system_text or "").replace("[[CACHESPLIT]]", "")   # Claude's split hint, not words for Sol
     body = {"model": chosen,
             "input": [{"role": "system", "content": system_text}] + for_responses(convo),
+            # OpenAI keeps a cached start for minutes by default; her messages come hours apart, so it was always
+            # gone. Kept a day instead; a model that refuses the option is asked again without it (2026-10-13).
+            "prompt_cache_retention": "24h",
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"},
             # the same job's repeats go to the server that already holds its start (2026-10-13)
@@ -155,7 +159,18 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
-            return json.loads(_u.urlopen(rq, timeout=180).read())
+            try:
+                return json.loads(_u.urlopen(rq, timeout=180).read())
+            except _u.HTTPError as he0:
+                _why = ""
+                try: _why = he0.read().decode(errors="replace")
+                except Exception: pass
+                if he0.code != 400 or "prompt_cache_retention" not in _why:
+                    raise _u.HTTPError(he0.url, he0.code, he0.msg, he0.hdrs, None)
+                body.pop("prompt_cache_retention", None)
+                rq2 = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
+                return json.loads(_u.urlopen(rq2, timeout=180).read())
         except _u.HTTPError as he:
             # A key the provider rejects costs nothing, but the reservation was already
             # taken. Left standing, a dead key spends the whole day's paid budget on calls
