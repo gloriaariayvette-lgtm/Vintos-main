@@ -36,6 +36,14 @@ Every suite under `broker/tests/` runs on the host that serves her, with her rea
 Assert the isolation in the suite itself — a check that the store is throwaway and
 the sender is a stub — so the next edit cannot quietly undo it.
 
+## Never ask her to send him a message for a test
+
+Gloria does not send him messages to produce test data, and does not want to be asked — she has had to
+say so again and again (2026-10-13). A test of his replies uses the last message she actually sent and
+the reply he actually gave (`bin/avatar_dryrun.py` with no line given: her real message, his real reply,
+the candidate's reply beside it), and saves nothing. If something a test needs is not there yet, it fills
+in on its own from her ordinary use: say that, and never ask her to make it happen.
+
 ## Where things live
 
 - `scripts/`, `bin/` — his organs. `deploy-atelier.sh` installs a named manifest of
