@@ -1817,7 +1817,7 @@ def _next_fitting_deferred_coverage():
         if digest in completed: continue
         inquiry, observations = payload['inquiry'], payload['observations']
         prepared = _coverage_request(inquiry, observations)
-        if _coverage_preflight(inquiry, observations, prepared) is not None: continue
+        if _coverage_deferral(inquiry, observations, prepared) is not None: continue
         resumed = dict(inquiry)
         for key in ('refused','planning_wait','evidence_status','coverage_deferred'):
             resumed.pop(key, None)
@@ -2930,6 +2930,97 @@ def _coverage_preflight(inquiry, observations, prepared):
             'truth_status':'incomplete_context_budget_no_scientific_adjudication'}
 
 
+COVERAGE_SPLIT_MAX_PARTS = 8
+
+
+def _coverage_parts(prepared):
+    """The coverage evidence in parts that each fit the budget, or None when it cannot be split that way.
+
+    Every list item (record, article, receipt row) goes into exactly one part, whole and with its own exact
+    addresses; what is not a list goes into every part. Nothing is dropped or shortened. None when even the shared
+    part, or one item alone, is too large, or it would take more than COVERAGE_SPLIT_MAX_PARTS parts."""
+    if not prepared: return None
+    _evidence, _strings, _addresses, (system, prompt, out) = prepared
+    head, marker, body = prompt.partition('\nEVIDENCE:\n')
+    if not marker: return None
+    try: addressed = json.loads(body)
+    except ValueError: return None
+    if not isinstance(addressed, dict): return None
+    common = {k: v for k, v in addressed.items() if not isinstance(v, list)}
+    units = [(k, item) for k, v in addressed.items() if isinstance(v, list) for item in v]
+    def request(part):
+        return (system, head + '\nEVIDENCE:\n' + json.dumps(part, ensure_ascii=False, separators=(',', ':')), out)
+    def fits(part): return _coverage_budget(request(part))['fits']
+    if len(units) < 2 or not fits(common): return None
+    parts, current = [], {}
+    for key, item in units:
+        trial = {k: list(v) for k, v in current.items()}
+        trial.setdefault(key, []).append(item)
+        if fits(dict(common, **trial)):
+            current = trial; continue
+        if not current: return None                      # one item alone is over the budget
+        parts.append(dict(common, **current)); current = {key: [item]}
+        if not fits(dict(common, **current)): return None
+    if current: parts.append(dict(common, **current))
+    if len(parts) < 2 or len(parts) > COVERAGE_SPLIT_MAX_PARTS: return None
+    return [request(part) for part in parts]
+
+
+def _coverage_deferral(inquiry, observations, prepared):
+    """Defer (and preserve) only what cannot be assessed: evidence over the budget that also cannot be split.
+    Over-budget evidence was always deferred, and deferred work rarely came back: 93 passes and 48 reviews on
+    13 October. Split evidence is assessed part by part (_coverage_split)."""
+    if prepared and _coverage_parts(prepared) is not None:
+        return None
+    return _coverage_preflight(inquiry, observations, prepared)
+
+
+def _coverage_split(inquiry, prepared):
+    """Assess over-budget evidence in parts, then decide on what the parts found.
+
+    Each part goes to the same checker; only supports whose quote is verbatim at its exact address are kept. The
+    verdict (and the independent sufficiency assessment) is then made on those verified excerpts, each with its
+    whole source text, which fits where the full evidence did not. None when the evidence cannot be split."""
+    parts = _coverage_parts(prepared)
+    if parts is None: return None
+    evidence, strings, addresses, (system, prompt, out) = prepared
+    head = prompt.partition('\nEVIDENCE:\n')[0]
+    normalized = lambda x: ' '.join(str(x).split())
+    found, missing, failed = {}, [], 0
+    for request in parts:
+        try:
+            result = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
+        except Exception:
+            failed += 1; continue
+        for item in result.get('supports') or []:
+            if not isinstance(item, dict): continue
+            address, quote = item.get('address'), item.get('quote')
+            if (isinstance(address, str) and address in addresses and isinstance(quote, str) and quote.strip()
+                    and item.get('requirement') and normalized(quote) in normalized(strings[addresses[address]])):
+                found.setdefault(address, item)
+        missing += [str(m) for m in (result.get('missing') or []) if str(m).strip()]
+    sha = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
+    if failed == len(parts): return None
+    if not found:
+        return {'answered': False, 'missing': list(dict.fromkeys(missing))[:12] or
+                ['no part of the retrieved evidence supports the original question'],
+                'original_question': inquiry['question'], 'supports': [], 'discarded_supports': [],
+                'evidence_sha256': sha, 'independent_sufficiency': None, 'split_parts': len(parts),
+                'split_failed_parts': failed, 'method': 'split_coverage_no_verified_support'}
+    for cap in (4000, 1500, 600):
+        condensed = {'verified_excerpts': [{'address': a, 'text': strings[addresses[a]][:cap]} for a in found]}
+        final = (system, head + '\nEVIDENCE:\n' + json.dumps(condensed, ensure_ascii=False, separators=(',', ':')), out)
+        if (_coverage_budget(final)['fits'] and
+                _coverage_budget(_coverage_sufficiency_request(inquiry, condensed))['fits']):
+            break
+    else:
+        return None
+    result = _coverage_check(inquiry, None, prepared=(evidence, strings, addresses, final), _condensed=condensed)
+    if isinstance(result, dict):
+        result = dict(result, split_parts=len(parts), split_failed_parts=failed)
+    return result
+
+
 def _coverage_scope(inquiry):
     from lab_sources import original_identity_queries
     return {'original_question':inquiry['question'],
@@ -3048,13 +3139,18 @@ def _coverage_request(inquiry, observations):
     return evidence, strings, addresses, coverage_request
 
 
-def _coverage_check(inquiry, observations, prepared=None):
+def _coverage_check(inquiry, observations, prepared=None, _condensed=None):
     if not str(inquiry.get('question') or '').strip(): return None
     prepared = prepared or _coverage_request(inquiry, observations)
     if not prepared: return None
     evidence, strings, addresses, coverage_request = prepared
-    deferred = _coverage_preflight(inquiry, observations, prepared)
-    if deferred: return deferred
+    if _condensed is None:
+        if not all(_coverage_budget(r)['fits'] for r in
+                   (coverage_request, _coverage_sufficiency_request(inquiry, evidence))):
+            split = _coverage_split(inquiry, prepared)
+            if split is not None: return split
+        deferred = _coverage_preflight(inquiry, observations, prepared)
+        if deferred: return deferred
     raw = _ask(coverage_request[0], coverage_request[1], max_tokens=coverage_request[2], temperature=0.0)
     result = _json_object(raw)
     supports = result.get('supports')
@@ -3107,7 +3203,7 @@ def _coverage_check(inquiry, observations, prepared=None):
     if result['answered']:
         # Blind second assessment: it receives neither the first verdict nor its
         # self-selected requirements. Agreement is model assessment, not proof.
-        request = _coverage_sufficiency_request(inquiry, evidence)
+        request = _coverage_sufficiency_request(inquiry, evidence if _condensed is None else _condensed)
         try: sufficiency = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
         except Exception:
             return incomplete('independent sufficiency assessment unavailable or malformed')
@@ -3192,7 +3288,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                     'next_question':'Read the returned PubMed article before assessing the original question.',
                     'entity_context_check':entity, 'evidence_status':'insufficient'}
     prepared = _coverage_request(inquiry, records)
-    deferred = _coverage_preflight(inquiry, records, prepared)
+    deferred = _coverage_deferral(inquiry, records, prepared)
     if deferred: return dict(deferred, entity_context_check=entity)
     line = None
     try:   # the line this test belongs to, and how he may end it
