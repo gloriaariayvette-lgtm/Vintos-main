@@ -159,6 +159,14 @@ def set_state(toy, intensity=None, pattern=None, set_by="auto"):
         if intensity is not None: cur["intensity"] = int(intensity)
         if pattern is not None: cur["pattern"] = pattern
         cur["set_by"] = set_by; cur["ts"] = time.time()
+        # What he last actually ran, kept after the pattern ends: a short pattern is
+        # back to "still" before the ledger writes, and the mark used to vanish with it.
+        if pattern and pattern != "still":
+            _l = cur.get("last") or {}
+            _lv = int(cur.get("intensity") or 0)
+            if _l.get("pattern") == pattern and _l.get("by") == set_by and cur["ts"] - (_l.get("ts") or 0) < 30:
+                _lv = max(_lv, int(_l.get("intensity") or 0))   # a running pattern keeps its peak
+            cur["last"] = {"pattern": pattern, "intensity": _lv, "by": set_by, "ts": cur["ts"]}
         st[toy] = cur
         try:
             _tmp = STATE + ".tmp"; json.dump(st, open(_tmp, "w")); os.replace(_tmp, STATE)

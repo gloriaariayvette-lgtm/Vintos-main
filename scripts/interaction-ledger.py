@@ -40,21 +40,25 @@ def _device_marks():
     except Exception:
         return ""
     lines = []
-    for toy in ("tenera", "ridge"):   # mission has its own depiction — untouched
+    for toy in ("tenera", "ridge", "ferri"):   # mission has its own depiction — untouched
         d = st.get(toy) or {}
-        if d.get("set_by") != "him":
+        # the last thing he ran, even if it has already finished; the live fields only
+        # when the record predates "last"
+        l = d.get("last") or {"pattern": d.get("pattern"), "intensity": d.get("intensity"),
+                              "by": d.get("set_by"), "ts": d.get("ts")}
+        if l.get("by") != "him":
             continue
-        if _dm_t.time() - (d.get("ts") or 0) > 180:
+        if _dm_t.time() - (l.get("ts") or 0) > 180:
             continue
-        pat = str(d.get("pattern") or "")
-        lvl = int(d.get("intensity") or 0)
+        pat = str(l.get("pattern") or "")
+        lvl = int(l.get("intensity") or 0)
         if not pat or pat == "still":
             continue
         sp = _dc.spark(pat)
         if toy == "ridge":
             lines.append(f"ridge:  {_dc.ridge_shape()}\n        {_dc.ridge_track(lvl)}   {pat}  {sp}")
         else:
-            lines.append(f"tenera: {pat}  {sp}  @{lvl}")
+            lines.append(f"{toy + ':':<7} {pat}  {sp}  @{lvl}")
     return ("\n\n" + "\n".join(lines)) if lines else ""
 
 
