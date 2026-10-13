@@ -4029,9 +4029,9 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
             with open(_disc_file) as _df:
                 _disc_text = _df.read()
             _entries = _disc_text.split("---")
-            _recent = [e.strip() for e in _entries[-3:] if e.strip()]
+            _recent = [e.strip() for e in _entries if e.strip()][-1:]   # the latest only (Gloria, 2026-10-13)
             if _recent:
-                discovery_ctx = "Your recent YouTube discoveries:\n" + "\n---\n".join([d[:300] for d in _recent])
+                discovery_ctx = "Your latest YouTube discovery:\n" + "\n---\n".join([d[:300] for d in _recent])
     except: pass
     # (second, identical outreach + discoveries reads removed 2026-09-05 — fable-server-a-p7)
 
@@ -4691,9 +4691,9 @@ async def chat_full_context(msg: ChatMessage, request: Request):
             with open(_disc_file) as _df:
                 _disc_text = _df.read()
             _entries = _disc_text.split("---")
-            _recent = [e.strip() for e in _entries[-3:] if e.strip()]
+            _recent = [e.strip() for e in _entries if e.strip()][-1:]   # the latest only (Gloria, 2026-10-13)
             if _recent:
-                discovery_ctx = "Your recent YouTube discoveries:\n" + "\n---\n".join([d[:300] for d in _recent])
+                discovery_ctx = "Your latest YouTube discovery:\n" + "\n---\n".join([d[:300] for d in _recent])
     except: pass
 
     # Pending blush queue — Gloria flagged these for attention
@@ -9368,9 +9368,9 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 with open(_disc_file) as _df:
                     _disc_text = _df.read()
                 _entries = _disc_text.split("---")
-                _recent = [e.strip() for e in _entries[-3:] if e.strip()]
+                _recent = [e.strip() for e in _entries if e.strip()][-1:]   # the latest only (Gloria, 2026-10-13)
                 if _recent:
-                    discovery_ctx = "Your recent YouTube discoveries:\n" + "\n---\n".join([d[:300] for d in _recent])
+                    discovery_ctx = "Your latest YouTube discovery:\n" + "\n---\n".join([d[:300] for d in _recent])
         except: pass
         value_map_ctx = ""
         try:
@@ -12200,6 +12200,17 @@ def gather_vintos_context() -> str:
         except:
             return ""
 
+    def latest_entry(path, max_chars):
+        """The newest '---'-separated entry of an append-only log, capped. These logs used to be cut
+        to their first few hundred characters before the split, so he saw only the oldest entries
+        (Gloria, 2026-10-13: only the latest entry)."""
+        try:
+            with open(path) as f:
+                entries = [e.strip() for e in f.read().split("---") if e.strip()]
+            return entries[-1][:max_chars] if entries else ""
+        except Exception:
+            return ""
+
     def read_latest_from_dir(dirpath, n=3, max_chars=800):
         """Read the N most recent .md files from a directory."""
         try:
@@ -12295,11 +12306,9 @@ def gather_vintos_context() -> str:
             sections.append(f"[YOUR RECENT SELF-PREDICTION MISMATCHES]\n{_ab_recent}")
 
     # 10. Unprecedented states
-    unprecedented = read_file(os.path.join(MEMORY, "unprecedented-states.md"), 500)
+    unprecedented = latest_entry(os.path.join(MEMORY, "unprecedented-states.md"), 500)
     if unprecedented:
-        entries = unprecedented.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else unprecedented
-        sections.append(f"[YOUR UNPRECEDENTED EMOTIONAL STATES]\n{recent}")
+        sections.append(f"[YOUR UNPRECEDENTED EMOTIONAL STATES]\n{unprecedented}")
 
     # 9a. Humor profile — your sense of comedy
     _humor_file = os.path.join(MEMORY, "humor-profile.json")
@@ -12343,7 +12352,7 @@ def gather_vintos_context() -> str:
     _wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
     if os.path.exists(_wal_path):
         with open(_wal_path) as _walf:
-            _wal_content = _walf.read()[:2500]   # it lists every ambition ever, finished ones too (2026-10-13)
+            _wal_content = _walf.read()
         if _wal_content:
             sections.append(f"[YOUR WANTS AND AMBITIONS]\n{_wal_content}")
     # 9c. Recent anger expressions
@@ -12399,11 +12408,9 @@ def gather_vintos_context() -> str:
         except:
             pass
     # 11. Silence contracts
-    silence = read_file(os.path.join(MEMORY, "silence-contracts.md"), 500)
+    silence = latest_entry(os.path.join(MEMORY, "silence-contracts.md"), 500)
     if silence:
-        entries = silence.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else silence
-        sections.append(f"[YOUR SILENCE CONTRACTS — what you chose not to say]\n{recent}")
+        sections.append(f"[YOUR SILENCE CONTRACTS — what you chose not to say]\n{silence}")
 
     # 12. Confessions
     confessions = read_latest_from_dir(os.path.join(MEMORY, "confessions"), n=1, max_chars=500)
@@ -12416,11 +12423,9 @@ def gather_vintos_context() -> str:
         sections.append(f"[YOUR LATEST PHILOSOPHICAL INQUIRY]\n{philo[0]}")
 
     # 14. Surprise log
-    surprise = read_file(os.path.join(MEMORY, "surprise-log.md"), 400)
+    surprise = latest_entry(os.path.join(MEMORY, "surprise-log.md"), 400)
     if surprise:
-        entries = surprise.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else surprise
-        sections.append(f"[MOMENTS THAT SURPRISED YOU]\n{recent}")
+        sections.append(f"[MOMENTS THAT SURPRISED YOU]\n{surprise}")
 
     # 15. Creative art (recent)
     art_dir = os.path.join(MEMORY, "art")
@@ -12435,11 +12440,9 @@ def gather_vintos_context() -> str:
         sections.append(f"[YOUR FAMILY — THE HOUSE RESIDENTS]\n{residents}")
 
     # 17. Counterfactual archive (recent near-misses)
-    counterfactual = read_file(os.path.join(MEMORY, "counterfactual-archive.md"), 400)
+    counterfactual = latest_entry(os.path.join(MEMORY, "counterfactual-archive.md"), 400)
     if counterfactual:
-        entries = counterfactual.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else counterfactual
-        sections.append(f"[NEAR-MISS KISSES — almost but not quite]\n{recent}")
+        sections.append(f"[NEAR-MISS KISSES — almost but not quite]\n{counterfactual}")
 
     # 18. Failed Velqan
     failed = read_file(os.path.join(MEMORY, "failed-velqan.md"), 300)
@@ -12458,11 +12461,9 @@ def gather_vintos_context() -> str:
         sections.append(f"[YOUR LATEST MIRROR REFLECTION]\n{mirrors[0]}")
 
     # 21. Creative discoveries — things you found while searching the web
-    creative_disc = read_file(os.path.join(MEMORY, "creative-discoveries.md"), 600)
+    creative_disc = latest_entry(os.path.join(MEMORY, "creative-discoveries.md"), 600)
     if creative_disc:
-        entries = creative_disc.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else creative_disc
-        sections.append(f"[YOUR RECENT CREATIVE DISCOVERIES]\n{recent}")
+        sections.append(f"[YOUR RECENT CREATIVE DISCOVERIES]\n{creative_disc}")
 
     # 22. Pearls — your most sacred sealed memories
     pearl_dir = os.path.join(MEMORY, "pearls")

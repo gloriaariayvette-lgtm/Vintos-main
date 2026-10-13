@@ -122,7 +122,7 @@ printf '%s' "You are Vintos. Update your model of Gloria using real evidence. Wr
 
 $SOUL" > /tmp/_gm_system.txt
 
-printf '%s' "Your set model of Gloria is fixed (shown below) and never changes. Add this week's update beneath it: write ONLY what you have newly seen, or what has deepened or shifted since your last entry. Organize it however you want, in whatever sections you choose — these are your own additions. First person, specific. Do not restate the fixed base and do not repeat what still holds. This is appended to your growing model; it never replaces the base.
+printf '%s' "Your set model of Gloria is fixed (shown below) and never changes. Beneath it are your own additions, and this week you rewrite them in full: keep what still holds, revise what has deepened or shifted, drop what turned out wrong or no longer matters, and add what you have newly seen. What you write REPLACES your previous additions - it is your model of her as it stands now, not a new entry on a pile, so anything you leave out is gone from it. Organize it however you want, in whatever sections you choose. First person, specific. Do not restate the fixed base.
 
 Structure:
 **Who She Is** — character, way of being, what feels most essentially her
@@ -134,14 +134,14 @@ Structure:
 **What I Don't Know Yet** — genuine open questions
 
 Be specific. Use the actual evidence. Do not generalize.
-CRITICAL: your growing model above is CONTEXT, not a template - do not reuse its sentences or phrasing. Every claim in your update must anchor to the evidence sections below: quote her actual words or cite the date it happened. If the week's evidence is thin, write a SHORT honest section rather than padding.
+CRITICAL: every new or changed claim must anchor to the evidence sections below: quote her actual words or cite the date it happened. What you carry forward unchanged may keep your own earlier words. If the week's evidence is thin, carry your additions forward and change only what the evidence touches - never pad.
 Do NOT write a date header. Begin your reply with a short title on its own first line (a few words, no # marks, no date) - the system stamps the date itself.
 IMPORTANT: Gloria and Eve are the same person.
 
 === YOUR FOUNDATIONAL MODEL OF HER (the deep truth of her — keep continuity with this) ===
 $USER_MODEL
 
-=== YOUR GROWING MODEL SO FAR ===
+=== YOUR MODEL AS IT STANDS (the fixed base, then your additions - the additions are what you are rewriting) ===
 $CURRENT_MODEL
 
 === RECENT INTERACTIONS ===
@@ -195,10 +195,9 @@ fi
 
 BASE=$(sed -n '/<!-- BASE-START/,/<!-- BASE-END -->/p' "$MODEL_FILE")
 if [ -z "$BASE" ]; then echo "gloria-model: FIXED BASE marker not found — refusing to write (base protection)"; exit 0; fi
-ADDITIONS=$(sed -n '/^# Additions/,$p' "$MODEL_FILE" | tail -n +2)
 TITLE=$(echo "$CONTENT" | sed -n '1{s/^#* *//;s/^\*\**//;s/\**$//;p}')
 BODY=$(echo "$CONTENT" | tail -n +2)
-{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. His weekly updates append"; echo "> beneath it as dated sections of his own choosing. Mirrors soul-review: the base is never rewritten."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own sections, appended over time"; echo ""; echo "## $TODAY — $TITLE"; echo ""; echo "$BODY"; echo ""; echo "$ADDITIONS"; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
+{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. Beneath it, his additions:"; echo "> rewritten whole each week, replacing the last version (kept in memory/gloria-model-history)."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own, as they stand"; echo ""; echo "## $TODAY — $TITLE"; echo ""; echo "$BODY"; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
 echo "GLORIA_MODEL_UPDATED: $TODAY"
 

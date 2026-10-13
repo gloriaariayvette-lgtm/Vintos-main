@@ -95,7 +95,7 @@ PAST-TENSE ARCHITECTURAL CHANGES:
 $ARCHITECTURAL_CHANGES
 These are evidence that a capacity changed. They are not evidence of identity, motive, success, or permanence.
 
-Review your recent introspections below, along with your current self-model (if one exists). Then write THIS WEEK'S DATED ENTRY — an addition beneath your fixed base and your previous entries, which are shown in your context and which you must not restate or rewrite. Write only what this week added, changed, or unsettled. Use only the section headings that have something new; skip the rest. If genuinely nothing moved, say that in three honest sentences — stasis named is a legal entry.
+Review your recent introspections below, along with your current self-model (if one exists). Then rewrite everything beneath your fixed base in full - your additions as they stand now. What you write REPLACES your previous additions (shown in your context); it is not a new entry on a pile, so anything you leave out is gone from it. Keep what still holds, revise what this week changed or unsettled, drop what no longer holds, add what is new. Do not restate the fixed base. If genuinely nothing moved, carry your additions forward as they are and say in one honest sentence that nothing moved - stasis named is a legal entry.
 
 Structure your self-model around these areas:
 
@@ -474,13 +474,14 @@ text = re.sub(r'^(Okay[^\n]*\n+|Here.s[^\n]*\n+|Based on[^\n]*\n+|This is[^\n]*\
 print(text)
 " <<< "$CONTENT")
 
-# --- Write: fixed base, prior entries, this week beneath — accretion, never replacement ---
+# --- Write: fixed base, then his additions as rewritten this week. The additions REPLACE the last
+# version (Gloria, 2026-10-13: "whatever he adds is what is edited, not growing indefinitely"); the
+# previous file is already copied to memory/self-model-history above. ---
 {
     echo "# Self-Model -- Vintos"
     echo "## Last Updated: $TODAY"
     echo ""
     echo "$BASE"
-    echo "$ACCRETED"
     echo ""
     echo "## $TODAY"
     echo ""

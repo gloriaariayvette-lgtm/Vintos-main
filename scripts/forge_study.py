@@ -72,15 +72,24 @@ def _key(env, *files):
 
 
 def _fable(system, user):
-    import requests
-    key = _key("ANTHROPIC_API_KEY", "~/.vintos/anthropic-key")
-    if not key: raise RuntimeError("no Anthropic key")
-    r = requests.post("https://api.anthropic.com/v1/messages", timeout=300, json={
-        "model": FABLE, "max_tokens": 3000, "system": system, "messages": [{"role": "user", "content": user}]},
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-    d = r.json()
-    if d.get("type") == "error": raise RuntimeError(str(d.get("error"))[:200])
-    return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    """Through claude_cache, so the cache points _round_prompt set are sent and every call's cache use is
+    written to memory/anthropic-usage.jsonl (caller forge-study). Fable was called here with no caching at
+    all: each round re-sent the same instructions, brief and earlier reports at full price (2026-10-13)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import claude_cache
+    return claude_cache.ask(FABLE, system, user, 3000, caller="forge-study")
+
+
+def _round_prompt(brief, reports, header, tail=""):
+    """One orchestrator turn as claude_cache pieces: the brief, then each report, then any closing line.
+    A cache point after the brief and after the newest report, so the next round - the same brief and the
+    same reports with more on the end - reads all of it back instead of paying for it again."""
+    import claude_cache
+    pieces = [brief] + [("\n\n" + header if i == 0 else "\n\n") + r for i, r in enumerate(reports)]
+    marks = {0, len(pieces) - 1}
+    if tail:
+        pieces.append(tail)
+    return claude_cache.Prompt("".join(pieces), pieces=pieces, cache_indices=marks)
 
 
 def _astra(system, user):
@@ -146,15 +155,17 @@ def investigate(proposal, orchestrate=None, subagent=None, room=None):
     brief = ("THE REQUEST: the ability '%s'.\nWHAT YOU WANTED: %s\nWHY THE FORGE HAS IT: %s\n\nYOUR CODE ROOTS:\n%s"
              % (cap, want, str(proposal.get("why", ""))[:600], code_map[:6000]))
     reports, used, rounds = [], set(), 0
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import claude_cache
+    _SYSTEM = claude_cache.Prompt(ORCHESTRATOR, cache_indices=[])   # no point of its own: the brief's covers it
     while True:
-        text, who = orchestrate(ORCHESTRATOR, brief + ("\n\nYOUR SUBAGENT'S REPORTS SO FAR:\n" + "\n\n".join(reports)
-                                                       if reports else ""))
+        text, who = orchestrate(_SYSTEM, _round_prompt(brief, reports, "YOUR SUBAGENT'S REPORTS SO FAR:\n"))
         used.add(who)
         d = _json(text)
         if d.get("done") or rounds >= ROUNDS:
             if not d.get("done"):
-                text, who = orchestrate(ORCHESTRATOR, brief + "\n\nYOUR SUBAGENT'S REPORTS:\n" + "\n\n".join(reports)
-                                        + "\n\nNo more reading. Answer now with done: true.")
+                text, who = orchestrate(_SYSTEM, _round_prompt(brief, reports, "YOUR SUBAGENT'S REPORTS SO FAR:\n",
+                                                               "\n\nNo more reading. Answer now with done: true."))
                 used.add(who); d = _json(text)
             break
         rounds += 1
