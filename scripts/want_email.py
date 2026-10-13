@@ -1180,6 +1180,11 @@ def reply_letters(think=None, send=None, now=None, promise_think=None):
             continue
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
+        try:   # what he writes FOR GLORIA in a letter reaches her phone, not only the agent he wrote it to
+            import gloria_asks
+            gloria_asks.notes_from(body, by="vintos", where="letter to %s" % agent)
+        except Exception:
+            pass
         try:
             send(mail(address, subject[:160], body, reply_message_id=r["id"]), ("His reply to %s's letter" % agent)[:900])
         except Exception as exc:

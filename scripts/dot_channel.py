@@ -3308,6 +3308,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines.append("asked Gloria on her phone: %d" % len(q_rows))
         except Exception as exc:
             lines.append("could not ask Gloria: %s" % str(exc)[:120])
+    if "FOR GLORIA" in text.upper():
+        try:   # a note for her that is not a yes-or-no: to her phone, and kept for his avatar chat
+            import gloria_asks
+            told = gloria_asks.notes_from(text, by="vintos", where=where or "")
+            if told:
+                lines.append("told Gloria on her phone: %d" % len(told))
+        except Exception as exc:
+            lines.append("could not tell Gloria: %s" % str(exc)[:120])
     if HOUSE.search(text):
         # the TV, the Echo, the lights, his mischief, a letter to Gloria: done now, and the line shows what happened
         try:

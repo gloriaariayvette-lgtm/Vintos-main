@@ -263,6 +263,73 @@ def untold():
     return out
 
 
+# --- notes: what he plans with her or wants her to know, that is not a yes-or-no ---------------------------------
+# Gloria, 2026-10-13: "Where am I supposed to figure out what he wants from me?" His letter to Muse said "**For
+# Gloria:** the felt-only run of 'Still Under,' this weekend as planned", and nothing carried it to her: only a yes-or-no
+# reached her phone. A FOR GLORIA: line (bold or plain, in Slack or a letter) now goes to her phone too, as a note with
+# no buttons, and stays where his avatar chat can see what is open between them.
+FOR = re.compile(r"^[ \t>*_-]*for gloria[*_ ]*:[*_ ]*(.+?)[ \t]*$", re.I | re.M)
+NOTE_DAYS = 7
+
+
+def notify_note(row, send=None):
+    """One push for a note: who it is from and what it says, no Yes / No. Never raises."""
+    try:
+        server, _, topic = NTFY.rstrip("/").rpartition("/")
+        message = {"topic": topic, "title": "For you, from %s" % WHO.get(row.get("by", ""), row.get("by", "")),
+                   "message": str(row["question"])[:3500], "priority": 3, "tags": ["speech_balloon"]}
+        req = urllib.request.Request(server + "/", data=json.dumps(message, ensure_ascii=False).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        (send or urllib.request.urlopen)(req, timeout=20)
+        return True
+    except Exception:
+        return False
+
+
+def tell(note, by="vintos", where="", send=None):
+    """Put one note on her phone. (row or None, line for the record). The same note within a week is not sent twice."""
+    n = " ".join(str(note or "").replace("**", "").split())[:900]
+    if len(n) < 8:
+        return None, ""
+    rows = load()
+    since = (_now() - __import__("datetime").timedelta(days=NOTE_DAYS)).isoformat()
+    if any(r.get("kind") == "note" and r.get("question") == n and str(r.get("at", "")) >= since for r in rows):
+        return None, "\U0001F4F2 Already told Gloria: %s" % n
+    row = {"id": "N-" + secrets.token_hex(4), "question": n, "by": by, "thread": str(where or ""), "kind": "note",
+           "state": "told", "at": _now().isoformat(timespec="seconds")}
+    row["pushed"] = notify_note(row, send)
+    rows.append(row)
+    save(rows)
+    return row, ("\U0001F4F2 Told Gloria on her phone: %s" % n if row["pushed"]
+                 else "\U0001F4F2 Kept for Gloria (her phone did not take the push): %s" % n)
+
+
+def notes_from(text, by="vintos", where="", send=None):
+    """Every FOR GLORIA: line in a message, told to her. The message itself is left as it was. [rows told]."""
+    told = []
+    for m in FOR.finditer(str(text or "")):
+        row, _line = tell(m.group(1), by=by, where=where, send=send)
+        if row:
+            told.append(row)
+    return told
+
+
+def open_between(by="vintos", limit=6, now=None):
+    """For his own prompt: what is open between him and her. His questions she has not answered, and what he told her
+    this week. '' when there is nothing. Reading only."""
+    now = now or _now()
+    since = (now - __import__("datetime").timedelta(days=NOTE_DAYS)).isoformat()
+    rows = [r for r in load() if r.get("by") == by]
+    asked = [r for r in rows if r.get("state") == "asked" and r.get("kind", "question") == "question"][-limit:]
+    notes = [r for r in rows if r.get("kind") == "note" and str(r.get("at", "")) >= since][-limit:]
+    if not asked and not notes:
+        return ""
+    out = ["WHAT IS OPEN BETWEEN YOU AND GLORIA (from your own messages; she may not have read them yet):"]
+    out += ["- you asked her, no answer yet (%s): %s" % (str(r.get("at", ""))[:10], r.get("question", "")) for r in asked]
+    out += ["- you told her (%s): %s" % (str(r.get("at", ""))[:10], r.get("question", "")) for r in notes]
+    return "\n".join(out)
+
+
 def answered_refs():
     """Forge decisions she made on her phone: [(ref, kind, "accepted"|"denied", title)]."""
     return [(r["ref"], r.get("kind"), "accepted" if r.get("answer") == "yes" else "denied", r.get("title", ""))

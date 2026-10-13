@@ -9572,6 +9572,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         _gloria_model_block = "Your model of Gloria: " + gloria_model[:1200] if gloria_model else ""
         _durable_her = _durable_about_her(3)
         _durable_her_block = "What you carry of her, durably:\n" + _durable_her if _durable_her else ""
+        try:   # what he asked her and told her elsewhere (Slack, his letters), so this chat knows it too
+            import sys as _ob_s; _ob_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+            import gloria_asks as _ob_ga
+            _open_between = _ob_ga.open_between()
+            if _open_between:
+                _durable_her_block = (_durable_her_block + "\n\n" + _open_between).strip()
+        except Exception as _obx:
+            print("[avatar] open-between skipped:", _obx, flush=True)
         system_prompt = f"""{identity}
 
 {_surface_presence}
