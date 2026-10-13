@@ -6499,17 +6499,18 @@ async def voice_chat(request: Request):
         capabilities = ""
         try:
             with open(os.path.join(MEMORY, "CAPABILITIES.md")) as f:
-                capabilities = f.read()
+                capabilities = f.read()[:6000]   # the avatar's cap
         except: pass
+        # Voice read SELF-MODEL.md and GLORIA-MODEL.md whole; both gain a section every week and
+        # nothing trims them, so the voice prompt grew forever. The avatar's excerpts (2026-10-13).
         self_model = ""
         try:
-            with open(os.path.join(WORKSPACE, "SELF-MODEL.md")) as f:
-                self_model = f.read()
+            self_model = _self_model(1200)
         except: pass
         gloria_model = ""
         try:
             with open(os.path.join(WORKSPACE, "GLORIA-MODEL.md")) as f:
-                gloria_model = f.read()
+                gloria_model = f.read()[:1200]
         except: pass
         value_map = ""
         try:
@@ -9374,7 +9375,8 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         value_map_ctx = ""
         try:
             with open(os.path.join(MEMORY, "value-map.md")) as f:
-                value_map_ctx = f.read()
+                # the newest entry only, capped: the live map holds every entry made today (2026-10-13)
+                value_map_ctx = __import__('re').split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + f.read())[-1].strip()[:1500]
         except: pass
         ledger_ctx = ""
         try:
@@ -12341,7 +12343,7 @@ def gather_vintos_context() -> str:
     _wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
     if os.path.exists(_wal_path):
         with open(_wal_path) as _walf:
-            _wal_content = _walf.read()
+            _wal_content = _walf.read()[:2500]   # it lists every ambition ever, finished ones too (2026-10-13)
         if _wal_content:
             sections.append(f"[YOUR WANTS AND AMBITIONS]\n{_wal_content}")
     # 9c. Recent anger expressions
