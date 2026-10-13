@@ -58,7 +58,7 @@ class ReviewTests(unittest.TestCase):
         invalid=cover();invalid['supports'][0]['quote']='absent'
         with patch.object(C,'_ask',return_value=json.dumps(invalid)) as calls:
             self.assertEqual(C._coverage_check(q,{'records':[protein()]})['assessment_status'],'incomplete')
-        self.assertEqual(calls.call_count,1)
+        self.assertEqual(calls.call_count,2)   # rejected, asked once more with the reason, rejected again
 
     def test_both_question_and_query_constraints(self):
         for question,query in [('human CLCN4 (P31641)','gene:CLCN4'),('human CLCN3 (P35523)','gene:CLCN3'),

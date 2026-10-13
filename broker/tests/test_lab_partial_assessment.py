@@ -36,7 +36,7 @@ class PartialAssessment(unittest.TestCase):
 
  def test_exact_failed_pair_keeps_two_quotes_not_atlas_followup(self):
   result,model=self.reflect(historical_prepared())
-  self.assertEqual(model.call_count,2);self.assertEqual(result['assessment_status'],'incomplete')
+  self.assertEqual(model.call_count,3);self.assertEqual(result['assessment_status'],'incomplete')  # reader, checker, one retry
   self.assertEqual(result['evidence_status'],'partial');self.assertEqual(len(result['validated_source_excerpts']),2)
   self.assertEqual(len(result['coverage_check']['discarded_supports']),4)
   self.assertIn('source-address validation failed',result['validation_failure'])
@@ -55,7 +55,7 @@ class PartialAssessment(unittest.TestCase):
 
  def test_old_response_not_repaired_against_new_presentation(self):
   result,model=self.reflect()
-  self.assertEqual(model.call_count,2);self.assertEqual(result['factual_observation'],'')
+  self.assertEqual(model.call_count,3);self.assertEqual(result['factual_observation'],'')  # reader, checker, one retry
   self.assertEqual(len(result['coverage_check']['discarded_supports']),6)
 
  def test_readable_ids_and_metadata_preserve_every_original_field(self):
@@ -78,7 +78,7 @@ class PartialAssessment(unittest.TestCase):
   address=next(k for k,v in p[2].items() if v.endswith('.0.abstract'))
   response={'answered':True,'missing':[],'supports':[{'requirement':'test','address':address,'quote':'Second text.'}]}
   with patch.object(C,'_ask',return_value=json.dumps(response)) as model:result=C._coverage_check({'question':'original'},obs)
-  self.assertEqual(model.call_count,1);self.assertEqual(result['supports'],[])
+  self.assertEqual(model.call_count,2);self.assertEqual(result['supports'],[])  # one retry with the reason
 
  def test_scientific_summary_and_named_fields_outside_pubmed_remain_quotable(self):
   obs={'records':[{'accession':'P12345','summary':{'source':'measured by spectroscopy','year':'observed in 2024','title':'Measured conformation'},'function':'Bounded scientific finding'}],
@@ -143,7 +143,7 @@ class PartialAssessment(unittest.TestCase):
   obs={'LITERATURE':[{'pmid':'1','abstract':'Exact source text.'}]};inquiry={'question':'Original question'}
   response={'answered':True,'missing':[],'supports':[{'requirement':'original','address':'PMID:1/abstract','quote':'Exact source text.'}]}
   with patch.object(C,'_ask',side_effect=[json.dumps(response),'{}']) as model:result=C._coverage_check(inquiry,obs)
-  self.assertEqual(model.call_count,2);self.assertFalse(result['answered'])
+  self.assertEqual(model.call_count,3);self.assertFalse(result['answered'])  # the malformed sufficiency is asked again once
   self.assertEqual(result['assessment_status'],'incomplete');self.assertEqual(len(result['supports']),1)
 
 if __name__=='__main__':unittest.main()

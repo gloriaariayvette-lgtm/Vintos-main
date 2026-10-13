@@ -3151,7 +3151,34 @@ def _coverage_check(inquiry, observations, prepared=None, _condensed=None):
             if split is not None: return split
         deferred = _coverage_preflight(inquiry, observations, prepared)
         if deferred: return deferred
-    raw = _ask(coverage_request[0], coverage_request[1], max_tokens=coverage_request[2], temperature=0.0)
+    first = _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _condensed, '')
+    if first.get('assessment_status') != 'incomplete' or first.get('model_unavailable'):
+        return first   # a model that did not answer is not asked again (its own rule); only a rejected answer is
+    # One more answer, told exactly why the first was rejected (13 October: 53 reviews ended on a rejected checker
+    # answer, most for a quote or address off by a little). The new answer is judged by the same rules; nothing in
+    # the first one is repaired or carried over.
+    try:
+        second = _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _condensed,
+                                   _coverage_retry_note(first))
+    except Exception:
+        return first
+    return dict(second, first_attempt_failure=first.get('validation_failure'))
+
+
+def _coverage_retry_note(first):
+    lines = ['', '', 'YOUR PREVIOUS ANSWER WAS REJECTED: ' + str(first.get('validation_failure') or 'invalid answer') + '.']
+    for item in (first.get('discarded_supports') or [])[:4]:
+        support = item.get('support') if isinstance(item.get('support'), dict) else item
+        lines.append('- %s: %s' % (str((support or {}).get('address') or item.get('path') or '?')[:80],
+                                   str(item.get('reason') or '')[:80]))
+    lines.append('Answer again from the same evidence, as JSON only. Copy each address exactly as it is emitted and '
+                 'quote only words that appear verbatim in that address\'s own text. A requirement you cannot support '
+                 'goes in missing, with answered false.')
+    return '\n'.join(lines)
+
+
+def _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _condensed, note):
+    raw = _ask(coverage_request[0], coverage_request[1] + note, max_tokens=coverage_request[2], temperature=0.0)
     result = _json_object(raw)
     supports = result.get('supports')
     verified=[]; discarded=[]
@@ -3206,7 +3233,7 @@ def _coverage_check(inquiry, observations, prepared=None, _condensed=None):
         request = _coverage_sufficiency_request(inquiry, evidence if _condensed is None else _condensed)
         try: sufficiency = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
         except Exception:
-            return incomplete('independent sufficiency assessment unavailable or malformed')
+            return dict(incomplete('independent sufficiency assessment unavailable or malformed'), model_unavailable=True)
         if (type(sufficiency.get('sufficient')) is not bool or not isinstance(sufficiency.get('missing'),list)
                 or not isinstance(sufficiency.get('rationale'),str) or not sufficiency['rationale'].strip()): return incomplete('independent sufficiency response invalid')
         if sufficiency['sufficient'] and sufficiency['missing']: return incomplete('independent sufficiency verdict conflicts with missing list')

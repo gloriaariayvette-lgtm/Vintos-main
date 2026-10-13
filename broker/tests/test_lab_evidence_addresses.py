@@ -46,20 +46,23 @@ class Addresses(unittest.TestCase):
   self.assertEqual(calls,self.run_check()[1])
  def test_unknown_address_rejected_without_sufficiency(self):
   result,calls=self.run_check(lambda s:dict(s,address='ev:unknown'))
-  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),1)
+  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),2)
+  self.assertIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[1]);self.assertNotIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[0])
  def test_real_quote_wrong_source_rejected_without_cross_record_search(self):
   result,calls=self.run_check(lambda s:dict(s,quote='First source only.'))
-  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),1)
+  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),2)
+  self.assertIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[1]);self.assertNotIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[0])
  def test_path_only_rejected(self):
   result,calls=self.run_check(lambda s:{'requirement':s['requirement'],'path':'LITERATURE[2].abstract','quote':s['quote']})
-  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),1)
+  self.assertEqual(result["assessment_status"],"incomplete");self.assertEqual(len(calls),2)
+  self.assertIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[1]);self.assertNotIn('YOUR PREVIOUS ANSWER WAS REJECTED',calls[0])
  def test_retained_live_response_is_rejected_not_repaired(self):
   fixtures=pathlib.Path(__file__).parent/'fixtures'
   data=json.loads((fixtures/'lab_oct11_input_retained.json').read_text())
   raw=json.loads((fixtures/'lab_oct11_coverage_retained.json').read_text())['text']
   with patch.object(C,'_ask',return_value=raw) as calls:
    self.assertEqual(C._coverage_check(data['inquiry'],data['observations'])['assessment_status'],'incomplete')
-  self.assertEqual(calls.call_count,1)
+  self.assertEqual(calls.call_count,2)  # the same rejected answer twice: still incomplete
  def test_retained_reader_prose_replaced_in_scripted_address_protocol(self):
   fixtures=pathlib.Path(__file__).parent/'fixtures'
   data=json.loads((fixtures/'lab_oct11_input_retained.json').read_text())
