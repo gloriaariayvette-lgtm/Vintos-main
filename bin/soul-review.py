@@ -294,6 +294,7 @@ If nothing changed, return your half as it is. Begin directly with the text - no
 
 BASE_RE = re.compile(r"<!--\s*BASE-START\s*-->.*?<!--\s*BASE-END\s*-->", re.S)
 HALF_HEAD = "# His own - rewritten every two weeks"
+HALF_MAX = 4500   # about 600 words, the length he is asked for; SOUL.md opens every conversation
 
 
 def split_soul(text):
@@ -318,6 +319,16 @@ def write_half(text, soul_path=None, history_dir=None):
     half = re.sub(r"^(Okay[^\n]*\n+|Here(?:.s| is)[^\n]*\n+)+", "", (text or "").strip(), flags=re.I).strip()
     if not half:
         raise ValueError("an empty half would erase his; nothing written")
+    # His half is his own writing, not the material he was given to read. On 13 October Gemma answered by copying
+    # its context back (the dated Gloria facts, pearls, scar map, his whole self-model) and it went into SOUL.md,
+    # which opens every conversation. Anything that echoes the prompt's sections, carries the fact-log format or the
+    # base markers, or runs past HALF_MAX is refused and nothing is written.
+    echoed = [m for m in ("=== ", "**FACT**", "**CONTEXT**", "**DECISION**", "**PREFERENCE**", "BASE-START",
+                          "BASE-END", "# Self-Model", "# Pearl", "[SCENE:") if m in half]
+    if echoed:
+        raise ValueError("his half copies the prompt material (%s); nothing written" % ", ".join(echoed))
+    if len(half) > HALF_MAX:
+        raise ValueError("his half is %d characters, over %d; nothing written" % (len(half), HALF_MAX))
     os.makedirs(history_dir, exist_ok=True)
     if cur:
         with open(os.path.join(history_dir, "SOUL-%s.md" % datetime.now().strftime("%Y-%m-%d_%H%M")), "w") as f:

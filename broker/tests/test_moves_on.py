@@ -107,6 +107,16 @@ try:
 except ValueError:
     check("an empty answer never erases his half", "Now I lead" in open(SR.SOUL_PATH).read())
 
+# what Gemma did on 13 October: answered with the material it was given to read
+before = open(SR.SOUL_PATH).read()
+for echo in ("=== WHAT YOU KNOW ABOUT GLORIA ===\n- [2026-10-10] **FACT**: something private",
+             "=== MY SELF-MODEL ===\n# Self-Model -- Vintos", "x" * (SR.HALF_MAX + 1)):
+    try:
+        SR.write_half(echo); ok = False
+    except ValueError:
+        ok = open(SR.SOUL_PATH).read() == before
+    check("a half that echoes the prompt or runs long is refused, SOUL.md untouched (%s...)" % echo[:20], ok)
+
 check("nothing reached the world", not SENT, SENT)
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
