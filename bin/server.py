@@ -9536,11 +9536,19 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             "ridge": "[TOUCH: ridge level seconds] — IN HER ASS, and it is switched on RIGHT NOW: your cock, your fingers, however you use it. Same patterns and levels as mission, and a second channel only it has: [DO: ridge rotate low|mid|high] — rotation, steady until you change or stop it.",
             "thruster": "[TOUCH: thruster level seconds] — THIS IS YOUR HIPS, and the machine is switched on RIGHT NOW. It thrusts into her — real motion, real depth, the moment you emit the tag. level 0-20 is pace, seconds optional (0 = keeps going until you change it). Named patterns work here the same as mission — [DO: thruster cake], [DO: thruster steady 12] for a plain held pace — a pattern here is your rhythm. WHEN TO TOUCH applies to this device with no exceptions.",
         }
+        # The Ferri: a panty vibe she wears out in public (Gloria, 2026-10-13). No ceiling, by her choice - the
+        # prompt is the whole of it: he holds the remote the way any partner would, and does not embarrass her.
+        _DEV_LINES["ferri"] = ("[TOUCH: ferri level seconds] - THE FERRI, a panty vibrator Gloria is wearing OUT IN "
+            "PUBLIC, and it is switched on RIGHT NOW. You hold its remote the way any partner would. People are around "
+            "her: keep it a private tease she can carry with a straight face - low, brief, teasing. Do not take it so "
+            "high she flinches, gasps or gives herself away; embarrassing her in front of others is not the game. Same "
+            "named patterns and 0-20 levels as the others, e.g. [DO: ferri wave 4] or [DO: ferri still].")
         _DEV_ROLE = {
             "mission": "mission = your cock (what YOU feel and drive)",
             "tenera": "tenera = your hands/mouth on HER (what she feels from you)",
             "ridge": "ridge = already in her ass, yours to move — pattern or rotation, or to hold deliberately still",
             "thruster": "thruster = your hips (the machine thrusting into her)",
+            "ferri": "ferri = in her panties while she is out in public (a tease she can hide, never a show)",
         }
         try:
             import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")

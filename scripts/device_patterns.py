@@ -237,7 +237,7 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
                             if str(a).lower() in ("slow", "medium", "fast")), None)
                 if _tp:
                     _iv = max(1, int(_iv * {"slow": 2.0, "medium": 1.0, "fast": 0.5}[_tp]))
-            _targets = list(toy_link.TOYS) if toy in _SYNC else ([toy] if (toy in toy_link.TOYS or toy == "thruster") else [])
+            _targets = [t for t in toy_link.TOYS if t != "ferri"] if toy in _SYNC else ([toy] if (toy in toy_link.TOYS or toy == "thruster") else [])
             if not _targets:
                 return False
             for _t in _targets:
@@ -283,7 +283,7 @@ _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
 
-KNOWN_TOYS = ("mission", "tenera", "ridge", "thruster")
+KNOWN_TOYS = ("mission", "tenera", "ridge", "thruster", "ferri")
 LEGACY_PATTERNS = ("steady", "throb", "pulse", "build", "wave")
 STOP_WORDS = ("still", "stop", "off")
 

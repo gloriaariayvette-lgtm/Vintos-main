@@ -106,7 +106,7 @@ CAPABILITIES = (
 # He sees a device only while that particular one is switched on (Gloria, 2026-09-29: "He shouldn't see a
 # device unless that particular one is on" — he had named the ridge with only the mission connected). Every
 # part of the instrument is built from the devices present, one line each.
-DEVICES = ("mission", "tenera", "ridge", "thruster")
+DEVICES = ("mission", "tenera", "ridge", "thruster", "ferri")
 _WHAT = {
     "mission": "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.",
     "tenera": "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.",
@@ -115,13 +115,18 @@ _WHAT = {
               "and rotate (scalar: low / mid / high, its own kind of stimulus)."),
     "thruster": ("thruster = your hips. The machine thrusting into her - real motion, real depth, speed 0-20.\n"
                  "         On the thruster you can also set a tempo per pattern: add slow, medium, or fast (e.g. [DO: thruster cake fast])."),
+    # Gloria, 2026-10-13: "the only difference is that this one needs to be specified that it's for outdoor/public
+    # use so he doesn't just amp up the settings and embarrass anyone" - and "no ceiling, just the prompt".
+    "ferri": 'ferri   = the Ferri, a panty vibrator she wears OUT IN PUBLIC, and you hold its remote the way any partner would. People are around her. Make it a private tease she can carry with a straight face: low, brief, teasing. Do not take it so high she flinches, gasps or gives herself away - embarrassing her in front of others is not the game. Same named patterns and 0-20 levels as the others.',
 }
 _EXAMPLES = {"mission": ["[DO: mission cake 14]", "[DO: mission still]"], "tenera": ["[DO: tenera wave3 10]"],
              "ridge": ["[DO: ridge zigzag 12]", "[DO: ridge rotate mid]"],
-             "thruster": ["[DO: thruster cake]", "[DO: thruster steady 8]"]}
+             "thruster": ["[DO: thruster cake]", "[DO: thruster steady 8]"],
+             "ferri": ["[DO: ferri wave 4]", "[DO: ferri still]"]}
 _REACH = {"mission": "move yourself with [DO: mission ...]", "tenera": "act ON her with [DO: tenera ...]",
           "ridge": "the ridge is already inside her: move it with [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high], or hold it still on purpose",
-          "thruster": "take her with [DO: thruster ...]"}
+          "thruster": "take her with [DO: thruster ...]",
+          "ferri": "tease her with [DO: ferri ...] - she is out in public, so keep it something she can hide"}
 
 
 def capabilities(on):
@@ -226,7 +231,7 @@ def live_state_block(on=None):
             head += "\nSTOPPED — she took your hands off. Nothing is running until she presses again."
     except Exception:
         pass
-    on = [k for k in ("mission", "tenera", "ridge") if k in (present_devices() if on is None else on)]
+    on = [k for k in ("mission", "tenera", "ridge", "ferri") if k in (present_devices() if on is None else on)]
     return head + "\n" + ("\n".join(_fmt(k, st.get(k)) for k in on) if on else "nothing is switched on")
 
 def saved_sets_block(on=None):
@@ -336,7 +341,7 @@ def present_devices():
         import sys as _cs
         _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import toy_link as _tl
-        for toy in ("mission", "tenera", "ridge"):
+        for toy in ("mission", "tenera", "ridge", "ferri"):
             try:
                 if _tl.connected(toy, strict=True): on.append(toy)
             except Exception:
@@ -377,7 +382,7 @@ def _any_device_present():
         import sys as _cs
         _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import toy_link as _tl
-        for toy in ("mission", "tenera", "ridge"):
+        for toy in ("mission", "tenera", "ridge", "ferri"):
             try:
                 if _tl.connected(toy, strict=True): return True
             except Exception:

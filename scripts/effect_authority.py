@@ -43,7 +43,7 @@ LANES = {
 
 def lane_of(target):
     t = str(target or "").lower()
-    if t in ("mission", "tenera", "ridge", "lush", "toy"): return "toys"
+    if t in ("mission", "tenera", "ridge", "ferri", "lush", "toy"): return "toys"
     if "thrust" in t: return "thruster"
     if "robot" in t or t in ("pi", "head"): return "robot"
     if "avatar" in t or "scene" in t or "render" in t: return "avatar"

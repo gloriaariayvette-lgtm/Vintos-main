@@ -15,9 +15,10 @@ _PORT = _find_port()
 
 
 BASE = f"http://192.168.1.66:{_PORT}/command"
-TOYS = {"tenera": "18690ad0e996", "mission": "c09b9e4704ae", "ridge": "f044d37536a9"}
-ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate"}
-_PFUNC = {"tenera": "v", "mission": "v", "ridge": "v"}
+TOYS = {"tenera": "18690ad0e996", "mission": "c09b9e4704ae", "ridge": "f044d37536a9",
+        "ferri": "18690acf2f39"}   # the Ferri panty vibe, worn out in public (Gloria, 2026-10-13)
+ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate", "ferri": "Vibrate"}
+_PFUNC = {"tenera": "v", "mission": "v", "ridge": "v", "ferri": "v"}
 
 
 _status_cache = {"t": 0.0, "map": {}}
@@ -330,7 +331,8 @@ def parse_and_send(reply_text, context=None):
             for _k, _v in _fired.items():
                 if _v["status"] == "sent": _ht[_k] = _now
             _j.dump(_ht, open(_htp, "w"))
-            _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine"}
+            _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine",
+                       "ferri": "the Ferri (in her panties, out in public)"}
             _txt = " \u00b7 ".join(
                 "%s %s [%s]" % (_names.get(k, k), v["level"], v["status"])
                 for k, v in _fired.items())
