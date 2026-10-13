@@ -45,7 +45,8 @@ def _cos(a, b):
 # ---- views: name -> (source paths for staleness, builder -> compact text) ----
 
 def _v_values():
-    t = _read(os.path.join(MEMORY, "value-map.md"), 900)
+    import re as _vmre   # the newest entry: the live map can hold several from the same day
+    t = _vmre.split(r"\n(?=## \d{4}-\d{2}-\d{2})", "\n" + _read(os.path.join(MEMORY, "value-map.md"), 200000))[-1].strip()[:900]
     return t and "WHAT MATTERS TO YOU (value map):\n" + t
 
 def _v_self():

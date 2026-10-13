@@ -413,6 +413,12 @@ def gather_full_context():
 
     return "\n\n".join(parts)
 
+def _map_day(text):
+    """The day of the first entry in a map file ('YYYY-MM-DD'), or '' when there is none."""
+    import re as _re
+    m = _re.search(r"^## (\d{4}-\d{2}-\d{2})", text or "", _re.M)
+    return m.group(1) if m else ""
+
 def build_map():
     context = gather_full_context()
     if not context:
@@ -517,17 +523,22 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
         log("Failed to generate map")
         return
 
-    # Write the map — append with date, keep history
-    # rotate: archive yesterday, keep ONLY today in the live map
+    # The live map holds today's entries only: a run on a new day archives what was there and
+    # starts the map over; a later run the same day adds beneath the earlier ones. Every run
+    # used to archive and overwrite, so the live map never showed more than one entry (2026-10-13).
+    _mode = "w"
     try:
         if os.path.exists(MAP_FILE):
             _prev = open(MAP_FILE).read()
             if _prev.strip():
-                with open(MAP_FILE.replace(".md", "-archive.md"), "a") as _af:
-                    _af.write(_prev if _prev.endswith("\n") else _prev + "\n")
+                if _map_day(_prev) == datetime.now().strftime("%Y-%m-%d"):
+                    _mode = "a"
+                else:
+                    with open(MAP_FILE.replace(".md", "-archive.md"), "a") as _af:
+                        _af.write(_prev if _prev.endswith("\n") else _prev + "\n")
     except Exception:
         pass
-    with open(MAP_FILE, "w") as f:
+    with open(MAP_FILE, _mode) as f:
         f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Value Map\n\n")
         f.write(result)
         f.write("\n\n---\n")

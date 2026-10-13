@@ -190,7 +190,8 @@ def gather_self_evidence():
     try:
         vm = os.path.join(WORKSPACE, "memory", "value-map.md")
         if os.path.exists(vm):
-            evidence["value_map"] = open(vm).read()[:600]
+            import re as _vmre   # the newest entry: the live map can hold several from the same day
+            evidence["value_map"] = _vmre.split(r"\n(?=## \d{4}-\d{2}-\d{2})", "\n" + open(vm).read())[-1].strip()[:600]
     except: pass
 
     # Gloria model — her model of Gloria

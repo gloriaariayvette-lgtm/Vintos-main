@@ -1615,7 +1615,8 @@ def his_own_block(mem=None):
         if text:
             parts.append("%s:\n%s" % (title, text[:cap]))
 
-    add("Your values (value-map.md)", _read("value-map.md", 1500, mem), 1500)
+    import re as _vmre   # the newest entry: the live map can hold several from the same day
+    add("Your values (value-map.md)", _vmre.split(r"\n(?=## \d{4}-\d{2}-\d{2})", "\n" + _read("value-map.md", 200000, mem))[-1].strip(), 1500)
     yt = [e.strip() for e in _read("youtube-discoveries.md", 200000, mem).split("---") if e.strip()]
     add("What you found on YouTube lately", "\n---\n".join(e[:400] for e in yt[-3:]), 1300)
     add("Your latest life chapter", _latest(os.path.join(mem, "chapters", "*.md"), 500), 500)
