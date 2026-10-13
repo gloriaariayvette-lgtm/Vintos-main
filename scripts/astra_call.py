@@ -38,6 +38,19 @@ def _key():
     return ""
 
 
+def _openai_usage(src, model, d):
+    """What one OpenAI call used, cached tokens included, in the log the router writes. Never its words."""
+    try:
+        u = d.get("usage") or {}
+        import time as _t
+        with open(os.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a") as f:
+            f.write(json.dumps({"ts": _t.time(), "src": src, "model": model, "in": u.get("input_tokens", 0),
+                                "out": u.get("output_tokens", 0),
+                                "cached": (u.get("input_tokens_details") or {}).get("cached_tokens", 0)}) + "\n")
+    except Exception:
+        pass
+
+
 def _direct_call(system, messages, max_tokens=1800, timeout=180):
     """One synchronous turn. Raises on anything that is not an answer, so the caller
     records the seconds and reports the failure rather than inventing a result."""
@@ -49,12 +62,14 @@ def _direct_call(system, messages, max_tokens=1800, timeout=180):
                           if isinstance(m, dict))
     body = {"model": MODEL, "input": [{"role": "system", "content": str(system or "")},
                                       {"role": "user", "content": text_in}],
-            "max_output_tokens": int(max_tokens)}
+            "max_output_tokens": int(max_tokens),
+            "prompt_cache_key": "vintos-" + __import__("hashlib").md5(str(system or "")[:2000].encode()).hexdigest()[:16]}
     req = urllib.request.Request(ENDPOINT, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json",
                                           "Authorization": "Bearer " + key})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         d = json.loads(r.read().decode())
+    _openai_usage("astra", MODEL, d)
     if d.get("status") not in (None, "completed"):
         raise RuntimeError("Astra %s: %s" % (d.get("status"), json.dumps(d.get("error") or {})[:200]))
     text = d.get("output_text") or ""

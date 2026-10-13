@@ -147,7 +147,9 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
     body = {"model": chosen,
             "input": [{"role": "system", "content": system_text}] + for_responses(convo),
             "max_output_tokens": max_tokens + 4000,
-            "reasoning": {"effort": "low", "summary": "auto"}}
+            "reasoning": {"effort": "low", "summary": "auto"},
+            # the same job's repeats go to the server that already holds its start (2026-10-13)
+            "prompt_cache_key": "vintos-" + __import__("hashlib").md5(str(system_text)[:2000].encode()).hexdigest()[:16]}
     def _call():
         receipt = _reserve_provider("openai",chosen,paid_reservation)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
