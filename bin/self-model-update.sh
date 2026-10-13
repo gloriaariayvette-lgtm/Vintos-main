@@ -66,7 +66,9 @@ TEMPORAL=$(cat "$HOME/.vintos/workspace/memory/temporal-context.txt" 2>/dev/null
 SELF_REVIEW=$(python3 "$EVIDENCE" section self_review 2>/dev/null)
 ARCHITECTURAL_CHANGES=$(python3 "$EVIDENCE" section architectural_changes 2>/dev/null)
 CORRECTIONS=$(python3 "$EVIDENCE" section corrections 2>/dev/null)
-if ! python3 "$EVIDENCE" gate 2>/dev/null; then
+# SELF_MODEL_REWRITE=1 (by hand only): rewrite his additions once from the model as it stands, even with no new
+# evidence - to condense the weekly entries that piled up before the rewrite-in-place change (2026-10-13)
+if [ -z "$SELF_MODEL_REWRITE" ] && ! python3 "$EVIDENCE" gate 2>/dev/null; then
     echo "[SelfModel] nothing new since the watermark - no introspections, review, changes or corrections (statuses above say which were empty, missing or failed)"; say_why "nothing_new" "$(python3 "$EVIDENCE" status 2>/dev/null | tr -d "\n" | head -c 400)"
     exit 0
 fi
