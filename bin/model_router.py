@@ -327,6 +327,17 @@ def _cachetail(convo):
             break
     return out
 
+def _learned_body(body, system_text, model):
+    """Mark for caching only the start of this prompt that has already repeated within the hour (GR.cache_learned).
+    The fixed [[CACHESPLIT]] head was marked for an hour on every call and the last message for five minutes; with
+    her messages hours apart neither was ever read back - the router's rows were 99% cache writes, 0% reads, each
+    write billed above full price (2026-10-13). The marker itself is only a hint for the old split and is removed."""
+    st = str(system_text or "").replace("[[CACHESPLIT]]", "")
+    body["messages"] = [dict(m) for m in body.get("messages", [])]
+    learned = GR.cache_learned(body, st, model)
+    return learned
+
+
 def _sysblocks(system_text):
     # stable head caches; volatile tail does not. no marker -> do not cache (avoid write surcharge with 0 reads)
     if "[[CACHESPLIT]]" in system_text:
@@ -358,8 +369,8 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
     thinking = GR.thinking_off(current_claude_model())
     max_tok = max(int(params.get("max_tokens", 400)), 128) + (0 if thinking else THINK_ROOM)
     body = {"model": current_claude_model(), "max_tokens": max_tok,
-            "system": _sysblocks(system_text),
-            "messages": _cachetail(for_anthropic(convo))}
+            "messages": for_anthropic(convo)}
+    _learned_body(body, system_text, body["model"])
     GR.least_thinking(body)
     # Do NOT send temperature/top_p to Anthropic: its current models reject them
     # ("temperature is deprecated for this model"), which 400'd the whole claude
@@ -550,8 +561,8 @@ async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     chosen = model or current_claude_model()
     thinking = GR.thinking_off(chosen)
     body = {"model": chosen, "max_tokens": max_tokens + (0 if thinking else THINK_ROOM),   # thinking shares the budget
-            "system": _sysblocks(system_text),
-            "messages": _cachetail(for_anthropic(convo))}
+            "messages": for_anthropic(convo)}
+    _learned_body(body, system_text, chosen)
     GR.least_thinking(body)
     _reserve_provider("anthropic",chosen,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:

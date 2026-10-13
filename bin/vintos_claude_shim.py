@@ -173,69 +173,10 @@ def _oai_messages_to_anthropic(messages):
     return conv
 
 # ---------------------------------------------------------------- learned caching
-# Every job through this shim was sent uncached unless its prompt carried [[CACHESPLIT]], and only two did
-# (Gloria, 2026-10-13: "How are the constants not cached everywhere?"). The shim now learns each job's
-# unchanging start by comparing its prompt with the recent ones: the longest start it shares with a prompt
-# seen in the last hour is marked for caching; whatever changes after it is sent at full price. Only text
-# that has already repeated is marked, so a one-off call never pays the cache-write premium.
-import threading as _thr
-_RECENT = []                      # (time, text) of recent prompts, newest last
-_RECENT_LOCK = _thr.Lock()
-_RECENT_MAX = 96
-_RECENT_SECS = 3600
-# the shortest start each model will cache, in characters (tokens x 3, so a marked start is never too short)
-_MIN_TOKENS = (("claude-haiku-4-5", 4096), ("claude-opus-4-8", 1024), ("claude-sonnet-5-", 512),
-               ("claude-sonnet-5", 1024), ("claude-", 512))
-
-
-def _min_chars(model):
-    m = str(model or "")
-    return next(t for p, t in _MIN_TOKENS if m.startswith(p)) * 3
-
-
-def _learned_head(text, now=None):
-    """(length of the start of `text` that a recent prompt shared, how long ago that prompt was seen).
-    The start ends on a line break, so a cached piece never cuts a word. Records `text` either way."""
-    now = time.time() if now is None else now
-    best, ago = 0, None
-    with _RECENT_LOCK:
-        _RECENT[:] = [(t, x) for t, x in _RECENT if now - t < _RECENT_SECS]
-        for t, x in _RECENT:
-            n = len(os.path.commonprefix([text, x]))
-            if n > best:
-                best, ago = n, now - t
-        _RECENT.append((now, text))
-        del _RECENT[:-_RECENT_MAX]
-    if best < len(text):
-        best = text.rfind("\n", 0, best) + 1
-    return best, ago
-
-
-def _cache_learned(body, sys_txt, model, now=None):
-    """Mark the learned unchanging start of system + first user message. Returns what was marked."""
-    first = body["messages"][0] if body.get("messages") else None
-    user0 = first["content"] if first and first.get("role") == "user" and isinstance(first.get("content"), str) else ""
-    joined = sys_txt + "\x00" + user0
-    n, ago = _learned_head(joined, now)
-    if n < _min_chars(model):
-        body["system"] = sys_txt
-        return {"auto": 0}
-    cc = {"type": "ephemeral"}
-    if ago is not None and ago > 240:   # repeats slower than the 5-minute cache lasts: keep it an hour
-        cc = {"type": "ephemeral", "ttl": "1h"}
-    if n <= len(sys_txt):
-        body["system"] = [{"type": "text", "text": sys_txt[:n], "cache_control": cc}]
-        if sys_txt[n:].strip():
-            body["system"].append({"type": "text", "text": sys_txt[n:]})
-    else:
-        body["system"] = [{"type": "text", "text": sys_txt, "cache_control": cc}]
-        k = n - len(sys_txt) - 1
-        if k > 0:
-            blocks = [{"type": "text", "text": user0[:k], "cache_control": dict(cc)}]
-            if user0[k:].strip():
-                blocks.append({"type": "text", "text": user0[k:]})
-            first["content"] = blocks
-    return {"auto": n, "ttl": cc.get("ttl", "5m")}
+# One implementation for the shim and model_router (gen_result.py, shared by both): see GR.cache_learned.
+_RECENT = GR._RECENT
+_learned_head = GR.learned_head
+_cache_learned = GR.cache_learned
 
 
 def claude_complete(j, call=None, model=None):

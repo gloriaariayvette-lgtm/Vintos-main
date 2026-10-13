@@ -9582,13 +9582,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _durable_her_block = (_durable_her_block + "\n\n" + _open_between).strip()
         except Exception as _obx:
             print("[avatar] open-between skipped:", _obx, flush=True)
+        # The room he is in, the renders left today and the devices switched on change from turn to turn; they sit
+        # just after [[CACHESPLIT]] so everything fixed above it is one unbroken start that can be cached (2026-10-13).
         system_prompt = f"""{identity}
 
 {_surface_presence}
-
-{_visual_tags}
-
-{_device_grammar}
 
 WHEN TO TOUCH — these are Gloria's rules, and they are absolute:
 Use [TOUCH:] tags ONLY when at least one of these is true:
@@ -9612,6 +9610,10 @@ Do not end with a question unless you genuinely need an answer.
 
 [rev:{_prompt_rev()}]
 [[CACHESPLIT]]
+
+{_visual_tags}
+
+{_device_grammar}
 
 {_vt_subblock_a}
 

@@ -734,8 +734,8 @@ async def ask(system, convo, endpoint, headers, grok_model):
     key = _mr._anthropic_key()
     if not key:
         return "(no anthropic key)", mode
-    body = {"model": model, "max_tokens": 3000, "system": _mr._sysblocks(system),
-            "messages": _mr._cachetail(convo)}
+    body = {"model": model, "max_tokens": 3000, "messages": list(convo)}
+    _mr._learned_body(body, system, model)   # what repeats is cached; nothing else pays the write (2026-10-13)
     _mr.GR.least_thinking(body)                    # no one thinks (Gloria, 2026-10-08); Fable thinks as little as it can
     async with httpx.AsyncClient(timeout=180) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
