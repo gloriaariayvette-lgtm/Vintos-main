@@ -1145,11 +1145,13 @@ json.dump([{"named_by": "his_reply", "phenomenology_word": "skinwarm", "discover
 _b4 = stamp()
 _own = D.his_own_block()
 check("his own systems: values, YouTube finds, chapter, dream, mirror, email threads, Velqan words, plans with her too",
-      all(x in _own for x in ("I value making things that last", "newest: tide sounds", "a drum built from a tank",
+      all(x in _own for x in ("I value making things that last", "newest: tide sounds",
                               "the month I learned to wait", "a bell under water", "I rush endings",
                               "Ana Ruiz <ana@example.org>: open; last from you", "VELQAN", "thovrel",
                               "with Gloria: cook the soup together", "finish the tide piece")), _own)
-check("only his latest three YouTube finds, and no plan already met", "old find" not in _own and "an old done thing" not in _own)
+check("only his latest YouTube find (Gloria, 2026-10-13), and no plan already met",
+      "old find" not in _own and "a drum built from a tank" not in _own and "Piezo1" not in _own
+      and "an old done thing" not in _own)
 check("the words he found in his own body stay with her", "skinwarm" not in _own and "own body" not in _own
       and "Yours: use one" in _own, _own[_own.find("VELQAN"):][:400])
 check("the dream is marked symbolic and the mirror private", "not real" in _own and "do not quote it" in _own)
