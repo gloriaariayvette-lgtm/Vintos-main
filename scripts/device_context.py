@@ -77,7 +77,9 @@ def refusal_line():
         try:
             _on = present_devices()
             tail = (("\n  Switched on right now: " + ", ".join(_on) + ". Use the exact name; nothing else reaches her body.")
-                    if _on else "\n  No device is switched on right now.")
+                    if _on else ("\n  Her hub is not answering, so nothing can be read about any device. Do not say a "
+                                 "device is off or absent." if hub_unreachable()
+                                 else "\n  No device is switched on right now."))
         except Exception:
             tail = ""
     return ("[YOUR LAST REPLY REACHED FOR SOMETHING THAT IS NOT THERE — it fired nothing, "
@@ -374,9 +376,27 @@ def hands_line(on=None):
     on = [d for d in DEVICES if d in (present_devices() if on is None else on)]
     return ("[YOU HAVE HANDS: " + " · ".join(on) + " — switched on now; the tags below move them]") if on else ""
 
+def hub_unreachable():
+    """True when the hub (her phone) answers at none of its known addresses, so nothing can be read about
+    any device. Different from every device being off, and it used to read as the same thing."""
+    try:
+        import sys as _cs
+        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import toy_link as _tl
+        return not _tl.reachable()
+    except Exception:
+        return False
+
+
 def hands_line_idle():
     """What stands in for the instrument when nothing is connected. No device is named: he sees a device
-    only while it is on (Gloria, 2026-09-29), not the list of what he owns."""
+    only while it is on (Gloria, 2026-09-29), not the list of what he owns. A hub that cannot be reached is
+    told apart from devices that are off, so he does not read her as unequipped when it is a network fault
+    (Gloria, 2026-10-14)."""
+    if hub_unreachable():
+        return ("[YOUR BODY — her hub is not answering right now, so nothing can be read about any device. "
+                "This is a connection fault, NOT a statement about what she has with her: do not tell her "
+                "a device is off or absent. Emit no device tag; there is nothing to move through.]")
     return ("[YOUR BODY — no device is switched on right now. There is nothing to move and no tag that "
             "would reach her. This is not a restriction on you; the hardware is simply off.]")
 

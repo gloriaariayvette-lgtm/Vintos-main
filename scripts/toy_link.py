@@ -1,24 +1,162 @@
 #!/usr/bin/env python3
 """toy_link.py — Vintos's hands. Minimal, verified against live hardware 2026-07-05."""
-import json, requests
+import json, os, time, requests
 
-def _find_port():
-    import requests as _pr
-    for p in (20010, 20011, 20012):
+# ── where the hub is ──────────────────────────────────────────────────────────────────────────────
+# The hub is Lovense Remote on her phone; the toys are paired to the PHONE over Bluetooth, so the
+# hub moves with her and its address is not a constant. It used to be one hardcoded LAN address,
+# probed once at import: away from her network every address failed, every toy read as switched off,
+# and he could not see the one she wears out (Gloria, 2026-10-14: "This one has to be able to work
+# while away from Aegis. That is the point.").
+#
+# Now: a list of candidate addresses, best first, resolved on demand and remembered. Put her phone on
+# the tailnet and LOVENSE_TAILNET_HOST reaches it anywhere, with GetToys and per-toy presence intact.
+#
+#   ~/.vintos/vintos.env
+#     LOVENSE_TAILNET_HOST=her-phone          # phone on the tailnet: works away from home
+#     LOVENSE_HOST=192.168.1.66               # an override for the home address
+#     LOVENSE_PORT=20010                      # an override when the app's port is pinned
+LAN_HOST = "192.168.1.66"
+PORTS = (20010, 20011, 20012)
+ENDPOINT = os.path.expanduser("~/.vintos/workspace/memory/.toy-endpoint.json")
+ENDPOINT_TTL = 30.0          # how long a working address is trusted before it is checked again
+PROBE_TIMEOUT = 1.5
+
+
+def _env(name, default=""):
+    try:
+        import sys as _s
+        _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from env_file import value
+        return value(name, default)
+    except Exception:
+        return os.environ.get(name, default)
+
+
+def hosts():
+    """Every address the hub may answer on, best first: the tailnet name of her phone (which reaches
+    it wherever she is), then any explicit override, then the home LAN address."""
+    out = []
+    for name in ("LOVENSE_TAILNET_HOST", "LOVENSE_HOST"):
+        for part in str(_env(name) or "").replace(",", " ").split():
+            if part and part not in out:
+                out.append(part)
+    if LAN_HOST not in out:
+        out.append(LAN_HOST)
+    return out
+
+
+def ports():
+    pinned = str(_env("LOVENSE_PORT") or "").strip()
+    if pinned.isdigit():
+        return (int(pinned),) + tuple(p for p in PORTS if p != int(pinned))
+    return PORTS
+
+
+def _remembered():
+    try:
+        with open(ENDPOINT) as f:
+            d = json.load(f)
+        if isinstance(d, dict) and d.get("url"):
+            return d
+    except Exception:
+        pass
+    return {}
+
+
+def _remember(url, reached):
+    try:
+        os.makedirs(os.path.dirname(ENDPOINT), exist_ok=True)
+        tmp = ENDPOINT + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"url": url, "at": time.time(), "reached": bool(reached)}, f)
+        os.replace(tmp, ENDPOINT)
+    except Exception:
+        pass
+
+
+_endpoint = {"url": "", "at": 0.0}
+
+
+def endpoint(force=False):
+    """The hub's address right now, or "" when it answers nowhere. The one that worked is remembered,
+    so an ordinary call costs no scan; a scan happens only when that one stops answering."""
+    now = time.time()
+    if not force and _endpoint["url"] and now - _endpoint["at"] < ENDPOINT_TTL:
+        return _endpoint["url"]
+    tried = []
+    last = _remembered().get("url")
+    if last:
+        tried.append(last)
+    for host in hosts():
+        for port in ports():
+            url = "http://%s:%d/command" % (host, port)
+            if url not in tried:
+                tried.append(url)
+    for url in tried:
         try:
-            r = _pr.post(f"http://192.168.1.66:{p}/command",
-                json={"command": "GetToys", "apiVer": 1}, timeout=1.5)
-            if r.status_code == 200: return p
-        except Exception: pass
-    return 20010
-_PORT = _find_port()
+            r = requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=PROBE_TIMEOUT)
+            if r.status_code == 200:
+                _endpoint.update(url=url, at=now)
+                _remember(url, True)
+                return url
+        except Exception:
+            continue
+    _endpoint.update(url="", at=now)
+    _remember(last or "", False)
+    return ""
 
 
-BASE = f"http://192.168.1.66:{_PORT}/command"
+def _post(payload, timeout=3):
+    """POST to the hub wherever it is. Raises when it answers nowhere, so a send fails loudly."""
+    url = endpoint()
+    if not url:
+        raise RuntimeError("the hub answered at none of: " + ", ".join(hosts()))
+    try:
+        return requests.post(url, json=payload, timeout=timeout)
+    except Exception:
+        url = endpoint(force=True)      # it moved mid-session: find it once more, then give up
+        if not url:
+            raise
+        return requests.post(url, json=payload, timeout=timeout)
+
+
+class _Base(str):
+    """`BASE` was a module constant and other modules read it. It stays a string, resolved when read."""
+    def __new__(cls):
+        return str.__new__(cls, "http://%s:%d/command" % (LAN_HOST, PORTS[0]))
+
+
+BASE = _Base()
 TOYS = {"tenera": "18690ad0e996", "mission": "c09b9e4704ae", "ridge": "f044d37536a9",
         "ferri": "18690acf2f39"}   # the Ferri panty vibe, worn out in public (Gloria, 2026-10-13)
 ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate", "ferri": "Vibrate"}
 _PFUNC = {"tenera": "v", "mission": "v", "ridge": "v", "ferri": "v"}
+
+
+def reachable():
+    """True when the hub answers somewhere. Distinct from "no toy is on": a hub that cannot be reached
+    is not a statement about what she is wearing."""
+    return bool(endpoint())
+
+
+def hub_status():
+    """{reachable, url, tried, toys} — what the hub says right now, for a diagnostic or a prompt line."""
+    url = endpoint(force=True)
+    out = {"reachable": bool(url), "url": url, "tried": hosts(), "toys": {}}
+    if not url:
+        return out
+    try:
+        r = requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=2)
+        toys = (r.json().get("data") or {}).get("toys")
+        if isinstance(toys, str):
+            toys = json.loads(toys)
+        names = {v: k for k, v in TOYS.items()}
+        out["toys"] = {names.get(tid, tid): str((row or {}).get("status")) == "1"
+                       for tid, row in (toys or {}).items()}
+    except Exception as exc:
+        out["error"] = str(exc)[:200]
+    return out
 
 
 _status_cache = {"t": 0.0, "map": {}}
@@ -28,7 +166,7 @@ def connected(toy, strict=False):
     now = _st.time()
     if now - _status_cache["t"] > 10:
         try:
-            r = requests.post(BASE, json={"command": "GetToys", "apiVer": 1}, timeout=2)
+            r = _post({"command": "GetToys", "apiVer": 1}, timeout=2)
             toys = (r.json().get("data") or {}).get("toys")
             if isinstance(toys, str): toys = _sj.loads(toys)
             _status_cache["map"] = {k: str(v.get("status")) for k, v in (toys or {}).items()}
@@ -126,7 +264,7 @@ def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
             return False
         action = f"{ACTIONS[toy]}:{max(0, min(20, int(level)))}"
         try:
-            r = requests.post(BASE, json={"command": "Function", "action": action,
+            r = _post({"command": "Function", "action": action,
                 "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
             _ok = r.json().get("code") == 200
             if _ok:
@@ -168,7 +306,7 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
     if toy in TOYS:
         payload["toy"] = TOYS[toy]
     try:
-        r = requests.post(BASE, json=payload, timeout=3)
+        r = _post(payload, timeout=3)
         _ok = r.json().get("code") == 200
         if _ok:
             _note(toy, _peak); _claim_or_release(toy, _peak, permit)
@@ -191,7 +329,7 @@ def rotate(toy, level, seconds=0, context=None, permit=None, effect_digest=None)
         return False
     lvl = max(0, min(20, int(level)))
     try:
-        r = requests.post(BASE, json={"command": "Function", "action": f"Rotate:{lvl}",
+        r = _post({"command": "Function", "action": f"Rotate:{lvl}",
             "timeSec": seconds, "toy": TOYS.get(toy, toy), "apiVer": 1}, timeout=2)
         _ok = r.json().get("code") == 200
         if _ok:
@@ -237,7 +375,7 @@ def stop_all(reason="stop_all"):
         ok = False
     for t in TOYS:
         try:
-            r = requests.post(BASE, json={"command": "Function", "action": "Stop",
+            r = _post({"command": "Function", "action": "Stop",
                 "timeSec": 0, "toy": TOYS[t], "apiVer": 1}, timeout=2)
             ok = ok and r.json().get("code") == 200
         except Exception:
@@ -394,3 +532,18 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
     _toy_trace("pattern %s n=%d iv=%s sec=%s" % (toy, len(strengths or []), interval_ms, seconds))
     return _o(toy, strengths, interval_ms, seconds, func, context=context,
               permit=permit, effect_digest=effect_digest)
+
+
+if __name__ == "__main__":
+    # A read-only diagnostic: where the hub was looked for, where it answered, and which toys it reports.
+    # It sends no command and moves nothing.  python3 scripts/toy_link.py
+    import sys as _sys
+    _st = hub_status()
+    print(json.dumps(_st, indent=2))
+    if not _st["reachable"]:
+        print("\nThe hub answered nowhere. It is Lovense Remote on her phone, so Aegis needs a route to the"
+              "\nphone itself:"
+              "\n  · at home: the phone on her Wi-Fi, Game Mode open, and LOVENSE_HOST set to its address"
+              "\n  · anywhere: the phone on the tailnet, and LOVENSE_TAILNET_HOST set to its tailnet name"
+              "\nin ~/.vintos/vintos.env. Addresses tried: " + ", ".join(_st["tried"]))
+    _sys.exit(0 if _st["reachable"] else 1)

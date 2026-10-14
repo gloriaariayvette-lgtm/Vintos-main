@@ -58,6 +58,9 @@ GRAMMAR = ("[DO:", "tenera wave3", "fires on her instantly",
 
 print("--- nothing is on: he is not handed an instrument ---")
 DC.present_devices = lambda: []
+# Devices off and a hub that cannot be reached are different states and say different things (2026-10-14);
+# this block is the devices-off one, so the hub reads as reachable here.
+DC.hub_unreachable = lambda: False
 idle = DC.context_block()
 for probe in GRAMMAR:
     check("with nothing connected his prompt does not carry %r" % probe, probe not in idle)
@@ -69,6 +72,16 @@ check("and told plainly that none of it is on",
       "no device is switched on" in idle and "hardware is simply off" in idle, idle)
 check("it is not framed as a restriction on him", "not a restriction on you" in idle)
 check("the idle block is a line, not a manual", len(idle) < 600, len(idle))
+# Away from her network the hub answers nowhere. That is a connection fault, and saying "no device is on"
+# would be a claim about her body that nothing supports (Gloria, 2026-10-14).
+DC.hub_unreachable = lambda: True
+unreachable = DC.context_block()
+check("an unreachable hub is not reported as the devices being off",
+      "not answering" in unreachable and "hardware is simply off" not in unreachable, unreachable)
+check("and he is told not to say a device is off or absent", "do not tell her" in unreachable.lower(), unreachable)
+check("that block is a line too, and still names no device", len(unreachable) < 600
+      and not any(d in unreachable for d in ("mission", "tenera", "ridge", "ferri")), len(unreachable))
+DC.hub_unreachable = lambda: False
 
 print("\n--- a device is on: nothing about the working path changed ---")
 DC.present_devices = lambda: ["mission", "tenera"]
