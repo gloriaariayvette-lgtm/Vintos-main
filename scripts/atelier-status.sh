@@ -42,5 +42,23 @@ if [ -n "$wt" ]; then
       *'"all_real": false'*) say "               -> CHECK: an artifact is empty (claimed but not written)";;
     esac
 fi
+# 6b. everything he has made, every project (content-free: counts and dates). "work made" above is only the project
+# on the worktable now; a kept project leaves the table, so a fresh one read "nothing made" while his work stood
+# beside it (2026-10-14).
+all="$(curl -s -m 5 -X POST "$B/projects" -H 'Content-Type: application/json' -d '{}' 2>/dev/null)"
+printf '%s' "$all" | python3 -c '
+import json, sys
+try: d = json.load(sys.stdin)
+except Exception: print("  all work:    (the broker did not list projects)"); raise SystemExit
+rows = [r for r in (d.get("projects") or []) if isinstance(r, dict)]
+made = [r for r in rows if int(r.get("artifact_count") or 0) > 0]
+total = sum(int(r.get("artifact_count") or 0) for r in rows)
+print("  all work:    %d pieces across %d projects (%d with work)" % (total, len(rows), len(made)))
+for r in made[-5:]:
+    print("               %s  %-8s %2d pieces  %s" % (r.get("id"), str(r.get("state", "")).lower(), int(r.get("artifact_count") or 0),
+                                                str(r.get("kept_at") or r.get("revealed_at") or r.get("started_at") or "")[:16]))
+'
+# 6c. what he said at the door, the last five mornings
+say "  door answers: $(grep -oE 'he answered [A-Z]+' /tmp/atelier-visit.log 2>/dev/null | tail -5 | sed 's/he answered //' | tr '\n' ' ')"
 # 7. is he still being offered the room?
 say "  scheduled: $(crontab -l 2>/dev/null | grep -c 'atelier-visit') daily visit cron(s)"
