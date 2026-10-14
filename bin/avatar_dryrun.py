@@ -27,14 +27,13 @@ ARGON = "--argon" in sys.argv
 sys.argv = [a for a in sys.argv if a != "--argon"]
 msg = sys.argv[1] if len(sys.argv) > 1 else None
 messages = None
-for _cap in (os.path.expanduser("~/.vintos/run/avatar-last-prompt.json"), "/tmp/avatar-last-prompt.json"):
+for _cap in (os.environ.get("VINTOS_AVATAR_CAPTURE") or "/tmp/avatar-last-prompt.json",):   # override: tests only
     try:
         messages = json.load(open(_cap)); break
     except Exception:
         continue
 if not messages:
-    print("no captured avatar prompt yet (~/.vintos/run/avatar-last-prompt.json): it is written on his next avatar "
-          "reply after this deploy - nothing to send for it, it fills in on its own")
+    print("no captured avatar prompt in /tmp yet: the server writes it on his next avatar reply in ordinary use")
     sys.exit(1)
 
 system = messages[0]["content"]

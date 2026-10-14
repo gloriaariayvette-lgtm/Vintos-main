@@ -9847,14 +9847,8 @@ Your current self-model (excerpt):
         _reason = False
         try:
             try:
-                # His last avatar prompt, for the side-by-side test (avatar_dryrun.py). Not /tmp: the service runs
-                # with a private /tmp her shell cannot see. One file, overwritten each turn, readable by her alone.
                 import json as _cap_j
-                _cap_d = os.path.expanduser('~/.vintos/run'); os.makedirs(_cap_d, mode=0o700, exist_ok=True)
-                _cap_p = os.path.join(_cap_d, 'avatar-last-prompt.json')
-                _cap_fd = os.open(_cap_p + '.tmp', os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(_cap_fd, 'w') as _cap_f: _cap_j.dump(messages, _cap_f)
-                os.replace(_cap_p + '.tmp', _cap_p)
+                _cap_j.dump(messages, open('/tmp/avatar-last-prompt.json', 'w'))
             except Exception:
                 pass
             reply, _claude_reasoning, _model_used = await _mr.route_reply(

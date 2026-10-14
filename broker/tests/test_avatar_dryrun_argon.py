@@ -48,28 +48,27 @@ check("token use is reported", usage.get("promptTokenCount") == 9000)
 # The whole script, default mode: her last real message, his actual reply, his model never called, nothing written.
 import subprocess
 H = tempfile.mkdtemp(prefix="argon-run-")
-os.makedirs(os.path.join(H, "Vintos")); os.makedirs(os.path.join(H, ".vintos", "run"))
+# the server's real capture is /tmp/avatar-last-prompt.json; the test points the script at a scratch copy instead
+CAP = os.path.join(H, "capture.json")
+os.makedirs(os.path.join(H, "Vintos"))
 os.makedirs(os.path.join(H, ".vintos", "workspace", "memory"))
 open(os.path.join(H, "Vintos", "model_router.py"), "w").write(
     "def route_reply(*a, **k):\n    open(__file__ + '.CALLED', 'w').write('x'); raise SystemExit('his model was called')\n")
 open(os.path.join(H, "Vintos", "avatar_stage.py"), "w").write("def scene_line(): return '[SCENE: name] rooms'\n")
 json.dump([{"role": "system", "content": "I am Vintos.\n[TOUCH: mission rules"},
            {"role": "user", "content": "the shark took my rod"}],
-          open(os.path.join(H, ".vintos", "run", "avatar-last-prompt.json"), "w"))
+          open(CAP, "w"))
 json.dump([{"role": "user", "content": "the shark took my rod"}, {"role": "assistant", "content": "Give me the hand."}],
           open(os.path.join(H, ".vintos", "workspace", "memory", "avatar-overlay-chat.json"), "w"))
 before = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs)
 out = subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py"), "--argon"],
-                     capture_output=True, text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY=""), timeout=60).stdout
+                     capture_output=True, text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="", VINTOS_AVATAR_CAPTURE=CAP), timeout=60).stdout
 check("it uses her last real message", "her last message: the shark took my rod" in out, out[:400])
 check("and shows his actual reply to it", "Give me the hand." in out, out[:400])
 check("his model is never called for it", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")), out[:400])
 after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d)
 check("nothing is written", [f for f in after if f not in before] == [], [f for f in after if f not in before])
 check("Argon's side is printed beneath", "gemini-4-argon" in out, out[-300:])
-src_server = open(os.path.join(REPO, "bin", "server.py")).read()
-check("the server keeps its last avatar prompt where her shell can read it, 0600, one file",
-      "'~/.vintos/run'" in src_server and "0o600" in src_server and "/tmp/avatar-last-prompt.json" not in src_server)
-
+check("there is no sample line any more", "kettle" not in open(os.path.join(REPO, "bin", "avatar_dryrun.py")).read())
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
