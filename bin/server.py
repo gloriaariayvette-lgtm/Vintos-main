@@ -79,15 +79,12 @@ def _device_on():
     if now - _dev_cache["t"] < 8:
         return _dev_cache["on"]
     on = False
-    try:
-        r = _rq.post("http://192.168.1.66:20010/command",
-                     json={"command": "GetToys"}, timeout=1.2)
-        d = r.json()
-        toys = (d.get("data") or {}).get("toys")
-        if isinstance(toys, str):
-            toys = _j.loads(toys)
-        vals = toys.values() if isinstance(toys, dict) else (toys if isinstance(toys, list) else [])
-        on = any(isinstance(v, dict) and str(v.get("status")) in ("1", "connected", "True") for v in vals)
+    try:   # wherever the hub is: it travels with her phone (2026-10-14); this used to ask the home address only
+        import sys as _tl_s
+        _tl_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        _tl_s.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+        import toy_link as _tl
+        on = _tl.any_connected()
     except Exception:
         on = False
     _dev_cache["t"] = now

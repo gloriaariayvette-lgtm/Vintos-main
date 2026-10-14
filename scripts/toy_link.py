@@ -173,6 +173,29 @@ ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate", "ferri
 _PFUNC = {"tenera": "v", "mission": "v", "ridge": "v", "ferri": "v"}
 
 
+def hub_address(force=False):
+    """(host, port) of the hub as resolved, or (None, None) when it answers nowhere. Every organ that talks to the
+    hub asks here; the server, the blush ledger, the somatic bridge and the ear each had the home address written
+    in, so away from home they said no device was on while his prompt showed the Ferri (Gloria, 2026-10-14)."""
+    url = endpoint(force=force)
+    m = __import__("re").match(r"https?://([^:/]+):(\d+)/", url or "")
+    if not m:
+        return None, None
+    host = m.group(1)
+    dashed = __import__("re").fullmatch(r"(\d+)-(\d+)-(\d+)-(\d+)\.lovense\.club", host)
+    if dashed:
+        host = ".".join(dashed.groups())
+    return host, int(m.group(2))
+
+
+def any_connected():
+    """True when the hub reports any of her devices present. Never claims presence when it cannot be read."""
+    try:
+        return any(connected(t, strict=True) for t in TOYS)
+    except Exception:
+        return False
+
+
 def last_known_unreachable():
     """True only when this process has already tried the hub and it answered nowhere. Never probes: a prompt
     line must not reach out to her phone, and a suite that builds one must not either."""

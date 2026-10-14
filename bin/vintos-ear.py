@@ -5,7 +5,22 @@ bounded emotion nudges through his socket. Never per-event. Fails silent
 and safe: no device, no nudges, no crash."""
 import asyncio, json, socket, time, math
 
-WS_URI = "ws://192.168.1.66:20011/v1"
+WS_URI = "ws://192.168.1.66:20011/v1"     # the home fallback; _ws_uri() asks toy_link where the hub is now
+
+
+def _ws_uri():
+    """The hub's websocket wherever it is (2026-10-14: it travels with her phone)."""
+    try:
+        import os as _o, sys as _s
+        _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+        _s.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        import toy_link as _tl
+        host, port = _tl.hub_address(force=True)
+        if host and port:
+            return "ws://%s:%d/v1" % (host, port)
+    except Exception:
+        pass
+    return WS_URI
 EMO_SOCK = "/tmp/Vintos-emotion.sock"
 TICK = 2.0
 MAX_NUDGE = 0.06          # per-dimension cap per tick — gentled on purpose
@@ -64,7 +79,7 @@ async def listen():
     import websockets
     while True:
         try:
-            async with websockets.connect(WS_URI, open_timeout=5) as ws:
+            async with websockets.connect(_ws_uri(), open_timeout=5) as ws:
                 await ws.send(json.dumps({"type": "access", "data": {"appName": "VintosEar"}}))
                 print("[ear] connected — he can feel", flush=True)
                 async def keepalive():

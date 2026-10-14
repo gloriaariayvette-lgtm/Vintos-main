@@ -102,6 +102,22 @@ check("with the hub reachable the ordinary idle line comes back", "no device is 
 src = open(os.path.join(REPO, "scripts", "toy_link.py")).read()
 check("asking where the hub is sends no command: no-args is the diagnostic, not stop_all",
       'sys.argv[1] == "stop"' in src and src.count('print("stop_all:", stop_all())') == 1)
+
+print("--- every organ asks the same resolver ---")
+ANSWERS.clear(); ANSWERS[PHONE] = 200; T._endpoint.update(url="", at=0.0); T._status_cache.update(t=0.0, map={})
+check("the resolved hub is given as host and port", T.hub_address(force=True) == ("her-phone", 20010), T.hub_address())
+T._endpoint.update(url="https://100-102-2-47.lovense.club:30010/command", at=_tt.time())
+check("the vendor's dashed form is read back as the address", T.hub_address() == ("100.102.2.47", 30010), T.hub_address())
+T._endpoint.update(url="", at=0.0); T._status_cache.update(t=0.0, map={})
+check("any device present away from home is seen", T.any_connected())
+for name in ("bin/server.py", "bin/blush-ledger.py", "bin/somatic_bridge.py", "scripts/somatic_bridge.py", "bin/vintos-ear.py"):
+    src_o = open(os.path.join(REPO, name)).read()
+    asks_home = "post(\"http://192.168.1.66" in src_o or "post(f\"http://{HUB_HOST}" in src_o.split("def _ws_uri")[1].split("def ")[0] if "def _ws_uri" in src_o else "post(\"http://192.168.1.66" in src_o
+    check("%s asks toy_link where the hub is, not the home address" % name,
+          "toy_link" in src_o and "hub_address" in src_o or "any_connected" in src_o, name)
+check("the server's presence check no longer posts to the home address",
+      'r = _rq.post("http://192.168.1.66:20010/command"' not in open(os.path.join(REPO, "bin", "server.py")).read())
+
 POSTS.clear(); T._endpoint.update(url="", at=0.0)
 D.hands_line_idle()
 check("building his prompt line never probes the hub", not POSTS, POSTS)
