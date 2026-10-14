@@ -91,6 +91,18 @@ check("'C2 domains' is a feature asked about, not a gene", "C2" not in S.human_q
 check("'BRCA1 domains' still names BRCA1", "BRCA1" in S.human_question_symbols("What are the BRCA1 domains in human cells?"))
 check("'the HIF1A-DNA complex' names HIF1A", S.human_question_symbols(
       "What hydrogen bonds does Arg30 make in the human HIF1A-DNA complex?") == ["HIF1A"])
+check("the entry the question names is read, not another the planner picked",
+      C._coordinate_route(cq, {"source": "pdb", "entry_id": "2CLU", "operation": "structure_evidence"})["entry_id"] == "2CEI")
+check("an entry among those the question names is kept", C._coordinate_route(
+      "What are the residue coordinates in the PDB structures 2MAE, 2MVK, or 2MVL?",
+      {"source": "pdb", "entry_id": "2MVK", "operation": "structure_evidence"})["entry_id"] == "2MVK")
+import json as _json; os.makedirs(os.path.dirname(RP.NOTEBOOK), exist_ok=True)
+with open(RP.NOTEBOOK, "w") as f:
+    f.write(_json.dumps({"kind": "reflection", "at": "2026-10-14T20:00:00+00:00", "inquiry": inq, "review_outcome": "flawed_premise",
+                         "review_outcome_why": "zinc finger"}) + "\n")
+    f.write(_json.dumps({"kind": "reflection", "at": "2026-10-13T20:00:00+00:00", "inquiry": inq, "review_outcome": "answered"}) + "\n")
+lv = RP.live("2026-10-14T00:00:00")
+check("live counts only reviews since the time given", lv["reviews"] == 1 and lv["counts"] == {"flawed_premise": 1}, lv)
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

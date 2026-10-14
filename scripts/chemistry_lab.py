@@ -2454,11 +2454,17 @@ def _coordinate_route(question, source_query):
     """A question about atom positions in a named PDB entry reads that entry's coordinates, not literature."""
     if not _COORDINATES.search(str(question or "")): return source_query
     if source_query and source_query.get("source") not in (None, "pdb"): return source_query
-    if source_query and source_query.get("operation"): return source_query
     named = re.findall(r"(?<![A-Za-z0-9'-])([1-9][A-Za-z0-9]{3})(?![A-Za-z0-9'-])", str(question or ""))
     named = [x.upper() for x in named if re.search(r"[A-Za-z]", x)
              and re.search(r"\b(?:PDB|structures?|entry|entries)\b", str(question), re.I)]
-    entry = (source_query or {}).get("entry_id") or (named[0] if named else "")
+    entry = str((source_query or {}).get("entry_id") or "").upper()
+    # The entry the question names is the one read. 14 October: a question about 2CEI read 2CLU, and one about
+    # 2CIH's neighbour read another entry, so the review held coordinates of a structure nobody asked about.
+    if named and entry not in named:
+        entry = named[0]
+    elif source_query and source_query.get("operation"):
+        return source_query
+    entry = entry or (named[0] if named else "")
     if not re.fullmatch(r"[1-9][A-Z0-9]{3}", str(entry).upper()): return source_query
     return {"source": "pdb", "entry_id": str(entry).upper(), "operation": "structure_evidence"}
 

@@ -8,6 +8,8 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
                                                     or a question missing evidence (no network, no model)
     python3 scripts/lab_claim_replay.py recheck     each question's target fetched again from UniProt (read-only) and run
                                                     through today's checks: identity, premise, coordinate route
+    python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO (default: the last 12 hours),
+                                                    read-only
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
                                                     open claims and run the same coverage check on the whole question,
                                                     with the quotes it already had carried forward
@@ -165,6 +167,20 @@ def run(items, fetch=None, coverage=None, ledger_path=LEDGER):
     return results
 
 
+def live(since=None, notebook=NOTEBOOK):
+    """Outcome counts of the live Lab's reviews since `since`, with one example question each."""
+    import datetime
+    since = since or (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)).isoformat()
+    counts, examples, total = {}, {}, 0
+    for row in _rows(notebook):
+        if str(row.get("at") or "") < since: continue
+        status = row.get("review_outcome") or LCE.outcome(row)[0]
+        total += 1; counts[status] = counts.get(status, 0) + 1
+        examples.setdefault(status, (str((row.get("inquiry") or {}).get("question") or "")[:120],
+                                     str(row.get("review_outcome_why") or LCE.outcome(row)[1])[:160]))
+    return {"since": since, "reviews": total, "counts": counts, "examples": examples}
+
+
 def summary(results):
     searched = [r for r in results if r["before"] in LCE.SEARCHABLE]
     better = [r for r in searched if r.get("after") == "answered"
@@ -182,6 +198,13 @@ def main(argv):
         n = int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 20
         items = pick(n, force="--force" in argv)
         print("fixed set: %d questions -> %s" % (len(items), SET)); return 0
+    if cmd == "live":
+        got = live(argv[1] if len(argv) > 1 else None)
+        print("reviews since %s: %d" % (got["since"], got["reviews"]))
+        for status, n in sorted(got["counts"].items(), key=lambda kv: -kv[1]):
+            q, why = got["examples"][status]
+            print("  %3d %s\n      e.g. %s\n      %s" % (n, status, q, why))
+        return 0
     if not os.path.exists(SET):
         print("no fixed set yet: run  python3 scripts/lab_claim_replay.py pick"); return 1
     items = json.load(open(SET))
