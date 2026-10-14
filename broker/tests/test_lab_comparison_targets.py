@@ -62,12 +62,27 @@ class Comparison(unittest.TestCase):
         self.assertEqual(wrong['status'], 'unresolved', wrong)
         self.assertNotIn('target_mapping', wrong)
 
-    def test_the_refusal_names_the_target_still_to_retrieve(self):
-        with patch.object(C, '_ask', forbidden):
+    def test_the_established_target_is_read_and_the_absent_one_named(self):
+        # Refusing the whole pass threw away the target that WAS established (Gloria, 2026-10-14). The reading is
+        # asked about that one, told what is established, and the absent name is carried as what is still missing.
+        seen = {}
+        def model(system, user, **k):
+            seen.setdefault('prompts', []).append(user)
+            if 'reading sourced' in system:
+                return json.dumps({'answers_question': 'no', 'attention': 'Q86WA9', 'factual_observation': 'o',
+                                   'speculative_reading': '', 'next_question': 'n', 'instrument_gap': ''})
+            if 'evidence-coverage' in system:
+                return json.dumps({'answered': False, 'missing': ['the second transporter'],
+                                   'supports': [{'requirement': 'STAS fold', 'address': 'UniProt:Q86WA9/protein_name',
+                                                 'quote': A11['protein_name']}]})
+            return json.dumps({'sufficient': False, 'missing': ['the second transporter'], 'rationale': 'one only'})
+        with patch.object(C, '_ask', model):
             out = C._reflect('ctx', ASKED, {'records': [A11]})
-        self.assertTrue(str(out['answers_question']).startswith('no:'), out)
-        self.assertIn('SLC26A11', out['next_question']); self.assertIn('SLC26A4', out['next_question'])
-        self.assertIn('one query', out['next_question'])
+        self.assertEqual(out.get('unestablished_targets'), ['SLC26A4'], out)
+        self.assertIn('no retrieved record establishes SLC26A4', out['missing_evidence'])
+        self.assertFalse(str(out['answers_question']).startswith('yes'), out)
+        self.assertTrue(any('ONLY THESE TARGETS ARE ESTABLISHED' in p and 'SLC26A4' in p for p in seen['prompts']), seen)
+        self.assertIn(ASKED['question'], seen['prompts'][0])
 
     def test_with_both_retrieved_the_reading_is_actually_asked(self):
         asked = []

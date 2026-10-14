@@ -3538,6 +3538,22 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                     mapped[json.dumps(item, sort_keys=True)] = item
             identity_records = list(mapped.values())
     entity = question_entity_context(inquiry, identity_records, literature_only=literature_route)
+    # A comparison whose other target was never retrieved used to lose the whole pass, including the target that
+    # WAS established (14 October: TFR2=Q9UP52 established, TFR1 absent, nothing reviewed). The established part is
+    # reviewed and the absent name is carried as an open claim; the question is unchanged, so its coverage check
+    # still adjudicates the whole of it and comes back partial. Only plainly-absent names qualify: an ambiguous
+    # record, a contradicted alias, a wrong recommended name, taxon or isoform still stops the pass.
+    partial_identity = []
+    if entity['issues'] and entity.get('target_mapping'):
+        if all(str(x).startswith('no retrieved record establishes') for x in entity['issues']):
+            partial_identity = [x for x in entity.get('symbols', []) if x not in (entity.get('target_mapping') or {})]
+            if partial_identity:
+                entity = dict(entity, status='partially_established', issues=[],
+                              unestablished_targets=partial_identity)
+                proteins = [r for r in proteins if isinstance(r, dict)
+                            and r.get('accession') in set((entity.get('target_mapping') or {}).values())]
+                if isinstance(records, dict): records = dict(records, records=proteins)
+                else: records = proteins
     if entity['issues']:
         missing = '; '.join(entity['issues'])
         step = 'Resolve the requested protein name, accession and organism against one source entry.'
@@ -3574,6 +3590,10 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     prepared = _coverage_request(inquiry, records)
     deferred = _coverage_deferral(inquiry, records, prepared)
     if deferred: return dict(deferred, entity_context_check=entity)
+    identity_note = ('\n\nONLY THESE TARGETS ARE ESTABLISHED: %s. No retrieved record establishes %s, so say nothing '
+                     'about it and never let an established protein answer for it.'
+                     % (', '.join('%s (%s)' % kv for kv in sorted((entity.get('target_mapping') or {}).items())),
+                        ', '.join(partial_identity))) if partial_identity else ''
     line = None
     try:   # the line this test belongs to, and how he may end it
         import lab_lines
@@ -3604,7 +3624,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
             "and keep them apart from what the database records state. FULLTEXT, when present, holds passages from "
             "open-access full-text articles chosen for the parts of this question still unanswered: cite the PMCID and "
             "section of any you use; a passage chosen for a claim is not proof of it. Return JSON only.",
-            context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
+            context + identity_note + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
             "\n\nFirst decide answers_question: yes or no, with the precise missing evidence if no. "
             "A sequence interval can be read directly from a complete sequence; use the computed intervals above. "
             "Do not invent a missing-data claim for a supplied sequence or its subsequence. "
@@ -3673,6 +3693,10 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                 # partial evidence, without scheduling the same unavailable demand.
                 result.update(next_question='', instrument_gap='',
                               evidence_gap={'kind':'unavailable_profile_evidence','automatic_followup':False,'detail':'Hydropathy-profile computation is not connected.'})
+            if partial_identity:
+                result['unestablished_targets'] = partial_identity
+                result['missing_evidence'] = '; '.join(filter(None, [result.get('missing_evidence'),
+                    'no retrieved record establishes ' + ', '.join(partial_identity)]))
             return result
         if re.match(r'^yes\b', verdict, re.I):
             value['reader_answers_question'] = verdict
@@ -3688,6 +3712,10 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     if not re.match(r'^yes\b', verdict, re.I) and re.search(r'hydropath|hydrophobicity',result.get('missing_evidence',''),re.I):
         result.update(next_question='',instrument_gap='',
                       evidence_gap={'kind':'unavailable_profile_evidence','automatic_followup':False,'detail':'Hydropathy-profile computation is not connected.'})
+    if partial_identity:
+        result['unestablished_targets'] = partial_identity
+        result['missing_evidence'] = '; '.join(filter(None, [result.get('missing_evidence'),
+            'no retrieved record establishes ' + ', '.join(partial_identity)]))
     return result
 
 
