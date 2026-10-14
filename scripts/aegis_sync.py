@@ -93,10 +93,18 @@ def say(r):
 
 def main(argv):
     source = argv[argv.index("--from") + 1] if "--from" in argv else None
+    if "--resumed" in argv:      # the new copy after a sync: the sync is already done, go straight to the deploy
+        return deploy() if "--deploy" in argv else 0
+    me = os.path.abspath(__file__)
+    before = open(me, "rb").read()
     r = sync(source=source)
     print(say(r))
     if not r["ok"]:
         return 1
+    # The sync can bring a new version of this very script. Carrying on in the old one is how a fixed deploy view
+    # went unseen on 14 October: run the new copy for the rest of the work instead.
+    if "--deploy" in argv and "--resumed" not in argv and open(me, "rb").read() != before:
+        os.execv(sys.executable, [sys.executable, me, "--resumed"] + list(argv))
     if "--deploy" in argv:
         return deploy()
     return 0
