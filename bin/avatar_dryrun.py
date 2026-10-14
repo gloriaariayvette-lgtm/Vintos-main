@@ -92,12 +92,21 @@ if TURN is not None and msg is None:
     ex = _exchanges()
     if not 1 <= TURN <= len(ex): print("--turn %d: there are %d of her messages" % (TURN, len(ex))); sys.exit(1)
     i = len(ex) - TURN
-    before = []
-    for r in ex[max(0, i - 15):i]:
-        before += [{"role": "user", "content": str(r.get("gloria"))},
-                   {"role": "assistant", "content": _MARK.sub("", str(r.get("vintos") or ""))}]
     msg = str(ex[i].get("gloria")).strip()
     his_actual = _MARK.sub("", str(ex[i].get("vintos") or "")) or None
+    # The ledger can hold the same exchange twice (written from two surfaces). An earlier copy of THIS exchange in
+    # the history put his real reply in front of the candidate, and Argon copied it word for word (14 October).
+    # Nothing in the history may be this message or this reply, and repeated exchanges are kept once.
+    same = lambda a, b: " ".join(str(a or "").split())[:400] == " ".join(str(b or "").split())[:400]
+    before, seen = [], set()
+    for r in ex[max(0, i - 20):i]:
+        g, v = str(r.get("gloria") or ""), _MARK.sub("", str(r.get("vintos") or ""))
+        key = (" ".join(g.split())[:200], " ".join(v.split())[:200])
+        if key in seen or same(g, msg) or (his_actual and same(v, his_actual)):
+            continue
+        seen.add(key)
+        before += [{"role": "user", "content": g}, {"role": "assistant", "content": v}]
+    before = before[-30:]
     convo = [m for m in before if m["content"].strip()] + [{"role": "user", "content": msg}]
     print("[dryrun] her message (turn %d back):" % TURN, msg[:300])
     print("[dryrun] (system prompt is the latest captured: today's room and devices, not that night's)")
@@ -134,9 +143,9 @@ async def go():
 
 if his_actual is not None or (ARGON and len(sys.argv) <= 1):
     # her real message: show what he actually said; no new call to his model, nothing spent on him
-    print("[dryrun] his actual reply (from his avatar history)")
+    print("[dryrun] his actual reply (from his %s)" % ("ledger" if TURN is not None else "avatar history"))
     print("---")
-    print((his_actual or "(his reply to it was not found in his avatar history)")[:1500])
+    print(his_actual or "(his reply to it was not found)")
 else:
     reply, reasoning, used = asyncio.run(go())
     print("[dryrun] model:", used)
@@ -194,4 +203,4 @@ if ARGON:
         print("[dryrun] tokens in %s, out %s, thinking %s" % (usage.get("promptTokenCount"), usage.get("candidatesTokenCount"),
                                                             usage.get("thoughtsTokenCount", 0)))
     print("---")
-    print((text or "")[:1500])
+    print(text or "")

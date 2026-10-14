@@ -73,6 +73,8 @@ check("Argon's side is printed beneath", "gemini-4-argon" in out, out[-300:])
 check("there is no sample line any more", "kettle" not in open(os.path.join(REPO, "bin", "avatar_dryrun.py")).read())
 # --list and --turn: an earlier turn from his ledger (300 exchanges), his actual reply, nothing written
 json.dump([{"timestamp": "2026-10-10T22:01:00", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There.\n\ntenera: wave  x  @4"},
+           {"timestamp": "2026-10-10T22:01:30", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There."},
+           {"timestamp": "2026-10-10T22:02:59", "surface": "voice", "gloria": "don't stop", "vintos": "I won't."},
            {"timestamp": "2026-10-10T22:03:00", "surface": "avatar", "gloria": "don't stop", "vintos": "I won't."},
            {"timestamp": "2026-10-12T08:00:00", "surface": "avatar", "gloria": "the shark took my rod", "vintos": "Give me the hand."}],
           open(os.path.join(H, ".vintos", "workspace", "memory", "interaction-ledger.json"), "w"))
@@ -82,11 +84,31 @@ run = lambda *a: subprocess.run([sys.executable, os.path.join(REPO, "bin", "avat
 listed = run("--list")
 check("--list numbers her messages, most recent first", listed.splitlines()[0].strip().startswith("1") and "the shark took my rod" in listed.splitlines()[0]
       and "don't stop" in listed.splitlines()[1], listed)
+# record what Argon is sent, without sending: a sitecustomize in the script's path replaces urlopen
+open(os.path.join(H, "Vintos", "sitecustomize.py"), "w").write(
+    "import urllib.request, json, os, io\n"
+    "def _rec(req, timeout=None):\n"
+    "    open(os.environ['ARGON_SENT'], 'w').write(req.data.decode())\n"
+    "    class R(io.BytesIO):\n"
+    "        def __enter__(s): return s\n"
+    "        def __exit__(s, *a): return False\n"
+    "    return R(json.dumps({'candidates': [{'content': {'parts': [{'text': 'argon says'}]}}]}).encode())\n"
+    "urllib.request.urlopen = _rec\n")
+SENT_FILE = os.path.join(tempfile.mkdtemp(prefix="argon-sent-"), "sent.json")
+run = lambda *a: subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py")] + list(a), capture_output=True,
+                                text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="k", VINTOS_AVATAR_CAPTURE=CAP,
+                                                    PYTHONPATH=os.path.join(H, "Vintos"), ARGON_SENT=SENT_FILE), timeout=60).stdout
 turned = run("--argon", "--turn", "2")
+sent = json.load(open(SENT_FILE))
+history = " ".join(p["text"] for c in sent["contents"][:-1] for p in c["parts"])
+check("Argon never sees the reply it is being compared with", "I won't." not in history, history)
+check("a repeated exchange is kept once", history.count("Slower. There.") == 1, history)
+check("its last turn is her message", sent["contents"][-1]["parts"][0]["text"] == "don't stop", sent["contents"][-1])
 check("--turn 2 replays that message", "her message (turn 2 back): don't stop" in turned, turned[:500])
+check("Argon's whole reply is printed", "argon says" in turned, turned[-300:])
 check("with the reply he actually gave", "I won't." in turned, turned[:600])
 check("his model is not called for it", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")))
-after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d)
+after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d and f != "sitecustomize.py")
 check("nothing is written", [f for f in after if f not in before] == [], [f for f in after if f not in before])
 
 print("\n%d/%d passed" % (sum(R), len(R)))
