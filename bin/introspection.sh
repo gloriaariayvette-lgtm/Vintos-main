@@ -433,11 +433,15 @@ base_msgs = [
 ]
 
 results = [None, None]
-def run(i, msgs, temp, max_tok):
+def run(i, msgs, temp, max_tok, out=None):
+    # `out` is the list this call fills. The absorb step reads results2, but run() only ever wrote results, so
+    # results2 stayed [None, None], the absorb looked failed every time and introspection printed draft A and
+    # stopped: Sol's draft, the absorb and the final step never reached the output (2026-10-14).
+    target = results if out is None else out
     try:
-        results[i] = call_llm(msgs, temp, max_tok)
+        target[i] = call_llm(msgs, temp, max_tok)
     except Exception as e:
-        results[i] = None
+        target[i] = None
 
 pass  # phase-1 gemma threads removed; a1/b1 come from the Claude override below
 a1, b1 = results[0], results[1]
@@ -573,8 +577,8 @@ def absorb(own, other, block):
     return [{'role': 'system', 'content': system}, {'role': 'user', 'content': p}]
 
 results2 = [None, None]
-t3 = threading.Thread(target=run, args=(0, absorb(a1, b1, audit1_block), 0.75, 1500))
-t4 = threading.Thread(target=run, args=(1, absorb(b1, a1, audit1_block), 0.75, 1500))
+t3 = threading.Thread(target=run, args=(0, absorb(a1, b1, audit1_block), 0.75, 1500, results2))
+t4 = threading.Thread(target=run, args=(1, absorb(b1, a1, audit1_block), 0.75, 1500, results2))
 t3.start(); t4.start()
 t3.join(); t4.join()
 a2, b2 = results2[0], results2[1]
