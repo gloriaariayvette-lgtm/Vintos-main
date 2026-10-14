@@ -476,7 +476,7 @@ def dead_ends(rows=None):
     words = [set(re.findall(r"(?<![A-Za-z0-9-])[A-Za-z][a-z0-9]*[A-Z0-9][A-Za-z0-9-]*", str(q.get("question", ""))))
              for q in asked]
     for word in sorted(set().union(*words)):
-        if word not in CLASS_WORDS and sum(word in w for w in words) * 4 >= len(asked) * 3:
+        if word.casefold() not in _CLASS_FOLD and sum(word in w for w in words) * 4 >= len(asked) * 3:
             subjects.append(word)
     seen, unique = set(), []
     for x in (v.strip() for v in subjects):
@@ -488,6 +488,18 @@ def dead_ends(rows=None):
 # Words that name a kind of molecule, not one protein: blocking them would block half of biology.
 CLASS_WORDS = {"ATPase", "GTPase", "DNA", "RNA", "mRNA", "tRNA", "rRNA", "ATP", "ADP", "GTP", "NAD", "NADH",
                "NADPH", "FAD", "PDB", "ESM", "ESM-C", "UniProt", "NCBI", "ChEMBL", "BV-BRC", "InterPro", "pH"}
+# Tools, databases, measures and generic domain abbreviations. They appear in most of his questions, so a long
+# unanswered run made them "spent", and every later question naming them was refused as a spent subject: on 14
+# October 29 of 58 refusals after the repair deploy were "spent subject" on proteins never asked before (an MBL
+# in Pseudomonas, MetH, CcmK2, SOD2, an archaeal AMO). A subject is a protein, gene or organism, never a method.
+CLASS_WORDS |= {"AlphaFold", "AlphaFold2", "AlphaFold3", "AF2", "AF3", "ESMFold", "ESM2", "ESM3", "ESM-2", "ESM-3",
+                "pLDDT", "PAE", "pTM", "ipTM", "RMSD", "TM-score", "TMalign", "TM-align", "Foldseek", "DALI",
+                "UniProtKB", "Swiss-Prot", "SwissProt", "TrEMBL", "RefSeq", "GenBank", "BLAST", "BLASTp", "PSI-BLAST",
+                "PDBe", "RCSB", "Pfam", "InterProScan", "HMMER", "HMM", "MSA", "KEGG", "GO", "EC", "SMILES", "InChI",
+                "NMR", "EM", "cryo-EM", "cryoEM", "MD", "DFT", "3D", "2D", "CDS", "ORF", "UTR", "kDa",
+                "IC50", "EC50", "Ki", "Kd", "Km", "kcat", "TM", "TMD", "TMDs", "TMH", "ECD", "ICD", "NTD", "CTD",
+                "LBD", "DBD", "SNP", "SNPs", "GWAS", "CRISPR", "PCR", "qPCR"}
+_CLASS_FOLD = {w.casefold() for w in CLASS_WORDS}
 SPENT = os.path.join(ROOT, "spent-subjects.json")
 SPENT_HOURS = 24
 
@@ -497,7 +509,8 @@ def spent_subjects(now=None):
     make KaiC answerable again an hour later."""
     now = now or time.time()
     return [row["subject"] for row in _load(SPENT, {}).values()
-            if isinstance(row, dict) and now - float(row.get("at", 0)) < SPENT_HOURS * 3600]
+            if isinstance(row, dict) and now - float(row.get("at", 0)) < SPENT_HOURS * 3600
+            and str(row.get("subject") or "").casefold() not in _CLASS_FOLD]
 
 
 def remember_spent(subjects, now=None):
@@ -512,17 +525,25 @@ def remember_spent(subjects, now=None):
         _atomic(SPENT, rows)
 
 
-def mentions_spent(text, subjects=None):
+def spent_matches(text, subjects=None):
+    """The spent subjects this text names (a method or database word is never one)."""
     subjects = spent_subjects() if subjects is None else subjects
-    return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])", str(text or ""), re.I)
-               for s in subjects)
+    return [s for s in subjects if str(s).casefold() not in _CLASS_FOLD and
+            re.search(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])", str(text or ""), re.I)]
+
+
+def mentions_spent(text, subjects=None):
+    return bool(spent_matches(text, subjects))
+
+
+def _inquiry_text(inquiry):
+    return " ".join([str(inquiry.get("question", "")), str(inquiry.get("uniprot_query", "")),
+                     json.dumps(inquiry.get("source_query") or {})])
 
 
 def repeats_dead_end(inquiry, spent):
     """True when a new question goes straight back to a subject that has just produced nothing."""
-    text = " ".join([str(inquiry.get("question", "")), str(inquiry.get("uniprot_query", "")),
-                     json.dumps(inquiry.get("source_query") or {})])
-    return mentions_spent(text, spent.get("subjects") or [])
+    return mentions_spent(_inquiry_text(inquiry), spent.get("subjects") or [])
 
 
 def spent_retrieval(inquiry, spent):
@@ -2065,7 +2086,9 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
             except Exception:
                 active_line = False
         if spent and spent_retrieval(candidate, spent) and not active_line:
-            return "spent subject: this retrieval already ended without an answer"
+            # the subject is named, so a refusal can be checked against what was actually spent
+            return "spent subject: this retrieval already ended without an answer (%s)" % ", ".join(
+                spent_matches(_inquiry_text(candidate), spent.get("subjects") or [])[:4])
         return repeats.repeat(candidate)
     why = blocked(inquiry)
     if why and not replan:
@@ -2207,7 +2230,9 @@ def chembl_from_plugin(pq):
     # organism is what the connector's own schema offers, so the planner sends it; refusing it failed every such
     # search with "unsupported ChEMBL target-search arguments" (13 October). It is a real ChEMBL filter.
     if not isinstance(args, dict) or set(args) - {'target_name', 'limit', 'organism'}:
-        raise ValueError('unsupported ChEMBL target-search arguments')
+        # named, so the next fault says which argument the planner sent (14 October: one more, unnamed)
+        raise ValueError('unsupported ChEMBL target-search arguments: %s' % (
+            ', '.join(sorted(set(args) - {'target_name', 'limit', 'organism'})) if isinstance(args, dict) else type(args).__name__))
     from lab_sources import _plain_term, _bounded_limit
     spec = {'source': 'chembl', 'operation': 'search_targets', 'term': _plain_term(args.get('target_name')),
             'limit': _bounded_limit(args.get('limit'), 4)}
