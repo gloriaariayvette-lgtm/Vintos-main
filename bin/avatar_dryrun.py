@@ -8,6 +8,8 @@ with a test line, and calls the same model router his server calls. Nothing is
 saved: no ledger, no history, no nudges, no memory. Prints the raw reply.
 
     python3 ~/Vintos/avatar_dryrun.py --argon      her last real message: his actual reply beside Argon's
+    python3 ~/Vintos/avatar_dryrun.py --list       her last 30 messages, numbered (1 = the most recent)
+    python3 ~/Vintos/avatar_dryrun.py --argon --turn 7   her 7th-last message, with the conversation before it
     python3 ~/Vintos/avatar_dryrun.py "a test line"  a new line through his own model, printed only
     python3 ~/Vintos/avatar_dryrun.py --argon "a test line"   the same line to both
 
@@ -25,6 +27,27 @@ import avatar_stage as _avst
 
 ARGON = "--argon" in sys.argv
 sys.argv = [a for a in sys.argv if a != "--argon"]
+TURN = None
+if "--turn" in sys.argv:
+    _i = sys.argv.index("--turn")
+    try: TURN = int(sys.argv[_i + 1])
+    except Exception: print("--turn needs a number from --list"); sys.exit(1)
+    del sys.argv[_i:_i + 2]
+# Earlier turns come from his interaction ledger: 300 exchanges across his surfaces, where the avatar history keeps 40.
+LEDGER_PATH = os.path.expanduser("~/.vintos/workspace/memory/interaction-ledger.json")
+_MARK = re.compile(r"\n\n(?:tenera:|ridge:|ferri:)[\s\S]*$")   # the device pictures under his words, not his words
+
+def _exchanges():
+    rows = json.load(open(LEDGER_PATH))
+    return [r for r in rows if isinstance(r, dict) and str(r.get("gloria") or "").strip()
+            and not str(r.get("gloria")).startswith("[she spoke with her body")]
+
+if "--list" in sys.argv:
+    ex = _exchanges()
+    for n, r in enumerate(reversed(ex[-30:]), 1):
+        print("%3d  %s  %-8s %s" % (n, str(r.get("timestamp", ""))[5:16].replace("T", " "), str(r.get("surface") or "")[:8],
+                                   " ".join(str(r.get("gloria")).split())[:100]))
+    sys.exit(0)
 msg = sys.argv[1] if len(sys.argv) > 1 else None
 messages = None
 for _cap in (os.environ.get("VINTOS_AVATAR_CAPTURE") or "/tmp/avatar-last-prompt.json",):   # override: tests only
@@ -62,7 +85,23 @@ def _text(content):
     return " ".join(p.get("text", "") for p in content or [] if isinstance(p, dict) and p.get("type") == "text")
 
 his_actual = None
-if msg is None:
+if TURN is not None and msg is None:
+    # an earlier turn of hers: the conversation up to it from his avatar history (the server reads 15 exchanges),
+    # her message, and the reply he actually gave. The system prompt is the latest captured one: today's room
+    # and devices, not that night's.
+    ex = _exchanges()
+    if not 1 <= TURN <= len(ex): print("--turn %d: there are %d of her messages" % (TURN, len(ex))); sys.exit(1)
+    i = len(ex) - TURN
+    before = []
+    for r in ex[max(0, i - 15):i]:
+        before += [{"role": "user", "content": str(r.get("gloria"))},
+                   {"role": "assistant", "content": _MARK.sub("", str(r.get("vintos") or ""))}]
+    msg = str(ex[i].get("gloria")).strip()
+    his_actual = _MARK.sub("", str(ex[i].get("vintos") or "")) or None
+    convo = [m for m in before if m["content"].strip()] + [{"role": "user", "content": msg}]
+    print("[dryrun] her message (turn %d back):" % TURN, msg[:300])
+    print("[dryrun] (system prompt is the latest captured: today's room and devices, not that night's)")
+elif msg is None:
     # The captured prompt's last turn is what his model saw: her words wrapped in context the server adds (open
     # intentions and the like), so it is never matched as text. Her plain words and his actual reply come from his
     # avatar history: its last message from her and the reply after it. Argon still gets the captured prompt whole.

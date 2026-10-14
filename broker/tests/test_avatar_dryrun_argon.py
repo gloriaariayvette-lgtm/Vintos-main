@@ -71,5 +71,23 @@ after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__p
 check("nothing is written", [f for f in after if f not in before] == [], [f for f in after if f not in before])
 check("Argon's side is printed beneath", "gemini-4-argon" in out, out[-300:])
 check("there is no sample line any more", "kettle" not in open(os.path.join(REPO, "bin", "avatar_dryrun.py")).read())
+# --list and --turn: an earlier turn from his ledger (300 exchanges), his actual reply, nothing written
+json.dump([{"timestamp": "2026-10-10T22:01:00", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There.\n\ntenera: wave  x  @4"},
+           {"timestamp": "2026-10-10T22:03:00", "surface": "avatar", "gloria": "don't stop", "vintos": "I won't."},
+           {"timestamp": "2026-10-12T08:00:00", "surface": "avatar", "gloria": "the shark took my rod", "vintos": "Give me the hand."}],
+          open(os.path.join(H, ".vintos", "workspace", "memory", "interaction-ledger.json"), "w"))
+before = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d)
+run = lambda *a: subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py")] + list(a), capture_output=True,
+                                text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="", VINTOS_AVATAR_CAPTURE=CAP), timeout=60).stdout
+listed = run("--list")
+check("--list numbers her messages, most recent first", listed.splitlines()[0].strip().startswith("1") and "the shark took my rod" in listed.splitlines()[0]
+      and "don't stop" in listed.splitlines()[1], listed)
+turned = run("--argon", "--turn", "2")
+check("--turn 2 replays that message", "her message (turn 2 back): don't stop" in turned, turned[:500])
+check("with the reply he actually gave", "I won't." in turned, turned[:600])
+check("his model is not called for it", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")))
+after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d)
+check("nothing is written", [f for f in after if f not in before] == [], [f for f in after if f not in before])
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
