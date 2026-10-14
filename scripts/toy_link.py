@@ -21,6 +21,7 @@ PORTS = (20010, 20011, 20012)
 SSL_PORT = "30010"
 ENDPOINT = os.path.expanduser("~/.vintos/workspace/memory/.toy-endpoint.json")
 ENDPOINT_TTL = 30.0          # how long a working address is trusted before it is checked again
+ENDPOINT_MISS_TTL = 60.0     # how long "it answered nowhere" is trusted; a phone that comes back waits this long
 PROBE_TIMEOUT = 1.5
 
 
@@ -103,12 +104,23 @@ def _remember(url, reached):
 _endpoint = {"url": "", "at": 0.0}
 
 
+def _answers(url):
+    try:
+        return requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=PROBE_TIMEOUT).status_code == 200
+    except Exception:
+        return False
+
+
 def endpoint(force=False):
-    """The hub's address right now, or "" when it answers nowhere. The one that worked is remembered,
-    so an ordinary call costs no scan; a scan happens only when that one stops answering."""
+    """The hub's address right now, or "" when it answers nowhere. The one that worked is remembered, so an
+    ordinary call costs no scan. A scan asks every candidate at once: one at a time, a hub that is simply away
+    cost eleven timeouts in a row, in whatever turn happened to ask."""
     now = time.time()
-    if not force and _endpoint["url"] and now - _endpoint["at"] < ENDPOINT_TTL:
-        return _endpoint["url"]
+    if not force:
+        if _endpoint["url"] and now - _endpoint["at"] < ENDPOINT_TTL:
+            return _endpoint["url"]
+        if not _endpoint["url"] and _endpoint["at"] and now - _endpoint["at"] < ENDPOINT_MISS_TTL:
+            return ""
     tried = []
     last = _remembered().get("url")
     if last:
@@ -116,15 +128,19 @@ def endpoint(force=False):
     for url in candidates():
         if url not in tried:
             tried.append(url)
-    for url in tried:
-        try:
-            r = requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=PROBE_TIMEOUT)
-            if r.status_code == 200:
-                _endpoint.update(url=url, at=now)
-                _remember(url, True)
-                return url
-        except Exception:
-            continue
+    if tried and _answers(tried[0]):          # the one that worked last time, first and alone
+        _endpoint.update(url=tried[0], at=now)
+        _remember(tried[0], True)
+        return tried[0]
+    rest = tried[1:]
+    if rest:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(rest))) as pool:
+            for url, ok in zip(rest, pool.map(_answers, rest)):
+                if ok:
+                    _endpoint.update(url=url, at=now)
+                    _remember(url, True)
+                    return url
     _endpoint.update(url="", at=now)
     _remember(last or "", False)
     return ""

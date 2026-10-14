@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 14 October — the hub reaches her phone over the tailnet (done)
+
+- The devices pair to her phone over Bluetooth, so the hub is wherever she is. toy_link had one hardcoded LAN
+  address: away from her network every device read as switched off and the Ferri could not be seen at all.
+- The address is resolved from candidates and remembered. `LOVENSE_TAILNET_HOST=100.102.2.47 iphone171` in
+  `~/.vintos/vintos.env` is what makes it work away from home; the phone is always on the tailnet.
+- Verified live on 14 October from Aegis, on cellular: `http://100.102.2.47:20010/command`, ferri present.
+  The app binds its LAN server to the tunnel as well as Wi-Fi, so nothing vendor-side was needed.
+- An unreachable hub is told apart from devices being off, and never reported to him as the devices being off.
+
 ## 14 October — T-17420bd6: full-text evidence for open claims; improvement not yet shown
 
 - Built (85fd982): open claims searched in Europe PMC full text, the whole question reviewed again with cited

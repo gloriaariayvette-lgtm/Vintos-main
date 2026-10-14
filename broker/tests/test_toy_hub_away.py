@@ -77,7 +77,14 @@ check("a send that fails re-resolves and still lands", T._post({"command": "GetT
 print("--- the hub answers nowhere ---")
 ANSWERS.clear()
 T._endpoint.update(url="", at=0.0); T._status_cache.update(t=0.0, map={})
+POSTS.clear()
+import time as _t
+_t0 = _t.monotonic()
 check("no address answers", T.endpoint() == "" and not T.reachable())
+check("every candidate was asked, and asked at once rather than one timeout after another",
+      len(POSTS) >= len(T.candidates()) and _t.monotonic() - _t0 < 2.0, (len(POSTS), len(T.candidates())))
+POSTS.clear()
+check("a hub that is away is not re-scanned on every call", T.endpoint() == "" and not POSTS, POSTS)
 raised = False
 try:
     T._post({"command": "GetToys", "apiVer": 1})
