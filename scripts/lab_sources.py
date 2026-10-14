@@ -366,6 +366,14 @@ def question_entity_context(inquiry, records, *, literature_only=False):
                           + ('; established: ' + ','.join('%s=%s' % kv for kv in sorted(mapping.items())) if mapping else ''))
         for symbol in ambiguous:
             issues.append('several retrieved records claim ' + symbol + ': an explicit per-target mapping is required')
+        # "GLUT1 (SLC1A1)" says two names are one protein. Fetching both must not let the second stand in for the
+        # first: when the records put them on different proteins, the alias is wrong and the question is refused
+        # with both identities named (14 October: GLUT1 is SLC2A1; SLC1A1 is EAAT3).
+        for name, alias in re.findall(r'\b([A-Za-z][A-Za-z0-9-]*[0-9A-Z])\s*\(([A-Z][A-Z0-9-]{1,})\)', question):
+            a, b = mapping.get(name.upper()), mapping.get(alias.upper())
+            if a and b and a != b:
+                issues.append('the question gives %s and %s as one protein; the records say %s=%s and %s=%s'
+                              % (name, alias, name.upper(), a, alias.upper(), b))
         if ecoli_question and not any(ecoli_member(r) for r in matches):
             issues.append('E. coli species/strain relationship is unresolved in retained taxonomy')
         return {'status':'unresolved' if issues else 'consistent','issues':issues,

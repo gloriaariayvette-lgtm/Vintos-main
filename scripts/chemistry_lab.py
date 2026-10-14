@@ -2380,6 +2380,20 @@ def pubmed_from_plugin(pq):
     return spec
 
 
+def _fetches_only_some(query, symbols):
+    """True when a human gene query names some, not all, of the question's genes, and nothing else."""
+    terms = _intent_terms(query)
+    genes = re.findall(r"\bgene(?:_exact)?\s*:\s*\"?([A-Za-z0-9-]+)", str(query or ""), re.I)
+    if not genes or any(not t.startswith("gene:") for t in terms):
+        return False
+    if re.search(r"\b(?:accession|protein_name|organism_id|taxonomy_id)\s*:\s*(?!9606\b)", str(query), re.I) \
+            and not re.search(r"\b(?:organism_id|taxonomy_id)\s*:\s*9606\b", str(query)):
+        return False
+    have = {g.upper() for g in genes}
+    want = {str(x).upper() for x in symbols}
+    return have < want
+
+
 _MECHANISM_CLAUSE = re.compile(r",?\s+(?:and|or)\s+how\s+(?:do|does|did|might|could|would|can|may)\b.*$", re.I | re.S)
 
 
@@ -2428,6 +2442,12 @@ def _inquiry(value, lean=None):
     question_symbols = (_human_question_symbols(question)
                         if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
     if query in (BASELINE_QUERY, _safe_query(BASELINE_QUERY)) and question_symbols:
+        query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
+                 ') AND taxonomy_id:9606 AND reviewed:true')
+    elif 1 < len(question_symbols) <= 4 and _fetches_only_some(query, question_symbols):
+        # Every protein the question names is fetched, so each can be established by its own record. 14 October:
+        # "SOX9 and SOX10", "BRCA1 ... BARD1" fetched one gene, and the review refused the question because no
+        # record established the other.
         query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
                  ') AND taxonomy_id:9606 AND reviewed:true')
     identity_queries = [query] + ([source_query['query']] if source_context_current and source_query and source_query.get('source') == 'uniprot' and source_query.get('query') else [])
