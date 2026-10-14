@@ -20,6 +20,23 @@ hide them. The panel survives board refreshes. Wants actions use semantic click 
 Add confirmation uses the same delegated handler. Both mobile page copies carry the correction.
 The isolated regression exercises opening, switching, refresh, step selection and closing without
 account writes. Native installation and live deployment are verified separately.
+## 10 October — Identity and query recovery correction (source only)
+
+Owner-requested source repair preserves whole identifier tokens (7W3O no longer becomes
+W3O in gene validation), retains Unicode/beta notation through query transport, and
+records exact unresolved identity refusals separately so recovery advances rather than
+selecting the same rejected route. Transient failures remain retryable; corrected targets
+and newly verified identity evidence can retry. Fourteen focused offline regressions pass
+(the original six detect five pre-edit failures), alongside grounding 10/10, repeat 44/44, source
+contracts 29/29, and the existing October 10 strategy suite. Two grounding expectations
+now require blocking unchanged terminal identity refusals. Stale/cached rejection evidence
+cannot renew an active decision. After expiry, one completed validation starts a new
+bounded window even with the same receipt; real grounding refreshes receipts after 24 hours.
+Release requires an intact exact-human identity receipt. Legacy empty-key refusals need
+one fresh failure. Beta token boundaries and NFC/case key checks pass, and repeat helpers
+avoid importing a second chemistry_lab daemon module. Not deployed: independent
+review and authorized scoped rollout/live verification remain outstanding. CD147 alias/
+species scope and missing ESMFold Eliot remain separate, unedited follow-ups.
 
 ## 10 October — Lab evidence completion and strategy recovery
 
@@ -3232,3 +3249,58 @@ contains Zn coordinates [63.267, 29.950, 112.382] Å and nearby His401, His411,
 His405 NE2 atoms at 2.214, 2.223 and 2.229 Å respectively (chain A, author
 numbering). This is verified source retrieval; it does not prove that the
 broader comparison with other metalloproteinases has been answered.
+
+
+### 2026-10-10 — Lab relevance and accession context (Codex, source only)
+
+All affirmative protein reviews now require original-question source coverage,
+including hydropathy questions. Explicit accession targets retain retrieved gene
+aliases and taxonomy for an independent entity-context check; mismatched or
+unestablished names cannot become affirmative findings. Contextual S1-S6 helix
+notation no longer enters human-gene grounding. Offline regressions accompany
+these changes. Deployment and Lab restart remain unapproved and outstanding.
+CD147 Study SF-9a62b99c remains failed by provider refusal; no retry or provider
+switch was made. Scientific coverage still requires evidence, not a successful
+lookup or a model affirmation.
+
+Independent review added a deterministic profile gate: full-sequence digest,
+accession, taxon and relevant isoform must agree; supplied residue values must
+reproduce a declared finite residue scale and centered odd-window arithmetic
+mean. This validates computational consistency only. Unsupported/unstructured
+profile formats remain incomplete; scientific adequacy still requires coverage
+review. No profile producer or network job was added.
+
+
+### 2026-10-10 — Relevance candidate revised after independent review
+
+The mandatory custom hydropathy schema/validator was removed: no producer was
+connected. All proposed affirmative protein reviews with a question now require
+quote integrity plus a blind second full-question sufficiency assessment; missing
+questions fail closed. This remains model assessment, not scientific proof.
+Missing profile evidence retains supported partial observations and creates no
+automatic follow-up for the unavailable computation. Identity checks preserve
+question and original-query expectations; ambiguous target mappings and absent
+requested isoform metadata stay unresolved. Species prose beyond recognized
+terms remains part of the independent assessment. Source-only; rollout held.
+The separate CD147 candidate is outside the checkout and has not been applied.
+
+
+### 2026-10-10 — HR1 structural-feature role correction (Codex, source only)
+
+The approved relevance-v3 rollout completed at 18:55 UTC with the Lab-only
+local Gemma pin. Its resumed reflection misclassified "HR1 domain" as a
+target gene. A source-only correction now discounts a domain-label occurrence
+only in explicit ownership or the recorded paired interface-region syntax;
+separate target mentions, explicit gene/protein assertions, domain-containing
+protein names and ambiguous bare "BRCA1 domain" phrases stay constrained.
+The full question is unchanged and still requires coverage/sufficiency evidence.
+Six added offline tests plus the existing suites passed (23 relevance, 14
+identity, 10 grounding, 29 sources, 44 repeat checks). This HR1 correction is
+NOT deployed; independent review and rollout approval remain outstanding.
+General identity/role interpretation is not claimed solved. CD147 remains
+separate. The deployed relevance-v3 module and Gemma-only drop-in are unchanged.
+
+Independent HR1 review narrowed the candidate further: the generic of/in/within
+owner branch was removed because locations can hide real target names. Only
+the paired interface/terminal-region syntax qualifies; BRCA1 location phrases
+and explicit query mismatches have negative controls. Still source-only.
