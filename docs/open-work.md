@@ -8,6 +8,10 @@ It is the only place with a to-do in it.
 - Built (85fd982): open claims searched in Europe PMC full text, the whole question reviewed again with cited
   passages, distinct review outcomes (a checker failure is never a "no"), a per-question claim ledger that reuses
   searches and keeps holds from rerunning them, and the open claims on the Lab card.
+- **Result on Aegis, 14 October: no improvement.** Fixed set of 20: 12 wrong target, 8 missing evidence. Of the 8,
+  4 could not be searched (no named protein; 3 ask for XYZ coordinates a paper does not give), 3 got passages and
+  stayed unsupported (NEUROD1 'zinc finger domains', TROP2 'Tektin-2 related', ANT 'metal-binding geometry' assume
+  things that are not so), HIF1A stayed 3 supports. Most failures are premises and targets, not missing papers.
 - **Not done:** the before/after demonstration on a fixed set of failed questions. It needs Aegis (Europe PMC and
   local Gemma): `python3 scripts/lab_claim_replay.py pick 20`, then `audit`, then `run`. Until that report shows
   more claims supported without rewritten questions, the acceptance criterion is unmet.
