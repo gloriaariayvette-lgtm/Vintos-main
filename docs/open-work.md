@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 14 October — T-17420bd6: full-text evidence for open claims; improvement not yet shown
+
+- Built (85fd982): open claims searched in Europe PMC full text, the whole question reviewed again with cited
+  passages, distinct review outcomes (a checker failure is never a "no"), a per-question claim ledger that reuses
+  searches and keeps holds from rerunning them, and the open claims on the Lab card.
+- **Not done:** the before/after demonstration on a fixed set of failed questions. It needs Aegis (Europe PMC and
+  local Gemma): `python3 scripts/lab_claim_replay.py pick 20`, then `audit`, then `run`. Until that report shows
+  more claims supported without rewritten questions, the acceptance criterion is unmet.
+- Not fixed by this: questions whose target is wrong or whose premise is contradictory; more papers do not help them.
+
 ## 14 October — Europe PMC full-text reader: built, not yet seen working live
 
 - `scripts/europepmc.py` reads an open-access article's JATS XML from Europe PMC (sections with their headings,
