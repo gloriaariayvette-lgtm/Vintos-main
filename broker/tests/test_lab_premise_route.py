@@ -72,8 +72,25 @@ items = [{"inquiry": inq, "coverage_check": {"answered": False, "missing": ["zin
          {"inquiry": {"question": "Which residues form the iron-binding site of human FTH1?", "uniprot_query": "gene:FTH1 AND organism_id:9606"},
           "coverage_check": {"answered": False, "missing": ["residues"], "supports": []}}]
 rows = {"gene:NEUROD1 AND organism_id:9606 AND reviewed:true": [neurod], "gene:FTH1 AND organism_id:9606": [fth1]}
-got = RP.recheck(items, browse=lambda query: rows[query])
+got = RP.recheck(items, browse=lambda query: [neurod] if "NEUROD1" in query else [fth1])
 check("recheck: flawed premise, coordinate read, reviewable", [r["now"] for r in got] == ["flawed_premise", "coordinate_read", "reviewable"], got)
+
+print("--- names the identity check now reads correctly ---")
+import lab_sources as S
+def urec(acc, gene, syn, name):
+    return {"accession": acc, "taxon_id": 9606, "organism": "Homo sapiens", "protein_name": name, "protein_aliases": [],
+            "genes": [{"geneName": {"value": gene}, "synonyms": [{"value": x} for x in syn]}]}
+ubc = {"question": "What are the catalytic residues of the human UbcH5c protein?",
+       "uniprot_query": 'protein_name:"UbcH5c" AND organism_id:9606 AND reviewed:true'}
+check("a protein name that is exactly the record's gene synonym establishes it (UbcH5c is UBE2D3)",
+      S.question_entity_context(ubc, [urec("P61077", "UBE2D3", ["UBC5C", "UBCH5C"], "Ubiquitin-conjugating enzyme E2 D3")])["issues"] == [])
+check("a near miss still does not", S.question_entity_context(dict(ubc, uniprot_query='protein_name:"UbcH5" AND organism_id:9606'),
+      [urec("P61077", "UBE2D3", ["UBC5C", "UBCH5C"], "Ubiquitin-conjugating enzyme E2 D3")])["issues"] != [])
+check("'C2 domains' is a feature asked about, not a gene", "C2" not in S.human_question_symbols(
+      "What are the calcium-binding dynamics of the human Synaptotagmin C2 domains in different mammalian species?"))
+check("'BRCA1 domains' still names BRCA1", "BRCA1" in S.human_question_symbols("What are the BRCA1 domains in human cells?"))
+check("'the HIF1A-DNA complex' names HIF1A", S.human_question_symbols(
+      "What hydrogen bonds does Arg30 make in the human HIF1A-DNA complex?") == ["HIF1A"])
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

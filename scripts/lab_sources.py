@@ -166,6 +166,8 @@ def human_question_symbols(question):
         return m[0] if explicit or not context else ' '
     text = re.sub(r'\bS[0-9]+\s*[-–]\s*S[0-9]+\b',helix_range,text)
     text = re.sub(r'\b([A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*)_HUMAN\b', r'\1', text)
+    # "the HIF1A-DNA complex" names HIF1A bound to DNA, not a protein called HIF1A-DNA (14 October)
+    text = re.sub(r'\b([A-Z][A-Z0-9]*[0-9][A-Z0-9]*)-(?:DNA|RNA)\b', r'\1', text)
     # F430 is a cofactor when explicitly described as one, not a protein
     # identity. Classify occurrences; an explicit/separate gene claim survives.
     def cofactor(match):
@@ -190,6 +192,10 @@ def human_question_symbols(question):
             domain = re.match(r'\s+domains?\b', suffix, re.I)
             if explicit or not domain:
                 return False
+            # "the Synaptotagmin C2 domains" asks about a protein's domains; a plural is never a protein's name
+            # (14 October: C2 was demanded of the synaptotagmin records as a gene).
+            if len(symbol) <= 3 and re.match(r'\s+domains\b', suffix, re.I):
+                continue
             # "X domain-containing protein" names a protein; do not erase X.
             remainder = suffix[domain.end():]
             if re.match(r'\s*(?:[-–]|(?:containing|binding|associated|protein|gene|family)\b)', remainder, re.I):
@@ -341,6 +347,10 @@ def question_entity_context(inquiry, records, *, literature_only=False):
         # symbols or single words; full-question sufficiency remains separate.
         normal = lambda s: ' '.join(re.findall(r'[^\W_]+', s.casefold()))
         words = normal(expected)
+        # "UbcH5c" is UBE2D3's gene synonym UBCH5C, not a word of its recommended name (14 October): an exact gene
+        # name or synonym of the record establishes it. Exact only; nothing is fuzzy-matched.
+        if ' ' not in expected.strip() and re.sub(r'[-_]', '', expected).upper() in {re.sub(r'[-_]', '', n) for n in names}:
+            return True
         resolved = bool(accessions or gene_symbols or (parenthetical_symbols & names) or discovery)
         return any(expected == name or (resolved and len(words.split()) >= 2 and
                    (' ' + words + ' ') in (' ' + normal(name) + ' ')) for name in available)

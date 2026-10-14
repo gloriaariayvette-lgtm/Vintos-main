@@ -91,12 +91,17 @@ def recheck(items, browse=None):
     browse = browse or (lambda query: (C._browse(query, 4) or {}).get("records") or [])
     out = []
     for item in items:
-        inquiry = dict(item["inquiry"])
-        q = inquiry.get("question", "")
-        route = C._coordinate_route(q, inquiry.get("source_query"))
+        stored = dict(item["inquiry"])
+        q = stored.get("question", "")
         row = {"question": q, "before": LCE.outcome(item)[0]}
-        if route and route != inquiry.get("source_query") and route.get("operation") == "structure_evidence":
-            row.update(now="coordinate_read", why="reads the coordinates of PDB %s instead of literature" % route["entry_id"])
+        try:   # planned as today's Lab would plan it: every named gene fetched, coordinates routed; question unchanged
+            inquiry = dict(C._inquiry(stored), question=q)
+        except Exception as exc:
+            inquiry = stored; row["planning_note"] = "replanning failed: %s" % exc
+        route = inquiry.get("source_query") or {}
+        if route.get("operation") == "structure_evidence":
+            row.update(now="coordinate_read", why="reads the coordinates of PDB %s%s" % (
+                route.get("entry_id"), " (as it already did)" if (stored.get("source_query") or {}).get("operation") == "structure_evidence" else ""))
             out.append(row); continue
         try:
             rows = browse(inquiry.get("uniprot_query") or "") if inquiry.get("uniprot_query") else []
@@ -112,7 +117,11 @@ def recheck(items, browse=None):
         if premise:
             row.update(now="flawed_premise", why="; ".join(premise)[:300])
         else:
-            row.update(now="reviewable", why="target established; no premise its record contradicts")
+            seen = [name for name, asked, shown in C.PREMISES if __import__("re").search(asked, q, __import__("re").I)]
+            row.update(now="reviewable", why="target %s established%s" % (
+                ",".join(str(r.get("accession")) for r in chosen),
+                ("; its record shows what the question assumes: " + ", ".join(seen)) if seen else
+                "; the question assumes nothing this check knows to look for"))
         out.append(row)
     return out
 
