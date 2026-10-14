@@ -944,6 +944,30 @@ def _close_open(text):
     return out + "".join({"{": "}", "[": "]"}[ch] for ch in reversed(stack))
 
 
+# A bare value on a line of its own where a key belongs ("0," between two pairs; the Forge's SK-634430cb, 214 faults).
+_STRAY_VALUE = re.compile(r'^\s*(?:-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?|true|false|null|"(?:[^"\\]|\\.)*")\s*,?\s*$')
+
+
+def _drop_stray_values(text):
+    """Drop a line that is only a bare value while an object is open: a value with no key, or a key with no colon.
+    Inside an array a line like that is an element and is kept."""
+    out, stack, in_string, escaped = [], [], False, False
+    for line in text.splitlines(True):
+        if not in_string and stack and stack[-1] == "{" and _STRAY_VALUE.match(line):
+            continue
+        for ch in line:
+            if in_string:
+                if escaped: escaped = False
+                elif ch == "\\": escaped = True
+                elif ch == '"': in_string = False
+                continue
+            if ch == '"': in_string = True
+            elif ch in "{[": stack.append(ch)
+            elif ch in "}]" and stack: stack.pop()
+        out.append(line)
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))   # the comma the dropped line left dangling
+
+
 def _json_object(text, keep=800):
     # One eliot action per parse; a ModelJSONError leaves the action as a failure in the tree.
     with trace("chemistry_lab:json_object", chars=len(str(text or ""))) as action:
@@ -982,6 +1006,7 @@ def _parse_json_object(text, keep=800):
     hi = body.rfind("}")
     tries = [body[lo:hi + 1]] if hi > lo else []
     tries.append(_close_open(body[lo:]))                 # truncated: close what it left open
+    tries += [_drop_stray_values(t) for t in list(tries)]   # a bare value on its own line where a key belongs
     tries += [_BAD_ESCAPE.sub(r"\\\\", t) for t in list(tries)]   # a stray backslash it never meant as an escape
     for candidate in tries:
         try:
