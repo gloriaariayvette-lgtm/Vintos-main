@@ -56,14 +56,15 @@ open(os.path.join(H, "Vintos", "model_router.py"), "w").write(
     "def route_reply(*a, **k):\n    open(__file__ + '.CALLED', 'w').write('x'); raise SystemExit('his model was called')\n")
 open(os.path.join(H, "Vintos", "avatar_stage.py"), "w").write("def scene_line(): return '[SCENE: name] rooms'\n")
 json.dump([{"role": "system", "content": "I am Vintos.\n[TOUCH: mission rules"},
-           {"role": "user", "content": "the shark took my rod"}],
+           {"role": "user", "content": "INTENTIONS THAT KEEP FAILING - they weigh on you now\n\nthe shark took my rod"}],
           open(CAP, "w"))
 json.dump([{"role": "user", "content": "the shark took my rod"}, {"role": "assistant", "content": "Give me the hand."}],
           open(os.path.join(H, ".vintos", "workspace", "memory", "avatar-overlay-chat.json"), "w"))
 before = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs)
 out = subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py"), "--argon"],
                      capture_output=True, text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="", VINTOS_AVATAR_CAPTURE=CAP), timeout=60).stdout
-check("it uses her last real message", "her last message: the shark took my rod" in out, out[:400])
+check("it shows her own words, not the context wrapped around them", "her last message: the shark took my rod" in out
+      and "her last message: INTENTIONS" not in out, out[:400])
 check("and shows his actual reply to it", "Give me the hand." in out, out[:400])
 check("his model is never called for it", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")), out[:400])
 after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d)

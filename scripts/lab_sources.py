@@ -1220,15 +1220,19 @@ class Sources:
                 'comparison': 'sequence_construct_conditions_and_resolution_must_be_checked'})
         if source == 'chembl':
             if spec.get('operation') == 'search_targets':
-                if set(spec) - {'source', 'operation', 'term', 'limit'}:
+                if set(spec) - {'source', 'operation', 'term', 'limit', 'organism'}:
                     raise ValueError('unsupported ChEMBL target-search arguments')
                 term = _plain_term(spec.get('term'))
                 limit = _bounded_limit(spec.get('limit'), 4)
+                params = {'target_synonym__icontains': term, 'limit': limit}
+                if spec.get('organism'):   # ChEMBL's own organism filter on the target record
+                    params['organism__icontains'] = _plain_term(spec['organism'])
                 data, _ = _provider(self.fetch, source, 'https://www.ebi.ac.uk/chembl/api/data/target.json?' +
-                                       urlencode({'target_synonym__icontains': term, 'limit': limit}))
+                                       urlencode(params))
                 records = [{k: row.get(k) for k in ('target_chembl_id', 'pref_name', 'organism', 'target_type')}
                            for row in data['targets'][:limit]]
                 return receipt(source, dict(spec, term=term, limit=limit), records, metadata={
+                    'organism_filter': spec.get('organism') or None,
                     'coverage': 'bounded_target_name_search',
                     'total_count': (data.get('page_meta') or {}).get('total_count'),
                     'interpretation': 'target_metadata_not_binding_or_structural_evidence'})

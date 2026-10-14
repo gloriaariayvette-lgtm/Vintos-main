@@ -2204,11 +2204,16 @@ def chembl_from_plugin(pq):
     if not isinstance(pq, dict) or pq.get('plugin') != 'chembl' or pq.get('tool') != 'chembl_search_targets':
         return None
     args = pq.get('arguments') or {}
-    if not isinstance(args, dict) or set(args) - {'target_name', 'limit'}:
+    # organism is what the connector's own schema offers, so the planner sends it; refusing it failed every such
+    # search with "unsupported ChEMBL target-search arguments" (13 October). It is a real ChEMBL filter.
+    if not isinstance(args, dict) or set(args) - {'target_name', 'limit', 'organism'}:
         raise ValueError('unsupported ChEMBL target-search arguments')
     from lab_sources import _plain_term, _bounded_limit
-    return {'source': 'chembl', 'operation': 'search_targets', 'term': _plain_term(args.get('target_name')),
+    spec = {'source': 'chembl', 'operation': 'search_targets', 'term': _plain_term(args.get('target_name')),
             'limit': _bounded_limit(args.get('limit'), 4)}
+    if args.get('organism'):
+        spec['organism'] = _plain_term(args['organism'])
+    return spec
 
 
 

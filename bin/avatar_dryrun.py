@@ -63,18 +63,21 @@ def _text(content):
 
 his_actual = None
 if msg is None:
-    # her last real message is the captured prompt's last turn; his actual reply to it is in his avatar history
-    last = convo[-1] if convo and convo[-1].get("role") == "user" else {}
-    msg = _text(last.get("content")).strip()
+    # The captured prompt's last turn is what his model saw: her words wrapped in context the server adds (open
+    # intentions and the like), so it is never matched as text. Her plain words and his actual reply come from his
+    # avatar history: its last message from her and the reply after it. Argon still gets the captured prompt whole.
+    msg = ""
     try:
         hist = json.load(open(os.path.expanduser("~/.vintos/workspace/memory/avatar-overlay-chat.json")))
-        for i, h in enumerate(hist):
-            if h.get("role") == "user" and _text(h.get("content")).strip()[:200] == msg[:200]:
-                nxt = next((x for x in hist[i + 1:] if x.get("role") == "assistant"), None)
-                if nxt: his_actual = _text(nxt.get("content"))
+        users = [i for i, h in enumerate(hist) if isinstance(h, dict) and h.get("role") == "user"]
+        if users:
+            i = users[-1]
+            msg = _text(hist[i].get("content")).strip()
+            nxt = next((x for x in hist[i + 1:] if isinstance(x, dict) and x.get("role") == "assistant"), None)
+            if nxt: his_actual = _text(nxt.get("content"))
     except Exception:
         pass
-    print("[dryrun] her last message:", msg[:300])
+    print("[dryrun] her last message:", (msg or "(not found in his avatar history)")[:300])
 else:
     if convo and convo[-1].get("role") == "user":
         convo[-1] = {"role": "user", "content": msg}
