@@ -488,29 +488,31 @@ def dead_ends(rows=None):
 # Words that name a kind of molecule, not one protein: blocking them would block half of biology.
 CLASS_WORDS = {"ATPase", "GTPase", "DNA", "RNA", "mRNA", "tRNA", "rRNA", "ATP", "ADP", "GTP", "NAD", "NADH",
                "NADPH", "FAD", "PDB", "ESM", "ESM-C", "UniProt", "NCBI", "ChEMBL", "BV-BRC", "InterPro", "pH"}
-# Tools, databases, measures and generic domain abbreviations. They appear in most of his questions, so a long
-# unanswered run made them "spent", and every later question naming them was refused as a spent subject: on 14
-# October 29 of 58 refusals after the repair deploy were "spent subject" on proteins never asked before (an MBL
-# in Pseudomonas, MetH, CcmK2, SOD2, an archaeal AMO). A subject is a protein, gene or organism, never a method.
-CLASS_WORDS |= {"AlphaFold", "AlphaFold2", "AlphaFold3", "AF2", "AF3", "ESMFold", "ESM2", "ESM3", "ESM-2", "ESM-3",
-                "pLDDT", "PAE", "pTM", "ipTM", "RMSD", "TM-score", "TMalign", "TM-align", "Foldseek", "DALI",
-                "UniProtKB", "Swiss-Prot", "SwissProt", "TrEMBL", "RefSeq", "GenBank", "BLAST", "BLASTp", "PSI-BLAST",
-                "PDBe", "RCSB", "Pfam", "InterProScan", "HMMER", "HMM", "MSA", "KEGG", "GO", "EC", "SMILES", "InChI",
-                "NMR", "EM", "cryo-EM", "cryoEM", "MD", "DFT", "3D", "2D", "CDS", "ORF", "UTR", "kDa",
-                "IC50", "EC50", "Ki", "Kd", "Km", "kcat", "TM", "TMD", "TMDs", "TMH", "ECD", "ICD", "NTD", "CTD",
-                "LBD", "DBD", "SNP", "SNPs", "GWAS", "CRISPR", "PCR", "qPCR"}
 _CLASS_FOLD = {w.casefold() for w in CLASS_WORDS}
 SPENT = os.path.join(ROOT, "spent-subjects.json")
 SPENT_HOURS = 24
+SPENT_PROMPT_CHARS = 8000   # every spent subject named (259 on 14 October came to about 3,600 characters)
 
 
 def spent_subjects(now=None):
     """Subjects whose run ended with nothing, held for a day. A review on some other protein does not
     make KaiC answerable again an hour later."""
     now = now or time.time()
-    return [row["subject"] for row in _load(SPENT, {}).values()
-            if isinstance(row, dict) and now - float(row.get("at", 0)) < SPENT_HOURS * 3600
-            and str(row.get("subject") or "").casefold() not in _CLASS_FOLD]
+    rows = [row for row in _load(SPENT, {}).values()
+            if isinstance(row, dict) and now - float(row.get("at", 0)) < SPENT_HOURS * 3600]
+    out = []
+    # newest first: when the planner's list is ever cut, the subjects it just tried are the ones it keeps seeing
+    for row in sorted(rows, key=lambda r: -float(r.get("at", 0))):
+        subject = _clean_subject(row.get("subject"))
+        if subject and subject.casefold() not in _CLASS_FOLD and subject not in out:
+            out.append(subject)
+    return out
+
+
+def _clean_subject(value):
+    """A subject as a name: query debris ('HFE" or', 'TBP OR "protein_name:...') cut back to the name."""
+    value = re.split(r'\s+(?:AND|OR|NOT)\b|"|\s*:', str(value or ""), maxsplit=1, flags=re.I)[0]
+    return value.strip().strip("'").strip()
 
 
 def remember_spent(subjects, now=None):
@@ -1100,7 +1102,7 @@ def _intent_terms(uniprot_query):
         m = re.search(r"\b%s\s*:\s*(.+?)(?=\s+%s|\s*[()]|$)" % (field, _FIELD_TOKEN), str(uniprot_query or ""))
         if not m: continue
         # "protein_name:"KaiC" AND organism_id:1140" ends at the joiner, not after it (2026-09-27).
-        value = re.sub(r"\s+(?:AND|OR|NOT)$", "", m.group(1).strip()).strip().strip('"').strip()
+        value = _clean_subject(re.sub(r"\s+(?:AND|OR|NOT)$", "", m.group(1).strip(), flags=re.I).strip().strip('"'))
         if value:
             out.append('%s:"%s"' % (field, value) if " " in value else "%s:%s" % (field, value))
     return out
@@ -1639,8 +1641,11 @@ def _orient(context, lean=None):
         families = spent_families(spent["subjects"])
         in_family = {m.casefold() for _p, members in families for m in members}
         singles = [x for x in spent["subjects"] if x.casefold() not in in_family]
+        # Every one is named. At 2500 characters the 42 newest of 259 were cut ("and 42 more"), and the planner
+        # proposed exactly those (14 October: methanobactin, methionine synthase, SOD, secretin, ammonia
+        # monooxygenase, alkaline phosphatase, metallo-beta-lactamase), each refused after the model was asked.
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
-                 + _compact_names(singles, 2500) + ".")
+                 + _compact_names(singles, SPENT_PROMPT_CHARS) + ".")
         if families:
             # Naming members one at a time let the planner walk a family: SLC26A11 spent, so it proposed
             # SLC26A12 (12 October, the final hour: 256 spent-subject refusals, almost all SLC26A10-A15).
