@@ -2423,6 +2423,40 @@ PREMISES = (
 )
 
 
+_CLASS_MARKERS = re.compile(
+    r"\b(?:famil(?:y|ies)|superfamil\w+|subfamil\w+|classes|genus|genera|system|systems|complexes|"
+    r"homolog\w+|ortholog\w+|paralog\w+|members?)\b|"
+    r"\b[a-z]{4,}(?:ases|tors|sors|ptors|eins|ins)\b", re.I)
+
+
+def class_question(question):
+    """True when the question is about a kind of protein rather than one. Requiring such a question to resolve to
+    one record is a category error (Chat's review, 2026-10-14), and refusing it produced nothing: 51 of the 130
+    distinct questions on 14 October. It is still never answered BY one record standing for the kind."""
+    return bool(_CLASS_MARKERS.search(str(question or "")))
+
+
+def class_members(records):
+    """The retrieved members, each by its own accession. A row with no accession is not a member."""
+    out = []
+    for row in records or []:
+        if isinstance(row, dict) and row.get("accession"):
+            out.append({"accession": row["accession"], "name": row.get("protein_name") or "",
+                        "organism": row.get("organism") or ""})
+    return out[:12]
+
+
+def _class_scope_text(members):
+    """What the members can and cannot establish, for the reader and for the checker."""
+    return ("\n\nTHIS QUESTION NAMES A KIND OF PROTEIN, NOT ONE. The evidence holds %d retrieved member%s of it: %s. "
+            "A finding holds for the members it is quoted from and for no others. Observed in every member examined "
+            "here is an honest result and is NOT the same as characteristic of the kind: these members were returned "
+            "by a search, which says nothing about how common the feature is. If the question asks about the kind "
+            "itself, that part is not covered by this evidence - say so in missing."
+            % (len(members), "" if len(members) == 1 else "s",
+               "; ".join("%s (%s)" % (m["accession"], m["name"] or "unnamed") for m in members)))
+
+
 def _premise_issues(question, rows):
     """What the question asserts about its one target that the target's own UniProt record does not list.
 
@@ -3348,7 +3382,9 @@ def _coverage_request(inquiry, observations):
         'do not drop their taxonomy or substitute a species. If species is unspecified, retain the evidence\'s '
         'species-qualified scope as partial findings without silently generalizing. Assess causal premises '
         'rather than assuming them; citation metadata does not '
-        'establish a mechanism. Do not infer missing facts.',
+        'establish a mechanism. Do not infer missing facts.'
+        + (_class_scope_text([{'accession': a, 'name': ''} for a in inquiry['class_members']])
+           if (inquiry or {}).get('class_members') else ''),
         json.dumps(_coverage_scope(inquiry)) + '\nEVIDENCE:\n' +
         json.dumps(addressed_evidence, ensure_ascii=False, separators=(',',':')),
         1100)
@@ -3581,6 +3617,16 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                             and r.get('accession') in set((entity.get('target_mapping') or {}).values())]
                 if isinstance(records, dict): records = dict(records, records=proteins)
                 else: records = proteins
+    members = []
+    if entity['issues'] and not partial_identity and class_question(inquiry.get('question')):
+        # No single record establishes a kind, and none is allowed to stand for one. The members that WERE
+        # retrieved are reviewed as members, with the scope said out loud (T-b5c8e6c1).
+        if not any(re.search(r'as one protein|contradict|several retrieved records claim|taxon|organism name|isoform',
+                             str(x), re.I) for x in entity['issues']):
+            members = class_members(proteins)
+    if members:
+        entity = dict(entity, status='class_members', issues=[], class_members=[m['accession'] for m in members])
+        inquiry = dict(inquiry, class_members=[m['accession'] for m in members], class_scope='examined_members')
     if entity['issues']:
         missing = '; '.join(entity['issues'])
         step = 'Resolve the requested protein name, accession and organism against one source entry.'
@@ -3620,6 +3666,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
     prepared = _coverage_request(inquiry, records)
     deferred = _coverage_deferral(inquiry, records, prepared)
     if deferred: return dict(deferred, entity_context_check=entity)
+    class_note = _class_scope_text(members) if members else ''
     identity_note = ('\n\nONLY THESE TARGETS ARE ESTABLISHED: %s. No retrieved record establishes %s, so say nothing '
                      'about it and never let an established protein answer for it.'
                      % (', '.join('%s (%s)' % kv for kv in sorted((entity.get('target_mapping') or {}).items())),
@@ -3654,7 +3701,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
             "and keep them apart from what the database records state. FULLTEXT, when present, holds passages from "
             "open-access full-text articles chosen for the parts of this question still unanswered: cite the PMCID and "
             "section of any you use; a passage chosen for a claim is not proof of it. Return JSON only.",
-            context + identity_note + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
+            context + identity_note + class_note + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
             "\n\nFirst decide answers_question: yes or no, with the precise missing evidence if no. "
             "A sequence interval can be read directly from a complete sequence; use the computed intervals above. "
             "Do not invent a missing-data claim for a supplied sequence or its subsequence. "

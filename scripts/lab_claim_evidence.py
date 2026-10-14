@@ -29,7 +29,7 @@ PASSAGE_CHARS = 900
 TOTAL_CHARS = 7000
 REPEAT_DAYS = 30
 
-RESEARCH = ("answered", "partially_supported", "unsupported_by_available_evidence")
+RESEARCH = ("answered", "supported_for_examined_members", "partially_supported", "unsupported_by_available_evidence")
 # Absence from an annotation, an explicit contradiction, and a target nothing established are three different
 # things and were two (Chat's review, 2026-10-14): a feature a record does not list may simply not be annotated.
 QUESTION = ("contradicted_premise", "unverified_premise", "wrong_target")
@@ -88,6 +88,13 @@ def outcome(reflection):
             return "contradicted_premise", joined
         return "wrong_target", joined
     if cov.get("answered") is True:
+        members = (r.get("entity_context_check") or {}).get("class_members") if isinstance(r.get("entity_context_check"), dict) else None
+        if members:
+            # Chat's review: "observed in all five examined members" is honest; "characteristic of the class" is a
+            # further claim a search cannot support. The label says which one this is.
+            return ("supported_for_examined_members",
+                    "supported for the %d members examined (%s); the kind itself is not established by them"
+                    % (len(members), ", ".join(map(str, members))))
         return "answered", "every requirement supported by quoted sources"
     if cov.get("answered") is False:
         missing = "; ".join(str(x) for x in cov.get("missing") or [])
