@@ -6,6 +6,8 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
                                                     kept as it is until --force
     python3 scripts/lab_claim_replay.py audit       what each one is: a flawed premise, a wrong target, a Lab failure,
                                                     or a question missing evidence (no network, no model)
+    python3 scripts/lab_claim_replay.py recheck     each question's target fetched again from UniProt (read-only) and run
+                                                    through today's checks: identity, premise, coordinate route
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
                                                     open claims and run the same coverage check on the whole question,
                                                     with the quotes it already had carried forward
@@ -82,6 +84,39 @@ def audit(items):
     return lines
 
 
+def recheck(items, browse=None):
+    """What today's checks make of each fixed question, from its target's record, before any review."""
+    import chemistry_lab as C
+    from lab_sources import question_entity_context
+    browse = browse or (lambda query: (C._browse(query, 4) or {}).get("records") or [])
+    out = []
+    for item in items:
+        inquiry = dict(item["inquiry"])
+        q = inquiry.get("question", "")
+        route = C._coordinate_route(q, inquiry.get("source_query"))
+        row = {"question": q, "before": LCE.outcome(item)[0]}
+        if route and route != inquiry.get("source_query") and route.get("operation") == "structure_evidence":
+            row.update(now="coordinate_read", why="reads the coordinates of PDB %s instead of literature" % route["entry_id"])
+            out.append(row); continue
+        try:
+            rows = browse(inquiry.get("uniprot_query") or "") if inquiry.get("uniprot_query") else []
+        except Exception as exc:
+            row.update(now="unassessed", why="UniProt not read: %s" % exc); out.append(row); continue
+        entity = question_entity_context(inquiry, rows)
+        if entity.get("issues"):
+            joined = "; ".join(entity["issues"])
+            row.update(now="flawed_premise" if "as one protein" in joined else "wrong_target", why=joined[:300])
+            out.append(row); continue
+        chosen = [r for r in rows if not entity.get("selected_accessions") or r.get("accession") in entity["selected_accessions"]]
+        premise = C._premise_issues(q, chosen)
+        if premise:
+            row.update(now="flawed_premise", why="; ".join(premise)[:300])
+        else:
+            row.update(now="reviewable", why="target established; no premise its record contradicts")
+        out.append(row)
+    return out
+
+
 def run(items, fetch=None, coverage=None, ledger_path=LEDGER):
     """Before and after, per question. coverage(inquiry, observations) is the Lab's own checker."""
     if coverage is None:
@@ -144,6 +179,14 @@ def main(argv):
     if cmd == "audit":
         for a in audit(items):
             print("%2d. [%s] %s\n    %s\n    %s" % (a["n"], a["outcome"], a["question"][:150], a["kind"], a["why"][:200]))
+        return 0
+    if cmd == "recheck":
+        rows = recheck(items)
+        for r in rows:
+            print("- %s\n    %s -> %s | %s" % (r["question"][:140], r["before"], r["now"], r["why"][:220]))
+        counts = {}
+        for r in rows: counts[r["now"]] = counts.get(r["now"], 0) + 1
+        print("now:", json.dumps(counts))
         return 0
     if cmd == "run":
         results = run(items, fetch=LCE.live_fetch())

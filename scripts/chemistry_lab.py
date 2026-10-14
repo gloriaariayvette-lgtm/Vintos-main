@@ -2385,6 +2385,84 @@ def pubmed_from_plugin(pq):
     return spec
 
 
+NAMED_FEATURE_TYPES = ("Domain", "Zinc finger", "Motif", "Region", "Repeat", "DNA binding", "Binding site",
+                       "Active site", "Coiled coil", "Transmembrane", "Intramembrane")
+
+
+def _features_named(features):
+    """'Type: description' (a binding site by its ligand) for the features a question may claim, once each."""
+    out = []
+    for f in features:
+        if not isinstance(f, dict) or f.get("type") not in NAMED_FEATURE_TYPES: continue
+        what = f.get("description") or ((f.get("ligand") or {}).get("name") if isinstance(f.get("ligand"), dict) else "") or ""
+        label = ("%s: %s" % (f["type"], what)).strip(": ")
+        if label not in out: out.append(label)
+    return out[:60]
+
+
+_METALS = (r"metal|iron|\bFe\b|Fe\(|Fe cation|ferr|heme|zinc|\bZn\b|Zn\(|copper|\bCu\b|Cu\(|manganese|\bMn\b|"
+           r"Mn\(|magnesium|\bMg\b|Mg\(|calcium|\bCa\b|Ca\(|cobalt|Co\(|nickel|Ni\(|molybd|tungst")
+# (what the question asserts, how it is written, what in the target's own record would show it)
+PREMISES = (
+    ("zinc finger", r"\bzinc[- ]fingers?\b", r"zinc finger|C2H2|C4-type|RING|PHD|zinc"),
+    ("an Ig-like domain", r"\b(?:Ig-like|immunoglobulin-like|immunoglobulin) domains?\b", r"Ig-like|immunoglobulin"),
+    ("metal binding", r"\bmetal[- ](?:binding|coordination|ion|site|centre|center)", _METALS),
+    ("iron or heme binding", r"\b(?:iron|heme|haem)[- ](?:binding|coordinat\w*|site|centre|center)|\bferroxidase\b",
+     r"iron|\bFe\b|Fe\(|Fe cation|heme|haem|ferr"),
+    ("zinc binding", r"\bzinc[- ](?:binding|coordinat\w*|site)", r"zinc|\bZn\b|Zn\("),
+    ("calcium binding", r"\bcalcium[- ](?:binding|coordinat\w*|site)|\bEF-hands?\b", r"calcium|\bCa\b|Ca\(|EF-hand"),
+    ("copper binding", r"\bcopper[- ](?:binding|coordinat\w*|site)", r"copper|\bCu\b|Cu\("),
+    ("an SH2 domain", r"\bSH2\b", r"SH2"), ("an SH3 domain", r"\bSH3\b", r"SH3"), ("a PDZ domain", r"\bPDZ\b", r"PDZ"),
+    ("a bHLH domain", r"\bbHLH\b|\bbasic helix-loop-helix\b", r"bHLH|helix-loop-helix"),
+    ("a leucine zipper", r"\bleucine zippers?\b|\bbZIP\b", r"leucine zipper|bZIP"),
+    ("a BRCT domain", r"\bBRCT\b", r"BRCT"), ("a PH domain", r"\bPH domains?\b", r"\bPH\b"),
+    ("a C2 domain", r"\bC2 domains?\b", r"\bC2\b"), ("a kinase domain", r"\bkinase domains?\b", r"kinase"),
+    ("leucine-rich repeats", r"\bleucine-rich repeats?\b|\bLRRs?\b", r"leucine-rich|LRR"),
+    ("a STAS domain", r"\bSTAS\b", r"STAS"),
+    ("transmembrane segments", r"\btransmembrane (?:domains?|helix|helices|segments?)\b", r"Transmembrane|Intramembrane"),
+)
+
+
+def _premise_issues(question, rows):
+    """What the question asserts about its one target that the target's own UniProt record does not list.
+
+    14 October: "the zinc finger domains of NEUROD1" (a bHLH factor), "metal-binding geometries of the ANT", and the
+    like reached the reviewer, which correctly found nothing; more papers could not help. A record that does not list
+    a feature is not proof the feature is absent, so this is reported as a premise the record does not establish,
+    and the question is not reviewed on it. Only one established target is checked; a comparison is left alone."""
+    if len(rows) != 1: return []
+    row = rows[0]
+    hay = " ".join([str(row.get("protein_name") or ""), " ".join(map(str, row.get("protein_aliases") or [])),
+                    str(row.get("function") or ""), " ".join(str(d.get("description") or "") for d in row.get("domains") or []),
+                    " ".join(map(str, row.get("features_named") or [])), str(row.get("topology_summary") or "")])
+    if not row.get("features_named"):
+        return []   # a record fetched without its named features (or with none annotated) says nothing either way
+    hay += " " + " ".join(str(t.get("type") or "") + " " + str(t.get("description") or "") for t in row.get("topology") or [])
+    issues = []
+    for name, asked, shown in PREMISES:
+        if re.search(asked, str(question or ""), re.I) and not re.search(shown, hay, re.I):
+            issues.append("the question assumes %s in %s; its UniProt record %s lists none" %
+                          (name, row.get("protein_name") or row.get("accession"), row.get("accession")))
+    return issues
+
+
+_COORDINATES = re.compile(r"\b(?:xyz|coordinates?|bond (?:angle|length)s?|distances?|coordination (?:geometr\w+|angles?|sphere)|"
+                          r"hydrogen[- ]bond(?:ing|s)?)\b", re.I)
+
+
+def _coordinate_route(question, source_query):
+    """A question about atom positions in a named PDB entry reads that entry's coordinates, not literature."""
+    if not _COORDINATES.search(str(question or "")): return source_query
+    if source_query and source_query.get("source") not in (None, "pdb"): return source_query
+    if source_query and source_query.get("operation"): return source_query
+    named = re.findall(r"(?<![A-Za-z0-9'-])([1-9][A-Za-z0-9]{3})(?![A-Za-z0-9'-])", str(question or ""))
+    named = [x.upper() for x in named if re.search(r"[A-Za-z]", x)
+             and re.search(r"\b(?:PDB|structures?|entry|entries)\b", str(question), re.I)]
+    entry = (source_query or {}).get("entry_id") or (named[0] if named else "")
+    if not re.fullmatch(r"[1-9][A-Z0-9]{3}", str(entry).upper()): return source_query
+    return {"source": "pdb", "entry_id": str(entry).upper(), "operation": "structure_evidence"}
+
+
 def _fetches_only_some(query, symbols):
     """True when a human gene query names some, not all, of the question's genes, and nothing else."""
     terms = _intent_terms(query)
@@ -2414,6 +2492,8 @@ def _inquiry(value, lean=None):
     if source_query:
         from lab_sources import normalize_source_spec
         source_query = normalize_source_spec(source_query)
+    if not value.get('browse_lane') in ('microbiology', 'genome_mining'):
+        source_query = _coordinate_route(value.get('question'), source_query)
     requested_lane = value.get('browse_lane')
     requested_query = value.get("uniprot_query")
     query = _safe_query(requested_query)
@@ -2490,7 +2570,9 @@ def _browse(query, limit, *, allow_relaxation=True):
     fallback_reason = None
     def fetch(value):
         params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
-                                         "fields": "accession,id,protein_name,gene_names,organism_name,organism_id,length,sequence,cc_function,ft_domain,ft_transmem,ft_topo_dom,xref_pdb,xref_chembl"})
+                                         "fields": "accession,id,protein_name,gene_names,organism_name,organism_id,length,sequence,cc_function,ft_domain,ft_transmem,ft_topo_dom,xref_pdb,xref_chembl,"
+                                                   # the features a question may claim, for the premise check (14 October)
+                                                   "cc_cofactor,ft_zn_fing,ft_binding,ft_motif,ft_region,ft_repeat,ft_dna_bind,ft_act_site,ft_coiled,ft_intramem"})
         req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                      headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
         with urllib.request.urlopen(req, timeout=45) as response:
@@ -2574,6 +2656,10 @@ def _browse(query, limit, *, allow_relaxation=True):
                      "topology": [{k:f[k] for k in ('type','description','location','evidences') if k in f}
                                   for f in item.get('features', [])
                                   if f.get('type') in ('Transmembrane','Topological domain')][:80],
+                     "features_named": _features_named(item.get("features") or []) + [
+                         "Cofactor: " + str(c.get("name")) for comment in item.get("comments") or []
+                         if comment.get("commentType") == "COFACTOR" for c in comment.get("cofactors") or []
+                         if isinstance(c, dict) and c.get("name")][:12],
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:SEQUENCE_KEPT],
@@ -3460,6 +3546,16 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
                 'speculative_reading': '', 'next_question': step,
                 'entity_context_check': entity}
+    premise = _premise_issues(inquiry.get('question'), [r for r in proteins if isinstance(r, dict)
+                                                        and (not entity.get('selected_accessions')
+                                                             or r.get('accession') in entity['selected_accessions'])])
+    if premise:
+        missing = '; '.join(premise)
+        return {'answers_question': 'no: premise not established: ' + missing, 'missing_evidence': missing,
+                'factual_observation': 'The question assumes what its target\'s own record does not list: ' + missing,
+                'speculative_reading': '', 'evidence_status': 'insufficient',
+                'next_question': 'Ask about a feature the record lists, or bring a source that establishes this one.',
+                'entity_context_check': entity, 'premise_check': {'issues': premise, 'basis': 'target UniProt record'}}
     if literature_route and not proteins:
         articles = records.get('LITERATURE') or []
         if not any(isinstance(r, dict) and str(r.get('abstract') or r.get('full_text') or '').strip()

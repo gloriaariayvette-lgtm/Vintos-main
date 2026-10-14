@@ -75,6 +75,9 @@ def outcome(reflection):
         return "context_overflow", "the question and its evidence did not fit the checker's context"
     if r.get("assessment_status") == "incomplete" or cov.get("assessment_status") == "incomplete":
         return "checker_failed", str(r.get("validation_failure") or cov.get("validation_failure") or "checker answer invalid")
+    premise = r.get("premise_check") if isinstance(r.get("premise_check"), dict) else {}
+    if premise.get("issues") and not cov:
+        return "flawed_premise", "; ".join(str(x) for x in premise["issues"])
     entity = r.get("entity_context_check") if isinstance(r.get("entity_context_check"), dict) else {}
     issues = [str(x) for x in entity.get("issues") or []]
     if issues and not cov:
