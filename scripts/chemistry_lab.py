@@ -3229,6 +3229,25 @@ def _coverage_sufficiency_request(inquiry, evidence):
             800)
 
 
+QUOTABLE_MIN = 40          # characters below which a leaf cannot carry a verbatim quote on its own
+# Named text and identity fields: a leaf here is source material or the thing a requirement is made of, and stays
+# addressable however short it is. Everything else must be long enough to carry a verbatim quote.
+SHORT_QUOTABLE = ("accession", "id", "entry_id", "pmid", "pmcid", "doi", "organism", "taxon_id", "length",
+                  "protein_name", "gene", "geneName", "value", "name", "nickName", "title", "journal", "year",
+                  "section", "heading", "sequence", "model", "method", "resolution", "ec", "label", "symbol",
+                  "status", "pdb_ids", "chembl_ids", "answered", "claim",
+                  "abstract", "full_text", "text", "quote", "summary", "source_summary", "definition",
+                  "description", "comment", "note", "function", "topology_summary", "rationale", "reason",
+                  "finding", "observation", "requirement", "source_citation", "keywords", "url", "source")
+
+
+def _short_quotable(path):
+    """A short leaf that a requirement is genuinely made of — an accession, an organism, a length — stays
+    addressable however short it is. A bare number inside a score array does not."""
+    tail = str(path).rsplit(".", 1)[-1]
+    return tail in SHORT_QUOTABLE
+
+
 def _coverage_request(inquiry, observations):
     """Evidence-bound adjudication of the original question, not the proposed next question."""
     if not str(inquiry.get('question') or '').strip(): return None
@@ -3265,7 +3284,13 @@ def _coverage_request(inquiry, observations):
         bibliography = (re.fullmatch(r'evidence.LITERATURE\.\d+\.(?:pmid|journal|year|title|doi|url)',path)
                         or (pubmed_summary and re.match(r'evidence.additional_source.records\.\d+\.(?:uid$|summary\.)',path)))
         return bibliography_question or not bibliography
-    quotable = {path:text for path,text in strings.items() if quotable_path(path)}
+    # Every string leaf used to get its own address, and each one costs its wrapper in the request: on 14 October
+    # a request carrying 39,244 characters of evidence in 4,382 leaves spent 214,923 characters on the addressing
+    # alone, and the question was deferred for a context it never came close to needing. A quote is verbatim text
+    # from a source, so a leaf too short to carry one needs no address — except the identity and scalar fields a
+    # requirement is genuinely made of, which stay addressable at any length.
+    quotable = {path:text for path,text in strings.items()
+                if quotable_path(path) and (len(text) >= QUOTABLE_MIN or _short_quotable(path))}
     digests = {hashlib.sha256(json.dumps([path, text], ensure_ascii=False).encode()).hexdigest(): path
                for path, text in quotable.items()}
     if len(digests) != len(quotable): return None
