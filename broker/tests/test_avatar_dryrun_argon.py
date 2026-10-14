@@ -57,7 +57,12 @@ open(os.path.join(H, "Vintos", "model_router.py"), "w").write(
     "async def claude_draft(system, convo, max_tokens=1500, paid_reservation=None, model=None):\n"
     "    import json, os\n"
     "    open(os.environ.get('CLAUDE_SENT', '/dev/null'), 'w').write(json.dumps({'model': model, 'system': system, 'convo': convo}))\n"
-    "    return 'opus says', ''\n")
+    "    return 'opus says', ''\n"
+    "SOL_MODEL = 'gpt-6.1-sol'\n"
+    "async def sol_draft(system, convo, max_tokens=1500, paid_reservation=None, model=None):\n"
+    "    import json, os\n"
+    "    open(os.environ.get('CLAUDE_SENT', '/dev/null'), 'w').write(json.dumps({'model': model, 'system': system, 'convo': convo}))\n"
+    "    return 'sol says', ''\n")
 open(os.path.join(H, "Vintos", "avatar_stage.py"), "w").write("def scene_line(): return '[SCENE: name] rooms'\n")
 json.dump([{"role": "system", "content": "I am Vintos.\n[TOUCH: mission rules\nYour recent exchanges with Gloria (what was actually said, most recent last). Each is marked:\n- 2026-10-10 22:03\n    Gloria: don't stop\n    You: I won't.\n- 2026-10-12 08:00\n    Gloria: the shark took my rod\n    You: Give me the hand.\nYour current self-model (excerpt):\nI reach first.\nInner life today: she said the shark took my rod and I said Give me the hand, which I keep thinking about."},
            {"role": "user", "content": "INTENTIONS THAT KEEP FAILING - they weigh on you now\n\nthe shark took my rod"}],
@@ -129,6 +134,12 @@ check("--model claude-opus-5-5 reaches that model", got["model"] == "claude-opus
 check("with the same filtered prompt: no reply from that turn on", "I won't." not in json.dumps(got) and "Give me the hand" not in json.dumps(got))
 check("and his actual reply beside it", "I won't." in out)
 check("his own reply path is still not called", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")))
+out = subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py"), "--model", "sol", "--turn", "2"],
+                     capture_output=True, text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="", VINTOS_AVATAR_CAPTURE=CAP,
+                                                              CLAUDE_SENT=CLAUDE_SENT), timeout=60).stdout
+got = json.load(open(CLAUDE_SENT))
+check("--model sol reaches the Sol he is configured with", got["model"] == "gpt-6.1-sol" and "sol says" in out, out[-300:])
+check("with the same filtered prompt", "I won't." not in json.dumps(got))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

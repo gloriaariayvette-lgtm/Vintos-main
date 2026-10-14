@@ -28,7 +28,7 @@ import avatar_stage as _avst
 ARGON = "--argon" in sys.argv
 sys.argv = [a for a in sys.argv if a != "--argon"]
 # --model NAME (repeatable): the same prompt to that model too. claude-* goes through his own router call
-# (claude_draft), gemini-* through argon(). --argon is --model gemini-4-argon.
+# (claude_draft), sol / gpt-* through sol_draft, gemini-* through argon(). --argon is --model gemini-4-argon.
 CANDIDATES = ["gemini-4-argon"] if ARGON else []
 while "--model" in sys.argv:
     _i = sys.argv.index("--model")
@@ -243,11 +243,24 @@ def claude_candidate(system, convo, model):
         return "(%s unavailable: %s)" % (model, str(e)[:200])
 
 
+def sol_candidate(system, convo, model):
+    """The same prompt to Sol (OpenAI), through his router's own Sol call."""
+    try:
+        text, _ = asyncio.run(_mr.sol_draft(system, convo, max_tokens=1500, model=model))
+        return text or "(no text: refused or empty)"
+    except Exception as e:
+        return "(%s unavailable: %s)" % (model, str(e)[:200])
+
+
 for cand in CANDIDATES:
     print()
     if cand.startswith("gemini-"):
         text, usage = argon(system, convo, model=cand)
         print("[dryrun] model: %s (Google)" % cand)
+    elif cand == "sol" or cand.startswith("gpt-"):
+        name = getattr(_mr, "SOL_MODEL", "") if cand == "sol" else cand   # "sol": the Sol he is configured with
+        text, usage = sol_candidate(system, convo, name), {}
+        print("[dryrun] model: %s (Sol, OpenAI)" % name)
     else:
         text, usage = claude_candidate(system, convo, cand), {}
         print("[dryrun] model: %s" % cand)
