@@ -45,6 +45,10 @@ PHONE = "http://her-phone:20010/command"
 ANSWERS[PHONE] = 200
 open(os.environ["VINTOS_ENV_FILE"], "w").write("LOVENSE_TAILNET_HOST=her-phone\n")
 check("the tailnet name is tried before the home address", T.hosts() == ["her-phone", "192.168.1.66"], T.hosts())
+check("an IP address is also tried in the vendor's own domain form, where its certificate is valid",
+      "https://192-168-1-66.lovense.club:30010/command" in T.candidates(), T.candidates())
+check("a name that is not an IP is tried as plain HTTP only",
+      not any("her-phone" in u and u.startswith("https") for u in T.candidates()), T.candidates())
 T._endpoint.update(url="", at=0.0)
 check("the hub is found away from home", T.endpoint() == PHONE, (T.endpoint(), POSTS))
 check("the home address was not needed first", POSTS and POSTS[0] == PHONE, POSTS)
@@ -87,6 +91,9 @@ check("he is told the hub is not answering, not that the device is off",
 check("and is told not to say a device is off or absent", "do not tell her" in line.lower(), line)
 T._endpoint.update(url=PHONE, at=__import__("time").time())
 check("with the hub reachable the ordinary idle line comes back", "no device is switched on" in D.hands_line_idle().lower())
+src = open(os.path.join(REPO, "scripts", "toy_link.py")).read()
+check("asking where the hub is sends no command: no-args is the diagnostic, not stop_all",
+      'sys.argv[1] == "stop"' in src and src.count('print("stop_all:", stop_all())') == 1)
 check("nothing opened a socket", socket.socket.connect is no_socket)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

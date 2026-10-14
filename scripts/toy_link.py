@@ -18,6 +18,7 @@ import json, os, time, requests
 #     LOVENSE_PORT=20010                      # an override when the app's port is pinned
 LAN_HOST = "192.168.1.66"
 PORTS = (20010, 20011, 20012)
+SSL_PORT = "30010"
 ENDPOINT = os.path.expanduser("~/.vintos/workspace/memory/.toy-endpoint.json")
 ENDPOINT_TTL = 30.0          # how long a working address is trusted before it is checked again
 PROBE_TIMEOUT = 1.5
@@ -51,6 +52,30 @@ def ports():
     if pinned.isdigit():
         return (int(pinned),) + tuple(p for p in PORTS if p != int(pinned))
     return PORTS
+
+
+_IPV4 = __import__("re").compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
+
+
+def candidates():
+    """Every URL the hub may answer on, best first.
+
+    The app serves plain HTTP on its LAN port and HTTPS on its SSL port, and the vendor resolves
+    <dashed-ip>.lovense.club to that same address, which is how the app's own callback addresses it —
+    so an IP address is also tried in that form, where the certificate is valid."""
+    explicit = str(_env("LOVENSE_URL") or "").strip()
+    out = [explicit] if explicit.startswith(("http://", "https://")) else []
+    ssl_port = str(_env("LOVENSE_SSL_PORT") or SSL_PORT).strip() or SSL_PORT
+    for host in hosts():
+        for port in ports():
+            url = "http://%s:%d/command" % (host, port)
+            if url not in out:
+                out.append(url)
+        if _IPV4.fullmatch(host):
+            url = "https://%s.lovense.club:%s/command" % (host.replace(".", "-"), ssl_port)
+            if url not in out:
+                out.append(url)
+    return out
 
 
 def _remembered():
@@ -88,11 +113,9 @@ def endpoint(force=False):
     last = _remembered().get("url")
     if last:
         tried.append(last)
-    for host in hosts():
-        for port in ports():
-            url = "http://%s:%d/command" % (host, port)
-            if url not in tried:
-                tried.append(url)
+    for url in candidates():
+        if url not in tried:
+            tried.append(url)
     for url in tried:
         try:
             r = requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=PROBE_TIMEOUT)
@@ -111,7 +134,7 @@ def _post(payload, timeout=3):
     """POST to the hub wherever it is. Raises when it answers nowhere, so a send fails loudly."""
     url = endpoint()
     if not url:
-        raise RuntimeError("the hub answered at none of: " + ", ".join(hosts()))
+        raise RuntimeError("the hub answered at none of: " + ", ".join(candidates()))
     try:
         return requests.post(url, json=payload, timeout=timeout)
     except Exception:
@@ -143,7 +166,7 @@ def reachable():
 def hub_status():
     """{reachable, url, tried, toys} — what the hub says right now, for a diagnostic or a prompt line."""
     url = endpoint(force=True)
-    out = {"reachable": bool(url), "url": url, "tried": hosts(), "toys": {}}
+    out = {"reachable": bool(url), "url": url, "tried": candidates(), "toys": {}}
     if not url:
         return out
     try:
@@ -406,10 +429,22 @@ def stop_all(reason="stop_all"):
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) >= 3:   # toy_link.py mission 8 [seconds]
+    if len(sys.argv) >= 3:            # toy_link.py mission 8 [seconds]
         print(send(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]) if len(sys.argv) > 3 else 3))
-    else:
+    elif len(sys.argv) == 2 and sys.argv[1] == "stop":
         print("stop_all:", stop_all())
+    else:
+        # No argument is the read-only diagnostic. It used to be stop_all, so merely asking where the hub was
+        # sent a command to it (2026-10-14).
+        _st = hub_status()
+        print(json.dumps(_st, indent=2))
+        if not _st["reachable"]:
+            print("\nThe hub answered nowhere. It is the app on her phone, so Aegis needs a route to the phone:"
+                  "\n  · on her Wi-Fi: Game Mode open with a Local IP shown, and LOVENSE_HOST set to it"
+                  "\n  · anywhere: the phone on the tailnet, and LOVENSE_TAILNET_HOST set to its tailnet name"
+                  "\n    (on cellular the app shows no Local IP; the tailnet address is what it has instead)"
+                  "\nin ~/.vintos/vintos.env. Addresses tried:\n  " + "\n  ".join(_st["tried"]))
+        sys.exit(0 if _st["reachable"] else 1)
 
 import re as _tl_re
 def parse_and_send(reply_text, context=None):
@@ -532,18 +567,3 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
     _toy_trace("pattern %s n=%d iv=%s sec=%s" % (toy, len(strengths or []), interval_ms, seconds))
     return _o(toy, strengths, interval_ms, seconds, func, context=context,
               permit=permit, effect_digest=effect_digest)
-
-
-if __name__ == "__main__":
-    # A read-only diagnostic: where the hub was looked for, where it answered, and which toys it reports.
-    # It sends no command and moves nothing.  python3 scripts/toy_link.py
-    import sys as _sys
-    _st = hub_status()
-    print(json.dumps(_st, indent=2))
-    if not _st["reachable"]:
-        print("\nThe hub answered nowhere. It is Lovense Remote on her phone, so Aegis needs a route to the"
-              "\nphone itself:"
-              "\n  · at home: the phone on her Wi-Fi, Game Mode open, and LOVENSE_HOST set to its address"
-              "\n  · anywhere: the phone on the tailnet, and LOVENSE_TAILNET_HOST set to its tailnet name"
-              "\nin ~/.vintos/vintos.env. Addresses tried: " + ", ".join(_st["tried"]))
-    _sys.exit(0 if _st["reachable"] else 1)
