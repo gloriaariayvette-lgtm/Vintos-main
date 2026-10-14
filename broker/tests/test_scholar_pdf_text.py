@@ -69,7 +69,9 @@ text, where = S.read_url(DOI, transport=site({DOI: (200, {"content-type": "appli
 check("a PDF from a doi comes back with non-empty text", len(text) > 1500 and where == DOI, (len(text), where))
 check("the text is the paper's sentences, not PDF markup",
       "section 7: the model is not the character it plays" in text and "endobj" not in text and " Tj" not in text and "%PDF" not in text, text[:300])
-check("the source was asked once, nothing else", asked == [DOI], asked)
+# a doi link first asks Europe PMC for an open-access full text (2026-10-14); then the source, once
+check("the source was asked once; the only other request is the Europe PMC lookup",
+      asked.count(DOI) == 1 and all(a == DOI or a.startswith("https://www.ebi.ac.uk/europepmc/webservices/rest/") for a in asked), asked)
 
 # ── a .pdf address still works, and HTML is untouched ──
 asked.clear()

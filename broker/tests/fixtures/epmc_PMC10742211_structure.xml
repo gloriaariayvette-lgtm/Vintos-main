@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- STRUCTURAL FIXTURE ONLY. The identifiers are those of Gantsova et al. 2023 (PMID 38132452, PMC10742211); every
+     sentence of text below is placeholder written for this test, NOT the article's content. It reproduces the JATS
+     shape Europe PMC's fullTextXML serves: front matter with ids, an abstract, nested sections, figures, a table. -->
+<article xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:mml="http://www.w3.org/1998/Math/MathML" article-type="research-article">
+  <front>
+    <journal-meta><journal-title-group><journal-title>Fixture Journal</journal-title></journal-title-group></journal-meta>
+    <article-meta>
+      <article-id pub-id-type="pmid">38132452</article-id>
+      <article-id pub-id-type="pmcid">PMC10742211</article-id>
+      <article-id pub-id-type="doi">10.0000/fixture.38132452</article-id>
+      <title-group><article-title>FIXTURE TITLE: Insrr knockout and pendrin expression in mouse kidney</article-title></title-group>
+      <abstract><p>FIXTURE ABSTRACT sentence one.</p><p>FIXTURE ABSTRACT sentence two.</p></abstract>
+      <abstract abstract-type="graphical"><p>graphical abstract text that is not read</p></abstract>
+    </article-meta>
+  </front>
+  <body>
+    <sec id="s1"><title>Introduction</title><p>FIXTURE INTRODUCTION paragraph citing <xref ref-type="bibr" rid="b1">1</xref>.</p></sec>
+    <sec id="s2"><title>Materials and methods</title>
+      <sec id="s2.1"><title>Animals</title><p>FIXTURE METHODS animals paragraph.</p></sec>
+      <sec id="s2.2"><title>Immunohistochemistry</title><p>FIXTURE METHODS staining paragraph.</p></sec>
+    </sec>
+    <sec id="s3"><title>Results</title>
+      <p>FIXTURE RESULTS opening paragraph.</p>
+      <sec id="s3.1"><title>Pendrin expression</title><p>FIXTURE RESULTS pendrin paragraph.</p>
+        <fig id="f1"><label>Figure 1</label><caption><title>FIXTURE FIGURE 1 TITLE.</title><p>FIXTURE figure 1 caption text.</p></caption><graphic xlink:href="f1.jpg"/></fig>
+      </sec>
+    </sec>
+    <sec id="s4"><title>Discussion</title><p>FIXTURE DISCUSSION paragraph.</p>
+      <table-wrap id="t1"><label>Table 1</label><caption><p>FIXTURE table 1 caption.</p></caption><table><tr><td>x</td></tr></table></table-wrap>
+    </sec>
+  </body>
+  <back><ref-list><ref id="b1"><mixed-citation>FIXTURE reference.</mixed-citation></ref></ref-list></back>
+</article>

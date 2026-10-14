@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 14 October — Europe PMC full-text reader: built, not yet seen working live
+
+- `scripts/europepmc.py` reads an open-access article's JATS XML from Europe PMC (sections with their headings,
+  identifiers, figure and table captions, the source URL). `link_fetch.fetch` tries it first for PMC, PubMed,
+  Europe PMC and doi links, and falls back to the ordinary page read with the reason it did not apply.
+- Tested offline only (`broker/tests/test_europepmc_fulltext.py`, a structural fixture for PMC10742211 with
+  placeholder text). The build environment cannot reach ebi.ac.uk (proxy 403).
+- **Not done:** an end-to-end read of PMC10742211 on Aegis. The Gantsova et al. 2023 retrieval failure is not
+  solved until that read returns `kind: fetched` with its sections there.
+
 ## 11 October — Wants card steps
 
 The + control opens its steps inside the selected card and clears an open discussion that would

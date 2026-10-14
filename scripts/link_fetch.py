@@ -176,6 +176,16 @@ def _text_of(body, ctype, url, pdf=None):
     if ctype and not any(t in ctype for t in ("html", "text", "xml", "json")):
         return "", "content type %s is not text" % ctype.split(";")[0]
     raw = body.decode("utf-8", "replace")
+    if ("xml" in ctype or raw.lstrip()[:5] == "<?xml") and re.search(r"<article\b", raw[:20000]):
+        # a JATS article (Europe PMC, PMC, a publisher's XML): read as the article, sections and captions kept,
+        # not stripped into one run of words with its structure gone (2026-10-14)
+        try:
+            import europepmc
+            return europepmc.render(europepmc.parse_jats(body)), ""
+        except ValueError as exc:
+            return "", "XML that is not a readable article: %s" % exc
+        except ImportError:
+            pass
     if "html" in ctype or "<html" in raw[:2000].lower():
         for tag in ("script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg"):
             raw = re.sub(r"<%s\b[^>]*>.*?</%s>" % (tag, tag), " ", raw, flags=re.S | re.I)
@@ -184,9 +194,37 @@ def _text_of(body, ctype, url, pdf=None):
 
 
 def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT, transport=None, resolve=None,
-          pdf=None, min_text=1, keep_raw=False):
-    """One receipt for one link; see the module text. Never raises."""
+          pdf=None, min_text=1, keep_raw=False, article_route=True):
+    """One receipt for one link; see the module text. Never raises.
+
+    A link that names a journal article (a PMC, PubMed, Europe PMC or doi.org address) is read first from Europe
+    PMC's open-access full text, through this same door (europepmc.read): publisher pages answered with browser
+    verification walls and unreadable PDFs (12-13 October, Gantsova et al.). When that read does not happen the link
+    is fetched as before, and the receipt carries why Europe PMC could not give it ("europepmc")."""
     transport = transport or _transport
+    if article_route:
+        try:
+            import os as _o, sys as _s
+            _here = _o.path.dirname(_o.path.abspath(__file__))
+            if _here not in _s.path: _s.path.insert(0, _here)
+            import europepmc
+            target0, _w = unwrap(str(url or "").strip())
+            if target0 and europepmc.ids_in_url(target0):
+                art = europepmc.read(target0, fetch=lambda u, **kw: fetch(
+                    u, transport=transport, resolve=resolve, timeout=timeout, keep_raw=True, article_route=False, **kw))
+                if art.get("fetched"):
+                    return {"original_url": str(url or "").strip(), "url": target0, "wrapped": _w,
+                            "final_url": art["source_url"], "hops": [art["source_url"]], "http_status": 200,
+                            "bytes": len(art["text"]), "text": art["text"], "fetched": True, "truncated": False,
+                            "kind": "fetched", "why": "", "via": "europepmc",
+                            "article": {k: art.get(k) for k in ("pmcid", "pmid", "doi", "title", "sections", "figures")}}
+                plain = fetch(url, max_bytes=max_bytes, max_redirects=max_redirects, timeout=timeout,
+                              transport=transport, resolve=resolve, pdf=pdf, min_text=min_text, keep_raw=keep_raw,
+                              article_route=False)
+                plain["europepmc"] = {"kind": art.get("kind"), "why": art.get("why"), "source_url": art.get("source_url")}
+                return plain
+        except ImportError:
+            pass
     original = str(url or "").strip()
     out = {"original_url": original, "url": "", "wrapped": False, "final_url": "", "hops": [], "http_status": None,
            "bytes": 0, "text": "", "fetched": False, "truncated": False, "kind": "", "why": ""}
@@ -224,6 +262,8 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
         if status != 200:
             return done("http_failure", "HTTP %s from %s" % (status, urlsplit(here).hostname))
         out["bytes"] = len(body)
+        if over:                                   # said even when what was read cannot be extracted
+            out["truncated"] = True
         try:
             text, whynot = _text_of(body, rh.get("content-type"), here, pdf)
         except Exception as exc:
@@ -234,7 +274,6 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
         if keep_raw:                               # the page as it came, for a caller that reads its markup
             out["raw"] = body.decode("utf-8", "replace")
         if over:
-            out["truncated"] = True
             return done("truncated", "only the first %d bytes were read" % max_bytes)
         return done("fetched")
     out["final_url"] = here
@@ -248,6 +287,12 @@ def say(r, chars=None):
         head += "\n  (a redirect wrapper; its destination is %s)" % (r.get("url") or "missing")
     if r.get("final_url") and r.get("final_url") != (r.get("url") or r.get("original_url")):
         head += "\n  (redirected to %s)" % r["final_url"]
+    if r.get("via") == "europepmc":
+        a = r.get("article") or {}
+        head += "\n  (read from Europe PMC's open-access full text %s: %d sections, %d figure/table captions)" % (
+            a.get("pmcid") or "", len(a.get("sections") or []), a.get("figures") or 0)
+    elif r.get("europepmc"):
+        head += "\n  (Europe PMC full text not read - %s: %s)" % (r["europepmc"].get("kind"), r["europepmc"].get("why"))
     if r.get("fetched"):
         text = r.get("text", "")
         cut = chars is not None and len(text) > chars

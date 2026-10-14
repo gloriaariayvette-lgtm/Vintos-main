@@ -237,7 +237,7 @@ def full_text(work, get=None):
     if work.get("arxiv"):
         tries += [("https://arxiv.org/html/%s" % work["arxiv"], "html"), ("https://arxiv.org/pdf/%s" % work["arxiv"], "pdf")]
     if work.get("pmcid"):
-        tries.append(("https://www.ebi.ac.uk/europepmc/webservices/rest/%s/fullTextXML" % work["pmcid"], "html"))
+        tries.append(("https://www.ebi.ac.uk/europepmc/webservices/rest/%s/fullTextXML" % work["pmcid"], "jats"))
     if work.get("pdf"):
         tries.append((work["pdf"], "pdf"))
     if work.get("landing") and is_scholarly(work["landing"]):
@@ -246,6 +246,12 @@ def full_text(work, get=None):
         try:
             if kind == "pdf":
                 text = pdf_text(get(url, "bytes"))
+            elif kind == "jats":   # read as the article: sections and captions, not markup stripped flat (2026-10-14)
+                import sys as _js
+                _here = os.path.dirname(os.path.abspath(__file__))
+                if _here not in _js.path: _js.path.insert(0, _here)
+                import europepmc
+                text = europepmc.render(europepmc.parse_jats(get(url, "bytes")))
             else:
                 text = html_text(get(url, "text"))
         except Exception:
