@@ -6966,7 +6966,15 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
                         "speculative_reading", "attention", "next_question", "interest_score",
                         "reason_for_score", "line", "answers_question", "missing_evidence",
                         "evidence_status", "assessment_status", "validation_failure",
-                        "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")}
+                        "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status",
+                        "review_outcome", "review_outcome_why")}
+            ce = row.get("claim_evidence") if isinstance(row.get("claim_evidence"), dict) else {}
+            if ce:   # what is still open, what was searched, and what would justify another attempt (T-17420bd6)
+                visible["claim_evidence"] = {"gaps": [{k: g.get(k) for k in ("claim", "searched", "would_justify")}
+                                                      for g in (ce.get("gaps") or [])[:6] if isinstance(g, dict)],
+                                             "searched": ce.get("searched"), "new_searches": ce.get("new_searches"),
+                                             "reused_searches": ce.get("reused_searches"),
+                                             "fulltext_passages": ce.get("fulltext_passages")}
             inquiry = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
             visible["original_question"] = (visible.get("original_question")
                                              or coverage.get("original_question")

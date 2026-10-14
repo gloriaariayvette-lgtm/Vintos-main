@@ -1756,7 +1756,24 @@ function _labReviewCard(row) {
         incomplete: ['assessment incomplete', '#c46a5a'], insufficient: ['source insufficient', '#c46a5a'],
         rejected: ['target rejected', '#c46a5a']
     };
-    const mark = stateMarks[state] || [state || 'unclassified', 'var(--text-dim)'];
+    // The review's outcome, when recorded, says what kind of result this is: research, the question or its
+    // target, or the Lab's own failure — a failed checker is never shown as a scientific no (T-17420bd6).
+    const outcomeMarks = {
+        answered: ['answered', 'var(--accent)'], partially_supported: ['partly supported', 'var(--text)'],
+        unsupported_by_available_evidence: ['unsupported by available evidence', '#c46a5a'],
+        flawed_premise: ['flawed premise', '#c46a5a'], wrong_target: ['wrong target retrieved', '#c46a5a'],
+        checker_failed: ['checker failed — not judged', 'var(--text-dim)'],
+        context_overflow: ['too large to assess — not judged', 'var(--text-dim)'],
+        unassessed: ['not assessed', 'var(--text-dim)']
+    };
+    const mark = outcomeMarks[row.review_outcome] || stateMarks[state] || [state || 'unclassified', 'var(--text-dim)'];
+    const ce = row.claim_evidence || {};
+    const gaps = Array.isArray(ce.gaps) ? ce.gaps : [];
+    const gapHtml = gaps.length ? gaps.map(g =>
+        '<div style="font-size:0.6rem;color:#c46a5a;line-height:1.5;margin-top:7px;">open — ' + _esc(g.claim || '') + '</div>' +
+        '<div style="font-size:0.54rem;color:var(--text-dim);line-height:1.45;margin-top:2px;">' +
+          _esc((Array.isArray(g.searched) ? g.searched.length : 0) + ' full-text searches run') +
+          (g.would_justify ? ' · another attempt needs ' + _esc(g.would_justify) : '') + '</div>').join('') : '';
     const evidence = supports.length ? supports.map(s =>
         '<div style="margin-top:8px;">' +
           '<div style="font-size:0.56rem;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;">' + _esc(s.requirement || 'supported evidence') + '</div>' +
@@ -1770,7 +1787,7 @@ function _labReviewCard(row) {
         '<div style="margin-top:7px;">' + _labChip(mark[0], mark[1]) + '</div>' +
         (row.original_question ? '<div style="font-size:0.61rem;color:var(--text-dim);line-height:1.5;margin-top:7px;font-style:italic;">asked — ' + _esc(row.original_question) + '</div>' : '') +
         evidence +
-        (missingText ? '<div style="font-size:0.61rem;color:#c46a5a;line-height:1.5;margin-top:8px;">still missing — ' + _esc(missingText) + '</div>' : '') +
+        (gapHtml || (missingText ? '<div style="font-size:0.61rem;color:#c46a5a;line-height:1.5;margin-top:8px;">still missing — ' + _esc(missingText) + '</div>' : '')) +
         (row.validation_failure ? '<div style="font-size:0.56rem;color:var(--text-dim);line-height:1.45;margin-top:6px;">assessment note — ' + _esc(row.validation_failure) + '</div>' : '') +
         (speculation ? '<div style="font-size:0.63rem;color:var(--text-dim);line-height:1.55;margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere;">speculative — ' + _esc(speculation) + '</div>' : '') +
         (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next — ' + _esc(row.next_question) + '</div>' : '') +

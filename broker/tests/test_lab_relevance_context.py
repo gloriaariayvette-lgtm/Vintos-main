@@ -177,7 +177,9 @@ class ReviewTests(unittest.TestCase):
             state=C._load(C.STATE,{})
             self.assertEqual(state['phase'],'orient');self.assertNotIn('inquiry',state)
             note=C._tail_jsonl(C.NOTEBOOK)[-1]
-            self.assertTrue(note['answers_question'].startswith('no:'))
+            # a scientific partial is a 'no'; a model that failed has judged nothing (Gloria, 2026-10-14)
+            self.assertTrue(note['answers_question'].startswith('no:' if partial else 'not assessed:'),note['answers_question'])
+            self.assertEqual(note['review_outcome'],'partially_supported' if partial else 'checker_failed')
             if partial:
                 self.assertIn('119-150',note['factual_observation'])
                 self.assertFalse(note['evidence_gap']['automatic_followup'])

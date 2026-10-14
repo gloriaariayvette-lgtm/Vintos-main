@@ -1354,7 +1354,16 @@ def _question_holds():
         # and genuinely different instruments still use _held_question's checks.
     current.update((owner, old if old.get('held_at') else dict(old, held_at=now_iso()))
                    for owner,old in saved.items() if owner not in seen)
-    current = {owner: old for owner, old in current.items() if _hold_age_days(old) < HOLD_DAYS}
+    # Expiry alone is not new evidence: a question whose every open claim has already been searched for, with
+    # nothing new to search, keeps waiting rather than running the same searches again (T-17420bd6).
+    try:
+        import lab_claim_evidence as _lce
+        _waiting = _lce.waiting_keys(_claim_ledger())
+        unchanged = lambda question: _lce.question_key(question) in _waiting
+    except Exception:
+        unchanged = lambda question: False
+    current = {owner: old for owner, old in current.items()
+               if _hold_age_days(old) < HOLD_DAYS or unchanged(old.get('question'))}
     if current != previous: _atomic(path, current)
     return list(current.values())
 
@@ -2892,6 +2901,8 @@ def review_observations(inquiry, observations):
               'LITERATURE':observations.get('LITERATURE') or [],
               'prior_validated_evidence': observations.get('prior_validated_evidence') or [],
               'atlas_analysis':observations.get('atlas_analysis')}
+    if observations.get('FULLTEXT'):   # full-text passages for the unanswered claims (lab_claim_evidence)
+        result['FULLTEXT'] = observations['FULLTEXT']
     proteins = []
     sequence_requested = bool(re.search(r'sequence|residue|motif|amino.acid', str(inquiry.get('question') or ''), re.I))
     for row in observations.get('records') or []:
@@ -3001,7 +3012,7 @@ def _coverage_preflight(inquiry, observations, prepared):
     # to make the request fit; new evidence or scope is evaluated independently.
     if not os.path.exists(path): _atomic(path, payload)
     elif _load(path, None) != payload: raise ValueError('deferred evidence snapshot mismatch')
-    return {'answers_question':'no: ' + reason, 'missing_evidence':reason,
+    return {'answers_question':'not assessed: ' + reason, 'missing_evidence':reason,
             'original_question':inquiry['question'], 'factual_observation':'',
             'speculative_reading':'', 'next_question':'', 'instrument_gap':'',
             'line_status':'continue', 'evidence_status':'deferred',
@@ -3155,6 +3166,8 @@ def _coverage_request(inquiry, observations):
         # source or year elsewhere is not transport/bibliographic metadata.
         if path in ('evidence.additional_source.source','evidence.additional_source.receipt_id'):
             return False
+        if re.fullmatch(r'evidence.FULLTEXT\.\d+\.(?:pmcid|pmid|title|section|claim|source_url)',path):
+            return bibliography_question
         bibliography = (re.fullmatch(r'evidence.LITERATURE\.\d+\.(?:pmid|journal|year|title|doi|url)',path)
                         or (pubmed_summary and re.match(r'evidence.additional_source.records\.\d+\.(?:uid$|summary\.)',path)))
         return bibliography_question or not bibliography
@@ -3174,6 +3187,10 @@ def _coverage_request(inquiry, observations):
         if match:
             accession = str(evidence['records'][int(match[1])].get('accession') or '')
             if re.fullmatch(r'[A-Za-z0-9_-]+',accession): return 'UniProt:'+accession+'/'+match[2]
+        match = re.match(r'evidence.FULLTEXT\.(\d+)\.(.+)',path)
+        if match:
+            pmcid = str(evidence['FULLTEXT'][int(match[1])].get('pmcid') or '')
+            if re.fullmatch(r'PMC[0-9]+',pmcid): return pmcid+'/'+match[2]
         return 'source/'+'.'.join(part for part in path.split('.')[-2:] if not part.isdigit())
     labels = {digest:label(path) for digest,path in digests.items()}
     # Readable exact-leaf IDs; duplicates remain distinct and bound to full
@@ -3294,6 +3311,11 @@ def _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _
         item=dict(item,path=matches[0])
         match = re.match(r'evidence.LITERATURE\.(\d+)\.', item['path'])
         if match: item['source_citation'] = 'PMID ' + str(evidence['LITERATURE'][int(match[1])].get('pmid'))
+        match = re.match(r'evidence.FULLTEXT\.(\d+)\.', item['path'])
+        if match:
+            passage = evidence['FULLTEXT'][int(match[1])]
+            item['source_citation'] = (str(passage.get('pmcid')) + (', ' + str(passage['section'])
+                                       if passage.get('section') else ''))
         match = re.match(r'evidence.records\.(\d+)\.', item['path'])
         if match:
             accession = evidence['records'][int(match[1])].get('accession')
@@ -3331,7 +3353,8 @@ def _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _
 def _incomplete_assessment(inquiry, value, raw, coverage=None, reason=None):
     coverage = coverage or {}
     supports = coverage.get('supports') or []
-    return {'answers_question':'no: answer sufficiency not established because assessment validation failed',
+    # not "no": a checker that failed has not judged the science (Gloria, 2026-10-14)
+    return {'answers_question':'not assessed: answer sufficiency not established because assessment validation failed',
             'assessment_status':'incomplete', 'evidence_status':'partial' if supports else 'incomplete',
             'original_question':inquiry.get('question'), 'missing_evidence':'',
             'validation_failure':reason or coverage.get('validation_failure') or 'coverage assessment unavailable or invalid',
@@ -3343,6 +3366,58 @@ def _incomplete_assessment(inquiry, value, raw, coverage=None, reason=None):
             'evidence_gap':{'kind':'assessment_validation_failure','automatic_followup':False},
             'truth_status':'exact_source_excerpts_only_relevance_and_full_sufficiency_unestablished',
             'line_status':'continue'}
+
+
+CLAIM_FULLTEXT_FETCH = None   # set only by this file's own daemon/tick: an imported Lab never searches Europe PMC
+
+
+def _claim_ledger():
+    return os.path.join(ROOT, 'claim-evidence.json')
+
+
+def _reflect_with_claim_evidence(context, inquiry, observations, records):
+    """The review, and when it leaves claims of the question unanswered, the same whole question reviewed again with
+    full-text passages for those claims (T-17420bd6, 2026-10-14). Returns (reflection, fields for the note):
+    review_outcome names a research result, a problem with the question or its target, or a Lab failure; a second
+    review that fails as software never replaces the first, and is never a scientific "no"."""
+    import lab_claim_evidence as LCE
+    question = str(inquiry.get('question') or '')
+    prior = []
+    try:
+        prior = LCE.prior_supports(question, ledger_path=_claim_ledger())
+    except Exception as exc:
+        _fault('claim_evidence_prior', exc)
+    if prior:
+        have = {(p.get('requirement'), p.get('quote')) for p in observations.get('prior_validated_evidence') or []}
+        observations = dict(observations, prior_validated_evidence=list(observations.get('prior_validated_evidence') or [])
+                            + [p for p in prior if (p.get('requirement'), p.get('quote')) not in have])
+    reflection = _reflect(context, inquiry, observations)
+    gathered, second_attempt = None, None
+    if LCE.outcome(reflection)[0] in LCE.SEARCHABLE:
+        try:
+            gathered = LCE.gather(inquiry, reflection, records, fetch=CLAIM_FULLTEXT_FETCH, ledger_path=_claim_ledger())
+        except Exception as exc:
+            _fault('claim_evidence_gather', exc)
+        if gathered and gathered.get('FULLTEXT'):
+            second = _reflect(context, inquiry, dict(observations, FULLTEXT=gathered['FULLTEXT']))
+            status = LCE.outcome(second)[0]
+            first_supports = len((reflection.get('coverage_check') or {}).get('supports') or [])
+            second_supports = len((second.get('coverage_check') or {}).get('supports') or [])
+            second_attempt = {'outcome': status, 'supports': second_supports}
+            if status in LCE.RESEARCH and (status == 'answered' or second_supports >= first_supports):
+                reflection = dict(second, first_review={'outcome': LCE.outcome(reflection)[0], 'supports': first_supports})
+    status, why = LCE.outcome(reflection)
+    fields = {'review_outcome': status, 'review_outcome_why': why[:400]}
+    try:
+        fields['claim_evidence'] = dict(LCE.remember(question, reflection, gathered, ledger_path=_claim_ledger()),
+                                        **({'second_review': second_attempt} if second_attempt else {}),
+                                        **({'skipped': gathered['skipped']} if gathered and gathered.get('skipped') else {}),
+                                        **({'failures': gathered['failures'][:6]} if gathered and gathered.get('failures') else {}))
+    except Exception as exc:
+        _fault('claim_evidence_remember', exc)
+    if gathered and gathered.get('FULLTEXT'):
+        fields['fulltext_passages'] = [{k: p.get(k) for k in ('pmcid', 'section', 'claim')} for p in gathered['FULLTEXT']]
+    return reflection, fields
 
 
 def _reflect(context, inquiry, records, _validation_attempt=0):
@@ -3424,7 +3499,9 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
             "The records may not contain the thing the question asked about. If they do not, say so plainly and "
             "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
             "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
-            "and keep them apart from what the database records state. Return JSON only.",
+            "and keep them apart from what the database records state. FULLTEXT, when present, holds passages from "
+            "open-access full-text articles chosen for the parts of this question still unanswered: cite the PMCID and "
+            "section of any you use; a passage chosen for a claim is not proof of it. Return JSON only.",
             context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nEXACT SEQUENCE INTERVALS (computed from the retrieved sequences, not predictions):\n" + json.dumps(sequence_regions(inquiry, records)) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(review_observations(inquiry, records), budget=24000) +
             "\n\nFirst decide answers_question: yes or no, with the precise missing evidence if no. "
             "A sequence interval can be read directly from a complete sequence; use the computed intervals above. "
@@ -4050,7 +4127,7 @@ def tick():
                             observations["prior_validated_evidence"] = lab_lines.validated_evidence(inquiry["line_id"])
                         except Exception as exc:
                             _fault("lab_line_evidence", exc)
-                    reflection = _reflect(context, inquiry, observations)
+                    reflection, claim_evidence = _reflect_with_claim_evidence(context, inquiry, observations, records)
                     if reflection.get('coverage_deferred'):
                         inquiry = dict(inquiry, refused=reflection['missing_evidence'], evidence_status='insufficient',
                                        coverage_deferred=True, planning_evidence=_planning_evidence(inquiry))
@@ -4072,6 +4149,7 @@ def tick():
                                if inquiry.get('coverage_retry_sha256') else {}),
                             "evidence_sha256": review_evidence(state)[0],
                             "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
+                            **claim_evidence,
                             "truth_status": reflection.get('truth_status', 'mixed_sourced_observation_and_named_speculation')}
                     try:
                         import chemistry_frontier_bridge
@@ -4228,6 +4306,9 @@ if __name__ == "__main__":
     elif cmd == "off": print(json.dumps(set_enabled(False), indent=2))
     elif cmd == "evo-on": print(json.dumps(set_evo2_enabled(True), indent=2))
     elif cmd == "evo-off": print(json.dumps(set_evo2_enabled(False), indent=2))
-    elif cmd == "tick": print(json.dumps(tick(), indent=2))
-    elif cmd == "daemon": daemon()
+    elif cmd in ("tick", "daemon"):
+        import lab_claim_evidence
+        CLAIM_FULLTEXT_FETCH = lab_claim_evidence.live_fetch()
+        if cmd == "tick": print(json.dumps(tick(), indent=2))
+        else: daemon()
     else: raise SystemExit("usage: chemistry_lab.py status|on|off|evo-on|evo-off|tick|daemon")
