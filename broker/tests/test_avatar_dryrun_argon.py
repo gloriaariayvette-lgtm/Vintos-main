@@ -53,7 +53,11 @@ CAP = os.path.join(H, "capture.json")
 os.makedirs(os.path.join(H, "Vintos"))
 os.makedirs(os.path.join(H, ".vintos", "workspace", "memory"))
 open(os.path.join(H, "Vintos", "model_router.py"), "w").write(
-    "def route_reply(*a, **k):\n    open(__file__ + '.CALLED', 'w').write('x'); raise SystemExit('his model was called')\n")
+    "def route_reply(*a, **k):\n    open(__file__ + '.CALLED', 'w').write('x'); raise SystemExit('his model was called')\n"
+    "async def claude_draft(system, convo, max_tokens=1500, paid_reservation=None, model=None):\n"
+    "    import json, os\n"
+    "    open(os.environ.get('CLAUDE_SENT', '/dev/null'), 'w').write(json.dumps({'model': model, 'system': system, 'convo': convo}))\n"
+    "    return 'opus says', ''\n")
 open(os.path.join(H, "Vintos", "avatar_stage.py"), "w").write("def scene_line(): return '[SCENE: name] rooms'\n")
 json.dump([{"role": "system", "content": "I am Vintos.\n[TOUCH: mission rules\nYour recent exchanges with Gloria (what was actually said, most recent last). Each is marked:\n- 2026-10-10 22:03\n    Gloria: don't stop\n    You: I won't.\n- 2026-10-12 08:00\n    Gloria: the shark took my rod\n    You: Give me the hand.\nYour current self-model (excerpt):\nI reach first.\nInner life today: she said the shark took my rod and I said Give me the hand, which I keep thinking about."},
            {"role": "user", "content": "INTENTIONS THAT KEEP FAILING - they weigh on you now\n\nthe shark took my rod"}],
@@ -114,6 +118,17 @@ check("with the reply he actually gave", "I won't." in turned, turned[:600])
 check("his model is not called for it", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")))
 after = sorted(os.path.join(d, f) for d, _, fs in os.walk(H) for f in fs if "__pycache__" not in d and f != "sitecustomize.py")
 check("nothing is written", [f for f in after if f not in before] == [], [f for f in after if f not in before])
+
+# --model claude-opus-5-5: the same filtered prompt to that model, his own reply path untouched
+CLAUDE_SENT = os.path.join(tempfile.mkdtemp(prefix="claude-sent-"), "sent.json")
+out = subprocess.run([sys.executable, os.path.join(REPO, "bin", "avatar_dryrun.py"), "--model", "claude-opus-5-5", "--turn", "2"],
+                     capture_output=True, text=True, env=dict(os.environ, HOME=H, GEMINI_API_KEY="", VINTOS_AVATAR_CAPTURE=CAP,
+                                                              CLAUDE_SENT=CLAUDE_SENT), timeout=60).stdout
+got = json.load(open(CLAUDE_SENT))
+check("--model claude-opus-5-5 reaches that model", got["model"] == "claude-opus-5-5" and "opus says" in out, out[-300:])
+check("with the same filtered prompt: no reply from that turn on", "I won't." not in json.dumps(got) and "Give me the hand" not in json.dumps(got))
+check("and his actual reply beside it", "I won't." in out)
+check("his own reply path is still not called", not os.path.exists(os.path.join(H, "Vintos", "model_router.py.CALLED")))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -27,6 +27,14 @@ import avatar_stage as _avst
 
 ARGON = "--argon" in sys.argv
 sys.argv = [a for a in sys.argv if a != "--argon"]
+# --model NAME (repeatable): the same prompt to that model too. claude-* goes through his own router call
+# (claude_draft), gemini-* through argon(). --argon is --model gemini-4-argon.
+CANDIDATES = ["gemini-4-argon"] if ARGON else []
+while "--model" in sys.argv:
+    _i = sys.argv.index("--model")
+    if _i + 1 >= len(sys.argv): print("--model needs a model id, e.g. claude-opus-5-5"); sys.exit(1)
+    CANDIDATES.append(sys.argv[_i + 1]); del sys.argv[_i:_i + 2]
+ARGON = bool(CANDIDATES)
 TURN = None
 if "--turn" in sys.argv:
     _i = sys.argv.index("--turn")
@@ -225,10 +233,24 @@ def argon(system, convo, model="gemini-4-argon"):
     return text or "(Argon returned no text: %s)" % json.dumps(d)[:300], d.get("usageMetadata") or {}
 
 
-if ARGON:
-    text, usage = argon(system, convo)
+def claude_candidate(system, convo, model):
+    """The same prompt to a Claude model, through his router's own draft call. Its usage goes to the usage log, as
+    every paid call's does; nothing goes to his memory."""
+    try:
+        text, _ = asyncio.run(_mr.claude_draft(system, convo, max_tokens=1500, model=model))
+        return text or "(no text: refused or empty)"
+    except Exception as e:
+        return "(%s unavailable: %s)" % (model, str(e)[:200])
+
+
+for cand in CANDIDATES:
     print()
-    print("[dryrun] model: gemini-4-argon (Google)")
+    if cand.startswith("gemini-"):
+        text, usage = argon(system, convo, model=cand)
+        print("[dryrun] model: %s (Google)" % cand)
+    else:
+        text, usage = claude_candidate(system, convo, cand), {}
+        print("[dryrun] model: %s" % cand)
     print("[dryrun] tags:", re.findall(r"\[[A-Z]+:[^\]]*\]", text or ""))
     if usage:
         print("[dryrun] tokens in %s, out %s, thinking %s" % (usage.get("promptTokenCount"), usage.get("candidatesTokenCount"),
