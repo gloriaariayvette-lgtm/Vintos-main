@@ -93,10 +93,15 @@ def llm(system, user, temperature=0.6):
             "max_tokens": 1500
         }, timeout=180)
         _j = r.json()
-        if "choices" not in _j:   # the server's own words, not just "'choices'" (2026-10-13)
-            log(f"LLM error: HTTP {r.status_code} from {API}: {str(_j.get('error', _j))[:300]}")
+        # the server's own words, not just "'choices'" (2026-10-13). An empty choices list, a body that is not
+        # an object, and a choice with no content are read the same way, never as a KeyError or an index error.
+        _choice = ((_j.get("choices") or [None])[0]) if isinstance(_j, dict) else None
+        _content = (((_choice.get("message") or {}).get("content")) if isinstance(_choice, dict) else None)
+        if not _content:
+            _body = _j.get("error", _j) if isinstance(_j, dict) else _j
+            log(f"LLM error: HTTP {r.status_code} from {API}: no choices in the reply: {str(_body)[:300]}")
             return None
-        return _j["choices"][0]["message"]["content"].strip()
+        return str(_content).strip()
     except Exception as e:
         log(f"LLM error: {e}")
         return None
