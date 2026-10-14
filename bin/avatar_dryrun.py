@@ -98,18 +98,49 @@ if TURN is not None and msg is None:
     # the history put his real reply in front of the candidate, and Argon copied it word for word (14 October).
     # Nothing in the history may be this message or this reply, and repeated exchanges are kept once.
     same = lambda a, b: " ".join(str(a or "").split())[:400] == " ".join(str(b or "").split())[:400]
-    before, seen = [], set()
-    for r in ex[max(0, i - 20):i]:
+    rows_before, this_turn, seen = [], [], set()
+    for r in ex[:i]:
         g, v = str(r.get("gloria") or ""), _MARK.sub("", str(r.get("vintos") or ""))
+        if same(g, msg) or (his_actual and same(v, his_actual)):
+            this_turn.append(r); continue          # an earlier copy of this very exchange
         key = (" ".join(g.split())[:200], " ".join(v.split())[:200])
-        if key in seen or same(g, msg) or (his_actual and same(v, his_actual)):
-            continue
-        seen.add(key)
-        before += [{"role": "user", "content": g}, {"role": "assistant", "content": v}]
-    before = before[-30:]
+        if key in seen: continue
+        seen.add(key); rows_before.append(r)
+    rows_before = rows_before[-15:]
+    before = []
+    for r in rows_before:
+        before += [{"role": "user", "content": str(r.get("gloria") or "")},
+                   {"role": "assistant", "content": _MARK.sub("", str(r.get("vintos") or ""))}]
+    # The system prompt is today's, and it carries his recent exchanges ("Your recent exchanges with Gloria"), which
+    # include this turn's reply and everything after it: Argon copied his reply from there (14 October). That section
+    # is rebuilt from the exchanges BEFORE this turn only, and any other line of the prompt that quotes this turn or a
+    # later one is removed.
+    def _ledger_block(rows):
+        lines = []
+        for r in rows:
+            g = " ".join(str(r.get("gloria") or "").split())[:400]
+            v = " ".join(_MARK.sub("", str(r.get("vintos") or "")).split())[:400]
+            lines.append("- %s\n    Gloria: %s\n    You: %s" % (str(r.get("timestamp", ""))[:16], g, v))
+        return ("Your recent exchanges with Gloria (what was actually said, most recent last). Each is marked with "
+                "when it was said:\n" + "\n".join(lines)) if lines else ""
+    _block = re.compile(r"Your recent exchanges with Gloria \(what was actually said.*?(?=\nYour current self-model|\Z)", re.S)
+    system = _block.sub(lambda m: _ledger_block(rows_before), system, count=1)
+    _later = []
+    for r in this_turn + ex[i:]:
+        for t in (str(r.get("gloria") or ""), _MARK.sub("", str(r.get("vintos") or ""))):
+            t = " ".join(t.split())
+            if len(t) >= 12:      # short lines too: "Give me the hand." is a whole reply
+                _later += [t[:60], t[len(t) // 2:len(t) // 2 + 60]] if len(t) > 60 else [t]
+    _kept = []
+    for line in system.split("\n"):
+        flat = " ".join(line.split())
+        if not any(snip in flat for snip in _later):
+            _kept.append(line)
+    print("[dryrun] removed from the system prompt: %d line(s) quoting this turn or later ones" % (len(system.split("\n")) - len(_kept)))
+    system = "\n".join(_kept)
     convo = [m for m in before if m["content"].strip()] + [{"role": "user", "content": msg}]
     print("[dryrun] her message (turn %d back):" % TURN, msg[:300])
-    print("[dryrun] (system prompt is the latest captured: today's room and devices, not that night's)")
+    print("[dryrun] (system prompt: today's, minus every exchange from this turn on; his memory files and inner life are still today's)")
 elif msg is None:
     # The captured prompt's last turn is what his model saw: her words wrapped in context the server adds (open
     # intentions and the like), so it is never matched as text. Her plain words and his actual reply come from his
