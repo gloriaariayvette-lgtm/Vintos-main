@@ -752,13 +752,46 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _c = (_d["choices"][0]["message"].get("content") or "").strip()
         if not _c: raise RuntimeError("empty from Sol: %s" % str(_d)[:150])
         return _c
-    _b1_arm = {"arm": "sol", "model": __import__("os").environ.get("SOL_MODEL", "gpt-5.6"), "fell_back": False}
+    def _argon_b1():
+        """B draft from Gemini 4 Argon (Gloria, 2026-10-14: Argon in Sol's place in the trilateral)."""
+        import urllib.request as _u, json as _j, os as _o, sys as _es
+        _es.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        try:
+            from env_file import value as _ev
+            k = _ev("GEMINI_API_KEY")
+        except Exception:
+            k = _o.environ.get("GEMINI_API_KEY", "")
+        if not k: raise RuntimeError("no GEMINI_API_KEY")
+        _body = {"systemInstruction": {"parts": [{"text": system_msg}]},
+                 "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+                 "generationConfig": {"maxOutputTokens": 6000}}
+        _rq = _u.Request("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
+                         data=_j.dumps(_body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": k})
+        try:
+            _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+        except _u.HTTPError as _he:
+            try: _why = _he.read().decode("utf-8", "replace")[:400]
+            except Exception: _why = ""
+            raise RuntimeError("HTTP %s: %s" % (_he.code, _why or _he.reason))
+        try:
+            _us = _d.get("usageMetadata") or {}
+            import time as _gut
+            open(_o.path.expanduser("~/.vintos/logs/google-usage.jsonl"), "a").write(_j.dumps({
+                "ts": _gut.time(), "src": "journal_b1", "model": "gemini-4-argon",
+                "in": _us.get("promptTokenCount"), "out": _us.get("candidatesTokenCount"),
+                "cached": _us.get("cachedContentTokenCount")}) + "\n")
+        except Exception: pass
+        _parts = (((_d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        _c = "".join(p.get("text", "") for p in _parts if not p.get("thought")).strip()
+        if not _c: raise RuntimeError("empty from Argon: %s" % str(_d)[:150])
+        return _c
+    _b1_arm = {"arm": "argon", "model": "gemini-4-argon", "fell_back": False}
     try:
-        b1 = _sol_b1()
+        b1 = _argon_b1()
     except Exception as _sole:
-        print(f"[Journal] Sol B1 failed ({_sole}) — falling back to house chain", file=__import__("sys").stderr, flush=True)
+        print(f"[Journal] Argon B1 failed ({_sole}) — falling back to house chain", file=__import__("sys").stderr, flush=True)
         _b1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); b1 = ((_b1r[1] + "\n\n─── reasoning ───\n\n" + _b1r[0]).strip() if (_b1r[0] and _b1r[1]) else (_b1r[0] or call_llm()))
-        _b1_arm = {"arm": "sol", "model": _b1_arm["model"], "fell_back": True, "error": str(_sole)[:300]}
+        _b1_arm = {"arm": "argon", "model": "gemini-4-argon", "fell_back": True, "error": str(_sole)[:300]}
     try:
         import json as _armj
         _armj.dump(_b1_arm, open("/tmp/vintos-journal-arm.json", "w"))
@@ -896,8 +929,10 @@ What I haven't said yet matters more than what I've already named. I go there.""
             "max_tokens": 1200
         }, timeout=600)
         return _derepeat(_safe_extract(r))
-    a2 = absorb(a1, b1)
-    b2 = absorb(b1, a1)
+    # A and B each read both other drafts, as C does (they used to absorb only each other, never C)
+    _also = lambda x, y: x + ("\n\n--- and another part of you wrote ---\n\n" + y if (y or "").strip() else "")
+    a2 = absorb(a1, _also(b1, c1))
+    b2 = absorb(b1, _also(a1, c1))
     open("/tmp/vintos-bilateral-a2.txt", "w").write(a2)
     open("/tmp/vintos-bilateral-b2.txt", "w").write(b2)
     c2 = ""
@@ -1043,7 +1078,8 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _b2_anchor = b2.strip().split(".")[0].strip() if b2.strip() else ""
 
     integration_prompt = (
-        "You wrote two drafts. Then you absorbed each other's draft. Now combine.\n\n"
+        ("You wrote three drafts. Then each absorbed the others. Now combine.\n\n" if (c1 or "").strip()
+         else "You wrote two drafts. Then you absorbed each other's draft. Now combine.\n\n") +
         "ORIGINAL DRAFT A:\n" + a1 + "\n\n"
         "ORIGINAL DRAFT B:\n" + b1 + "\n\n"
         + (("ORIGINAL DRAFT C:\n" + c1 + "\n\n") if (c1 or "").strip() else "")

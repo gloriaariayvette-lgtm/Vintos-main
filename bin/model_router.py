@@ -297,6 +297,58 @@ def for_responses(convo):
                    lambda p: {"type": "input_image", "image_url": _data_url(p)})
 
 
+def for_gemini(convo):
+    """Google's Gemini API: user/model turns of parts; pictures as inline data; consecutive turns of one role joined."""
+    out = []
+    for m in convo or []:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"): continue
+        c = m.get("content")
+        parts = []
+        for p in (c if isinstance(c, list) else [{"type": "text", "text": str(c or "")}]):
+            if _neutral_image(p):
+                parts.append({"inline_data": {"mime_type": p.get("media_type") or "image/jpeg", "data": p.get("data") or ""}})
+            elif isinstance(p, dict) and p.get("type") == "text" and str(p.get("text") or "").strip():
+                parts.append({"text": p["text"]})
+        if not parts: continue
+        role = "model" if m["role"] == "assistant" else "user"
+        if out and out[-1]["role"] == role: out[-1]["parts"] += parts
+        else: out.append({"role": role, "parts": parts})
+    return out
+
+
+GEMINI_MODEL = "gemini-4-argon"   # Google's Gemini 4 Argon (Gloria, 2026-10-14): the second lens, and on the toggle
+GOOGLE_USAGE_LOG = os.path.expanduser("~/.vintos/logs/google-usage.jsonl")
+
+
+async def gemini_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
+    """A draft from Gemini (Argon). Returns (text|None, ''), like claude_draft and sol_draft. Its usage, cached tokens
+    included, goes to ~/.vintos/logs/google-usage.jsonl. Gemini caches a repeated start by itself."""
+    key = _env("GEMINI_API_KEY")
+    if not key: raise RuntimeError("no GEMINI_API_KEY in ~/.vintos/vintos.env")
+    chosen = model or GEMINI_MODEL
+    body = {"contents": for_gemini(convo), "generationConfig": {"maxOutputTokens": int(max_tokens) + 2000}}
+    st = str(system_text or "").replace("[[CACHESPLIT]]", "")
+    if st.strip(): body["systemInstruction"] = {"parts": [{"text": st}]}
+    try: _reserve_provider("google", chosen, paid_reservation)   # the same daily paid-call budget every provider has
+    except ImportError: pass
+    async with httpx.AsyncClient(timeout=180) as c:
+        r = await c.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % chosen, json=body,
+                         headers={"Content-Type": "application/json", "x-goog-api-key": key})
+        d = r.json()
+    if d.get("error"): raise RuntimeError(str(d["error"])[:200])
+    try:
+        u = d.get("usageMetadata") or {}
+        import time as _gt
+        os.makedirs(os.path.dirname(GOOGLE_USAGE_LOG), exist_ok=True)
+        open(GOOGLE_USAGE_LOG, "a").write(json.dumps({"ts": _gt.time(), "model": chosen, "in": u.get("promptTokenCount"),
+            "out": u.get("candidatesTokenCount"), "thinking": u.get("thoughtsTokenCount"),
+            "cached": u.get("cachedContentTokenCount")}) + "\n")
+    except Exception: pass
+    cand = (d.get("candidates") or [{}])[0]
+    text = "".join(p.get("text", "") for p in ((cand.get("content") or {}).get("parts") or []) if not p.get("thought"))
+    return (text.strip() or None), ""
+
+
 async def described(convo):
     """The same turn with each picture put into words by Gemma, for a route that could not carry the picture."""
     out = []
@@ -498,6 +550,17 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
+        # fall through: Claude next, grok as the unchanged safety net
+    if read_mode().get("mode") == "argon":
+        try:
+            _gt, _ = await gemini_draft(system_text, convo, max_tokens=(params or {}).get("max_tokens", 900))
+            if _gt:
+                print("[router] argon answered (%d chars)" % len(_gt), flush=True)
+                res = GR.make_result("google", model=GEMINI_MODEL, status="valid", text=_gt, finish_reason="stop")
+                res["route"] = "argon"; stages.append(res); res["stages"] = stages
+                return res
+        except Exception as _ae:
+            print("[router/argon toggle]", str(_ae)[:120], flush=True)
         # fall through: Claude next, grok as the unchanged safety net
     if read_mode().get("mode") == "local":
         _t0l = _rb_t.time()

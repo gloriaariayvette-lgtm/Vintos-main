@@ -124,11 +124,18 @@ if TURN is not None and msg is None:
     # is rebuilt from the exchanges BEFORE this turn only, and any other line of the prompt that quotes this turn or a
     # later one is removed.
     def _ledger_block(rows):
+        # each exchange marked with when it was said, as the server's own section is (when_said)
+        try:
+            sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            import when_said as _ws
+        except Exception:
+            _ws = None
         lines = []
         for r in rows:
             g = " ".join(str(r.get("gloria") or "").split())[:400]
             v = " ".join(_MARK.sub("", str(r.get("vintos") or "")).split())[:400]
-            lines.append("- %s\n    Gloria: %s\n    You: %s" % (str(r.get("timestamp", ""))[:16], g, v))
+            when = ((_ws.ago(r.get("timestamp")) if _ws else "") or str(r.get("timestamp", ""))[:16])
+            lines.append("- %s\n    Gloria: %s\n    You: %s" % (when, g, v))
         return ("Your recent exchanges with Gloria (what was actually said, most recent last). Each is marked with "
                 "when it was said:\n" + "\n".join(lines)) if lines else ""
     _block = re.compile(r"Your recent exchanges with Gloria \(what was actually said.*?(?=\nYour current self-model|\Z)", re.S)

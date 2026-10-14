@@ -10,7 +10,7 @@ R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 src = open(os.path.join(REPO, "bin", "introspection.sh")).read()
-check("the absorb threads fill results2", src.count("1500, results2))") == 2)
+check("the absorb threads fill results2 (A, B and the third lens)", src.count("1500, results2))") == 3)
 # run() as written, against a stub model: the list it is given is the one filled
 m = re.search(r"results = \[None, None\]\ndef run\(.*?\n(?=def |\S)", src, re.S)
 ns = {"call_llm": lambda msgs, temp, max_tok: "absorbed:" + msgs}

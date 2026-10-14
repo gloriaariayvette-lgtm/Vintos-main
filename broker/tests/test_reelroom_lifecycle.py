@@ -37,7 +37,7 @@ check("ReelRoom owns the theatre screen instead of avatar-scene generation",
       and 'reply = _tagre.sub(r"\\s*\\[(?:SCENE|RENDER)' in SERVER
       and 'if _surface != "reelroom":\n            try:\n                import re as _rnre, avatar_stage as _avst_k' in SERVER)
 check("ReelRoom speaking follows the shared selectable voice while Gemma retains look and decide",
-      '"grok", "sol", "opus55", "fable"' in SERVER
+      '"grok", "sol", "argon", "opus55", "fable"' in SERVER
       and 'mode == "look"' in SERVER and 'mode == "decide"' in SERVER
       and 'await avatar_chat(_internal, request)' in SERVER)
 

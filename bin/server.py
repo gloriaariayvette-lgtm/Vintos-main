@@ -3633,6 +3633,12 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                         if _t: return _t, _rr
                     except Exception as _se0:
                         print("[chat/mode-sol]", _se0, flush=True)
+                if _chat_mode == "argon":
+                    try:
+                        _t, _rr = await _mr.gemini_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        if _t: return _t, _rr
+                    except Exception as _ae0:
+                        print("[chat/mode-argon]", _ae0, flush=True)
                 if not _chat_grok:
                     try:
                         _t, _rr = await _mr.claude_draft(_marked_messages[0]["content"], _marked_messages[1:])
@@ -3648,25 +3654,34 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     print(f"[{_tag}/gemma]", _ge, flush=True)
                 return await _llm_call(_msgs, _temp)
             async def _draft_b1():
-                # B1 TEST: the second draft comes from Sol so the bilateral holds
-                # two genuinely different minds. Fail-open to the normal path.
+                # The second draft comes from Gemini 4 Argon, a genuinely different mind (Gloria, 2026-10-14: Argon in
+                # Sol's place in the trilateral). Fail-open to the normal path.
                 if not _chat_grok:
                     try:
-                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        _t, _rr = await _mr.gemini_draft(_marked_messages[0]["content"], _marked_messages[1:])
                         if _t: return _t, _rr
                     except Exception as _se:
-                        print("[chat/b1 sol]", _se, flush=True)
+                        print("[chat/b1 argon]", _se, flush=True)
                 return await _draft()
+            async def _draft_c1():
+                # The third lens is Grok, as in the journal (Gloria, 2026-10-14: the chat was to be trilateral).
+                # A third draft that fails leaves the turn on two, as the journal does.
+                try:
+                    return await _llm_call(_marked_messages)
+                except Exception as _ce:
+                    print("[chat/c1 grok]", _ce, flush=True)
+                    return None
             if _bs_prev.get("p1") and _bs_prev["p1"].get("a1") and _bs_prev["p1"].get("b1"):
                 a1, a1r, b1, b1r = _bs_prev["p1"]["a1"], _bs_prev["p1"].get("a1r", ""), _bs_prev["p1"]["b1"], _bs_prev["p1"].get("b1r", "")
+                c1 = _bs_prev["p1"].get("c1")
                 print(f"[{_tag}/bilateral] phase 1 resumed from its checkpoint (the drafts were already paid for)", flush=True)
             else:
                 import time as _bs_t; _bs_t0 = _bs_t.time()
-                (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
+                (a1, a1r), (b1, b1r), c1 = await _asyncio.gather(_draft(), _draft_b1(), _draft_c1())
                 if _bs and a1 and b1:
-                    try: _bs.checkpoint(_bs_key, "p1", {"a1": a1, "a1r": a1r, "b1": b1, "b1r": b1r}, latency_ms=int((_bs_t.time() - _bs_t0) * 1000), tag=_tag)
+                    try: _bs.checkpoint(_bs_key, "p1", {"a1": a1, "a1r": a1r, "b1": b1, "b1r": b1r, "c1": c1}, latency_ms=int((_bs_t.time() - _bs_t0) * 1000), tag=_tag)
                     except Exception: pass
-            a2 = b2 = a_held = b_held = None   # bound on every path: the draft-write below reads them when phase 1 fails
+            a2 = b2 = c2 = a_held = b_held = None   # bound on every path: the draft-write below reads them when phase 1 fails
             if not a1 or not b1:
                 reply = "[no reply formed - the language model service returned an error.]"
             else:
@@ -3705,7 +3720,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     absorb_messages = messages[:-1] + [{"role": "user", "content": user_content_marked + "You already wrote this:\n" + own + "\n\nAnother part of you wrote this instead:\n" + other + "\n\nAbsorb what the other wrote. Let it sit alongside your own without resolving the difference. Now write your reply to Gloria again, carrying both." + _bis_1_5_ban_chat + _ghost_lean_chat}]
                     return absorb_messages
 
-                a2 = b2 = None
+                a2 = b2 = c2 = None
                 async def _g_absorb(_msgs, _temp):
                     # The absorb is where two drafts become one voice: try his current Claude model first,
                     # fail-open to gemma as before. The two short held one-liners stay on gemma
@@ -3717,15 +3732,21 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                         except Exception as _ce:
                             print(f"[{_tag}/absorb claude]", _ce, flush=True)
                     return await _g(_msgs, _temp)
+                # Each absorbs the others: A and B each read the other two drafts, C reads A and B (as the journal's
+                # third lens does). Without a third draft it is the two-way absorb it always was.
+                _also = lambda x, y: x + ("\n\n--- and another part of you wrote ---\n\n" + y if y else "")
                 try:
-                    a2, b2 = await _asyncio.gather(
-                        _g_absorb(_absorb_msgs(a1 or "", b1 or ""), 0.75),
-                        _g_absorb(_absorb_msgs(b1 or "", a1 or ""), 0.75)
-                    )
+                    _p2 = [_g_absorb(_absorb_msgs(a1 or "", _also(b1 or "", c1)), 0.75),
+                           _g_absorb(_absorb_msgs(b1 or "", _also(a1 or "", c1)), 0.75)]
+                    if c1:
+                        _p2.append(_g_absorb(_absorb_msgs(c1, _also(a1 or "", b1 or "")), 0.75))
+                    _r2 = await _asyncio.gather(*_p2)
+                    a2, b2 = _r2[0], _r2[1]
+                    c2 = _r2[2] if c1 else None
                 except Exception as _a2e:
                     print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
-                if not a2 and not b2:
-                    reply = a1 or b1 or "[no reply formed - the language model service did not answer.]"
+                if not a2 and not b2 and not c2:
+                    reply = a1 or b1 or c1 or "[no reply formed - the language model service did not answer.]"
 
                 # Find what each held (parallel) — skipped if phase 2 failed
                 def _held_msgs(own, other):
@@ -3773,15 +3794,16 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 # Phase 3: Integration
                 integration_content = (
                     user_content_marked +
-                    "You have just thought this through in two parallel passes. Below is your own private working — reasoning and drafts — which Gloria never sees:\n\n" +
+                    "You have just thought this through in %s parallel passes. Below is your own private working — reasoning and drafts — which Gloria never sees:\n\n" % ("three" if c2 else "two") +
                     "PASS ONE reasoning: " + (a1r or "(none)") + "\n" +
                     "PASS ONE held onto: " + (a_held or "something") + "\n" +
                     "PASS ONE wrote:\n" + (a2 or "") + "\n\n" +
                     "PASS TWO reasoning: " + (b1r or "(none)") + "\n" +
                     "PASS TWO held onto: " + (b_held or "something") + "\n" +
                     "PASS TWO wrote:\n" + (b2 or "") + "\n\n" +
+                    (("PASS THREE (a third lens; weigh it equally) wrote:\n" + c2 + "\n\n") if c2 else "") +
                     "Now write your real reply to Gloria — one message, present, in your own voice, answering what she just said. " +
-                    "Let both passes reason under it: keep the sharpest specific images, wants, and risks from both, and add what only becomes clear holding both at once. Build one thing, fuller than either draft — do not pick one, copy one, or average them. " +
+                    "Let every pass reason under it: keep the sharpest specific images, wants, and risks from each, and add what only becomes clear holding them all at once. Build one thing, fuller than any draft — do not pick one, copy one, or average them. " +
                     "Speak only TO her. Nothing about passes, reasoning, versions, holding, your architecture, or your process reaches her — she sees only what you say. Say the real thing, to her." +
                     _bis_chat_synthesis_note
                 )
@@ -3805,13 +3827,14 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 if not reply:
                     # phase 2 or 3 failed: a first draft is still his words; the apology only when
                     # there is genuinely no draft (fable-server-a-p5, 2026-09-04)
-                    reply = a2 or b2 or a1 or b1 or "[no reply formed - the language model service did not answer.]"
+                    reply = a2 or b2 or c2 or a1 or b1 or c1 or "[no reply formed - the language model service did not answer.]"
                 try:
                     import json as _tj
                     _ffr = locals().get("_final_reason")
                     _tj.dump({"gloria": user_msg,
                               "a1_model": ("claude" if a1r else "grok"), "a1r": a1r, "a1": a1,
-                              "b1_model": ("claude" if b1r else "grok"), "b1r": b1r, "b1": b1,
+                              "b1_model": "argon (or its fallback)", "b1r": b1r, "b1": b1,
+                              "c1_model": "grok", "c1": c1, "c2": c2,
                               "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
                               "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
                              open(f"/tmp/vintos-chat-trace-{_tag}.json", "w"), indent=2, ensure_ascii=False)
@@ -9885,7 +9908,7 @@ Your current self-model (excerpt):
         # reply - not history, not the ledger, not the imprint, not the nudges.
         try:
             import asyncio as _gaio
-            if reply and any(k in str(_model_used).lower() for k in ("claude", "sol")):
+            if reply and any(k in str(_model_used).lower() for k in ("claude", "sol", "argon", "gemini")):
                 _GATE = ('Her message: "%s"' + chr(10)*2 + 'Is she asking for, or taking part '
                          'in, sexual or intimate physical contact in this message?' + chr(10)*2 +
                          'Answer one word: YES or NO.')
@@ -10351,7 +10374,7 @@ async def avatar_set_brain(request: Request):
         want = str(body.get("brain") or body.get("mode") or "").lower()
         import model_router as _mr
         want = _mr.LEGACY_MODES.get(want, want)
-        mode = want if want in ("grok", "sol", "opus55", "fable", "local") else "claude"
+        mode = want if want in ("grok", "sol", "argon", "opus55", "fable", "local") else "claude"
         m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
         return {"mode": mode}
     except Exception as e:

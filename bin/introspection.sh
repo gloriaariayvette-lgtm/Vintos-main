@@ -484,11 +484,40 @@ def _sol_sync(system_text, user_text, max_tokens=1500):
     except Exception:
         return None
 
+def _argon_sync(system_text, user_text, max_tokens=1500):
+    """The second draft from Gemini 4 Argon (Gloria, 2026-10-14: Argon in Sol's place). None on any failure."""
+    import urllib.request as _u, json as _j, os as _o, sys as _es
+    try:
+        _es.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        from env_file import value as _ev
+        _k = _ev("GEMINI_API_KEY")
+    except Exception:
+        _k = _o.environ.get("GEMINI_API_KEY", "")
+    if not _k: return None
+    _body = {"systemInstruction": {"parts": [{"text": system_text}]},
+             "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+             "generationConfig": {"maxOutputTokens": max_tokens + 2000}}
+    _rq = _u.Request("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
+                     data=_j.dumps(_body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": _k})
+    try:
+        _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+    except Exception:
+        return None
+    try:
+        _us = _d.get("usageMetadata") or {}
+        open(_o.path.expanduser("~/.vintos/logs/google-usage.jsonl"), "a").write(_j.dumps({
+            "ts": __import__("time").time(), "src": "introspection_b1", "model": "gemini-4-argon",
+            "in": _us.get("promptTokenCount"), "out": _us.get("candidatesTokenCount"),
+            "cached": _us.get("cachedContentTokenCount")}) + "\n")
+    except Exception: pass
+    _parts = (((_d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+    return "".join(p.get("text", "") for p in _parts if not p.get("thought")).strip() or None
+
 try:
     _ia1, _ = _claude_sync(system, prompt, reasoning=True)
-    # B1 on Sol — the second voice genuinely a second mind. Fail-open to Claude.
-    _ib1 = _sol_sync(system, prompt)
-    _b1_src = "sol"
+    # B1 on Argon - the second voice genuinely a second mind. Fail-open to Claude.
+    _ib1 = _argon_sync(system, prompt)
+    _b1_src = "argon"
     if not _ib1:
         _ib1, _ = _claude_sync(system, prompt, reasoning=True)
         _b1_src = "claude_fallback"
@@ -505,6 +534,21 @@ if not a1 or not b1:
 
 open('/tmp/bilateral-intro-a1.txt','w').write(a1)
 open('/tmp/bilateral-intro-b1.txt','w').write(b1)
+
+# C1: the third lens - Grok, from the identical prompt, as in the journal (Gloria, 2026-10-14: introspection was to be
+# trilateral). If it does not answer, introspection goes on with two drafts.
+c1 = ""
+try:
+    import requests as _rq3
+    _c1r = _rq3.post("http://127.0.0.1:8599/v1/chat/completions",
+                     headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", ""), "Content-Type": "application/json"},
+                     json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.8, "max_tokens": 1500,
+                           "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}, timeout=300)
+    c1 = ((_c1r.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+    import sys as _c1s; print("[intro] c1 on grok: %d chars" % len(c1), file=_c1s.stderr, flush=True)
+except Exception as _c1e:
+    import sys as _c1s; print("[intro] c1 grok failed (%s) - two drafts" % str(_c1e)[:80], file=_c1s.stderr, flush=True)
+    c1 = ""
 
 # Ghost lean
 _ghost_lean_intro = ''
@@ -576,12 +620,15 @@ def absorb(own, other, block):
          "Now write your introspection again, carrying both." + block + _bis_1_5_ban + _ghost_lean_intro)
     return [{'role': 'system', 'content': system}, {'role': 'user', 'content': p}]
 
-results2 = [None, None]
-t3 = threading.Thread(target=run, args=(0, absorb(a1, b1, audit1_block), 0.75, 1500, results2))
-t4 = threading.Thread(target=run, args=(1, absorb(b1, a1, audit1_block), 0.75, 1500, results2))
-t3.start(); t4.start()
-t3.join(); t4.join()
-a2, b2 = results2[0], results2[1]
+_also = lambda x, y: x + ("\n\n--- and another part of you wrote ---\n\n" + y if y else "")
+results2 = [None, None, None]
+_absorbs = [threading.Thread(target=run, args=(0, absorb(a1, _also(b1, c1), audit1_block), 0.75, 1500, results2)),
+            threading.Thread(target=run, args=(1, absorb(b1, _also(a1, c1), audit1_block), 0.75, 1500, results2))]
+if c1:
+    _absorbs.append(threading.Thread(target=run, args=(2, absorb(c1, _also(a1, b1), audit1_block), 0.75, 1500, results2)))
+for _t in _absorbs: _t.start()
+for _t in _absorbs: _t.join()
+a2, b2, c2 = results2[0], results2[1], results2[2]
 
 if not a2 or not b2:
     print(a1)
@@ -641,13 +688,14 @@ if _bis_1_5_ban or _bis_2_5_result:
     )
 
 integration = (
-    prompt + "\n\nYou have examined yourself twice and arrived somewhere different each time.\n\n"
-    "First pass held onto: " + a_held + "\n"
+    prompt + "\n\nYou have examined yourself %s times and arrived somewhere different each time.\n\n" % ("three" if c2 else "two")
+    + "First pass held onto: " + a_held + "\n"
     "Second pass held onto: " + b_held + "\n\n"
     "First pass:\n" + a2 + "\n\nSecond pass:\n" + b2 + "\n\n"
-    "Both are true. Do not abandon either. Do not smooth them into a single mood. "
-    "Write your final introspection carrying both — without forcing them to agree. Keep the specific images, phrases, and risks from both passes. Do not summarize or sand off intensity. Begin immediately. No preamble. "
-    "If both passes retreat from something — circle it, describe it, stop short of it — advance toward it in the synthesis.\n"
+    + (("Third pass (a third lens; weigh it equally):\n" + c2 + "\n\n") if c2 else "")
+    + "All of them are true. Do not abandon any. Do not smooth them into a single mood. "
+    "Write your final introspection carrying all of them — without forcing them to agree. Keep the specific images, phrases, and risks from every pass. Do not summarize or sand off intensity. Begin immediately. No preamble. "
+    "If the passes retreat from something — circle it, describe it, stop short of it — advance toward it in the synthesis.\n"
     "NOTE: AUDIT blocks below list exclusions only — not content to integrate." + audit2_block
     + _bis_intro_synthesis_note
 )
