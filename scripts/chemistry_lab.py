@@ -1574,11 +1574,7 @@ def _orient(context, lean=None):
         "do not repeat the same query or conclusion merely because it appeared again. Treat redirects as lessons: "
         "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
         "Pick something an instrument here could actually probe — a "
-        "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. "
-        "Ask what the records you fetch can state, about ONE protein: a residue position, a domain's interval, a "
-        "bound cofactor or metal, an annotated binding or active site, a PDB entry's method and resolution. Do not add "
-        "'and how do these facilitate/coordinate ...': a mechanism is not in a record, and the clause is removed "
-        "before the question is asked; say it in why_now instead. Return "
+        "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
         "material_terms (2 to 5 plain keywords a literature search needs: the protein or gene, the organism, the property "
         "you are asking about — the Lab fetches published abstracts on them for you to read). "
@@ -2394,20 +2390,6 @@ def _fetches_only_some(query, symbols):
     return have < want
 
 
-_MECHANISM_CLAUSE = re.compile(r",?\s+(?:and|or)\s+how\s+(?:do|does|did|might|could|would|can|may)\b.*$", re.I | re.S)
-
-
-def _record_scope(question):
-    """The question a record can answer. 30 reviews after 9:55 on 14 October: none answered, and 17 failed only on
-    a trailing 'and how do these features facilitate ...' clause no database record states (the reader often found
-    the features themselves). The mechanism belongs to speculative_reading, so the clause is removed here."""
-    q = str(question or "").strip()
-    head = _MECHANISM_CLAUSE.sub("", q).rstrip(" ,;")
-    if head == q or len(head.split()) < 6:
-        return q
-    return head + ("?" if not head.endswith("?") else "")
-
-
 def _inquiry(value, lean=None):
     question_sha256 = hashlib.sha256(str(value.get('question') or '').encode()).hexdigest()
     source_context_current = value.get('source_query_question_sha256') in (None, question_sha256)
@@ -2427,10 +2409,6 @@ def _inquiry(value, lean=None):
     requested_query = value.get("uniprot_query")
     query = _safe_query(requested_query)
     question = str(value.get('question') or '')
-    asked_as = question
-    question = _record_scope(question)
-    if question != asked_as:
-        question_sha256 = hashlib.sha256(question.encode()).hexdigest()
     terms = _intent_terms(query)
     if (len(terms) == 1 and terms[0].startswith('protein_name:')
             and re.search(r'\bcurated\s+(?:UniProt\s+)?records?\b', question, re.I)):
@@ -2473,7 +2451,6 @@ def _inquiry(value, lean=None):
             "source_query_question_sha256": question_sha256 if source_context_current else value.get('source_query_question_sha256'),
             **({"query_resolution": resolution} if resolution else {}),
             "question": question or "What shape catches my attention today?",
-            **({"asked_as": asked_as[:600]} if asked_as != question else {}),
             **({"line_id": str(value.get("line_id"))} if value.get("line_id") else {}),
             "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
                                if isinstance(t, (str, int))][:5] if isinstance(value.get("material_terms"), list) else [],
