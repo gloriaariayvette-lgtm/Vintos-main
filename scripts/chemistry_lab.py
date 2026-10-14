@@ -3275,11 +3275,22 @@ SHORT_QUOTABLE = ("accession", "id", "entry_id", "pmid", "pmcid", "doi", "organi
                   "finding", "observation", "requirement", "source_citation", "keywords", "url", "source")
 
 
+# Lists whose every entry is a named fact. An entry is judged by the list it is in, not by its position number:
+# judged by "0", "Binding site: Zn(2+)" lost its address and SOD1's zinc question failed validation (14 October).
+QUOTABLE_LISTS = ("features_named", "protein_aliases", "organism_aliases", "pdb_ids", "chembl_ids", "keywords",
+                  "synonyms", "sections", "figures", "material_terms", "subjects", "missing", "supports")
+
+
 def _short_quotable(path):
-    """A short leaf that a requirement is genuinely made of — an accession, an organism, a length — stays
-    addressable however short it is. A bare number inside a score array does not."""
-    tail = str(path).rsplit(".", 1)[-1]
-    return tail in SHORT_QUOTABLE
+    """A short leaf that a requirement is genuinely made of — an accession, an organism, a length, a named
+    feature — stays addressable however short it is. A bare number inside a score array does not."""
+    parts = str(path).split(".")
+    tail = parts[-1]
+    if tail in SHORT_QUOTABLE:
+        return True
+    if tail.isdigit() and len(parts) >= 2:
+        return parts[-2] in QUOTABLE_LISTS or parts[-2] in SHORT_QUOTABLE
+    return False
 
 
 def _coverage_request(inquiry, observations):

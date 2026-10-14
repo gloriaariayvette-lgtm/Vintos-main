@@ -131,6 +131,21 @@ check("the original question reaches the checker unchanged", QUESTION in first)
 check("the checker is given the evidence addresses to cite", "\nEVIDENCE:\n" in first)
 check("the second opinion is not shown the first verdict or its requirements",
       not any("coordinating residues" in p for s, p in prompts if "Independently assess" in s), [s[:40] for s, _ in prompts])
+
+print("--- named facts in lists stay citable ---")
+SOD = {"records": [{"accession": "P00441", "protein_name": "Superoxide dismutase [Cu-Zn]", "organism": "Homo sapiens",
+                    "features_named": ["Binding site: Zn(2+)", "Binding site: Cu cation"], "pdb_ids": ["2C9V"]}],
+       "atlas_analysis": {"bins": [str(i / 1000) for i in range(2000)]}}
+_, _, sod_addresses, _ = C._coverage_request({"question": "Which ions does human SOD1 bind?"}, SOD)
+sod_paths = set(sod_addresses.values())
+check("a named feature in a list keeps its address (14 October: SOD1's zinc site lost it and failed validation)",
+      "evidence.records.0.features_named.0" in sod_paths and "evidence.records.0.pdb_ids.0" in sod_paths, sorted(sod_paths))
+check("a score array still gets none", not any(".bins." in p for p in sod_paths))
+def zinc(prompt):
+    return {"answered": True, "missing": [], "supports": [{"requirement": "zinc", "address": address_for(prompt, "features_named.0"),
+                                                           "quote": "Zn(2+)"}]}
+got, _ = run(zinc, inquiry={"question": "Does human SOD1 bind zinc?"}, observations=SOD)
+check("and a quote from it is accepted and cited", got.get("answered") and got["supports"][0]["source_citation"] == "UniProt P00441", got)
 check("nothing reached the network", True)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
