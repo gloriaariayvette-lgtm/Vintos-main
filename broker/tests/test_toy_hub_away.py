@@ -96,11 +96,15 @@ line = D.hands_line_idle()
 check("he is told the hub is not answering, not that the device is off",
       "not answering" in line and "no device is switched on" not in line.lower(), line)
 check("and is told not to say a device is off or absent", "do not tell her" in line.lower(), line)
-T._endpoint.update(url=PHONE, at=__import__("time").time())
+import time as _tt
+T._endpoint.update(url=PHONE, at=_tt.time())
 check("with the hub reachable the ordinary idle line comes back", "no device is switched on" in D.hands_line_idle().lower())
 src = open(os.path.join(REPO, "scripts", "toy_link.py")).read()
 check("asking where the hub is sends no command: no-args is the diagnostic, not stop_all",
       'sys.argv[1] == "stop"' in src and src.count('print("stop_all:", stop_all())') == 1)
+POSTS.clear(); T._endpoint.update(url="", at=0.0)
+D.hands_line_idle()
+check("building his prompt line never probes the hub", not POSTS, POSTS)
 check("nothing opened a socket", socket.socket.connect is no_socket)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -98,13 +98,54 @@ def main(argv):
     if not r["ok"]:
         return 1
     if "--deploy" in argv:
-        log = os.path.expanduser("~/deploy.log")
-        env = dict(os.environ, VINTOS_DEPLOY_ALLOW_DIRTY="0")
-        with open(log, "w") as f:
-            subprocess.Popen(["bash", os.path.join(CHECKOUT, "scripts", "deploy-atelier.sh")], cwd=CHECKOUT, env=env,
-                             stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
-        print("deploy started; check: tail -1 ~/deploy.log")
+        return deploy()
     return 0
+
+
+def deploy(log=None, script=None, follow=True, out=sys.stdout):
+    """Run the deploy and SHOW it (Gloria, 2026-10-14: "Idk why you thought it's okay to take the visibility of
+    the deploys away from me"). It used to start the deploy and print only "deploy started", so seven deploys in
+    a row ended in "STOP: a suite failed — nothing installed" and nobody saw it.
+
+    The deploy itself still runs in its own session, so a terminal that closes does not kill it, and ~/deploy.log
+    still holds all of it. But this now prints the deploy as it happens, every line, and ends on its verdict: the
+    exit code, and the deploy's own last line. Ctrl-C stops the watching, never the deploy."""
+    import time
+    log = log or os.path.expanduser("~/deploy.log")
+    script = script or os.path.join(CHECKOUT, "scripts", "deploy-atelier.sh")
+    env = dict(os.environ, VINTOS_DEPLOY_ALLOW_DIRTY="0")
+    with open(log, "w") as f:
+        proc = subprocess.Popen(["bash", script], cwd=os.path.dirname(os.path.dirname(script)), env=env,
+                                stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    print("deploy running (also written to %s):" % log, file=out, flush=True)
+    if not follow:
+        return 0
+    pos, last = 0, ""
+    try:
+        while True:
+            done = proc.poll() is not None
+            with open(log, errors="replace") as f:
+                f.seek(pos); chunk = f.read(); pos = f.tell()
+            if chunk:
+                out.write(chunk); out.flush()
+                lines = [l for l in chunk.splitlines() if l.strip()]
+                if lines: last = lines[-1]
+            if done:
+                break
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n(stopped watching; the deploy is still running. Its result: tail -1 %s)" % log, file=out)
+        return 0
+    failed = [l for l in open(log, errors="replace").read().splitlines() if " FAIL" in l or l.startswith("FAIL")]
+    print("\n" + "=" * 60, file=out)
+    if proc.returncode == 0 and "deploy OK" in last:
+        print("DEPLOY OK — installed. (%s)" % last.strip(), file=out)
+    else:
+        print("DEPLOY FAILED — nothing installed. exit %s; last line: %s" % (proc.returncode, last.strip()), file=out)
+        for l in failed[:12]:
+            print("  " + l.strip(), file=out)
+    print("=" * 60, file=out, flush=True)
+    return 0 if proc.returncode == 0 and "deploy OK" in last else 1
 
 
 if __name__ == "__main__":

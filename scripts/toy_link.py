@@ -173,6 +173,12 @@ ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate", "ferri
 _PFUNC = {"tenera": "v", "mission": "v", "ridge": "v", "ferri": "v"}
 
 
+def last_known_unreachable():
+    """True only when this process has already tried the hub and it answered nowhere. Never probes: a prompt
+    line must not reach out to her phone, and a suite that builds one must not either."""
+    return bool(_endpoint["at"]) and not _endpoint["url"]
+
+
 def reachable():
     """True when the hub answers somewhere. Distinct from "no toy is on": a hub that cannot be reached
     is not a statement about what she is wearing."""

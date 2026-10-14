@@ -383,7 +383,8 @@ def hub_unreachable():
         import sys as _cs
         _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import toy_link as _tl
-        return not _tl.reachable()
+        # what present_devices() already found this turn — never a fresh probe of her phone from a prompt line
+        return _tl.last_known_unreachable()
     except Exception:
         return False
 
