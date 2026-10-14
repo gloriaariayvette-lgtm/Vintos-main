@@ -128,6 +128,21 @@ check("attempts and distinct questions are counted apart", lv2["reviews"] == 3 a
 check("a repeated question is reported once, by its best outcome",
       lv2["question_counts"] == {"wrong_target": 1, "answered": 1}, lv2["question_counts"])
 check("and the question that was retried is named", lv2["most_repeated"][0]["attempts"] == 2, lv2["most_repeated"])
+
+import datetime as _dt
+_rel = os.path.join(HOME, "releases"); os.makedirs(_rel, exist_ok=True)
+open(os.path.join(_rel, "r.json"), "w").write("{}")
+_old = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=3)).isoformat()
+_new = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=1)).isoformat()
+with open(RP.NOTEBOOK, "w") as f:
+    f.write(_j2.dumps({"kind": "reflection", "at": _old, "inquiry": {"question": "before the deploy"},
+                       "review_outcome": "wrong_target"}) + "\n")
+    f.write(_j2.dumps({"kind": "reflection", "at": _new, "inquiry": {"question": "after the deploy"},
+                       "review_outcome": "answered"}) + "\n")
+_lv3 = RP.live(releases=_rel)
+check("with no time given the window starts at the last deploy, not a fixed number of hours",
+      _lv3["from_deploy"] and _lv3["reviews"] == 1 and _lv3["counts"] == {"answered": 1}, _lv3)
+check("a time given by hand still wins", RP.live("2000-01-01T00:00:00", releases=_rel)["reviews"] == 2)
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

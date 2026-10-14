@@ -10,8 +10,9 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
                                                     through today's checks: identity, premise, coordinate route
     python3 scripts/lab_claim_replay.py overflow     what is actually oversized in the requests that did not fit:
                                                     question, instructions, or one evidence item (read-only)
-    python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO (default: the last 12 hours),
-                                                    read-only
+    python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO; with no time, since the
+                                                    last deploy, so a change is never read off reviews that predate
+                                                    it (14 October: it was, twice). Read-only.
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
                                                     open claims and run the same coverage check on the whole question,
                                                     with the quotes it already had carried forward
@@ -169,10 +170,23 @@ def run(items, fetch=None, coverage=None, ledger_path=LEDGER):
     return results
 
 
-def live(since=None, notebook=NOTEBOOK):
-    """Outcome counts of the live Lab's reviews since `since`, with one example question each."""
+def last_deploy(root=None):
+    """When the newest release record was written, or "" when there is none."""
+    import datetime, glob
+    rows = glob.glob(os.path.join(root or os.path.expanduser("~/.vintos/deploy/releases"), "*.json"))
+    if not rows:
+        return ""
+    newest = max(rows, key=os.path.getmtime)
+    return datetime.datetime.fromtimestamp(os.path.getmtime(newest), datetime.timezone.utc).isoformat()
+
+
+def live(since=None, notebook=NOTEBOOK, releases=None):
+    """Outcome counts of the live Lab's reviews since `since`, with one example question each. With no time given
+    it starts at the last deploy: counting from a fixed window read a change off reviews that ran before it."""
     import datetime
-    since = since or (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)).isoformat()
+    deployed = last_deploy(releases)
+    not_given = since is None
+    since = since or deployed or (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)).isoformat()
     counts, examples, total = {}, {}, 0
     # Attempts and distinct questions are counted apart: repeated attempts at one question inflate whichever
     # class it keeps landing in, and the counts alone cannot show that (Chat's review, 2026-10-14).
@@ -188,7 +202,8 @@ def live(since=None, notebook=NOTEBOOK):
         best = next((x for x in ("answered", "partially_supported") if x in seen), seen[-1])
         question_counts[best] = question_counts.get(best, 0) + 1
     repeated = sorted(((len(v), k) for k, v in by_question.items() if len(v) > 1), reverse=True)[:5]
-    return {"since": since, "reviews": total, "counts": counts, "examples": examples,
+    return {"since": since, "from_deploy": bool(not_given and deployed), "deployed_at": deployed,
+            "reviews": total, "counts": counts, "examples": examples,
             "questions": len(by_question), "question_counts": question_counts,
             "most_repeated": [{"attempts": n, "question": q[:110]} for n, q in repeated]}
 
@@ -267,7 +282,10 @@ def main(argv):
         return 0
     if cmd == "live":
         got = live(argv[1] if len(argv) > 1 else None)
-        print("since %s: %d reviews of %d distinct questions" % (got["since"], got["reviews"], got["questions"]))
+        print("since %s%s: %d reviews of %d distinct questions"
+              % (got["since"], " (the last deploy)" if got.get("from_deploy") else "", got["reviews"], got["questions"]))
+        if got["reviews"] < 20:
+            print("  — too few to read a change from; let it run and ask again")
         print("by attempt:")
         for status, n in sorted(got["counts"].items(), key=lambda kv: -kv[1]):
             q, why = got["examples"][status]
