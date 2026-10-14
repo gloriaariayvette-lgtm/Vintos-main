@@ -6,7 +6,10 @@ identifiers and figure captions kept, and every failure named in the receipt.
 
 Isolation: the network is a scripted transport and DNS a fixed public address; nothing is sent. The fixture is
 structural only (the identifiers of PMC10742211, placeholder text)."""
-import json, os, sys
+import json, os, socket, sys, types
+def no_network(*a, **k): raise AssertionError("a test must never reach the network or send")
+sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
+socket.getaddrinfo = no_network; socket.create_connection = no_network
 REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import europepmc as E, link_fetch as L
@@ -14,6 +17,9 @@ import europepmc as E, link_fetch as L
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))
+
+check("requests and sockets are stubs; nothing here can reach Europe PMC",
+      sys.modules["requests"].get is no_network and socket.getaddrinfo is no_network and socket.create_connection is no_network)
 
 XML = open(os.path.join(REPO, "broker", "tests", "fixtures", "epmc_PMC10742211_structure.xml"), "rb").read()
 PUBLIC = lambda host: ["193.62.193.80"]
