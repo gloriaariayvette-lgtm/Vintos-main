@@ -30,7 +30,9 @@ TOTAL_CHARS = 7000
 REPEAT_DAYS = 30
 
 RESEARCH = ("answered", "partially_supported", "unsupported_by_available_evidence")
-QUESTION = ("flawed_premise", "wrong_target")
+# Absence from an annotation, an explicit contradiction, and a target nothing established are three different
+# things and were two (Chat's review, 2026-10-14): a feature a record does not list may simply not be annotated.
+QUESTION = ("contradicted_premise", "unverified_premise", "wrong_target")
 SOFTWARE = ("checker_failed", "context_overflow", "unassessed")
 SEARCHABLE = ("partially_supported", "unsupported_by_available_evidence")
 
@@ -77,13 +79,13 @@ def outcome(reflection):
         return "checker_failed", str(r.get("validation_failure") or cov.get("validation_failure") or "checker answer invalid")
     premise = r.get("premise_check") if isinstance(r.get("premise_check"), dict) else {}
     if premise.get("issues") and not cov:
-        return "flawed_premise", "; ".join(str(x) for x in premise["issues"])
+        return premise.get("outcome", "unverified_premise"), "; ".join(str(x) for x in premise["issues"])
     entity = r.get("entity_context_check") if isinstance(r.get("entity_context_check"), dict) else {}
     issues = [str(x) for x in entity.get("issues") or []]
     if issues and not cov:
         joined = "; ".join(issues)
         if re.search(r"as one protein|contradict", joined, re.I):
-            return "flawed_premise", joined
+            return "contradicted_premise", joined
         return "wrong_target", joined
     if cov.get("answered") is True:
         return "answered", "every requirement supported by quoted sources"

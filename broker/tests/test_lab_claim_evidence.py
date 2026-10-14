@@ -38,7 +38,7 @@ check("unsupported", LCE.outcome({"coverage_check": {"answered": False, "missing
       == "unsupported_by_available_evidence")
 check("answered", LCE.outcome({"coverage_check": {"answered": True, "missing": [], "supports": [{"quote": "q"}]}})[0] == "answered")
 check("a wrong alias is a flawed premise", LCE.outcome({"entity_context_check": {"issues": [
-      "the question gives GLUT1 and SLC1A1 as one protein; the records say GLUT1=P11166 and SLC1A1=P43005"]}})[0] == "flawed_premise")
+      "the question gives GLUT1 and SLC1A1 as one protein; the records say GLUT1=P11166 and SLC1A1=P43005"]}})[0] == "contradicted_premise")
 check("an unestablished target is a wrong target", LCE.outcome({"entity_context_check": {"issues": [
       "no retrieved record establishes SOX10; established: SOX9=P48436"]}})[0] == "wrong_target")
 inc = C._incomplete_assessment(INQ, {}, "", reason="source-address validation failed")
@@ -83,7 +83,7 @@ check("the Lab's ledger is the scratch one this suite reads", C._claim_ledger() 
 check("an imported Lab does not search Europe PMC: only its own daemon wires the fetch in",
       C.CLAIM_FULLTEXT_FETCH is None and LCE.gather(INQ, PARTIAL, None).get("skipped") == "full-text search is not wired into this process")
 check("a flawed premise is not searched", LCE.gather(INQ, {"entity_context_check": {"issues": ["as one protein"]}}, None,
-      fetch=no_network).get("skipped", "").startswith("flawed_premise"))
+      fetch=no_network).get("skipped", "").startswith("contradicted_premise"))
 
 after = {"coverage_check": {"answered": False, "missing": ["how the ferroxidase centre facilitates iron sequestration"],
                             "supports": PARTIAL["coverage_check"]["supports"]}}
@@ -159,7 +159,7 @@ check("the fixed set holds the failed questions, whole", len(items) == 3 and ite
 check("the set is fixed: picking again returns the same set", RP.pick(1) == items)
 kinds = {a["outcome"]: a["kind"] for a in RP.audit(items)}
 check("the audit separates missing evidence, a flawed premise and a Lab failure",
-      kinds.get("partially_supported") == "missing evidence" and kinds.get("flawed_premise") == "question or target"
+      kinds.get("partially_supported") == "missing evidence" and kinds.get("contradicted_premise") == "question or target"
       and kinds.get("checker_failed") == "Lab failure, not judged", kinds)
 asked = []
 def coverage(inquiry, observations):
@@ -167,8 +167,8 @@ def coverage(inquiry, observations):
     return {"answered": True, "missing": [], "supports": [{"quote": "q", "source_citation": "PMC1110001, Results"}] * 2}
 res = RP.run(items, fetch=fetch, coverage=coverage, ledger_path=os.path.join(RP.DIR, "t-ledger.json"))
 check("the replay asks the checker the whole question, with passages and the earlier quotes", asked == [(Q, 1, 1)], asked)
-check("only questions missing evidence are searched", [r["after"] for r in res] == ["checker_failed", "flawed_premise", "answered"][::-1]
-      or sorted(r["after"] for r in res) == ["answered", "checker_failed", "flawed_premise"], res)
+check("only questions missing evidence are searched", [r["after"] for r in res] == ["checker_failed", "contradicted_premise", "answered"][::-1]
+      or sorted(r["after"] for r in res) == ["answered", "checker_failed", "contradicted_premise"], res)
 s = RP.summary(res)
 check("the summary counts before and after", s["missing_evidence"] == 1 and s["answered_after"] == 1 and s["not_searchable"] == 2, s)
 check("the live claim ledger is not the replay's", not os.path.exists(os.path.join(RP.DIR, "claim-evidence.json")))

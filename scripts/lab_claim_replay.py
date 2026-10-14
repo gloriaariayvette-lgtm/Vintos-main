@@ -8,6 +8,8 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
                                                     or a question missing evidence (no network, no model)
     python3 scripts/lab_claim_replay.py recheck     each question's target fetched again from UniProt (read-only) and run
                                                     through today's checks: identity, premise, coordinate route
+    python3 scripts/lab_claim_replay.py overflow     what is actually oversized in the requests that did not fit:
+                                                    question, instructions, or one evidence item (read-only)
     python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO (default: the last 12 hours),
                                                     read-only
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
@@ -112,12 +114,12 @@ def recheck(items, browse=None):
         entity = question_entity_context(inquiry, rows)
         if entity.get("issues"):
             joined = "; ".join(entity["issues"])
-            row.update(now="flawed_premise" if "as one protein" in joined else "wrong_target", why=joined[:300])
+            row.update(now="contradicted_premise" if "as one protein" in joined else "wrong_target", why=joined[:300])
             out.append(row); continue
         chosen = [r for r in rows if not entity.get("selected_accessions") or r.get("accession") in entity["selected_accessions"]]
         premise = C._premise_issues(q, chosen)
         if premise:
-            row.update(now="flawed_premise", why="; ".join(premise)[:300])
+            row.update(now="unverified_premise", why="; ".join(premise)[:300])
         else:
             seen = [name for name, asked, shown in C.PREMISES if __import__("re").search(asked, q, __import__("re").I)]
             row.update(now="reviewable", why="target %s established%s" % (
@@ -172,13 +174,65 @@ def live(since=None, notebook=NOTEBOOK):
     import datetime
     since = since or (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)).isoformat()
     counts, examples, total = {}, {}, 0
+    # Attempts and distinct questions are counted apart: repeated attempts at one question inflate whichever
+    # class it keeps landing in, and the counts alone cannot show that (Chat's review, 2026-10-14).
+    by_question, question_counts = {}, {}
     for row in _rows(notebook):
         if str(row.get("at") or "") < since: continue
         status = row.get("review_outcome") or LCE.outcome(row)[0]
         total += 1; counts[status] = counts.get(status, 0) + 1
-        examples.setdefault(status, (str((row.get("inquiry") or {}).get("question") or "")[:120],
-                                     str(row.get("review_outcome_why") or LCE.outcome(row)[1])[:160]))
-    return {"since": since, "reviews": total, "counts": counts, "examples": examples}
+        q = str((row.get("inquiry") or {}).get("question") or "")
+        by_question.setdefault(q, []).append(status)
+        examples.setdefault(status, (q[:120], str(row.get("review_outcome_why") or LCE.outcome(row)[1])[:160]))
+    for q, seen in by_question.items():
+        best = next((x for x in ("answered", "partially_supported") if x in seen), seen[-1])
+        question_counts[best] = question_counts.get(best, 0) + 1
+    repeated = sorted(((len(v), k) for k, v in by_question.items() if len(v) > 1), reverse=True)[:5]
+    return {"since": since, "reviews": total, "counts": counts, "examples": examples,
+            "questions": len(by_question), "question_counts": question_counts,
+            "most_repeated": [{"attempts": n, "question": q[:110]} for n, q in repeated]}
+
+
+def overflow(limit=12, root=None):
+    """The size breakdown of the coverage requests that did not fit. Which part is oversized decides the repair,
+    and the counts alone cannot say (Chat's review, 2026-10-14): a question, the standing instructions, one
+    indivisible evidence item and the combining request are four different defects."""
+    import chemistry_lab as C
+    directory = os.path.join(root or C.ROOT, "coverage-deferred")
+    out = []
+    try:
+        names = sorted(os.listdir(directory), key=lambda n: -os.path.getmtime(os.path.join(directory, n)))
+    except OSError:
+        return out
+    for name in names[:limit]:
+        try:
+            payload = json.load(open(os.path.join(directory, name)))
+        except (OSError, ValueError):
+            continue
+        evidence = payload.get("coverage_evidence") or {}
+        items = []
+        def walk(value, path):
+            if isinstance(value, str):
+                items.append((path, len(value)))
+            elif isinstance(value, dict):
+                for k, v in value.items(): walk(v, path + "." + str(k))
+            elif isinstance(value, list):
+                for i, v in enumerate(value): walk(v, path + "." + str(i))
+        walk(evidence, "evidence")
+        items.sort(key=lambda kv: -kv[1])
+        total = sum(n for _, n in items)
+        question = len(str((payload.get("inquiry") or {}).get("question") or ""))
+        prepared = None
+        try:
+            prepared = C._coverage_request(payload.get("inquiry") or {}, payload.get("observations") or {})
+        except Exception:
+            pass
+        instructions = len(prepared[3][0]) + len(prepared[3][1]) - total if prepared else None
+        out.append({"snapshot": name, "question_chars": question, "evidence_chars": total,
+                    "evidence_items": len(items), "request_chars_minus_evidence": instructions,
+                    "largest": [{"path": p, "chars": n} for p, n in items[:5]],
+                    "largest_share": round(items[0][1] / total, 3) if items and total else None})
+    return out
 
 
 def summary(results):
@@ -198,12 +252,33 @@ def main(argv):
         n = int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 20
         items = pick(n, force="--force" in argv)
         print("fixed set: %d questions -> %s" % (len(items), SET)); return 0
+    if cmd == "overflow":
+        rows = overflow()
+        if not rows:
+            print("no deferred coverage snapshots"); return 0
+        for r in rows:
+            print("- %s\n    question %d chars · evidence %d chars in %d items · request minus evidence %s"
+                  % (r["snapshot"][:12], r["question_chars"], r["evidence_chars"], r["evidence_items"],
+                     r["request_chars_minus_evidence"]))
+            for item in r["largest"]:
+                print("      %7d  %s" % (item["chars"], item["path"]))
+            print("      largest single item is %s of the evidence" %
+                  ("%.0f%%" % (100 * r["largest_share"]) if r["largest_share"] is not None else "?"))
+        return 0
     if cmd == "live":
         got = live(argv[1] if len(argv) > 1 else None)
-        print("reviews since %s: %d" % (got["since"], got["reviews"]))
+        print("since %s: %d reviews of %d distinct questions" % (got["since"], got["reviews"], got["questions"]))
+        print("by attempt:")
         for status, n in sorted(got["counts"].items(), key=lambda kv: -kv[1]):
             q, why = got["examples"][status]
             print("  %3d %s\n      e.g. %s\n      %s" % (n, status, q, why))
+        print("by distinct question (its best outcome):")
+        for status, n in sorted(got["question_counts"].items(), key=lambda kv: -kv[1]):
+            print("  %3d %s" % (n, status))
+        if got["most_repeated"]:
+            print("most repeated:")
+            for row in got["most_repeated"]:
+                print("  %2dx %s" % (row["attempts"], row["question"]))
         return 0
     if not os.path.exists(SET):
         print("no fixed set yet: run  python3 scripts/lab_claim_replay.py pick"); return 1

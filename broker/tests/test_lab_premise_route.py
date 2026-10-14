@@ -49,10 +49,12 @@ try:
     out = C._reflect("", inq, {"records": [neurod]})
 finally:
     C._ask = saved
-check("the review names the premise and asks no model", out["answers_question"].startswith("no: premise not established")
-      and out.get("premise_check", {}).get("issues"), out)
-check("its outcome is a flawed premise, not missing evidence", LCE.outcome(out)[0] == "flawed_premise", LCE.outcome(out))
-check("a flawed premise is not sent to the full-text search", LCE.gather(inq, out, [neurod], fetch=_no).get("skipped", "").startswith("flawed_premise"))
+check("the review names what is not annotated and asks no model",
+      out["answers_question"].startswith("not established: ") and out.get("premise_check", {}).get("issues"), out)
+check("absence from a record is an unverified premise, not a contradiction and not missing evidence",
+      LCE.outcome(out)[0] == "unverified_premise", LCE.outcome(out))
+check("and it is not stated as proof the feature is absent", "not proof it is absent" in out["missing_evidence"], out["missing_evidence"])
+check("an unverified premise is not sent to the full-text search", LCE.gather(inq, out, [neurod], fetch=_no).get("skipped", "").startswith("unverified_premise"))
 
 print("--- coordinates read the structure ---")
 cq = "What are the precise XYZ coordinates for the oxygen atoms of Glu 27 and Glu 107 in the 2CEI structure?"
@@ -73,7 +75,7 @@ items = [{"inquiry": inq, "coverage_check": {"answered": False, "missing": ["zin
           "coverage_check": {"answered": False, "missing": ["residues"], "supports": []}}]
 rows = {"gene:NEUROD1 AND organism_id:9606 AND reviewed:true": [neurod], "gene:FTH1 AND organism_id:9606": [fth1]}
 got = RP.recheck(items, browse=lambda query: [neurod] if "NEUROD1" in query else [fth1])
-check("recheck: flawed premise, coordinate read, reviewable", [r["now"] for r in got] == ["flawed_premise", "coordinate_read", "reviewable"], got)
+check("recheck: unverified premise, coordinate read, reviewable", [r["now"] for r in got] == ["unverified_premise", "coordinate_read", "reviewable"], got)
 
 print("--- names the identity check now reads correctly ---")
 import lab_sources as S
@@ -98,11 +100,34 @@ check("an entry among those the question names is kept", C._coordinate_route(
       {"source": "pdb", "entry_id": "2MVK", "operation": "structure_evidence"})["entry_id"] == "2MVK")
 import json as _json; os.makedirs(os.path.dirname(RP.NOTEBOOK), exist_ok=True)
 with open(RP.NOTEBOOK, "w") as f:
-    f.write(_json.dumps({"kind": "reflection", "at": "2026-10-14T20:00:00+00:00", "inquiry": inq, "review_outcome": "flawed_premise",
+    f.write(_json.dumps({"kind": "reflection", "at": "2026-10-14T20:00:00+00:00", "inquiry": inq, "review_outcome": "unverified_premise",
                          "review_outcome_why": "zinc finger"}) + "\n")
     f.write(_json.dumps({"kind": "reflection", "at": "2026-10-13T20:00:00+00:00", "inquiry": inq, "review_outcome": "answered"}) + "\n")
 lv = RP.live("2026-10-14T00:00:00")
-check("live counts only reviews since the time given", lv["reviews"] == 1 and lv["counts"] == {"flawed_premise": 1}, lv)
+check("live counts only reviews since the time given", lv["reviews"] == 1 and lv["counts"] == {"unverified_premise": 1}, lv)
+
+print("--- the measurements Chat's review asked for ---")
+import json as _j2
+_dir = os.path.join(C.ROOT, "coverage-deferred"); os.makedirs(_dir, exist_ok=True)
+_j2.dump({"inquiry": {"question": "Q" * 120}, "observations": {},
+          "coverage_evidence": {"records": [{"sequence": "A" * 9000, "note": "n" * 100}], "LITERATURE": []}},
+         open(os.path.join(_dir, "deadbeef.json"), "w"))
+ov = RP.overflow(root=C.ROOT)
+check("the oversized request is broken down, not just counted", ov and ov[0]["question_chars"] == 120
+      and ov[0]["evidence_chars"] >= 9100, ov)
+check("the largest single evidence item is named with its share",
+      ov[0]["largest"][0]["path"].endswith("sequence") and ov[0]["largest_share"] > 0.9, ov[0]["largest"])
+with open(RP.NOTEBOOK, "w") as f:
+    for at in ("2026-10-14T20:00:00+00:00", "2026-10-14T20:05:00+00:00"):
+        f.write(_j2.dumps({"kind": "reflection", "at": at, "inquiry": {"question": "same question"},
+                           "review_outcome": "wrong_target"}) + "\n")
+    f.write(_j2.dumps({"kind": "reflection", "at": "2026-10-14T20:10:00+00:00",
+                       "inquiry": {"question": "another"}, "review_outcome": "answered"}) + "\n")
+lv2 = RP.live("2026-10-14T00:00:00")
+check("attempts and distinct questions are counted apart", lv2["reviews"] == 3 and lv2["questions"] == 2, lv2)
+check("a repeated question is reported once, by its best outcome",
+      lv2["question_counts"] == {"wrong_target": 1, "answered": 1}, lv2["question_counts"])
+check("and the question that was retried is named", lv2["most_repeated"][0]["attempts"] == 2, lv2["most_repeated"])
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

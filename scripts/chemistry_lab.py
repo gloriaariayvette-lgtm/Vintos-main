@@ -2441,8 +2441,10 @@ def _premise_issues(question, rows):
     issues = []
     for name, asked, shown in PREMISES:
         if re.search(asked, str(question or ""), re.I) and not re.search(shown, hay, re.I):
-            issues.append("the question assumes %s in %s; its UniProt record %s lists none" %
-                          (name, row.get("protein_name") or row.get("accession"), row.get("accession")))
+            issues.append("%s is not annotated in %s (UniProt %s), which lists %d other annotated features; that is not "
+                          "proof it is absent, only that the record does not establish it" %
+                          (name, row.get("protein_name") or row.get("accession"), row.get("accession"),
+                           len(row.get("features_named") or [])))
     return issues
 
 
@@ -3573,11 +3575,14 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                                                              or r.get('accession') in entity['selected_accessions'])])
     if premise:
         missing = '; '.join(premise)
-        return {'answers_question': 'no: premise not established: ' + missing, 'missing_evidence': missing,
-                'factual_observation': 'The question assumes what its target\'s own record does not list: ' + missing,
+        return {'answers_question': 'not established: ' + missing, 'missing_evidence': missing,
+                'factual_observation': 'What the question assumes is not annotated on its target: ' + missing,
                 'speculative_reading': '', 'evidence_status': 'insufficient',
-                'next_question': 'Ask about a feature the record lists, or bring a source that establishes this one.',
-                'entity_context_check': entity, 'premise_check': {'issues': premise, 'basis': 'target UniProt record'}}
+                'next_question': 'Ask about a feature the record does list, or bring a source that establishes this '
+                                 'one — a curated record not annotating something is not the same as its absence.',
+                'entity_context_check': entity,
+                'premise_check': {'issues': premise, 'outcome': 'unverified_premise',
+                                  'basis': 'absence_from_target_uniprot_record_not_a_contradiction'}}
     if literature_route and not proteins:
         articles = records.get('LITERATURE') or []
         if not any(isinstance(r, dict) and str(r.get('abstract') or r.get('full_text') or '').strip()
