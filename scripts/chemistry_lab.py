@@ -2990,7 +2990,18 @@ def embedding_coverage(embeddings, records=()):
 NUMERIC_ARRAY = 64   # numbers in a row past which an array is named rather than written out
 
 
-def _named_numeric_arrays(value, receipt_id, _depth=0):
+SHORT_RUN = 64    # short values in a row past which a list is named rather than written out
+
+
+def _short_run(value):
+    """A long list of short scalars no one can quote (a track of scores or labels): its length named instead."""
+    # homogeneous only: a run of short strings (a track of labels or scores written as text). A list that mixes
+    # words in among numbers is written out as before, so nothing worded is ever hidden inside a count.
+    return (isinstance(value, list) and len(value) >= SHORT_RUN
+            and all(isinstance(v, str) and len(v) < QUOTABLE_MIN for v in value))
+
+
+def _named_numeric_arrays(value, receipt_id, _depth=0, _key=None):
     """A long run of numbers named instead of written out, the way a long sequence already is.
 
     11 October 09:15, HSP90AA1: the evidence was 8 KB of records and abstracts beside a 1.37 MB numeric payload in
@@ -3008,11 +3019,57 @@ def _named_numeric_arrays(value, receipt_id, _depth=0):
             return ('[%d numeric values%s; complete array in source receipt%s; not quotable text]'
                     % (len(flat), ', shape %d' % len(value) if len(value) != len(flat) else '',
                        ' ' + str(receipt_id) if receipt_id else ''))
+        # 15 October: deferred requests carried 37-43k characters of evidence in ~4,400 leaves, almost all short
+        # values in long runs. None can be quoted (too short to carry one, so never addressed), but every one
+        # was written into the checker's request. A named list of facts (features, aliases, ids) is kept whole.
+        if _key not in QUOTABLE_LISTS and _short_run(value):
+            return ('[%d short values; complete list in source receipt%s; not quotable text]'
+                    % (len(value), ' ' + str(receipt_id) if receipt_id else ''))
         if _depth >= 6: return value
         return [_named_numeric_arrays(child, receipt_id, _depth + 1) for child in value]
     if isinstance(value, dict) and _depth < 6:
-        return {key: _named_numeric_arrays(child, receipt_id, _depth + 1) for key, child in value.items()}
+        return {key: _named_numeric_arrays(child, receipt_id, _depth + 1, key) for key, child in value.items()}
     return value
+
+
+def _interval_text(location):
+    """A UniProt location as the text a quote can be taken from: 'residues 120-198' (or 'residue 63')."""
+    if not isinstance(location, dict):
+        return location
+    start = (location.get("start") or {}).get("value") if isinstance(location.get("start"), dict) else location.get("start")
+    end = (location.get("end") or {}).get("value") if isinstance(location.get("end"), dict) else location.get("end")
+    if start is None and end is None:
+        return location
+    return ("residue %s" % start) if start == end or end is None else ("residues %s-%s" % (start, end))
+
+
+def _atom_text(atom):
+    """One atom of a PDB record as a quotable line: residue, number, chain, atom, xyz, and distance when given."""
+    xyz = atom.get("coordinates_angstroms") or []
+    line = "%s %s%s chain %s atom %s at (%s) angstroms" % (
+        atom.get("residue") or atom.get("element") or "?", atom.get("residue_number", "?"), atom.get("insertion_code") or "",
+        atom.get("chain") or "?", atom.get("atom") or "?", ", ".join("%.3f" % float(c) for c in xyz))
+    if atom.get("distance_angstroms") is not None:
+        line += ", %.2f angstroms from the metal" % float(atom["distance_angstroms"])
+    return line
+
+
+def _quotable_structure(value, _depth=0):
+    """Coordinates and site geometry the checker can quote. They were dicts of numbers, and a number gets no
+    address, so every coordinate question failed validation even when the coordinates were in front of it
+    (15 October: source/pdb/records/0/metal_sites/0/nearby_atoms)."""
+    if _depth > 8:
+        return value
+    if isinstance(value, list):
+        return [_quotable_structure(v, _depth + 1) for v in value]
+    if not isinstance(value, dict):
+        return value
+    if "coordinates_angstroms" in value and "nearby_atoms" not in value:
+        return _atom_text(value)
+    out = {k: _quotable_structure(v, _depth + 1) for k, v in value.items()}
+    if "nearby_atoms" in value and "coordinates_angstroms" in value:
+        out = {"metal": _atom_text(value), "nearby_atoms": out.get("nearby_atoms")}
+    return out
 
 
 def review_observations(inquiry, observations):
@@ -3024,7 +3081,7 @@ def review_observations(inquiry, observations):
     result = {'embedding_coverage':observations.get('embedding_coverage'),
               'additional_source': {'source':receipt.get('source'),
               'receipt_id':_receipt_id,
-              'records':_named_numeric_arrays(receipt.get('records'), _receipt_id),
+              'records':_quotable_structure(_named_numeric_arrays(receipt.get('records'), _receipt_id)),
               'instrument_result':_named_numeric_arrays(source.get('instrument_result'), _receipt_id)},
               'LITERATURE':observations.get('LITERATURE') or [],
               'prior_validated_evidence': observations.get('prior_validated_evidence') or [],
@@ -3035,12 +3092,20 @@ def review_observations(inquiry, observations):
     sequence_requested = bool(re.search(r'sequence|residue|motif|amino.acid', str(inquiry.get('question') or ''), re.I))
     for row in observations.get('records') or []:
         item = dict(row)
+        for key in ('domains', 'topology'):   # positions as text a quote can come from, not dicts of numbers
+            if isinstance(item.get(key), list):
+                item[key] = [dict(d, location=_interval_text(d.get('location'))) if isinstance(d, dict) else d
+                             for d in item[key]]
         seq = item.get('sequence')
         if isinstance(seq, str) and len(seq) > 350 and not sequence_requested:
             item['sequence'] = '[%d residues; complete sequence in source receipt; not needed for geometry]' % len(seq)
         proteins.append(item)
     result['records'] = proteins
     result['embedding_coverage'] = observations.get('embedding_coverage')
+    # long runs of short values anywhere outside the prose sources are named, not written out
+    for key in ('records', 'atlas_analysis', 'embedding_coverage'):
+        if result.get(key) is not None:
+            result[key] = _named_numeric_arrays(result[key], _receipt_id)
     return result
 
 
@@ -3272,12 +3337,13 @@ SHORT_QUOTABLE = ("accession", "id", "entry_id", "pmid", "pmcid", "doi", "organi
                   "status", "pdb_ids", "chembl_ids", "answered", "claim",
                   "abstract", "full_text", "text", "quote", "summary", "source_summary", "definition",
                   "description", "comment", "note", "function", "topology_summary", "rationale", "reason",
-                  "finding", "observation", "requirement", "source_citation", "keywords", "url", "source")
+                  "finding", "observation", "requirement", "source_citation", "keywords", "url", "source",
+                  "location", "metal", "interval")
 
 
 # Lists whose every entry is a named fact. An entry is judged by the list it is in, not by its position number:
 # judged by "0", "Binding site: Zn(2+)" lost its address and SOD1's zinc question failed validation (14 October).
-QUOTABLE_LISTS = ("features_named", "protein_aliases", "organism_aliases", "pdb_ids", "chembl_ids", "keywords",
+QUOTABLE_LISTS = ("nearby_atoms", "metal_sites", "features_named", "protein_aliases", "organism_aliases", "pdb_ids", "chembl_ids", "keywords",
                   "synonyms", "sections", "figures", "material_terms", "subjects", "missing", "supports")
 
 
@@ -3326,6 +3392,9 @@ def _coverage_request(inquiry, observations):
             return False
         if re.fullmatch(r'evidence.FULLTEXT\.\d+\.(?:pmcid|pmid|title|section|claim|source_url)',path):
             return bibliography_question
+        # a citation label or a requirement's name is bookkeeping, not evidence; quoting one was refused anyway
+        if re.fullmatch(r'evidence.prior_validated_evidence\.\d+\.(?:source_citation|requirement)', path):
+            return False
         bibliography = (re.fullmatch(r'evidence.LITERATURE\.\d+\.(?:pmid|journal|year|title|doi|url)',path)
                         or (pubmed_summary and re.match(r'evidence.additional_source.records\.\d+\.(?:uid$|summary\.)',path)))
         return bibliography_question or not bibliography
@@ -3335,7 +3404,8 @@ def _coverage_request(inquiry, observations):
     # from a source, so a leaf too short to carry one needs no address — except the identity and scalar fields a
     # requirement is genuinely made of, which stay addressable at any length.
     quotable = {path:text for path,text in strings.items()
-                if quotable_path(path) and (len(text) >= QUOTABLE_MIN or _short_quotable(path))}
+                if quotable_path(path) and (len(text) >= QUOTABLE_MIN or _short_quotable(path))
+                and not (text.startswith('[') and 'not quotable text' in text)}   # a placeholder is not evidence
     digests = {hashlib.sha256(json.dumps([path, text], ensure_ascii=False).encode()).hexdigest(): path
                for path, text in quotable.items()}
     if len(digests) != len(quotable): return None
@@ -3360,8 +3430,17 @@ def _coverage_request(inquiry, observations):
     # Readable exact-leaf IDs; duplicates remain distinct and bound to full
     # location/content digests. Never locate a quote by searching other leaves.
     counts = {value:list(labels.values()).count(value) for value in set(labels.values())}
-    addresses = {labels[digest] + ('#'+digest[:width] if counts[labels[digest]]>1 else ''):path
-                 for digest,path in digests.items()}
+    # A repeated label gets a short ordinal (#1, #2 in evidence order), not a hex digest: the checker miscopied
+    # digests ("abstract#50adb626") and every such support was refused (15 October). The address still names
+    # exactly one leaf; nothing is ever located by searching other leaves.
+    seen_label, addresses = {}, {}
+    for digest, path in sorted(digests.items(), key=lambda kv: kv[1]):
+        lab = labels[digest]
+        if counts[lab] > 1:
+            seen_label[lab] = seen_label.get(lab, 0) + 1
+            addresses[lab + '#' + str(seen_label[lab])] = path
+        else:
+            addresses[lab] = path
     by_path = {path: address for address, path in addresses.items()}
     def addressed(value, path):
         if isinstance(value, (str, int, float)) and not isinstance(value, bool):

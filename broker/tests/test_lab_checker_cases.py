@@ -146,6 +146,45 @@ def zinc(prompt):
                                                            "quote": "Zn(2+)"}]}
 got, _ = run(zinc, inquiry={"question": "Does human SOD1 bind zinc?"}, observations=SOD)
 check("and a quote from it is accepted and cited", got.get("answered") and got["supports"][0]["source_citation"] == "UniProt P00441", got)
+
+print("--- 15 October: the failure reasons from Aegis, each as a case ---")
+import random as _rnd
+_rnd.seed(3)
+PDB = {"records": [{"accession": "P02794", "protein_name": "Ferritin heavy chain", "organism": "Homo sapiens",
+                    "domains": [{"description": "Ferritin-like diiron", "location": {"start": {"value": 10}, "end": {"value": 159}}}]}],
+       "additional_source": {"receipt": {"source": "pdb", "receipt_id": "r1", "records": [{"metal_sites": [{
+           "record": "HETATM", "atom": "FE", "residue": "FE", "chain": "A", "residue_number": 201, "element": "FE",
+           "coordinates_angstroms": [10.0, 20.0, 30.0],
+           "nearby_atoms": [{"atom": "OE1", "residue": "GLU", "chain": "A", "residue_number": 27,
+                             "coordinates_angstroms": [10.5, 20.1, 31.2], "distance_angstroms": 2.11}]}]}]}},
+       "atlas_analysis": {"ATAC": {"scores": ["%.3f" % _rnd.random() for _ in range(3000)]}}}
+_, _, pdb_addr, pdb_req = C._coverage_request({"question": "Which residue coordinates the iron in 2CEI, and where?"}, PDB)
+check("a domain's position is quotable text: 'residues 10-159' (was a dict of numbers, no address)",
+      "UniProt:P02794/domains.0.location" in pdb_addr)
+check("a PDB atom near the metal is a quotable line with its coordinates and distance (was numbers, no address)",
+      any("nearby_atoms" in a for a in pdb_addr) and "GLU 27 chain A atom OE1 at (10.500, 20.100, 31.200)" in pdb_req[1]
+      and "2.11 angstroms from the metal" in pdb_req[1], sorted(pdb_addr))
+check("thousands of short score strings are named, not written out, and the request stays small",
+      "3000 short values" in pdb_req[1] and len(pdb_req[0]) + len(pdb_req[1]) < 15000, len(pdb_req[0]) + len(pdb_req[1]))
+check("a named placeholder is never itself quotable", not any("ATAC" in a or "scores" in a for a in pdb_addr), sorted(pdb_addr))
+def coords(prompt):
+    return {"answered": True, "missing": [], "supports": [{"requirement": "coordinating residue and position",
+            "address": next(a for a in pdb_addr if "nearby_atoms" in a),
+            "quote": "GLU 27 chain A atom OE1 at (10.500, 20.100, 31.200) angstroms"}]}
+got, _ = run(coords, inquiry={"question": "Which residue coordinates the iron in 2CEI, and where?"}, observations=PDB)
+check("so a coordinate question can now be supported by the coordinates", got.get("answered") is True, got)
+TWO = {"LITERATURE": [{"abstract": "First paper text that is long enough to quote from here."},
+                      {"abstract": "Second paper text that is long enough to quote from here."}]}
+_, _, two_addr, _ = C._coverage_request({"question": "q"}, TWO)
+check("a repeated label gets a short ordinal the checker can copy (#1, #2), not a hex digest",
+      sorted(a for a in two_addr if "abstract" in a) == ["source/abstract#1", "source/abstract#2"], sorted(two_addr))
+PRIOR = {"prior_validated_evidence": [{"requirement": "iron site residues named here at length",
+                                       "quote": "Glu27, Tyr34, Glu62, His65 and Glu107 form the site.",
+                                       "source_citation": "UniProt P02794 recommended name record"}]}
+_, _, prior_addr, _ = C._coverage_request({"question": "q"}, PRIOR)
+check("a carried-forward quote stays citable; its citation label and requirement name do not",
+      any(a.endswith("quote") for a in prior_addr) and not any(a.endswith(("source_citation", "requirement")) for a in prior_addr),
+      sorted(prior_addr))
 check("nothing reached the network", True)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
