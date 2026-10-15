@@ -75,6 +75,33 @@ def serve_entries(index):
     return out
 
 
+class EmbeddingError(RuntimeError):
+    """The embedding service did not give a usable embedding. Says what went wrong, never the reply body or a key."""
+
+
+def embedding_from(resp):
+    """The query's embedding from the service's reply, checked before it is indexed (SF-67752b13, 2026-10-15: the
+    reply was read as resp.json()["data"][0]["embedding"] with no check, so a non-200 or an error body surfaced as a
+    bare KeyError from deep in a search)."""
+    status = getattr(resp, "status_code", None)
+    if status != 200:
+        raise EmbeddingError("the embedding service answered HTTP %s" % status)
+    try:
+        body = resp.json()
+    except ValueError:
+        raise EmbeddingError("the embedding service answered with something that is not JSON")
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, list) or not data:
+        keys = sorted(body)[:6] if isinstance(body, dict) else type(body).__name__
+        raise EmbeddingError("the embedding reply had no data list (it had: %s)" % (keys,))
+    first = data[0]
+    vector = first.get("embedding") if isinstance(first, dict) else None
+    if (not isinstance(vector, list) or not vector
+            or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in vector)):
+        raise EmbeddingError("the embedding reply's first item had no list of numbers")
+    return vector
+
+
 def search(query, limit=5):
     if not (os.path.exists(INDEX_FILE) or os.path.exists(os.path.join(MEMORY, "embeddings.jsonl"))):
         print("No semantic index found. Run memory-index.py first.")
@@ -85,11 +112,14 @@ def search(query, limit=5):
     EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
 
     def get_embedding(text):
-        resp = requests.post(LM_EMBED_URL, json={
-            "model": EMBED_MODEL,
-            "input": _emb_clip(text[:2000])
-        }, timeout=30)
-        return resp.json()["data"][0]["embedding"]
+        try:
+            resp = requests.post(LM_EMBED_URL, json={
+                "model": EMBED_MODEL,
+                "input": _emb_clip(text[:2000])
+            }, timeout=30)
+        except requests.RequestException as exc:
+            raise EmbeddingError("the embedding service could not be reached (%s)" % type(exc).__name__)
+        return embedding_from(resp)
     query_embedding = get_embedding(query)
 
     JSONL_FILE = os.path.join(MEMORY, "embeddings.jsonl")
@@ -135,7 +165,11 @@ if __name__ == "__main__":
     query = " ".join(sys.argv[1:])
     print(f"Searching for: {query}\n")
 
-    results = search(query)
+    try:
+        results = search(query)
+    except EmbeddingError as exc:     # a clear failure and a nonzero exit; callers already treat nonzero as no result
+        print("memory search failed: %s" % exc, file=sys.stderr)
+        sys.exit(2)
     for i, r in enumerate(results):
         print(f"[{i+1}] {r['source']}/{r['filename']} [{r.get('kind') or 'legacy'}] (score: {r['score']:.3f})")
         print(f"    {r['text'][:200]}...")
