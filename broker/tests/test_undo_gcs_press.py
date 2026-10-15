@@ -18,17 +18,18 @@ check("every file it can change is in the scratch workspace",
 os.makedirs(U.MEM)
 now = datetime.datetime.now()
 t = lambda m: (now - datetime.timedelta(minutes=m)).isoformat()
-before = {"role": "user", "content": "the fish are biting", "timestamp": t(30)}
-before_r = {"role": "assistant", "content": "tell me about the water", "timestamp": t(29)}
-press = {"role": "user", "content": "she pressed GCS", "timestamp": t(10), "input_kind": "gcs",
-         "original_text": "[she pressed it - she's there.]"}
-press_r = {"role": "assistant", "content": "[LETGO] ...", "timestamp": t(9)}
-after = {"role": "user", "content": "oops wrong button", "timestamp": t(5)}
+# the avatar chat's own shape: epoch "ts", no input_kind, the press kept as its cue words (server.py 9983, 10069)
+ep = lambda m: (now - datetime.timedelta(minutes=m)).timestamp()
+before = {"role": "user", "content": "the fish are biting", "ts": ep(30)}
+before_r = {"role": "assistant", "content": "tell me about the water", "ts": ep(29), "served_by": "argon"}
+press = {"role": "user", "content": "she pressed it \u2014 she's there. let go \u2014 give her yours", "ts": ep(10)}
+press_r = {"role": "assistant", "content": "...", "ts": ep(9), "served_by": "argon"}
+after = {"role": "user", "content": "oops wrong button", "ts": ep(5)}
 history = [before, before_r, press, press_r, after]
 json.dump(history, open(U.HISTORY, "w"))
 open(U.CANON, "w").write("".join(json.dumps(dict(r, surface="avatar")) + "\n" for r in history))
 ledger = [{"timestamp": t(29), "gloria": "the fish are biting", "vintos": "tell me about the water"},
-          {"timestamp": t(9), "gloria": "she pressed GCS", "vintos": "..."},
+          {"timestamp": t(9), "gloria": "she pressed it \u2014 she's there. let go \u2014 give her yours", "vintos": "..."},
           {"timestamp": t(4), "gloria": "oops wrong button", "vintos": "ha"}]
 json.dump(ledger, open(U.LEDGER, "w"))
 json.dump([{"patterns": ["x"], "at": (now - datetime.timedelta(minutes=10)).timestamp()},
@@ -49,6 +50,8 @@ check("and the canonical record", [r["content"] for r in canon] == ["the fish ar
 check("and the ledger, only that exchange", [r["gloria"] for r in json.load(open(U.LEDGER))] == ["the fish are biting", "oops wrong button"])
 check("the pattern saved by the press goes; an older one stays", [x["patterns"] for x in json.load(open(U.SAVED))] == [["old"]])
 check("the live press is cleared", not os.path.exists(U.GCS_STATE))
+check("a turn that merely mentions a button is not taken for a press",
+      not any(p["history_turn"] is after for p in found))
 check("every changed file was backed up first", all(os.path.exists("%s.before-undo-%s" % (p, stamp))
       for p in (U.HISTORY, U.CANON, U.LEDGER, U.SAVED, U.GCS_STATE)))
 check("the backup holds what was there", json.load(open("%s.before-undo-%s" % (U.HISTORY, stamp))) == history)

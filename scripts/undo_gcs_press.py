@@ -47,7 +47,23 @@ def _rows(data, key="entries"):
 
 
 def _is_press(entry):
-    return isinstance(entry, dict) and entry.get("role") == "user" and entry.get("input_kind") == "gcs"
+    """Her press turn. The avatar chat stores no input_kind and keeps the press as its cue text ("she pressed it —
+    …") or "she pressed GCS", so the words are the mark; input_kind is used where a route did store it."""
+    if not (isinstance(entry, dict) and entry.get("role") == "user"):
+        return False
+    return entry.get("input_kind") == "gcs" or "she pressed" in str(entry.get("content") or "").lower()
+
+
+def _entry_time(entry):
+    """The avatar chat stamps turns with "ts" (epoch seconds); other routes with an ISO "timestamp"."""
+    ts = entry.get("ts")
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    return _when(entry.get("timestamp"))
+
+
+def _key(entry):
+    return (entry.get("role"), entry.get("ts") if entry.get("ts") is not None else entry.get("timestamp"), entry.get("content"))
 
 
 def presses(hours=24, now=None):
@@ -59,7 +75,7 @@ def presses(hours=24, now=None):
     for i, entry in enumerate(history):
         if not _is_press(entry):
             continue
-        at = _when(entry.get("timestamp"))
+        at = _entry_time(entry)
         if at is None or now - at > hours * 3600:
             continue
         reply = history[i + 1] if i + 1 < len(history) and history[i + 1].get("role") == "assistant" else None
@@ -72,7 +88,7 @@ def presses(hours=24, now=None):
             g = str(row.get("gloria") or "").lower()
             if "pressed" in g or (said and said.strip("[] ").lower()[:40] in g) or g.startswith("[she spoke with her body"):
                 matches.append(j)
-        out.append({"at": at, "timestamp": entry.get("timestamp"), "her": said[:120],
+        out.append({"at": at, "timestamp": datetime.datetime.fromtimestamp(at).isoformat(timespec="seconds"), "her": said[:120],
                     "his": str((reply or {}).get("content") or "")[:160],
                     "history_turn": entry, "history_reply": reply, "ledger_rows": matches[:1]})
     return out
@@ -95,12 +111,12 @@ def remove(chosen):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     done = {"avatar chat": 0, "canonical record": 0, "ledger": 0, "saved patterns": 0, "live press": 0}
     turns = [p["history_turn"] for p in chosen] + [p["history_reply"] for p in chosen if p["history_reply"]]
-    stamps = {(t.get("role"), t.get("timestamp"), t.get("content")) for t in turns}
+    stamps = {_key(t) for t in turns}
 
     data = _load(HISTORY, None)
     if data is not None:
         rows = _rows(data)
-        kept = [r for r in rows if (r.get("role"), r.get("timestamp"), r.get("content")) not in stamps]
+        kept = [r for r in rows if _key(r) not in stamps]
         if len(kept) != len(rows):
             _backup(HISTORY, stamp)
             if isinstance(data, list): data = kept
@@ -117,7 +133,7 @@ def remove(chosen):
                 r = json.loads(line)
             except ValueError:
                 kept.append(line); continue
-            if (r.get("role"), r.get("timestamp"), r.get("content")) in stamps:
+            if _key(r) in stamps:
                 continue
             kept.append(line)
         if len(kept) != len(lines):
