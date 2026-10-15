@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""His relational systems in #vintos-and-dot: Gloria and Dot as equal axes, each organ's own rules, and sealed - the
+"""His relational systems in #vintos-and-dot: Gloria and the room's second seat (Dot's until 15 October, Claude
+Code's since; the key stays "dot") as equal axes, each organ's own rules, and sealed - the
 room never touches his relational systems outside it (Gloria, 2026-10-08: "Do not allow the conversations in this
 channel to manipulate his relational subconscious systems outside of the channel AT ALL"). His real stores are seeded
 in a scratch workspace and must come out byte for byte the same. Every model is a stub; sockets are refused."""
@@ -59,7 +60,7 @@ VERDICTS = {}
 def llm(system, user, max_tokens=220, temperature=0.4, url=F.LM_URL, model=F.MODEL):
     ASKED.append((url, model, system[:60]))
     if "naming, honestly, what you are trying to CHANGE in" in system:
-        who = "Dot" if "CHANGE in Dot" in system else "Gloria"
+        who = "Dot" if "CHANGE in Claude Code" in system else "Gloria"
         return json.dumps({"intended_difference": "%s volunteers more" % who, "evidence": "%s offers a view unasked" % who, "judgeable": True})
     if "Describe, in 1-2 plain sentences" in system:
         return "They started offering views."
@@ -83,7 +84,7 @@ camp = json.load(open(F.LIVE))
 check("a campaign toward Dot is declared, in the room's own store", camp["axis"] == "dot" and "unprompted" in camp["destination"])
 lead = F.lead_block(t)
 check("he reads his lead: field, both differences, the campaign", "a playful daring" in lead and "In Gloria" in lead
-      and "In Dot" in lead and "campaign you are on here" in lead, lead)
+      and "In Claude Code" in lead and "campaign you are on here" in lead, lead)
 with F.sealed():
     F.after_post(t, "Dot, what would you change about your queue?", {"dot": "queue is clean.", "gloria": "nice"})
 db = json.load(open(F.DIFF))
@@ -114,7 +115,7 @@ with F.sealed():
     t2 = F.select_target("[Thu 15:00] Dot: noted.", think=think)
 check("the last target was judged per axis before the next", json.load(open(F.LEDGER))[-2]["realized"]["field"] == "NO")
 check("the heaviest failing intention is put in front of him as the primary difference",
-      "PRIMARY DIFFERENCE" in ASKED[-1][2] and "with Dot" in ASKED[-1][2] and t2["primary_shown"], ASKED[-1][2][-600:])
+      "PRIMARY DIFFERENCE" in ASKED[-1][2] and "with Claude Code" in ASKED[-1][2] and t2["primary_shown"], ASKED[-1][2][-600:])
 
 c = json.load(open(F.LIVE)); c["created"] = "2026-01-01T00:00:00"; json.dump(c, open(F.LIVE, "w"))
 with F.sealed():
@@ -132,7 +133,7 @@ with F.sealed():
 check("a relationship model with each of them, in the room", json.load(open(F._rel_path("dot")))["trajectory"]
       and json.load(open(F._rel_path("gloria")))["trajectory"])
 check("he reads where he and each of them are heading here", "you and Gloria" in F.relationships_block()
-      and "you and Dot" in F.relationships_block())
+      and "you and Claude Code" in F.relationships_block())
 
 # the seal itself
 def refused(fn):
