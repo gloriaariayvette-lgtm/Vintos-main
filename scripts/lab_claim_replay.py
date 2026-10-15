@@ -13,7 +13,7 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
     python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO; with no time, since the
                                                     last deploy, so a change is never read off reviews that predate
                                                     it (14 October: it was, twice). Read-only.
-    python3 scripts/lab_claim_replay.py missing [OUTCOME]  every question that ended OUTCOME (default
+    python3 scripts/lab_claim_replay.py missing [ISO] [OUTCOME]  every question that ended OUTCOME (default
                                                     partially_supported) since the last deploy: what each still
                                                     lacked, its query and its sources. Read-only.
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
@@ -305,8 +305,9 @@ def main(argv):
         return 0
     if cmd == "missing":
         status = next((a for a in argv[1:] if not a[:1].isdigit()), "partially_supported")
-        rows = missing(status=status)
-        print("%d distinct questions ended %s since the last deploy" % (len(rows), status))
+        since = next((a for a in argv[1:] if a[:1].isdigit()), None)
+        rows = missing(since=since, status=status)
+        print("%d distinct questions ended %s since %s" % (len(rows), status, since or "the last deploy"))
         for r in rows:
             print("- %s\n    query: %s\n    sources: %s" % (r["question"][:200], r["query"][:120], ", ".join(r["sources"]) or "none"))
             for m in r["missing"][:6]:
