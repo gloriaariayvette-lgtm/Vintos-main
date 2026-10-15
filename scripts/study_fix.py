@@ -477,6 +477,61 @@ def fable(system, user):
     return claude_cache.ask(FABLE, system, user, FABLE_TOKENS, caller="study-fix", timeout=900, effort=FABLE_EFFORT)
 
 
+GROK = os.environ.get("VINTOS_STUDY_GROK", "grok-4.6")
+
+
+def astra(system, user):
+    """Astra writes the fix when Fable cannot, through her own paid admission (astra_call reserves first)."""
+    import astra_call
+    return astra_call.call(system, [{"role": "user", "content": str(user)}], max_tokens=FABLE_TOKENS, timeout=900)
+
+
+def grok(system, user):
+    """Grok writes the fix when neither Fable nor Astra can."""
+    import requests
+    key = os.environ.get("XAI_API_KEY", "")
+    for path in ("~/.vintos/xai-key", "~/.vintos/grok-key"):
+        if key: break
+        try: key = open(os.path.expanduser(path)).read().strip()
+        except OSError: pass
+    if not key: raise RuntimeError("no xAI key")
+    r = requests.post("https://api.x.ai/v1/chat/completions", timeout=900, json={
+        "model": GROK, "max_tokens": FABLE_TOKENS, "temperature": 0.2,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": str(user)}]},
+        headers={"Authorization": "Bearer " + key})
+    return r.json()["choices"][0]["message"]["content"]
+
+
+# Who writes a fix, in order (Gloria, 2026-10-15: "The Study should have fallen to Astra and/or Grok"). forge_study
+# already fell from Fable to Astra; this half of the Study called Fable alone, and a refusal is not even an error
+# there: Fable's call returns, empty, and only the missing JSON shows it. So each writer is tried in turn on an error,
+# a refusal, or an answer with no JSON, and the one that answered keeps the fix for its repairs.
+WRITERS = (("Fable", fable), ("Astra", astra), ("Grok", grok))
+
+
+def ask_json(system, user, row, ask=None, writers=None):
+    """One JSON answer for this fix, from the first writer that gives one, starting with whoever already answered."""
+    chain = [("Fable", ask)] if ask else list(writers or WRITERS)
+    start = next((i for i, (name, _) in enumerate(chain) if name == row.get("written_by")), 0)
+    tried = []
+    for name, call in chain[start:]:
+        try:
+            got = _json(call(system, user))
+        except Exception as exc:
+            if len(chain) == 1:
+                raise
+            if name == "Fable":
+                row["fable_failure"] = provider_evidence(exc)
+            tried.append("%s: %s" % (name, str(exc)[:160]))
+            continue
+        if row.get("written_by") != name:
+            if row.get("written_by") or tried:
+                _event(row, "%s is writing it (%s)" % (name, "; ".join(tried)[:300]))
+            row["written_by"] = name
+        return got
+    raise RuntimeError("no writer answered. Fable and the others: " + " | ".join(tried))
+
+
 def _cached(base, text):
     """The rules, the ask and the file list come first in every Fable call of one fix, so Claude reads them back
     from cache on the second read and on each repair (Gloria, 2026-10-05: "He is expensive")."""
@@ -484,8 +539,9 @@ def _cached(base, text):
     return claude_cache.Prompt(text, [base, text[len(base):]] if text.startswith(base) else [text])
 
 
-def plan_fix(row, ask=None, root=None):
-    """Fable reads (two rounds) and returns its plan: edits and a new test, or a refusal."""
+def plan_fix(row, ask=None, root=None, writers=None):
+    """Fable reads (two rounds) and returns its plan: edits and a new test, or a refusal. When Fable cannot answer,
+    Astra, then Grok."""
     ask = ask or fable
     root = root or WORKBENCH
     try:
@@ -499,7 +555,7 @@ def plan_fix(row, ask=None, root=None):
         last = rnd == READ_ROUNDS
         user = base + (("\n\nWHAT YOU READ SO FAR:\n" + reading) if reading else "") + (
             "\n\nNo more reading: give the fix or decline." if last else "\n\nRead, or give the fix.")
-        got = _json(ask(SYSTEM, _cached(base, user)))
+        got = ask_json(SYSTEM, _cached(base, user), row, ask=None if ask is fable else ask, writers=writers)
         if (got.get("read") or got.get("grep")) and not last:
             reading += ("\n\n" if reading else "") + read_for(got, root)
             continue
@@ -588,16 +644,17 @@ def _failed(row, why):
         pass
 
 
-def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
+def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, writers=None):
     """One fix, from the workbench to live. Leaves the row in watching, failed or refused."""
     suite = suite or run_suite
     row["state"] = "working"; _event(row, "Fable is working on it")
     say("\U0001F6E0 Study fix %s started: %s" % (row["id"], row["what"][:300]), post)
     reset_workbench(run=run)
-    plan, context = plan_fix(row, ask=ask)
+    plan, context = plan_fix(row, ask=ask, writers=writers)
     if plan.get("refuse"):
-        row["state"] = "refused"; _event(row, "Fable declined: " + str(plan["refuse"]))
-        say("\U0001F6E0 Study fix %s declined by Fable: %s" % (row["id"], str(plan["refuse"])[:400]), post)
+        who = row.get("written_by") or "Fable"
+        row["state"] = "refused"; _event(row, "%s declined: %s" % (who, plan["refuse"]))
+        say("\U0001F6E0 Study fix %s declined by %s: %s" % (row["id"], who, str(plan["refuse"])[:400]), post)
         return row
     failures, attempt = None, 0
     while True:
@@ -625,13 +682,14 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
         reset_workbench(run=run)
         detail = "\n\n".join("== %s ==\n%s" % (t, out) for t, out in failures)[:20000]
         base = (getattr(context, "pieces", None) or [""])[0]
-        plan = _json((ask or fable)(SYSTEM, _cached(base, context + "\n\nYOUR LAST FIX:\n" + json.dumps(plan)[:30000]
-                                    + "\n\nIT DID NOT PASS:\n" + detail + "\n\nGive the corrected fix, whole, as JSON.")))
+        plan = ask_json(SYSTEM, _cached(base, context + "\n\nYOUR LAST FIX:\n" + json.dumps(plan)[:30000]
+                                        + "\n\nIT DID NOT PASS:\n" + detail + "\n\nGive the corrected fix, whole, as JSON."),
+                        row, ask=ask, writers=writers)
         if plan.get("refuse"):
             _failed(row, "Fable gave up: " + str(plan["refuse"])); return row
     row["changed"], row["summary"] = changed, str(plan.get("summary") or "")[:1500]
-    msg = "Study fix %s: %s\n\nAsked by Vintos in #vintos-dot: %s\nWritten by Fable in the Study; every test passed." % (
-        row["id"], (row["summary"] or row["what"])[:200].split("\n")[0], row["what"][:400])
+    msg = "Study fix %s: %s\n\nAsked by Vintos in #vintos-dot: %s\nWritten by %s in the Study; every test passed." % (
+        row["id"], (row["summary"] or row["what"])[:200].split("\n")[0], row["what"][:400], row.get("written_by") or "Fable")
     b = branch()
     run(["git", "add", "-A"], cwd=WORKBENCH)
     run(["git", "-c", "user.name=Vintos (Study)", "-c", "user.email=vintos-study@aegis.local",
@@ -826,7 +884,7 @@ def tend(**kw):
         if not nxt:
             return "nothing queued"
         try:
-            work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy", "send")})
+            work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy", "send", "writers")})
         except Exception as exc:
             if "Fable" in str(exc):          # how its answer ended, kept apart from what the tests said
                 nxt["provider_failure"] = provider_evidence(exc)
@@ -842,7 +900,9 @@ def tend(**kw):
                 except Exception:
                     pass
                 say("\U0001F6E0 Study fix %s: the provider refused to answer it (a safety refusal, not Fable's judgment of "
-                    "the fix). Nothing changed, and it did not count against today's fixes." % nxt["id"], kw.get("post"))
+                    "the fix)%s. Nothing changed, and it did not count against today's fixes."
+                    % (nxt["id"], ", and Astra and Grok could not write it either" if "no writer answered" in str(exc) else ""),
+                    kw.get("post"))
             else:
                 _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
                 say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
