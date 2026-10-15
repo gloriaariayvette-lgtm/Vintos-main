@@ -1,0 +1,4 @@
+# Eliot alone, for structured tracing in the Lab's interpreters (2026-10-15). Installed into the commissioned
+# ESMFold venv with its own dependencies only; nothing here touches torch, transformers or the CUDA stack.
+# The OS Python (/usr/bin/python3) gets eliot from the distribution (apt: python3-eliot), never from pip.
+eliot>=1.14,<2
