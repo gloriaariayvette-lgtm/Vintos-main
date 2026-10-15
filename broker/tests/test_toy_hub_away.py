@@ -62,16 +62,16 @@ check("a fresh process tries the remembered address first", T.endpoint() == PHON
 print("--- the device she has with her is seen ---")
 T._status_cache.update(t=0.0, map={})
 check("a toy the hub reports is present away from home", T.connected("ferri", strict=True))
-check("one it does not report is not", not T.connected("tenera", strict=True))
+check("a toy that is not the Ferri is never looked for on her phone", not T.connected("tenera", strict=True))
 POSTS.clear()
-T._post({"command": "Function", "action": "Stop", "timeSec": 0, "apiVer": 1})
-check("a send goes to the address that answered", POSTS and all(u == PHONE for u in POSTS), POSTS)
+T._post({"command": "Function", "action": "Stop", "timeSec": 0, "toy": T.TOYS["ferri"], "apiVer": 1})
+check("a Ferri send goes to the address that answered", POSTS and all(u == PHONE for u in POSTS), POSTS)
 
 print("--- the hub moved: it is found again without a restart ---")
 MOVED = "http://her-phone:20011/command"
 ANSWERS.clear(); ANSWERS[MOVED] = 200
 POSTS.clear()
-check("a send that fails re-resolves and still lands", T._post({"command": "GetToys", "apiVer": 1}).status_code == 200
+check("a send that fails re-resolves and still lands", T._post({"command": "GetToys", "apiVer": 1}, hub="phone").status_code == 200
       and MOVED in POSTS, POSTS)
 
 print("--- the hub answers nowhere ---")
@@ -87,7 +87,7 @@ POSTS.clear()
 check("a hub that is away is not re-scanned on every call", T.endpoint() == "" and not POSTS, POSTS)
 raised = False
 try:
-    T._post({"command": "GetToys", "apiVer": 1})
+    T._post({"command": "GetToys", "apiVer": 1}, hub="phone")
 except Exception:
     raised = True
 check("a send fails loudly rather than silently doing nothing", raised)
@@ -109,14 +109,34 @@ check("the resolved hub is given as host and port", T.hub_address(force=True) ==
 T._endpoint.update(url="https://100-102-2-47.lovense.club:30010/command", at=_tt.time())
 check("the vendor's dashed form is read back as the address", T.hub_address() == ("100.102.2.47", 30010), T.hub_address())
 T._endpoint.update(url="", at=0.0); T._status_cache.update(t=0.0, map={})
-check("any device present away from home is seen", T.any_connected())
-for name in ("bin/server.py", "bin/blush-ledger.py", "bin/somatic_bridge.py", "scripts/somatic_bridge.py", "bin/vintos-ear.py"):
-    src_o = open(os.path.join(REPO, name)).read()
-    asks_home = "post(\"http://192.168.1.66" in src_o or "post(f\"http://{HUB_HOST}" in src_o.split("def _ws_uri")[1].split("def ")[0] if "def _ws_uri" in src_o else "post(\"http://192.168.1.66" in src_o
-    check("%s asks toy_link where the hub is, not the home address" % name,
-          "toy_link" in src_o and "hub_address" in src_o or "any_connected" in src_o, name)
-check("the server's presence check no longer posts to the home address",
-      'r = _rq.post("http://192.168.1.66:20010/command"' not in open(os.path.join(REPO, "bin", "server.py")).read())
+check("the Ferri present away from home is seen", T.any_connected())
+for name in ("bin/server.py", "bin/blush-ledger.py"):
+    check("%s asks toy_link, so the Ferri counts wherever she is" % name,
+          "any_connected" in open(os.path.join(REPO, name)).read(), name)
+
+print("--- only the Ferri goes to her phone; every other toy is at home, as before ---")
+ANSWERS.clear(); ANSWERS[PHONE] = 200; ANSWERS["http://192.168.1.66:20010/command"] = 200
+T._endpoint.update(url="", at=0.0); T._home.update(url="", at=0.0)
+check("only the Ferri is an away toy", T.AWAY_TOYS == ("ferri",) and all(T.hub_of(t) == "home" for t in T.TOYS if t != "ferri"))
+for toy in [t for t in T.TOYS if t != "ferri"]:
+    POSTS.clear()
+    T._post({"command": "Function", "action": "Stop", "timeSec": 0, "toy": T.TOYS[toy], "apiVer": 1})
+    check("%s is sent to the home address only" % toy,
+          POSTS and all(u.startswith("http://192.168.1.66:") for u in POSTS), POSTS)
+POSTS.clear()
+T._post({"command": "Function", "action": "Stop", "timeSec": 0, "toy": T.TOYS["ferri"], "apiVer": 1})
+check("the Ferri is sent to her phone", POSTS and POSTS[-1] == PHONE, POSTS)
+ANSWERS.pop("http://192.168.1.66:20010/command"); T._home.update(url="", at=0.0); POSTS.clear()
+raised = False
+try:
+    T._post({"command": "Function", "action": "Stop", "timeSec": 0, "toy": T.TOYS["mission"], "apiVer": 1})
+except Exception:
+    raised = True
+check("a home toy with the home hub away fails loudly and never falls over to her phone",
+      raised and PHONE not in POSTS, POSTS)
+for name in ("bin/somatic_bridge.py", "scripts/somatic_bridge.py", "bin/vintos-ear.py"):
+    check("%s is back on the home address" % name,
+          "192.168.1.66" in open(os.path.join(REPO, name)).read() and "hub_address" not in open(os.path.join(REPO, name)).read())
 
 POSTS.clear(); T._endpoint.update(url="", at=0.0)
 D.hands_line_idle()

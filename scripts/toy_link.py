@@ -146,8 +146,38 @@ def endpoint(force=False):
     return ""
 
 
-def _post(payload, timeout=3):
-    """POST to the hub wherever it is. Raises when it answers nowhere, so a send fails loudly."""
+# ── which toy goes where ──────────────────────────────────────────────────────────────────────────
+# Only the Ferri is found by the resolver above (Gloria, 2026-10-15: "Put the others back. I only asked you to fix
+# the Ferri."). Every other toy is sent to the home address on its own ports, as it was before 2026-10-14.
+AWAY_TOYS = ("ferri",)
+HOME_URLS = tuple("http://%s:%d/command" % (LAN_HOST, p) for p in PORTS)
+_home = {"url": "", "at": 0.0}
+
+
+def hub_of(toy):
+    return "phone" if toy in AWAY_TOYS else "home"
+
+
+def _home_endpoint(force=False):
+    """The home hub's port, as _find_port found it before; when none answers, the first port, so a send fails
+    loudly there exactly as it used to."""
+    now = time.time()
+    if not force and _home["at"] and now - _home["at"] < (ENDPOINT_TTL if _home["url"] else ENDPOINT_MISS_TTL):
+        return _home["url"] or HOME_URLS[0]
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(HOME_URLS)) as pool:
+        found = [u for u, ok in zip(HOME_URLS, pool.map(_answers, HOME_URLS)) if ok]
+    _home.update(url=found[0] if found else "", at=now)
+    return _home["url"] or HOME_URLS[0]
+
+
+def _post(payload, timeout=3, hub=None):
+    """POST to the hub that toy is on: the Ferri wherever her phone is, every other toy at home. A command naming no
+    toy goes home unless a hub is named. Raises when the Ferri's hub answers nowhere, so a send fails loudly."""
+    if hub is None:
+        hub = "phone" if payload.get("toy") in [TOYS.get(t) for t in AWAY_TOYS] else "home"
+    if hub == "home":
+        return requests.post(_home_endpoint(), json=payload, timeout=timeout)
     url = endpoint()
     if not url:
         raise RuntimeError("the hub answered at none of: " + ", ".join(candidates()))
@@ -227,25 +257,45 @@ def hub_status():
     return out
 
 
-_status_cache = {"t": 0.0, "map": {}}
+def home_status():
+    """{reachable, url, toys} for the home hub, where every toy but the Ferri is."""
+    url = _home_endpoint(force=True)
+    out = {"reachable": bool(_home["url"]), "url": url, "toys": {}}
+    if not _home["url"]:
+        return out
+    try:
+        toys = (requests.post(url, json={"command": "GetToys", "apiVer": 1}, timeout=2).json().get("data") or {}).get("toys")
+        if isinstance(toys, str):
+            toys = json.loads(toys)
+        names = {v: k for k, v in TOYS.items()}
+        out["toys"] = {names.get(tid, tid): str((row or {}).get("status")) == "1" for tid, row in (toys or {}).items()}
+    except Exception as exc:
+        out["error"] = str(exc)[:200]
+    return out
+
+
+_status_cache = {"t": 0.0, "map": {}}        # the Ferri's hub
+_home_status = {"t": 0.0, "map": {}}         # the home hub, every other toy
 def connected(toy, strict=False):
-    """True only if the hub reports this toy present. Commands to an absent toy are dropped."""
+    """True only if the hub that toy is on reports it present. Commands to an absent toy are dropped."""
     import time as _st, json as _sj
+    hub = hub_of(toy)
+    cache = _status_cache if hub == "phone" else _home_status
     now = _st.time()
-    if now - _status_cache["t"] > 10:
+    if now - cache["t"] > 10:
         try:
-            r = _post({"command": "GetToys", "apiVer": 1}, timeout=2)
+            r = _post({"command": "GetToys", "apiVer": 1}, timeout=2, hub=hub)
             toys = (r.json().get("data") or {}).get("toys")
             if isinstance(toys, str): toys = _sj.loads(toys)
-            _status_cache["map"] = {k: str(v.get("status")) for k, v in (toys or {}).items()}
-            _status_cache["t"] = now
+            cache["map"] = {k: str(v.get("status")) for k, v in (toys or {}).items()}
+            cache["t"] = now
         except Exception:
             # Sends stay permissive so they fail loudly. CLAIMS about her body do not:
             # telling him something is inside her when the hub is simply unreachable is a lie.
             return not strict
     tid = TOYS.get(toy)
     if not tid: return not strict
-    return _status_cache["map"].get(tid, "1" if not strict else "0") == "1"
+    return cache["map"].get(tid, "1" if not strict else "0") == "1"
 
 def _gate(toy, level, kind=None, detail=None, context=None, permit=None,
           effect_digest=None):
@@ -482,7 +532,8 @@ if __name__ == "__main__":
         # No argument is the read-only diagnostic. It used to be stop_all, so merely asking where the hub was
         # sent a command to it (2026-10-14).
         _st = hub_status()
-        print(json.dumps(_st, indent=2))
+        print("the Ferri (her phone):\n" + json.dumps(_st, indent=2))
+        print("every other toy (home):\n" + json.dumps(home_status(), indent=2))
         if not _st["reachable"]:
             print("\nThe hub answered nowhere. It is the app on her phone, so Aegis needs a route to the phone:"
                   "\n  · on her Wi-Fi: Game Mode open with a Local IP shown, and LOVENSE_HOST set to it"

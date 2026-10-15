@@ -30,17 +30,6 @@ def _find_port():
 
 
 def _ws_uri():
-    """The hub's websocket wherever it is: toy_link resolves her phone on the tailnet away from home and on the LAN
-    at home (2026-10-14). The home address is only the fallback."""
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-        import toy_link as _tl
-        host, port = _tl.hub_address(force=True)
-        if host and port:
-            return "ws://%s:%d/v1" % (host, port), port
-    except Exception:
-        pass
     p = _find_port()
     return (f"ws://{HUB_HOST}:{p}/v1" if p else None), p
 
