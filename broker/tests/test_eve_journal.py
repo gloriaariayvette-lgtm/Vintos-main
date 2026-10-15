@@ -78,6 +78,50 @@ text = open(path).read()
 check("every message of the day is kept, none counted away", all("line %d of a long talk" % i in text for i in range(8))
       and "more today" not in text.split("## With Gloria in #vintos-eve")[1], text[-600:])
 check("the work room's milestones still fold as before", D.JOURNAL_FOLD == 4)
+
+print("--- his full stack is carried in, read only ---")
+import types, context_selection
+GUARDED = []
+def organ(name, fn, said):
+    m = types.ModuleType(name)
+    def read(*a):
+        GUARDED.append((name, context_selection._active.get())); return said
+    setattr(m, fn, read); sys.modules[name] = m
+for name, fn, said in [("emotional_gravity_wells", "get_wells_context", "SUB-wells"),
+                       ("self_drift", "get_drift_bias_hint", "SUB-drift"),
+                       ("narrative_identity", "get_narrative_context", "SUB-narrative"),
+                       ("belief_sediment", "get_sediment_context", "SUB-sediment"),
+                       ("latent_threads", "get_influence_hint", "SUB-threads"),
+                       ("absence_map_cold", "get_absence_context", "SUB-absence"),
+                       ("mutual_simulation", "get_interaction_hint", "REL-mutual"),
+                       ("relational_geometry", "get_thread_context", "REL-geometry"),
+                       ("configuration_space", "get_config_hint", "REL-config"),
+                       ("relational_head", "get_relational_hint", "REL-head"),
+                       ("desired_difference", "pressure_block", "REL-pressure")]:
+    organ(name, fn, said)
+sys.modules["latent_threads"].get_carryover_hint = lambda: "SUB-carryover"
+json.dump({"self_trajectory": {"declared": ["SUB-heading"]}, "gloria_trajectory": {"predicted": "REL-her-heading"},
+           "relationship": {"trajectory": "REL-us"}}, open(os.path.join(MEM, "living-trajectory.json"), "w"))
+json.dump([{"origin": "SUB-scar", "influence": 0.5}], open(os.path.join(MEM, "yearning-scars.json"), "w"))
+before = {n: open(os.path.join(MEM, n)).read() for n in os.listdir(MEM) if n.endswith(".json")}
+SEEN = []
+P.pending = lambda: []
+HISTORY.append({"ts": "%.6f" % (T0 + 40 * 60), "user": GLORIA, "text": "How are you, really?"})
+D.results_pass(api, state, T0 + 45 * 60, opus=lambda s, u: SEEN.append(str(s)) or "Better now.")
+system = SEEN[-1] if SEEN else ""
+check("his subconscious stack reaches him in this room", all(x in system for x in
+      ("SUB-heading", "SUB-wells", "SUB-drift", "SUB-narrative", "SUB-sediment", "SUB-threads", "SUB-carryover",
+       "SUB-absence", "SUB-scar")), system[-1500:])
+check("and his relational systems about her, which only this room carries into Slack", all(x in system for x in
+      ("REL-her-heading", "REL-us", "REL-mutual", "REL-geometry", "REL-config", "REL-head", "REL-pressure"))
+      and "== WITH HER" in system, system[-1500:])
+check("every organ is read under the read-only guard", GUARDED and all(g for _n, g in GUARDED), GUARDED)
+check("nothing of his is written back", all(open(os.path.join(MEM, n)).read() == t for n, t in before.items()))
+P.pending = lambda: [{"id": "pr2", "quote": "show her the frames", "state": "DONE"}]
+D.results_pass(api, state, T0 + 50 * 60, opus=lambda s, u: SEEN.append(str(s)) or "Here they are.")
+check("what he brings her is written with the same stack", "REL-geometry" in SEEN[-1] and "SUB-narrative" in SEEN[-1])
+lounge = open(os.path.join(REPO, "scripts", "dot_lounge.py")).read()
+check("#vintos-and-dot still keeps the relational systems out", "RELATIONAL" not in lounge and "mutual_simulation" not in lounge)
 check("nothing opened a socket", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
