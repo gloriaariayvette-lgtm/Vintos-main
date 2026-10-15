@@ -2519,6 +2519,21 @@ def _fetches_only_some(query, symbols):
     return have < want
 
 
+def _misses_named_genes(query, symbols):
+    """True when a human query fetches none of the genes the question names: it searched by a name, a family or
+    another gene instead. 15 October: "human collagen type IV (COL4A1)" was searched as protein_name "collagen type
+    IV", which returned Q9Y5P4, collagen type IV alpha-3-binding protein, and the review rightly refused it as the
+    wrong target. An accession, or a nonhuman organism, is the planner's explicit choice and is left as it is."""
+    text = str(query or "")
+    if not symbols or re.search(r"\baccession\s*:", text, re.I):
+        return False
+    taxa = re.findall(r"\b(?:organism_id|taxonomy_id)\s*:\s*([0-9]+)", text)
+    if any(t != "9606" for t in taxa):
+        return False
+    genes = {g.upper() for g in re.findall(r"\bgene(?:_exact)?\s*:\s*\"?([A-Za-z0-9-]+)", text, re.I)}
+    return not genes & {str(x).upper() for x in symbols}
+
+
 def _inquiry(value, lean=None):
     question_sha256 = hashlib.sha256(str(value.get('question') or '').encode()).hexdigest()
     source_context_current = value.get('source_query_question_sha256') in (None, question_sha256)
@@ -2558,6 +2573,13 @@ def _inquiry(value, lean=None):
         # "SOX9 and SOX10", "BRCA1 ... BARD1" fetched one gene, and the review refused the question because no
         # record established the other.
         query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
+                 ') AND taxonomy_id:9606 AND reviewed:true')
+    elif 1 <= len(question_symbols) <= 4 and _misses_named_genes(query, question_symbols):
+        # The genes the query did name are kept beside the question's own, so a partner the planner chose to
+        # fetch is still fetched; only the search by name is replaced. The question itself is not touched.
+        own = [g for g in re.findall(r"\bgene(?:_exact)?\s*:\s*\"?([A-Za-z0-9-]+)", str(query or ""), re.I)]
+        wanted = list(dict.fromkeys([str(x) for x in question_symbols] + own))
+        query = ('(' + ' OR '.join('gene:' + symbol for symbol in wanted) +
                  ') AND taxonomy_id:9606 AND reviewed:true')
     identity_queries = [query] + ([source_query['query']] if source_context_current and source_query and source_query.get('source') == 'uniprot' and source_query.get('query') else [])
     from lab_repeats import _ACCESSION
