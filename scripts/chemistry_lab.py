@@ -2300,6 +2300,91 @@ def _structure_followup(inquiry, records):
 
 
 
+_STRUCTURAL = re.compile(r'structur|topolog|helix|helic|fold|hinge|pocket|loops?\b|architectur|conformation|'
+                         r'coordinat|spatial|arrangement|interfaces?\b|binding.site|sheet|strand', re.I)
+STRUCTURE_TARGETS = 2
+
+
+def structure_reads(inquiry, records):
+    """The deposited entries a structural question should read beside whatever source he chose.
+
+    15 October: 39 of 77 questions after the 07:59 deploy ended partially supported, nearly all asking for a fold,
+    helical arrangements, hinge regions, loops or residue positions. UniProt annotation holds none of that; the
+    records he fetched each named the PDB entries that do. _structure_followup opened one only when he had chosen no
+    other source and only for a single record, and he nearly always chose literature. This adds the structure; it
+    never replaces his choice, never narrows his question, and reads only entries the current records name."""
+    if not _STRUCTURAL.search(str(inquiry.get('question') or '')): return []
+    if inquiry.get('browse_lane') in ('microbiology', 'genome_mining'): return []
+    if (inquiry.get('assignment_resolution') or {}).get('reason') == 'exact_previously_sourced_record': return []
+    chosen = inquiry.get('source_query') if isinstance(inquiry.get('source_query'), dict) else {}
+    already = str(chosen.get('entry_id') or '').upper() if chosen.get('source') == 'pdb' else ''
+    question = str(inquiry.get('question') or '')
+    def named(row):
+        # a search can return proteins the question never named (Q9BXS9 beside pendrin and prestin): those the
+        # question names by accession, gene, synonym or name come first
+        words = {str(row.get('accession') or '')}
+        for gene in row.get('genes') or []:
+            for key in ('geneName', 'synonyms'):
+                values = gene.get(key) or []
+                for v in [values] if isinstance(values, dict) else values:
+                    if isinstance(v, dict): words.add(str(v.get('value') or ''))
+        hit = any(len(w) >= 3 and re.search(r'(?<![A-Za-z0-9])' + re.escape(w) + r'(?![A-Za-z0-9])', question, re.I)
+                  for w in words)
+        name = str(row.get('protein_name') or '')
+        return hit or (len(name) >= 4 and name.casefold() in question.casefold())
+    rows = [r for r in records or [] if isinstance(r, dict)]
+    rows = [r for r in rows if named(r)] + [r for r in rows if not named(r)]
+    out, covered = [], 0
+    for row in rows:
+        if covered >= STRUCTURE_TARGETS: break
+        ids = [str(x).upper() for x in row.get('pdb_ids') or [] if re.fullmatch(r'[0-9][A-Za-z0-9]{3}', str(x))]
+        if not ids: continue
+        covered += 1
+        if already and already in ids: continue   # the entry he chose for this target is already being read
+        out.append({'source': 'pdb', 'entry_id': ids[0], 'operation': 'structure_evidence',
+                    'for_accession': row.get('accession')})
+    return out
+
+
+def _structure_text(record):
+    """A deposited structure as the review reads it: what it is, and its geometry in sentences a quote can come
+    from. Chain ranges and contacts were dicts of numbers, which get no address."""
+    if not isinstance(record, dict): return record
+    geometry = record.get('geometry') or {}
+    chains = ['chain %s: author residues %s to %s observed in the deposited model (%s residues)'
+              % (c.get('chain'), c.get('author_residue_min'), c.get('author_residue_max'), c.get('observed_residues'))
+              for c in geometry.get('chains') or [] if isinstance(c, dict)]
+    contacts = []
+    for c in geometry.get('inter_chain_contacts') or []:
+        if not isinstance(c, dict): continue
+        near = (c.get('closest_pairs') or [{}])[0]
+        contacts.append('chains %s and %s: %s C-alpha pairs within 8 angstroms; closest %s%s to %s%s at %s angstroms'
+                        % (*(c.get('chains') or ['?', '?'])[:2], c.get('ca_pair_count'),
+                           near.get('chain_1'), near.get('residue_1'), near.get('chain_2'), near.get('residue_2'),
+                           near.get('ca_distance_angstroms')))
+    sites = []
+    for site in (record.get('metal_sites') or [])[:4]:
+        if isinstance(site, dict):
+            sites.append(dict(site, nearby_atoms=(site.get('nearby_atoms') or [])[:8]))
+    keep = {k: record.get(k) for k in ('entry_id', 'title', 'experimental_methods', 'resolution_angstroms',
+                                        'primary_citation', 'numbering', 'interpretation',
+                                        'secondary_structure_coverage', 'secondary_structure_records')}
+    keep.update({'for_accession': record.get('for_accession'), 'chains_observed': chains,
+                 'inter_chain_contacts': contacts, 'metal_sites': sites,
+                 'method': geometry.get('method')})
+    return keep
+
+
+def _structure_pending(state):
+    """Entries still to read for this question; worked out once, when its records first reach the embed step."""
+    question = str((state.get("inquiry") or {}).get("question") or "")
+    if state.get("structure_for") != question:   # a question left midway never hands its reads to the next one
+        state["structure_for"] = question
+        state["structure_evidence"] = []
+        state["structure_pending"] = structure_reads(state.get("inquiry") or {}, state.get("records") or [])
+    return bool(state.get("structure_pending"))
+
+
 def _known_structure_followup(inquiry):
     """A previously returned exact target can open new deposited evidence now."""
     if inquiry.get('source_query') or inquiry.get('plugin_query') or inquiry.get('instrument_query'): return inquiry
@@ -3154,6 +3239,9 @@ def review_observations(inquiry, observations):
               'atlas_analysis':observations.get('atlas_analysis')}
     if observations.get('FULLTEXT'):   # full-text passages for the unanswered claims (lab_claim_evidence)
         result['FULLTEXT'] = observations['FULLTEXT']
+    if observations.get('STRUCTURE'):  # deposited entries the records named, read beside his own source
+        result['STRUCTURE'] = [_quotable_structure(_named_numeric_arrays(_structure_text(r), None))
+                               for r in observations['STRUCTURE']]
     proteins = []
     sequence_requested = bool(re.search(r'sequence|residue|motif|amino.acid', str(inquiry.get('question') or ''), re.I))
     for row in observations.get('records') or []:
@@ -4445,6 +4533,31 @@ def tick():
                 note = {"at": now_iso(), "kind": "atlas_genome_analysis", **genomic,
                         "truth_status": "comparative_model_likelihood_not_functional_validation"}
                 next_phase = "embed"
+            elif phase == "embed" and _structure_pending(state):
+                spec = state["structure_pending"][0]
+                import chemistry_sources
+                try:
+                    sourced = chemistry_sources.query({k: v for k, v in spec.items() if k != 'for_accession'},
+                                                      question=(state.get("inquiry") or {}).get("question", ""))
+                except RuntimeError as exc:
+                    if 'cooldown' in str(exc):    # the one PDB request a minute: wait for it, as his own sources do
+                        state["effective_state"] = "waiting_for_source"; _atomic(STATE, state)
+                        return {"ok": True, "state": "waiting_for_source", "next_phase": "embed"}
+                    sourced, failure = None, str(exc)[:240]
+                except Exception as exc:
+                    sourced, failure = None, str(exc)[:240]
+                state["structure_pending"] = state["structure_pending"][1:]
+                receipt_row = (sourced or {}).get("receipt") or (sourced or {}).get("source_receipt") or {}
+                if sourced:
+                    _append(os.path.join(ROOT, "source-receipts.jsonl"), receipt_row)
+                    for rec in receipt_row.get("records") or []:
+                        state.setdefault("structure_evidence", []).append(dict(rec, for_accession=spec.get("for_accession")))
+                next_phase = "embed"
+                note = {"at": now_iso(), "kind": "structure_read", "entry_id": spec.get("entry_id"),
+                        "for_accession": spec.get("for_accession"), "receipt_id": receipt_row.get("receipt_id"),
+                        "records_returned": len(receipt_row.get("records") or []),
+                        **({"failure": failure} if not sourced else {}),
+                        "truth_status": "deposited_experimental_structure_not_native_state_claim"}
             elif phase == "embed":
                 records = state.get("records", [])
                 embedding_result = _embed_records(records)
@@ -4478,7 +4591,8 @@ def tick():
                             'reason': 'same_evidence_already_reviewed',
                             'truth_status': 'unchanged_evidence_not_a_new_finding'}
                     for key in ('inquiry','records','material','additional_source','embeddings',
-                                'source_query_succeeded','followup_lineage','atlas_analysis','atlas_analysis_receipt'):
+                                'source_query_succeeded','followup_lineage','atlas_analysis','atlas_analysis_receipt',
+                                'structure_pending','structure_evidence','structure_for'):
                         state.pop(key, None)
                 else:
                     observations = coverage_retry or {
@@ -4486,7 +4600,9 @@ def tick():
                         "records": visible_records,
                         "esmc_receipts": state.get("embeddings", []),
                         "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
-                        "LITERATURE": literature}
+                        "LITERATURE": literature,
+                        "STRUCTURE": (state.get("structure_evidence") or [])
+                                     if state.get("structure_for") == str(inquiry.get("question") or "") else []}
                     if inquiry.get("line_id"):
                         try:
                             import lab_lines
@@ -4576,6 +4692,7 @@ def tick():
                     state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)
                     state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
                     state.pop('coverage_retry_observations', None)
+                    state.pop("structure_pending", None); state.pop("structure_evidence", None); state.pop("structure_for", None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()

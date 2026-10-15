@@ -117,9 +117,13 @@ def _reset_at():
 def used_today(rows=None):
     """Study fixes asked today, since Gloria's last reset."""
     # The dated campaign counts every submission, even if an old reset receipt exists.
-    since = "" if software_quota.preserves_usage(_today()) else _reset_at()
+    campaign = software_quota.preserves_usage(_today())
+    since = "" if campaign else _reset_at()
+    # A fix the provider refused to answer gave him nothing, so it does not spend one of his three (15 October:
+    # SF-217d86de was refused before Fable wrote a word, and still counted). The dated campaign counts everything.
     return sum(1 for r in (rows if rows is not None else _load())
-               if str(r.get("asked", ""))[:10] == _today() and str(r.get("asked", "")) > since)
+               if str(r.get("asked", ""))[:10] == _today() and str(r.get("asked", "")) > since
+               and (campaign or not r.get("provider_refused")))
 
 
 def reset_today(by="gloria"):
@@ -826,8 +830,22 @@ def tend(**kw):
         except Exception as exc:
             if "Fable" in str(exc):          # how its answer ended, kept apart from what the tests said
                 nxt["provider_failure"] = provider_evidence(exc)
-            _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
-            say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
+            if (nxt.get("provider_failure") or {}).get("stop_reason") == "refusal":
+                # The provider's safety layer stopped the answer before Fable wrote anything. That is not a crash and
+                # not Fable judging the fix: it is said as what it is, and it does not spend one of his three.
+                nxt["state"] = "refused"; nxt["provider_refused"] = True
+                _event(nxt, "the provider refused to answer; nothing changed")
+                try:
+                    import failure_watch
+                    failure_watch.note("study", "a Study fix was refused by the provider",
+                                       "%s: refused before any answer; it did not count against today's fixes" % nxt["id"])
+                except Exception:
+                    pass
+                say("\U0001F6E0 Study fix %s: the provider refused to answer it (a safety refusal, not Fable's judgment of "
+                    "the fix). Nothing changed, and it did not count against today's fixes." % nxt["id"], kw.get("post"))
+            else:
+                _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
+                say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
         _save_progress(rows)
         return "%s: %s" % (nxt["id"], nxt["state"])
 
