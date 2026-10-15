@@ -73,15 +73,27 @@ LAST_FOLD_TASK = None   # serialized task id of the latest fold, so the parser t
 
 
 def _eliot_ready():
+    """Tracing on, or False for untraced. The log is found from ROOT when tracing starts, not when this module loads:
+    a suite that repoints ROOT to a throwaway store traced into her real one (15 October, the first day eliot was
+    installed on Aegis), and a missing folder crashed the parser it was tracing. A log that cannot be opened leaves
+    the Lab untraced, never broken, unless VINTOS_ELIOT_REQUIRED=1 asks for the failure."""
     global _ELIOT_READY
+    required = os.environ.get(ELIOT_REQUIRED_ENV) == "1"
     if _eliot is None:
-        if os.environ.get(ELIOT_REQUIRED_ENV) == "1":
+        if required:
             raise RuntimeError("eliot is required (%s=1) but cannot be imported by %s: %s"
                                % (ELIOT_REQUIRED_ENV, sys.executable, _ELIOT_IMPORT_ERROR))
         return False
     if not _ELIOT_READY:
-        _ensure()
-        _eliot.to_file(open(ELIOT_LOG, "ab"))
+        log = os.path.join(ROOT, os.path.basename(ELIOT_LOG))
+        try:
+            os.makedirs(os.path.dirname(log), exist_ok=True)
+            _eliot.to_file(open(log, "ab"))
+        except OSError as exc:
+            if required:
+                raise RuntimeError("eliot is required (%s=1) but its log %s cannot be opened by %s: %s"
+                                   % (ELIOT_REQUIRED_ENV, log, sys.executable, exc))
+            return False
         _ELIOT_READY = True
     return True
 

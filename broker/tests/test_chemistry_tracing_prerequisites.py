@@ -133,6 +133,30 @@ check("the worker's command, the fold and its receipt shape are unchanged otherw
 mac = open(os.path.join(SCRIPTS, "chemistry_mac.py")).read()
 check("the Lab still starts the worker the same way, with the same timeout", "subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body), text=True," in mac
       and "timeout=900" in mac)
+print("--- the Lab's log follows its store, and a log it cannot open never breaks it ---")
+OPENED = []
+lab_eliot = types.ModuleType("eliot")
+lab_eliot.to_file = lambda f: (OPENED.append(f.name), f.close())
+lab_eliot.start_action = lambda **k: contextlib.nullcontext()
+lab_eliot.current_action = lambda: None
+LAB._eliot, LAB._ELIOT_READY = lab_eliot, False
+moved = os.path.join(HOME, "repointed", "chemistry-lab")
+real_root, LAB.ROOT = LAB.ROOT, moved
+check("a store repointed after import is where tracing writes, its folder made",
+      LAB._eliot_ready() is True and OPENED == [os.path.join(moved, "eliot.jsonl")] and os.path.isdir(moved), OPENED)
+check("and never the store the module was loaded with", not any(o.startswith(real_root) for o in OPENED) or real_root == moved)
+LAB._ELIOT_READY = False
+LAB.ROOT = os.path.join(blocked, "chemistry-lab")        # a file where a folder must be
+check("a log that cannot be opened leaves the Lab untraced, not broken", LAB._eliot_ready() is False)
+os.environ["VINTOS_ELIOT_REQUIRED"] = "1"
+try:
+    LAB._eliot_ready(); raised = ""
+except RuntimeError as exc:
+    raised = str(exc)
+os.environ.pop("VINTOS_ELIOT_REQUIRED")
+check("unless required: then it fails naming the log and the interpreter", "cannot be opened" in raised
+      and sys.executable in raised, raised)
+LAB.ROOT = real_root
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
