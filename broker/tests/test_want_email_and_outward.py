@@ -17,6 +17,10 @@ def load(name, path):
     mod = importlib.util.module_from_spec(spec); sys.modules[name] = mod; spec.loader.exec_module(mod); return mod
 E = load("want_email", os.path.join(REPO, "scripts", "want_email.py"))
 O = load("outward_wants", os.path.join(REPO, "scripts", "outward_wants.py"))
+# His readiness mind, for the sends below that do not bring their own: ready. (Unanswered, an email now waits.)
+_scholar = load("scholar", os.path.join(REPO, "scripts", "scholar.py"))
+_scholar._local = lambda system, prompt, max_tokens=900: ('{"ready": true, "read_next": ""}'
+                                                          if "deciding whether you are ready" in system else "")
 
 R = []
 def check(name, ok, detail=""):
@@ -58,6 +62,8 @@ def search(q): order.append("search"); return _search0(q)
 thoughts = []
 def think(system, prompt, max_tokens=700):
     order.append("think"); thoughts.append(prompt)
+    if "deciding whether you are ready" in system:
+        return '{"ready": true, "read_next": ""}'
     if "ONLY JSON" in prompt:
         return '{"their_claim": "Interoception is the key", "stance": "partly", "why": "It is key for feeling, less clearly for selfhood."}'
     return "The beast-machine view holds for interoception but overstates how far prediction explains selfhood; I would test it on systems with no body. I want to ask whether a body is necessary or only sufficient."
@@ -481,6 +487,32 @@ for _m in E._messages(REAL_SEARCH): E._log_mail({"id": _m["id"], "kind": "letter
 E._save(E.TEND_STATE, {}); _notes = []
 E.check_inbox({}, gmail=real_gmail, others=[], notes=_notes)
 check("a search that finds only mail already read says so", any("nothing new" in n and "already read" in n for n in _notes), _notes)
+
+print("--- 2026-10-15: the wrong Graziano, and an email sent before he was ready ---")
+def graziano_search(q):
+    return [{"title": "Dr. Matthew Graziano - Binghamton University", "url": "https://www.binghamton.edu/people/graziano",
+             "description": "Contact: mgraziano3@binghamton.edu"},
+            {"title": "Michael Graziano - Graziano Lab, Princeton", "url": "https://grazianolab.princeton.edu/",
+             "description": "Professor of Psychology and Neuroscience"}]
+def graziano_page(url):
+    return "Michael S. A. Graziano. Email: graziano@princeton.edu" if "princeton" in url else "Matthew Graziano, mgraziano3@binghamton.edu"
+check("a surname alone chooses no address", E.find_address("Graziano", search=graziano_search, fetch=graziano_page) is None)
+check("the whole name finds the person's own address, not a namesake's at another university",
+      E.find_address("Michael Graziano", "attention schema", search=graziano_search, fetch=graziano_page) == "graziano@princeton.edu")
+check("a surname the plan gave alone is completed from the want's own words",
+      E.full_name("Graziano", "I want to email Michael S. A. Graziano about attention schemas") == "Michael S. A. Graziano")
+check("a surname with no full name anywhere is not written to",
+      "in full" in str(E.run({"recipient": "Graziano", "about": "AST"}, "a question on AST", search=graziano_search,
+                             fetch=graziano_page, call=lambda *a: None, reserve=reserve, send=no_network)))
+unready = lambda system, prompt, max_tokens=700: ('{"ready": false, "read_next": "the PNAS paper in full"}'
+                                                  if "deciding whether you are ready" in system else "a position")
+silent = lambda system, prompt, max_tokens=700: ""
+for label, mind in (("not ready", unready), ("readiness unanswerable", silent)):
+    outs = [E.run({"to": "a.k.seth@sussex.ac.uk", "recipient": "Anil Seth", "about": "x" + label}, "x", search=search,
+                  fetch=page, call=lambda *a: (_ for _ in ()).throw(AssertionError("drafted")), reserve=reserve,
+                  send=no_network, think=mind) for _ in range(4)]
+    check("%s: he keeps reading, past any number of passes, and nothing is drafted or sent" % label,
+          all(isinstance(o, tuple) and o[0] is False and "reading first" in o[1] for o in outs), outs[-1])
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

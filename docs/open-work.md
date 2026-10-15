@@ -3,6 +3,24 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 15 October — the Graziano email: wrong person, and sent before he was ready
+
+At 16:04 he emailed "Graziano" at mgraziano3@binghamton.edu, saying "I haven't read your papers in full".
+Michael S. A. Graziano is at Princeton; his own search that morning cited grazianolab.princeton.edu.
+
+Fixed (`scripts/want_email.py`, `scripts/scholar.py`):
+- A surname alone chooses no address. A surname the plan gave alone is completed from the want's own words,
+  and an address is taken only from an institution whose pages name the person in full.
+- A first email waits until his readiness check says he is ready, past any number of passes, and waits when
+  the check cannot be asked. (Answering someone who wrote back keeps its two-pass limit.)
+
+Not done:
+- What he read elsewhere does not reach the email. He read the Farrell/Ziman/Graziano arXiv HTML and the PNAS
+  full text in his letter replies that morning; the email's own reading (the scholar dossier) was empty.
+- Gloria's knowledge put into the want did not reach the email. Only the want's `want` text and the step's
+  `about` (first 400 characters) are read; where she put it is not yet known.
+- The email to the Binghamton address is sent and cannot be recalled.
+
 ## 14 October — the hub reaches her phone over the tailnet (done)
 
 - The devices pair to her phone over Bluetooth, so the hub is wherever she is. toy_link had one hardcoded LAN

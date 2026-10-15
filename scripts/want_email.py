@@ -302,14 +302,39 @@ def addresses_in(text):
     return found
 
 
+def _root(host):
+    """The registrable part of a host or mail domain: princeton.edu, sussex.ac.uk."""
+    labels = str(host or "").lower().strip(".").split(".")
+    keep = 3 if len(labels) >= 3 and labels[-2] in ("ac", "co", "edu", "org", "gov") and len(labels[-1]) == 2 else 2
+    return ".".join(labels[-keep:])
+
+
+def full_name(recipient, *texts):
+    """The person's whole name. A plan that names only a surname ("Graziano") is completed from the want's own
+    words ("Michael S. A. Graziano"); a surname alone is never enough to choose an address (2026-10-15: "Graziano"
+    matched mgraziano3@binghamton.edu, a different person; Michael Graziano is at Princeton)."""
+    recipient = str(recipient or "").strip()
+    words = re.findall(r"[A-Za-z][A-Za-z'-]+", recipient)
+    if len(words) >= 2 or not words: return recipient
+    surname = re.escape(words[0])
+    for text in texts:
+        m = re.search(r"((?:[A-Z][a-z'\u00C0-\u017F-]+|[A-Z]\.)(?:\s+(?:[A-Z][a-z'\u00C0-\u017F-]+|[A-Z]\.))*\s+%s)\b" % surname,
+                      str(text or ""))
+        if m and len(re.findall(r"[A-Za-z][A-Za-z'-]+", m.group(1))) >= 2:
+            return m.group(1)
+    return recipient
+
+
 def find_address(recipient, about="", search=web_search, fetch=fetch_text, pages=6):
-    """The public address of the person he named, or None. It must carry part of their name.
-    (2026-09-28: "no public address found for Murray Shanahan" - one search, three pages, and only
+    """The public address of the person he named, or None. It must carry part of their name, and it must come from
+    the institution where pages name that person in full: given name and surname together. A surname alone finds
+    nothing. (2026-09-28: "no public address found for Murray Shanahan" - one search, three pages, and only
     plain-text addresses. Now several searches, the person's own pages first, and written-out addresses.)"""
     name_tokens = [t.lower() for t in re.findall(r"[A-Za-z][A-Za-z'-]{1,}", str(recipient or ""))
                    if t.lower() not in ("dr", "prof", "professor", "the", "of", "and")]
-    if not name_tokens: return None
-    best, results, seen = (0, None), [], set()
+    if len(name_tokens) < 2: return None
+    given, surname = name_tokens[0], name_tokens[-1]
+    best, results, seen, theirs = (0, None), [], set(), set()
     for q in ("%s email" % recipient, "%s contact email address" % recipient, "%s homepage" % recipient,
               "%s university profile" % recipient) + (("%s %s" % (recipient, about[:80]),) if about else ()):
         try:
@@ -318,20 +343,27 @@ def find_address(recipient, about="", search=web_search, fetch=fetch_text, pages
                     seen.add(hit.get("url")); results.append(hit)
         except Exception:
             pass
-    surname = name_tokens[-1]
     # the person's own pages first: a URL carrying their surname, then academic hosts
     results.sort(key=lambda h: (surname not in str(h.get("url", "")).lower(),
                                 not re.search(r"\.(?:edu|ac\.[a-z]{2})\b", str(h.get("url", "")))))
-    read = 0
+    def names_them(text):
+        low = str(text or "").lower()
+        return re.search(r"\b%s\b" % re.escape(given), low) and re.search(r"\b%s\b" % re.escape(surname), low)
+    read, scored = 0, []
     for hit in results:
-        found = addresses_in(" ".join((hit.get("title", ""), hit.get("description", ""))))
+        head = " ".join((hit.get("title", ""), hit.get("description", "")))
+        found = addresses_in(head)
         url = hit.get("url") or ""
+        host = re.sub(r"^https?://(?:www\.)?", "", url).split("/")[0].lower()
+        body = ""
         if read < pages and url and not url.lower().endswith(".pdf"):
-            try: found += addresses_in(fetch(url)); read += 1
+            try: body = fetch(url) or ""; found += addresses_in(body); read += 1
             except Exception: pass
+        if host and names_them(head + " " + str(body)[:200000]):
+            theirs.add(_root(host))
         for address in dict.fromkeys(a.strip(".").lower() for a in found):
-            score = _score(address, name_tokens, url)
-            if score > best[0]: best = (score, address)
+            scored.append((_score(address, name_tokens, url), address))
+        best = max([(s, a) for s, a in scored if _root(a.partition("@")[2]) in theirs] or [(0, None)])
         if best[0] >= 5: break
     return best[1] if best[0] >= 3 else None     # a name match is required, not a guess
 
@@ -478,7 +510,9 @@ def _send_approved(ap, contacts, send=None):
     return "Emailed %s <%s> again, with Gloria's approval: %s" % (c.get("name") or to, to, ap["subject"])
 
 
-HOLDS_TO_READ = 2        # passes he may spend reading before he writes anyway
+
+
+HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend reading before he answers anyway
 
 
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
@@ -490,10 +524,13 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, blocked
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
+    recipient = full_name(recipient, want_text, params.get("about"))
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""
     if not to:
         if not recipient: return False, "name the person to write to"
+        if len(re.findall(r"[A-Za-z][A-Za-z'-]+", recipient)) < 2:
+            return False, "name %s in full: a surname alone could be anyone" % recipient
         to = find_address(recipient, about, search=search, fetch=fetch)
         if not to: return False, "no public address found for %s" % recipient
     contacts = _load(CONTACTS, {})
@@ -526,10 +563,13 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
                         think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
     scholar, _ = _helpers()
-    ready, need = scholar.enough(about, stance, reading, think=think)
-    if not ready and int(dossier.get("holds", 0)) < HOLDS_TO_READ:
+    # He writes only when ready. Never "after two passes, anyway" (2026-10-15: he told Graziano "I haven't read
+    # your papers in full" and sent it), and never when the readiness question could not be asked.
+    ready, need = scholar.enough(about, stance, reading, think=think,
+                                 unreachable=(False, "his readiness could not be checked (his mind did not answer)"))
+    if not ready:
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
-        return False, "reading first (%d/%d): %s" % (dossier["holds"], HOLDS_TO_READ, need or "not ready to write")
+        return False, "reading first (pass %d): %s" % (dossier["holds"], need or "not ready to write")
     context = want_text
     if second is not None:
         context = ("THIS IS A SECOND EMAIL: they have not replied to your first. Gloria must approve it. Write it only "
