@@ -13,6 +13,9 @@ claims, to show whether that evidence helps (T-17420bd6, 2026-10-14). The questi
     python3 scripts/lab_claim_replay.py live [ISO]  the live Lab's review outcomes since ISO; with no time, since the
                                                     last deploy, so a change is never read off reviews that predate
                                                     it (14 October: it was, twice). Read-only.
+    python3 scripts/lab_claim_replay.py missing [OUTCOME]  every question that ended OUTCOME (default
+                                                    partially_supported) since the last deploy: what each still
+                                                    lacked, its query and its sources. Read-only.
     python3 scripts/lab_claim_replay.py run         for the ones missing evidence: search Europe PMC full text for the
                                                     open claims and run the same coverage check on the whole question,
                                                     with the quotes it already had carried forward
@@ -208,6 +211,26 @@ def live(since=None, notebook=NOTEBOOK, releases=None):
             "most_repeated": [{"attempts": n, "question": q[:110]} for n, q in repeated]}
 
 
+def missing(since=None, notebook=NOTEBOOK, releases=None, status="partially_supported"):
+    """For the reviews with one outcome since the last deploy: each question, what it was still missing, and which
+    source records it had. `live` shows one example per outcome; a repair needs the whole spread. Read-only."""
+    since = since or last_deploy(releases) or ""
+    out, seen = [], set()
+    for row in _rows(notebook):
+        if str(row.get("at") or "") < since: continue
+        if (row.get("review_outcome") or LCE.outcome(row)[0]) != status: continue
+        inquiry = row.get("inquiry") or {}
+        q = str(inquiry.get("question") or "")
+        if q in seen: continue
+        seen.add(q)
+        cov = row.get("coverage_check") if isinstance(row.get("coverage_check"), dict) else {}
+        out.append({"question": q, "missing": [str(x) for x in (cov.get("missing") or [])],
+                    "query": str(inquiry.get("uniprot_query") or ""),
+                    "sources": [str(x) for x in (row.get("source_accessions") or [])][:6],
+                    "fulltext": bool(row.get("claim_evidence") or row.get("fulltext_passages"))})
+    return out
+
+
 def overflow(limit=12, root=None):
     """The size breakdown of the coverage requests that did not fit. Which part is oversized decides the repair,
     and the counts alone cannot say (Chat's review, 2026-10-14): a question, the standing instructions, one
@@ -279,6 +302,15 @@ def main(argv):
                 print("      %7d  %s" % (item["chars"], item["path"]))
             print("      largest single item is %s of the evidence" %
                   ("%.0f%%" % (100 * r["largest_share"]) if r["largest_share"] is not None else "?"))
+        return 0
+    if cmd == "missing":
+        status = next((a for a in argv[1:] if not a[:1].isdigit()), "partially_supported")
+        rows = missing(status=status)
+        print("%d distinct questions ended %s since the last deploy" % (len(rows), status))
+        for r in rows:
+            print("- %s\n    query: %s\n    sources: %s" % (r["question"][:200], r["query"][:120], ", ".join(r["sources"]) or "none"))
+            for m in r["missing"][:6]:
+                print("      missing: %s" % m[:200])
         return 0
     if cmd == "live":
         got = live(argv[1] if len(argv) > 1 else None)

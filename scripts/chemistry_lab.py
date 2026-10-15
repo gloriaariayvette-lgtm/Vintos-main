@@ -2457,6 +2457,50 @@ def _class_scope_text(members):
                "; ".join("%s (%s)" % (m["accession"], m["name"] or "unnamed") for m in members)))
 
 
+_NOT_A_NAME = re.compile(r"\b(?:residues?|domains?|regions?|isoforms?|variants?|mutants?|human|mouse|amino|positions?|"
+                         r"sites?|loops?|helix|helices|motifs?|e\.g|i\.e|see|aka|also|or|and)\b|\d+\s*[-\u2013]\s*\d+", re.I)
+
+
+def _alias_issues(question, rows):
+    """A name the question gives in brackets after a gene symbol that the symbol's own record does not carry.
+
+    15 October: "the human SLC26A1 (pendrin) protein" was reviewed and answered from SLC26A1's record, sulfate
+    anion transporter 1; pendrin is SLC26A4. The all-caps check ("GLUT1 (SLC1A1)") never saw a name in lower case.
+    A record not listing a name is not proof the name is wrong, so this is a premise the record does not establish,
+    never a contradiction. Only a one-word name is checked ("pendrin", "ZnT8", "fibrillin-1"): a phrase describes
+    the protein in many wordings, and words naming a region, a residue range or an organism are not names."""
+    norm = lambda text: re.findall(r"[a-z0-9]+", str(text).casefold().replace("-", ""))
+    out = []
+    for symbol, alias in re.findall(r"\b([A-Z][A-Z0-9]*[0-9][A-Z0-9]*)\s*\(([^()]{2,40})\)", str(question or "")):
+        alias = alias.strip()
+        if _NOT_A_NAME.search(alias) or "/" in alias or re.fullmatch(r"[A-Z][A-Z0-9-]{1,}", alias):
+            continue
+        owner = None
+        for row in rows:
+            genes = set()
+            for gene in row.get("genes") or []:
+                for key in ("geneName", "synonyms"):
+                    values = gene.get(key) or []
+                    values = [values] if isinstance(values, dict) else values
+                    genes.update(str(v.get("value", "")).upper() for v in values if isinstance(v, dict))
+            if symbol.upper() in genes:
+                owner = (row, genes); break
+        if not owner:
+            continue
+        row, genes = owner
+        names = [str(row.get("protein_name") or "")] + [str(x) for x in row.get("protein_aliases") or []]
+        words = norm(alias)
+        if len(words) != 1 or len(alias.split()) != 1:
+            continue   # a phrase describes the protein and is phrased many ways; a one-word name identifies one
+        if "".join(words).upper() in {g.replace("-", "") for g in genes}:
+            continue
+        if any(set(words) <= set(norm(name)) for name in names if name):
+            continue
+        out.append("the question calls %s \"%s\"; its record (UniProt %s, %s) does not give that name"
+                   % (symbol, alias, row.get("accession"), row.get("protein_name")))
+    return out
+
+
 def _premise_issues(question, rows):
     """What the question asserts about its one target that the target's own UniProt record does not list.
 
@@ -3753,16 +3797,19 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
                 'speculative_reading': '', 'next_question': step,
                 'entity_context_check': entity}
-    premise = _premise_issues(inquiry.get('question'), [r for r in proteins if isinstance(r, dict)
-                                                        and (not entity.get('selected_accessions')
-                                                             or r.get('accession') in entity['selected_accessions'])])
+    _established = [r for r in proteins if isinstance(r, dict)
+                    and (not entity.get('selected_accessions') or r.get('accession') in entity['selected_accessions'])]
+    _aliases = _alias_issues(inquiry.get('question'), _established)
+    premise = _aliases + _premise_issues(inquiry.get('question'), _established)
     if premise:
         missing = '; '.join(premise)
         return {'answers_question': 'not established: ' + missing, 'missing_evidence': missing,
                 'factual_observation': 'What the question assumes is not annotated on its target: ' + missing,
                 'speculative_reading': '', 'evidence_status': 'insufficient',
-                'next_question': 'Ask about a feature the record does list, or bring a source that establishes this '
-                                 'one — a curated record not annotating something is not the same as its absence.',
+                'next_question': ('Fetch the protein that name belongs to, or ask about this record by its own name.'
+                                  if _aliases else
+                                  'Ask about a feature the record does list, or bring a source that establishes this '
+                                  'one — a curated record not annotating something is not the same as its absence.'),
                 'entity_context_check': entity,
                 'premise_check': {'issues': premise, 'outcome': 'unverified_premise',
                                   'basis': 'absence_from_target_uniprot_record_not_a_contradiction'}}
