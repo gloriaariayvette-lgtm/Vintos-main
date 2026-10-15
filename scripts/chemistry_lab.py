@@ -3359,6 +3359,17 @@ def _coverage_budget(request):
             'context_budget':COVERAGE_CONTEXT_BUDGET, 'fits':total <= COVERAGE_CONTEXT_BUDGET}
 
 
+def _coverage_fits(inquiry, observations):
+    """True when this evidence could be assessed now, whole or split, by the same budget the review uses; nothing is
+    written. _coverage_deferral saves a snapshot when it defers, which a mere question must not."""
+    prepared = _coverage_request(inquiry, observations)
+    if not prepared: return False
+    if _coverage_parts(prepared) is not None: return True
+    evidence, _, _, request = prepared
+    return (_coverage_budget(request)['fits']
+            and _coverage_budget(_coverage_sufficiency_request(inquiry, evidence))['fits'])
+
+
 def _coverage_preflight(inquiry, observations, prepared):
     """Persist all input before deferring; unchanged oversized input never calls a model."""
     if not prepared: raise ValueError('coverage addresses could not be constructed without collision')
@@ -4554,8 +4565,7 @@ def tick():
                 note = {"at": now_iso(), "kind": "atlas_genome_analysis", **genomic,
                         "truth_status": "comparative_model_likelihood_not_functional_validation"}
                 next_phase = "embed"
-            elif (phase in ("embed", "reflect") and not state.get('coverage_retry_observations')
-                  and _structure_pending(state)):
+            elif phase in ("embed", "reflect") and _structure_pending(state):
                 # Before the embed step and again before the review: a saved or resumed step goes from its sources
                 # straight to the review, and those reviews got no structure (15 October, after 16:09 UTC).
                 spec = state["structure_pending"][0]
@@ -4620,6 +4630,18 @@ def tick():
                                 'structure_pending','structure_evidence','structure_for'):
                         state.pop(key, None)
                 else:
+                    if coverage_retry and state.get("structure_evidence") and \
+                            state.get("structure_for") == str(inquiry.get("question") or ""):
+                        # An overflow retry reads the structures its records name too (15 October: 11 of ~20 reviews
+                        # after the structure fix were these, all without one). Its saved evidence is left as it was;
+                        # the structures are added only if the whole still fits, else it goes on without them.
+                        with_structure = dict(coverage_retry, STRUCTURE=state["structure_evidence"])
+                        try:
+                            fits = _coverage_fits(inquiry, with_structure)
+                        except Exception:
+                            fits = False
+                        if fits:
+                            coverage_retry = with_structure
                     observations = coverage_retry or {
                         "embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
                         "records": visible_records,
