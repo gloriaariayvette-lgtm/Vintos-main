@@ -60,16 +60,25 @@ ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistr
 # run under an eliot action, and a run writes its JSON below ROOT. Without eliot installed nothing changes.
 try:
     import eliot as _eliot
-except Exception:
+    _ELIOT_IMPORT_ERROR = None
+except Exception as _eliot_exc:
     _eliot = None
+    _ELIOT_IMPORT_ERROR = "%s: %s" % (type(_eliot_exc).__name__, _eliot_exc)
 ELIOT_LOG = os.path.join(ROOT, "eliot.jsonl")
 _ELIOT_READY = False
+# VINTOS_ELIOT_REQUIRED=1 turns "no eliot, no trace" into a failure naming this interpreter and the import error
+# (2026-10-15); unset keeps tracing optional. The ESMFold subprocess inherits it.
+ELIOT_REQUIRED_ENV = "VINTOS_ELIOT_REQUIRED"
 LAST_FOLD_TASK = None   # serialized task id of the latest fold, so the parser that reads it nests under it
 
 
 def _eliot_ready():
     global _ELIOT_READY
-    if _eliot is None: return False
+    if _eliot is None:
+        if os.environ.get(ELIOT_REQUIRED_ENV) == "1":
+            raise RuntimeError("eliot is required (%s=1) but cannot be imported by %s: %s"
+                               % (ELIOT_REQUIRED_ENV, sys.executable, _ELIOT_IMPORT_ERROR))
+        return False
     if not _ELIOT_READY:
         _ensure()
         _eliot.to_file(open(ELIOT_LOG, "ab"))

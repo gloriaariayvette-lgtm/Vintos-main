@@ -19,8 +19,19 @@ import sys
 # parser made two processes and could never nest). Optional: the ESMFold interpreter may not carry eliot.
 try:
     import eliot as _eliot
-except Exception:
+    _ELIOT_IMPORT_ERROR = None
+except Exception as _eliot_exc:
     _eliot = None
+    _ELIOT_IMPORT_ERROR = "%s: %s" % (type(_eliot_exc).__name__, _eliot_exc)
+# VINTOS_ELIOT_REQUIRED=1 (inherited from the Lab that started this worker) makes a missing eliot a failure naming
+# this interpreter and the original import error, instead of an untraced fold (2026-10-15).
+ELIOT_REQUIRED_ENV = "VINTOS_ELIOT_REQUIRED"
+
+
+def _eliot_missing():
+    if os.environ.get(ELIOT_REQUIRED_ENV) == "1":
+        raise RuntimeError("eliot is required (%s=1) but cannot be imported by %s: %s"
+                           % (ELIOT_REQUIRED_ENV, sys.executable, _ELIOT_IMPORT_ERROR))
 
 # Measured on Aegis's RTX 5080 (15.9 GiB), 2026-10-01: 350 residues 8.7 GiB peak / 13 s, 600 10.3 GiB / 63 s,
 # 911 13.3 GiB / 443 s. 350 was a guess that refused Band 3 (P02730, 911). The limit is the longest length
@@ -35,13 +46,17 @@ ELIOT_LOG = WS / "memory" / "chemistry-lab" / "diagnostics" / "eliot-esmfold.log
 
 def _action(action_type, **fields):
     """An eliot action nested under the current one; a no-op when eliot is not in this interpreter."""
-    if _eliot is None: return contextlib.nullcontext()
+    if _eliot is None:
+        _eliot_missing()
+        return contextlib.nullcontext()
     return _eliot.start_action(action_type=action_type, **fields)
 
 
 def _eliot_open():
     """Send this run's JSON lines to the Lab's diagnostics folder."""
-    if _eliot is None: return
+    if _eliot is None:
+        _eliot_missing()
+        return
     ELIOT_LOG.parent.mkdir(parents=True, exist_ok=True)
     _eliot.to_file(open(ELIOT_LOG, "a", encoding="utf-8"))
 MODEL_CACHE = Path(os.environ.get(
@@ -154,8 +169,10 @@ def fold(body):
 
 
 def main():
-    _eliot_open()
     try:
+        # inside the receipt: a log that cannot be opened, or eliot required and absent, is answered as
+        # {"ok": false, ...} with exit 2 before any model is loaded (it was an uncaught traceback, 2026-10-15)
+        _eliot_open()
         with _action("esmfold_job"):
             with _action("parse_input"):
                 body = json.load(sys.stdin)
