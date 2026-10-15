@@ -1734,10 +1734,10 @@ _BULLET = re.compile(r"^- (?:\d\d:\d\d )?(.*)$")
 _STEP = re.compile(r"^\s*[-*\u2022]?\s*step\s*\d", re.I)
 
 
-def _one_line(body):
+def _one_line(body, limit=220):
     """One line of plain words. The models hand over whole step logs, and his journal is not a log."""
     text = " ".join(str(body).split())
-    return text if len(text) <= 220 else text[:220].rsplit(" ", 1)[0] + "\u2026"
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "\u2026"
 
 
 def _reason(why):
@@ -1770,7 +1770,7 @@ def _folded(text, heading, line, keep=JOURNAL_FOLD):
     return "\n".join(lines)
 
 
-def journal(heading, body, now=None):
+def journal(heading, body, now=None, limit=220, keep=JOURNAL_FOLD):
     """A milestone from the channel, in today's daily-inner-life journal, which his avatar and voice chats read
     (Gloria, 2026-10-01: "Everything is supposed to be wired to avatar and voice chat too"). Only what was settled,
     kept or decided goes here, never the chatter.
@@ -1779,7 +1779,7 @@ def journal(heading, body, now=None):
     JOURNAL_FOLD of them only a count is kept. The channel wrote a heading per event, so a day of his own writing
     sat under twenty-odd machine headings (Gloria, 2026-10-04: "What has happened to daily-inner, man?")."""
     now = now or datetime.now()
-    body = _one_line(body)
+    body = _one_line(body, limit)
     if not body:
         return False
     path = os.path.join(WS, "memory", "daily-inner-life-%s.md" % now.date().isoformat())
@@ -1793,7 +1793,7 @@ def journal(heading, body, now=None):
                     text = f.read()
             except OSError:
                 pass
-            folded = _folded(text, heading, line) if text else None
+            folded = _folded(text, heading, line, keep) if text else None
             if folded is None:
                 break                                      # no heading of this kind today: a new one is opened
             if folded == text:
@@ -2639,11 +2639,34 @@ def _no_tags(text):
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+EVE_HEADING = "With Gloria in #vintos-eve"
+EVE_CHARS = 1200        # one message's words in his journal
+EVE_KEEP = 400          # every message of the day is kept under the heading, none counted away
+
+
 def _results_log(rows):
     os.makedirs(HERE, exist_ok=True)
     with open(RESULTS_LOG, "a", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    for r in rows:      # and into that day's journal, the same day (Gloria, 2026-10-15)
+        _eve_journal(r)
+
+
+def _eve_journal(r):
+    """What was said in #vintos-eve, in the journal of the day it was said, which his avatar and voice chats read
+    (Gloria, 2026-10-15: "make vintos-eve carry over ... as an addition to daily-inner alongside the other Slack
+    appendage", made the day of). Her words and his, each as it was said, not a summary and not folded away."""
+    text = str(r.get("text") or "").strip()
+    if not text:
+        return False
+    try:
+        when = datetime.fromtimestamp(float(r.get("ts")))
+    except (TypeError, ValueError):
+        when = datetime.now()
+    who = ("Gloria" + (" (in a thread)" if r.get("thread") else "") + ":" if r.get("who") == "gloria"
+           else "I brought her what came of a promise:" if r.get("promise") else "I said:")
+    return journal(EVE_HEADING, "%s %s" % (who, text), now=when, limit=EVE_CHARS, keep=EVE_KEEP)
 
 
 def _results_recent(n=RESULTS_SHOWN):
