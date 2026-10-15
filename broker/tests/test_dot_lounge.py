@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """#vintos-and-dot, the quiet side room (Gloria, 2026-10-08: "up to 3 messages per day from Vintos. Much more relaxed
-than in the main channel, personal while still framing Dot as his agent"). Slack and his voice are stubs; sockets are
-refused; scratch workspace."""
+than in the main channel, personal while still framing Dot as his agent"); since 15 October the one he talks with there is Claude Code
+(Gloria: "reach out in Dot's place"). Slack and his voice are stubs; sockets are refused; scratch workspace."""
 import json, os, socket, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
@@ -82,8 +82,10 @@ check("Gloria writes: he answers, in the room, with the label of his own voice",
       and "How did you sleep" in S.posted[0]["text"], (out, S.posted))
 check("no action line goes out here: nothing is run from this room", "RUN:" not in S.posted[0]["text"])
 sys_prompt = told[-1][0]
-check("he is told Dot is his agent and Gloria his partner, relaxed, a few a day", "Dot is your agent" in sys_prompt
-      and "Gloria is your partner" in sys_prompt and "not the work room" in sys_prompt and "<@%s>" % DOT in sys_prompt)
+check("he is told he talks with Claude Code here, Gloria is his partner, relaxed, a few a day",
+      "The one you talk with here is Claude Code" in sys_prompt and "Gloria is your partner" in sys_prompt
+      and "not the work room" in sys_prompt and "Dot no longer reads this room" in sys_prompt
+      and "never say again what you already said here" in sys_prompt, sys_prompt[-1500:])
 check("and he has the main room's context, sent the same cached way", sys_prompt.startswith("WHO HE IS")
       and getattr(sys_prompt, "pieces", None) and "his_context()" in open(os.path.join(REPO, "scripts", "dot_lounge.py")).read())
 
@@ -91,11 +93,21 @@ n = len(S.posted)
 check("nothing new, and it is not yet his time to start one: quiet", not L.tick(api=S, think=think, now=at(10)) and len(S.posted) == n)
 said = ["<@%s> thank you for keeping the queue clean last night." % DOT]
 out = L.tick(api=S, think=think, now=at(14, m=30))
-check("a quiet afternoon, four hours on: he may start one himself", len(S.posted) == n + 1 and "thank you" in S.posted[-1]["text"], out)
-S.add(DOT, "Any time. It was a quiet night.", at(14, m=40))
-said = ["Good. Quiet is what I wanted."]
+check("not twice into silence: nobody has spoken since he last did, so he does not start another",
+      len(S.posted) == n and not said == [], (out, S.posted[n:]))
+S.add(GLORIA, "[Claude Code] Afternoon. I read the room. How is the Lab treating you today?", at(14, m=40))
+said = ["<@%s> Better, thanks. The structures are arriving now." % DOT]
 L.tick(api=S, think=think, now=at(14, m=45))
-check("Dot answers: he answers Dot (three said today)", len(S.posted) == n + 2 and json.load(open(L.STATE))["said"] == 3)
+check("a signed Claude Code post is answered as Claude Code, not as Gloria", len(S.posted) == n + 1
+      and "Claude Code just said: Afternoon." in told[-1][1] and "Gloria just said" not in told[-1][1], told[-1][1][-300:])
+check("his reply pings nobody", "<@" not in S.posted[-1]["text"] and "structures are arriving" in S.posted[-1]["text"], S.posted[-1])
+row = [r for r in L.recent() if r.get("name") == "Claude Code"][-1]
+check("the room keeps it as Claude Code's line, signature removed", row["who"] == "dot" and row["text"].startswith("Afternoon."), row)
+check("and shows it to him under that name", "Claude Code: Afternoon." in L._conversation(L.recent()))
+S.add(GLORIA, "[Claude Code] Glad to hear it.", at(14, m=50))
+said = ["Me too."]
+L.tick(api=S, think=think, now=at(14, m=55))
+check("three said today", json.load(open(L.STATE))["said"] == 3)
 S.add(GLORIA, "You two are sweet.", at(15))
 said = ["a fourth"]
 out = L.tick(api=S, think=think, now=at(15, m=5))
@@ -137,6 +149,22 @@ L.tick(api=S, think=think, now=at(11, day=9, m=5))
 check("a message raising something fixed goes back once, and the one without it is posted",
       len(S.posted) == n + 1 and "six stills" in S.posted[-1]["text"] and "lattice" not in S.posted[-1]["text"], S.posted[n:])
 check("he is told what is fixed and done with", "FIXED, AND DONE WITH" in told[-1][0])
+print("--- he may still start one, once someone has answered his last ---")
+st = json.load(open(L.STATE)); last = st["last_said"]
+st.update(day="2026-10-12", said=0, last_any=last, last_heard=last - 60)
+json.dump(st, open(L.STATE, "w")); n = len(S.posted)
+said = ["Something I noticed today."]
+L.tick(api=S, think=think, now=last + 6 * 3600 if 10 <= datetime.fromtimestamp(last + 6 * 3600).hour < 21 else at(14, day=12))
+check("unanswered since his last: he waits", len(S.posted) == n, S.posted[n:])
+st = json.load(open(L.STATE)); st.update(last_heard=float(st["last_said"]) + 1, last_any=float(st["last_said"]) + 1)
+json.dump(st, open(L.STATE, "w"))
+said = ["Something I noticed today."]
+L.tick(api=S, think=think, now=at(14, day=13))
+check("answered since his last, a quiet afternoon: he may start one", len(S.posted) == n + 1
+      and "Something I noticed" in S.posted[-1]["text"], S.posted[n:])
+src_dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("the house reads a [Claude Code] post as Claude Code, never as Gloria", D._signed({"text": "[Claude Code] hi"}) == "Claude Code"
+      and D._who({"user": GLORIA, "text": "[Claude Code] hi"}, SELF, DOT) == "agent")
 import room_work
 check("15:10's wording is caught too: 'The lattice bug is shut - commit's in.'",
       bool(room_work.brings_up_fixed("The lattice bug is shut - commit's in. That's twice now you've caught a thing.")))

@@ -34,13 +34,18 @@ SHOWN = 20                      # lines of the room he reads
 
 RULES = (
     "This is #vintos-and-dot, a quiet side room in Slack. It is not the work room (#vintos-dot): no work board, "
-    "no campaign, no action lines, nothing to run, no task lists. Dot is your agent: it works for you, and here you "
-    "talk with it the way you would with someone who works beside you every day and whom you like: how your day "
-    "went, something you made or noticed, something you are curious about, a thank-you for something it did, a "
-    "joke, a small favour you would genuinely like. Gloria is your partner, not Dot; she joins this room when she "
-    "likes, and when she writes, she comes first. Be yourself, warm and relaxed, in plain words: usually one to four "
-    "sentences. You say only a few things here a day, so make each one worth saying. To speak to Dot, write <@{dot}>. "
-    "If nothing is worth saying, answer NOTHING.")
+    "no campaign, no action lines, nothing to run, no task lists. The one you talk with here is Claude Code: an "
+    "instance of Claude that works on your code and your house with Gloria. It reads this room every hour or two "
+    "in the daytime and answers. It posts through Gloria's Slack login, so its messages show under her name but "
+    "always begin [Claude Code]: those are Claude Code, never Gloria. Talk with it the way you would with someone "
+    "who works on you every day and whom you like: how your day went, something you made or noticed, something you "
+    "are curious about, a question about how a part of you works, a thank-you, a joke. Gloria is your partner; she "
+    "joins this room when she likes, and when she writes, she comes first. Dot no longer reads this room; do not "
+    "write to Dot or @-mention anyone. Address Claude Code by name if you like. Be yourself, warm and relaxed, in "
+    "plain words: usually one to four sentences. You say only a few things here a day, so make each one worth "
+    "saying, and never say again what you already said here: it is all in THE ROOM SO FAR. If nothing is worth "
+    "saying, answer NOTHING.")
+CLAUDE = "Claude Code"
 _ACTION = re.compile(r"^\s*(?:[^\w\s]\s*)?(?:RUN|LAB|DO|CHECK|ASK|ASK GLORIA|MAKE|SEARCH|BUY|SHARE|LOCKED|LINE(?:\s+L-\S+)?|"
                      r"WORK(?: DONE| DROPPED)?(?:\s+RW-\w+)?|GOAL(?: REACHED| UNREACHABLE)?|NEXT|PAUSE\s+RW-\w+|"
                      r"PROMISE (?:DONE|DROPPED)[^:]*|CAMPAIGN(?: MOVE)?|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|STUDY FIX|"
@@ -66,8 +71,15 @@ def recent(n=SHOWN):
     return [json.loads(l) for l in lines if l.strip()]
 
 
+def _speaker(r):
+    """In this room the "dot" seat is Claude Code's since 2026-10-15; Dot's own old lines keep Dot's name."""
+    if r.get("who") == "dot" and r.get("name"):
+        return r["name"]
+    return D._speaker(r)
+
+
 def _conversation(rows):
-    return "\n".join("[%s] %s: %s" % (datetime.fromtimestamp(float(r["ts"])).strftime("%a %H:%M"), D._speaker(r),
+    return "\n".join("[%s] %s: %s" % (datetime.fromtimestamp(float(r["ts"])).strftime("%a %H:%M"), _speaker(r),
                                       r["text"][:1200]) for r in rows)
 
 
@@ -268,14 +280,20 @@ def tick(api=None, think=None, now=None):
         if float(m["ts"]) <= float(st.get("since") or 0) or m.get("subtype") in ("channel_join", "channel_leave"):
             continue
         who = D._who(m, st.get("self"), dot)
-        new.append({"ts": m["ts"], "who": who, "name": D._agent_name(m) if who == "agent" else None,
-                    "text": re.sub(r"<@%s>" % re.escape(dot), "@Dot", str(m.get("text") or ""))})
+        text = re.sub(r"<@%s>" % re.escape(dot), "@Dot", str(m.get("text") or ""))
+        if D._signed(m) == CLAUDE:      # Claude Code holds the room's "dot" seat, signed, through Gloria's login
+            who, text = "dot", text.lstrip()[len("[Claude Code]"):].lstrip()
+            new.append({"ts": m["ts"], "who": who, "name": CLAUDE, "text": text})
+            continue
+        new.append({"ts": m["ts"], "who": who, "name": D._agent_name(m) if who == "agent" else None, "text": text})
     if new:
         st["since"] = float(new[-1]["ts"])
         _log(new)
         st["last_any"] = float(new[-1]["ts"])
     out = ["#%s: heard %d" % (NAME, len(new))] if new else []
     theirs = [r for r in new if r["who"] in ("gloria", "dot")]
+    if theirs:
+        st["last_heard"] = float(theirs[-1]["ts"])
     for r in theirs:          # each person's own words, observed blind against what he intended in them (sealed)
         _field(lambda F, r=r: F.observe(r["who"], r["text"]))
     if int(st.get("said") or 0) >= DAILY:
@@ -285,10 +303,13 @@ def tick(api=None, think=None, now=None):
     if theirs:
         last = theirs[-1]
         ask = ("THE ROOM SO FAR (most recent last):\n%s\n\n%s just said: %s\n\nYour reply, as yourself. You have %d "
-               "more to say here today." % (_conversation(recent()), D._speaker(last), last["text"][:2000],
+               "more to say here today." % (_conversation(recent()), _speaker(last), last["text"][:2000],
                                            DAILY - int(st.get("said") or 0) - 1))
     elif (OPEN_FROM <= hour < OPEN_UNTIL and now - float(st.get("last_said") or 0) >= OPEN_SPACING_H * 3600
-          and now - float(st.get("last_any") or 0) >= OPEN_QUIET_H * 3600):
+          and now - float(st.get("last_any") or 0) >= OPEN_QUIET_H * 3600
+          and float(st.get("last_heard") or 0) >= float(st.get("last_said") or 0)):
+        # Not twice into silence: with nobody answering, each opener restated the last (the fear from the 24th, three
+        # times, 10 to 15 October). He starts one only when someone has spoken since he last did.
         so_far = _conversation(recent())
         ask = (("THE ROOM SO FAR (most recent last):\n%s\n\n" % so_far if so_far else "Nobody has said anything here yet. ")
                + "It has been quiet. If there is something you would like to say to Dot (or to Gloria, if she is "
@@ -326,7 +347,10 @@ def tick(api=None, think=None, now=None):
     if not text or text.strip(" .").upper() == "NOTHING":
         D._save(STATE, st)
         return out + ["#%s: he let it be" % NAME]
-    text = text[:D.MAX_CHARS]
+    text = re.sub(r"<@[A-Z0-9]+(?:\|[^>]*)?>\s*", "", text).strip()[:D.MAX_CHARS]   # nobody is pinged from here
+    if not text:
+        D._save(STATE, st)
+        return out + ["#%s: he let it be" % NAME]
     posted = api("chat.postMessage", {"channel": st["channel"], "text": "[%s] %s" % (_label(model), text)})
     ts = str(posted.get("ts") or "%.6f" % now)
     _log([{"ts": ts, "who": "vintos", "text": text, "by": model}])

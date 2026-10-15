@@ -2162,7 +2162,8 @@ def fresh(api, channel, self_id, since, watch=()):
 
 # Muse and Grok Bot post through Gloria's own Slack login (their Slack connectors), so they sign their messages.
 # Grok Bot cannot join as its own Slack app: it is her personal bot (Grok Bot, 2026-10-01).
-SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot"}
+# Claude Code posts through her login too (2026-10-15), so a "[Claude Code]" post is never read as Gloria.
+SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot", "[Claude Code]": "Claude Code"}
 
 
 def said_meanwhile(api, channel, state, promised=()):
