@@ -4533,7 +4533,10 @@ def tick():
                 note = {"at": now_iso(), "kind": "atlas_genome_analysis", **genomic,
                         "truth_status": "comparative_model_likelihood_not_functional_validation"}
                 next_phase = "embed"
-            elif phase == "embed" and _structure_pending(state):
+            elif (phase in ("embed", "reflect") and not state.get('coverage_retry_observations')
+                  and _structure_pending(state)):
+                # Before the embed step and again before the review: a saved or resumed step goes from its sources
+                # straight to the review, and those reviews got no structure (15 October, after 16:09 UTC).
                 spec = state["structure_pending"][0]
                 import chemistry_sources
                 try:
@@ -4542,7 +4545,7 @@ def tick():
                 except RuntimeError as exc:
                     if 'cooldown' in str(exc):    # the one PDB request a minute: wait for it, as his own sources do
                         state["effective_state"] = "waiting_for_source"; _atomic(STATE, state)
-                        return {"ok": True, "state": "waiting_for_source", "next_phase": "embed"}
+                        return {"ok": True, "state": "waiting_for_source", "next_phase": phase}
                     sourced, failure = None, str(exc)[:240]
                 except Exception as exc:
                     sourced, failure = None, str(exc)[:240]
@@ -4552,8 +4555,9 @@ def tick():
                     _append(os.path.join(ROOT, "source-receipts.jsonl"), receipt_row)
                     for rec in receipt_row.get("records") or []:
                         state.setdefault("structure_evidence", []).append(dict(rec, for_accession=spec.get("for_accession")))
-                next_phase = "embed"
+                next_phase = phase
                 note = {"at": now_iso(), "kind": "structure_read", "entry_id": spec.get("entry_id"),
+                        "question": str((state.get("inquiry") or {}).get("question") or "")[:300],
                         "for_accession": spec.get("for_accession"), "receipt_id": receipt_row.get("receipt_id"),
                         "records_returned": len(receipt_row.get("records") or []),
                         **({"failure": failure} if not sourced else {}),
