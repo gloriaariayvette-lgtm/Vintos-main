@@ -538,6 +538,11 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         return res
     if surface not in CLAUDE_SURFACES:
         return await grok_stage("grok(surface)")
+    # A forced Grok turn comes before every toggle. It used to be checked only after Sol, Argon and local, so when
+    # Argon declined and the guard forced Grok, Argon was simply asked again (Gloria, 2026-10-15: "I SHOULD have
+    # received a Grok turn but I didn't").
+    if _consume_forced():
+        return await grok_stage("grok(forced)")
     if read_mode().get("mode") == "grok":
         return await grok_stage("grok(toggle)")
     if read_mode().get("mode") == "sol":

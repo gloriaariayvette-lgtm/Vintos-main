@@ -9931,6 +9931,8 @@ Your current self-model (excerpt):
                     _gj = await _gaio.wait_for(_gask(_JUDGE % (_um, (reply or "")[:900]), 8), timeout=10)
                     if "DECLIN" in _gj:
                         print(f"[guard] {_model_used} declined intimate content - re-routing to grok", flush=True)
+                        _declined_by = {"argon": "Argon", "sol": "Sol", "gemini": "Argon"}.get(
+                            str(_model_used).split(":")[0].split("(")[0].lower(), "Claude")
                         _mr.arm_grok_turns(1)
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
@@ -9953,8 +9955,10 @@ Your current self-model (excerpt):
                             import urllib.request as _gur
                             _gur.urlopen(_gur.Request(
                                 "https://ntfy.sh/velaris-gloria-9kx",
-                                data=("Toggle was off. Claude declined, so this one reply came from Grok "
-                                      "instead. The session model was not changed - the next turn tries Claude again.").encode(),
+                                data=(("%s declined, so this one reply came from Grok instead." % _declined_by)
+                                      if "grok" in str(_model_used).lower() else
+                                      ("%s declined, and Grok could not be reached, so the reply came from %s."
+                                       % (_declined_by, _model_used))).encode(),
                                 headers={"Title": "Vintos routed to Grok", "Priority": "default"}),
                                 timeout=5)
                         except Exception: pass
