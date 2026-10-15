@@ -122,6 +122,26 @@ M.tick()
 st = json.load(open(M.STATE))
 check("the new question reads its own entry, not the old one's", [x["entry_id"] for x in ASKED] == ["3D9S"]
       and [x.get("entry_id") for x in st.get("structure_evidence") or []] == ["3D9S"], (ASKED, st.get("structure_evidence")))
+print("--- a saved or resumed step that goes straight to the review still reads it ---")
+REPLY["mode"] = "ok"; ASKED.clear(); SEEN.clear()
+Q2 = "How do the helical arrangements of the human SLC26A4 and SLC26A5 STAS domains compare?"
+M._atomic(M.STATE, {"phase": "reflect", "turns": 12, "inquiry": {"question": Q2, "source_query": lit},
+                    "records": [dict(r, length=700 + i) for i, r in enumerate(recs[1:])]})
+x, y, z = M.tick(), M.tick(), M.tick()
+check("from the review step, each target's entry is read first", [x.get("kind"), y.get("kind")] == ["structure_read", "structure_read"]
+      and [a["entry_id"] for a in ASKED] == ["7WK1", "7S8X"], (x, y, ASKED))
+check("then the review runs with the structures", z.get("kind") == "reflection" and len(SEEN[-1].get("STRUCTURE") or []) == 2,
+      (z, SEEN[-1].keys() if SEEN else None))
+notes = [json.loads(l) for l in open(M.NOTEBOOK) if l.strip()]
+reads = [n for n in notes if n.get("kind") == "structure_read"][-2:]
+check("each structure read names its question", len(reads) == 2 and all(n.get("question") == Q2 for n in reads), reads)
+
+ASKED.clear()
+M._atomic(M.STATE, {"phase": "reflect", "turns": 13, "inquiry": {"question": Q}, "records": recs[1:],
+                    "coverage_retry_observations": {"records": recs[1:], "LITERATURE": []}})
+M.tick()
+check("a retry of a review that overflowed keeps its fixed evidence and reads nothing new", not ASKED, ASKED)
+
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
