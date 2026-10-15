@@ -73,15 +73,27 @@ LAST_FOLD_TASK = None   # serialized task id of the latest fold, so the parser t
 
 
 def _eliot_ready():
+    """Tracing on, or False for untraced. The log is found from ROOT when tracing starts, not when this module loads:
+    a suite that repoints ROOT to a throwaway store traced into her real one (15 October, the first day eliot was
+    installed on Aegis), and a missing folder crashed the parser it was tracing. A log that cannot be opened leaves
+    the Lab untraced, never broken, unless VINTOS_ELIOT_REQUIRED=1 asks for the failure."""
     global _ELIOT_READY
+    required = os.environ.get(ELIOT_REQUIRED_ENV) == "1"
     if _eliot is None:
-        if os.environ.get(ELIOT_REQUIRED_ENV) == "1":
+        if required:
             raise RuntimeError("eliot is required (%s=1) but cannot be imported by %s: %s"
                                % (ELIOT_REQUIRED_ENV, sys.executable, _ELIOT_IMPORT_ERROR))
         return False
     if not _ELIOT_READY:
-        _ensure()
-        _eliot.to_file(open(ELIOT_LOG, "ab"))
+        log = os.path.join(ROOT, os.path.basename(ELIOT_LOG))
+        try:
+            os.makedirs(os.path.dirname(log), exist_ok=True)
+            _eliot.to_file(open(log, "ab"))
+        except OSError as exc:
+            if required:
+                raise RuntimeError("eliot is required (%s=1) but its log %s cannot be opened by %s: %s"
+                                   % (ELIOT_REQUIRED_ENV, log, sys.executable, exc))
+            return False
         _ELIOT_READY = True
     return True
 
@@ -3347,6 +3359,17 @@ def _coverage_budget(request):
             'context_budget':COVERAGE_CONTEXT_BUDGET, 'fits':total <= COVERAGE_CONTEXT_BUDGET}
 
 
+def _coverage_fits(inquiry, observations):
+    """True when this evidence could be assessed now, whole or split, by the same budget the review uses; nothing is
+    written. _coverage_deferral saves a snapshot when it defers, which a mere question must not."""
+    prepared = _coverage_request(inquiry, observations)
+    if not prepared: return False
+    if _coverage_parts(prepared) is not None: return True
+    evidence, _, _, request = prepared
+    return (_coverage_budget(request)['fits']
+            and _coverage_budget(_coverage_sufficiency_request(inquiry, evidence))['fits'])
+
+
 def _coverage_preflight(inquiry, observations, prepared):
     """Persist all input before deferring; unchanged oversized input never calls a model."""
     if not prepared: raise ValueError('coverage addresses could not be constructed without collision')
@@ -4542,8 +4565,7 @@ def tick():
                 note = {"at": now_iso(), "kind": "atlas_genome_analysis", **genomic,
                         "truth_status": "comparative_model_likelihood_not_functional_validation"}
                 next_phase = "embed"
-            elif (phase in ("embed", "reflect") and not state.get('coverage_retry_observations')
-                  and _structure_pending(state)):
+            elif phase in ("embed", "reflect") and _structure_pending(state):
                 # Before the embed step and again before the review: a saved or resumed step goes from its sources
                 # straight to the review, and those reviews got no structure (15 October, after 16:09 UTC).
                 spec = state["structure_pending"][0]
@@ -4608,6 +4630,18 @@ def tick():
                                 'structure_pending','structure_evidence','structure_for'):
                         state.pop(key, None)
                 else:
+                    if coverage_retry and state.get("structure_evidence") and \
+                            state.get("structure_for") == str(inquiry.get("question") or ""):
+                        # An overflow retry reads the structures its records name too (15 October: 11 of ~20 reviews
+                        # after the structure fix were these, all without one). Its saved evidence is left as it was;
+                        # the structures are added only if the whole still fits, else it goes on without them.
+                        with_structure = dict(coverage_retry, STRUCTURE=state["structure_evidence"])
+                        try:
+                            fits = _coverage_fits(inquiry, with_structure)
+                        except Exception:
+                            fits = False
+                        if fits:
+                            coverage_retry = with_structure
                     observations = coverage_retry or {
                         "embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
                         "records": visible_records,

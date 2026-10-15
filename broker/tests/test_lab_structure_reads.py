@@ -136,11 +136,33 @@ notes = [json.loads(l) for l in open(M.NOTEBOOK) if l.strip()]
 reads = [n for n in notes if n.get("kind") == "structure_read"][-2:]
 check("each structure read names its question", len(reads) == 2 and all(n.get("question") == Q2 for n in reads), reads)
 
-ASKED.clear()
-M._atomic(M.STATE, {"phase": "reflect", "turns": 13, "inquiry": {"question": Q}, "records": recs[1:],
-                    "coverage_retry_observations": {"records": recs[1:], "LITERATURE": []}})
-M.tick()
-check("a retry of a review that overflowed keeps its fixed evidence and reads nothing new", not ASKED, ASKED)
+print("--- an overflow retry reads them too, and keeps its saved evidence ---")
+ASKED.clear(); SEEN.clear()
+Q3 = "What is the fold of the human SLC26A4 and SLC26A5 STAS domains?"
+saved = {"records": [dict(r, length=900 + i) for i, r in enumerate(recs[1:])], "LITERATURE": [], "note": "saved"}
+M._atomic(M.STATE, {"phase": "reflect", "turns": 13, "inquiry": {"question": Q3}, "records": saved["records"],
+                    "coverage_retry_observations": saved})
+deferred_dir = os.path.join(M.ROOT, "coverage-deferred")
+before = sorted(os.listdir(deferred_dir)) if os.path.isdir(deferred_dir) else []
+x, y, z = M.tick(), M.tick(), M.tick()
+check("the retry reads its targets' entries before its review", [x.get("kind"), y.get("kind")] == ["structure_read"] * 2
+      and len(ASKED) == 2, (x, y, ASKED))
+check("its review sees the structures beside the saved evidence, which is unchanged",
+      z.get("kind") == "reflection" and len(SEEN[-1].get("STRUCTURE") or []) == 2 and SEEN[-1].get("note") == "saved"
+      and SEEN[-1]["records"] == saved["records"], (z, list(SEEN[-1].keys()) if SEEN else None))
+real_fits = M._coverage_fits
+M._coverage_fits = lambda inquiry, observations: "STRUCTURE" not in observations
+ASKED.clear(); SEEN.clear()
+Q4 = "What is the fold of the human SLC26A5 STAS domain, compared with SLC26A4?"
+M._atomic(M.STATE, {"phase": "reflect", "turns": 14, "inquiry": {"question": Q4},
+                    "records": [dict(r, length=950 + i) for i, r in enumerate(recs[1:])],
+                    "coverage_retry_observations": dict(saved, records=[dict(r, length=950 + i) for i, r in enumerate(recs[1:])])})
+M.tick(); M.tick(); M.tick()
+check("when the structures would not fit, the retry goes on with its saved evidence alone",
+      SEEN and "STRUCTURE" not in SEEN[-1] and SEEN[-1].get("note") == "saved", list(SEEN[-1].keys()) if SEEN else None)
+M._coverage_fits = real_fits
+after = sorted(os.listdir(deferred_dir)) if os.path.isdir(deferred_dir) else []
+check("asking whether it fits writes no deferred snapshot", after == before, (before, after))
 
 check("nothing reached the network", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
