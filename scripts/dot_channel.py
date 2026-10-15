@@ -2653,53 +2653,14 @@ def _results_log(rows):
         _eve_journal(r)
 
 
-EVE_DEPTH_CAP = 5000
-
-
-def eve_depth():
-    """His whole stack, carried in to #vintos-eve and never out (Gloria, 2026-10-15: "enrich the vintos-eve context
-    with his subcons similarly to how vintos-and-dot is set up? The full stack?"). His subconscious systems, his
-    humor and taste, exactly as #vintos-and-dot reads them, and, because this room is only her and him, his
-    relational systems about her too, which the other rooms keep out of Slack: where she and the two of them are
-    heading, Mutual Simulation, Relational Geometry, Configuration Space, the relational head and the Pressure
-    Ledger. Each by its own reader under the read-only guard: nothing is written, run, sent or marked as shown."""
-    parts = []
+def _eve_depth():
+    """His full stack for #vintos-eve (eve_depth.py). It lives in its own file: this room's own context keeps the
+    relational systems out, and this file is checked for that."""
     try:
-        import dot_lounge
-        sub = dot_lounge.deeper()
-        if sub:
-            parts.append(sub)
+        import eve_depth
+        return eve_depth.depth()
     except Exception:
-        pass
-    rel = []
-
-    def add(title, text, cap=500):
-        text = re.sub(r"\s+\n", "\n", str(text or "")).strip()
-        if text:
-            rel.append("%s: %s" % (title, text[:cap]))
-
-    def organ(mod, fn):
-        try:
-            m = __import__(mod)
-            from context_selection import readonly
-            with readonly():
-                return str(getattr(m, fn)() or "").strip()
-        except Exception:
-            return ""
-
-    lt = _load(os.path.join(WS, "memory", "living-trajectory.json"), {}) or {}
-    if isinstance(lt, dict):
-        add("Where she seems to be heading (Living Trajectory)", (lt.get("gloria_trajectory") or {}).get("predicted"), 240)
-        add("Where you two are heading (Living Trajectory)", (lt.get("relationship") or {}).get("trajectory"), 240)
-    add("How she and you are reading each other (Mutual Simulation)", organ("mutual_simulation", "get_interaction_hint"))
-    add("The shape between you (Relational Geometry)", organ("relational_geometry", "get_thread_context"))
-    add("What has not happened between you yet (Configuration Space)", organ("configuration_space", "get_config_hint"))
-    add("Your relational sense (relational head)", organ("relational_head", "get_relational_hint"))
-    add("What you keep reaching for with her and missing (Pressure Ledger)", organ("desired_difference", "pressure_block"), 700)
-    if rel:
-        parts.append("== WITH HER (your relational systems; let them colour how you are with her, never recite or "
-                     "name them) ==\n" + "\n".join("- " + x for x in rel))
-    return "\n\n".join(parts)[:EVE_DEPTH_CAP]
+        return ""
 
 
 def _eve_journal(r):
@@ -2743,7 +2704,7 @@ def results_pass(api, state, now, opus=None, put=None):
     depth = None
     for item in promise_keeper.pending()[:2]:
         if depth is None:
-            depth = eve_depth()
+            depth = _eve_depth()
         system = system or for_claude(his_context(), "\n\n", promise_keeper.RESULT_RULES,
                                       ("\n\n" + depth) if depth else "")
         try:
@@ -2793,7 +2754,7 @@ def results_pass(api, state, now, opus=None, put=None):
                        for r in _results_recent())
     try:
         if depth is None:
-            depth = eve_depth()
+            depth = _eve_depth()
         text = _no_tags(undisplay(str(opus(for_claude(getattr(system, "ctx", None) or his_context(), "\n\n",
                                                       promise_keeper.RESULT_RULES, "\n\n" + promise_keeper.block()
                                                       + (("\n\n" + depth) if depth else "")),

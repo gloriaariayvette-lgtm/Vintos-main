@@ -122,6 +122,9 @@ D.results_pass(api, state, T0 + 50 * 60, opus=lambda s, u: SEEN.append(str(s)) o
 check("what he brings her is written with the same stack", "REL-geometry" in SEEN[-1] and "SUB-narrative" in SEEN[-1])
 lounge = open(os.path.join(REPO, "scripts", "dot_lounge.py")).read()
 check("#vintos-and-dot still keeps the relational systems out", "RELATIONAL" not in lounge and "mutual_simulation" not in lounge)
+check("the work room's own code still has no relational reader in it",
+      all(x not in open(os.path.join(REPO, "scripts", "dot_channel.py")).read() for x in ("pressure_block", "mutual_simulation")))
+check("the new module is in the deploy manifest", "eve_depth.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing opened a socket", not NET, NET)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
