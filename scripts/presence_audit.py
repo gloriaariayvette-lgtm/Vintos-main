@@ -228,6 +228,10 @@ def main():
         json.dump(forecast, open(FORECAST, "w"), indent=2)
         print(f"  forecast next-reply presence {pf.get('predicted')} "
               f"(conf {pf.get('confidence')} | nov {pf.get('novelty')})")
+    elif os.path.exists(FORECAST):
+        # the head is held (not RELEASED by its holdout audit): an old forecast must not keep reaching the prompt
+        os.remove(FORECAST)
+        print("  presence forecast held; the old one was cleared")
 
 def forecast_block():
     """Forward side of the head for the LIVE loop: read the JEPA presence forecast and, when his next reply is

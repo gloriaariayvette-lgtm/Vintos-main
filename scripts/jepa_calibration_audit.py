@@ -37,7 +37,7 @@ def joined_rows(hist, turns, enc, checkpoint, trained_before):
             return round(1.0 - float(p_ @ a_ / ((p_ @ p_) ** .5 * (a_ @ a_) ** .5 + 1e-9)), 4)
         rows.append({"iso": h["iso"],
                      "g_conf": h["gloria"]["confidence"], "g_dsim": h["gloria"]["decode_similarity"], "g_err": err(h["gloria"]["emb"], eg),
-                     "s_conf": h["self"]["confidence"], "s_dsim": h["self"]["decode_similarity"], "s_err": err(h["self"]["emb"], es)})
+                     "s_conf": (None if h["self"].get("confidence_placeholder") else h["self"].get("confidence")), "s_dsim": h["self"]["decode_similarity"], "s_err": err(h["self"]["emb"], es)})
     return rows
 
 
@@ -101,17 +101,22 @@ def main():
            "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown",
            "checkpoint": _ck, "holdout_protocol": "prospective-checkpoint-v1"}
     for ax in ("g", "s"):
+        if any(r[ax + "_conf"] is None for r in hold):
+            # a placeholder confidence measures nothing: the axis is reported unmeasured, never scored
+            res[ax] = {"unmeasured": "confidence is a placeholder or missing on held-out rows"}; continue
         conf = [r[ax + "_conf"] for r in hold]; dsim = [r[ax + "_dsim"] for r in hold]; e = [r[ax + "_err"] for r in hold]
         wb = [r["iso"][:16] for r in hold if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
         res[ax] = {"monotonicity_conf_vs_err": spear(conf, e), "bins_low_mid_high_err": bins(conf, e),
                    "CONTROL_dsim_vs_err": spear(dsim, e), "wrong_but_confident": wb[:5]}
-    res["axis_lockstep_corr"] = spear([r["g_conf"] for r in hold], [r["s_conf"] for r in hold])
-    res["full_sample"] = {ax: {"monotonicity_conf_vs_err": spear([r[ax + "_conf"] for r in rows], [r[ax + "_err"] for r in rows])} for ax in ("g", "s")}
+    _measured = [r for r in hold if r["g_conf"] is not None and r["s_conf"] is not None]
+    res["axis_lockstep_corr"] = spear([r["g_conf"] for r in _measured], [r["s_conf"] for r in _measured]) if len(_measured) > 2 else None
+    res["full_sample"] = {ax: {"monotonicity_conf_vs_err": spear([r[ax + "_conf"] for r in rows if r[ax + "_conf"] is not None],
+                                                                 [r[ax + "_err"] for r in rows if r[ax + "_conf"] is not None])} for ax in ("g", "s")}
     res["reading"] = ("conf beats control if monotonicity is more negative than CONTROL; equal-or-neither = variance without usefulness. "
                       "lockstep near 1.0 = one global signal wearing two names.")
     json.dump(res, open(OUT, "w"), indent=2)
     print("[jepa-audit] n=%d | gloria mono %s (control %s) | self mono %s (control %s) | lockstep %s"
-          % (n, res["g"]["monotonicity_conf_vs_err"], res["g"]["CONTROL_dsim_vs_err"],
-             res["s"]["monotonicity_conf_vs_err"], res["s"]["CONTROL_dsim_vs_err"], res["axis_lockstep_corr"]))
+          % (n, res["g"].get("monotonicity_conf_vs_err", "unmeasured"), res["g"].get("CONTROL_dsim_vs_err"),
+             res["s"].get("monotonicity_conf_vs_err", "unmeasured"), res["s"].get("CONTROL_dsim_vs_err"), res["axis_lockstep_corr"]))
 if __name__ == "__main__":
     main()

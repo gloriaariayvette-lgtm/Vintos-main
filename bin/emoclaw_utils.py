@@ -1387,8 +1387,12 @@ def _novelty_directive():
     if _j.get("source") != "jepa":
         return ""
     _h = _j.get("self") or {}
-    _nov = float(_h.get("novelty", _j.get("novelty", 0.5)))
-    _conf = float(_h.get("confidence", _j.get("confidence", 0.5)))
+    def _num(v, d):
+        try: return float(v) if v is not None else d
+        except (TypeError, ValueError): return d
+    _nov = _num(_h.get("novelty", _j.get("novelty")), 0.5)
+    # a placeholder or missing confidence is not a measured one: it can never license commitment
+    _conf = 0.0 if _h.get("confidence_placeholder") else _num(_h.get("confidence", _j.get("confidence")), 0.0)
     _lt = _load(_no.path.join(_mem, "living-trajectory.json"))
     _traj = "; ".join((_lt.get("self_trajectory") or {}).get("declared", [])[:2])
     if not _traj:
