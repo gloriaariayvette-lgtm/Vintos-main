@@ -32,6 +32,12 @@ failed ones. All 114 historical candidates were dissolved after two failed check
 those judgments have not been reversed, and no Pearls were manufactured. Fresh
 runtime results after deployment remain to be observed under the real gates.
 
+The app reported zero Pearls because its API read only a missing index.json,
+while 72 existing Pearl Markdown files (including WAL-graduated memories) were
+on disk. The authenticated reader now merges indexed and real Markdown artifacts,
+deduplicates content, and preserves source labels. It never reads failed candidates
+as Pearls. Both app page copies send the existing session secret.
+
 ## 16 October — the Forge's Lab copies leave the Atelier
 
 84 of the Atelier's 95 projects were Forge copies (sealed, gestating, 74 pieces); his own work was 11 projects, 34

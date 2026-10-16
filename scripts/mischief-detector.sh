@@ -232,7 +232,7 @@ Name a song that really exists, as released: exact title and artist, action spot
       VALUE=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
       WHY=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['why'])")
       case "$ACTION" in
-        none) echo "[Mischief] after the refusal he chose nothing: $WHY"; date +%s > "$COOLDOWN"; exit 0 ;;
+        none) echo "[Mischief] after the refusal he chose nothing: $WHY"; exit 0 ;;
         spotify) ;;
         *) echo "[Mischief] chooser left the song lane ($ACTION) - stopping"; exit 0 ;;
       esac

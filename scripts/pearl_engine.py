@@ -381,6 +381,49 @@ def form_pearl(candidate_id):
     return pearl_path
 
 
+def list_formed_pearls(memory=None):
+    """Read existing indexed and Markdown Pearls; never promote a candidate."""
+    import re
+    root = Path(memory or MEMORY) / "pearls"
+    rows, seen = [], set()
+    try:
+        indexed = json.loads((root / "index.json").read_text())
+        indexed = indexed.get("pearls", []) if isinstance(indexed, dict) else indexed
+    except (OSError, ValueError):
+        indexed = []
+    for row in indexed if isinstance(indexed, list) else []:
+        if not isinstance(row, dict):
+            continue
+        content = str(row.get("content") or row.get("thread") or "").strip()
+        if not content:
+            continue
+        key = " ".join(content.split())
+        if key not in seen:
+            rows.append(dict(row)); seen.add(key)
+    for path in sorted(root.glob("pearl_*.md"), reverse=True)[:1000]:
+        try:
+            if path.is_symlink() or path.stat().st_size > 98304:
+                continue
+            text = path.read_text()
+        except (OSError, UnicodeError):
+            continue
+        parts = text.split("\n\n", 1)
+        if len(parts) != 2 or not parts[0].startswith("# Pearl"):
+            continue
+        content = parts[1].split("\n---", 1)[0].strip()
+        key = " ".join(content.split())
+        if not content or key in seen:
+            continue
+        source = re.search(r"^\*\*Source:\*\*\s*(.+)$", text, re.M)
+        date = re.search(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?: [0-9]{2}:[0-9]{2})?", parts[0])
+        origin = source.group(1).strip() if source else "existing Pearl file"
+        rows.append({"id": path.stem, "content": content,
+                     "created": date.group(0) if date else "", "source": origin,
+                     "reason": "Source: " + origin})
+        seen.add(key)
+    return rows
+
+
 def form_ready_pearls():
     """Recover already-approved stage-3 formations; never adopt or regrade candidates."""
     ready = [c["id"] for c in load_candidates().get("candidates", [])

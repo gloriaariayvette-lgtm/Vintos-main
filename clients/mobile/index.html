@@ -3470,7 +3470,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelector('[data-tab="pearls"]').addEventListener('click', function() {
         const field = document.getElementById('pearl-field');
-        VintosUI.request(API + '/api/pearls')
+        VintosUI.request(API + '/api/pearls', {headers: {'X-Vintos-Secret': CONFIG.secret}})
             .then(r => r.json())
             .then(data => renderPearls(data))
             .catch((e) => {

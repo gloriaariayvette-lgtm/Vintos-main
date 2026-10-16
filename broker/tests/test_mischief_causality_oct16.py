@@ -61,7 +61,10 @@ with tempfile.TemporaryDirectory(prefix='oct16-organs-') as scratch:
  (shim/'sitecustomize.py').write_text('''import json,os,urllib.request
 class Response:
  def read(self):return json.dumps({'choices':[{'message':{'content':json.dumps({'action':os.environ['FIXTURE_ACTION'],'value':'#112233 office' if os.environ['FIXTURE_ACTION']=='lights' else 'A fixture joke','why':'fixture choice'})}}]}).encode()
-def fake(*a,**k):return Response()
+def fake(*a,**k):
+ if os.environ['FIXTURE_ACTION']=='spotify_then_none':
+  os.environ['FIXTURE_ACTION']='none' if b'Your earlier pick(s)' in a[0].data else 'spotify'
+ return Response()
 urllib.request.urlopen=fake
 ''')
  (scripts/'vintos-home.py').write_text('''import sys,os,json
@@ -69,20 +72,21 @@ from pathlib import Path
 def load_config():return {'url':'http://test.invalid','entities':{'echo_speak':'test-only'},'lights':{'office':{}}}
 if __name__=='__main__':
  if sys.argv[1]=='rooms':print('office')
+ elif sys.argv[1]=='song-check':print((False,'fixture missing song'))
  else:
   with (Path.home()/'.vintos/workspace/memory/house-test-calls').open('a') as f:f.write(json.dumps(sys.argv[1:])+'\\n')
   print('ok')
 ''')
  shutil.copy(ROOT/'scripts/mischief_log.py',scripts/'mischief_log.py')
  tools=pathlib.Path(scratch)/'tools';tools.mkdir();sleep=tools/'sleep';sleep.write_text('#!/bin/sh\nexit 0\n');sleep.chmod(0o700)
- for action in ('echo','lights','none'):
+ for action in ('echo','lights','none','spotify_then_none'):
   for name in ('.last-mischief','.last-mischief-echo'):(memory/name).unlink(missing_ok=True)
   env=dict(os.environ,PYTHONPATH=str(shim),PATH=str(tools)+os.pathsep+os.environ['PATH'],FIXTURE_ACTION=action)
   before=len(list((memory/'mischief').glob('*.md')))
   r=subprocess.run(['bash',str(ROOT/'scripts/mischief-detector.sh'),'--after-activity'],env=env,capture_output=True,text=True,timeout=15)
   assert r.returncode==0,(action,r.stdout,r.stderr)
   after=len(list((memory/'mischief').glob('*.md')))
-  if action=='none':assert after==before and not (memory/'.last-mischief').exists()
+  if action in ('none','spotify_then_none'):assert after==before and not (memory/'.last-mischief').exists()
   else:assert after==before+1 and (memory/'.last-mischief').exists(),(action,r.stdout,r.stderr)
  print('PASS whole mischief dispatch: Echo and lights reach fake house and leave receipts; none leaves no phantom act/cooldown')
  # Cron recovery handles only ready, adopted/reviewed candidates, not dissolved

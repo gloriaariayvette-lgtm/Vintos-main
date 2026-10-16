@@ -2442,16 +2442,15 @@ async def mark_causality_entry(entry_ref: str, request: Request):
 
 
 @app.get("/api/pearls")
-async def get_pearls():
-    """All pearls and black pearls for the pearl tab."""
+async def get_pearls(request: Request):
+    """Existing Pearl artifacts for the authenticated pearl tab."""
+    _require_secret(request)
     import glob as _glob
     import json as _j
     result = {"pearls": [], "black_pearls": []}
     try:
-        idx_path = os.path.join(MEMORY, "pearls", "index.json")
-        with open(idx_path) as f:
-            data = _j.load(f)
-        result["pearls"] = data.get("pearls", [])
+        from pearl_engine import list_formed_pearls
+        result["pearls"] = list_formed_pearls(MEMORY)
     except: pass
     try:
         bp_dir = os.path.join(MEMORY, "black-pearls")
