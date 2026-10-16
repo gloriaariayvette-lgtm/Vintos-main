@@ -600,6 +600,19 @@ def parse_and_send(reply_text, context=None):
             for _k, _v in _fired.items():
                 if _v["status"] == "sent": _ht[_k] = _now
             _j.dump(_ht, open(_htp, "w"))
+            # What he ran by [TOUCH:] is recorded the way [DO:] records it, so the ledger draws it under his words.
+            # Only [DO:] wrote device-state; a touch on the Tenera, Ridge or Ferri left no mark (Gloria, 16 October:
+            # "the visuals for everything but the Mission STILL are not appearing in the conversation ledger").
+            try:
+                _o_s = __import__("sys"); _here = _o.path.dirname(_o.path.abspath(__file__))
+                if _here not in _o_s.path: _o_s.path.insert(0, _here)
+                from device_context import set_state as _touch_state
+                for _k, _v in _fired.items():
+                    if _v["status"] == "sent" and _k != "thruster":
+                        _lv = int(_v["level"] or 0)
+                        _touch_state(_k, intensity=_lv, pattern=("steady" if _lv > 0 else "still"), set_by="him")
+            except Exception:
+                pass
             _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine",
                        "ferri": "the Ferri (in her panties, out in public)"}
             _txt = " \u00b7 ".join(

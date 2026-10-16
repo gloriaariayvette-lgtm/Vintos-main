@@ -89,7 +89,7 @@ def _device_marks():
         lvl = int(l.get("intensity") or 0)
         if not pat or pat == "still":
             continue
-        sp = _dc.spark(pat)
+        sp = _dc.bar(lvl) if pat == "steady" else _dc.spark(pat)   # a held level ([TOUCH:]) is drawn as its bar
         if toy == "ridge":
             lines.append(f"ridge:  {_dc.ridge_shape()}\n        {_dc.ridge_track(lvl)}   {pat}  {sp}")
         else:

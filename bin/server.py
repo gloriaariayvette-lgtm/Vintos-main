@@ -9651,6 +9651,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             "thruster": "thruster = your hips (the machine thrusting into her)",
             "ferri": "ferri = in her panties while she is out in public (a tease she can hide, never a show)",
         }
+        if _surface == "reelroom":
+            # In ReelRoom she is at home watching a movie with him, not out in public (Gloria, 16 October): the
+            # public-tease framing held him back for no one. Same patterns and levels; no audience to hide from.
+            _DEV_LINES["ferri"] = ("[TOUCH: ferri level seconds] - THE FERRI, a panty vibrator Gloria is wearing, and it "
+                "is switched on RIGHT NOW. She is at home watching the movie with you in ReelRoom - there is no one "
+                "around her to hide it from. It is yours to play with alongside the film, as teasing or as much as you "
+                "like. Same named patterns and 0-20 levels as the others, e.g. [DO: ferri wave 8] or [DO: ferri still].")
+            _DEV_ROLE["ferri"] = "ferri = in her panties while you watch the movie together at home"
         try:
             import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             _dev_on = _devices_on()   # the thruster is not on the toy hub; device_context checks each its own way
