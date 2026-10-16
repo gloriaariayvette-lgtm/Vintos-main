@@ -32,6 +32,12 @@ JR_REPORT = os.path.join(OUT, "json-repair-72f5b73e.md")
 ET_REPORT = os.path.join(OUT, "eliot-tree.md")
 DOT_72F5 = "C:/Users/glori/Documents/Codex/2026-10-08/task/json-parser-72f5b73e-20261016/report.md"
 UNIT = "vintos-dot-channel"
+# Questions on her phone that the day already answered (each pattern, and why it is moot).
+MOOT = ((r"lab_intake_token_file", "the 403 was the Forge's capacity guard"),
+        (r"403 Forbidden", "the 403s were the Forge's capacity guard (four_unfinished), not a key"),
+        (r"lab_forge_consumer", "Study fix SF-7ff16979 handled it and is live"),
+        (r"ValueMap LLM call errors on a missing 'choices'", "Study fix SF-c727a850 handled it and is live"),
+        (r"install official Eliot", "eliot was installed in both of the Lab's interpreters on 15 October"))
 SAID_CLEAN = "closed by Gloria for a clean slate (2026-10-15); not done, take it up fresh if it still matters"
 
 
@@ -225,10 +231,10 @@ def close(apply):
 
         for a in gloria_asks.load():
             if a.get("state") == "asked":
-                moot = "lab_intake_token_file" in json.dumps(a)
+                why = next((w for pat, w in MOOT if re.search(pat, json.dumps(a), re.I)), "")
                 lines.append("ask %s \u201c%s\u201d -> %s" % (a.get("id"), str(a.get("question"))[:90],
-                                                         "answered no: moot, the 403 was capacity" if moot else "left for you"))
-                if apply and moot: gloria_asks.decide(a["id"], "no", how="her clean slate: moot, the 403 was the Forge's capacity guard")
+                                                         ("answered no: moot, " + why) if why else "left for you"))
+                if apply and why: gloria_asks.decide(a["id"], "no", how="her clean slate: moot, " + why)
     finally:
         if apply: _timer("start")
     print("\n".join(lines) or "nothing open")

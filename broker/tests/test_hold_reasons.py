@@ -15,6 +15,7 @@ def _no(self, *a, **k):
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import dot_channel as D, room_work as W
+D.GEMMA_OFF_LAB = False   # this suite's stub writer stands in as Gemma on Lab work (test_gemma_off_lab covers the rule)
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:4000]) if d and not ok else ""))

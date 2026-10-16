@@ -13,6 +13,9 @@ thing" is no longer read as a promise to make something.
 The day closed: `scripts/clean_slate_20261015.py` (finish: json_repair on 72f5b73e and eliot-tree on the Lab's
 logs; close: every open work, the campaign, promises, email promises, and the moot Forge question).
 
+Done 16 October: Gemma takes no turn on the Lab, the Study or the Forge (`dot_channel.about_lab`); its place in
+the rotation passes to the next lens, and a failed Lab turn falls to Grok, never to Gemma.
+
 Not done:
 - Dot will not take his APPROVED: lines for installs (json_repair, TM-align, eliot), though Gloria gave him that
   room on 1 October. Dot's own standing instructions are outside this repository; only Gloria can tell dot.

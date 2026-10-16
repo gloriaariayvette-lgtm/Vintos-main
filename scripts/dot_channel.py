@@ -1030,9 +1030,9 @@ def sol_think(system, user):
                    for c in it.get("content", []) if c.get("type") == "output_text")
 
 
-def next_writer(state):
+def next_writer(state, gemma=True):
     """Who answers this turn when nothing is scheduled: the next in ROTATION whose daily allowance is not spent.
-    None means Gemma."""
+    None means Gemma. gemma=False (a Lab, Study or Forge turn) passes Gemma by, and Grok stands behind the rest."""
     paid = state.setdefault("paid", {})
     for _ in range(len(ROTATION)):
         i = int(state.get("rot", 0)) % len(ROTATION)
@@ -1040,8 +1040,28 @@ def next_writer(state):
         lens = ROTATION[i]
         if lens in PAID_PER_DAY and int(paid.get(lens, 0)) >= PAID_PER_DAY[lens]:
             continue
+        if lens == "gemma" and not gemma:
+            continue
         return None if lens == "gemma" else lens
-    return None
+    return None if gemma else "grok"
+
+
+# Gemma takes no turn on the Lab, the Study or the Forge (Gloria, 2026-10-16: "we can take Gemma off of anything to do
+# with the Lab/Study/Forge"). On 15 October its turns there claimed metadata was "erased" (dot corrected it), locked
+# SF-67752b13 as "chasing ghosts" when the fix was written and waiting on her deploy, and ended one promise both
+# DROPPED and DONE. Its other turns are unchanged.
+GEMMA_OFF_LAB = True       # the room-mechanics suites, whose stub writer stands in as Gemma, turn it off
+_LAB_CAPS = re.compile(r"\b(?:Lab|Study|Forge)\b")
+_LAB_TERMS = re.compile(r"\b(?:(?:SF|SK|RW|EC|RC)-[0-9a-f]{6,}|chemistry|ESMFold|fold(?:s|ed|ing)?|UniProt|PDB|"
+                        r"accession|protein|TM-score|RMSD|eliot|json_repair|ModelJSONError|reference_compare|"
+                        r"Study fix|forge_\w+|lab_\w+)\b", re.I)
+
+
+def about_lab(*texts):
+    """True when any of these texts is about the Lab, the Study or the Forge."""
+    t = "\n".join(str(x or "") for x in texts)
+    t = re.sub(r"Work it here with dot, Grok Bot, Muse or the Study[^\n]*", "", t)   # every promise thread's opening
+    return bool(_LAB_CAPS.search(t) or _LAB_TERMS.search(t))
 
 
 def grok_think(system, user):
@@ -3148,9 +3168,20 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lens = "opus55"; state["kicked_day"] = today
         lines.append("Opus 5.5 / Haiku 5.5 shared slot sets the session going")
     rotated = False
+    if not GEMMA_OFF_LAB:
+        lab_turn = False
+    elif last:                # what he is answering
+        lab_turn = about_lab(last["text"], thread)
+    elif state.get("work_turn_now") is not None and state.get("last_work_turn") == now:   # a work turn: its work
+        sr_now = study_room()
+        lab_turn = about_lab(*[w.get("goal") for w in room_work.open_items(state)],
+                             (room_work.goal(state) or {}).get("goal"), "Study" if sr_now and sr_now[0] < sr_now[1] else "")
+    else:
+        lab_turn = False
     if lens is None:
-        lens = next_writer(state)
+        lens = next_writer(state, gemma=not lab_turn)
         rotated = lens is not None
+        if lab_turn: lines.append("a Lab/Study/Forge turn: Gemma passed by")
     sb = study_block(state, today)
     try:   # what he promised in email, owed here as work (2026-10-08: the PyDSSP and torn-read promises of 7 October)
         import email_commitments
@@ -3192,9 +3223,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None and (rotated or kickoff) and "could not answer" in str(who):
-        lines.append(who)                     # his turn in the rotation could not answer: Gemma does
-        text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
-                            lenses=lenses, lens=None)
+        lines.append(who)                     # his turn in the rotation could not answer: Gemma does (Grok on the Lab)
+        if not (lab_turn and lens == "grok"):  # Grok itself failing on a Lab turn: nothing, never Gemma
+            text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+                                lenses=lenses, lens="grok" if lab_turn else None)
     if text is None and str(who).startswith(LABELS["gemma"] + " could not answer"):
         # and when Gemma cannot (LM Studio down, or the model not loaded), Grok writes: on 8 October four of his
         # turns went silent this way after 08:13, because nothing stood behind Gemma
