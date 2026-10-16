@@ -435,6 +435,7 @@ input[type="range"]::-webkit-slider-thumb {
 @keyframes avripple { from{width:20px;height:20px;margin:-10px;opacity:1} to{width:70px;height:70px;margin:-35px;opacity:0} }
 .dim .bar-fill{background:#e8dcc0 !important;}
 </style>
+<script src="/app/stratagem_voice.js"></script>
 </head>
 <body>
 
@@ -3470,7 +3471,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelector('[data-tab="pearls"]').addEventListener('click', function() {
         const field = document.getElementById('pearl-field');
-        VintosUI.request(API + '/api/pearls')
+        VintosUI.request(API + '/api/pearls', {headers: {'X-Vintos-Secret': CONFIG.secret}})
             .then(r => r.json())
             .then(data => renderPearls(data))
             .catch((e) => {
@@ -4431,7 +4432,7 @@ function _avBrainChipEnsure(){
   var chip=document.getElementById('av-brain-chip');
   if(!chip){
     chip=document.createElement('button'); chip.id='av-brain-chip'; chip.type='button';
-    chip.style.cssText='padding:8px 12px;border-radius:14px;background:rgba(5,5,13,0.6);border:0.5px solid rgba(201,107,60,0.35);color:rgba(201,107,60,0.85);font-size:11px;letter-spacing:0.08em;font-family:JetBrains Mono,monospace;cursor:pointer;white-space:nowrap;';
+    chip.style.cssText='min-height:44px;touch-action:manipulation;padding:8px 12px;border-radius:14px;background:rgba(5,5,13,0.6);border:0.5px solid rgba(201,107,60,0.35);color:rgba(201,107,60,0.85);font-size:11px;letter-spacing:0.08em;font-family:JetBrains Mono,monospace;cursor:pointer;white-space:nowrap;';
     chip.onclick=_avToggleBrain;
     host.insertBefore(chip, host.firstChild);
   }
@@ -4444,15 +4445,15 @@ var _avDrawerDock = (function(){
         if (s && (s.side==='left'||s.side==='right') && typeof s.bottom==='number') return s; } catch(e){}
   return { side:'right', bottom:110 };
 })();
-function _avDrawerApply(){
+function _avDrawerApply(persist){
   var d=document.getElementById('av-drawer'), h=document.getElementById('av-drawer-handle'),
       b=document.getElementById('av-drawer-body'); if(!d||!h||!b) return;
   var right = _avDrawerDock.side==='right';
-  var maxB = Math.max(20, window.innerHeight - 340);
+  var maxB = Math.max(20, window.innerHeight - d.offsetHeight - 16);
   _avDrawerDock.bottom = Math.max(20, Math.min(maxB, _avDrawerDock.bottom));
   d.style.bottom = _avDrawerDock.bottom + 'px';
-  d.style.right = right ? '0' : 'auto';
-  d.style.left  = right ? 'auto' : '0';
+  d.style.right = right ? 'calc(6px + env(safe-area-inset-right, 0px))' : 'auto';
+  d.style.left  = right ? 'auto' : 'calc(6px + env(safe-area-inset-left, 0px))';
   d.style.flexDirection = right ? 'row' : 'row-reverse';
   var rad = right ? '12px 0 0 12px' : '0 12px 12px 0';
   h.style.borderRadius = rad; b.style.borderRadius = rad;
@@ -4460,11 +4461,12 @@ function _avDrawerApply(){
   h.style.borderLeft  = right ? '0.5px solid rgba(201,107,60,0.3)' : 'none';
   b.style.borderRight = h.style.borderRight; b.style.borderLeft = h.style.borderLeft;
   var open = d.getAttribute('data-open')==='1';
-  var closedX = right ? 'translateX(calc(100% - 30px))' : 'translateX(calc(-100% + 30px))';
+  var closedX = right ? 'translateX(calc(100% - 48px))' : 'translateX(calc(-100% + 48px))';
   d.style.transform = open ? 'translateX(0)' : closedX;
   var ch=document.getElementById('av-drawer-chev');
   if(ch){ var out = right ? '‹' : '›'; ch.textContent = open ? (right?'›':'‹') : out; }
-  try { localStorage.setItem('av_drawer_dock', JSON.stringify(_avDrawerDock)); } catch(e){}
+  h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if(persist !== false) try { localStorage.setItem('av_drawer_dock', JSON.stringify(_avDrawerDock)); } catch(e){}
 }
 function avToggleDrawer(){
   var d=document.getElementById('av-drawer'); if(!d) return;
@@ -4473,34 +4475,43 @@ function avToggleDrawer(){
 }
 function _avDrawerInit(){
   var h=document.getElementById('av-drawer-handle'); if(!h) return;
-  var drag=null;
+  var drag=null, suppressClickUntil=0;
   h.addEventListener('pointerdown', function(e){
-    drag={x:e.clientX, y:e.clientY, b:_avDrawerDock.bottom, moved:false};
-    h.setPointerCapture(e.pointerId); e.preventDefault();
+    if(drag || e.isPrimary===false || (e.pointerType==='mouse' && e.button!==0)) return;
+    drag={id:e.pointerId,x:e.clientX,y:e.clientY,b:_avDrawerDock.bottom,moved:false};
+    try{h.setPointerCapture(e.pointerId);}catch(_e){}
+    e.preventDefault();
   });
   h.addEventListener('pointermove', function(e){
-    if(!drag) return;
+    if(!drag || e.pointerId!==drag.id) return;
     var dx=e.clientX-drag.x, dy=e.clientY-drag.y;
-    if(Math.abs(dx)>8||Math.abs(dy)>8) drag.moved=true;
+    if(Math.hypot(dx,dy)>=14) drag.moved=true;
     if(!drag.moved) return;
     var d=document.getElementById('av-drawer');
     if(d) d.style.transition='none';
     _avDrawerDock.bottom = drag.b - dy;
-    // crossing past the middle of the screen flips the dock side
-    _avDrawerDock.side = (e.clientX < window.innerWidth/2) ? 'left' : 'right';
-    _avDrawerApply();
+    // A dead zone at the centre prevents the drawer jumping between edges.
+    if(e.clientX < window.innerWidth/2-24) _avDrawerDock.side='left';
+    else if(e.clientX > window.innerWidth/2+24) _avDrawerDock.side='right';
+    _avDrawerApply(false);
   });
   function end(e){
-    if(!drag) return;
-    var moved=drag.moved; drag=null;
-    try{ if(e && h.hasPointerCapture(e.pointerId)) h.releasePointerCapture(e.pointerId); }catch(_e){}
+    if(!drag || e.pointerId!==drag.id) return;
+    var moved=drag.moved, cancelled=e.type!=='pointerup'; drag=null;
+    suppressClickUntil=Date.now()+600;
+    try{if(h.hasPointerCapture(e.pointerId))h.releasePointerCapture(e.pointerId);}catch(_e){}
     var d=document.getElementById('av-drawer');
     if(d) d.style.transition='transform 0.3s cubic-bezier(.4,0,.2,1)';
-    if(!moved) avToggleDrawer(); else _avDrawerApply();
+    if(!cancelled && !moved) avToggleDrawer(); else _avDrawerApply();
   }
   h.addEventListener('pointerup', end);
   h.addEventListener('pointercancel', end);
   h.addEventListener('lostpointercapture', end);
+  h.addEventListener('click', function(e){
+    // Pointer taps act immediately on release; retain keyboard/VoiceOver clicks.
+    if(Date.now()<suppressClickUntil){e.preventDefault();return;}
+    avToggleDrawer();
+  });
   window.addEventListener('resize', _avDrawerApply);
   _avDrawerApply();
 }
@@ -5204,8 +5215,8 @@ document.querySelector('[data-tab="pearls"]').addEventListener('click', function
   <!-- control drawer: model chip + call, stop, GCS. Tucked off-screen until the
        handle is tapped; drag the handle to move it anywhere along either side
        edge, so it is never in the way. Position persists across launches. -->
-  <div id="av-drawer" style="position:absolute;right:0;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 30px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);pointer-events:auto;">
-  <button id="av-drawer-handle" aria-label="controls" style="touch-action:none;width:30px;height:88px;border-radius:12px 0 0 12px;background:rgba(5,5,13,0.75);border:0.5px solid rgba(201,107,60,0.3);border-right:none;color:rgba(201,107,60,0.8);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:grab;"><span id="av-drawer-chev" style="transition:transform 0.3s ease;">‹</span></button>
+  <div id="av-drawer" style="position:absolute;right:6px;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 48px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);pointer-events:auto;">
+  <button id="av-drawer-handle" type="button" aria-label="Model and call controls" aria-controls="av-drawer-body" aria-expanded="false" style="touch-action:none;-webkit-user-select:none;user-select:none;padding:0;flex:0 0 48px;width:48px;min-width:48px;height:96px;border-radius:12px 0 0 12px;background:rgba(5,5,13,0.75);border:0.5px solid rgba(201,107,60,0.3);border-right:none;color:rgba(201,107,60,0.8);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:grab;"><span id="av-drawer-chev" style="transition:transform 0.3s ease;">‹</span></button>
   <div id="av-drawer-body" style="background:rgba(5,5,13,0.85);border:0.5px solid rgba(201,107,60,0.3);border-right:none;border-radius:12px 0 0 12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;max-height:46vh;overflow-y:auto;">
 
     <!-- voice call -->
@@ -5357,7 +5368,8 @@ function _vcRefreshFraming(){
     VintosUI.request(API+'/api/voice/framing',{headers:h}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.framing) return;
       var vc2=window._vc; if(vc2!==vc) return;
-      if(vc2.provider==='local'){ vc2.framing=d.framing; return; }
+      vc2.framing=d.framing;
+      if(vc2.provider==='local')return;
       if(!vc2.ws||vc2.ws.readyState!==1)return;
       var sess={instructions:(vc2.baseInstr||'')+'\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n'+d.framing};
       if(vc2.provider==='openai') sess.type='realtime';
@@ -5405,7 +5417,7 @@ function startVoiceCallWithToken(token, instructions, provider){
           const id=m.response_id||(m.response&&m.response.id)||session.currentResponse;
           if(!id)return null;
           session.currentResponse=id;
-          if(!session.responses.has(id))session.responses.set(id,{id,text:'',gloria:session.gloriaTurn||'',item:session.itemId,pending:0,played:0,done:false,posted:false});
+          if(!session.responses.has(id))session.responses.set(id,{id,text:'',gloria:session.gloriaTurn||'',item:session.itemId,eventId:session.admissionEvent,audio:[],pending:0,played:0,done:false,posted:false});
           return session.responses.get(id);
         };
         const flush=function(response,interrupted){
@@ -5414,13 +5426,63 @@ function startVoiceCallWithToken(token, instructions, provider){
           const state=interrupted?(response.played?'partial':'unknown'):(response.played?'completed':'not_played');
           session.ledgerPosts.push(Promise.resolve(_vcPostVoiceTurn(response.gloria,response.text,{
             response_id:response.id,item_id:response.item,session_id:session.providerSession,
-            turn_id:session.clientId+':'+response.id,playback_state:state,
+            turn_id:session.clientId+':'+response.id,stratagem_event_id:response.eventId,playback_state:state,
             interrupted:state!=='completed',heard:'',client_session_id:session.clientId
           })).catch(()=>{}));
         };
+        const playChunk=function(delta,response){
+          response.pending++;
+          const str=atob(delta),by=new Uint8Array(str.length);for(let i=0;i<str.length;i++)by[i]=str.charCodeAt(i);
+          const pcm=new Int16Array(by.buffer),floats=new Float32Array(pcm.length);for(let i=0;i<pcm.length;i++)floats[i]=pcm[i]/32768;
+          const buffer=ac.createBuffer(1,floats.length,24000);buffer.getChannelData(0).set(floats);
+          const source=ac.createBufferSource();source.buffer=buffer;source.connect(ac.destination);
+          session.playHead=Math.max(session.playHead,ac.currentTime);session.sources=session.sources||new Set();session.sources.add(source);response.sources=response.sources||new Set();response.sources.add(source);
+          source.onended=()=>{session.sources.delete(source);response.sources.delete(source);response.pending--;if(!session.closing&&!response.revoked)response.played++;flush(response,!!response.revoked);};
+          source.start(session.playHead);session.playHead+=buffer.duration;
+        };
+        const admitInput=async function(){
+          const eventId=session.clientId+':'+session.itemId;
+          try{
+            const admitted=await VintosStratagemVoice.admit(VintosUI.request,API,CONFIG.secret,session.gloriaTurn,eventId);
+            if(window._vc!==session||session.closing||admitted.duplicate)return;
+            if(admitted.control_reply!==undefined){
+              try{ws.send(JSON.stringify({type:'response.cancel'}));}catch(e){}
+              (session.sources||[]).forEach(source=>{try{source.stop();}catch(e){}});
+              _vcPostVoiceTurn(session.gloriaTurn,admitted.control_reply,{turn_id:eventId,client_session_id:session.clientId});
+              return;
+            }
+            session.admissionEvent=eventId;
+            ws.send(JSON.stringify({type:'response.create',response:{instructions:session.baseInstr+'\n\n'+(session.framing||'')+admitted.instructions}}));
+          }catch(e){console.warn('[voice/admission]',e);}
+        };
+        const completeResponse=async function(response){
+          if(response.completing)return;response.completing=true;
+          try{
+            const final=await VintosStratagemVoice.complete(VintosUI.request,API,CONFIG.secret,response.text,response.eventId);
+            response.text=final.reply||'';
+            if(window._vc!==session||session.closing||response.revoked||!final.allowed){response.audio=[];response.done=true;flush(response,true);return;}
+            const el=document.getElementById('av-call-transcript');if(el)el.textContent+=response.text;
+            // If private initiation markup was removed, its spoken audio is never played.
+            // Use the existing speech renderer for the clean public words instead.
+            if(final.changed&&response.text){
+              const spoken=await VintosUI.request(API+'/api/avatar/speak',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({text:response.text})}).then(r=>r.json());
+              if(spoken.audio_url&&!response.revoked){const audio=new Audio(API+spoken.audio_url);response.alternateAudio=audio;response.pending++;audio.onended=()=>{response.pending--;response.played++;flush(response,false);};audio.onerror=()=>{response.pending--;flush(response,true);};audio.play().catch(()=>{response.pending--;flush(response,true);});}
+            }else response.audio.forEach(delta=>playChunk(delta,response));
+            response.audio=[];response.done=true;flush(response,false);
+          }catch(e){response.text='';response.audio=[];response.done=true;flush(response,true);}
+        };
+        session.stratagemWatch=setInterval(function(){
+          session.responses.forEach(function(response){
+            if(!response.eventId||response.checking||response.revoked||(!response.pending&&response.done))return;
+            response.checking=true;
+            const halt=function(){response.revoked=true;response.audio=[];(response.sources||[]).forEach(source=>{try{source.stop();}catch(e){}});if(response.alternateAudio)response.alternateAudio.pause();try{ws.send(JSON.stringify({type:'response.cancel',response_id:response.id}));}catch(e){}};
+            VintosStratagemVoice.eligible(VintosUI.request,API,CONFIG.secret,response.eventId)
+              .then(status=>{if(!status.allowed)halt();}).catch(halt).finally(()=>{response.checking=false;});
+          });
+        },500);
         ws.onopen = function(){ if(window._vc!==session){ws.close();return;}
           if(provider!=='openai') ws.send(JSON.stringify({type:'session.update', session:{voice:'lux', instructions:instructions,
-            turn_detection:{type:'server_vad', prefix_padding_ms:300, silence_duration_ms:800, idle_timeout_ms:20000},
+            turn_detection:null,
             audio:{input:{format:{type:'audio/pcm',rate:24000}, transcription:{model:'grok-transcribe', prompt:'Expect these names and words: Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Nifrathir, EmoClaw, MoltBook, Claude.'}}, output:{format:{type:'audio/pcm',rate:24000}}}}}));
           var s = ac.createMediaStreamSource(mic), node = ac.createScriptProcessor(4096,1,1);
           s.connect(node); node.connect(ac.destination); window._vc.node = node;
@@ -5428,22 +5490,20 @@ function startVoiceCallWithToken(token, instructions, provider){
             var f = e.inputBuffer.getChannelData(0), p = new Int16Array(f.length);
             for(var i=0;i<f.length;i++){var v=Math.max(-1,Math.min(1,f[i]));p[i]=v<0?v*0x8000:v*0x7fff;}
             var u=new Uint8Array(p.buffer), b=''; for(var j=0;j<u.length;j++)b+=String.fromCharCode(u[j]);
-            ws.send(JSON.stringify({type:'input_audio_buffer.append', audio:btoa(b)})); };
+            ws.send(JSON.stringify({type:'input_audio_buffer.append', audio:btoa(b)}));
+            let energy=0;for(let k=0;k<f.length;k++)energy+=f[k]*f[k];const voiced=Math.sqrt(energy/f.length)>.014;
+            if(voiced){
+              if(!session.speaking){try{ws.send(JSON.stringify({type:'response.cancel'}));}catch(e){}(session.sources||[]).forEach(source=>{try{source.stop();}catch(e){}});}
+              session.speaking=true;session.silence=0;
+            }else if(session.speaking){session.silence=(session.silence||0)+f.length/24000;if(session.silence>=.8){session.speaking=false;session.silence=0;ws.send(JSON.stringify({type:'input_audio_buffer.commit'}));}}
+          };
         };
         ws.onmessage = function(ev){ if(window._vc!==session)return; var m; try{m=JSON.parse(ev.data);}catch(e){return;}
           if(m.type==='session.created'){session.providerSession=m.session&&m.session.id;}
           if(m.type==='response.created'){responseFor(m);}
           if(m.type==='response.output_audio.delta' && m.delta){
-            const response=responseFor(m);if(!response)return;response.pending++;
-            var str=atob(m.delta), by=new Uint8Array(str.length); for(var i=0;i<str.length;i++)by[i]=str.charCodeAt(i);
-            var i16=new Int16Array(by.buffer), fl=new Float32Array(i16.length);
-            for(var k=0;k<i16.length;k++)fl[k]=i16[k]/32768;
-            var ab=ac.createBuffer(1,fl.length,24000); ab.getChannelData(0).set(fl);
-            var bs=ac.createBufferSource(); bs.buffer=ab; bs.connect(ac.destination);
-            var now=ac.currentTime; if(window._vc.playHead<now)window._vc.playHead=now;
-            session.sources=session.sources||new Set();session.sources.add(bs);bs.onended=()=>{session.sources.delete(bs);response.pending--;if(!session.closing)response.played++;flush(response,false);};bs.start(window._vc.playHead); window._vc.playHead+=ab.duration;
+            const response=responseFor(m);if(response)response.audio.push(m.delta);
           } else if(m.type==='response.output_audio_transcript.delta' && m.delta){
-            var el=document.getElementById('av-call-transcript'); if(el) el.textContent += m.delta;
             const response=responseFor(m);if(response)response.text+=m.delta;
           } else if((m.type==='conversation.item.input_audio_transcription.updated'||m.type==='conversation.item.input_audio_transcription.completed') && (m.transcript||m.delta)){
             session.itemId=m.item_id||session.itemId;
@@ -5453,15 +5513,16 @@ function startVoiceCallWithToken(token, instructions, provider){
             // transcript at creation time (the 2026-09-12 regression).
             const response=session.currentResponse&&session.responses.get(session.currentResponse);
             if(response&&!response.posted)response.gloria=session.gloriaTurn||'';
-            if(m.type==='conversation.item.input_audio_transcription.completed') _vcRefreshFraming();
+            if(m.type==='conversation.item.input_audio_transcription.completed'){_vcRefreshFraming();admitInput();}
           } else if(m.type==='response.output_audio_transcript.done'){
             const response=responseFor(m);if(response&&m.transcript)response.text=m.transcript;
           } else if(m.type==='response.done'){
-            const response=responseFor(m);if(response){response.done=true;flush(response,false);}session.gloriaTurn='';
+            const response=responseFor(m);if(response)completeResponse(response);session.gloriaTurn='';
           }
         };
         ws.onclose = async function(){
           session.closing=true;
+          clearInterval(session.stratagemWatch);
           session.responses.forEach(r=>flush(r,true));
           try{if(session.node)session.node.disconnect();mic.getTracks().forEach(t=>t.stop());(session.sources||[]).forEach(s=>{try{s.stop();}catch(e){}});await ac.close();}catch(e){}
           await Promise.allSettled(session.ledgerPosts);

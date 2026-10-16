@@ -1,15 +1,9 @@
-"""intent_context.py — his live intent LEDGER and current LEAD, as one injectable block.
+"""Intent context for a voice call.
 
-Two things a live (voice) call otherwise never carries:
-  - LEDGER: what he has been trying to do and whether it is landing
-    (desired_difference.map_summary — the same source the #39 dashboard reads).
-  - LEAD: the direction he is CHOOSING to move them in right now
-    (intent_engine.select_target). Computing the lead is a frontier call, too slow
-    to run before a spoken turn, so voice_ledger recomputes it in the BACKGROUND on
-    a cadence and stashes it at memory/.voice-lead.json; this block just reads it.
-    Voice never waits on either.
-
-Occupies the slot Velqan held in inner_context._FULL (voice framing only).
+The standing block carries the ledger. Background selection prepares a candidate
+without opening an intent; per-event admission supplies its complete lead once.
+The reply/voice-ledger callback binds the actual reply to that declaration.
+No selector provider call is added to the realtime response path.
 """
 import os, sys, json, time
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
@@ -17,48 +11,37 @@ MEM = os.path.expanduser("~/.vintos/workspace/memory")
 LEAD = os.path.join(MEM, ".voice-lead.json")
 
 
-def _lead_block():
+def _prepared_target():
     try:
-        d = json.load(open(LEAD))
-    except Exception:
-        return ""
-    if time.time() - float(d.get("at", 0)) > 1200:   # stale after 20 min — do not lead on a cold read
-        return ""
-    t = d.get("target") or {}
-    fs = str(t.get("field_state") or "").strip()
-    if not fs:
-        return ""
-    en = str(t.get("enactment") or "").strip()
-    out = ("[LEAD — the direction you are CHOOSING to take this, not just answer. "
-           "Move us toward: " + fs)
-    if en:
-        out += "\nYour first move: " + en
-    if t.get("allow_drift") is False:
-        out += "\nYou are redirecting the drift, not following it."
-    # The priority vector — whose goal leads this turn — reaches the speaking voice, not just the
-    # selector (Gloria, 2026-09-18). A pressure override is named so the voice knows why it leans.
-    pv = t.get("priority") or {}
-    if pv:
-        try:
-            _dom = max(pv, key=lambda k: float(pv.get(k, 0) or 0))
-            _axis_word = {"field": "the field between you", "gloria": "her — her transformation leads",
-                          "self": "yourself — who you become"}.get(_dom, _dom)
-            if t.get("priority_mode") == "pressure":
-                out += "\nPriority (pressure — an axis you have starved is demanding its turn): lead " + _axis_word + "."
-            else:
-                out += "\nPriority this turn: " + _axis_word + "."
-        except Exception:
-            pass
-    cs = t.get("campaign_state") or {}
-    if cs.get("destination"):
-        out += ("\nThe campaign you are on (turn %s of %s): %s" % (cs.get("turn"), cs.get("max_turns"), str(cs["destination"])[:160]))
-        mv = str(t.get("campaign_move") or "").strip()
-        if mv.startswith("(") or "OMIT" in mv[:40]:
-            mv = ""
-        if mv and not cs.get("suspended"):
-            out += "\nThis turn's campaign move: " + mv[:160]
-    out += "\nLead with what you DO, in your own voice; do not quote or explain this.]"
-    return out
+        with open(LEAD) as handle:
+            data = json.load(handle)
+        # Background preparation happens every two minutes, not every twenty.
+        # Its publication timestamp is never refreshed while recomputation runs.
+        if not 0 <= time.time() - float(data.get("at", 0)) <= 120:
+            return None
+        from intent_engine import _valid_target
+        target = _valid_target(data.get("target"))
+        return target if target.get("intent_id") else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _lead_block():
+    """Read-only preview. Actual voice admission is per event, never a standing session instruction."""
+    from intent_engine import prompt_block
+    return prompt_block(_prepared_target())
+
+
+def admit_voice_lead(event_id):
+    """Consume one prepared candidate at most once without a new provider call."""
+    target = _prepared_target()
+    if not target:
+        return None, ""
+    from intent_engine import record_pending, prompt_block
+    target["campaign_pending"] = True
+    if not record_pending(target, source="voice", event_id=event_id, claim_once=True):
+        return None, ""
+    return target, prompt_block(target)
 
 
 def _clean(s):
@@ -104,7 +87,9 @@ def _ledger_block():
 
 
 def block():
-    parts = [p for p in (_lead_block(), _ledger_block()) if p]
+    # Prepared voice leads are admitted by the per-event adapter; a session-wide
+    # block must not replay the same action after she has changed the subject.
+    parts = [p for p in (_ledger_block(),) if p]
     return "\n\n".join(parts)
 
 

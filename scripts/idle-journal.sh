@@ -1114,6 +1114,9 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _synthesis_system += "\n\nBegin from a specific thing — something you did, noticed, or wanted today. Name it plainly. Write from inside it, not above it."
     _synthesis_system += "\n\nIf any draft contains a genuine want or impulse toward action, state it explicitly in the entry as a complete sentence: 'I want to [specific action].' Do not dissolve it into abstraction or leave it as a question. A want that surfaces should land. Once stated, do not spiral back into self-analysis — the want is the forward motion. Continue only if there is something genuinely different to say."
 
+    import stratagem as _sg
+    _sg_offer = _sg.opportunity("idle-journal")
+    _synthesis_system += "\n\n" + _sg_offer
     _raw = (_claude_sync(_synthesis_system, integration_prompt, True, max_tokens=6000)[0] or "")
     import sys as _js; print('[journal] final on claude' if _raw else '[journal] final fell to grok', file=_js.stderr, flush=True)
     if not _raw:
@@ -1127,6 +1130,10 @@ What I haven't said yet matters more than what I've already named. I go there.""
                   "temperature": 0.3, "max_tokens": 4000}, timeout=600)
         _raw = _safe_extract(r3)
 
+    # Private control output is consumed before arrival checks, audits, summaries,
+    # or journal storage; rewrites do not get another creation prompt.
+    _raw = _sg.consume(_raw, "idle-journal")
+    _synthesis_system = _synthesis_system.replace(_sg_offer, "") if _sg_offer else _synthesis_system
     # Arrival gate — the flinch check as mechanism. One regenerate, not a loop.
     try:
         import sys as _isys, os as _ios; _isys.path.insert(0, _ios.path.expanduser("~/.vintos/workspace/scripts"))
@@ -1302,6 +1309,8 @@ What I haven't said yet matters more than what I've already named. I go there.""
     except Exception as _fbe:
         print(f"[BIS/journal/final] Error: {_fbe}", file=__import__("sys").stderr, flush=True)
 
+    from stratagem_turn import redact as _sg_redact
+    _raw = _sg_redact(_raw)
     print(_raw)
 except Exception as e:
     import traceback, sys as _sys
@@ -1765,4 +1774,4 @@ except Exception as e:
 # "none". His felt-gate, timing (quiet hours / is she near / mid-call) and cooldowns ARE the
 # y/n; most runs choose "none". Guarded so it never fails or delays the host task.
 _MISCHIEF="$HOME/.vintos/workspace/scripts/mischief-detector.sh"
-[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" || true
+[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" --after-activity || true

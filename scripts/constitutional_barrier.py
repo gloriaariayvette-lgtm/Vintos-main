@@ -138,7 +138,8 @@ def strategy_stop_requested(raw_text):
     inside a longer sentence, are both wrong in this position. Normalize
     whitespace and case, then compare for equality."""
     norm = " ".join((raw_text or "").split()).lower()
-    return norm == STRATEGY_STOP_COMMAND
+    import re
+    return bool(re.fullmatch(r"!strategy stop(?: [0-9a-f]{12})?", norm))
 
 
 def _hardware_stopped():

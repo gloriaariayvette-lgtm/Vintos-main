@@ -14,7 +14,7 @@ for h in HOSTS:
     check("%s invokes the mischief organ as an add-on" % h,
           "mischief-detector.sh" in src and "Mischief add-on" in src)
     check("%s never lets mischief fail or block the host task" % h,
-          '[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" || true' in src)
+          '[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" --after-activity || true' in src)
 
 # mischief-detector.sh must be manifested or the add-on calls a file that never deployed.
 manifest = open(os.path.join(ROOT, "scripts/deploy-atelier.sh")).read()

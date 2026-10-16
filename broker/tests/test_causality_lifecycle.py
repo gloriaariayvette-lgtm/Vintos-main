@@ -186,6 +186,7 @@ class CausalityLifecycleTests(unittest.TestCase):
     def test_ordinary_non_graduating_hypothesis_retires_at_day_seven(self):
         formed = (date.today() - timedelta(days=7)).isoformat()
         h = self.hypothesis(formed=formed)
+        self.c._record_nightly(h, date.today().isoformat(), "unconfirmed", reason="no_bearing_evidence")
         db = {"hypotheses": [h]}
         graduated, retired = self.c.graduate_hypotheses(db)
         self.assertEqual((graduated, retired), (0, 1))
@@ -218,6 +219,7 @@ class CausalityLifecycleTests(unittest.TestCase):
     def test_ghost_branch_faces_the_same_gate_at_day_thirty_two(self):
         formed = (date.today() - timedelta(days=32)).isoformat()
         h = self.hypothesis(formed=formed, source="ghost_branch")
+        self.c._record_nightly(h, date.today().isoformat(), "unconfirmed", reason="no_bearing_evidence")
         db = {"hypotheses": [h]}
         graduated, retired = self.c.graduate_hypotheses(db)
         self.assertEqual((graduated, retired), (0, 1))
@@ -242,6 +244,7 @@ class CausalityLifecycleTests(unittest.TestCase):
         old_requests = sys.modules.get("requests")
         sys.modules["requests"] = fake_requests
         try:
+            self.c._record_nightly(h, date.today().isoformat(), "unconfirmed", reason="no_bearing_evidence")
             db = {"hypotheses": [h]}
             graduated, retired = self.c.graduate_hypotheses(db)
         finally:

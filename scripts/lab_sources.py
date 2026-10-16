@@ -472,7 +472,7 @@ def verify_uniprot_identity(query, records):
         symbols.extend(found if len(words) == 1 else [item for item in found if len(item) >= 4])
     symbols = list(dict.fromkeys(symbols))
     if not symbols: return list(records)
-    kept = []
+    kept, returned = [], []
     for row in records:
         names = set()
         for gene in row.get('genes') or []:
@@ -480,11 +480,15 @@ def verify_uniprot_identity(query, records):
                 values = gene.get(key) or []
                 if isinstance(values, dict): values = [values]
                 names.update(str(v.get('value', '')).upper() for v in values)
+        # The names a record carries are kept before the check so a refusal can say what came back,
+        # not only that it was wrong: "returned O95905" told him nothing about which gene that was.
+        returned.extend(n for n in sorted(names) if n and n not in returned)
         if names.intersection(symbols):
             kept.append(row)
     if records and not kept:
         raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
-                         + '; returned ' + ','.join(str(r.get('primaryAccession')) for r in records[:5]))
+                         + '; returned ' + ','.join(str(r.get('primaryAccession')) for r in records[:5])
+                         + (' naming ' + ','.join(returned[:8]) if returned else ''))
     return kept
 
 

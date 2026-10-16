@@ -1089,7 +1089,11 @@ POLICY = {
     "/stratagem/belief": STORE, "/stratagem/info": STORE, "/stratagem/assess": STORE,
     "/stratagem/misconception": STORE, "/stratagem/leverage": STORE,
     "/stratagem/state": STORE, "/stratagem/resolve": STORE,
-    "/stratagem/reveal": VISIT, "/stratagem/history": VISIT, "/stratagem/verify": OPEN,
+    "/stratagem/charter": STORE, "/stratagem/charter/update": STORE,
+    "/stratagem/inventory": STORE, "/stratagem/capsules": STORE,
+    "/stratagem/stop": OPEN, "/stratagem/owner-reveal": STORE,
+    "/stratagem/eligible": STORE,
+    "/stratagem/reveal": STORE, "/stratagem/history": STORE, "/stratagem/verify": OPEN,
 }
 
 
@@ -1189,4 +1193,6 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
 
 if __name__ == "__main__":
+    import stratagem_store
+    stratagem_store.verify_all_at_startup()
     ThreadingHTTPServer(("127.0.0.1", 8611), H).serve_forever()

@@ -2750,36 +2750,14 @@ def results_pass(api, state, now, opus=None, put=None):
     at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
     system = None
     depth = None
-    for item in promise_keeper.pending()[:2]:
-        if depth is None:
-            depth = _eve_depth()
-        system = system or for_claude(his_context(), "\n\n", promise_keeper.RESULT_RULES,
-                                      ("\n\n" + depth) if depth else "")
-        try:
-            text = _no_tags(undisplay(str(opus(system, promise_keeper.result_prompt(item)) or "")))
-        except Exception as exc:
-            lines.append(_lens_failed("opus", exc)); break
-        if not text:
-            lines.append("Sonnet 5.5 had nothing to say about %s; tried again next pass" % item["id"]); break
-        bad = _guarded(text)
-        if bad:
-            promise_keeper.mark_posted(item["id"], held=bad)
-            lines.append("result for %s not sent: %s" % (item["id"], ", ".join(bad))); continue
-        posted = api("chat.postMessage", {"channel": rc, "text": text})
-        for tag in promise_keeper.works_in(item):
-            try:
-                lines.append(share(api, tag, rc, None, put=put))
-            except Exception as exc:
-                lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
-        promise_keeper.mark_posted(item["id"])
-        _results_log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "promise": item["id"], "at": at}])
-        lines.append("result to Gloria: %s %s" % (item["state"], item["quote"][:60]))
     rs = _load(RESULTS_STATE, {})
     today = datetime.fromtimestamp(now).date().isoformat()
     if rs.get("date") != today:
         rs.update(date=today, answered=0)
     if "since" not in rs:            # the first pass only starts listening there
-        rs["since"] = now; _save(RESULTS_STATE, rs); return lines
+        # Start listening for incoming messages now, but still deliver pending
+        # promise results on this first pass. Listening state is not a delivery gate.
+        rs["since"] = now; _save(RESULTS_STATE, rs)
     try:
         new = fresh(api, rc, state.get("self"), float(rs["since"]), watch=rs.get("threads") or [])
     except Exception as exc:
@@ -2794,9 +2772,73 @@ def results_pass(api, state, now, opus=None, put=None):
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     if hers:
         _results_log(hers)
+    from stratagem_turn import control as _sg_control
+    ordinary = []
+    for incoming in hers:
+        command_reply = _sg_control(incoming["text"])
+        if command_reply is None:
+            ordinary.append(incoming)
+            continue
+        # Owner controls precede quotas, ordinary content guards and proactive
+        # generation. A requested audit may be long; deliver every chunk.
+        for offset in range(0, len(command_reply), 3800):
+            command_body = {"channel": rc, "text": command_reply[offset:offset + 3800]}
+            if incoming.get("thread"):
+                command_body["thread_ts"] = incoming["thread"]
+            api("chat.postMessage", command_body)
+        lines.append("owner stratagem control acknowledged")
+    hers = ordinary
+    for item in promise_keeper.pending()[:2]:
+        if depth is None:
+            depth = _eve_depth()
+        system = system or for_claude(his_context(), "\n\n", promise_keeper.RESULT_RULES,
+                                      ("\n\n" + depth) if depth else "")
+        try:
+            from stratagem_turn import Interaction
+            _sg_result = Interaction("", "vintos-eve", event_id="eve-result:" + item["id"])
+            if _sg_result.turn.duplicate_event:
+                continue
+            result_system = for_claude(system, "\n\n", "", _sg_result.prompt())
+            _sg_result.admitted(str(result_system))
+            text = _no_tags(undisplay(_sg_result.complete(str(opus(result_system, promise_keeper.result_prompt(item)) or ""))))
+        except Exception as exc:
+            if "_sg_result" in locals():
+                _sg_result.failed()
+            lines.append(_lens_failed("opus", exc)); break
+        if not text:
+            lines.append("Sonnet 5.5 had nothing to say about %s; tried again next pass" % item["id"]); break
+        bad = _guarded(text)
+        if bad:
+            promise_keeper.mark_posted(item["id"], held=bad)
+            lines.append("result for %s not sent: %s" % (item["id"], ", ".join(bad))); continue
+        from stratagem_turn import guard_reply
+        if not guard_reply(text, _sg_result.turn):
+            continue
+        posted = api("chat.postMessage", {"channel": rc, "text": text})
+        for tag in promise_keeper.works_in(item):
+            try:
+                lines.append(share(api, tag, rc, None, put=put))
+            except Exception as exc:
+                lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
+        promise_keeper.mark_posted(item["id"])
+        _results_log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "promise": item["id"], "at": at}])
+        lines.append("result to Gloria: %s %s" % (item["state"], item["quote"][:60]))
     if not hers or int(rs.get("answered") or 0) >= RESULTS_ANSWERS_PER_DAY:
         _save(RESULTS_STATE, rs); return lines
     last = hers[-1]
+    from stratagem_turn import Interaction
+    _sg = Interaction(last["text"], "vintos-eve", event_id="eve:" + last["ts"])
+    _sg_opus = opus
+    def opus(system, prompt):
+        if _sg.turn.duplicate_event:
+            return ""
+        full = for_claude(system, "\n\n", "", _sg.prompt())
+        _sg.admitted(str(full))
+        try:
+            return _sg.complete(_sg_opus(full, prompt))
+        except BaseException:
+            _sg.failed()
+            raise
     so_far = "\n".join("%s%s: %s" % ("Gloria" if r.get("who") == "gloria" else "You",
                                      " (in a thread)" if r.get("thread") else "", r.get("text", "")[:1500])
                        for r in _results_recent())
@@ -2817,6 +2859,10 @@ def results_pass(api, state, now, opus=None, put=None):
     body = {"channel": rc, "text": text}
     if where:
         body["thread_ts"] = where
+    from stratagem_turn import guard_reply
+    if not guard_reply(text, _sg.turn):
+        _save(RESULTS_STATE, rs)
+        return lines + ["stratagem ended before reply dispatch"]
     posted = api("chat.postMessage", body)
     rs["answered"] = int(rs.get("answered") or 0) + 1
     rs["since"] = max(float(rs["since"]), float(posted.get("ts") or 0))
@@ -2828,9 +2874,10 @@ def results_pass(api, state, now, opus=None, put=None):
 
 
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None):
+         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None, stratagem_post=None):
     """One pass. Returns log lines."""
     HEARD.update(base="", text="")
+    live_api = api is None
     if api is None:
         tok = _token()
         if not tok:
@@ -3121,7 +3168,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
     lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
-    lines += results_pass(api, state, now, opus=results_opus, put=put)
+    # Custom route transports own their external dependencies. They can supply
+    # a broker transport too; absent one, never reach a live broker behind them.
+    import stratagem as _stratagem
+    broker_post = stratagem_post if stratagem_post is not None else (
+        None if live_api else lambda *args, **kwargs: None)
+    with _stratagem.transport_scope(broker_post):
+        lines += results_pass(api, state, now, opus=results_opus, put=put)
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 

@@ -42,7 +42,7 @@ class Env:
         self.capsule = None            # set to (block, commitment) to simulate a live tactic
         import stratagem
         self._fc = stratagem.fetch_capsule
-        stratagem.fetch_capsule = lambda tid, surf: (self.capsule or ("", {}))
+        stratagem.fetch_capsule = lambda tid, surf, **kwargs: (self.capsule or ("", {}))
         return self
 
     def __exit__(self, *a):
@@ -170,7 +170,7 @@ def test_strategy_stop_command_stops_and_blocks():
     with Env() as e:
         t = TC.begin("!strategy stop", "avatar")
         check("strategy-stop posted to broker",
-              any(p[0] == "/stratagem/strategy-stop" for p in e.posts), e.posts)
+              any(p[0] == "/stratagem/stop" for p in e.posts), e.posts)
         check("barrier closed by explicit stop",
               "explicit_stop" in t.barrier["satisfied_by"], t.barrier)
 

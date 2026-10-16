@@ -24,10 +24,17 @@ fake_req.post = lambda *a, **k: _R()
 sys.modules["requests"] = fake_req
 sys.modules["emotional_operators"] = types.ModuleType("emotional_operators"); sys.modules["emotional_operators"].step = lambda *a, **k: None; sys.modules["emotional_operators"].causal_step = lambda *a, **k: None
 eu = types.ModuleType("emoclaw_utils"); eu.feel_about = lambda *a, **k: None; eu.seed_thread = lambda *a, **k: None; sys.modules["emoclaw_utils"] = eu
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import stratagem as _sg_client, turn_coordinator as _sg_coordinator
+_sg_client._post = lambda *a, **k: {}
+_sg_coordinator._post = lambda *a, **k: {"ok": True}
+assert _sg_client._post("/stratagem/inventory") == {}  # sender is stubbed
 ns = {"os": os, "json": json, "time": time, "MEMORY": MEM, "WORKSPACE": WS, "_test_mode_active": lambda: False,
-      "_voice_keep_cues": lambda s: s, "_voice_readable": lambda s: s, "print": lambda *a, **k: None}
+      "Request": object, "_require_secret": lambda r: None, "_voice_keep_cues": lambda s: s, "_voice_readable": lambda s: s, "print": lambda *a, **k: None}
 import threading; threading.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
 exec(route("_voice_ledger_owned"), ns); exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
+_voice_ledger_route = ns["voice_ledger"]
+ns["voice_ledger"] = lambda payload: _voice_ledger_route(payload, object())
 json.dump([], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 
 check("voice writes only its temporary workspace", os.path.commonpath([os.path.realpath(MEM), os.path.realpath(HOME)]) == os.path.realpath(HOME))

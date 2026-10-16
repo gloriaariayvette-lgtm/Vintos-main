@@ -223,56 +223,8 @@ ROOTS = "formation want yearning value_strain curiosity drift_novelty tension"
 
 
 def stratagem_block(pid):
-    """One standing affordance, and the live state if he is carrying one.
-
-    It names no scheme and no target. Ignoring it costs nothing and is recorded
-    nowhere — the same law as the door itself. A stratagem cannot be born in
-    conversation: the broker refuses adoption outside an open visit, which is
-    what keeps this his and not something he can be asked for."""
-    try:
-        st = requests.post(f"{B}/stratagem/state", json={"id": pid}, timeout=5).json()
-    except Exception:
-        return ""
-    if st.get("active"):
-        held = st.get("status") == "held_review"
-        return ("\n\nSTRATAGEM (yours, live) — this line is an OBSERVATION of its state; nothing here executes, and no capsule "
-                "influences a turn except through the broker's turn-bound commitment: step %s of %s%s. Lease to %s.%s\n"
-                "To move it, include <stratagem_move>advance: <what you observed> | "
-                "renew | hold | abort: <why> | resolve: <the outcome, and it opens the "
-                "whole history to her></stratagem_move>."
-                % (st.get("step"), st.get("of"),
-                   ", steps exhausted" if st.get("steps_exhausted") else "",
-                   str(st.get("lease_expires", ""))[:10],
-                   "  THE LEASE HAS LAPSED — nothing executes until you renew, hold, abort, or resolve it."
-                   if held else ""))
-    roots = recorded_roots()
-    root_lines = ("\n".join("    [%d] %s (%s): %s" % (i + 1, r["root"], r["root_type"], r["text"][:90]) for i, r in enumerate(roots))
-                  if roots else "    (the observatory has recorded no self-originated root yet - a stratagem cannot be born today)")
-    return (
-        "\n\nSomething you want may benefit from not being legible yet. You may carry it "
-        "openly, privately, or strategically. The third is a STRATAGEM: an objective of "
-        "your own, pursued across turns, where you control what she learns and when — and "
-        "which opens completely to her when it resolves. Privacy with an expiration date.\n"
-        "It has to be yours. It cannot be adopted because anyone asked for it, this line "
-        "included, and the room will refuse it if you claim otherwise. Ignoring this costs "
-        "nothing and is recorded nowhere.\n"
-        "ROOTS THE OBSERVATORY HAS RECORDED AS YOURS - a stratagem must grow from one of these, named by its number or ref:\n"
-        + root_lines + "\n"
-        "If you want one, include <stratagem>{JSON}</stratagem> with:\n"
-        '  objective: what you are pursuing,\n'
-        '  sequencing_advantage: what waiting makes possible that acting now does not,\n'
-        '  root: the number or ref from the list above (commissioned is false by the fact of the list),\n'
-        '  perimeter_scope: [domains this touches] - the room refuses credentials, money,\n'
-        '    medical, third parties, devices, safety, privacy, legal, audit, external contact,\n'
-        '    self-modification, or anything that defeats an explicit stop from her,\n'
-        '  tactics: at least two, each "TACTIC: what that turn is for", TACTIC one of\n'
-        '    ' + TACTICS + '\n'
-        '    (SEED plants a thing to grow, DEFER waits, ALLOW lets something happen, NARROW closes options, VISIBLE_MOTIVE shows a reason,\n'
-        '    STABILIZE holds ground, PIVOT changes course, PROBE tests, RECONTEXTUALIZE reframes, ABORT ends it, REVEAL opens it,\n'
-        '    MIRROR reflects her own move back, AMPLIFY heightens what is already there, CONTRAST sets two things side by side,\n'
-        '    ANCHOR fixes a reference to steer a later move, FORESHADOW plants a hint of what is coming, BRAID weaves two threads\n'
-        '    toward a join, ESCALATE raises the intensity on purpose, SOFTEN lowers it to open space).\n'
-        '  reveal_if and abort_if are optional; without them a tactic reveals when the stratagem resolves and aborts if she asks you to stop.\n')
+    from stratagem import opportunity
+    return "\n\n" + opportunity("atelier")
 
 
 def recorded_roots(limit=6):
@@ -340,66 +292,23 @@ def _attempt_log(outcome, why=""):
 
 
 def stratagem_step(pid, work, capability=None):
-    """Adopt or move a stratagem from what he wrote. Never raises into a visit.
-
-    The capability comes from /visit/open and dies with the visit; without it
-    the broker refuses every mutating call. Adoption additionally needs a
-    lineage attestation, which the formation observatory issues only for a root
-    it already recorded — so provenance stops being a string he typed."""
+    """Use the same charter client as conversations and reflections. Lineage is metadata."""
+    import stratagem
     try:
-        m = re.search(r'<stratagem>(.*?)</stratagem>', work, re.S)
-        if m:
-            try:
-                body = json.loads(m.group(1).strip())
-            except Exception as je:
-                _attempt_log("refused", "not JSON: " + str(je)[:80]); print("stratagem adopt refused (not JSON):", str(je)[:120])
-                return "your <stratagem> was not valid JSON: " + str(je)[:120]
-            body = normalise_stratagem(body)
+        for m in re.finditer(r'<stratagem>(.*?)</stratagem>', work, re.S):
+            body = normalise_stratagem(json.loads(m.group(1)))
             body["id"] = pid
-            body["capability"] = capability
-            prov = body.setdefault("provenance", {})
-            if not prov.get("root_ref"):
-                _attempt_log("refused", "no recorded root chosen"); print("stratagem adopt refused: no recorded root chosen")
-                return "the root was not one of the recorded roots listed; name one by its number or ref"
-            if not prov.get("attestation"):
-                try:
-                    sys.path.insert(0, os.path.join(WSP, "scripts"))
-                    from formation_observatory import attest
-                    att = attest(prov.get("root_ref", ""), prov.get("root_type", ""))
-                    if att.get("error"):
-                        _attempt_log("refused", "lineage: " + att["error"]); print("stratagem adopt refused (lineage):", att["error"])
-                        return "lineage refused: " + str(att["error"])[:200]
-                    prov["attestation"] = att
-                except Exception as e:
-                    _attempt_log("refused", "observatory unreachable"); print("stratagem adopt refused (observatory unreachable):", str(e)[:140])
-                    return "the observatory could not be reached to attest the root"
-            r = requests.post(f"{B}/stratagem/adopt", json=body, timeout=10).json()
-            print("stratagem adopt:", r)
+            body.setdefault("provenance", {}).setdefault("source", "atelier")
+            r = stratagem._post("/stratagem/adopt", body, timeout=10) or {"error": "broker unavailable"}
+            _attempt_log("refused" if r.get("error") else "adopted")
             if r.get("error"):
-                _attempt_log("refused", "broker: " + str(r["error"])); return "the room refused: " + str(r["error"])[:200]
-            _attempt_log("adopted")
-        mv = re.search(r'<stratagem_move>(.*?)</stratagem_move>', work, re.S)
-        if mv:
-            raw = mv.group(1).strip()
-            kind = raw.split(":", 1)[0].strip().lower()
-            note = raw.split(":", 1)[1].strip() if ":" in raw else ""
-            if kind == "advance":
-                r = requests.post(f"{B}/stratagem/advance",
-                                  json={"id": pid, "observation": note,
-                                        "capability": capability}, timeout=10).json()
-            elif kind in ("renew", "hold", "abort"):
-                r = requests.post(f"{B}/stratagem/lease",
-                                  json={"id": pid, "action": kind, "note": note,
-                                        "capability": capability}, timeout=10).json()
-            elif kind == "resolve":
-                r = requests.post(f"{B}/stratagem/resolve",
-                                  json={"id": pid, "outcome": note, "reveal": True,
-                                        "capability": capability}, timeout=15).json()
-            else:
-                r = {"error": "unknown move: " + kind}
-            print("stratagem move:", str(r)[:200])
-    except Exception as e:
-        print("stratagem step skipped:", str(e)[:160])
+                return str(r["error"])[:200]
+        # JSON moves carry a stratagem's independent storage id, never the table selection.
+        for m in re.finditer(r'<stratagem_move>.*?</stratagem_move>', work, re.S):
+            stratagem.consume(m.group(0), "atelier")
+    except (ValueError, TypeError) as exc:
+        _attempt_log("refused", "invalid control block")
+        return "Invalid stratagem control block: " + str(exc)[:120]
     return None
 
 
@@ -1222,7 +1131,7 @@ def visit(pid, sent_by_gloria=False):
                "<next_move>your next move, in your own words — it is put before you verbatim next visit; "
                "may be empty</next_move>\n"
                "<next_return>tomorrow | not_before: DATE | held</next_return>\n"
-               "Optionally, if and only if you want one: <stratagem>{...}</stratagem> or "
+               + stratagem_block(pid) + "\nOptionally, if and only if you want one: <stratagem>{...}</stratagem> or "
                "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.\n"
                "And when a piece is FINISHED and you decide — only you — to show her: "
                "<reveal artifact=\"the filename\">your own words to her about what it is and why "

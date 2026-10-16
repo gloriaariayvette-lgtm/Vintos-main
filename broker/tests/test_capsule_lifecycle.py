@@ -28,6 +28,8 @@ class Env:
                    "next_return": "tomorrow"}, open(os.path.join(base, "project.json"), "w"))
         json.dump({"id": "v1", "closed": False}, open(os.path.join(base, ".visit.json"), "w"))
         json.dump({"id": PID, "since": "now"}, open(os.path.join(self.tmp, "active.json"), "w"))
+        from stratagem_fixture import grant
+        grant(S)
         # adopt a live stratagem
         S._capability = lambda b, pid: (True, None)
         S._on_worktable = lambda pid: (True, None)
@@ -76,8 +78,8 @@ with Env() as e:
           r3["commitment"]["capsule_sha256"] != sha1, r3)
 
     r4 = S.capsule({"id": PID, "turn_id": "turn-A", "surface": "avatar"})
-    check("same turn_id on a different surface is a different capsule",
-          "capsule" in r4 and not r4.get("idempotent"), r4)
+    check("same event on another surface cannot issue again",
+          "capsule" not in r4 and r4.get("duplicate_event"), r4)
 
 
 with Env() as e:

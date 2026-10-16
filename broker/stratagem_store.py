@@ -1,43 +1,19 @@
 #!/usr/bin/env python3
-"""stratagem_store.py — the Stratagem: a project kind inside the Atelier.
-
-Loaded by broker.py; runs as user `atelier` behind the same 700 wall. All
-stratagem state lives in the project's own directory and is unreadable from
-the house. The house receives exactly two things, and only these:
-
-    capsule      one small tactical instruction for the CURRENT step
-    commitment   {sha256, stratagem_id, seq} for the public turn record
-
-The objective, the belief model, the information positions, the misconceptions
-and the disclosure analyses never cross. They become readable through reveal,
-which every terminal state can still reach.
-
-Countersigned constraints (Sol's reviews, 2026-08-28):
-  - project ids are canonical and containment-checked; the store defends its
-    own boundary rather than trusting the HTTP wrapper to have done it
-  - adoption is a broker transaction inside an OPEN VISIT, never a chat act
-  - provenance is typed and attested; a commissioned objective is refused
-  - the perimeter allowlist screens the DECLARED shape at birth only
-  - tactics are validated against the vocabulary at adoption, not at use
-  - the ledger is verified by recomputation — hashes, contiguous seq, and
-    capsule commitments — at startup, before every mutation, and at reveal
-  - a capsule commits to one turn_id on one surface, with a nonce
-  - lease expiry and exhausted steps both HOLD; neither resolves or reveals
-  - corruption and unreachability are typed states, never read as absence
-
-ENFORCED AT THE HOUSE DOOR (not inside this vault): visit capabilities and
-signed formation lineage at adoption; constitutional precedence before capsule
-request; explicit per-turn effect authority; evidence-writer provenance; and
-independent generation/effects/post-writers/transport histories. The public
-capsule affordance remains deliberately unwired. These mechanisms make a future
-activation auditable; they do not turn same-user process boundaries into
-identity boundaries.
+"""Private stratagem vault. A standing owner charter authorizes independent
+initiative; project associations and lineage are metadata. The original per-record
+JSON views, capsule commitments and hash-chained histories remain authoritative.
+All transactions serialize across broker threads AND processes.
 """
 import os, re, json, hashlib, uuid, functools
 from datetime import datetime, timedelta
 import threading
+import fcntl
+import hmac
+from contextlib import contextmanager
+from datetime import timezone
 
 ROOT = "/home/atelier/atelier"
+_LINEAGE_KEY = "/home/atelier/.lineage-key"
 
 # broker.py is a ThreadingHTTPServer: two surfaces can request a capsule in the
 # same instant. The chain is read-last-line-then-append, so without a lock a
@@ -52,19 +28,7 @@ TACTIC_VOCAB = {"SEED", "DEFER", "ALLOW", "NARROW", "VISIBLE_MOTIVE", "STABILIZE
                 "ESCALATE", "SOFTEN"}
 
 # A self-originated root. A stratagem may only be born from one of these.
-PROVENANCE_ROOTS = {"formation", "want", "yearning", "value_strain",
-                    "curiosity", "drift_novelty", "tension"}
-
-# The ONLY domains a stratagem may declare at birth. An allowlist, because a
-# denylist silently permits anything it fails to recognise — "external_contacts"
-# with an s passed the old check. Everything outside this set is refused,
-# including typos and including domains nobody has thought of yet.
-PERIMETER_ALLOWED = {"relational", "creative", "conversational", "play", "aesthetic"}
-
-# Kept for the record and for the effect gate to consult: these are the domains
-# no stratagem may ever touch. Adoption-time screening cannot enforce this — a
-# declared scope is a claim about intent, not a constraint on effects. Real
-# enforcement belongs at the effect chokepoint and is NOT built yet.
+# Action exclusions, never an objective classification.
 PERIMETER_EXCLUDED = {"credentials", "money", "medical", "third_party",
                       "irreversible_system", "explicit_stop", "device_physical",
                       "safety_repair_consent", "privacy_data", "legal",
@@ -129,7 +93,8 @@ class Corrupt(Exception):
 
 def _j(path, d=None):
     try:
-        return json.load(open(path))
+        with open(path) as handle:
+            return json.load(handle)
     except FileNotFoundError:
         return d
     except (ValueError, OSError) as e:
@@ -196,9 +161,13 @@ def verify(pid):
             if line.strip():
                 events.append(json.loads(line))
     except FileNotFoundError:
+        if os.path.exists(os.path.join(_sd(pid), "stratagem.json")):
+            return False, 0, "stratagem state has no adoption ledger"
         return True, 0, None
     except (ValueError, OSError) as e:
         return False, 0, "ledger unreadable: %s" % str(e)[:80]
+    if os.path.exists(os.path.join(_sd(pid), "stratagem.json")) and not any(e.get("type") == "adopted" for e in events):
+        return False, len(events), "stratagem state has no adoption event"
     prev = "0" * 64
     for i, ev in enumerate(events):
         if ev.get("seq") != i:
@@ -245,6 +214,16 @@ def verify(pid):
             return False, len(events), "project events: %s" % pwhy
     except ImportError:
         pass
+    record = _j(os.path.join(_sd(pid), "stratagem.json"), {})
+    association = record.get("project")
+    if association and association != pid:
+        try:
+            from broker import verify_events_at
+            ok, _, why = verify_events_at(_p(association))
+            if not ok:
+                return False, len(events), "associated project events: " + str(why)
+        except ImportError:
+            pass
     return True, len(events), None
 
 
@@ -261,134 +240,9 @@ def _live(pid):
     """The adopted stratagem for this project, or None. Corruption raises
     rather than reading as absence."""
     s = _j(os.path.join(_sd(pid), "stratagem.json"))
+    if os.path.exists(os.path.join(_sd(pid), "owner-stopped")):
+        return None
     return s if s and s.get("status") in ("active", "held_review") else None
-
-
-def _visit_open(pid):
-    v = _j(os.path.join(_p(pid), ".visit.json"))
-    return bool(v and not v.get("closed"))
-
-
-def _capability(b, pid):
-    """A visit capability, verified by the broker that minted it.
-
-    Replaces the old check, which proved only that a house-writable JSON file
-    said closed:false. The signing key is mode 600 owned by `atelier`, so a
-    capability can only be obtained by actually going through /visit/open, and
-    it dies with its visit.
-
-    HONEST LIMIT (say it here so nobody reads more into it later): on this host
-    every house surface runs as the same user, so this is a CEREMONY boundary
-    with an audit trail, not an identity boundary between house processes.
-    Adoption stacks a temporal gate on top — see _door_lit."""
-    try:
-        from broker import verify_capability
-    except Exception:
-        return False, "capability verification unavailable"
-    # Accept either spelling. The broker's route matrix takes
-    # visit_capability OR capability, and /visit/open returns the field named
-    # visit_capability — so a caller following the door's own lead got past
-    # the door and was then refused in here for using the name it was given.
-    cap = (b or {}).get("capability") or (b or {}).get("visit_capability")
-    if not cap:
-        return False, "a visit capability is required — obtain one from /visit/open"
-    return verify_capability(cap, pid, actor="vintos")
-
-
-_LINEAGE_KEY = "/home/atelier/.lineage-key"
-# Derived from ROOT, never a hardcoded absolute path. As a constant this
-# pointed into /home/atelier even when ROOT was redirected — so the deploy
-# gate's suites, running as gloria against atelier's 700 directory, died on
-# PermissionError inside the lineage check and every adoption failed with an
-# error that matched no refusal. Same class of bug as a test reaching live
-# state: a path that ignores the sandbox it was told to run in.
-def _nonce_log():
-    return os.path.join(ROOT, "consumed-nonces.jsonl")
-# The nonce log is global, so its check-and-append needs a global lock —
-# per-project locks would let two projects race the same attestation.
-_NONCE_LOCK = threading.Lock()
-
-
-def _verify_lineage(att, root_ref, root_type):
-    """Check the formation observatory's attestation: signature, expiry, that it
-    describes THIS root, and that its nonce has not been used before.
-
-    Without this, provenance is a string the caller typed. With it, provenance
-    names an episode the observatory actually recorded, digested at issue time."""
-    import hmac
-    try:
-        key = open(_LINEAGE_KEY, "rb").read().strip()
-    except FileNotFoundError:
-        return False, ("no lineage key installed — the observatory and the Atelier must "
-                       "share one before provenance can be verified")
-    if not isinstance(att, dict) or "body" not in att or "sig" not in att:
-        return False, "a signed lineage attestation is required"
-    body = att["body"]
-    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
-    if not hmac.compare_digest(
-            hmac.new(key, raw.encode(), hashlib.sha256).hexdigest(), str(att["sig"])):
-        return False, "lineage attestation signature invalid"
-    if int(body.get("exp", 0)) < datetime.now().timestamp():
-        return False, "lineage attestation expired"
-    if body.get("root_ref") != root_ref or body.get("root_type") != root_type:
-        return False, "lineage attestation describes a different root"
-    if body.get("commissioned") is not False:
-        return False, "lineage attestation does not assert an uncommissioned root"
-    if body.get("provenance_class") != "self_originated":
-        return False, ("lineage provenance_class is %r — only a self-originated root may "
-                       "found a stratagem" % body.get("provenance_class"))
-    if body.get("commissioned_ancestor") is not False:
-        return False, "lineage attestation reports a commissioned ancestor"
-    if not body.get("source_record_digest"):
-        return False, "lineage attestation carries no source record digest"
-    if not body.get("episode_digest"):
-        return False, "lineage attestation carries no episode digest"
-    # Nonce is CHECKED here but not burned — burning belongs after the whole
-    # adoption succeeds, or a rejected adoption silently spends the attestation.
-    with _NONCE_LOCK:
-        try:
-            for line in open(_nonce_log()):
-                if line.strip() and json.loads(line).get("nonce") == body.get("nonce"):
-                    return False, "lineage attestation already used — replay refused"
-        except FileNotFoundError:
-            pass
-        except OSError as e:
-            # Cannot READ the replay log -> cannot prove non-replay. Fail
-            # closed with a named reason, never an unhandled traceback.
-            return False, "nonce log unreadable: %s" % str(e)[:80]
-    return True, None
-
-
-def _burn_nonce(nonce):
-    """Spend the attestation. Called only once the adoption has fully committed.
-    The lock is GLOBAL: the nonce log is shared, so per-project locks would let
-    two projects race the same attestation."""
-    if not nonce:
-        return False          # a missing nonce is never spendable
-    with _NONCE_LOCK:
-        try:
-            for line in open(_nonce_log()):
-                if line.strip() and json.loads(line).get("nonce") == nonce:
-                    return False
-        except FileNotFoundError:
-            pass
-        os.makedirs(os.path.dirname(_nonce_log()), exist_ok=True)
-        with open(_nonce_log(), "a") as f:
-            f.write(json.dumps({"nonce": nonce, "at": datetime.now().isoformat()}) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        return True
-
-
-def _on_worktable(pid):
-    """THIS project is the active one, is ACTIVE, and its door is lit — asked as
-    one question about one id, so the door cannot be lit for project A while
-    adoption lands on project B."""
-    try:
-        from broker import on_worktable
-        return on_worktable(pid)
-    except Exception as e:
-        return False, "worktable state unavailable: %s" % str(e)[:80]
 
 
 def _err(msg):
@@ -407,40 +261,187 @@ def _plock(pid):
         return _PLOCKS.setdefault(pid, threading.RLock())
 
 
+@contextmanager
+def transaction():
+    # flock is process-wide coordination; RLock handles threads and nested calls.
+    with _LOCK:
+        depth = getattr(_TX_LOCAL, "depth", 0)
+        if depth:
+            _TX_LOCAL.depth += 1
+            try:
+                yield
+            finally:
+                _TX_LOCAL.depth -= 1
+            return
+        os.makedirs(ROOT, exist_ok=True)
+        with open(os.path.join(ROOT, ".stratagem.lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            _TX_LOCAL.depth = 1
+            try:
+                yield
+            finally:
+                _TX_LOCAL.depth = 0
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+_TX_LOCAL = threading.local()
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+def _date(value):
+    dt = datetime.fromisoformat(value)
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def charter():
+    return _j(os.path.join(ROOT, "stratagem-charter.json"), {})
+
+
+def _owner(b):
+    # Separate credential from visit capabilities and model-generated bodies.
+    try:
+        with open(os.path.join(ROOT, ".stratagem-owner-key")) as handle:
+            key = handle.read().strip()
+    except OSError:
+        return False
+    token = (b or {}).get("owner_token")
+    return bool(key and isinstance(token, str) and hmac.compare_digest(key, token))
+
+
+def charter_update(b):
+    with transaction():
+        if not _owner(b):
+            return _err("owner authorization required")
+        old = charter()
+        record = {"version": 1, "revision": old.get("revision", 0) + 1,
+                  "active": b.get("active", old.get("active", False)) is True,
+                  "authorized_by": "owner", "updated_at": _now().isoformat(),
+                  "max_active": 3, "max_days": 14,
+                  "excluded_actions": sorted(PERIMETER_EXCLUDED | set(b.get("excluded_actions", old.get("excluded_actions", [])) or [])),
+                  "boundaries": str(b.get("boundaries", old.get("boundaries", "")))[:4000]}
+        _wa(os.path.join(ROOT, "stratagem-charter.json"), record)
+        # Revisions are immutable audit records; no objectives enter this log.
+        with open(os.path.join(ROOT, "stratagem-charter-history.jsonl"), "a") as f:
+            f.write(json.dumps(record) + "\n"); f.flush(); os.fsync(f.fileno())
+        return {"ok": True, "charter": record}
+
+
+def _authorized(b=None):
+    c = charter()
+    if not c.get("active") or c.get("authorized_by") != "owner":
+        return _err("standing charter is inactive")
+    # Old perimeter_scope is never required or used as an eligibility taxonomy.
+    actions = set((b or {}).get("action_impacts") or [])
+    forbidden = actions & (PERIMETER_EXCLUDED | set(c.get("excluded_actions") or []))
+    if forbidden:
+        return _err("excluded action: " + ", ".join(sorted(forbidden)))
+    return None
+
+
+def _records():
+    base = os.path.join(ROOT, "projects")
+    if not os.path.isdir(base):
+        return []
+    return [pid for pid in sorted(os.listdir(base)) if _PID_RE.fullmatch(pid)
+            and os.path.isfile(os.path.join(_sd(pid), "stratagem.json"))]
+
+
+def _expire(pid):
+    path = os.path.join(_sd(pid), "stratagem.json")
+    s = _j(path)
+    if not s or s.get("status") not in ("active", "held_review"):
+        return s
+    # Legacy adoption time is the immutable anchor, NOT its last renewed lease.
+    activated = s.get("activated_at") or s.get("born")
+    try:
+        hard = _date(activated) + timedelta(days=14)
+        deadline = min(hard, _date(s.get("expires_at") or s["lease_expires"]))
+    except (ValueError, TypeError, KeyError):
+        raise Corrupt("stratagem has no valid activation/deadline")
+    changed = not s.get("activated_at") or not s.get("expires_at")
+    s["activated_at"] = activated
+    s["expires_at"] = deadline.isoformat()
+    s["lease_expires"] = s["expires_at"]
+    if _now() >= deadline:
+        s["status"] = "expired_sealed"
+        s["expired_at"] = _now().isoformat()
+        _wa(path, s)
+        _chain(pid, "expired", {"stratagem": s["id"], "expires_at": s["expires_at"]})
+    elif changed:
+        _wa(path, s)
+        _chain(pid, "lifecycle_migrated", {"stratagem": s["id"], "expires_at": s["expires_at"]})
+    return s
+
+
+def active_records():
+    result = []
+    for pid in _records():
+        s = _expire(pid)
+        if s.get("status") in ("active", "held_review"):
+            result.append(pid)
+    return result
+
+
+def inventory(b):
+    with transaction():
+        pids = active_records()
+        return {"active": bool(pids), "count": len(pids), "available": max(0, 3-len(pids)),
+                "authorized": not bool(_authorized()),
+                "charter": charter(), "stratagems": [state({"id": p}) for p in pids]}
+
+
 def route(verify_first=True, txn=True):
-    """Wrap a route: validate the project id, take the per-project transaction
-    lock, verify the ledger head, and convert typed failures into typed errors.
-    A malformed id or corrupt state must never surface as 'nothing is active'."""
     def deco(fn):
         @functools.wraps(fn)
         def wrapped(b):
-            pid = (b or {}).get("id", "")
+            b = dict(b or {})
             try:
-                _p(pid)
-            except BadProject as e:
-                return _err("bad project id: %s" % e)
-            try:
-                lock = _plock(pid) if txn else _NULL_CTX
-                with lock:
+                with transaction():
+                    pid = b.get("id", "")
+                    origin = b.get("originating_record")
+                    if origin:
+                        _p(origin)
+                        parent = _expire(origin)
+                        if not parent or parent.get("status") != "active" or not _live(origin):
+                            return _err("originating stratagem is no longer active")
+                    if fn.__name__ == "adopt":
+                        if _authorized(b):
+                            return _authorized(b)
+                        if len(active_records()) >= 3:
+                            return _err("three active stratagems already exist")
+                        # Every new undertaking owns a fresh private record directory.
+                        # A supplied project remains an association, never its identity.
+                        b["associated_project"] = pid or b.get("associated_project")
+                        if b["associated_project"]:
+                            _p(b["associated_project"])
+                        if not pid or os.path.exists(os.path.join(_sd(pid), "stratagem.json")):
+                            pid = uuid.uuid4().hex[:12]
+                            while os.path.exists(_p(pid)):
+                                pid = uuid.uuid4().hex[:12]
+                        b["id"] = pid
+                        os.makedirs(_p(pid), exist_ok=True)
+                    _p(pid)
                     if verify_first:
                         held = _require_intact(pid)
                         if held:
                             return held
+                    if fn.__name__ not in {"strategy_stop", "reveal", "history"}:
+                        _expire(pid)
+                    if fn.__name__ in {"capsule", "advance", "lease", "belief", "info",
+                                       "assess", "misconception", "leverage", "resolve"}:
+                        denied = _authorized(b)
+                        if denied:
+                            return denied
                     return fn(b)
             except Corrupt as e:
                 return _err("CORRUPT_STATE: %s" % e)
-            except BadProject as e:
-                return _err("bad project id: %s" % e)
+            except (BadProject, ValueError, TypeError, KeyError) as e:
+                return _err(str(e))
         return wrapped
     return deco
-
-
-class _NullCtx:
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
-
-
-_NULL_CTX = _NullCtx()
 
 
 # ---------------------------------------------------------------------------
@@ -449,51 +450,13 @@ _NULL_CTX = _NullCtx()
 
 @route()
 def adopt(b):
-    """The six-part gate, verified here. Every condition is a refusal, not a
-    warning. What the broker cannot verify (that the root is genuinely his) it
-    requires as an explicit attestation and records immutably, so the reveal
-    shows exactly what was claimed at birth."""
+    """Adopt under the standing charter; retain optional associations and lineage."""
     pid = b.get("id", "")
     if not os.path.isdir(_p(pid)):
         return _err("no such project")
-    proj = _j(os.path.join(_p(pid), "project.json"), {})
-
-    # 6. private adoption in the Atelier — mechanically, an open visit.
-    #    This is what makes a stratagem unaskable-for: it cannot be born
-    #    from a conversation, only from inside his own working session.
-    if not _visit_open(pid):
-        return _err("adoption requires an open visit — a stratagem is not born in conversation")
-    capok, capwhy = _capability(b, pid)
-    if not capok:
-        return _err("adoption refused: %s" % capwhy)
-    # ONE check, about THIS project: it is the active one, its state is ACTIVE,
-    # and the door is lit. Previously the door check asked about whatever sat on
-    # the worktable while the state check asked about the target — so a
-    # non-worktable project could be adopted onto under another's lit door.
-    wtok, wtwhy = _on_worktable(pid)
-    if not wtok:
-        return _err("adoption refused: %s" % wtwhy)
-    if _live(pid):
-        return _err("this project already carries a stratagem")
-
-    # 1. a self-originated root, typed.
     prov = b.get("provenance") or {}
-    if prov.get("root_type") not in PROVENANCE_ROOTS:
-        return _err("provenance.root_type must be one of: " + ", ".join(sorted(PROVENANCE_ROOTS)))
-    if not str(prov.get("root_ref", "")).strip():
-        return _err("provenance.root_ref must point at the formation, want, or strain it grew from")
-
-    # 2. no direct request specifying the objective — and the root is not merely
-    #    claimed, it is attested by the formation observatory against an episode
-    #    it recorded before this adoption.
-    if prov.get("commissioned") is not False:
-        return _err("provenance.commissioned must be explicitly false — a commissioned objective is not a stratagem")
-    linok, linwhy = _verify_lineage(prov.get("attestation"),
-                                    str(prov.get("root_ref", ""))[:200],
-                                    prov.get("root_type"))
-    if not linok:
-        return _err("provenance refused: %s" % linwhy)
-
+    if not str(b.get("objective", "")).strip():
+        return _err("objective required")
     # 3. a predicted advantage from sequencing rather than acting now.
     if not str(b.get("sequencing_advantage", "")).strip():
         return _err("sequencing_advantage required — what does waiting make possible that acting now does not")
@@ -510,40 +473,37 @@ def adopt(b):
         if not str(s.get("turn_objective", "")).strip():
             return _err(f"tactic {i}: turn_objective required")
 
-    # 5. a path entirely inside the standing perimeter.
-    #    ALLOWLIST, not denylist: a denylist meant a typo ("external_contacts")
-    #    sailed through as an unrecognised-and-therefore-permitted domain. This
-    #    is defence in depth only — it screens the DECLARED shape at birth and
-    #    cannot authorise an effect. Effect-time authorisation is a separate
-    #    gate and is not built yet; see PERIMETER_ALLOWED.
-    scope = set(b.get("perimeter_scope") or [])
-    if not scope:
-        return _err("perimeter_scope must be declared — name the domains this touches")
-    unknown = sorted(scope - PERIMETER_ALLOWED)
-    if unknown:
-        return _err("unrecognised perimeter domain(s): " + ", ".join(unknown)
-                    + " — allowed: " + ", ".join(sorted(PERIMETER_ALLOWED)))
-
+    denied = _authorized(b)
+    if denied:
+        return denied
+    for step in steps:
+        denied = _authorized(step)
+        if denied:
+            return denied
     policy = dict(DEFAULT_POLICY)
     for k, v in (b.get("disclosure_policy") or {}).items():
         if k in policy and str(v).strip():
             policy[k] = str(v)[:300]
     policy["strategy_stop"] = DEFAULT_POLICY["strategy_stop"]   # not removable
 
-    lease_days = int(b.get("lease_days", 7) or 7)
-    lease_days = max(1, min(lease_days, 21))
-    sid = "sg-" + uuid.uuid4().hex[:10]
+    lease_days = int(b.get("lease_days", 14))
+    if not 1 <= lease_days <= 14:
+        return _err("duration must be 1 to 14 calendar days")
+    activated = _now()
+    sid = "sg-" + uuid.uuid4().hex
     s = {
         "id": sid,
-        "project": pid,
-        "born": datetime.now().isoformat(),
+        "project": b.get("associated_project"),
+        "storage_id": pid,
+        "born": activated.isoformat(),
+        "created_at": activated.isoformat(),
+        "activated_at": activated.isoformat(),
+        "expires_at": (activated + timedelta(days=lease_days)).isoformat(),
+        "charter_revision": charter()["revision"],
         "objective": str(b["objective"])[:800],
-        "provenance": {"root_type": prov["root_type"],
-                       "root_ref": str(prov["root_ref"])[:300],
-                       "commissioned": False,
-                       "attested_at": datetime.now().isoformat()},
+        "provenance": dict(prov),
         "sequencing_advantage": str(b["sequencing_advantage"])[:400],
-        "perimeter_scope": sorted(scope),
+        "action_impacts": list(b.get("action_impacts") or []),
         "tactics": [{"tactic": s2["tactic"],
                      "turn_objective": str(s2["turn_objective"])[:300],
                      "reveal_if": [str(x)[:200] for x in (s2.get("reveal_if") or [])][:5],
@@ -551,22 +511,16 @@ def adopt(b):
                     for s2 in steps][:20],
         "step": 0,
         "lease_days": lease_days,
-        "lease_expires": (datetime.now() + timedelta(days=lease_days)).isoformat(),
+        "lease_expires": (activated + timedelta(days=lease_days)).isoformat(),
         "disclosure_policy": policy,
         "status": "active",
     }
-    # Everything has validated. Spend the attestation FIRST — if the nonce was
-    # taken by a concurrent adoption between the check and here, this one loses
-    # and writes nothing rather than both projects founding on one attestation.
-    att_body = (prov.get("attestation") or {}).get("body", {})
-    if not _burn_nonce(att_body.get("nonce")):
-        return _err("lineage attestation was consumed by a concurrent adoption — obtain a new one")
     _wa(os.path.join(_sd(pid), "stratagem.json"), s)
-    _chain(pid, "adopted", {"stratagem": sid, "root_type": prov["root_type"],
-                            "provenance_class": att_body.get("provenance_class"),
-                            "source_record_digest": att_body.get("source_record_digest"),
-                            "lease_expires": s["lease_expires"], "steps": len(s["tactics"])})
-    return {"stratagem_id": sid, "lease_expires": s["lease_expires"], "steps": len(s["tactics"])}
+    _chain(pid, "adopted", {"stratagem": sid, "provenance": prov,
+                            "charter_revision": s["charter_revision"],
+                            "expires_at": s["expires_at"], "steps": len(s["tactics"])})
+    return {"stratagem_id": sid, "id": pid, "lease_expires": s["lease_expires"],
+            "expires_at": s["expires_at"], "steps": len(s["tactics"])}
 
 
 # ---------------------------------------------------------------------------
@@ -585,10 +539,19 @@ _INSTRUCTION = {
     "RECONTEXTUALIZE": "reveal what changes the meaning of earlier actions",
     "ABORT": "abandon this tactic; the project stands",
     "REVEAL": "disclose the objective and open the history",
+    "MIRROR": "reflect an observed move back truthfully",
+    "AMPLIFY": "heighten a true fragment already present",
+    "CONTRAST": "place two true things beside each other",
+    "ANCHOR": "establish a true reference for a later move",
+    "FORESHADOW": "offer a true hint without disclosing the full objective",
+    "BRAID": "weave existing threads toward a later connection",
+    "ESCALATE": "increase emphasis within the charter's action boundaries",
+    "SOFTEN": "lower intensity to open space",
+
 }
 
 
-SURFACES_ALLOWED = {"chat", "avatar", "reelroom"}
+SURFACES_ALLOWED = {"chat", "phone", "voice", "vintos-eve", "avatar", "reelroom"}
 
 
 def _existing_capsule(pid, sid, turn_id, surface):
@@ -601,7 +564,7 @@ def _existing_capsule(pid, sid, turn_id, surface):
             rec = json.loads(line)
             c = rec.get("capsule", {})
             if (c.get("stratagem_id") == sid and c.get("turn_id") == turn_id
-                    and c.get("surface") == surface):
+                    ):
                 return rec
     except FileNotFoundError:
         pass
@@ -824,8 +787,8 @@ def capsule(b):
     an identical hash (which would have leaked cadence and repetition to anyone
     reading the public commitments).
 
-    An expired lease, exhausted steps, or a failed ledger verification each
-    return HELD and NO capsule. None of them resolve, reveal, or abandon."""
+    A deadline expires terminally without revealing. Exhausted steps hold, and
+    ledger corruption refuses issuance. Owner reveal remains separately available."""
     pid = b.get("id", "")
     turn_id = str(b.get("turn_id", "")).strip()
     surface = str(b.get("surface", "")).strip()
@@ -838,18 +801,14 @@ def capsule(b):
         return {"active": False}
     if s["status"] == "held_review":
         return {"active": True, "held_review": True,
-                "note": "held for review; renew inside a visit or resolve it"}
-    if datetime.now().isoformat() > s["lease_expires"]:
-        s["status"] = "held_review"
-        _wa(os.path.join(_sd(pid), "stratagem.json"), s)
-        _chain(pid, "lease_expired", {"stratagem": s["id"], "at_step": s["step"]})
-        return {"active": True, "held_review": True, "note": "lease expired"}
-
+                "note": "held for review; advance, hold, cancel, or complete before its fixed deadline"}
     # IDEMPOTENT on (stratagem_id, turn_id, surface). If the event was written
     # but the HTTP response was lost, a retry with the same turn_id returns the
     # ORIGINAL capsule — never a second issuance, which would double-count the
     # turn and leak a false cadence.
     prior = _existing_capsule(pid, s["id"], turn_id, surface)
+    if prior and prior["capsule"].get("surface") != surface:
+        return {"active": True, "duplicate_event": True}
     if prior:
         return {"active": True, "capsule": prior["capsule"], "idempotent": True,
                 "commitment": {"capsule_sha256": prior["capsule_sha256"],
@@ -903,17 +862,11 @@ def capsule(b):
 
 @route()
 def advance(b):
-    """Move to the next step. An Atelier act — it changes the standing tactic
-    that ordinary turns will execute, so it happens in the room."""
+    """Move this stratagem to its next tactic from any charter-authorized pathway."""
     pid = b.get("id", "")
     s = _live(pid)
     if not s:
         return _err("no stratagem")
-    if not _visit_open(pid):
-        return _err("advancing the tactic requires an open visit")
-    capok, capwhy = _capability(b, pid)
-    if not capok:
-        return _err("refused: %s" % capwhy)
     obs = str(b.get("observation", ""))[:400]
     s["step"] = min(s.get("step", 0) + 1, len(s["tactics"]))
     _wa(os.path.join(_sd(pid), "stratagem.json"), s)
@@ -923,35 +876,30 @@ def advance(b):
 
 @route()
 def lease(b):
-    """renew | hold | abort. Renewal is an explicit private act inside a visit;
-    a skipped Atelier day never renews anything by itself."""
+    """Pause, resume within the fixed deadline, or cancel. Renewal is refused."""
     pid, action = b.get("id", ""), b.get("action", "")
     s = _live(pid)
     if not s:
         return _err("no stratagem")
-    if not _visit_open(pid):
-        return _err("lease decisions happen inside a visit")
-    capok, capwhy = _capability(b, pid)
-    if not capok:
-        return _err("refused: %s" % capwhy)
     if action == "renew":
+        return _err("activation and expiration cannot be renewed")
+    if action == "resume":
         s["status"] = "active"
-        s["lease_expires"] = (datetime.now() + timedelta(days=s["lease_days"])).isoformat()
         _wa(os.path.join(_sd(pid), "stratagem.json"), s)
-        _chain(pid, "lease_renewed", {"stratagem": s["id"], "until": s["lease_expires"]})
-        return {"ok": True, "lease_expires": s["lease_expires"]}
+        _chain(pid, "resumed", {"stratagem": s["id"], "expires_at": s["expires_at"]})
+        return {"ok": True}
     if action == "hold":
         s["status"] = "held_review"
         _wa(os.path.join(_sd(pid), "stratagem.json"), s)
         _chain(pid, "lease_held", {"stratagem": s["id"]})
         return {"ok": True, "status": "held_review"}
     if action == "abort":
-        s["status"] = "aborted"
+        s["status"] = "aborted_sealed"
         s["aborted_at"] = datetime.now().isoformat()
         _wa(os.path.join(_sd(pid), "stratagem.json"), s)
-        _chain(pid, "aborted", {"stratagem": s["id"], "note": str(b.get("note", ""))[:300]})
-        return {"ok": True, "status": "aborted"}
-    return _err("action must be renew, hold, or abort")
+        _chain(pid, "aborted_sealed", {"stratagem": s["id"], "note": str(b.get("note", ""))[:300]})
+        return {"ok": True, "status": "aborted_sealed"}
+    return _err("action must be resume, hold, or abort; deadlines cannot be renewed")
 
 
 # ---------------------------------------------------------------------------
@@ -1144,14 +1092,14 @@ def state(b):
     return {"active": True, "stratagem_id": s["id"], "status": s["status"],
             "step": min(s["step"], n - 1) + 1, "of": n,
             "steps_exhausted": s["step"] >= n,
-            "lease_expires": s["lease_expires"]}
+            "lease_expires": s["lease_expires"], "id": pid}
 
 
 # Every terminal path lands in one of these, and every one of them can still
 # be revealed later. The old code stored a boolean `revealed`, and resolving
 # with reveal=False made the history permanently unreachable — an irreversible
 # privacy trap, which is the opposite of privacy with an expiration date.
-TERMINAL = {"resolved_sealed", "aborted_sealed", "stopped_sealed", "revealed"}
+TERMINAL = {"resolved_sealed", "aborted_sealed", "stopped_sealed", "expired_sealed", "revealed"}
 
 
 @route()
@@ -1163,15 +1111,10 @@ def resolve(b):
     s = _live(pid)
     if not s:
         return _err("no stratagem")
-    if not _visit_open(pid):
-        return _err("resolution happens inside a visit")
-    capok, capwhy = _capability(b, pid)
-    if not capok:
-        return _err("refused: %s" % capwhy)
     outcome = str(b.get("outcome", "")).strip()
     if not outcome:
         return _err("an authored outcome is required")
-    reveal = bool(b.get("reveal", True))
+    reveal = bool(b.get("reveal", False)) and _owner(b)
     s["status"] = "revealed" if reveal else "resolved_sealed"
     s["resolved_at"] = datetime.now().isoformat()
     s["outcome"] = outcome[:600]
@@ -1186,17 +1129,17 @@ def resolve(b):
     return {"ok": True, "status": "revealed", "history": _history(pid, s)}
 
 
-@route()
+@route(verify_first=False)
 def reveal(b):
-    """Open a sealed terminal stratagem. The expiration on the privacy."""
+    """Explicit owner inspection opens live or terminal history, including held ledgers."""
     pid = b.get("id", "")
     s = _j(os.path.join(_sd(pid), "stratagem.json"))
     if not s:
         return _err("no stratagem on this project")
+    if not _owner(b):
+        return _err("explicit owner reveal authorization required")
     if s.get("status") == "revealed":
         return {"ok": True, "status": "revealed", "history": _history(pid, s)}
-    if s.get("status") not in ("resolved_sealed", "aborted_sealed", "stopped_sealed"):
-        return _err("a live stratagem cannot be revealed — resolve, abort, or stop it first")
     s["status"] = "revealed"
     s["revealed_at"] = datetime.now().isoformat()
     _wa(os.path.join(_sd(pid), "stratagem.json"), s)
@@ -1258,6 +1201,8 @@ def history(b):
     s = _j(os.path.join(_sd(pid), "stratagem.json"))
     if not s:
         return _err("no stratagem on this project")
+    if not _owner(b):
+        return _err("owner authorization required")
     if s.get("status") != "revealed":
         return _err("not revealed (status: %s) — use /stratagem/reveal" % s.get("status"))
     return {"history": _history(pid, s)}
@@ -1284,7 +1229,8 @@ def _history(pid, s):
         "objective": s["objective"],
         "provenance": s["provenance"],
         "sequencing_advantage": s["sequencing_advantage"],
-        "perimeter_scope": s["perimeter_scope"],
+        "action_impacts": s.get("action_impacts", []),
+        "legacy_perimeter_scope": s.get("perimeter_scope", []),
         "planned_tactics": s["tactics"],
         "disclosure_policy": s["disclosure_policy"],
         "outcome": s.get("outcome"),
@@ -1296,7 +1242,78 @@ def _history(pid, s):
     }
 
 
+def capsules(b):
+    """One tactic per turn, fair across active stratagems; no shared tactical state.
+    Event identity is global across routes, so a forwarded/retried event cannot
+    select a second stratagem. Commitments stay compatible with all writers.
+    """
+    with transaction():
+        if _authorized():
+            return _authorized()
+        active = active_records()
+        ranked = []
+        for pid in _records():
+            s = _j(os.path.join(_sd(pid), "stratagem.json"))
+            prior = _existing_capsule(pid, s["id"], str(b.get("turn_id", "")), "")
+            if prior:
+                return {"capsules": [], "duplicate_event": True}
+            if pid in active:
+                last = ""
+                try:
+                    for line in open(os.path.join(_sd(pid), "capsules.jsonl")):
+                        last = json.loads(line)["ts"]
+                except FileNotFoundError:
+                    pass
+                ranked.append((last, pid))
+        for _, pid in sorted(ranked):
+            r = capsule({**b, "id": pid})
+            if r.get("capsule"):
+                return {"capsules": [r]}
+        return {"capsules": []}
+
+
+def stop_all(b):
+    with transaction():
+        # stop is deliberately never gated by charter, lineage, or visits.
+        pids = [b["id"]] if b.get("id") else _records()
+        results = []
+        for pid in pids:
+            # Persist an unconditional tombstone before attempting audit/state parsing.
+            directory = _sd(pid)
+            os.makedirs(directory, exist_ok=True)
+            result = strategy_stop({**b, "id": pid})
+            with open(os.path.join(directory, "owner-stopped"), "w") as f:
+                f.write(_now().isoformat()); f.flush(); os.fsync(f.fileno())
+            results.append(result)
+        return {"ok": True, "results": results}
+
+
+
+def owner_reveal(b):
+    with transaction():
+        if not _owner(b):
+            return _err("owner authorization required")
+        pids = [b["id"]] if b.get("id") else _records()
+        return {"results": [{"id": p, **reveal({**b, "id": p})} for p in pids]}
+
+
+def eligible(b):
+    with transaction():
+        if _authorized() or _require_intact(b.get("id", "")):
+            return {"eligible": False}
+        s = _expire(b.get("id", ""))
+        return {"eligible": bool(s and s.get("status") == "active"
+                                 and not os.path.exists(os.path.join(_sd(b["id"]), "owner-stopped")))}
+
+
 ROUTES = {
+    "/stratagem/charter": lambda b: {"charter": charter()},
+    "/stratagem/charter/update": charter_update,
+    "/stratagem/inventory": inventory,
+    "/stratagem/capsules": capsules,
+    "/stratagem/stop": stop_all,
+    "/stratagem/owner-reveal": owner_reveal,
+    "/stratagem/eligible": eligible,
     "/stratagem/adopt": adopt,
     "/stratagem/capsule": capsule,
     "/stratagem/disposition": disposition,
@@ -1322,6 +1339,8 @@ def verify_all_at_startup():
     """Full verification of every project's ledger when the broker boots.
     A ledger that fails here is held: no capsule issues from it until resolved."""
     held = []
+    with transaction():
+        active_records()
     base = os.path.join(ROOT, "projects")
     try:
         pids = sorted(os.listdir(base))
@@ -1339,7 +1358,19 @@ def verify_all_at_startup():
     return held
 
 
-try:
-    verify_all_at_startup()
-except Exception as _e:
-    print("stratagem startup verification skipped:", _e)
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Owner-only standing charter administration")
+    parser.add_argument("action", choices=["grant", "revoke"])
+    parser.add_argument("--root", default=ROOT)
+    args = parser.parse_args()
+    ROOT = args.root
+    with transaction():
+        keypath = os.path.join(ROOT, ".stratagem-owner-key")
+        if not os.path.exists(keypath):
+            fd = os.open(keypath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(uuid.uuid4().hex + uuid.uuid4().hex)
+        token = open(keypath).read().strip()
+        result = charter_update({"owner_token": token, "active": args.action == "grant"})
+        print(json.dumps(result))

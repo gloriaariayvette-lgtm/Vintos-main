@@ -501,4 +501,4 @@ CHAT_INJECT
 # "none". His felt-gate, timing (quiet hours / is she near / mid-call) and cooldowns ARE the
 # y/n; most runs choose "none". Guarded so it never fails or delays the host task.
 _MISCHIEF="$HOME/.vintos/workspace/scripts/mischief-detector.sh"
-[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" || true
+[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" --after-activity || true

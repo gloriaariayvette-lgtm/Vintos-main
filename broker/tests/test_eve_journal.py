@@ -19,6 +19,11 @@ def _no(self, *a, **k):
     raise OSError("this suite reaches nothing")
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import stratagem as _sg_client, turn_coordinator as _sg_coordinator
+_sg_client._post = lambda *a, **k: {}
+_sg_coordinator._post = lambda *a, **k: {"ok": True}
+assert _sg_client._post("/stratagem/inventory") == {}  # sender is stubbed
 import dot_channel as D, promise_keeper as P
 MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory"); os.makedirs(MEM, exist_ok=True)
 R = []

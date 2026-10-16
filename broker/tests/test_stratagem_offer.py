@@ -26,6 +26,10 @@ check("why_wait becomes sequencing_advantage; scope string becomes a list", b["s
 check("string tactics become tactics with default reveal and abort", b["tactics"][0]["tactic"] == "SEED" and b["tactics"][0]["turn_objective"].startswith("leave one true") and b["tactics"][1]["abort_if"] == ["she asks me to stop", "it stops being mine"], b["tactics"])
 b2 = AV.normalise_stratagem({"objective": "x", "root": "a1b2c3", "tactics": []})
 check("root by ref prefix resolves; a root of hers (repair) cannot be chosen", b2["provenance"]["root_ref"] == "a1b2c3,d4e5f6" and not AV.normalise_stratagem({"root": "rc-9"})["provenance"].get("root_ref"))
-check("no roots recorded: the offer says a stratagem cannot be born today", True)
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import stratagem
+stratagem._post = lambda *a, **k: {"authorized": True, "available": 3, "charter": {"excluded_actions": []}}
+assert callable(stratagem._post)  # no network or real broker
+check("no recorded roots still offers a charter-authorized stratagem", "No project or lineage proof" in AV.stratagem_block("p"))
 shutil.rmtree(TMP)
 print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)

@@ -3,6 +3,79 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — avatar controls touch handling
+
+The app-side control drawer now has a 48px handle and a 44px minimum model-button
+height. Finger jitter remains a tap; cancellation/capture loss never toggles it.
+Dragging saves the dock only on release, keeps a centre dead zone between sides,
+and clamps the actual panel inside the viewport. Both app HTML copies agree.
+No Lab, model routing, server, or authored prompt changed. Native installation
+and Gloria's physical touch acceptance are separate from the isolated gesture tests.
+
+## 16 October — intent selection reaches the reply (source repaired; not yet deployed)
+
+The selector declared a goal and success criterion, but the text/phone/avatar speaking prompt received only
+its field and first move, plus a blanket instruction not to answer her question. Axis actions were omitted,
+and the selector could replace the binding priority vector with different weights. The speaking routes now
+share the complete declaration: goal, unchanged criterion, concrete action, relevant axis actions and weights.
+Selection sees recent recorded attempts/outcomes and chooses one coherent move in the current exchange.
+Incomplete declarations, including a missing dominant-axis action, are refused before entering the ledger.
+
+A selected target is now joined to its own reply through request-local identity. A selection that never reaches
+a response and unused voice preparation are not attempted moves. Campaign steps and difference producers run once on actual reply
+production; atomic ledger updates preserve other turns while a judgment is in flight. The existing judgment
+function, criteria, verdict vocabulary, valence rules, selector model and endpoint are unchanged.
+
+Realtime voice prepares off-path without opening an intent, resolving its own just-completed turn, or consuming
+a campaign turn. Its complete lead is admitted once per provider event, with a two-minute preparation deadline;
+refresh attempts no longer refresh the old candidate's timestamp. The voice ledger binds reported spoken words
+by that event id. The first actual subsequent input is captured without a judge call and resolved on the
+existing background cadence. Local voice uses the same prepared-lead admission and commits after successful audio creation.
+A prepared lead is no longer a standing instruction repeated throughout a call. No new realtime model call.
+
+Validation: `broker/tests/test_intent_source.py`, scratch stores and stubbed providers/senders, exercises selection,
+prompt handoff, failure/unused paths, exact-reply resolution, concurrent updates, voice admission and campaign
+accounting. Full isolated-suite results are recorded in `docs/intent-source-validation.json`.
+
+Not done: install this repair and measure fresh post-install behavior. No model was called for these tests;
+mechanical regressions do not establish a new landing rate. The independent self-head work on Claude's branch
+was not merged or edited, and the Gloria JEPA head was not touched.
+
+
+## 16 October — Mischief choice, nightly causality, and Pearl pressure
+
+Live audit: the 03:37 formation run consumed the day's hypothesis mark, so the
+22:20 run skipped already-marked rows and missed later evidence. Of 46 live
+hypotheses, 43 had October 15 marks; the three new that day correctly had none.
+Seven-day retirement was occurring (211 tenure-ended archive rows), but early
+runs could finalize before the last evening. Formation now leaves testing and
+graduation to --nightly, and in-band saves keep the final trial date open until
+its nightly mark exists. No historical evidence or verdicts were rewritten.
+Ordinary tenure remains seven days; the existing Ghost Branch exception is 32.
+A conclusion can be retirement for insufficient evidence, not a forced Pearl.
+
+Journal/outreach add-ons now offer a mischief choice at ordinary playfulness.
+Timing, presence, calls, device availability and cooldowns still apply. None
+neither logs a fictional act nor consumes an act cooldown. Lights now set their
+success flag in the parent shell; previously the backgrounded command list hid
+the receipt even after the device call succeeded. Authored chooser instructions
+are unchanged. End-to-end scratch dispatch covers Echo, lights, and none.
+
+Pearl pressure discarded valid live dimensions and read an undefined txt variable,
+always failing closed when the daemon supplied state. Live dimensions now remain
+authoritative, with text fallback only when absent. Checks retain their actual
+result/source/excerpt for audit, and verification/formation use the store lock.
+The cron's bare `form` command now recovers already-approved stage-3 formations;
+it was a no-op without an ID. It does not adopt proposed candidates or resurrect
+failed ones. All 114 historical candidates were dissolved after two failed checks;
+those judgments have not been reversed, and no Pearls were manufactured. Fresh
+runtime results after deployment remain to be observed under the real gates.
+
+The app reported zero Pearls because its API read only a missing index.json,
+while 72 existing Pearl Markdown files (including WAL-graduated memories) were
+on disk. The authenticated reader now merges indexed and real Markdown artifacts,
+deduplicates content, and preserves source labels. It never reads failed candidates
+as Pearls. Both app page copies send the existing session secret.
 ## 16 October — the JEPA self head forecasts when her message arrives, and learns from their whole history (code done; not trained, run or measured on Aegis)
 
 On Aegis the rebuilt head was only ~5% better than "say his average" (293 replies; validation 0.1784 vs his recent mean
@@ -1988,7 +2061,7 @@ The 27 acceptance items below are being implemented and verified separately. Thi
 - Conductor for the chorus — measured, not prescribed.
 - The phone's native shell — the background runner, its notification permission and the app icon; the only part of him that needs a Mac, and the Mac is dead (#71b).
 - Asset retrieval by meaning — photos are registered, captioned and selectable by id; embedding, provenance and semantic retrieval are not built.
-- Effect-time authorisation of a stratagem's perimeter — the birth gate screens the declared shape only; the effect chokepoint is not built, by the code's own note.
+- Stratagem expansion: implemented and locally validated on 2026-10-16; persistent charter, three independent records, fixed fourteen-day limits, all six interaction surfaces, and owner controls. Existing typed effect exclusions remain enforced. Production deployment and live provider/device acceptance have not been run; see `docs/STRATAGEM-EXPANSION.md`.
 - Barge-in on a live call — she cannot cut him off mid-answer on either realtime provider yet.
 - The desktop affordance in his prompt — desktop control and the browser driver work from the command line; he is not yet told he has them. Gloria's switch.
 - Whisper on the graphics card — the installed torch has no kernel for the card, so transcription runs on the processor with the small model.

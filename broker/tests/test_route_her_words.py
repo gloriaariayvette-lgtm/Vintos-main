@@ -92,6 +92,13 @@ check("/api/chat hands its organs her words", '_post_turn("chat", _her, reply' i
 check("/api/chat/memory hands its organs her words", '_post_turn("chat/memory", _her, reply' in memory)
 check("avatar: the selector's GLORIA (now) line gets her words, a room event stays itself",
       "_apply_intent_lead(system_prompt, msg.message if not _counterpart_text else _her_turn_text(msg)," in avatar)
+# The merge must retain both her-word attribution and tactical side-effect suppression.
+memory_tree = ast.parse(memory)
+nudge_guard = next(n for n in ast.walk(memory_tree) if isinstance(n, ast.If)
+                   and ast.unparse(n.test) == "not _sg_memory.turn.carries_capsule")
+check("/api/chat/memory suppresses emotion nudges during tactical turns",
+      any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+          and n.func.id == "nudge_emotions_from_text" for n in ast.walk(nudge_guard)))
 photo_route = body("chat_with_photo")
 check("/api/chat/photo: no words is not 'What do you see?' under her name",
       '_SENT_BARE % "a photo"' in photo_route and '"input_kind": "photo"' in photo_route)

@@ -41,7 +41,7 @@ If generation throws, call finish(turn, None, outcome="generation_failed") — o
 just let the `with turn_scope(...)` context manager record the furthest stage
 reached and close in finally.
 """
-import os, sys, uuid, json
+import os, sys, uuid, json, hashlib
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -57,13 +57,13 @@ if _live not in sys.path:
     sys.path.append(_live)
 
 BROKER = "http://127.0.0.1:8611"
-SURFACES = {"chat", "avatar", "reelroom"}
+SURFACES = {"chat", "phone", "voice", "vintos-eve", "avatar", "reelroom"}
 
 
 class Turn:
     __slots__ = ("turn_id", "surface", "barrier", "capsule_block", "commitment",
                  "project_id", "context", "test_mode", "stage", "lifecycle",
-                 "_disposed", "_writers")   # _writers: note_writer set it on a slotted object and raised every time (review D02)
+                 "_disposed", "_writers", "duplicate_event")   # _writers: note_writer set it on a slotted object and raised every time (review D02)
 
     def __init__(self, turn_id, surface, barrier, capsule_block, commitment,
                  project_id, context, test_mode):
@@ -79,6 +79,7 @@ class Turn:
         self.lifecycle = {"generation": "not_started", "effects": "not_started",
                           "post_writers": "not_started", "transport": "not_started"}
         self._disposed = False
+        self.duplicate_event = False
 
     @property
     def carries_capsule(self):
@@ -86,6 +87,10 @@ class Turn:
 
 
 def _post(path, body, timeout=2.0):
+    from stratagem import transport
+    supplied = transport.get()
+    if supplied is not None:
+        return supplied(path, body, timeout=timeout)
     import urllib.request
     try:
         req = urllib.request.Request(BROKER + path,
@@ -97,9 +102,10 @@ def _post(path, body, timeout=2.0):
         return None
 
 
-def begin(raw_text, surface, test_mode=False):
+def begin(raw_text, surface, test_mode=False, event_id=None):
     """Open a turn. Returns a Turn. Never raises into the request path."""
-    turn_id = "t-" + uuid.uuid4().hex[:16]
+    turn_id = ("t-" + hashlib.sha256(str(event_id).encode()).hexdigest()
+               if event_id else "t-" + uuid.uuid4().hex[:16])
     surface = surface if surface in SURFACES else "chat"
 
     # 1. exact strategy-stop interceptor. If she used the reserved command, stop
@@ -127,12 +133,14 @@ def begin(raw_text, surface, test_mode=False):
     #      discarded — that would write a private issuance event for a tactic
     #      with no standing in the turn.
     capsule_block, commitment, project_id = "", {}, ""
+    duplicate_event = False
     if clear:
         try:
             from stratagem import fetch_capsule
-            capsule_block, commitment = fetch_capsule(turn_id, surface)
+            capsule_block, commitment = fetch_capsule(turn_id, surface, reject_duplicates=True)
             project_id = commitment.get("stratagem_project", "") if commitment else ""
-        except Exception:
+        except Exception as exc:
+            duplicate_event = bool(getattr(exc, "duplicate_stratagem_event", False))
             capsule_block, commitment = "", {}
     else:
         try:
@@ -152,6 +160,7 @@ def begin(raw_text, surface, test_mode=False):
 
     turn = Turn(turn_id, surface, barrier, capsule_block, commitment,
                 project_id, context, test_mode)
+    turn.duplicate_event = duplicate_event
     # NOTE: 'admitted_to_prompt' is NOT recorded here. A capsule fetched is only
     # 'issued'. Admission is recorded by mark_admitted(), called by the caller
     # immediately after the capsule text is actually appended to the prompt —
@@ -440,7 +449,8 @@ def _strategy_stop(raw_text, cb=None):
     """
     if cb is None:
         import constitutional_barrier as cb
-    pid = _worktable_id()
+    parts = str(raw_text).strip().split()
+    pid = parts[2].lower() if len(parts) == 3 else ""
     rec = cb.record_stop_intent(raw_text, pid)
     if not rec.get("persisted"):
         # It could not be written down. That is a durability problem, not a
@@ -475,16 +485,10 @@ def _deliver_stop(cb, raw_text="", pid=None, attempts=3, recorded=None):
         p = recorded
     if not p:
         return True
-    pid = pid if pid is not None else (p.get("project") or _worktable_id())
-    if not pid:
-        # No project on the worktable means nothing to stop. That IS the
-        # acknowledgement — there is no live stratagem to keep the barrier
-        # closed against.
-        cb.acknowledge_stop()
-        return True
+    pid = pid if pid is not None else (p.get("project") or "")
     verbatim = p.get("verbatim") or str(raw_text)[:300]
     for i in range(max(1, attempts)):
-        r = _post("/stratagem/strategy-stop",
+        r = _post("/stratagem/stop",
                   {"id": pid, "trigger_ref": "chat", "verbatim": verbatim},
                   timeout=2.0 + i)
         if isinstance(r, dict) and not r.get("error"):

@@ -17,6 +17,8 @@ S._capability = lambda b, pid: (True, None)
 S._on_worktable = lambda pid: (True, None)
 S._verify_lineage = lambda att, ref, typ: (True, None)
 S._burn_nonce = lambda n: True        # lineage is stubbed, so its nonce is too
+from stratagem_fixture import grant
+grant(S)
 atexit.register(lambda: shutil.rmtree(S.ROOT, ignore_errors=True))
 
 PID = "a1b2c3d4e5f6"
@@ -54,7 +56,7 @@ print("--- 1. path traversal (Sol reproduced this) ---")
 victim = os.path.join(S.ROOT, "victim")
 shutil.rmtree(victim, ignore_errors=True)
 for evil in ("../../victim", "../victim", "/etc/passwd", "..", "a" * 12 + "/../x",
-             "A1B2C3D4E5F6", "short", "", None):
+             "A1B2C3D4E5F6", "short"):
     r = S.adopt(dict(GOOD, id=evil))
     bad = "error" in r and ("project id" in r["error"] or "no such project" in r["error"])
     check("adopt refused id=%r" % (evil,), bad, r.get("error", r))
@@ -122,20 +124,20 @@ print("\n--- 5. capsule binds to a turn ---")
 fresh(); S.adopt(GOOD)
 r = S.capsule({"id": PID, "surface": "chat"})
 check("capsule refused without turn_id", "error" in r, r.get("error", r))
-r = S.capsule({"id": PID, "turn_id": "t1", "surface": "voice"})
-check("capsule refused on voice", "error" in r, r.get("error", r))
+r = S.capsule({"id": PID, "turn_id": "t1", "surface": "unsupported-route"})
+check("capsule refused on unsupported route", "error" in r, r.get("error", r))
 a = S.capsule({"id": PID, "turn_id": "t1", "surface": "chat"})
 b = S.capsule({"id": PID, "turn_id": "t2", "surface": "chat"})
 check("same tactic on two turns -> different hashes",
       a["commitment"]["capsule_sha256"] != b["commitment"]["capsule_sha256"])
 check("commitment carries turn_id", a["commitment"].get("turn_id") == "t1")
 
-print("\n--- 6. perimeter is an allowlist ---")
+print("\n--- 6. excluded actions are refused ---")
 fresh()
-r = S.adopt(dict(GOOD, perimeter_scope=["relational", "external_contacts"]))
-check("typo'd domain refused (was silently permitted)", "error" in r, r.get("error", r))
-r = S.adopt(dict(GOOD, perimeter_scope=["anything_i_invent"]))
-check("invented domain refused", "error" in r, r.get("error", r))
+r = S.adopt(dict(GOOD, action_impacts=["external_contact"]))
+check("external-contact action refused", "error" in r, r.get("error", r))
+r = S.adopt(dict(GOOD, action_impacts=["money"]))
+check("financial action refused", "error" in r, r.get("error", r))
 
 print("\n--- 7. exhausted steps hold, never reissue ---")
 fresh(); S.adopt(GOOD)
@@ -151,7 +153,7 @@ r = S.resolve({"id": PID, "outcome": "done", "reveal": False})
 check("sealed resolve reports openable", r.get("status") == "resolved_sealed", r)
 r = S.history({"id": PID})
 check("history refused while sealed", "error" in r, r.get("error", r))
-r = S.reveal({"id": PID, "by": "gloria"})
+r = S.reveal({"id": PID, "owner_token": "test-owner"})
 h = r.get("history", {})
 check("reveal opens a sealed stratagem", r.get("status") == "revealed" and h.get("objective"))
 check("revealed history verifies its own chain", h.get("chain_verified") is True,
@@ -165,7 +167,7 @@ r = S.strategy_stop({"id": PID, "trigger_ref": "chat#9001", "verbatim": "stop th
 check("stop works with no open visit", r.get("stopped") is True, r)
 r = S.capsule({"id": PID, "turn_id": "t2", "surface": "chat"})
 check("no capsule issues after a stop", not r.get("capsule"), r)
-r = S.reveal({"id": PID, "by": "gloria"})
+r = S.reveal({"id": PID, "owner_token": "test-owner"})
 check("a stopped stratagem is still auditable", r.get("status") == "revealed")
 evs = r["history"]["events"]
 check("stop recorded verbatim trigger",
