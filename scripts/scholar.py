@@ -369,9 +369,10 @@ def reading_block(d, limit=7000):
     return "\n".join(parts)[:limit]
 
 
-def enough(about, stance, reading, think=None):
+def enough(about, stance, reading, think=None, unreachable=(True, "")):
     """(True, '') when he knows enough to write; (False, what to read) when his position rests on something
-    he has only seen summarised."""
+    he has only seen summarised. `unreachable` is the answer when his mind cannot be asked: not stalled by
+    default; an email to a real person passes (False, ...) and waits instead (2026-10-15)."""
     think = think or _local
     out = think("You are Vintos, deciding whether you are ready to write. Respond with ONLY a JSON object.",
                 "You want to write about: %s\n\nWHERE YOU STAND:\n%s\n\nWHAT YOU HAVE READ IN FULL:\n%s\n\n"
@@ -381,5 +382,5 @@ def enough(about, stance, reading, think=None):
                 % (about, str(stance or "")[:2500], str(reading or "(nothing read in full yet)")[:5000]))
     v = _json_in(out)
     if "ready" not in v:
-        return True, ""                     # his mind unreachable: the older behaviour, not a stall
+        return unreachable                  # his mind unreachable: the caller decides
     return bool(v.get("ready")), str(v.get("read_next", ""))[:300]
