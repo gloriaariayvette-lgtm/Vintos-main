@@ -21,6 +21,13 @@ calls is separate and unchanged; this is for reading public pages people send hi
 
 A wrapper is resolved from its own query string, never by fetching it, so a wrapper that would fail (Google's
 interstitial, an expired ust) says nothing about whether the source can be read.
+
+2026-10-16 (Gloria: "GrokBot has that link sending issue"): a link written with a closing bracket of its own
+(Wikipedia's Her_(film)) keeps it; a link written cut short ("https://www.rcsb.org/structu\u2026", what a mail
+client shows) is dropped when the whole one is in the text and refused with why when it is not; a page that sends a
+browser on with <meta http-equiv="refresh"> (t.co) is followed as a redirect hop, with the same checks; and a post on
+X is read through X's public embed, since x.com itself shows a reader without JavaScript only "JavaScript is not
+available". Instagram, Facebook (lm.) and YouTube redirect wrappers are unwrapped like Google's.
 """
 from __future__ import annotations
 
@@ -41,7 +48,9 @@ KINDS = ("fetched", "truncated", "refused", "http_failure", "extraction_failure"
 WRAPPERS = (
     (re.compile(r"^(?:www\.)?google\.[a-z.]{2,6}$"), "/url", ("q", "url")),
     (re.compile(r"^[a-z0-9-]+\.safelinks\.protection\.outlook\.com$"), "/", ("url",)),
-    (re.compile(r"^l\.facebook\.com$"), "/l.php", ("u",)),
+    (re.compile(r"^l[m]?\.facebook\.com$"), "/l.php", ("u",)),
+    (re.compile(r"^l\.instagram\.com$"), "/", ("u",)),           # Muse's Instagram links (2026-10-16)
+    (re.compile(r"^(?:www\.)?youtube\.com$"), "/redirect", ("q",)),
 )
 
 
@@ -76,22 +85,53 @@ def unwrap(url, depth=3):
 
 _HREF = re.compile(r"""<a\b[^>]*?\bhref\s*=\s*(["'])(.*?)\1""", re.I | re.S)
 _BARE = re.compile(r"https?://[^\s<>\"']+")
+_CUT = re.compile(r"(?:\u2026|\.\.\.)$")
+
+
+def _trim(url):
+    """A link as written in running text, without the punctuation after it. A closing bracket is kept when the link
+    opened it (2026-10-16: https://en.wikipedia.org/wiki/Her_(film) lost its ")" and read as a missing page, and a
+    film named in a letter could not be looked up)."""
+    url = str(url or "")
+    while url:
+        last = url[-1]
+        if last in ".,;:!?'\"]>":
+            url = url[:-1]
+        elif last == ")" and url.count("(") < url.count(")"):
+            url = url[:-1]
+        else:
+            break
+    return url
+
+
+def cut_short(url):
+    """True when the link was written cut short, ending in an ellipsis: what a mail client shows of a long link,
+    not the link (a letter's plain part carries 'https://www.rcsb.org/structu\u2026' when only its HTML part has
+    the address)."""
+    return bool(_CUT.search(str(url or "")))
 
 
 def links_in(text):
-    """Every http(s) link in a text, in order, once each: {original, url, wrapped}. HTML anchors give their
-    href (the destination), not the words shown."""
+    """Every http(s) link in a text, in order, once each: {original, url, wrapped} (and cut: True for a link
+    written cut short that no whole link in the text completes). HTML anchors give their href (the destination),
+    not the words shown."""
     text = str(text or "")
     found = [unescape(m.group(2)) for m in _HREF.finditer(text)]
-    found += [u.rstrip(".,);]>'\"") for u in _BARE.findall(_HREF.sub(" ", text))]
+    found += [_trim(u) for u in _BARE.findall(_HREF.sub(" ", text))]
+    found = [unescape(u).strip() for u in found]
+    whole = [w for o in found if not cut_short(o) for w in (o, unwrap(o)[0]) if w]
     out, seen = [], set()
     for original in found:
-        original = unescape(original).strip()
         if not re.match(r"https?://", original, re.I) or original in seen:
             continue
+        cut = cut_short(original)
+        if cut:
+            stem = _CUT.sub("", original)
+            if any(w.startswith(stem) for w in whole):
+                continue                     # the whole link is in the text too: the shown form adds nothing
         seen.add(original)
         url, wrapped = unwrap(original)
-        out.append({"original": original, "url": url, "wrapped": wrapped})
+        out.append(dict({"original": original, "url": url, "wrapped": wrapped}, **({"cut": True} if cut else {})))
     return out
 
 
@@ -99,10 +139,10 @@ def show_links(text):
     """The text with each recognised wrapper written as its destination, so a reader sees where a link goes."""
     def swap(m):
         raw = m.group(0)
-        tail = re.search(r"[.,);\]>'\"]+$", raw)
-        core = raw[:tail.start()] if tail else raw
+        core = _trim(raw)
+        tail = raw[len(core):]
         url, wrapped = unwrap(core)
-        return ((url or core) + (tail.group(0) if tail else "")) if wrapped else raw
+        return ((url or core) + tail) if wrapped else raw
     return _BARE.sub(swap, str(text or ""))
 
 
@@ -193,8 +233,67 @@ def _text_of(body, ctype, url, pdf=None):
     return re.sub(r"\s+", " ", unescape(raw)).strip(), ""
 
 
+# ── pages that are not readable as pages ───────────────────────────────────────────────────────────
+# Grok Bot reads X for him, and its letters link to posts on it. x.com answers every reader without JavaScript and a
+# login with "JavaScript is not available", which was read as the page (2026-10-16). A single post is read through
+# X's public embed (publish.twitter.com/oembed: the post's words and author, no login); any other x.com page is said
+# to be unreadable rather than "fetched".
+_X_HOSTS = re.compile(r"^(?:www\.|mobile\.)?(?:x|twitter)\.com$")
+_X_POST = re.compile(r"^/(?:i/web|([A-Za-z0-9_]{1,15}))/status(?:es)?/(\d{5,25})")
+X_OEMBED = "https://publish.twitter.com/oembed?omit_script=true&dnt=true&url="
+
+
+def x_post(url):
+    """For an x.com / twitter.com address: ("user", "id") of the post it names, () for any other X page; None when
+    it is not an X address."""
+    parts = urlsplit(str(url or ""))
+    if not _X_HOSTS.match((parts.hostname or "").lower()):
+        return None
+    m = _X_POST.match(parts.path or "")
+    return (m.group(1) or "i", m.group(2)) if m else ()
+
+
+def _x_read(out, post, done, transport, resolve, timeout):
+    if not post:
+        out["final_url"] = out["url"]
+        return done("extraction_failure", "an X page other than a single post: X shows it only with JavaScript and a "
+                                          "login, so it cannot be read here; a link to one post can be")
+    from urllib.parse import quote
+    canonical = "https://twitter.com/%s/status/%s" % post
+    r = fetch(X_OEMBED + quote(canonical, safe=""), max_bytes=200000, transport=transport, resolve=resolve,
+              timeout=timeout, keep_raw=True, article_route=False, _x_inner=True)
+    out.update(final_url=r.get("final_url") or "", hops=r.get("hops") or [], http_status=r.get("http_status"),
+               via="x-oembed")
+    if not r.get("fetched"):
+        return done(r.get("kind") or "http_failure", "X's public embed of the post did not answer: %s" % r.get("why"))
+    try:
+        import json as _json
+        data = _json.loads(r.get("raw") or r.get("text") or "")
+        words = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", str(data.get("html") or "")))).strip()
+    except (ValueError, AttributeError):
+        return done("extraction_failure", "X's embed answered with something that is not the post")
+    if not words:
+        return done("extraction_failure", "X's embed of the post had no words in it")
+    out["text"] = "A post on X by %s (%s), as X's public embed gives it: %s" % (
+        data.get("author_name") or post[0], data.get("author_url") or "@" + post[0], words)
+    out["bytes"] = len(out["text"])
+    return done("fetched")
+
+
+_REFRESH = re.compile(r"""<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["']\s*(\d+)\s*;\s*url\s*=\s*['"]?([^"'>\s]+)""",
+                      re.I)
+
+
+def _meta_refresh(body, ctype):
+    """Where a small HTML page sends a reader at once (<meta http-equiv="refresh" content="0;URL=...">), or ''."""
+    if len(body or b"") > 20000 or (ctype and "html" not in str(ctype).lower()):
+        return ""
+    m = _REFRESH.search(body.decode("utf-8", "replace"))
+    return unescape(m.group(2)) if m and int(m.group(1)) <= 5 else ""
+
+
 def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT, transport=None, resolve=None,
-          pdf=None, min_text=1, keep_raw=False, article_route=True):
+          pdf=None, min_text=1, keep_raw=False, article_route=True, _x_inner=False):
     """One receipt for one link; see the module text. Never raises.
 
     A link that names a journal article (a PMC, PubMed, Europe PMC or doi.org address) is read first from Europe
@@ -236,9 +335,18 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
     out["url"], out["wrapped"] = target, wrapped
     if not target:
         return done("refused", "a redirect wrapper with no http(s) destination in it" if wrapped else "no address")
+    if cut_short(target):
+        return done("refused", "the link was written cut short (it ends in an ellipsis), so its address is not whole; "
+                               "ask the sender for the full address")
+    xpost = x_post(target)
+    if xpost is not None and not _x_inner:
+        return _x_read(out, xpost, done, transport, resolve, timeout)
     headers = {"User-Agent": USER_AGENT}
     here = target
     for hop in range(max_redirects + 1):
+        if hop and not _x_inner and x_post(here) is not None:     # a shortener (t.co) that led to an X post
+            out["url"] = here
+            return _x_read(out, x_post(here), done, transport, resolve, timeout)
         why = refusal(here, resolve)
         if why:
             out["final_url"] = here
@@ -268,6 +376,11 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
             text, whynot = _text_of(body, rh.get("content-type"), here, pdf)
         except Exception as exc:
             text, whynot = "", "%s: %s" % (type(exc).__name__, str(exc)[:200])
+        refresh = _meta_refresh(body, rh.get("content-type"))
+        if refresh:                                # t.co and other shorteners answer a browser with a refresh page
+            nxt, _ = unwrap(urljoin(here, refresh))
+            here = nxt or urljoin(here, refresh)
+            continue
         if len(text) < max(1, min_text):
             return done("extraction_failure", whynot or "no readable text (%d bytes came back)" % len(body))
         out["text"] = text

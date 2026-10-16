@@ -12,6 +12,7 @@ answering the same calls so the one page serves either of them with a toggle:
   tv_screenshot()               the Bravia over ADB, PNG bytes                      -> /api/game/screenshot
   audio_signature(b64, prev)    loudness / density of a phone-mic clip, an "edge"   -> /api/game/reelroom/audio
   summary(payload)              his memory of the night, kept in memory/reelroom/   -> /api/game/reelroom/summary
+  suggestions()                 what his mail suggested to watch, with who sent it  -> /api/game/reelroom/suggestions
 
 Models by her rule: Gemma reads film facts, frames, and moment decisions. Live speech
 uses the selected avatar-router voice (Opus, Sonnet, Sol, or Grok). Nothing here touches the toys.
@@ -138,7 +139,31 @@ def surface_context(film_context: str = "", elapsed_min: Optional[int] = None,
         pass
     if film_context:
         parts.append("THE FILM AND THIS SESSION:\n" + str(film_context)[:7000])
+    if not title:                       # still choosing: what his mail suggested, offered with who suggested it
+        offer = suggestions_block()
+        if offer:
+            parts.append(offer)
     return "\n\n".join(parts)
+
+
+def suggestions(limit: int = 8) -> List[Dict[str, Any]]:
+    """Films, shows and videos his mail suggested (Grok Bot's letters first), for choosing what to watch: each with
+    its sender, the email's subject as they wrote it, and its links. Offered, never chosen or played from here
+    (Gloria, 2026-10-16: "a film or something of the sort to watch"). [] when there are none or the mail log
+    cannot be read."""
+    try:
+        import received_mail
+        return received_mail.watch_suggestions(limit=limit)
+    except Exception:
+        return []
+
+
+def suggestions_block(limit: int = 5) -> str:
+    try:
+        import received_mail
+        return received_mail.watch_block(limit=limit)
+    except Exception:
+        return ""
 
 
 def build_system(film_context: str = "", elapsed_min: Optional[int] = None) -> str:

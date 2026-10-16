@@ -544,6 +544,26 @@ def earlier_steps(want_id, path=None):
     return "\n".join(out)[:12000]
 
 
+def mail_evidence(want_id, want_text="", params=None):
+    """(block, links): the items of his recent mail that are about this want (received_mail.for_want), each as its
+    sender's words with the sender and subject, and their links' real addresses. The want is read by id; the step's
+    own text and parameters count too, so a step run without a stored want still finds its mail. ('', []) when none.
+    (Gloria, 2026-10-16: "GrokBot might have sent him info that could have helped with that email to Graziano".)"""
+    try:
+        import sys as _ms
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in _ms.path: _ms.path.insert(0, here)
+        import received_mail
+        want = dict(received_mail._want(want_id, WANTS) or {}) if want_id else {}
+        want["want"] = want.get("want") or want_text or ""
+        want["steps"] = list(want.get("steps") or []) + ([{"params": params}] if isinstance(params, dict) else [])
+        found = received_mail.for_want(want, mail=received_mail.rows(path=INBOX_LOG))
+        links = [u for f in found for u in f.get("links") or []]
+        return received_mail._block(found, received_mail.WANT_HEADING), links
+    except Exception:
+        return "", []
+
+
 HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend reading before he answers anyway
 
 
@@ -592,9 +612,14 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, "a search found nothing about %s to write from" % (recipient or to)
     if known:
         found += "\n\nWHAT THIS WANT'S EARLIER STEPS ALREADY FOUND (some may be research Gloria supplied):\n" + known
-    # Then their actual work, read in full where it is free to read, and any paper an earlier step pointed to.
+    # What his mail brought on it: a Grok Bot letter about this person's work, with its links (2026-10-16).
+    mail_block, mail_links = mail_evidence(want_id, want_text, params)
+    if mail_block:
+        found += "\n\n" + mail_block
+    # Then their actual work, read in full where it is free to read, and any paper an earlier step or a letter pointed to.
     scholar, _ = _helpers()
-    reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(known) if known else ())
+    pointed = "\n".join([known] + mail_links)
+    reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
     stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
                         think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
@@ -656,7 +681,15 @@ def _gmail(tool, arguments, purpose, gateway=None):
 
 
 def _payload_text(payload):
-    """The text of a Gmail message payload: its own body, or its parts (plain text first, else html made plain)."""
+    """The text of a Gmail message payload: its own body, or its parts. Plain text first, unless the HTML part carries
+    link addresses the plain part does not: then the HTML made plain, each anchor's address kept beside its words, and
+    its lines kept as lines.
+
+    2026-10-16 (Gloria: "GrokBot has that link sending issue"): a letter's plain part can carry a link only as the
+    words shown for it, or as the client's cut-short display ("https://www.rcsb.org/structu\u2026"), while its HTML
+    part has the address in the anchor. The plain part always won, so the address was never stored and no fetcher
+    could ever open it. And a part given as Gmail's base64url `data` was read as that base64, so no link in it could be
+    found at all."""
     if not isinstance(payload, dict):
         return ""
     plain, html = [], []
@@ -664,17 +697,64 @@ def _payload_text(payload):
         if not isinstance(p, dict):
             return
         body = p.get("body") if isinstance(p.get("body"), dict) else {}
-        text = body.get("content") or body.get("data") or ""
+        text = body.get("content") or _b64_text(body.get("data")) or ""
         if isinstance(text, str) and text.strip():
-            (html if "html" in str(p.get("mime_type") or p.get("mimeType") or "").lower() else plain).append(text)
+            (html if "html" in str(p.get("mime_type") or p.get("mimeType") or "").lower() else plain).append(_qp_text(text))
         for part in p.get("parts") or []:
             walk(part)
     walk(payload)
-    if plain:
-        return "\n\n".join(plain)
-    if html:
-        return _page_text(_anchors_shown("\n".join(html)))
-    return ""
+    plain_text = "\n\n".join(plain)
+    html_text = _mail_html_text(_anchors_shown("\n".join(html))) if html else ""
+    if plain_text and html_text:
+        lf = _link_fetch()
+        have = {l["url"] for l in lf.links_in(plain_text) if not l.get("cut")}
+        if any(l["url"] and l["url"] not in have for l in lf.links_in("\n".join(html))):
+            return html_text
+    return plain_text or html_text
+
+
+def _b64_text(data):
+    """Gmail's body.data is base64url; its text, or the value as it came when it is not base64 of text."""
+    if not isinstance(data, str) or not data.strip():
+        return data
+    squeezed = re.sub(r"[\r\n]", "", data)      # base64 carries no spaces; words do
+    if len(squeezed) < 8 or not re.fullmatch(r"[A-Za-z0-9_\-+/]+=*", squeezed):
+        return data
+    import base64
+    try:
+        text = base64.urlsafe_b64decode(squeezed.replace("+", "-").replace("/", "_") + "=" * (-len(squeezed) % 4)).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return data
+    printable = sum(ch.isprintable() or ch in "\r\n\t" for ch in text)
+    return text if text and printable >= 0.95 * len(text) else data
+
+
+def _qp_text(text):
+    """A part still in quoted-printable (soft line breaks "=" at line ends, "=3D" for "="), decoded: a long link
+    broken across lines that way is one link again."""
+    if re.search(r"=\r?\n", text) and re.search(r"=(?:3D|20|0A|E2|C2)", text):
+        import quopri
+        try:
+            return quopri.decodestring(text.encode("utf-8")).decode("utf-8", "replace")
+        except (ValueError, UnicodeEncodeError):
+            return text
+    return text
+
+
+def _mail_html_text(raw):
+    """An HTML mail made plain, its lines kept as lines (a letter's items stay apart) and nothing else dropped but
+    script, style and head."""
+    import html as _html
+    raw = str(raw or "")
+    for tag in ("script", "style", "head", "noscript"):
+        raw = re.sub(r"<%s\b[^>]*>.*?</%s>" % (tag, tag), " ", raw, flags=re.S | re.I)
+    raw = re.sub(r"<br\s*/?>", "\n", raw, flags=re.I)
+    raw = re.sub(r"</?(?:em|i|cite)\b[^>]*>", "*", raw, flags=re.I)      # a title set in italics stays marked
+    raw = re.sub(r"<li\b[^>]*>", "\n- ", raw, flags=re.I)
+    raw = re.sub(r"</(?:p|div|li|h[1-6]|tr|blockquote|ul|ol|table|section|article)\s*>", "\n", raw, flags=re.I)
+    text = _html.unescape(re.sub(r"<[^>]+>", " ", raw))
+    lines = [re.sub(r"[ \t\u00a0]+", " ", l).strip() for l in text.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def _anchors_shown(raw):
@@ -682,6 +762,8 @@ def _anchors_shown(raw):
     import html as _html
     def one(m):
         href, words = _html.unescape(m.group(2)).strip(), re.sub(r"<[^>]+>", " ", m.group(3)).strip()
+        if href and re.match(r"https?://", _html.unescape(words), re.I):
+            return href                      # the words were the link as shown (often cut short): the address itself
         return words if not href or href == _html.unescape(words) else "%s (%s)" % (words, href)
     return re.sub(r"""<a\b[^>]*?\bhref\s*=\s*(["'])(.*?)\1[^>]*>(.*?)</a>""", one, str(raw or ""), flags=re.S | re.I)
 
@@ -1008,6 +1090,9 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
         return False, "thread closed after %d answers" % MAX_REPLIES
     # Between messages he searches again: what they said, and who they are now.
     found = research(c.get("name") or addr, last_in.get("body", "")[:160], search=search, fetch=fetch)
+    mail_block, _ = mail_evidence(c.get("want_id", ""), c.get("intent") or c.get("about") or "", {"about": c.get("about", "")})
+    if mail_block:
+        found = (found or "") + "\n\n" + mail_block
     # Between messages: what they pointed him to (scholarly links, read only) and more of their work.
     scholar, _ = _helpers()
     reading, dossier = _study(addr, c.get("name", ""), last_in.get("body", "")[:300], get=get, think=think,

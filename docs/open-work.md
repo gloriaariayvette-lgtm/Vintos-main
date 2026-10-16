@@ -61,6 +61,58 @@ structure contacts, never abstracts (Pendrin–ZBTB16 residues "as described in 
 system class's "structural hallmarks" are in no one record (six Vibrio/Pseudomonas/T6SS questions). Not done: the
 structure-read notebook rows carry no reading, so whether metal contacts were found for HMOX1 is still not known.
 
+## 16 October — his received mail used where it applies; Grok Bot's links kept whole
+
+Gloria: "I need you to help him use the emails he receives, especially GrokBot's. GrokBot has that link sending
+issue, but it still sends better subjects than Muse. Today, for example, GrokBot might have sent him info that could
+have helped with that email to Graziano and a film or something of the sort to watch."
+
+What happened to a letter before: `want_email.tend()` (run by wants-router) searches Gmail four times a day, reads
+each new email whole (`_read_whole`), Gemma reads it (`read_mail`), and it is kept in `memory/email-inbox.jsonl`
+with its links and, for Grok Bot's and Muse's letters, up to five linked pages read. It reached his daily journal,
+a want only when Gemma wrote one, his one reply to the letter, and #vintos-dot's last six emails (excerpts, no
+links). No want's step, no email draft and nothing in ReelRoom read it. `grok_letters.tend()` is called by nothing
+(letters come by email since the connector door closed).
+
+The link problem, at its source:
+- `want_email._payload_text` always took the plain part of a multipart letter. Where the plain part carries a
+  link only as the words shown for it, or as a client's cut-short display (`https://www.rcsb.org/structu…`),
+  the address existed only in the HTML part's anchor and was never stored, so nothing could open it. Now the
+  HTML part (anchors kept as their addresses, lines kept as lines) is taken when it has addresses the plain part
+  lacks. A part given as Gmail's base64url `data` is decoded (it was read as base64); a quoted-printable part is
+  decoded so a link broken across lines is whole.
+- `link_fetch.links_in` cut the closing bracket off links like `wiki/Her_(film)`; a cut-short link is now dropped
+  when the whole one is in the text and refused with why when it is not. A `<meta refresh>` page (t.co) is
+  followed as a checked redirect hop. A post on X is read through X's public embed (publish.twitter.com/oembed);
+  other x.com pages are said to be unreadable instead of "fetched" as "JavaScript is not available". Instagram,
+  lm.facebook and YouTube redirect wrappers are unwrapped.
+
+Where it is used now (new `scripts/received_mail.py`, read-only, in the deploy manifest):
+- A want: items of recent mail (14 days) whose words match the want's goal, steps' notes and parameters (a name
+  it names counts most) are attached as "WHAT YOUR MAIL BROUGHT ON THIS", each with sender, subject as written,
+  the item's words, its links' real addresses and what a link said when read. `want_email.run` adds it to what
+  the draft and the reviewer see (and the letter's links to what he reads in full first); `answer` does too;
+  wants-router adds it to a later step's context beside earlier findings.
+- ReelRoom: `reelroom.suggestions()` and `GET /api/game/reelroom/suggestions` list films, shows and videos the
+  mail suggested, with sender and subject; `surface_context` offers them while no film is chosen. The same title
+  from two senders is one suggestion under Grok Bot's subject, with Muse named beside it. Nothing plays.
+- His #vintos-dot context: his agents' letters and what he kept first, Grok Bot ahead of Muse ahead of others, each
+  with its links' real addresses; wrappers shown as their destinations; a new `LINK:` tool opens one through
+  link_fetch.
+- Every block says the email is its sender's words, not Gloria's and not his finding. Nothing replies or sends.
+
+Test: `broker/tests/test_received_mail.py` (40 checks; synthetic Grok Bot and Muse letters; Gmail, transport,
+models, drafter and senders stubbed; sockets refused; scratch workspace).
+
+Not done:
+- Not verified on Aegis, and not checked against a real Grok Bot letter: whether its plain part really lacks
+  the addresses, or X links are the trouble, is inferred from the code paths, not seen. Letters already in
+  email-inbox.jsonl keep the body they were stored with; one whose addresses were lost is not re-read.
+- The Plithra page does not yet show `/api/game/reelroom/suggestions` (the page is not in this repository).
+- Matching a want is word overlap, not meaning: a letter that speaks of the subject in other words is missed.
+- Only five links of a letter are opened when it is read (`want_email.LINKS_READ`); the rest he opens with LINK:.
+- The DNS-rebinding gap in link_fetch (8 October) is unchanged and applies to the new hops too.
+
 ## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
 
 Since the deploy, 24 faults and no notebook rows: every pass failed "model returned no JSON object". The kept raw

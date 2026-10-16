@@ -11785,6 +11785,17 @@ async def reelroom_resume(request: Request):
         return {"ok": False, "resumable": False, "error": str(e)[:200]}
 
 
+@app.get("/api/game/reelroom/suggestions")
+async def reelroom_suggestions(request: Request):
+    """Films, shows and videos his mail suggested, for choosing what to watch: each with who suggested it, the
+    email's subject as they wrote it, and its links (received_mail; 2026-10-16). Read-only: offered, never played."""
+    _require_secret(request)
+    try:
+        return {"ok": True, "suggestions": _reelroom_mod().suggestions()}
+    except Exception as e:
+        return {"ok": False, "suggestions": [], "error": str(e)[:200]}
+
+
 @app.post("/api/home/lights/color")
 async def home_lights_color(req: LightsColorRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")

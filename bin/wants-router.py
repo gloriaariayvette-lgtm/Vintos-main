@@ -2480,6 +2480,15 @@ def main():
                 for h in step_history:
                     summary = h.get('note') or h.get('findings', '')
                     step_context += f"- Step {h['step'] + 1} ({h['capability']}): {summary}\n"
+                # What his mail brought on this want, each item as its sender's words (received_mail, 2026-10-16).
+                # Only beside earlier findings: a first step's text stays the want itself. send_email reads it itself.
+                try:
+                    import received_mail as _rm
+                    _mail_ctx = _rm.want_block(want)
+                    if _mail_ctx:
+                        step_context += "\n" + _mail_ctx + "\n"
+                except Exception as _rme:
+                    log(f"  → mail evidence skipped: {str(_rme)[:120]}")
             if step_note:
                 step_context += f"\nCurrent step goal: {step_note}"
             

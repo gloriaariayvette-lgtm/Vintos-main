@@ -134,6 +134,7 @@ SCRIPTS="$SCRIPTS vintos_calendar.py"   # his own calendar: "do X on Y day" fire
 SCRIPTS="$SCRIPTS consent_gate.py"   # consent gate: logs Gloria's y/n on morning poems + music, announces the activity, 2026-09-23
 SCRIPTS="$SCRIPTS inkbox_guard.py"   # fail-closed policy for his own Inkbox comms identity (email + iMessage), 2026-09-21
 SCRIPTS="$SCRIPTS want_email.py outward_wants.py outside_views.py scholar.py email_approvals.py lab_instruments.py"   # his own emails and his outward wants, 2026-09-28
+SCRIPTS="$SCRIPTS received_mail.py"   # what his received mail carries, put where it is used: a want's next step, ReelRoom, his context, 2026-10-16
 SCRIPTS="$SCRIPTS daily_inner_guard.py"   # door and house entries reach daily-inner only when someone spoke, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the Lab a day, one shared log, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
