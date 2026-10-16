@@ -2245,6 +2245,27 @@ def _on_line(inquiry, value, line):
 
 
 _UNIPROT_ARGS = ("accession", "protein_name", "gene", "organism_id", "taxonomy_id", "organism_name", "reviewed", "keyword")
+# What the planner calls the same things (15 October, 21:26-23:26 CDT: eight source failures, every one a UniProt
+# "plugin" route the Lab refused as an unavailable connector: uniprot.none, uniprot.uniprot_search). The names it
+# reaches for are mapped to the public source's own; paging and formatting it adds are not questions, so they go.
+_UNIPROT_ALIASES = {"gene_name": "gene", "gene_symbol": "gene", "genes": "gene", "protein": "protein_name",
+                    "name": "protein_name", "organism": "organism_name", "species": "organism_name",
+                    "taxon": "taxonomy_id", "taxon_id": "taxonomy_id", "tax_id": "taxonomy_id", "keywords": "keyword"}
+_QUERY_ALIASES = ("query", "search", "term", "terms", "q", "text")
+_LIMIT_ALIASES = ("limit", "size", "max_results", "retmax", "count", "page_size")
+_INERT_ARGS = {"fields", "format", "sort", "order", "offset", "page", "include_isoforms", "compressed", "fmt",
+               "date_from", "date_to", "mindate", "maxdate", "datetype", "retstart", "api_key"}
+
+
+def _limit_of(args, default, top):
+    for key in _LIMIT_ALIASES:
+        if key not in args: continue
+        v = args[key]
+        if isinstance(v, str) and v.strip().isdigit(): v = int(v)
+        if type(v) is not int or v < 1:      # False, None, 0 or words are a malformed request, not a size
+            raise ValueError('%s must be a positive whole number' % key)
+        return min(v, top)
+    return default
 
 
 def uniprot_from_plugin(pq, purpose=""):
@@ -2260,14 +2281,20 @@ def uniprot_from_plugin(pq, purpose=""):
             query += ' AND taxonomy_id:9606'
         return query
     args = pq.get("arguments") if isinstance(pq.get("arguments"), dict) else {}
-    if isinstance(args.get('query'), str) and args['query'].strip():
+    args = {_UNIPROT_ALIASES.get(str(k).lower(), str(k).lower()): v for k, v in args.items()}
+    query = next((args[k] for k in _QUERY_ALIASES if isinstance(args.get(k), str) and args[k].strip()), None)
+    if query:
         from lab_sources import validate_uniprot
-        if set(args) - {'query', 'limit'}:
-            raise ValueError('unsupported public UniProt query arguments')
-        limit = args.get('limit', 4)
-        if type(limit) is not int or not 1 <= limit <= 8:
-            raise ValueError('UniProt limit must be 1..8')
-        return {'source': 'uniprot', 'query': human_scope(validate_uniprot(args['query'])), 'limit': limit}
+        unknown = set(args) - set(_QUERY_ALIASES) - set(_LIMIT_ALIASES) - _INERT_ARGS
+        if unknown:
+            raise ValueError('unsupported public UniProt query arguments: %s' % ", ".join(sorted(unknown)))
+        return {'source': 'uniprot', 'query': human_scope(validate_uniprot(query)), 'limit': _limit_of(args, 4, 8)}
+    if not any(args.get(k) not in (None, "", []) for k in _UNIPROT_ARGS):
+        # nothing named but the question itself: one accession in it is the query (the uniprot.none route)
+        from lab_repeats import _ACCESSION
+        found = sorted(set(_ACCESSION.findall(purpose)))
+        if len(found) == 1:
+            return {"source": "uniprot", "query": "accession:%s" % found[0], "limit": 1}
     terms = []
     for key in _UNIPROT_ARGS:
         v = args.get(key)
@@ -2473,9 +2500,16 @@ def pubmed_from_plugin(pq):
     if not isinstance(pq, dict) or pq.get('plugin') != 'pubmed' or pq.get('tool') not in ('search_articles', 'pubmed.search_articles'):
         return None
     args = pq.get('arguments') or {}
-    if not isinstance(args, dict) or set(args) - {'term', 'query', 'terms', 'limit'}:
+    if not isinstance(args, dict):
         raise ValueError('unsupported public PubMed search arguments')
-    terms = args.get('terms') or args.get('term') or args.get('query')
+    # paging, sorting and date bounds the planner adds are not the question; they go, and the search runs (15
+    # October: three faults, every one "unsupported public PubMed search arguments")
+    args = {str(k).lower(): v for k, v in args.items()}
+    unknown = set(args) - set(_QUERY_ALIASES) - set(_LIMIT_ALIASES) - _INERT_ARGS
+    if unknown:
+        raise ValueError('unsupported public PubMed search arguments: %s' % ", ".join(sorted(unknown)))
+    limit = _limit_of(args, None, 6)        # the public PubMed read takes 1..6
+    terms = next((args[k] for k in ('terms', 'term', 'query', 'q', 'search', 'text') if args.get(k)), None)
     if isinstance(terms, str):
         text = terms.strip()
         # Keep the whole request first, with a named subject that the existing
@@ -2487,7 +2521,7 @@ def pubmed_from_plugin(pq):
     if not isinstance(terms, list) or not terms or any(not isinstance(t, str) or not t.strip() for t in terms):
         raise ValueError('public PubMed search requires nonempty terms')
     spec = {'source': 'pubmed_abstracts', 'terms': terms}
-    if 'limit' in args: spec['limit'] = args['limit']
+    if limit is not None: spec['limit'] = limit
     return spec
 
 

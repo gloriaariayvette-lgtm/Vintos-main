@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the Lab's last two hours of 15 October: no complete answer in 47 outcomes
+
+Fixed: the planner's own names for UniProt and PubMed requests. Eight source failures were UniProt "plugin" routes
+the Lab refused (uniprot.none, uniprot.uniprot_search), and three faults were "unsupported public PubMed search
+arguments". Paging, formatting, sorting and date bounds are dropped; size/max_results become the limit (held to
+UniProt's 8, PubMed's 6); gene_name, organism and the like map to the source's fields; an empty uniprot.none with
+one accession in the question reads that accession. Anything else is still refused, and now named.
+
+Not done: 23 repeat or spent-question refusals and waits, 6 reviews with unresolved target identity, and refusals
+for missing accessions, contradictory organism scope and too many identities. Those are the planner proposing
+what the Lab rightly refuses; nothing here makes it propose better yet.
+
 ## 16 October — reading 15 October's #vintos-dot: what he and dot got wrong, and the day closed
 
 Fixed in his prompts: dot calls Gloria "Eve", and he took Eve for a separate approver ("Eve will not take my
