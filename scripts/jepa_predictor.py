@@ -5,8 +5,10 @@ FROZEN encoder (nomic-embed) -> shared trunk -> three heads, each emitting the f
 triple (prediction + confidence + novelty), per Gloria's architecture note:
   gloria   : predicts the EMBEDDING of Gloria's next turn
   self     : predicts the EMBEDDING of Vintos's own next turn. predict() takes this triple from
-             jepa_self_head.py (his ledger replies, forecast-time context) once that head is trained;
-             the shared-trunk self head here is kept as the fallback until then.
+             jepa_self_head.py (his replies, forecast-time context; mode "ahead") once that head is
+             trained; the shared-trunk self head here is kept as the fallback until then. The head's
+             on-message forecasts (her message arrived, his reply not yet) are its own, launched by the
+             server, and never touch this file's outputs.
   presence : predicts the PRESENCE composite of his next reply (scalar in [0,1]),
              trained on presence-audit.json — so presence is a real prediction head,
              not just a post-hoc audit.
@@ -614,7 +616,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
               "novelty": round(1.0 - max(0.0, _cos(s, xe[0])), 3)}
     if _self_fc is not None:
         self_h.update({"source": _self_fc["source"], "checkpoint_id": _self_fc["checkpoint_id"],
-                       "context_last_ts": _self_fc["context_last_ts"], "coherence": _self_fc["coherence"]})
+                       "context_last_ts": _self_fc["context_last_ts"], "coherence": _self_fc["coherence"],
+                       "mode": _self_fc.get("mode", "ahead")})   # ahead: before her next message exists
 
     _pid = "JP-" + __import__("uuid").uuid4().hex[:8]
     _pat = __import__("datetime").datetime.now().isoformat()
@@ -692,7 +695,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                               "novelty": self_h["novelty"], "emb": [round(float(x), 4) for x in s]},
                      "variance_qualified": (_cg is not None)}
         if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
-            hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts")})
+            hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts", "mode")})
         _hp = history_path or os.path.join(MEMORY, "jepa-prediction-history.jsonl")
         open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:

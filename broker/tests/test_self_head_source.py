@@ -34,7 +34,8 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + ((" -> " + str(d)[:500]) if d and not ok else ""))
 
 check("every path either module writes or reads is scratch", all(str(p).startswith(HOME) for p in (
-    SH.MEMORY, SH.LEDGER, SH.SELF_MODEL, SH.SELF_EVAL, SH.HISTORY, SH.PRODUCTION_MODEL,
+    SH.MEMORY, SH.LEDGER, SH.SELF_MODEL, SH.SELF_EVAL, SH.HISTORY, SH.PRODUCTION_MODEL, SH.CANONICAL, SH.MERGED,
+    SH.POST_TURN, SH.ON_MESSAGE_LOG, SH.PENDING_DIR, SH.EMB_CACHE, SH.VENV_PYTHON,
     JP.MEMORY, JP.CHAT, JP.MODEL, JP.OUT, JP.PRESENCE_CALIBRATION, JP.LEDGER_FLOOR_FILE)))
 check("torch and the sender are stubs", sys.modules["torch"].load.__name__ == "<lambda>" and sys.modules["requests"].post is no_network)
 
@@ -110,7 +111,9 @@ check("no checkpoint: forecast() is None, jepa_predictor keeps its shared-trunk 
 SH.MAX_CONF_SPEARMAN = -1.01   # this checkpoint's confidence must come out unqualified, whatever the noise says
 r = SH.train(enc=Enc(), rows=LED[:70])
 check("the initial train runs", r.get("state") == "TRAINED", r)
-meta = r["meta"]
+meta = r["meta"]["modes"]["ahead"]
+check("both modes are in the one checkpoint, each choosing on its own validation",
+      set(r["meta"]["modes"]) == {"ahead", "on_message"} and r["meta"]["modes"]["on_message"]["n_pairs"] == 69, r["meta"]["modes"].keys())
 check("it learned beyond both bare anchors on its own validation",
       meta["validation_cos_dist"]["chosen"] < min(meta["validation_cos_dist"]["recent_mean"], meta["validation_cos_dist"]["previous_reply"]) - 0.2, meta["validation_cos_dist"])
 held, why = SH.readiness()
@@ -139,11 +142,21 @@ alt = os.path.join(MEM, "self-head-qualified.npz")
 r2 = SH.train(enc=Enc(), rows=LED[:110], model_path=alt)
 fq = SH.forecast(Enc(), rows=LED[:112], model_path=alt)
 check("when it does, confidence is the live coherence's percentile among training coherences",
-      r2["meta"]["confidence"]["qualified"] is True and fq["qualification"] == "qualified" and 0.0 <= fq["confidence"] <= 1.0, fq["confidence"])
+      r2["meta"]["modes"]["ahead"]["confidence"]["qualified"] is True and fq["qualification"] == "qualified" and 0.0 <= fq["confidence"] <= 1.0, fq["confidence"])
 os.remove(alt)
 SH.MAX_CONF_SPEARMAN = -1.01
 HP = os.path.join(MEM, "jepa-prediction-history.jsonl")
 open(HP, "w").write("\n".join(json.dumps(h) for h in hist) + "\n")
+om = []
+for k in range(66, 120):    # the on-message forecast: her message k has arrived (30 s before his ledger row), his reply not
+    arrived = SH._epoch(LED[k]["timestamp"]) - 30
+    fc = SH.forecast(Enc(), rows=LED[:k + 1], mode="on_message", her=LED[k]["gloria"], arrived_at=arrived, today=LED[k]["timestamp"][:10])
+    om.append({"ts": arrived + 2, "arrived_at": arrived, "her_key": fc["her_key"], "mode": "on_message",
+               "self": {"emb": [float(v) for v in fc["emb"]], "mode": "on_message", "source": fc["source"],
+                        "checkpoint_id": fc["checkpoint_id"], "context_last_ts": fc["context_last_ts"]}})
+check("an on-message forecast never sees the reply it is about, even when the ledger already holds it",
+      fc["context_last_ts"] == LED[k - 1]["timestamp"] and fc["mode"] == "on_message", fc["context_last_ts"])
+open(SH.ON_MESSAGE_LOG, "w").write("\n".join(json.dumps(h) for h in om) + "\n")
 before = {f: open(os.path.join(MEM, f), "rb").read() for f in os.listdir(MEM)}
 rep = SH.run_eval(enc=Enc(), rows=LED)
 after = {f: open(os.path.join(MEM, f), "rb").read() for f in os.listdir(MEM)}
@@ -151,18 +164,21 @@ check("the eval writes its own report and nothing else",
       set(after) - set(before) == {"jepa-self-eval.json"} and all(after[f] == before[f] for f in before), set(after) ^ set(before))
 s = rep["self_head"]
 check("only forecasts after the checkpoint, about replies said after it, one per reply",
-      s["n"] == sum(1 for h in hist if h["self"].get("source") and h["ts"] > trained_at) == 49 and all(r_["target_ts"] > LED[69]["timestamp"] for r_ in rep["rows"]["self_head"]), s)
+      s["n"] == sum(1 for h in hist if h["self"].get("source") and h["ts"] > trained_at) == 49 and all(r_["target_ts"] > LED[69]["timestamp"] for r_ in rep["rows"]["ahead"]), s)
 check("the head beats his previous reply and his recent mean on held-out replies",
       s["state"] == "BEATS_BASELINES" and s["cos_dist"]["head"] < s["cos_dist"]["recent_mean"] < s["cos_dist"]["previous_reply"]
       and s["head_wins"]["vs_previous_reply"] > 0.9 and s["head_wins"]["vs_recent_mean"] > 0.9, s)
 leg = rep["legacy_shared_trunk"]
 check("the old shared-trunk rows are scored the same way, for before/after", leg["n"] == 50 and leg["state"] == "NOT_BETTER_THAN_BASELINES", leg)
+check("each mode is scored separately, on_message against baselines that also had her message",
+      rep["modes"]["on_message"]["n"] == 50 and set(rep["modes"]["on_message"]["baselines"]) ==
+      {"previous_reply", "recent_mean", "nearest_exchange", "typical_reply"} and rep["self_head"] == rep["modes"]["ahead"], rep["modes"]["on_message"])
 check("the report is bound to the checkpoint it judged", rep["checkpoint"] == SH.checkpoint_id() and rep["production_checkpoint"] == prod_ck)
 held, why = SH.readiness()
 check("with >= %d judged replies the next train may run" % SH.MIN_EVAL, held and why["state"] == "READY_AFTER_AUDIT", why)
 leak = [dict(h) for h in hist[:2]]; leak[0]["ts"] = trained_at - 600
 ev = SH.evaluate(leak, SH.exchanges(LED), Enc(), self_ck=SH.checkpoint_id(), self_trained_at=trained_at)
-check("a forecast made before the checkpoint is never scored", ev["self_head"] == [], ev["self_head"])
+check("a forecast made before the checkpoint is never scored", ev["ahead"] == [], ev["ahead"])
 
 print("--- jepa_predictor.predict takes self from the head; gloria is byte-identical either way ---")
 chat = []
@@ -187,7 +203,8 @@ os.rename(SH.SELF_MODEL, SH.SELF_MODEL + ".away")
 without, wo = run("without")
 os.rename(SH.SELF_MODEL + ".away", SH.SELF_MODEL)
 check("with a checkpoint, self comes from the head, marked", with_head["self"].get("source") == SH.SOURCE
-      and with_head["self"]["checkpoint_id"] == SH.checkpoint_id() and wh["self"].get("context_last_ts") == LED[-1]["timestamp"], with_head["self"])
+      and with_head["self"]["checkpoint_id"] == SH.checkpoint_id() and wh["self"].get("context_last_ts") == LED[-1]["timestamp"]
+      and wh["self"].get("mode") == with_head["self"].get("mode") == "ahead", with_head["self"])
 check("its null confidence reaches readers as the marked 0.5 stand-in",
       with_head["self"]["confidence"] == 0.5 and with_head["self"]["confidence_placeholder"] is True
       and with_head["qualification"]["self"] == "unqualified_not_predictive")

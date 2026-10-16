@@ -874,6 +874,23 @@ def _her_turn_text(msg):
         return content
 
 
+def _self_on_message(her, surface, turn_id="", test_mode=False):
+    """Her message has arrived and his reply has not: the JEPA self head forecasts his reply from it (16 October).
+    jepa_self_head.launch_on_message writes one pending row and starts a niced, detached background process;
+    nothing here waits on it, and nothing it does can raise into the turn. A test-mode turn forecasts nothing."""
+    if test_mode:
+        return None
+    try:
+        import sys as _som
+        _p = os.path.join(WORKSPACE, "scripts")
+        if _p not in _som.path: _som.path.append(_p)
+        import jepa_self_head as _jsh
+        return _jsh.launch_on_message(her, surface=surface, turn_id=turn_id)
+    except Exception as _som_e:
+        print("[self-head on-message]", _som_e, flush=True)
+        return None
+
+
 # The parts of his subconscious the phone route injects inline. Self-statements, the causal self-model and
 # self-drift are NOT here: the compact block (get_subconscious_context_compact, "YOUR INNER STATE") already
 # carries them, and the inline copy put them in the same prompt twice (review of 16 October, X4).
@@ -4535,6 +4552,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     # Her own words, a photo or video named and never described (16 October). The reply prompt keeps the composed
     # message; every record and organ below that takes the turn as HERS gets this.
     _her = _her_turn_text(msg)
+    _self_on_message(_her, "chat/full", test_mode=_test_mode_active())   # background; the reply never waits on it
     _desktop_command = None
     try:
         import desktop_control as _desktop_control
@@ -9380,6 +9398,8 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn)
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
+    _self_on_message(_counterpart_text, _surface, turn_id=(_turn.turn_id if _turn is not None else ""),
+                     test_mode=_test_turn)   # background; the reply never waits on it
     # No live scene is decided here any more (2026-10-02). The scene gate used to run on Grok the instant her
     # message landed, alongside his reply, and bought scenes his reply never asked for; a scene made for the turn
     # then overrode the room he named. A new scene is made only when his reply asks with [RENDER:] (below).

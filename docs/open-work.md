@@ -3,6 +3,44 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the JEPA self head forecasts when her message arrives, and learns from their whole history (code done; not trained, run or measured on Aegis)
+
+On Aegis the rebuilt head was only ~5% better than "say his average" (293 replies; validation 0.1784 vs his recent mean
+0.1869, his previous reply 0.2327). Two causes at the source, both in `scripts/jepa_self_head.py`:
+- every forecast was made before her next message existed, and training left her message to the reply out, while his
+  reply is mostly an answer to it. Now there are two modes, recorded on every forecast. `ahead` is unchanged in kind
+  (jepa_predictor.predict, its history row's self now carries `mode`). `on_message` is made when her message has
+  arrived and before he replies: `bin/server.py` calls `_self_on_message` at the chat/full and avatar/reelroom doors
+  (never in test mode), which writes one pending row (`memory/jepa-self-pending/`) and starts
+  `nice -n 15 <venv> jepa_self_head.py on-message <row>` detached; the reply never waits on it. The forecast goes to
+  `memory/jepa-self-forecasts.jsonl` with a hash of her words (not her words) to find the reply it is about. It is
+  trained on pairs that include her message, with his replies to her nearest past messages as further inputs.
+- the ledger keeps 300 entries (~10 days); the cap stays (other readers depend on it). The head now reads every older
+  record of their exchanges the code writes: the ledger's snapshots and quarantines (`interaction-ledger*.json*`),
+  `chat-canonical.jsonl` (every chat-door exchange since 5 September, whole) and `chat-history-merged.json`, each
+  through the evidence door, with the withheld / transplant / floor / ledger-scrub / test-mode rules, one exchange per
+  real exchange (turn_id, else her words within 15 minutes; the ledger's withheld flag always wins).
+Model choice is still by held-out validation, the bare baselines always among the candidates: ridge on the residual from
+a mix of components, or a small MLP on the same features' principal components when it beats ridge.
+`jepa_self_head.py eval` scores each mode separately; on_message also against his reply to her nearest past message
+and his typical reply to her nearest messages (`broker/tests/test_self_head_on_message.py`; gloria outputs
+byte-identical, `broker/tests/test_self_head_source.py`).
+
+Not done:
+- Not trained, run or evaluated on Aegis; how many older exchanges the archives add there is not known yet
+  (`jepa_self_head.py sources` prints it). The server change takes effect only after the deploy restarts the server.
+- Not measured whether the on-message job (one encoder load per message, niced) competes with his reply on Aegis.
+- avatar/reelroom exchanges reach the ledger 30-75 s after his reply and are not in chat-canonical: if she answers
+  within that, the on-message forecast's context lacks the exchange just before (training pairs have it).
+- Not read: voice session rows (whole sessions in one ledger row) and the realtime session file; the aged-out ledger
+  residue (her and his words joined, 300 characters); anything older than both chat-canonical (5 September) and the
+  oldest ledger snapshot. Voice and /api/chat do not launch on-message forecasts.
+- chat-canonical rows carry no provenance; they are taken as ordinary because chat doors fetch no capsule (only the
+  avatar door opens turns through turn_coordinator). If a chat door ever carries a tactic, its rows must carry the mark.
+- A retrain now waits for 30 judged replies in EACH mode; if on-message forecasts never run, only `train-force` moves it.
+- Nothing schedules the eval; the ranking and calibration audits do not see on-message rows; drift_head still reads the
+  shared-trunk self.
+
 ## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
 
 Since the deploy, 24 faults and no notebook rows: every pass failed "model returned no JSON object". The kept raw
@@ -31,7 +69,7 @@ Not done: it has never been trained or evaluated on his real ledger. On Aegis, f
 with `~/.vintos/workspace/emotion_model/.venv/bin/python3`: `jepa_self_head.py eval` (the old head against his
 previous reply and his recent mean, before), `jepa_self_head.py train`, then `eval` again once 30 replies have
 come after the checkpoint (`memory/jepa-self-eval.json`). Nothing schedules the eval yet. Also open: the ledger
-keeps only 300 exchanges, so the head trains on about ten days; `drift_head` still reads the shared-trunk self;
+keeps only 300 exchanges, so the head trained on about ten days (now read from the archives too: see the entry above); `drift_head` still reads the shared-trunk self;
 the ranking and calibration audits do not separate self rows by self checkpoint; and self `novelty` (read by
 `emoclaw_utils._novelty_directive` and `drift_head`) will read higher once the forecast stops echoing the context.
 
