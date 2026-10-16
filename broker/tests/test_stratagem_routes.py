@@ -70,7 +70,9 @@ class Routes(unittest.TestCase):
         for route in ['chat_with_vintos', 'chat_full_context', 'chat_with_memory']:
             self.adopt()
             fn = self.function(route, {'APP_SECRET': 'fixture-secret',
-                                       '_her_turn_text': lambda msg: msg.original_text})
+                                       '_her_turn_text': lambda msg: msg.original_text,
+                                       '_self_on_message': lambda *args, **kwargs: None,
+                                       '_test_mode_active': lambda: True})
             with patch.dict(sys.modules, {'desktop_control': desktop}):
                 result = asyncio.run(fn(message, request))
             self.assertIn('acknowledged', result['reply'])

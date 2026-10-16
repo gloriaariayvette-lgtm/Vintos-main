@@ -30,6 +30,20 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+
+def _ledger_state():
+    """Every place a stray ledger could land, with its size and time, before and after this suite runs.
+    A real ledger already in the checkout (Gloria's own `bench.py propose` on Aegis, 16 October) is hers, not a
+    leak: what fails is a ledger this suite created or changed."""
+    home = os.path.expanduser("~")
+    out = {}
+    for p in (os.path.join(home, ".vintos", "workspace", "memory", "ledgers"), os.path.join(home, "bench"),
+              os.path.join(REPO, "bench", "ledgers", "claude.jsonl"), os.path.join(REPO, "bench", "ledgers", "gemma.jsonl")):
+        if os.path.exists(p):
+            st = os.stat(p); out[p] = (st.st_size, st.st_mtime_ns)
+    return out
+
+_LEDGERS_BEFORE = _ledger_state()
 BENCH = os.path.join(REPO, "bench")
 sys.path.insert(0, BENCH)
 
@@ -168,12 +182,8 @@ check("this suite wrote only to its throwaway root", B.LEDGERS.startswith(TMP))
 # Not "his workspace does not exist" — another suite in the same sweep leaves an empty
 # memory/ behind, and this suite is not the place to assert that. What matters here is
 # that the BENCH wrote nothing outside its own root.
-_home = os.path.expanduser("~")
-_strays = [p for p in (os.path.join(_home, ".vintos", "workspace", "memory", "ledgers"),
-                       os.path.join(_home, "bench"),
-                       os.path.join(REPO, "bench", "ledgers", "claude.jsonl"),
-                       os.path.join(REPO, "bench", "ledgers", "gemma.jsonl"))
-           if os.path.exists(p)]
+_after = _ledger_state()
+_strays = sorted(p for p in _after if _LEDGERS_BEFORE.get(p) != _after[p])
 check("the bench wrote no ledger outside its throwaway root, and none into the checkout",
       not _strays, _strays)
 
