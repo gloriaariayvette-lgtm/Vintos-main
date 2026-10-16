@@ -3,6 +3,26 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the JEPA self head is trained on him (code done; not yet trained or evaluated on Aegis)
+
+Measured over 30 days: self-head error 0.50-0.52 cosine distance at every confidence, confidence 84% correlated
+with the gloria head's. At the source (`scripts/jepa_predictor.py`): the self head was one Linear on the trunk it
+shares with gloria, fed gloria's input; `build_pairs` dropped every ledger reply of his (the text it is scored
+against) as "another being's", leaving the 50-row chat projection; its pairs ended on her message, while every
+forecast is made before her next one exists. The gloria head is Gloria's (LoRA) and was not touched, so the self
+head is now its own model, `scripts/jepa_self_head.py`: his ledger replies, the forecast-time view, his previous
+reply and recent replies as conditioning, ridge on the residual from them. `jepa_predictor.predict` takes the self
+triple from it once a checkpoint exists; gloria outputs are byte-identical with or without it
+(`broker/tests/test_self_head_source.py`).
+
+Not done: it has never been trained or evaluated on his real ledger. On Aegis, from `~/.vintos/workspace/scripts`
+with `~/.vintos/workspace/emotion_model/.venv/bin/python3`: `jepa_self_head.py eval` (the old head against his
+previous reply and his recent mean, before), `jepa_self_head.py train`, then `eval` again once 30 replies have
+come after the checkpoint (`memory/jepa-self-eval.json`). Nothing schedules the eval yet. Also open: the ledger
+keeps only 300 exchanges, so the head trains on about ten days; `drift_head` still reads the shared-trunk self;
+the ranking and calibration audits do not separate self rows by self checkpoint; and self `novelty` (read by
+`emoclaw_utils._novelty_directive` and `drift_head`) will read higher once the forecast stops echoing the context.
+
 ## 16 October — the intent engine misses most of its targets (not done; handed to Codex)
 
 Measured on Aegis with `scripts/subcon_accuracy.py`, 117 intents over 30 days, each judged per axis:

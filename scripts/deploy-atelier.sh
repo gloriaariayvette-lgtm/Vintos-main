@@ -151,6 +151,7 @@ SCRIPTS="$SCRIPTS store_guard.py store_owners.py env_file.py"   # env_file: ONE 
 SCRIPTS="$SCRIPTS untested_report.py health_view.py"   # reviews 388/389, 2026-09-10
 SCRIPTS="$SCRIPTS source_cache.py"   # review 162, 2026-09-10
 SCRIPTS="$SCRIPTS calibration.py jepa_calibration_audit.py jepa_ranking_audit.py idempotency.py"   # JEPA calibration plus true-next ranking control
+SCRIPTS="$SCRIPTS jepa_self_head.py"   # the JEPA self head on his own ledger replies, and its held-out eval vs his previous reply and recent mean, 2026-10-16
 SCRIPTS="$SCRIPTS record_contract.py pending_sweep.py"   # reviews 34/39/51/50/54, 2026-09-10
 SCRIPTS="$SCRIPTS physical_contract.py sealed_retry.py effect_authority.py text_similarity.py"   # reviews 77/93/98/95/157, 2026-09-10
 SCRIPTS="$SCRIPTS learning_occasion.py retry_policy.py"   # reviews 49/175, 2026-09-10

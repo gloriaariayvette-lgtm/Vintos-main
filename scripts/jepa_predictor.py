@@ -4,7 +4,9 @@
 FROZEN encoder (nomic-embed) -> shared trunk -> three heads, each emitting the full
 triple (prediction + confidence + novelty), per Gloria's architecture note:
   gloria   : predicts the EMBEDDING of Gloria's next turn
-  self     : predicts the EMBEDDING of Vintos's own next turn
+  self     : predicts the EMBEDDING of Vintos's own next turn. predict() takes this triple from
+             jepa_self_head.py (his ledger replies, forecast-time context) once that head is trained;
+             the shared-trunk self head here is kept as the fallback until then.
   presence : predicts the PRESENCE composite of his next reply (scalar in [0,1]),
              trained on presence-audit.json — so presence is a real prediction head,
              not just a post-hoc audit.
@@ -582,6 +584,19 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         return "unqualified_spreadless"
     _cg = _relconf(0)
     _cs, _cp = _relconf_sp(1), _relconf_sp(2)
+    # The SELF triple comes from its own head (jepa_self_head.py: his ledger replies, forecast-time context,
+    # his own recent replies) once that head has a checkpoint; until then the shared-trunk self above stands
+    # exactly as it was. Nothing the gloria head reads or writes is touched here. Shadow keeps its own.
+    _self_fc = None
+    if not shadow:
+        try:
+            import jepa_self_head as _SH
+            _self_fc = _SH.forecast(enc)
+        except Exception as _sfe:
+            log(f"self head unavailable; shared-trunk self kept: {_sfe}")
+    _self_qual = _qual_sp(_cs)
+    if _self_fc is not None:
+        s = np.asarray(_self_fc["emb"], dtype="float32"); _cs = _self_fc["confidence"]; _self_qual = _self_fc["qualification"]
 
     gloria_turns = [t for t in turns if t.get("role") == "user"][-12:]
     self_turns   = [t for t in turns if t.get("role") == "assistant"][-12:]
@@ -597,6 +612,9 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
               "confidence": (_cs if _cs is not None else 0.5), "confidence_placeholder": _cs is None,
               "decode_similarity": _s_sim,
               "novelty": round(1.0 - max(0.0, _cos(s, xe[0])), 3)}
+    if _self_fc is not None:
+        self_h.update({"source": _self_fc["source"], "checkpoint_id": _self_fc["checkpoint_id"],
+                       "context_last_ts": _self_fc["context_last_ts"], "coherence": _self_fc["coherence"]})
 
     _pid = "JP-" + __import__("uuid").uuid4().hex[:8]
     _pat = __import__("datetime").datetime.now().isoformat()
@@ -638,7 +656,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
            "context_id": _context_id,           # which exchange window this forecast is about
            "context_last_event": (turns[-1].get("event_id") if turns else None),
            "checkpoint_id": _ck_id,
-           "qualification": {"gloria": _qual(_cg), "self": _qual_sp(_cs), "presence": _qual_sp(_cp)},
+           "qualification": {"gloria": _qual(_cg), "self": _self_qual, "presence": _qual_sp(_cp)},
            "steering_allowed": (False if shadow else all(v.get("state") == "RELEASED" for v in _cal_v.values())),
            "calibration": _cal_v,   # per head: RELEASED / WITHHELD / INSUFFICIENT, with the numbers and the criteria version
            # backward-compatible top-level = the gloria triple (gloria_prediction + latent read these)
@@ -673,6 +691,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                               "decode_similarity": self_h["decode_similarity"],
                               "novelty": self_h["novelty"], "emb": [round(float(x), 4) for x in s]},
                      "variance_qualified": (_cg is not None)}
+        if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
+            hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts")})
         _hp = history_path or os.path.join(MEMORY, "jepa-prediction-history.jsonl")
         open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:
