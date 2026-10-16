@@ -460,5 +460,56 @@ def context_block():
     except Exception: pass
     return "\n\n".join(parts)
 
+MARKED_TOYS = ("tenera", "ridge", "ferri")   # the Mission has its own depiction
+RECEIPTS = os.path.join(MEM, "effect-receipts.jsonl")
+
+
+def draw_mark(toy, pattern, level):
+    """One device's picture under his words: its pattern's shape, or a held level's bar."""
+    pat, lvl = str(pattern or ""), int(level or 0)
+    sp = (bar(lvl) if pat in ("steady", "") else spark(pat)) or bar(lvl)   # a shape with no preset picture: its level
+    if toy == "ridge":
+        return f"ridge:  {ridge_shape()}\n        {ridge_track(lvl)}   {pat or 'steady'}  {sp}"
+    return f"{toy + ':':<7} {pat or 'steady'}  {sp}  @{lvl}"
+
+
+def turn_marks(since, path=None):
+    """The pictures for exactly what he fired since `since` (this turn), read from the receipts both grammars write
+    as they fire ([DO:] patterns and [TOUCH:] levels), so nothing depends on how long after the reply a record is
+    written (16 October: ReelRoom's ledger is written at session end, long past any time window, and the chat history
+    never carried the pictures at all). '' when nothing of the marked toys was sent."""
+    rows = []
+    try:
+        with open(path or RECEIPTS) as f:
+            for line in f:
+                try: r = json.loads(line)
+                except ValueError: continue
+                if float(r.get("t") or 0) >= since and r.get("outcome") in ("submitted", "started"):
+                    rows.append(r)
+    except OSError:
+        return ""
+    drawn = {}
+    for r in rows:
+        if r.get("kind") == "touch":
+            toy, pat, lvl = str(r.get("toy") or ""), "steady", int(r.get("level") or 0)
+            if lvl <= 0: continue
+        elif r.get("kind") == "pattern":
+            import re as _tm_re
+            m = _tm_re.match(r"\s*(\w+)\s*\u2192\s*([\w+]+)((?:\s+\d+)*)", str(r.get("text") or ""))
+            if not m: continue
+            toy, pat = m.group(1), m.group(2)
+            nums = [int(x) for x in m.group(3).split()]
+            if pat.isdigit():                       # a [TOUCH:] fired through the same door: "ferri → 7"
+                pat, nums = "steady", [int(pat)] + nums
+            if pat == "still": continue
+            lvl = max(nums) if nums else max(_levels_for(pat) or [10])
+        else:
+            continue
+        if toy in MARKED_TOYS:
+            drawn[toy] = draw_mark(toy, pat, lvl)      # the last thing fired on each toy this turn
+    lines = [drawn[t] for t in MARKED_TOYS if t in drawn]
+    return ("\n\n" + "\n".join(lines)) if lines else ""
+
+
 if __name__ == "__main__":
     print(context_block())

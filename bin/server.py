@@ -9359,6 +9359,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     _surface = "reelroom" if getattr(msg, "surface", None) == "reelroom" else "avatar"
     _note_task, _note = None, ""     # Gemma's note of a picture she sent, for his memory (2026-10-01)
     _defer_session_ledger = bool(_surface == "reelroom" and getattr(msg, "defer_session_ledger", False))
+    _turn_marks = ""   # this turn's device pictures, drawn once his tags have fired
     # A room event may be part of the model input, but evidence writers receive
     # only Gloria's actual words. Never turn a scheduler instruction into her
     # quote or into evidence about her.
@@ -10083,6 +10084,7 @@ Your current self-model (excerpt):
                 # all", so once the gate is armed a coordinator hiccup would
                 # silently take his body away here instead of degrading to the
                 # same standing every other surface has.
+                _fx_t0 = time.time()   # the turn's device pictures are drawn from what fires after this
                 reply = _fhi(reply, context=(_turn.context if _turn is not None
                                              else _tc_av.effect_context(_surface)))   # fire his [DO: ...], authorized against the turn
             except Exception as _fe: print("[DO fire]", _fe, flush=True)
@@ -10151,9 +10153,20 @@ Your current self-model (excerpt):
                     reply = _felt_re.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply or "").strip()
             except Exception:
                 _felt_raw = ""
-            av_history.append({"role": "assistant", "content": reply,
+            # The pictures of what he fired this turn go under his words in his chat history and the ledger alike
+            # (Gloria, 16 October: "They should all be appearing in the conversation ledger and the chat
+            # history/context"). Drawn from what actually fired, never from a time window.
+            _turn_marks = ""
+            try:
+                if "_fx_t0" in locals():
+                    import device_context as _dc_tm
+                    _turn_marks = _dc_tm.turn_marks(_fx_t0)
+            except Exception as _tm_e:
+                print("[device marks]", _tm_e, flush=True)
+            av_history.append({"role": "assistant", "content": reply + _turn_marks,
                                "ts": __import__("time").time(), "served_by": str(_model_used),
-                               "generation_provenance": _prov_envelope})
+                               "generation_provenance": _prov_envelope,
+                               **({"device_marks": _turn_marks.strip()} if _turn_marks else {})})
             nudge_emotions_from_text(
                 reply, source="reply", surface=_surface,
                 turn_id=(_turn.turn_id if _turn is not None else ""),
@@ -10196,7 +10209,8 @@ Your current self-model (excerpt):
                 _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
                 _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
                            ledger_media=_sent_media(msg, _note),
-                           writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
+                           writer_env=dict(_prov_writer_env or os.environ, VINTOS_DEVICE_MARKS=_turn_marks),
+                           turn_id=(_turn.turn_id if _turn is not None else ""),
                            test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration
                 try:

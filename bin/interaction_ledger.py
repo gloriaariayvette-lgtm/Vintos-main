@@ -66,6 +66,11 @@ MAX_ENTRIES = 300  # ~10 days at 30/day
 
 def _device_marks():
     """What he actually did to her body in this turn, rendered — appended to his words."""
+    # The server draws the turn's pictures from what actually fired and hands them here (16 October); the time-window
+    # guess below is only for a writer that did not.
+    import os as _dm_env
+    if "VINTOS_DEVICE_MARKS" in _dm_env.environ:
+        return _dm_env.environ["VINTOS_DEVICE_MARKS"]
     import time as _dm_t
     try:
         import sys as _dm_s, os as _dm_o, json as _dm_j
