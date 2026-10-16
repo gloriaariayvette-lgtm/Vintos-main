@@ -53,6 +53,14 @@ is written to faults.jsonl as `question_narrowed`). A question already held keep
 Not done: not yet seen live. HMOX1's heme-iron residues in 1N3U came back missing although the structure read
 computes iron contacts; whether that read ran for the review is not yet known.
 
+Second pass, same day (18:37 UTC deploy, 30 reviews, 2 complete): 47 narrowings were logged, but two-part questions
+still reached review, because only the first choice was narrowed; every replan (repeat, premise, frontier, saved step)
+came back unnarrowed. Narrowing now runs on every planner answer (`_narrow` inside `_plan`), deterministically,
+with what was kept written down. The planner is also told that residues and geometry come from record features or
+structure contacts, never abstracts (Pendrin–ZBTB16 residues "as described in PMID ..."), and that a genus's or
+system class's "structural hallmarks" are in no one record (six Vibrio/Pseudomonas/T6SS questions). Not done: the
+structure-read notebook rows carry no reading, so whether metal contacts were found for HMOX1 is still not known.
+
 ## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
 
 Since the deploy, 24 faults and no notebook rows: every pass failed "model returned no JSON object". The kept raw
