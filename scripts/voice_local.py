@@ -50,22 +50,34 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     user = ("Gloria said aloud:\n" + heard["transcript"] +
             "\n\n[AUDIO-NATIVE READING — Gemma 3n received the recording itself:]\n" +
             json.dumps(evidence, ensure_ascii=False))
-    system = str(instructions or "")
+    from stratagem_turn import Interaction, control
+    command = control(heard["transcript"])
+    if command is not None:
+        return {"ok": True, "transcript": heard["transcript"], "reply": command, "audio": "", "audio_format": "wav"}
+    interaction = Interaction(heard["transcript"], "voice")
+    if interaction.turn.duplicate_event:
+        return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
+    system = str(instructions or "") + interaction.prompt()
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
         "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "
         "native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, "
         "only when you genuinely mean it. Never write any other bracketed stage direction and "
         "never describe the cue in prose.")
+    interaction.admitted(system)
     brain_raw, _ = _post(LM + "/v1/chat/completions", {"model":BRAIN,
         "messages":[{"role":"system","content":system},{"role":"user","content":user}],
         "temperature":.85,"max_tokens":180}, 180)
     brain = json.loads(brain_raw); raw_reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content","").strip()
+    raw_reply = interaction.complete(raw_reply)
     reply = _display_text(raw_reply)
     if not reply: return {"ok":False,"stage":"brain","error":"local brain returned no words","hearing":heard}
     voice_raw, headers = _post(STAGE + "/tts", {"text":raw_reply}, 210)
     if not voice_raw.startswith(b"RIFF"):
         return {"ok":False,"stage":"voice","error":"voice returned no WAV","reply":reply,"hearing":heard}
+    from stratagem_turn import guard_reply
+    if not guard_reply(reply, interaction.turn):
+        return {"ok": True, "reply": "", "audio": "", "transcript": heard["transcript"], "suppressed": "stratagem ended before playback"}
     return {"ok":True,"transcript":heard["transcript"],
             "audio_reading":heard.get("audio_reading"),"reply":reply,
             "audio":base64.b64encode(voice_raw).decode(),"audio_format":"wav",

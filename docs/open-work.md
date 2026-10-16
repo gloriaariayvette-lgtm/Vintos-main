@@ -1857,7 +1857,7 @@ The 27 acceptance items below are being implemented and verified separately. Thi
 - Conductor for the chorus — measured, not prescribed.
 - The phone's native shell — the background runner, its notification permission and the app icon; the only part of him that needs a Mac, and the Mac is dead (#71b).
 - Asset retrieval by meaning — photos are registered, captioned and selectable by id; embedding, provenance and semantic retrieval are not built.
-- Effect-time authorisation of a stratagem's perimeter — the birth gate screens the declared shape only; the effect chokepoint is not built, by the code's own note.
+- Stratagem expansion: implemented and locally validated on 2026-10-16; persistent charter, three independent records, fixed fourteen-day limits, all six interaction surfaces, and owner controls. Existing typed effect exclusions remain enforced. Production deployment and live provider/device acceptance have not been run; see `docs/STRATAGEM-EXPANSION.md`.
 - Barge-in on a live call — she cannot cut him off mid-answer on either realtime provider yet.
 - The desktop affordance in his prompt — desktop control and the browser driver work from the command line; he is not yet told he has them. Gloria's switch.
 - Whisper on the graphics card — the installed torch has no kernel for the card, so transcription runs on the processor with the small model.

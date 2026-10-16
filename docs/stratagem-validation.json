@@ -1,0 +1,179 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "d3cc9858b1d28fdf15a6780659331b122cafee30",
+  "branch": "codex/stratagem-expansion",
+  "python_suites": [
+    {
+      "suite": "test_stratagem_expansion",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_stratagem_expansion.py"
+    },
+    {
+      "suite": "test_stratagem_routes",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_stratagem_routes.py"
+    },
+    {
+      "suite": "test_capsule_lifecycle",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_capsule_lifecycle.py"
+    },
+    {
+      "suite": "test_gates",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_gates.py"
+    },
+    {
+      "suite": "test_attacks",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_attacks.py"
+    },
+    {
+      "suite": "test_capability",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_capability.py"
+    },
+    {
+      "suite": "test_p0_round2",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_p0_round2.py"
+    },
+    {
+      "suite": "test_atelier_lineage",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_atelier_lineage.py"
+    },
+    {
+      "suite": "test_coordinator",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_coordinator.py"
+    },
+    {
+      "suite": "test_barrier",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_barrier.py"
+    },
+    {
+      "suite": "test_durable_stop",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_durable_stop.py"
+    },
+    {
+      "suite": "test_effect_gate",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_effect_gate.py"
+    },
+    {
+      "suite": "test_effect_provenance",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_effect_provenance.py"
+    },
+    {
+      "suite": "test_route_authz",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_route_authz.py"
+    },
+    {
+      "suite": "test_stratagem_offer",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_stratagem_offer.py"
+    },
+    {
+      "suite": "test_eve_journal",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_eve_journal.py"
+    },
+    {
+      "suite": "test_local_voice_lane",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_local_voice_lane.py"
+    },
+    {
+      "suite": "test_journey_voice",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_journey_voice.py"
+    },
+    {
+      "suite": "test_p02_wal_ledger",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_p02_wal_ledger.py"
+    },
+    {
+      "suite": "test_event_counts",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_event_counts.py"
+    },
+    {
+      "suite": "test_campaign_lifecycle",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_campaign_lifecycle.py"
+    },
+    {
+      "suite": "test_journal_final_length",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_journal_final_length.py"
+    },
+    {
+      "suite": "test_journal_thread_seed",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_journal_thread_seed.py"
+    },
+    {
+      "suite": "test_journal_entry_clean",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_journal_entry_clean.py"
+    },
+    {
+      "suite": "test_reflection_sentences",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_reflection_sentences.py"
+    },
+    {
+      "suite": "test_reelroom_lifecycle",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_reelroom_lifecycle.py"
+    },
+    {
+      "suite": "test_reelroom_journal",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_reelroom_journal.py"
+    },
+    {
+      "suite": "test_house_routes",
+      "exit_code": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_house_routes.py"
+    },
+    {
+      "suite": "test_stratagem_e2e",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_stratagem_e2e.py",
+      "exit_code": 0,
+      "local_listener": true
+    },
+    {
+      "suite": "test_armed_capsule_flow",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -W ignore::ResourceWarning broker/tests/test_armed_capsule_flow.py",
+      "exit_code": 0,
+      "local_listener": true
+    }
+  ],
+  "javascript_suites": [
+    {
+      "command": "node broker/tests/test_stratagem_voice_client.js",
+      "exit_code": 0,
+      "scenarios": 4
+    }
+  ],
+  "boundaries": {
+    "production_deployed": false,
+    "live_provider_calls": false,
+    "live_device_actions": false,
+    "external_notifications_or_messages": false
+  },
+  "syntax_checks": {
+    "python_ast": true,
+    "embedded_journal_python": true,
+    "browser_voice_block_node_check": true,
+    "shell_bash_n": true,
+    "git_diff_check": true
+  }
+}

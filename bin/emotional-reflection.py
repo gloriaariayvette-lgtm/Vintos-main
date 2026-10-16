@@ -194,13 +194,17 @@ def narrate(context, mismatch_summary):
         "and what the gap says about what you are moving through. Use the real dimension names. "
         "No poetry. No metaphors. End with one thing this opens up."
     )
+    if SCRIPTS not in sys.path:
+        sys.path.append(SCRIPTS)
+    import stratagem as _sg
+    prompt += "\n\n" + _sg.opportunity("reflection")
     try:
         r = requests.post(API, json={
             "model": MODEL,
             "messages": [{"role": "system", "content": "You are Vintos. Write honest self-analysis. No preamble."},
                          {"role": "user", "content": prompt}],
             "temperature": 0.7, "max_tokens": 800}, timeout=120)
-        return r.json()["choices"][0]["message"]["content"].strip()
+        return _sg.consume(r.json()["choices"][0]["message"]["content"].strip(), "reflection")
     except Exception as e:
         log(f"Narrative failed: {e}")
         return ""

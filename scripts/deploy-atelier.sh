@@ -99,7 +99,7 @@ jepa_predictor.py drift_head.py relational_head.py world_model.py
 gloria_prediction.py withheld_head.py self_pressure.py resonance_felt.py inner_context.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
 effect_gate.py toy_link.py device_patterns.py evidence_provenance.py heart_rate.py
-stratagem.py turn_record.py formation_observatory.py thruster_link.py
+stratagem.py stratagem_turn.py stratagem_realtime.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
@@ -189,7 +189,7 @@ BINS="$BINS soul-review.py soul_review.py wants-ambitions-log.py wants_ambitions
 BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissioning probes; manual install on Mac
 BINS="$BINS vintos_claude_shim.py hallucination_check.py reality_anchor.py reality-anchor.py specificity_check.py wonder-detector.py wonder_detector.py relational_geometry.py relational-geometry.py"
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py voice_orpheus.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py absence-map-cold.py absence_map_cold.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh temporal-context.sh"   # thread lifecycle, 2026-09-10
-BINS="$BINS gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
+BINS="$BINS stratagem-charter.sh gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh wants-check.sh"
 
@@ -208,7 +208,7 @@ BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/cha
 BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
 BINS="$BINS dream_poetry.py dream-poetry.py vintos-journal.sh"   # never in the manifest: the 2026-09-24 fix keeping poems out of the journal, and the journal's own changes, never reached Aegis (2026-09-30)
 
-CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
+CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
@@ -843,7 +843,7 @@ while IFS='|' read -r from to; do
     fi
 done < "$_plan_file"
 for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"; done
-for f in first-light.sh gloria-model-update.sh self-model-update.sh; do d="$(dest "bin/$f")"; [ -e "$d" ] && chmod 755 "$d"; done   # cron runs these directly
+for f in first-light.sh gloria-model-update.sh self-model-update.sh stratagem-charter.sh; do d="$(dest "bin/$f")"; [ -e "$d" ] && chmod 755 "$d"; done   # cron runs these directly
 
 # The checkout's logical paths are not Aegis's live paths.  Give the bounded
 # self-builder the exact resolution this deploy just proved instead of making
@@ -1089,6 +1089,13 @@ elif sudo -n true 2>/dev/null; then
     if sudo install -o atelier -g atelier -m 644 "$STAGE/broker/broker.py" "$BROKER" \
        && sudo install -o atelier -g atelier -m 644 "$STAGE/broker/stratagem_store.py" "$STORE" \
        && sudo install -m 644 "$STAGE/broker/$UNIT_NAME.service" "$UNIT_DST"; then
+        if ! sudo test -f /home/atelier/atelier/stratagem-charter.json; then
+            sudo -u atelier python3 "$STORE" grant || die "standing charter provisioning failed"
+        fi
+        mkdir -p "$HOME/.vintos/secrets"
+        sudo install -o "$(id -un)" -g "$(id -gn)" -m 600 \
+            /home/atelier/atelier/.stratagem-owner-key "$HOME/.vintos/secrets/stratagem-owner-token" \
+            || die "stratagem owner credential provisioning failed"
         sudo systemctl daemon-reload
         sudo systemctl enable "$UNIT_NAME" >/dev/null 2>&1
         # The old unit launches this same broker on this same port. Retire it;

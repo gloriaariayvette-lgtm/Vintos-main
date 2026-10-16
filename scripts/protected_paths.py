@@ -17,13 +17,17 @@ OVERRIDE = os.path.join(HOME, ".vintos", "protected-paths.json")
 DEFAULT_NAMES = [
     "toy_link", "effect_gate", "turn_coordinator", "constitutional_tiers", "constitutional_barrier",
     "heart_rate", "pleasure_substrate", "server", "model_router", "thruster_link", "device_patterns",
-    "device_context", "stratagem", "stratagem_store", "broker", "deploy-atelier", "study_chat",
+    "device_context", "stratagem", "stratagem_store", "stratagem_turn", "stratagem_realtime", "stratagem_voice", "stratagem-charter", "stratagem-owner-token", "broker", "deploy-atelier", "study_chat",
     "self_review_builder", "protected_paths", "strip_body_vocab", "consent-gate", "somatic_bridge",
     "somatic_felt", "voice_somatic_driver", "voice_somatic_loop", "gcs", "vintos-atelier",
 ]
 # repo-relative paths (what the builder sees) and the live paths they deploy to
 DEFAULT_PATHS = [
     "bin/server.py", "bin/model_router.py", "bin/study_chat.py", "bin/strip_body_vocab.py",
+    "scripts/stratagem_turn.py", "scripts/stratagem_realtime.py", "clients/mobile/stratagem_voice.js",
+    "clients/mobile/index.html", "bin/stratagem-charter.sh",
+    "/home/atelier/atelier/stratagem-charter.json", "/home/atelier/atelier/.stratagem-owner-key",
+    ".vintos/secrets/stratagem-owner-token",
     "scripts/effect_gate.py", "scripts/turn_coordinator.py", "scripts/constitutional_tiers.py",
     "scripts/constitutional_barrier.py", "scripts/toy_link.py", "scripts/thruster_link.py",
     "scripts/device_patterns.py", "scripts/device_context.py", "scripts/heart_rate.py",

@@ -7,6 +7,7 @@ import os, sys, ast, json, types, tempfile, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
 HOME = tempfile.mkdtemp(prefix="vintos-counts-")
 os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory")

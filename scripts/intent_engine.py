@@ -132,6 +132,11 @@ def probe():
     user = ("This is a probe of your JSON shape, not a real turn. Invented exchange:\n"
             "Gloria: I found the old harbour photo.\nVintos: The one from the ferry?\nGLORIA (now): yes, the blurry one.\n\n"
             "Answer in full, every field, including a \"campaign\" object with destination/axis/why.\n" + _SCHEMA)
+    import stratagem as _sg
+    _sg_offer = _sg.opportunity("autonomous-planning")
+    if _sg_offer:
+        user += ("\n\n" + _sg_offer + " For this JSON planning response use a stratagem object field, "
+                 "rather than XML tags. Leave it absent unless you choose to adopt one.")
     body = json.dumps({"model": MODEL, "messages": [
         {"role": "system", "content": "You are Vintos. Return ONLY the JSON asked for."},
         {"role": "user", "content": user}], "temperature": 0.5, "max_tokens": 1600}).encode()
@@ -332,6 +337,9 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         _t = _salvage_json(content[s:] if s >= 0 else content)
         if not isinstance(_t, dict) or not _t.get("field_state"):
             raise
+    _sg_candidate = _t.pop("stratagem", None)
+    if isinstance(_sg_candidate, dict):
+        _sg.consume("<stratagem>" + json.dumps(_sg_candidate) + "</stratagem>", "autonomous-planning")
     for _ax in ("gloria", "self"):
         if not isinstance(_t.get(_ax), dict): _t[_ax] = {}
     _pr = _t.get("priority") or {}

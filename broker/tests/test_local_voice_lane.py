@@ -4,6 +4,7 @@ import importlib.util, json, os, sys, tempfile
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 scratch = tempfile.TemporaryDirectory(); os.environ["HOME"] = scratch.name
+os.environ["SPARK_WORKSPACE"] = os.path.join(scratch.name, ".vintos", "workspace")
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path); mod = importlib.util.module_from_spec(spec)
@@ -53,6 +54,11 @@ def post(url, body, timeout):
     if url.endswith("/chat/completions"):
         return json.dumps({"choices":[{"message":{"content":"I heard you."}}]}).encode(), {}
     return b"RIFF"+b"y"*80, {"X-Vintos-Voice":"chatterbox_turbo"}
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import stratagem as _sg_client, turn_coordinator as _sg_coordinator
+_sg_client._post = lambda *a, **k: {}
+_sg_coordinator._post = lambda *a, **k: {"ok": True}
+assert _sg_client._post("/stratagem/inventory") == {}  # sender is stubbed
 VL._post=post; result=VL.turn("AA==",24000,"SOUL","fresh frame")
 brain_prompt=seen[1][1]["messages"][1]["content"]
 check("the turn returns local brain, Chatterbox and literal transcript", result["ok"] and result["voice_engine"]=="chatterbox_turbo" and result["transcript"]=="I am fine")

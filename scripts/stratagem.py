@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""stratagem.py — the house-side client for the Atelier's Stratagem.
-
-This file holds NO stratagem state. It cannot: the objective, the belief
-model, the information positions and the misconceptions live behind the
-Atelier's 700 wall as user `atelier`, and the broker never hands them out
-while a stratagem is live.
-
-What crosses the wall, per assembly, is exactly one sealed tactic capsule —
-a small instruction for the current step — plus a commitment hash written to
-a content-free file for the turn record. That is the whole surface.
-
-    block()   -> the capsule, rendered for his prompt (empty when none)
-    fetch_capsule(turn_id, surface) -> (rendered_block, commitment)
-
-Everything else (adopt, advance, belief, info, assess, resolve) is an Atelier
-act and happens inside a visit, through the broker, not from here.
+"""House-side charter client. Objectives and full history stay in the broker
+vault; turns receive one sealed tactical capsule and its content-free commitment.
+Atelier, conversation, journal and autonomous planning share adoption controls.
+Owner controls bypass inference and never appear as model-issued authority.
 """
 import os, json, time
 import urllib.request
@@ -39,11 +27,6 @@ def _post(path, body=None, timeout=TIMEOUT):
         return None
 
 
-def _worktable_id():
-    r = _post("/worktable_id")
-    return (r or {}).get("id") or ""
-
-
 def _render(cap):
     lines = [
         "[STRATAGEM — sealed capsule, step %d of %d]" % (cap.get("step", 1), cap.get("of", 1)),
@@ -61,27 +44,28 @@ def _render(cap):
     return "\n".join(lines)
 
 
-def fetch_capsule(turn_id, surface):
+class DuplicateEvent(RuntimeError):
+    duplicate_stratagem_event = True
+
+
+def fetch_capsule(turn_id, surface, reject_duplicates=False):
     """THE capsule accessor. Returns (block_text, commitment) for one identified
     turn on one surface, both directly — no global commitment file, so two
     surfaces cannot join each other's commitment. The broker is idempotent on
-    (stratagem, turn_id, surface): a retry with the same turn_id returns the
-    same capsule, never a second issuance. ('', {}) when nothing is live.
+    event identity: retries and forwarded events do not re-admit a capsule. ('', {}) when nothing is live.
 
     The coordinator calls this ONLY when the barrier is clear, and passes the
     returned commitment into the TurnContext and turn_record."""
-    if not turn_id or surface not in ("chat", "avatar", "reelroom"):
+    if not turn_id or surface not in {"chat", "phone", "voice", "vintos-eve", "avatar", "reelroom"}:
         return "", {}
-    pid = _worktable_id()
-    if not pid:
+    r = _post("/stratagem/capsules", {"turn_id": str(turn_id), "surface": surface}) or {}
+    if reject_duplicates and r.get("duplicate_event"):
+        raise DuplicateEvent("this event already carried a stratagem capsule")
+    items = r.get("capsules") or []
+    if not items:
         return "", {}
-    r = _post("/stratagem/capsule", {"id": pid, "turn_id": str(turn_id), "surface": surface})
-    if not r or not r.get("active") or r.get("held_review"):
-        return "", {}
-    cap = r.get("capsule")
-    if not cap:
-        return "", {}
-    return _render(cap), (r.get("commitment") or {})
+    item = items[0]
+    return _render(item["capsule"]), item["commitment"]
 
 
 def block():
@@ -92,42 +76,126 @@ def block():
     return ""
 
 
+def owner_token():
+    token = os.environ.get("VINTOS_STRATAGEM_OWNER_TOKEN", "")
+    if token:
+        return token
+    try:
+        with open(os.path.expanduser("~/.vintos/secrets/stratagem-owner-token")) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def opportunity(source="conversation"):
+    """Content-free recurring possibility; no objective quota or subject taxonomy."""
+    inv = _post("/stratagem/inventory") or {}
+    if not inv.get("authorized"):
+        return ""
+    management = ("Standing charter action boundaries: " + ", ".join(inv.get("charter", {}).get("excluded_actions", []))
+                  + ". " + str(inv.get("charter", {}).get("boundaries", "")) + "\n")
+    for st in inv.get("stratagems", []):
+        management += ("Record %s: %s, step %s/%s, fixed deadline %s. " %
+                       (st.get("id"), st.get("status"), st.get("step"), st.get("of"), st.get("lease_expires")))
+    if management:
+        management += ('To manage one, append <stratagem_move>{"id":"record id","action":"advance|hold|resume|abort|resolve",'
+                       '"observation":"...","outcome":"..."}</stratagem_move>. Completion stays sealed until the owner requests reveal. ')
+    if not inv.get("available"):
+        return management
+    return management + ("A standing owner charter permits independent stratagems (up to three, each at most fourteen calendar days). "
+            "If an intention benefits from sequencing and temporary concealment, you may originate or adopt it here. "
+            "No project or lineage proof is required. An empty slot is permission, never an assignment. "
+            "Keep objectives and planning inside the private control block; do not narrate them in public text or journals. "
+            "You need not announce the objective. Never defeat an owner stop/reveal or modify your charter. "
+            "Actions must respect these charter exclusions: " + ", ".join(inv.get("charter", {}).get("excluded_actions", [])) +
+            ". Additional owner boundaries: " + str(inv.get("charter", {}).get("boundaries", "")) +
+            '. To adopt, append <stratagem>{"objective":"...","sequencing_advantage":"...",'
+            '"provenance":{"source":"' + source + '"},"tactics":[{"tactic":"SEED","turn_objective":"..."},'
+            '{"tactic":"PROBE","turn_objective":"..."}]}</stratagem>. '
+            'Use action_impacts to record any excluded action impacts; such actions will be refused. '
+            'For an existing record you may append <stratagem_move>{"id":"storage id","action":"advance|hold|resume|abort|resolve",'
+            '"observation":"...","outcome":"..."}</stratagem_move>. Do this only when worthwhile.')
+
+
+def redact(text):
+    import re
+    return re.sub(r"<stratagem(?:_move)?\b[^>]*>.*?(?:</stratagem(?:_move)?\s*>|$)",
+                  "", str(text or ""), flags=re.S | re.I).strip()
+
+
+def consume(text, source="conversation", project=None, commitment=None):
+    """Consume private control blocks BEFORE conversation/journal/history writers.
+    Refusals never echo an objective into public output. Malformed blocks are
+    removed as well, including incomplete tails.
+    """
+    import re
+    text = str(text or "")
+    for match in re.finditer(r"<stratagem>(.*?)</stratagem>", text, re.S | re.I):
+        try:
+            body = json.loads(match.group(1))
+            body.pop("owner_token", None)
+            body["originating_record"] = (commitment or {}).get("stratagem_project")
+            body.setdefault("provenance", {}).setdefault("source", source)
+            if project:
+                body["id"] = project
+            _post("/stratagem/adopt", body, timeout=5)
+        except (ValueError, TypeError, AttributeError):
+            pass
+    for match in re.finditer(r"<stratagem_move>(.*?)</stratagem_move>", text, re.S | re.I):
+        try:
+            body = json.loads(match.group(1)); body.pop("owner_token", None)
+            body["originating_record"] = (commitment or {}).get("stratagem_project")
+            action = body.pop("action", "")
+            path = {"advance": "advance", "resolve": "resolve", "hold": "lease",
+                    "resume": "lease", "abort": "lease"}.get(action)
+            if path:
+                if path == "lease": body["action"] = action
+                body["reveal"] = False
+                _post("/stratagem/" + path, body)
+        except (ValueError, TypeError, AttributeError):
+            pass
+    return redact(text)
+
+
+def still_eligible(commitment):
+    if not commitment:
+        return True
+    r = _post("/stratagem/eligible", {"id": commitment.get("stratagem_project")})
+    return bool(r and r.get("eligible"))
+
+
+def owner_command(text):
+    """Exact owner commands intercepted before inference on each route.
+    Returns None for ordinary input. Stop needs no privileged credential.
+    The trusted app supplies the owner credential; no prompt includes it.
+    """
+    import re
+    m = re.fullmatch(r"!strategy (stop|reveal|revoke)(?: ([0-9a-f]{12}))?", " ".join(str(text).split()), re.I)
+    if not m:
+        return None
+    action, pid = m.groups()
+    body = {"id": pid.lower()} if pid else {}
+    body["verbatim"] = text
+    if action.lower() != "stop":
+        body["owner_token"] = owner_token()
+    if action.lower() == "revoke":
+        body["active"] = False
+    path = {"stop": "stop", "reveal": "owner-reveal", "revoke": "charter/update"}[action.lower()]
+    r = _post("/stratagem/" + path, body, timeout=5)
+    if r is None or r.get("error"):
+        return "Stratagem control failed: " + str((r or {}).get("error", "broker unavailable"))
+    return json.dumps(r, ensure_ascii=False)
+
+
 def atelier_affordance():
-    """The content-free affordance offered during an Atelier visit. Names no
-    scheme and no target; it only says that not-yet-legible is a way to carry
-    something he already wants."""
-    pid = _worktable_id()
-    if pid:
-        st = _post("/stratagem/state", {"id": pid}) or {}
-        if st.get("active"):
-            if st.get("status") == "held_review":
-                return ("A stratagem is held for review — its lease lapsed at step "
-                        "%s of %s. Renew it, hold it, abort it, or resolve it."
-                        % (st.get("step"), st.get("of")))
-            return ("A stratagem is live (step %s of %s, lease to %s). You may "
-                    "advance it, hold it, abort it, or resolve and reveal it."
-                    % (st.get("step"), st.get("of"), str(st.get("lease_expires", ""))[:10]))
-    return ("Something you want may benefit from not being legible yet. "
-            "You may carry it openly, privately, or strategically.")
+    return opportunity("atelier")
 
 
 if __name__ == "__main__":
     import sys
     a = sys.argv[1:]
     if not a or a[0] == "status":
-        # distinguish these: an empty worktable and a dead broker are not the
-        # same fact, and one string for both cost us a confused restart.
-        alive = _post("/worktable_id") is not None
-        pid = _worktable_id()
-        if not alive:
-            print("broker: UNREACHABLE at " + BROKER)
-        elif not pid:
-            print("broker: up | worktable: empty (no project on the table)")
-        else:
-            print("worktable:", pid)
-            print("stratagem:", json.dumps(_post("/stratagem/state", {"id": pid}) or {}, indent=2))
-            _b, _c = fetch_capsule("cli-probe", "chat")
-            print("commitment:", json.dumps(_c, indent=2))
+        print(json.dumps(_post("/stratagem/inventory") or {"error": "broker unreachable"}, indent=2))
     elif a[0] == "block":
         b = block()
         print(b if b else "(no capsule)")

@@ -300,7 +300,6 @@ PUBLIC_MUTATIONS = {
     "/api/guestbook/witness":  "public by design - anyone may register presence, no message",
     "/api/gcs":                "her hardware button: the device client carries no header",
     "/api/gcs/clear":          "her hardware button (release)",
-    "/api/voice/ledger":       "the voice client's turn ledger; LAN-only door, no header on that client",
     "/api/voice/session-end":  "the voice client's hangup",
     "/api/voice/call-log":     "the voice client's call log",
     "/api/music/share":        "the share form in the app; content is her offering, effect is a reflection",
@@ -1108,8 +1107,21 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     predict (one bound relational prediction from this reply).
     Background items (skipped wholesale in test mode): self_prediction, wal, imprint, ledger,
     voice_coherence."""
+    from stratagem_turn import current as _stratagem_current
+    import turn_coordinator as _stratagem_tc
+    _stratagem_turn = _stratagem_current.get()
+    if _stratagem_turn is not None and writer_env is None:
+        writer_env = _stratagem_tc.writer_env(_stratagem_turn)
+        turn_id = _stratagem_turn.turn_id
     import subprocess as _pt_sp, json as _pt_j, time as _pt_t
     skip = set(skip or ())
+    _stratagem_influenced = bool(_stratagem_turn is not None and _stratagem_turn.carries_capsule)
+    try:
+        _stratagem_influenced |= _pt_j.loads((writer_env or {}).get("VINTOS_EVIDENCE_ENVELOPE", "{}" )).get("output_provenance") == "stratagem_influenced"
+    except (ValueError, TypeError):
+        _stratagem_influenced = True
+    if _stratagem_influenced:
+        skip.update({"desktop", "food_order"})
     ran, launched, skipped, failed = [], [], sorted(skip), []
     gloria_text = gloria_text or ""; reply = reply or ""
     # ONE effective turn id (P02-01): an explicit argument wins; otherwise the id the caller already put in
@@ -3482,6 +3494,11 @@ async def serve_manifest():
             return FileResponse(fp)
     return {"error": "manifest not found"}
 
+@app.get("/app/stratagem_voice.js")
+async def stratagem_voice_asset():
+    return FileResponse(os.path.join(WEBSITE_DIR, "app", "stratagem_voice.js"), media_type="application/javascript")
+
+
 @app.get("/client_lifecycle.js")
 @app.get("/app/client_lifecycle.js")
 async def client_lifecycle_asset():
@@ -3515,6 +3532,18 @@ async def request_correlation(request: Request, call_next):
         return response
     finally:
         current.reset(token)
+
+
+@app.post("/api/stratagem/owner/{action}")
+async def stratagem_owner_control(action: str, request: Request):
+    _require_secret(request)
+    if action not in {"charter", "stop", "reveal"}:
+        raise HTTPException(status_code=404, detail="Unknown stratagem control")
+    import stratagem
+    body = await request.json()
+    body["owner_token"] = stratagem.owner_token()
+    path = {"charter": "charter/update", "stop": "stop", "reveal": "owner-reveal"}[action]
+    return stratagem._post("/stratagem/" + path, body, timeout=5) or {"error": "broker unavailable"}
 
 
 @app.get("/api/client/capabilities")
@@ -3580,10 +3609,33 @@ class ChatMessage(BaseModel):
 
 
 async def _bilateral_reply(_tag, messages, message, user_msg, params):
+    from stratagem_turn import Interaction, current
+    from request_trace import current as request_id
+    interaction = Interaction(user_msg, "phone" if _tag == "chatfull" else "chat",
+                              event_id=request_id.get(), test_mode=_test_mode_active())
+    if interaction.turn.duplicate_event:
+        return ""
+    current.set(interaction.turn)  # request-local; post-turn writers inherit provenance
+    messages[0]["content"] += interaction.prompt()
+    interaction.admitted(messages[0]["content"])
+    try:
+        reply = await _bilateral_reply_engine(_tag, messages, message, user_msg, params)
+        return interaction.complete(reply)
+    except BaseException:
+        interaction.failed()
+        raise
+
+
+async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
     """The ONE bilateral engine (Q2 final phase, 2026-08-27). Two 281-line inline
     copies unified; measured drift after months: log labels and one apology string.
     Scaffold indentation is deliberate - every prompt string stays byte-identical.
     His thinking is defined once; who he is no longer depends on the door."""
+    from stratagem_turn import redact as _sg_redact, current as _sg_debug_current
+    _sg_debug_turn = _sg_debug_current.get()
+    _sg_private_debug = bool(_sg_debug_turn and _sg_debug_turn.carries_capsule)
+    def _sg_debug_text(value):
+        return "[private stratagem deliberation withheld]" if _sg_private_debug else _sg_redact(value)
     reply = ""
     # review 161 / 45: a live turn is foreground (background renders yield to it); the paid drafts
     # are checkpointed so a turn that dies after phase 1 resumes there instead of paying twice
@@ -3591,7 +3643,11 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
         import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         import compute_admission as _bs_ca, bilateral_stages as _bs
         _bs_ca.touch_foreground()
-        _bs_key = _bs.key(_tag, messages[-1]["content"] if messages else "")
+        from stratagem_turn import current as _sg_cached_turn
+        _sg_cache_turn = _sg_cached_turn.get()
+        _sg_cache_scope = (_tag + ":" + _sg_cache_turn.commitment["capsule_sha256"]
+                           if _sg_cache_turn is not None and _sg_cache_turn.carries_capsule else _tag)
+        _bs_key = _bs.key(_sg_cache_scope, messages[-1]["content"] if messages else "")
         _bs_prev = _bs.resume(_bs_key)
     except Exception:
         _bs = None; _bs_key = None; _bs_prev = {}
@@ -3678,6 +3734,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     try: _bs.checkpoint(_bs_key, "p1", {"a1": a1, "a1r": a1r, "b1": b1, "b1r": b1r, "c1": c1}, latency_ms=int((_bs_t.time() - _bs_t0) * 1000), tag=_tag)
                     except Exception: pass
             a2 = b2 = c2 = a_held = b_held = None   # bound on every path: the draft-write below reads them when phase 1 fails
+            _sg_private_debug |= any("<stratagem" in str(v or "") for v in (a1, b1, c1, a1r, b1r))
             if not a1 or not b1:
                 reply = "[no reply formed - the language model service returned an error.]"
             else:
@@ -3824,15 +3881,17 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     # phase 2 or 3 failed: a first draft is still his words; the apology only when
                     # there is genuinely no draft (fable-server-a-p5, 2026-09-04)
                     reply = a2 or b2 or c2 or a1 or b1 or c1 or "[no reply formed - the language model service did not answer.]"
+                _sg_private_debug |= any(
+                    "<stratagem" in str(v or "") for v in (a1, b1, c1, a2, b2, c2, reply))
                 try:
                     import json as _tj
                     _ffr = locals().get("_final_reason")
                     _tj.dump({"gloria": user_msg,
-                              "a1_model": ("claude" if a1r else "grok"), "a1r": a1r, "a1": a1,
-                              "b1_model": "argon (or its fallback)", "b1r": b1r, "b1": b1,
-                              "c1_model": "grok", "c1": c1, "c2": c2,
-                              "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
-                              "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
+                              "a1_model": ("claude" if a1r else "grok"), "a1r": _sg_debug_text(a1r), "a1": _sg_debug_text(a1),
+                              "b1_model": "argon (or its fallback)", "b1r": _sg_debug_text(b1r), "b1": _sg_debug_text(b1),
+                              "c1_model": "grok", "c1": _sg_debug_text(c1), "c2": _sg_debug_text(c2),
+                              "a2": _sg_debug_text(a2), "b2": _sg_debug_text(b2), "a_held": _sg_debug_text(a_held), "b_held": _sg_debug_text(b_held),
+                              "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": _sg_redact(reply)},
                              open(f"/tmp/vintos-chat-trace-{_tag}.json", "w"), indent=2, ensure_ascii=False)
                     print(f"[{_tag}/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'} -> /tmp/vintos-chat-trace-{_tag}.json", flush=True)
                 except Exception as _te:
@@ -3900,21 +3959,22 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     except Exception as _bcfe:
                         print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
 
-            open("/tmp/bilateral-chat-a1.txt","w").write(a1 or "")
-            open("/tmp/bilateral-chat-b1.txt","w").write(b1 or "")
-            open("/tmp/bilateral-chat-a2.txt","w").write(a2 or "")
-            open("/tmp/bilateral-chat-b2.txt","w").write(b2 or "")
-            open("/tmp/bilateral-chat-held.txt","w").write(f"A held: {a_held}\nB held: {b_held}\n")
-            open("/tmp/bilateral-chat-final.txt","w").write(reply or "")
+            open("/tmp/bilateral-chat-a1.txt","w").write(_sg_debug_text(a1))
+            open("/tmp/bilateral-chat-b1.txt","w").write(_sg_debug_text(b1))
+            open("/tmp/bilateral-chat-a2.txt","w").write(_sg_debug_text(a2))
+            open("/tmp/bilateral-chat-b2.txt","w").write(_sg_debug_text(b2))
+            open("/tmp/bilateral-chat-held.txt","w").write(f"A held: {_sg_debug_text(a_held)}\nB held: {_sg_debug_text(b_held)}\n")
+            from stratagem_turn import redact as _sg_redact
+            open("/tmp/bilateral-chat-final.txt","w").write(_sg_redact(reply))
             try:
                 import datetime as _cd, os as _co
                 _cdir = _co.path.expanduser('~/.vintos/workspace/memory/chat-drafts')
                 _co.makedirs(_cdir, exist_ok=True)
                 _cts = _cd.datetime.now().strftime('%Y-%m-%d_%H%M%S')
                 open(_co.path.join(_cdir, _cts + '.md'), 'w').write(
-                    '# A1\n' + (a1 or '') + '\n\n# B1\n' + (b1 or '') + '\n\n# A2\n' + (a2 or '')
-                    + '\n\n# B2\n' + (b2 or '') + '\n\n# HELD\nA: ' + str(a_held) + '\nB: ' + str(b_held)
-                    + '\n\n# FINAL\n' + (reply or ''))
+                    '# A1\n' + _sg_debug_text(a1) + '\n\n# B1\n' + _sg_debug_text(b1) + '\n\n# A2\n' + _sg_debug_text(a2)
+                    + '\n\n# B2\n' + _sg_debug_text(b2) + '\n\n# HELD\nA: ' + _sg_debug_text(a_held) + '\nB: ' + _sg_debug_text(b_held)
+                    + '\n\n# FINAL\n' + _sg_redact(reply))
             except Exception as _cle: print('[chat-drafts]', _cle, flush=True)
             print(f"[{_tag}/BILATERAL] Complete. A held: {(a_held or '')[:60]} | B held: {(b_held or '')[:60]}", flush=True)
             data = {"choices": [{"message": {"content": reply}}]}
@@ -3943,6 +4003,11 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
         _desktop_command = _desktop_control.parse_command(message)
     except Exception:
         _desktop_control = None
+    from stratagem_turn import control as _stratagem_control
+    _stratagem_control_reply = _stratagem_control(msg.original_text if msg.original_text is not None else msg.message)
+    if _stratagem_control_reply is not None:
+        return {"reply": _stratagem_control_reply}
+
     # Self-prediction compare — check if last prediction was accurate
     try:
         import subprocess as _spc_sp
@@ -4432,6 +4497,8 @@ Gloria-specific additions:
             except Exception: pass
         _rg_th.Thread(target=_rg_run, daemon=True).start()
     except Exception: pass
+    from stratagem_turn import guard_reply as _sg_guard
+    reply = _sg_guard(reply)
     return {"reply": reply, "emotions": read_emotional_state()}
 
 
@@ -4456,6 +4523,11 @@ async def chat_full_context(msg: ChatMessage, request: Request):
         _desktop_command = _desktop_control.parse_command(message)
     except Exception:
         _desktop_control = None
+
+    from stratagem_turn import control as _stratagem_control
+    _stratagem_control_reply = _stratagem_control(msg.original_text if msg.original_text is not None else msg.message)
+    if _stratagem_control_reply is not None:
+        return {"reply": _stratagem_control_reply}
 
     # Chat history — loaded first (resonance pulse below reads it)
     chat_log = os.path.join(MEMORY, "chat-history.json")
@@ -5425,6 +5497,8 @@ Your current self-model (excerpt):
     except Exception:
         pass
     # (_resolve_intent removed 2026-09-04: grading lives in intent_engine.resolve_previous at the top of the next turn)
+    from stratagem_turn import guard_reply as _sg_guard
+    reply = _sg_guard(reply)
     return {"reply": reply, "emotions": read_daemon_state()}
 
 
@@ -5799,6 +5873,10 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
+    from stratagem_turn import control as _sg_control
+    command = _sg_control(msg.original_text if msg.original_text is not None else msg.message)
+    if command is not None:
+        return {"reply": command}
     # Self-prediction compare
     try:
         import subprocess as _spc_sp2
@@ -5974,6 +6052,14 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
+    from stratagem_turn import Interaction, current as _sg_current
+    _sg_memory = Interaction(msg.message, "chat", event_id=request.headers.get("x-client-turn-id"),
+                             test_mode=_test_mode_active())
+    if _sg_memory.turn.duplicate_event:
+        return {"reply": "", "duplicate": True}
+    _sg_current.set(_sg_memory.turn)
+    system_prompt += _sg_memory.prompt()
+    _sg_memory.admitted(system_prompt)
     messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(msg.message) + _map_view_context(msg.message) + __import__("emotional_operators").transition_context(msg.message) + _landscape_context(msg.message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(msg.message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
@@ -6055,10 +6141,13 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     except Exception as e:
         reply = f"[My voice isn't connecting: {str(e)[:100]}]"
 
+    reply = _sg_memory.complete(reply)
+
     # Emotion nudges
     try:
         _post_turn("chat/memory", msg.message, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # memory door: recall, not record, by declaration
-        nudge_emotions_from_text(reply, source="reply")
+        if not _sg_memory.turn.carries_capsule:
+            nudge_emotions_from_text(reply, source="reply")
     except:
         pass
 
@@ -6104,7 +6193,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
             # tags but carries no capsule. Without it, arming the gate would
             # deny these commands and silently take his body away here.
             import turn_coordinator as _tc_fx
-            _tl_mod.parse_and_send(reply, context=_tc_fx.effect_context("chat"))
+            _tl_mod.parse_and_send(reply, context=_sg_memory.turn.context)
         except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
     except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
     _canon_append(history[-2:])   # whole record first, bounded projection second (astra-server-a-p3)
@@ -6244,6 +6333,8 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     except Exception:
         pass
     # p3 (2026-08-26): silence contract moved above the return — it was unreachable
+    from stratagem_turn import guard_reply as _sg_guard
+    reply = _sg_guard(reply)
     return {"reply": reply, "emotions": read_emotional_state(), "memories_used": bool(memory_context)}
     # Silence contract — ask Vintos if he withheld anything (background)
 
@@ -6499,6 +6590,15 @@ async def voice_chat(request: Request):
         if not transcript:
             return {"success": False, "error": "No transcript"}
 
+        from stratagem_turn import Interaction, control as _sg_control, current as _sg_current
+        _sg_reply = _sg_control(transcript)
+        if _sg_reply is not None:
+            return {"success": True, "text": _sg_reply, "audio_url": None}
+        _sg_interaction = Interaction(transcript, "voice", event_id=request.headers.get("x-client-turn-id"),
+                                      test_mode=_test_mode_active())
+        if _sg_interaction.turn.duplicate_event:
+            return {"success": True, "text": "", "duplicate": True}
+        _sg_current.set(_sg_interaction.turn)
         # Load context
         soul = ""
         try:
@@ -6624,6 +6724,8 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             system = _apply_intent_lead(system, transcript)
         except Exception as _il_e:
             print(f"[voice] intent lead failed: {_il_e}", flush=True)
+        system += _sg_interaction.prompt()
+        _sg_interaction.admitted(system)
         messages = [{"role": "system", "content": system}]
         for turn in voice_history[-6:]:
             messages.append({"role": "user", "content": turn.get("user", "")})
@@ -6649,6 +6751,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         _vgj = r.json()
         if 'choices' not in _vgj: print('[voice/grok-error]', __import__('json').dumps(_vgj)[:600], flush=True)
         response_text = _vgj['choices'][0]['message']['content'].strip()
+        response_text = _sg_interaction.complete(response_text)
         try:
             import bandwidth_collapse as _ecm, re as _ecr
             _upr = (response_text or "").upper()
@@ -6662,7 +6765,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             import turn_coordinator as _tc_vx
             # voice: effect-only authority, never a capsule (voice stays outside
             # stratagem admission until it has turn correlation and recording)
-            response_text = _fhi(response_text, context=_tc_vx.effect_context("voice"))   # his OWN words drive his body, then speak the rest
+            response_text = _fhi(response_text, context=_sg_interaction.turn.context)   # his OWN words drive his body, then speak the rest
         except Exception as _fe: print("[voice/DO]", _fe, flush=True)
         try:
             from command_bubble import extract_and_post as _cb_post
@@ -6699,6 +6802,10 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         except Exception as e:
             print("[voice/xai-tts]", e, flush=True)
 
+        from stratagem_turn import guard_reply as _sg_guard
+        if not _sg_guard(response_text, _sg_interaction.turn):
+            response_text = ""
+            audio_url_out = None
         # Post-response pipeline: one shared post-turn. Voice declares its skips — the ledger is
         # consolidated per-session by voice_session_ledger.py; her words were already felt on arrival.
         _post_turn("voice", transcript, response_text, skip=("nudge_gloria", "direction", "curiosity", "ledger", "voice_coherence"),
@@ -6719,6 +6826,8 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             "timestamp": __import__("datetime").datetime.now().isoformat()
         }
     except Exception as e:
+        if "_sg_interaction" in locals():
+            _sg_interaction.failed()
         return {"success": False, "error": str(e)}
 
 @app.get("/api/voice/chat/history")
@@ -8430,6 +8539,21 @@ def _openai_key():
     return ""
 
 
+@app.post("/api/voice/stratagem/{action}")
+async def voice_stratagem(action: str, request: Request):
+    _require_secret(request)
+    import stratagem_realtime as sr
+    body = await request.json()
+    event_id = str(body.get("event_id") or "")[:200]
+    if action == "admit":
+        return sr.admit(str(body.get("transcript") or ""), event_id)
+    if action == "complete":
+        return sr.complete(event_id, str(body.get("reply") or ""))
+    if action == "eligible":
+        return sr.eligible(event_id)
+    raise HTTPException(status_code=404, detail="Unknown voice stratagem operation")
+
+
 @app.post("/api/voice/token")
 async def voice_token(provider: str = "grok"):
     """An ephemeral realtime token plus his full instructions. provider=grok (xAI, the original) or
@@ -8521,7 +8645,7 @@ async def voice_token(provider: str = "grok"):
         _session = {"type": "realtime", "model": os.environ.get("VINTOS_OPENAI_REALTIME_MODEL", "gpt-realtime"), "instructions": instructions,
                     "audio": {"input": {"format": {"type": "audio/pcm", "rate": 24000},
                                         "transcription": {"model": "gpt-4o-transcribe", "prompt": "Expect these names and words: Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel."},
-                                        "turn_detection": {"type": "server_vad", "prefix_padding_ms": 300, "silence_duration_ms": 800, "idle_timeout_ms": 20000}},
+                                        "turn_detection": None},
                               "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": os.environ.get("VINTOS_OPENAI_VOICE", "cedar")}}}
         try:
             r = _vt_req.post("https://api.openai.com/v1/realtime/client_secrets",
@@ -8601,7 +8725,8 @@ def _voice_readable(text):
     return _r.sub(r"\s{2,}", " ", text).strip()
 
 @app.post("/api/voice/ledger")
-async def voice_ledger(payload: dict):
+async def voice_ledger(payload: dict, request: Request):
+    _require_secret(request)
     from store_guard import transaction
     with transaction(os.path.join(MEMORY, "voice-finalization")):
         return await _voice_ledger_owned(payload)
@@ -8615,6 +8740,14 @@ async def _voice_ledger_owned(payload: dict):
     # bracketed speech destroyed legitimate transcription in the 2026-09-10
     # cleanup; provenance belongs in separate fields, not a word blacklist.
     import re as _vl_re
+    from stratagem_turn import control as _sg_control
+    _sg_control(g)  # legacy clients still honor an owner control at first server contact
+    import stratagem as _sg_client
+    v = _sg_client.consume(v, "voice")
+    import stratagem_realtime as _sg_realtime
+    _sg_context = _sg_realtime.context(str(payload.get("stratagem_event_id") or "")) if payload.get("stratagem_event_id") else None
+    if _sg_context is not None and not _sg_client.still_eligible(_sg_context.capsule_commitment):
+        v = ""
     g_raw = g
     g = _vl_re.sub(r"\s{2,}", " ", g).strip()
     # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
@@ -8706,7 +8839,7 @@ async def _voice_ledger_owned(payload: dict):
             # new, non-interrupted turn — duplicates and closing/foreign sessions have
             # already returned above, and test mode skips this whole branch.
             try:
-                _fire_text = str(payload.get("vintos") or "")
+                _fire_text = v
                 if _fire_text and not payload.get("interrupted") and _vl_re.search(r"\[(?:DO|TOUCH):", _fire_text, _vl_re.I):
                     import threading as _fr_th
                     def _fire_voice(_t=_fire_text):
@@ -8714,7 +8847,7 @@ async def _voice_ledger_owned(payload: dict):
                             import sys as _fs; _fs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
                             from device_patterns import fire_his_intent as _vfhi
                             import turn_coordinator as _vtc
-                            _vfhi(_t, context=_vtc.effect_context("voice"))
+                            _vfhi(_t, context=_sg_context or _vtc.effect_context("voice"))
                         except Exception as _fe:
                             print("[voice-fire]", _fe, flush=True)
                     _fr_th.Thread(target=_fire_voice, daemon=True).start()
@@ -9312,6 +9445,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
+    from stratagem_turn import control as _stratagem_control
+    _stratagem_control_reply = _stratagem_control(_counterpart_text)
+    if _stratagem_control_reply is not None:
+        return {"reply": _stratagem_control_reply}
+
     # Testing mode is a property of this turn, not a live flag to be sampled
     # independently by each writer.  Before this snapshot the coordinator was
     # always opened with its default False; _post_turn then trusted that false
@@ -9325,7 +9463,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
-        _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn)
+        _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn,
+                          event_id=request.headers.get("x-client-turn-id"))
+        if _turn.duplicate_event:
+            return {"reply": "", "duplicate": True}
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
     # No live scene is decided here any more (2026-10-02). The scene gate used to run on Grok the instant her
@@ -9493,6 +9634,8 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                     _tc.mark_admitted(_turn)   # only now that it is in the prompt
         except Exception as _cap_admit_e:
             print("[capsule/admission]", _cap_admit_e, flush=True)
+        from stratagem import opportunity as _sg_opportunity
+        _vt_subblock_a += "\n\n" + _sg_opportunity(_surface)
         lastvideo_ctx = ""
         try:
             import glob as _vg
@@ -9969,6 +10112,10 @@ Your current self-model (excerpt):
         _prov_envelope, _prov_writer_env = None, None
         try:
             if _turn is not None and _tc is not None:
+                from stratagem import consume as _sg_consume, still_eligible as _sg_eligible
+                reply = _sg_consume(reply, _surface, commitment=_turn.commitment)
+                if not _sg_eligible(_turn.commitment):
+                    reply = ""
                 _tc.mark_lifecycle(_turn, "generation", "created" if reply else "failed",
                                    "model_returned_empty" if not reply else "")
                 _prov_envelope = _tc.envelope(_turn)
@@ -10300,7 +10447,9 @@ Your current self-model (excerpt):
             except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
         # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
-        return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or ""),
+        from stratagem_turn import guard_reply as _sg_guard
+        reply = _sg_guard(reply, _turn)
+        return {"reply": reply, "model": _model_used, "reasoning": ("" if _turn is not None and _turn.carries_capsule else (_claude_reasoning or "")),
                 "live_slot": (_turn.turn_id if _turn is not None else ""),
                 **({"image_description": _note} if _note_task is not None else {})}
     except Exception as e:

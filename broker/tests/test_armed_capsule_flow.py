@@ -12,6 +12,8 @@ os.makedirs(os.path.join(TMP, "projects"))
 LKEY = os.path.join(TMP, ".lineage-key"); open(LKEY, "wb").write(uuid.uuid4().hex.encode())
 import broker as BK, stratagem_store as SS
 BK.ROOT = SS.ROOT = TMP
+from stratagem_fixture import grant
+grant(SS)
 BK.HEALTH = os.path.join(TMP, "health.jsonl"); BK._KEYPATH = os.path.join(TMP, ".vk")
 SS._LINEAGE_KEY = LKEY
 srv = BK.ThreadingHTTPServer(("127.0.0.1", 0), BK.H); PORT = srv.server_address[1]

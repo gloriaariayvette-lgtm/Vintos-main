@@ -23,6 +23,8 @@ def check(n, ok, d=""):
 
 TMP = tempfile.mkdtemp(prefix="lineage-")            # scratch only, never ~/.vintos
 BK.ROOT = SS.ROOT = TMP
+from stratagem_fixture import grant
+grant(SS)
 BK.HEALTH = os.path.join(TMP, "health.jsonl")
 BK._KEYPATH = os.path.join(TMP, ".visit-key")
 os.makedirs(os.path.join(TMP, "projects"))

@@ -73,12 +73,17 @@ check("a corrupt stop record closes the barrier", not snap["clear"], snap["satis
 check("and is named as a barrier error",
       any(r.startswith("barrier_error") for r in snap["satisfied_by"]), snap["satisfied_by"])
 
-print("\n--- nothing on the worktable means nothing to stop ---")
+print("\n--- empty worktable does not bypass the global stop ---")
 os.remove(CB.STRATEGY_STOP)
 TC._worktable_id = lambda: ""
 TC._post = lambda path, body, timeout=2.0: None
-check("an empty worktable resolves the stop", TC._strategy_stop("!strategy stop"))
-check("and does not bar every future turn", CB.snapshot("hello")["clear"])
+check("global stop still needs broker acknowledgement", not TC._strategy_stop("!strategy stop"))
+check("and holds future tactics while delivery is pending", not CB.snapshot("hello")["clear"])
+calls.clear()
+TC._post = lambda path, body, timeout=2.0: calls.append((path, body)) or {"ok": True}
+check("an individual stop is delivered", TC._strategy_stop("!Strategy STOP ABC123ABC123"))
+check("the individual target is preserved and canonical", calls[-1][1]["id"] == "abc123abc123", calls)
+check("no worktable query is used for stop delivery", calls[-1][0] == "/stratagem/stop")
 
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d/%d passed" % (sum(R), len(R)))
