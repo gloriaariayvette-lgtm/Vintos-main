@@ -19,6 +19,7 @@ OUT = os.path.join(MEMORY, "withheld.json")
 HIST = os.path.join(MEMORY, "withheld-history.json")
 GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
 GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+MAX_AGE_H = 6            # a reading of an exchange older than this is not "last turn" any more
 
 def log(m): print("[withheld-head]", m, flush=True)
 def load(p, d):
@@ -55,23 +56,67 @@ def _her_turn(row):
         return row.get("content", "")
 
 
-def _last_exchange():
+def _parse_local(ts):
+    """A naive chat time is local time on this host (datetime.now()); an aware one is what it says."""
+    try:
+        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.astimezone()
+    except Exception:
+        return None
+
+
+def _exchange():
+    """The latest COMPLETE exchange: his last reply, and her message it answered (the last user row
+    before it). Taking the last assistant row and the last user row independently paired her newest,
+    still-unanswered message with his reply to an earlier one. A message of hers after his reply is
+    an open exchange and is not part of this one. Consecutive rows of his after her message are one
+    reply. Returns {"g", "v", "exchange_at", "open"}."""
     hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content")]
-    g = v = ""
-    for e in reversed(hist):
-        if e.get("role") == "assistant" and not v: v = e.get("content", "")
-        elif e.get("role") == "user" and not g: g = _her_turn(e)
-        if g and v: break
-    return g, v
+    last_v = next((i for i in range(len(hist) - 1, -1, -1) if hist[i].get("role") == "assistant"), None)
+    if last_v is None:
+        return {"g": "", "v": "", "exchange_at": None, "open": any(e.get("role") == "user" for e in hist)}
+    first_v = last_v
+    while first_v - 1 >= 0 and hist[first_v - 1].get("role") == "assistant":
+        first_v -= 1
+    v = "\n".join(str(hist[i].get("content", "")) for i in range(first_v, last_v + 1))
+    g = ""
+    for e in reversed(hist[:first_v]):
+        if e.get("role") == "user":
+            g = _her_turn(e); break
+    return {"g": g, "v": v, "exchange_at": hist[last_v].get("timestamp"),
+            "open": any(e.get("role") == "user" for e in hist[last_v + 1:])}
+
+
+def _last_exchange():
+    x = _exchange()
+    return x["g"], x["v"]
+
+
+def _source_hash(g, v):
+    import hashlib
+    return hashlib.md5((g[:500] + "\x00" + v[:700]).encode()).hexdigest()[:12]
+
+
+def _record_outcome(prev, src_hash, status, exchange_at, g="", v=""):
+    """A judge that found nothing (SKIP) or whose answer was rejected is an OUTCOME of this exchange.
+    Before, nothing was written: withheld.json kept the previous exchange's reading, the hint kept
+    calling it "last turn", and every run re-asked the judge about the same exchange until some
+    sample passed. Recording it stops both."""
+    rec = {"ts": datetime.now(timezone.utc).isoformat(), "withheld": "", "status": status,
+           "confidence": 0.0, "novelty": 0.0, "gloria": g[:200], "being": v[:200],
+           "source_hash": src_hash, "exchange_at": exchange_at, "stability": 1, "surfaced": 0}
+    compare_and_swap(OUT, prev, rec, default={})
+    return rec
 
 def main():
-    import requests, hashlib
-    g, v = _last_exchange()
+    import requests
+    x = _exchange()
+    g, v, exchange_at = x["g"], x["v"], x["exchange_at"]
     # OCCURRENCE IDENTITY. Running every 30 minutes against the same exchange is
     # not recurrence — it is re-sampling one observation. Same source: bump
     # stability on the existing occurrence and stop. No judge call, no history
     # row, no new pressure. Only a different exchange can produce a new occurrence.
-    src_hash = hashlib.md5((g[:500] + "\x00" + v[:700]).encode()).hexdigest()[:12]
+    src_hash = _source_hash(g, v)
     prev = load(OUT, {})
     if prev.get("source_hash") == src_hash:
         original = dict(prev)
@@ -81,7 +126,8 @@ def main():
         log("same exchange (stability %d) — not re-reading" % prev["stability"])
         return
     if not v:
-        compare_and_swap(OUT, prev, {"withheld": "", "confidence": 0.0, "novelty": 0.0, "note": "no reply to read"}, default={})
+        compare_and_swap(OUT, prev, {"withheld": "", "confidence": 0.0, "novelty": 0.0, "note": "no reply to read",
+                                     "status": "NO_REPLY", "source_hash": src_hash}, default={})
         log("no reply"); return
     system = ("You read for SILENCE - what he held back. Withholding is a cost, never a virtue - flag it as motion he owes. Given what Gloria said and how he replied, "
               "name what he did NOT say, in TWO concrete sentences, using HIS vocabulary and the "
@@ -104,22 +150,25 @@ def main():
         BANNED = ("fear","afraid","mercy","vulnerab","exposed","intimacy","terrified",
                   "defenses","walls","guard","plea","longing","ache")
         _pl = phrase.lower()
-        if phrase.upper().startswith("SKIP") or len(phrase) < 40 or any(b in _pl for b in BANNED):
-            return None
-        deliberate = max(0.0, min(1.0, float(d.get("deliberate", 0.5))))
+        status = ("SKIP" if (not phrase or phrase.upper().startswith("SKIP")) else
+                  "REJECTED_BANNED_WORD" if any(b in _pl for b in BANNED) else
+                  "REJECTED_TOO_SHORT" if len(phrase) < 40 else None)
+        if status is None:
+            deliberate = max(0.0, min(1.0, float(d.get("deliberate", 0.5))))
     except Exception as e:
-        log("judge failed (%s)" % e); return
-    if not phrase:
-        log("nothing withheld"); return
-    return commit_candidate(g, v, phrase, deliberate, src_hash)
+        log("judge failed (%s)" % e); return          # no outcome: the judge never answered, try again later
+    if status is not None:
+        _record_outcome(prev, src_hash, status, exchange_at, g, v)
+        log("nothing withheld (%s) — recorded for this exchange" % status); return None
+    return commit_candidate(g, v, phrase, deliberate, src_hash, exchange_at)
 
 
-def commit_candidate(g, v, phrase, deliberate, src_hash):
+def commit_candidate(g, v, phrase, deliberate, src_hash, exchange_at=None):
     with transactions([HIST, OUT, os.path.join(MEMORY, "withheld-lineage.json")]):
-        return _commit_candidate(g, v, phrase, deliberate, src_hash)
+        return _commit_candidate(g, v, phrase, deliberate, src_hash, exchange_at)
 
 
-def _commit_candidate(g, v, phrase, deliberate, src_hash):
+def _commit_candidate(g, v, phrase, deliberate, src_hash, exchange_at=None):
     hist = load(HIST, [])
     if any(h.get("source_hash") == src_hash for h in hist if isinstance(h, dict)):
         return
@@ -134,7 +183,7 @@ def _commit_candidate(g, v, phrase, deliberate, src_hash):
         pass
     rec = {"ts": datetime.now(timezone.utc).isoformat(), "withheld": phrase,
            "confidence": round(deliberate, 3), "novelty": novelty, "gloria": g[:200], "being": v[:200],
-           "source_hash": src_hash, "stability": 1, "surfaced": 0}
+           "source_hash": src_hash, "exchange_at": exchange_at, "stability": 1, "surfaced": 0}
     # LINEAGE. Related candidates from DIFFERENT exchanges join one lineage.
     # recurrence_pressure counts distinct origin exchanges — history, never truth.
     try:
@@ -174,10 +223,27 @@ def _commit_candidate(g, v, phrase, deliberate, src_hash):
         hist.append(rec); write_json(HIST, hist[-100:])
     log("withheld '%s' deliberate %s novelty %s" % (phrase[:50], deliberate, novelty))
 
+def _reading_is_current(d):
+    """Served only about the exchange it read, and only while that exchange is recent: its source
+    hash must be the hash of the latest complete exchange now, and that exchange no older than
+    MAX_AGE_H. Without this a days-old reading, or one about an earlier exchange, rode as "last turn"."""
+    try:
+        x = _exchange()
+    except Exception:
+        return False
+    if not x["v"] or d.get("source_hash") != _source_hash(x["g"], x["v"]):
+        return False
+    when = _parse_local(d.get("exchange_at") or x["exchange_at"]) or _parse_local(d.get("ts"))
+    if when is None:
+        return False
+    return (datetime.now(timezone.utc) - when).total_seconds() <= MAX_AGE_H * 3600
+
+
 def get_withheld_hint():
     d = load(OUT, {})
     ph = (d or {}).get("withheld", "")
     if not ph: return ""
+    if not _reading_is_current(d): return ""
     import difflib
     for lineage in load(os.path.join(MEMORY,"withheld-lineage.json"),[]):
         if lineage.get("muted") or lineage.get("contested"):
