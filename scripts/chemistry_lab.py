@@ -1067,7 +1067,26 @@ PLAN_TAIL = ("\n\nReply with ONLY the JSON object for your choice, with the fiel
 PLAN_MAX_CHARS = 60000
 
 
+def _narrow(value):
+    """Every planner answer, from every path (first choice, repeat or premise replan, saved step), asks one thing. A
+    question already held keeps its exact words, or its hold would not know it. The cut is written down."""
+    if not isinstance(value, dict): return value
+    q = value.get("question")
+    two = second_ask(q)
+    if not two: return value
+    try:
+        if _held_question(_inquiry(value)): return value
+    except Exception:
+        pass
+    _fault("question_narrowed", ValueError("two asks at: " + two), kept=first_ask(q)[:200])
+    return dict(value, question=first_ask(q))
+
+
 def _plan(system, prompt):
+    return _narrow(_plan_raw(system, prompt))
+
+
+def _plan_raw(system, prompt):
     if len(prompt) > PLAN_MAX_CHARS:
         _fault("plan_prompt_trimmed", ValueError("planner prompt over budget"),
                prompt_chars=len(prompt), kept_chars=PLAN_MAX_CHARS)
@@ -1657,7 +1676,10 @@ def _orient(context, lean=None):
         "the source you name returns (a record's annotated features, a structure's metal or ligand contacts, a "
         "literature finding). Do not add a second question with 'and how', 'and what', 'and do', 'and whether', "
         "'compared to' or 'its role in'; a mechanism, comparison or consequence is a later question, asked when a "
-        "source that addresses it is in hand. A question with one part missing is unanswered as a whole. "
+        "source that addresses it is in hand. A question with one part missing is unanswered as a whole. Residues and "
+        "geometry come from a record's feature annotations or a structure's contacts, never from abstracts; the "
+        "'structural hallmarks' of a whole genus or system class are not in any one record, so ask about one named "
+        "protein. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
@@ -1792,22 +1814,6 @@ def _orient(context, lean=None):
                      "by the same kind of retrieval, is refused before it runs; choose a subject not on this list, "
                      "or a genuinely different instrument: %s." % (len(held_questions), _held_names))
     value = _plan(system, task)
-    try:
-        _already_held = bool(_held_question(_inquiry(value, lean)))
-    except Exception:
-        _already_held = False
-    # a question already held keeps its exact words, or its hold would not know it (a new one is narrowed)
-    if second_ask(value.get("question")) and not _already_held:
-        # asked once to narrow, by name; if it still asks two things, the first is kept
-        _two = second_ask(value.get("question"))
-        try:
-            narrowed = _plan(system, task + "\n\nREFUSED, TWO QUESTIONS IN ONE (at '" + _two + "'): a review cannot "
-                             "answer half a question. Ask only the first thing, one property its sources return, and "
-                             "keep the same sources.")
-            value = narrowed if not second_ask(narrowed.get("question")) else dict(narrowed, question=first_ask(narrowed.get("question")))
-        except ModelJSONError:
-            value = dict(value, question=first_ask(value.get("question")))
-        _fault("question_narrowed", ValueError("two asks at: " + _two))
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     assigned_continuation = bool(line and inquiry.get("line_id") == line.get("id"))

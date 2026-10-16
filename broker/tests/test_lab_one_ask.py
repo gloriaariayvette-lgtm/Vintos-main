@@ -30,12 +30,20 @@ for q in ("What does the curated UniProt record for Rhodopsin (P08100) establish
     check("one ask is left as it is: " + q[:40], C.second_ask(q) == "" and C.first_ask(q) == q)
 check("the planner is told to ask one thing its sources answer whole",
       "Ask ONE thing its sources can answer whole" in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
+print("--- every planner answer passes the narrowing, on every path ---")
+C._ask = lambda system, prompt, **k: json.dumps({"browse_lane": "protein", "question":
+    "What are the structural features of Tryptophan synthase in Streptomyces coelicolor, and how do the active site geometries facilitate catalysis?"})
+v = C._plan("Return JSON only.", "TASK\n\nREFUSED, IT IS A REPEAT: x.")
+check("a replan's two-part answer is cut to its first ask", v["question"].endswith("Streptomyces coelicolor?"), v["question"])
+faults = [json.loads(l) for l in open(C.FAULTS)]
+check("and the cut is written down with what was kept", any(f["stage"] == "question_narrowed" and f.get("kept") for f in faults))
+held_q = "What are the structural features of the CFTR R-domain and how does AKAP influence gating?"
+C._held_question = lambda inquiry: {"question": held_q} if inquiry.get("question") == held_q else None
+C._ask = lambda system, prompt, **k: json.dumps({"browse_lane": "protein", "question": held_q})
+check("a question already held keeps its exact words", C._plan("x", "TASK")["question"] == held_q)
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
-block = src[src.index("    value = _plan(system, task)\n    try:\n        _already_held"):][:1800]
-check("a two-part choice is sent back once, named, and kept to its first ask if it comes back two-part again",
-      "REFUSED, TWO QUESTIONS IN ONE" in block and "first_ask(narrowed.get" in block and "question_narrowed" in block)
-check("a question already held keeps its words, so its hold still knows it",
-      "_already_held = bool(_held_question(" in src and "and not _already_held" in block)
+_outside = src.replace(src[src.index("def _narrow("):src.index("def _compact_names(")], "")
+check("no planner call bypasses the narrowing", "_json_object(_ask(system," not in _outside and "_plan_raw(" not in _outside)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
