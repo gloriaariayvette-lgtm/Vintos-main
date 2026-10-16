@@ -20,6 +20,19 @@ def atomic(path, value):
     os.replace(temp, path)
 
 
+def lab_work(project):
+    """A Lab report or a Lab capability check: the Forge's paperwork, not work for his Atelier.
+
+    Gloria, 2026-10-16: 84 of the Atelier's 95 projects were Forge copies, sealed and gestating, and most were Lab
+    dossiers; his own work was 11 projects. They stay on her Forge page, where they are read; the Atelier holds work.
+    The same origin rule as the Forge's own scheduler (forge_loop: a packet in the intent is the Lab's)."""
+    origin = (project.get('origin') or {}).get('source')
+    if origin is None and '\nSource packet (untrusted observations):' in str(project.get('intent') or ''):
+        origin = 'lab'
+    # by origin only: a project she starts herself is a research_report too (the runtime's default kind)
+    return origin == 'lab'
+
+
 class AtelierProjection:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -32,6 +45,8 @@ class AtelierProjection:
             with controller.db() as db:
                 for row in db.execute('SELECT body FROM projects ORDER BY rowid'):
                     project = json.loads(row[0])
+                    if lab_work(project):
+                        continue          # never copied into the Atelier (2026-10-16)
                     controller._expiry(db, project)
                     version = hashlib.sha256(json.dumps(project, sort_keys=True).encode()).hexdigest()
                     identity = self.root/'projects'/('forge-'+project['id'])/'.forge-owner.json'

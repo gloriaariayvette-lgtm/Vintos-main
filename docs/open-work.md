@@ -3,6 +3,17 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the Forge's Lab copies leave the Atelier
+
+84 of the Atelier's 95 projects were Forge copies (sealed, gestating, 74 pieces); his own work was 11 projects, 34
+pieces. The Forge now copies no Lab work into the Atelier (`forge_loop_atelier.lab_work`, by origin: a project she
+starts herself is a research_report too, and still copies). `scripts/move_forge_lab_copies.py` moves the copies
+already there to `/home/atelier/atelier-archive/`, kept, with a list; it refuses until the installed Forge has the
+change. Her Forge page reads the Forge's database and is not touched.
+
+Not done: the move is hers to run (sudo). The Forge was found stopped and disabled on 15 October; she enabled it.
+Why it stopped is not known (its journal needs sudo to read).
+
 ## 16 October — the Lab's last two hours of 15 October: no complete answer in 47 outcomes
 
 Fixed: the planner's own names for UniProt and PubMed requests. Eight source failures were UniProt "plugin" routes

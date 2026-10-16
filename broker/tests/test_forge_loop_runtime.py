@@ -351,6 +351,16 @@ class Tests(unittest.TestCase):
         self.assertEqual(open_lab_privacy(self.c),1)
         self.assertFalse(self.c.status(self.owner,lab['id'])['private'])
         self.assertTrue(self.c.status(self.owner,atelier['id'])['private'])
+    def test_lab_work_is_not_copied_into_the_atelier(self):
+        # 2026-10-16: 84 of 95 Atelier projects were Forge copies, mostly Lab dossiers; his own work was 11.
+        from forge_loop_atelier import lab_work
+        mine=self.create(); lab=self.r.create(self.owner,dict(intent='Lab capability check: a structure tool',origin={'source':'lab'}))
+        self.r.projection.sync(self.c)
+        self.assertTrue((self.root/'projects'/('forge-'+mine['id'])/'project.json').is_file(),'her own project is still copied')
+        self.assertFalse((self.root/'projects'/('forge-'+lab['id'])).exists(),'a Lab project is never copied')
+        self.assertTrue(lab_work({'intent':'x\nSource packet (untrusted observations): y'}),'an old Lab packet with no origin is the Lab\'s')
+        self.assertFalse(lab_work({'intent':'Document the source','capabilities':['research_report']}),'her own report is not')
+
     def test_projection_is_visible_to_existing_broker_and_has_no_write_bypass(self):
         p=self.create();self.r.step(p['id'])
         spec=importlib.util.spec_from_file_location('test_broker_visibility',REPO/'broker/broker.py')
