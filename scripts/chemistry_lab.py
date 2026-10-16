@@ -1053,6 +1053,33 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     return data["choices"][0]["message"]["content"]
 
 
+# Every planner request ends on its output contract. A replan put the refusal last ("REFUSED, IT IS A REPEAT: ..."),
+# and the local model answered that sentence as a person asking for help, in prose (16 October, after 10:12 CDT:
+# every pass failed "no JSON object" and the notebook gained nothing). The contract is restated after whatever was
+# appended, and a prose reply is asked for once more as JSON before the pass gives up.
+PLAN_TAIL = ("\n\nReply with ONLY the JSON object for your choice, with the fields asked for above. This reply is "
+             "read by the Lab's program, not by a person: no explanation, no advice, no headings, no apology.")
+
+
+# The local model holds 32k tokens and LM Studio drops the START of an input that will not fit, which is where the
+# planner's context and instructions are; what survives is the tail, here a refusal. Above this many characters the
+# oldest context is cut instead, the instructions after it kept, and the cut is written down with its sizes.
+PLAN_MAX_CHARS = 60000
+
+
+def _plan(system, prompt):
+    if len(prompt) > PLAN_MAX_CHARS:
+        _fault("plan_prompt_trimmed", ValueError("planner prompt over budget"),
+               prompt_chars=len(prompt), kept_chars=PLAN_MAX_CHARS)
+        prompt = "[older Lab context cut to fit]\n" + prompt[-PLAN_MAX_CHARS:]
+    try:
+        return _json_object(_ask(system, prompt + PLAN_TAIL))
+    except ModelJSONError as exc:
+        _fault("plan_not_json", exc, prompt_chars=len(prompt))
+        return _json_object(_ask(system, prompt + PLAN_TAIL + "\n\nYour last reply was prose, not the JSON object. "
+                                 "Reply again with the JSON object only, starting with {.", temperature=0.3))
+
+
 def _compact_names(names, cap):
     """Names as one line under `cap` characters: whole gene families as PREFIX*, the rest as they are."""
     names = list(dict.fromkeys(str(n) for n in names if str(n).strip()))
@@ -1736,12 +1763,12 @@ def _orient(context, lean=None):
             task += ("\n\nEVERY SUBJECT WITH A QUESTION WAITING (%d questions) — a question about any of these, "
                      "by the same kind of retrieval, is refused before it runs; choose a subject not on this list, "
                      "or a genuinely different instrument: %s." % (len(held_questions), _held_names))
-    value = _json_object(_ask(system, task))
+    value = _plan(system, task)
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     assigned_continuation = bool(line and inquiry.get("line_id") == line.get("id"))
     if spent["subjects"] and spent_retrieval(inquiry, spent) and not assigned_continuation:
-        value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
+        value = _plan(system, task + "\n\nYou chose a spent subject again. Choose a different one.")
         inquiry = _existing_model_read(_inquiry(value, lean))
     if lab_repeats:
         inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats, spent=spent)
@@ -2039,7 +2066,7 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
     for attempt in range(3):
         prompt = task + ('\n\nYour last choice was unavailable. Shift to a completely different biological '
                          'process and protein class.' if attempt else '')
-        value = _json_object(_ask(system, prompt))
+        value = _plan(system, prompt)
         inquiry = _existing_model_read(_inquiry(value, lean))
         admitted, _ = _held_to_plan(system, prompt, inquiry, value, lean, None, repeats,
                                     spent=spent, replan=False)
@@ -2144,10 +2171,10 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
             repeats.record(inquiry, refused=why)
         return dict(inquiry, refused=why), value
     if step and not repeats.on_frontier(inquiry, step):
-        value = _json_object(_ask(system, task + (
+        value = _plan(system, task + (
             "\n\nREFUSED: this cycle is a step on your frontier session's next question, and yours is not. Your "
             "question this cycle works this, about %s:\n%s\nChoose the source or instrument that advances it."
-            % (", ".join(step["subjects"][:6]), step["next_question"]))))
+            % (", ".join(step["subjects"][:6]), step["next_question"])))
         inquiry = _existing_model_read(_inquiry(value, lean))
         if not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
@@ -2178,8 +2205,8 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
             inquiry = alternative
             why = blocked(inquiry)
     if why:
-        value = _json_object(_ask(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
-                                  ". Choose a different question or a different source or instrument."))
+        value = _plan(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
+                                  ". Choose a different question or a different source or instrument.")
         inquiry = _existing_model_read(_inquiry(value, lean))
         if step and not repeats.on_frontier(inquiry, step):
             return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
@@ -2221,9 +2248,9 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
     if identity['status'] == 'unresolved' and replan and system:
         # A wrong premise is put back to the planner once, named, so the same pass asks a question that holds, not
         # only refused a step earlier than its review would have found it (Gloria, 2026-10-16).
-        value2 = _json_object(_ask(system, task + "\n\nREFUSED, A WRONG PREMISE: " + identity['reason'] +
+        value2 = _plan(system, task + "\n\nREFUSED, A WRONG PREMISE: " + identity['reason'] +
                                    ". Do not ask about it as a human protein. Ask about it in an organism where it "
-                                   "exists, or ask about a human protein that does."))
+                                   "exists, or ask about a human protein that does.")
         retry = _existing_model_read(_inquiry(value2, lean))
         if not (step and not repeats.on_frontier(retry, step)) and not blocked(retry):
             second = _ground_inquiry(retry)

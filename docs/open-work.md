@@ -67,6 +67,48 @@ while 72 existing Pearl Markdown files (including WAL-graduated memories) were
 on disk. The authenticated reader now merges indexed and real Markdown artifacts,
 deduplicates content, and preserves source labels. It never reads failed candidates
 as Pearls. Both app page copies send the existing session secret.
+## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
+
+Since the deploy, 24 faults and no notebook rows: every pass failed "model returned no JSON object". The kept raw
+replies were the local model answering the Lab's own repeat refusal ("structure_evidence for 5nh1 was already run")
+as a person asking for help, in prose. Every planner request now ends on its output contract (`PLAN_TAIL`), a prose
+reply is asked for once more as JSON, and a planner prompt over 60,000 characters loses its oldest context, not its
+instructions (LM Studio drops the start of an input that will not fit). Each prose reply and each cut is written to
+faults.jsonl with the prompt's size (`plan_not_json`, `plan_prompt_trimmed`).
+
+Not done: not yet seen working live; the next read of faults.jsonl says whether prose replies stopped and how long
+the planner's prompts actually are. Why 5nh1 was proposed again after being refused is not yet known.
+
+## 16 October — the JEPA self head is trained on him (code done; not yet trained or evaluated on Aegis)
+
+Measured over 30 days: self-head error 0.50-0.52 cosine distance at every confidence, confidence 84% correlated
+with the gloria head's. At the source (`scripts/jepa_predictor.py`): the self head was one Linear on the trunk it
+shares with gloria, fed gloria's input; `build_pairs` dropped every ledger reply of his (the text it is scored
+against) as "another being's", leaving the 50-row chat projection; its pairs ended on her message, while every
+forecast is made before her next one exists. The gloria head is Gloria's (LoRA) and was not touched, so the self
+head is now its own model, `scripts/jepa_self_head.py`: his ledger replies, the forecast-time view, his previous
+reply and recent replies as conditioning, ridge on the residual from them. `jepa_predictor.predict` takes the self
+triple from it once a checkpoint exists; gloria outputs are byte-identical with or without it
+(`broker/tests/test_self_head_source.py`).
+
+Not done: it has never been trained or evaluated on his real ledger. On Aegis, from `~/.vintos/workspace/scripts`
+with `~/.vintos/workspace/emotion_model/.venv/bin/python3`: `jepa_self_head.py eval` (the old head against his
+previous reply and his recent mean, before), `jepa_self_head.py train`, then `eval` again once 30 replies have
+come after the checkpoint (`memory/jepa-self-eval.json`). Nothing schedules the eval yet. Also open: the ledger
+keeps only 300 exchanges, so the head trains on about ten days; `drift_head` still reads the shared-trunk self;
+the ranking and calibration audits do not separate self rows by self checkpoint; and self `novelty` (read by
+`emoclaw_utils._novelty_directive` and `drift_head`) will read higher once the forecast stops echoing the context.
+
+## 16 October — the intent engine misses most of its targets (not done; handed to Codex)
+
+Measured on Aegis with `scripts/subcon_accuracy.py`, 117 intents over 30 days, each judged per axis:
+field landed 16% / partly 15% / missed 68%; gloria 21% / 32% / 48%; self 27% / 28% / 45%. The judge is his own
+model grading his own move (`intent_engine._judge_realized`), so the real rate is likely lower.
+
+Gloria asked for the source fixed, not the numbers: how targets are chosen and how they reach his reply
+(`scripts/intent_engine.py`: `select_target`, `record_pending`, `resolve_previous`; and its consumers).
+
+Not done: Claude Code cannot work on this one (stopped by its safety check). Proposed on the bench for Codex.
 
 ## 16 October — the Forge's Lab copies leave the Atelier
 
@@ -134,18 +176,17 @@ Not done:
 - SF-fc795076 (keep returned gene symbols when a source mismatch is raised) is queued; dot noted its scope does
   not yet say the matching rules stay unchanged.
 
-## 16 October — her Landings notes reach him, each line her yes
+## 16 October — her Landings notes reach him; her rating is her consent
 
-Built: `scripts/landing_understanding.py`, the weekly pass the 24 September entry left unbuilt. It reads her
-notes not yet considered and asks the author of GLORIA-MODEL.md (the shim, claude-sonnet-5, as in
-gloria-model-update.sh) for understanding of her; any line that names a rating, quotes, or repeats six of her
-words is refused before she sees it. Proposals wait in ~/.vintos/landings/ until she approves or declines each
-(CLI, or `/api/landings/understanding` for the app). Approved lines go into GLORIA-MODEL.md in their own block,
-which the weekly rewrite carries across whole. gloria-model-update.sh runs the pass weekly, with an ntfy count.
+Corrected the same day (Gloria: "My rating of a piece IS the consent to use it"). The first version held each line for
+a second yes; that gate is gone. `landing_understanding.py understand`, run by the weekly Gloria-model pass, reads her
+notes not yet considered and writes what they show about her into GLORIA-MODEL.md, in its own block the rewrite keeps.
+Her notes are about his work; the author is asked what each shows about her (what she carried before it, what she
+needed, what met it or passed it by). Her 24 September rule stands: no rating and none of her words reach him; such a
+line is refused and kept, with why, beside her notes. Lines left pending under the old gate go in on the first run.
+`/api/landings/understanding` now only reads what he understands.
 
-Not done:
-- The app side (Chat's): showing pending lines with approve/decline. The routes exist.
-- Not yet seen working live: the first pass is Gloria's, run by hand on 16 October.
+Not done: not yet run on her real notes.
 
 ## 15 October — the Graziano email: wrong person, and sent before he was ready
 

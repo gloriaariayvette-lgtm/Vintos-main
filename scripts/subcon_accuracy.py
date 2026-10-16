@@ -122,20 +122,22 @@ def intent(cutoff):
     led = _since(_load("intent-ledger.json", []) or [], "timestamp", cutoff)
     if not led:
         return out + ["  no intents in the window"]
-    verdicts = Counter(str(r.get("realized") or "unresolved").upper() for r in led)
-    decided = verdicts["YES"] + verdicts["PARTIAL"] + verdicts["NO"]
-    out.append("  intents: %d | %s" % (len(led), ", ".join("%s %d" % kv for kv in verdicts.most_common())))
-    if decided:
-        out.append("  of the decided: landed %.0f%%, partly %.0f%%, missed %.0f%%"
-                   % (100 * verdicts["YES"] / decided, 100 * verdicts["PARTIAL"] / decided, 100 * verdicts["NO"] / decided))
+    # an intent is judged on one verdict, or (since the three-axis targets) on field, gloria and self apiece
+    axes = {}
+    for r in led:
+        v = r.get("realized")
+        for axis, verdict in (v.items() if isinstance(v, dict) else [("overall", v)]):
+            axes.setdefault(str(axis).lower(), Counter())[str(verdict or "unresolved").upper()] += 1
+    out.append("  intents: %d" % len(led))
+    for axis, verdicts in sorted(axes.items()):
+        decided = verdicts["YES"] + verdicts["PARTIAL"] + verdicts["NO"]
+        if decided:
+            out.append("  %-8s landed %.0f%%, partly %.0f%%, missed %.0f%%  (%d decided, %d unresolved)"
+                       % (axis, 100 * verdicts["YES"] / decided, 100 * verdicts["PARTIAL"] / decided,
+                          100 * verdicts["NO"] / decided, decided, sum(verdicts.values()) - decided))
     with_crit = [r for r in led if isinstance(r.get("target"), dict) and (r["target"].get("success_criterion") or r["target"].get("goal"))]
     out.append("  with a declared success criterion: %d of %d (the rest are judged only on whether he made the move)"
                % (len(with_crit), len(led)))
-    vc = Counter(str(r.get("realized") or "unresolved").upper() for r in with_crit)
-    dc = vc["YES"] + vc["PARTIAL"] + vc["NO"]
-    if dc:
-        out.append("  criterion-judged: landed %.0f%%, partly %.0f%%, missed %.0f%%"
-                   % (100 * vc["YES"] / dc, 100 * vc["PARTIAL"] / dc, 100 * vc["NO"] / dc))
     out.append("  note: the judge is his own model grading his own move against its own criterion")
     return out
 
