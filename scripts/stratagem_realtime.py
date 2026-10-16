@@ -40,9 +40,19 @@ def admit(raw, event_id):
         if session.turn.duplicate_event:
             return {'duplicate': True}
         prompt = session.prompt()
+        intent_target = None
+        try:
+            from intent_engine import note_response
+            note_response(raw)
+            from intent_context import admit_voice_lead
+            intent_target, intent_prompt = admit_voice_lead(event_id)
+            if intent_prompt:
+                prompt += "\n\n" + intent_prompt
+        except Exception:
+            pass
         session.admitted(prompt)
         write_json(path, {'event_id': event_id, 'turn_id': session.turn.turn_id, 'commitment': session.turn.commitment,
-                          'barrier': session.turn.barrier, 'completed': False})
+                          'barrier': session.turn.barrier, 'completed': False, 'intent_target': intent_target})
         return {'instructions': prompt, 'event_id': event_id}
 
 
@@ -78,3 +88,14 @@ def eligible(event_id):
     rec = _read(_path(event_id))
     return {'allowed': bool(rec and not rec.get('control') and
                             stratagem.still_eligible(rec.get('commitment') or {}))}
+
+
+def record_intent_delivery(event_id, reply, raw=""):
+    """A server-trusted admission, joined to the actual spoken words by event id."""
+    rec = _read(_path(event_id))
+    if not rec or rec.get("control") or not rec.get("completed") or not rec.get("intent_target"):
+        return False
+    if not stratagem.still_eligible(rec.get("commitment")):
+        return False
+    from intent_engine import record_delivery
+    return record_delivery(reply, "voice", rec["turn_id"], target=rec["intent_target"], input_text=raw)

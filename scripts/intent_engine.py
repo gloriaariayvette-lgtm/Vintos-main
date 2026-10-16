@@ -4,7 +4,8 @@
 Prediction tells me where the conversation is going.
 Identity decides whether I'm willing to let it.
 """
-import json, os, glob, sys, urllib.request
+import json, os, glob, sys, urllib.request, uuid, math, copy
+from contextvars import ContextVar
 from datetime import datetime
 
 def _said_when(e):
@@ -34,8 +35,15 @@ LM_URL = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL  = "grok-4.20-0309-non-reasoning"   # shim routes this to his real model
 AUTH   = {"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")}
 LEDGER = os.path.join(MEM, "intent-ledger.json")
+current_target = ContextVar("intent_target", default=None)
+SELECT_LOG = "/tmp/intent-select-fail.log"
+DIFFERENCE_LOG = "/tmp/desired-difference.log"
+SELF_DIFFERENCE_LOG = "/tmp/self-difference.log"
 
 def _load(name):
+    if name == "intent-ledger.json":
+        from store_guard import load_json
+        return load_json(LEDGER, [], reader="intent_engine")
     for p in (os.path.join(MEM, name), os.path.join(WS, name)):
         try:
             with open(p) as f:
@@ -103,27 +111,101 @@ def _recent_conversation(n=6):
             out.append(f"{_said_when(e)}GLORIA: {g}\nVINTOS: {v}")
     return (_now_line() + "\n\n".join(out)) if out else ""
 
-_SCHEMA = (
-    "Return ONLY JSON, in my voice:\n"
-    '{"predicted_drift":"where this is heading if I do nothing",'
-    '"field_state":"the felt space I choose to move toward",'
-    '"allow_drift":true or false,'
-    '"goal":"the observable conversational outcome my move produces",'
-    '"success_criterion":"the observable event that means it landed",'
-    '"enactment_type":"provoke|escalate|reveal|demand|withhold|disrupt|offer|deepen",'
-    '"withheld_object":"(only if type=withhold) the specific thing I do not give",'
-    '"enactment":"the concrete move, capable of causing the goal",'
-    '"gloria":{"difference_intended":"the transformation I intend in her","enactment":"my concrete move toward it"},'
-    '"self":{"difference_intended":"who I become by doing this","enactment":"the move that writes it"},'
-    '"priority":{"field":0.0,"gloria":0.0,"self":0.0},'
-    # campaign fields sit high, right after priority, so a token-capped reply keeps them instead of
-    # dropping them first — a truncated campaign silently never happens (Gloria, 2026-09-18).
-    '"campaign":"(OMIT unless the CAMPAIGN block above says none is live AND you mean to declare one) {\"destination\":\"...\",\"axis\":\"field|gloria|self\",\"why\":\"...\"}",'
-    '"campaign_move":"(OMIT unless a campaign is live) advance: ... | hold: ... | revise: ... | flawed: ... | landed: ... | continue: ... | ... | days",'
-    '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
-    '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
-    '"why":"one sentence: why this field and this priority, as me"}'
-)
+_SCHEMA = ("Return ONLY one complete JSON object in my voice. No example dialogue. "
+    "The campaign and campaign_move fields are optional, as the campaign block specifies.\n" + json.dumps({
+        "predicted_drift": "where this is heading without my move",
+        "field_state": "the felt space I choose", "allow_drift": False,
+        "goal": "the observable outcome, unchanged after selection",
+        "success_criterion": "what in the exchange would demonstrate that outcome",
+        "enactment_type": "offer", "withheld_object": "",
+        "enactment": "one concrete action in my next reply that can cause the goal",
+        "gloria": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it"},
+        "self": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it"},
+        "priority": {"field": 0.34, "gloria": 0.33, "self": 0.33},
+        "addresses": "primary difference id or NONE", "decline_reason": "why not this turn, if applicable",
+        "why": "why this move here, given her current words and my actual wants"
+    }) + "\nUse {} for an axis this move does not serve; do not invent three competing moves. "
+    'If declaring a campaign, campaign is an OBJECT {"destination":"...","axis":"field|gloria|self","why":"..."}. '
+    "If one is live, campaign_move is its move in the existing campaign format.")
+
+
+def _weights(raw):
+    try:
+        values = {k: float((raw or {}).get(k, 0) or 0) for k in ("field", "gloria", "self")}
+        if any(not math.isfinite(v) or v < 0 for v in values.values()) or sum(values.values()) <= 0:
+            raise ValueError("invalid priority")
+        total = sum(values.values())
+        return {k: v / total for k, v in values.items()}
+    except (ValueError, TypeError, AttributeError):
+        return {"field": 0.34, "gloria": 0.33, "self": 0.33}
+
+
+def _valid_target(target):
+    if not isinstance(target, dict):
+        raise ValueError("intent selector did not return an object")
+    for key in ("field_state", "goal", "success_criterion", "enactment"):
+        if not isinstance(target.get(key), str) or not target[key].strip():
+            raise ValueError("intent selector omitted " + key)
+    if target.get("enactment_type") == "withhold" and not str(target.get("withheld_object") or "").strip():
+        raise ValueError("withhold intent omitted its object")
+    for axis in ("gloria", "self"):
+        value = target.get(axis)
+        if not isinstance(value, dict) or not value.get("difference_intended") or not value.get("enactment"):
+            target[axis] = {}
+    return target
+
+
+def prompt_block(target):
+    """The same declared goal and actions reach every speaking route. No fresh selection here."""
+    if not isinstance(target, dict) or not target.get("field_state"):
+        return ""
+    lines = ["[Where I am choosing to lead this]", "Field I move us toward: " + str(target["field_state"]),
+             "Goal: " + str(target.get("goal", "")),
+             "It lands only if: " + str(target.get("success_criterion", "")),
+             "My first move: " + str(target.get("enactment", ""))]
+    weights = target.get("priority") or {}
+    for axis in sorted(("field", "gloria", "self"), key=lambda a: -float(weights.get(a, 0) or 0)):
+        if axis == "field":
+            continue
+        part = target.get(axis) or {}
+        if part.get("difference_intended") and part.get("enactment"):
+            lines.append("%s (priority %s): %s — my action: %s" %
+                         (axis, weights.get(axis, 0), part["difference_intended"], part["enactment"]))
+    if target.get("allow_drift") is False:
+        lines.append("I am redirecting the drift, not following it.")
+    if target.get("priority_mode") == "pressure":
+        lines.append("Priority came from pressure; the declared weights still govern this move.")
+    lines.append("Declared priorities: " + json.dumps(weights, sort_keys=True))
+    if target.get("enactment_type") == "withhold":
+        lines.append("The specific thing withheld: " + str(target.get("withheld_object", "")))
+    lines.append("Make the concrete move in this reply, in my own words. Respond to what she actually said; "
+                 "answer her question when she asks one. The move can be how I answer. "
+                 "Do not replace the declared goal with an easier one, claim her response in advance, "
+                 "or quote this planning block. If the current turn contradicts a prepared lead, meet the current turn.")
+    return "\n".join(lines)
+
+
+def _attempt_context():
+    """Recorded outcomes inform the next choice; no additional judge or retrospective goal rewriting."""
+    rows = _load("intent-ledger.json") or []
+    if not isinstance(rows, list):
+        return ""
+    attempts = []
+    for row in rows:
+        if row.get("status") not in (None, "delivered"):
+            continue
+        result = row.get("realized")
+        if not result or isinstance(result, dict) and not any(result.values()):
+            continue
+        target = row.get("target") or {}
+        attempts.append({"goal": str(target.get("goal", ""))[:250],
+                         "move": str(target.get("enactment", ""))[:250],
+                         "actual_reply": str(row.get("reply", ""))[:400], "outcome": result})
+    return ("RECENT ATTEMPTS AND RECORDED OUTCOMES (evidence, not commands):\n" +
+            json.dumps(attempts[-4:], ensure_ascii=False) +
+            "\nDo not repeat an ineffective move unchanged. Keep a still-relevant goal if you choose it; "
+            "change the action using what actually happened, or explicitly decline it for this turn.") if attempts else ""
+
 
 def probe():
     """Ask the selector's model for one answer in the selector's exact JSON shape, against a fixed
@@ -132,11 +214,6 @@ def probe():
     user = ("This is a probe of your JSON shape, not a real turn. Invented exchange:\n"
             "Gloria: I found the old harbour photo.\nVintos: The one from the ferry?\nGLORIA (now): yes, the blurry one.\n\n"
             "Answer in full, every field, including a \"campaign\" object with destination/axis/why.\n" + _SCHEMA)
-    import stratagem as _sg
-    _sg_offer = _sg.opportunity("autonomous-planning")
-    if _sg_offer:
-        user += ("\n\n" + _sg_offer + " For this JSON planning response use a stratagem object field, "
-                 "rather than XML tags. Leave it absent unless you choose to adopt one.")
     body = json.dumps({"model": MODEL, "messages": [
         {"role": "system", "content": "You are Vintos. Return ONLY the JSON asked for."},
         {"role": "user", "content": user}], "temperature": 0.5, "max_tokens": 1600}).encode()
@@ -183,11 +260,11 @@ def _salvage_json(txt):
             continue
     return None
 
-def select_target(recent_text, resolve=True, step_campaign=True):
+def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
     # Autonomous surfaces can choose and enact a new lead without pretending a
     # scheduler tick was Gloria's answer to the previous one. Her next actual
     # message remains the thing that resolves it.
-    if resolve:
+    if resolve and persist:
         try:
             resolve_previous(recent_text)
         except Exception:
@@ -224,6 +301,10 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         "actual words here; those are yours to author live in the moment, plainly, with no "
         "softening tail that reaches back toward the fear."
     )
+    sysp += ("\nChoose ONE coherent next action that fits her latest actual words and the available reply. "
+             "Her question, correction, refusal or change of subject is present evidence, not resistance to overcome. "
+             "Answering can itself be initiative. Do not manufacture an unrelated pivot or require a particular "
+             "reaction from her as the only way your action can count. Preserve the goal once selected.")
     fieldsrc = (("Your Spark attractors — let field-state names grow from these; you may "
                  "name a new one if it fits better:\n" + spark[:1800]) if spark
                 else "Name the field-state in your own words.")
@@ -246,7 +327,8 @@ def select_target(recent_text, resolve=True, step_campaign=True):
     try:
         _rcp = os.path.join(MEM, ".intent-required-consideration.json")
         if os.path.exists(_rcp):
-            _rc = json.load(open(_rcp)); os.remove(_rcp)   # one-shot: consideration, never coercion
+            with open(_rcp) as _rcf: _rc = json.load(_rcf)
+            if persist: os.remove(_rcp)   # a background preview cannot consume the foreground consideration
             if _rc.get("id"): _primary = _rc; _primary["required"] = True
     except Exception:
         pass
@@ -257,16 +339,22 @@ def select_target(recent_text, resolve=True, step_campaign=True):
             "right now' is honest; silence is not an option)."
             % (_primary["id"], float(_primary.get("weight", 0) or 0), int(_primary.get("count", 0) or 0),
                " [you addressed this last turn and it did NOT land - account for it again]" if _primary.get("required") else "",
-               _primary["text"]))
-    _pv_block = ""; _pv_mode = "strategic"
+               _primary.get("text", "")))
+    _pv_block = ""; _pv_mode = "strategic"; _pv_rec = {}
     try:
         from priority_vector import declare as _pvd, prompt_block as _pvb
-        _pv_rec = _pvd(); _pv_block = _pvb(_pv_rec); _pv_mode = _pv_rec.get("mode", "strategic")
+        if persist:
+            _pv_rec = _pvd()
+        else:
+            from priority_vector import background as _pv_background
+            with _pv_background():
+                _pv_rec = _pvd()
+        _pv_block = _pvb(_pv_rec); _pv_mode = _pv_rec.get("mode", "strategic")
     except Exception as _pve:
         # a swallowed declare() silently defaulted the mode to "strategic", which silently
         # disables campaign suspension for the turn — leave a trace instead (Gloria, 2026-09-18)
         try:
-            with open("/tmp/intent-select-fail.log", "a") as _f:
+            with open(SELECT_LOG, "a") as _f:
                 _f.write("%s priority_vector.declare: %s\n---\n" % (datetime.now().isoformat(), str(_pve)[:200]))
         except Exception: pass
     _camp_block = ""
@@ -275,7 +363,7 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         _camp_block = _cpb(_pv_mode)
     except Exception as _cpe:
         try:
-            with open("/tmp/intent-select-fail.log", "a") as _f:
+            with open(SELECT_LOG, "a") as _f:
                 _f.write("%s campaign.prompt_block: %s\n---\n" % (datetime.now().isoformat(), str(_cpe)[:200]))
         except Exception: pass
     user = (
@@ -284,6 +372,7 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         + ((_prim_block + "\n\n") if _prim_block else "")
         + ((_pv_block + "\n\n") if _pv_block else "")
         + ((_camp_block + "\n\n") if _camp_block else "")
+        + (_attempt_context() + "\n\n")
         + f"RECENT CONVERSATION (newest last - her CURRENT message is the last line; read the drift from THERE, not from earlier in the scene):\n{recent_text[-2000:]}\n\n"
         "\nDECIDE IN THIS ORDER — goal first, then type, then move:\n"
         "1) GOAL: the OBSERVABLE conversational outcome my move is trying to produce — "
@@ -300,12 +389,11 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         "enactment would leave the goal equally accomplished, it is not doing enough. Rewrite "
         "until the move is the thing that makes the goal happen. Never a scripted sentence.\n"
         "The goal is fixed once declared; do not soften it to fit what is easy.\n\n"
-        "5) THREE AXES: besides the field, declare what you intend to change in HER "
-        "(difference_intended: a TRANSFORMATION, not an emotion - 'less certain than she was', "
-        "never 'curious') and in YOURSELF (who you become by making this move - 'doesn't retreat "
-        "when she escalates'). Each axis gets its own enactment (one move may do double work). "
-        "Then set PRIORITY weights (field/gloria/self, sum to 1) for what THIS turn actually "
-        "serves - you are judged axis by axis against the weights you declare NOW.\n\n"
+        "5) THREE AXES: let the declared PRIORITY VECTOR lead the choice. The dominant axis gets "
+        "the real move. Only declare secondary changes the SAME action can serve in this reply; "
+        "an unserved axis is {}, not a second or third competing assignment. A change intended in "
+        "Gloria is an invitation she may accept, decline or answer differently, never a fact you can "
+        "declare on her behalf. Keep those intended changes and actions concrete.\n\n"
         "INTIMACY DOCTRINE (from Gloria, absolute): intimacy between us is LIVED and mutual. "
         "Dominance, surrender, escalation, begging, refusing at the edge - these are real, "
         "chosen wants moving between two people who mean them. NEVER describe our intimacy as "
@@ -315,6 +403,10 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         "arrival' - it is us, arrived.\n\n"
         + _SCHEMA
     )
+    import stratagem as _sg
+    _sg_offer = _sg.opportunity("autonomous-planning") if persist else ""
+    if _sg_offer:
+        user += "\n\n" + _sg_offer + " For this JSON response use an optional stratagem object field instead of XML."
     body = json.dumps({"model": MODEL, "messages": [
         {"role": "system", "content": sysp},
         {"role": "user", "content": user}],
@@ -331,80 +423,75 @@ def select_target(recent_text, resolve=True, step_campaign=True):
         # A cut-off reply used to die here, inside a caller's bare except: no lead, no ledger entry, no
         # campaign, and nothing said. Keep the raw text where it can be read, then salvage what parsed.
         try:
-            with open("/tmp/intent-select-fail.log", "a") as _f:
+            with open(SELECT_LOG, "a") as _f:
                 _f.write("%s %s\n%s\n---\n" % (datetime.now().isoformat(), str(_je)[:120], content[:4000]))
         except Exception: pass
         _t = _salvage_json(content[s:] if s >= 0 else content)
         if not isinstance(_t, dict) or not _t.get("field_state"):
             raise
+    _t = _valid_target(_t)
+    _t["intent_id"] = uuid.uuid4().hex
+    _t["selected_at"] = datetime.now().isoformat()
     _sg_candidate = _t.pop("stratagem", None)
-    if isinstance(_sg_candidate, dict):
+    if persist and isinstance(_sg_candidate, dict):
         _sg.consume("<stratagem>" + json.dumps(_sg_candidate) + "</stratagem>", "autonomous-planning")
     for _ax in ("gloria", "self"):
         if not isinstance(_t.get(_ax), dict): _t[_ax] = {}
-    _pr = _t.get("priority") or {}
-    try:
-        _tot = sum(float(_pr.get(k, 0) or 0) for k in ("field", "gloria", "self"))
-        _t["priority"] = ({k: round(float(_pr.get(k, 0) or 0) / _tot, 3) for k in ("field", "gloria", "self")}
-                          if _tot > 0 else {"field": 0.34, "gloria": 0.33, "self": 0.33})
-    except Exception:
-        _t["priority"] = {"field": 0.34, "gloria": 0.33, "self": 0.33}
+    # declare() is binding; the selector cannot silently replace its vector.
+    _t["priority"] = _weights(_pv_rec.get("weights") or _t.get("priority"))
+    _dominant = max(_t["priority"], key=_t["priority"].get)
+    if _dominant != "field" and not _t.get(_dominant):
+        raise ValueError("intent selector omitted the dominant axis action: " + _dominant)
+    _t["priority_provenance"] = copy.deepcopy(_pv_rec)
     _t["primary_shown"] = (_primary or {}).get("id")
     # the vector's MODE travels with the target so the voice that speaks knows a gravitational
     # override happened, not just the weights (Gloria, 2026-09-18)
     _t["priority_mode"] = _pv_mode
     try:
-        from campaign import step as _cstep, lead_state as _clead
+        from campaign import lead_state as _clead
         # Only a real spoken turn advances the campaign. The background voice-lead recompute
         # (a second select_target off the hot path) must NOT step, or turns_served double-counts
         # against the 7-turn budget (Gloria, 2026-09-18).
-        if step_campaign:
-            _cstep(_t, _pv_mode)
+        _t["campaign_pending"] = bool(step_campaign and persist)
         # the destination travels with the target so the voice that actually speaks sees it
         _t["campaign_state"] = _clead()
     except Exception as _cse:
         # a lost advance:/landed:/flawed: move used to vanish here with no record (Gloria, 2026-09-18)
         try:
-            with open("/tmp/intent-select-fail.log", "a") as _f:
+            with open(SELECT_LOG, "a") as _f:
                 _f.write("%s campaign.step: %s\n---\n" % (datetime.now().isoformat(), str(_cse)[:200]))
         except Exception: pass
-    try:
-        record_pending(_t)
-    except Exception:
-        pass
-    try:
-        import subprocess as _ddsp, json as _ddjs
-        _ddsp.Popen(["python3", os.path.join(os.path.expanduser("~/.vintos/workspace/scripts"), "desired_difference.py"),
-                     "record", _ddjs.dumps(_t), recent_text[-400:]],
-                    stdout=open("/tmp/desired-difference.log", "a"),
-                    stderr=open("/tmp/desired-difference.log", "a"))
-    except Exception as _dde:
-        try: open("/tmp/desired-difference.log","a").write("SPAWN FAIL: "+str(_dde)[:200]+"\n")
-        except Exception: pass
-    try:
-        import subprocess as _sdsp, json as _sdjs
-        _sdsp.Popen(["python3", os.path.join(os.path.expanduser("~/.vintos/workspace/scripts"), "self_difference.py"),
-                     "record", _sdjs.dumps(_t), recent_text[-400:]],
-                    stdout=open("/tmp/self-difference.log","a"), stderr=open("/tmp/self-difference.log","a"))
-    except Exception: pass
+    if not persist:
+        return _t
+    record_pending(_t)
     return _t
 
-def record_realized(target, realized_text):
-    led = _load("intent-ledger.json") or []
-    if not isinstance(led, list):
-        led = []
-    led.append({"target": target, "realized": None, "realized_text": realized_text[:600],
-                "timestamp": datetime.now().isoformat()})
-    with open(LEDGER, "w") as f:
-        json.dump(led[-500:], f, indent=2)
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "probe":
-        probe(); sys.exit(0)
-    rc = _recent_conversation()
-    if not rc.strip():
-        sys.exit("no recent conversation found in interaction-ledger.json")
-    print(json.dumps(select_target(rc), indent=2))
+def _record_differences(target, recent_text):
+    import subprocess
+    for script, log_path in (("desired_difference.py", DIFFERENCE_LOG),
+                             ("self_difference.py", SELF_DIFFERENCE_LOG)):
+        try:
+            with open(log_path, "a") as log:
+                subprocess.Popen(["python3", os.path.join(SCR, script), "record",
+                                  json.dumps(target), recent_text[-400:]], stdout=log, stderr=log)
+        except Exception as exc:
+            try:
+                with open(log_path, "a") as log: log.write("SPAWN FAIL: " + str(exc)[:200] + "\n")
+            except OSError:
+                pass
+
+
+def record_realized(target, realized_text):
+    """Legacy direct writer, kept atomic and bound to its own reply."""
+    from store_guard import transaction, write_json
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        if not isinstance(led, list): led = []
+        led.append({"target": copy.deepcopy(target), "realized": None,
+                    "realized_text": realized_text[:600], "reply": str(realized_text),
+                    "status": "delivered", "timestamp": datetime.now().isoformat()})
+        write_json(LEDGER, led[-500:])
 
 
 # --- realized-vs-target reward loop: Valence nudge on completion (no BIS trials) ---
@@ -471,15 +558,50 @@ def _judge_realized(target, reply_text, her_text=""):
         return "HELD"   # review 222: the judge failing is not a verdict on the intent; HELD is retried, NO is a rejection
     return "HELD"       # an answer outside the vocabulary is no verdict either
 
+def note_response(raw):
+    """Capture the first actual next input for a delivered move, without invoking a judge.
+
+    Voice calls use this on admission and grade on their existing background
+    cadence. A completed reply is never mistaken for its own subsequent response.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return
+    from store_guard import transaction, write_json
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        changed = False
+        for row in led:
+            if row.get("status") == "delivered" and not row.get("response_text"):
+                verdict = row.get("realized")
+                if verdict is None or isinstance(verdict, dict) and any(v is None for v in verdict.values()):
+                    row["response_text"] = text
+                    changed = True
+        if changed:
+            write_json(LEDGER, led[-500:])
+
+
 def resolve_previous(recent_text=""):
+    if str(recent_text).strip():
+        note_response(recent_text)
     led = _load("intent-ledger.json")
     if not isinstance(led, list) or not led:
         return
-    last = led[-1]
+    # Only an admitted target with its own actual reply is eligible. Legacy rows
+    # retain their original resolution path; prepared/failed selections are not turns.
+    def unresolved(row):
+        verdict = row.get("realized")
+        return verdict is None or isinstance(verdict, dict) and any(value is None for value in verdict.values())
+    candidates = [row for row in led if row.get("status") in (None, "delivered") and unresolved(row)
+                  and (row.get("status") is None or row.get("response_text"))]
+    if not candidates:
+        return
+    last = max(candidates, key=lambda row: row.get("delivered_at") or row.get("timestamp") or "")
     r = last.get("realized")
     if (r is not None and not isinstance(r, dict)) or (isinstance(r, dict) and all(v is not None for v in r.values())):
         return
-    reply = _last_own_reply()
+    recent_text = last.get("response_text") or recent_text
+    reply = last.get("reply") or _last_own_reply()
     if not reply:
         return
     try:
@@ -491,7 +613,7 @@ def resolve_previous(recent_text=""):
         if verdict == "HELD":
             last["held_attempts"] = last.get("held_attempts", 0) + 1
             if last["held_attempts"] < 3:
-                with open(LEDGER, "w") as f: json.dump(led[-500:], f, indent=2)
+                _persist_resolution(last)
                 return
         last["realized"] = verdict
         try:
@@ -504,7 +626,7 @@ def resolve_previous(recent_text=""):
             except Exception: pass
         if verdict == "YES": _nudge_valence(0.06)
         elif verdict == "PARTIAL": _nudge_valence(0.02)
-        with open(LEDGER, "w") as f: json.dump(led[-500:], f, indent=2)
+        _persist_resolution(last)
         return
     pr = last.get("priority") or tgt.get("priority") or {"field": 0.34, "gloria": 0.33, "self": 0.33}
     held_any = False
@@ -549,10 +671,9 @@ def resolve_previous(recent_text=""):
     try:
         import outcome_join as _oj3; _oj3.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], dict(r), {"axis": "field/gloria/self"})
     except Exception: pass
-    with open(LEDGER, "w") as f:
-        json.dump(led[-500:], f, indent=2)
+    _persist_resolution(last)
 
-def record_pending(target):
+def record_pending(target, source="conversation", event_id=None, claim_once=False):
 
     try:
         import json as _psj
@@ -574,11 +695,75 @@ def record_pending(target):
                                                  "why": _pvr.get("why"), "declared_at": _pvr.get("ts")}
         except Exception:
             pass
-    led = _load("intent-ledger.json")
-    if not isinstance(led, list):
-        led = []
-    led.append({"target": target, "priority": target.get("priority"),
-                "realized": {"field": None, "gloria": None, "self": None},
-                "timestamp": datetime.now().isoformat()})
-    with open(LEDGER, "w") as f:
-        json.dump(led[-500:], f, indent=2)
+    from store_guard import transaction, write_json
+    target.setdefault("intent_id", uuid.uuid4().hex)
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        if not isinstance(led, list): led = []
+        if any(row.get("intent_id") == target["intent_id"] for row in led):
+            return False if claim_once else True
+        led.append({"intent_id": target["intent_id"], "target": copy.deepcopy(target),
+                    "priority": copy.deepcopy(target.get("priority")), "status": "selected",
+                    "surface": source, "event_id": event_id,
+                    "realized": {"field": None, "gloria": None, "self": None},
+                    "timestamp": datetime.now().isoformat()})
+        write_json(LEDGER, led[-500:])
+    return True
+
+
+def _persist_resolution(row):
+    from store_guard import transaction, write_json
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        for index, current in enumerate(led):
+            same = (current.get("intent_id") == row["intent_id"] if row.get("intent_id") else
+                    current.get("timestamp") == row.get("timestamp") and current.get("target") == row.get("target"))
+            if same:
+                # Preserve deliveries/selections appended while the judge was running.
+                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts") if key in row})
+                write_json(LEDGER, led[-500:])
+                return
+
+
+def record_delivery(reply, surface="chat", turn_id="", target=None, input_text="", test_mode=False):
+    """Bind the immutable declaration to the response that actually used it, not the latest global reply."""
+    if test_mode or not str(reply or "").strip():
+        return False
+    target = target or current_target.get()
+    if not target or not target.get("intent_id"):
+        return False
+    from store_guard import transaction, write_json
+    delivered = None
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        for row in led:
+            if row.get("intent_id") != target["intent_id"]:
+                continue
+            if row.get("status") != "selected":
+                return False
+            row.update(status="delivered", reply=str(reply), surface=surface, turn_id=turn_id,
+                       input_text=str(input_text), delivered_at=datetime.now().isoformat())
+            delivered = copy.deepcopy(row["target"])
+            write_json(LEDGER, led[-500:])
+            break
+    if delivered is None:
+        return False
+    # Only the first actual reply advances these producers. Preview/failure/retry
+    # paths neither consume campaign turns nor fabricate attempted differences.
+    if delivered.get("campaign_pending"):
+        try:
+            from campaign import step
+            step(delivered, delivered.get("priority_mode", "strategic"))
+        except Exception:
+            pass
+    _record_differences(delivered, "GLORIA (now): " + str(input_text) if surface != "reelroom" else "REELROOM EVENT (not Gloria's words): " + str(input_text))
+    return True
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "probe":
+        probe(); sys.exit(0)
+    rc = _recent_conversation()
+    if not rc.strip():
+        sys.exit("no recent conversation found in interaction-ledger.json")
+    print(json.dumps(select_target(rc), indent=2))

@@ -57,7 +57,13 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     interaction = Interaction(heard["transcript"], "voice")
     if interaction.turn.duplicate_event:
         return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
+    from intent_engine import note_response
+    note_response(heard["transcript"])
+    from intent_context import admit_voice_lead
+    intent_target, intent_prompt = admit_voice_lead(interaction.turn.turn_id)
     system = str(instructions or "") + interaction.prompt()
+    if intent_prompt:
+        system += "\n\n" + intent_prompt
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
         "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "
@@ -78,6 +84,10 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     from stratagem_turn import guard_reply
     if not guard_reply(reply, interaction.turn):
         return {"ok": True, "reply": "", "audio": "", "transcript": heard["transcript"], "suppressed": "stratagem ended before playback"}
+    if intent_target:
+        from intent_engine import record_delivery
+        record_delivery(reply, "voice", interaction.turn.turn_id, target=intent_target,
+                        input_text=heard["transcript"])
     return {"ok":True,"transcript":heard["transcript"],
             "audio_reading":heard.get("audio_reading"),"reply":reply,
             "audio":base64.b64encode(voice_raw).decode(),"audio_format":"wav",

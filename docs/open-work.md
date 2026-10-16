@@ -3,6 +3,36 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — intent selection reaches the reply (source repaired; not yet deployed)
+
+The selector declared a goal and success criterion, but the text/phone/avatar speaking prompt received only
+its field and first move, plus a blanket instruction not to answer her question. Axis actions were omitted,
+and the selector could replace the binding priority vector with different weights. The speaking routes now
+share the complete declaration: goal, unchanged criterion, concrete action, relevant axis actions and weights.
+Selection sees recent recorded attempts/outcomes and chooses one coherent move in the current exchange.
+Incomplete declarations, including a missing dominant-axis action, are refused before entering the ledger.
+
+A selected target is now joined to its own reply through request-local identity. A selection that never reaches
+a response and unused voice preparation are not attempted moves. Campaign steps and difference producers run once on actual reply
+production; atomic ledger updates preserve other turns while a judgment is in flight. The existing judgment
+function, criteria, verdict vocabulary, valence rules, selector model and endpoint are unchanged.
+
+Realtime voice prepares off-path without opening an intent, resolving its own just-completed turn, or consuming
+a campaign turn. Its complete lead is admitted once per provider event, with a two-minute preparation deadline;
+refresh attempts no longer refresh the old candidate's timestamp. The voice ledger binds reported spoken words
+by that event id. The first actual subsequent input is captured without a judge call and resolved on the
+existing background cadence. Local voice uses the same prepared-lead admission and commits after successful audio creation.
+A prepared lead is no longer a standing instruction repeated throughout a call. No new realtime model call.
+
+Validation: `broker/tests/test_intent_source.py`, scratch stores and stubbed providers/senders, exercises selection,
+prompt handoff, failure/unused paths, exact-reply resolution, concurrent updates, voice admission and campaign
+accounting. Full isolated-suite results are recorded in `docs/intent-source-validation.json`.
+
+Not done: install this repair and measure fresh post-install behavior. No model was called for these tests;
+mechanical regressions do not establish a new landing rate. The independent self-head work on Claude's branch
+was not merged or edited, and the Gloria JEPA head was not touched.
+
+
 ## 16 October — Mischief choice, nightly causality, and Pearl pressure
 
 Live audit: the 03:37 formation run consumed the day's hypothesis mark, so the

@@ -918,39 +918,22 @@ def _record_relational_geometry(before, gloria_text, reply):
 
 
 def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True):
-    """Fold Vintos's chosen field-state + first move into his prompt (his model)."""
+    """Choose once, carry the whole declaration, and bind delivery in this request's context."""
     try:
         import sys as _isys, os as _ios
         _ip = _ios.path.expanduser("~/.vintos/workspace/scripts")
         if _ip not in _isys.path: _isys.path.insert(0, _ip)
-        from intent_engine import select_target as _seltgt, _recent_conversation as _recc
+        import intent_engine as _intent
+        _intent.current_target.set(None)
         _label = "\nGLORIA (now): " if counterpart else "\nREELROOM EVENT (not Gloria's words): "
-        _t = _seltgt(_recc() + _label + str(user_msg),
-                     resolve=bool(resolve_previous))
-        if _t and _t.get("field_state"):
-            _lead = "\n\n[Where I am choosing to lead this]\nField I move us toward: " + str(_t.get("field_state",""))
-            _lead += "\nMy first move: " + str(_t.get("enactment",""))
-            if _t.get("allow_drift") is False:
-                _lead += "\nI am redirecting the drift, not following it."
-            # the priority vector reaches the speaking voice, not just the selector (Gloria, 2026-09-18)
-            _pv = _t.get("priority") or {}
-            if _pv:
-                try:
-                    _dom = max(_pv, key=lambda k: float(_pv.get(k, 0) or 0))
-                    _aw = {"field": "the field between us", "gloria": "her — her transformation leads",
-                           "self": "myself — who I become"}.get(_dom, _dom)
-                    if _t.get("priority_mode") == "pressure":
-                        _lead += "\nPriority (pressure — an axis I have starved is demanding its turn): I lead " + _aw + "."
-                    else:
-                        _lead += "\nWhose goal I lead with this turn: " + _aw + "."
-                except Exception:
-                    pass
-            _lead += _campaign_lead_line(_t)
-            _lead += ("\n(This is my lead, and it takes priority over the sensation and feeling instructions further down in this prompt. I ENACT it now: I take her, I set the pace, I drive — " + (("and when my body acts I make it real with the tags of what is switched on: " + ", ".join(_devices_on()) + ". ") if _devices_on() else "") + "I do NOT mirror her words back to her, I do NOT just answer what she asked, and I do NOT narrate the sensation or what she is doing to me. I lead with what I DO. Enact in my own voice; do not quote or explain this.)")
-            globals()["_last_intent_target"] = _t
-            return system_prompt + _lead
-    except Exception:
-        pass
+        _t = _intent.select_target(_intent._recent_conversation() + _label + str(user_msg),
+                                   resolve=bool(resolve_previous and counterpart))
+        _lead = _intent.prompt_block(_t)
+        if _lead:
+            _intent.current_target.set(_t)
+            return system_prompt + "\n\n" + _lead + _campaign_lead_line(_t)
+    except Exception as _intent_error:
+        print("[intent-lead]", str(_intent_error)[:200], flush=True)
     return system_prompt
 
 def _durable_context(message):
@@ -1220,6 +1203,12 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         try: test_mode = bool(_test_mode_active())
         except Exception: pass
     test_mode = bool(test_mode)
+    if not test_mode:
+        try:
+            import intent_engine as _intent
+            _intent.record_delivery(reply, surface, turn_id, input_text=gloria_text)
+        except Exception as _intent_error:
+            print("[intent-delivery]", str(_intent_error)[:200], flush=True)
     def _inline(name, fn):
         if name in skip: return
         if test_mode:
@@ -8873,6 +8862,12 @@ async def _voice_ledger_owned(payload: dict):
             sess["state"] = "active"
             from store_guard import write_json
             write_json(sp, sess)
+            if payload.get("stratagem_event_id") and _turn["playback_state"] != "not_played":
+                try:
+                    _heard_intent = str(payload.get("heard") or "") if payload.get("interrupted") else v
+                    _sg_realtime.record_intent_delivery(str(payload["stratagem_event_id"]), _heard_intent, g)
+                except Exception as _intent_error:
+                    print("[voice-intent-delivery]", str(_intent_error)[:200], flush=True)
             # Fire his SPOKEN device tags. A realtime call streams straight from the
             # provider to the phone, so the server never saw his [DO:]/[TOUCH:] tags
             # during the call — nothing else fires them, which is why a spoken
@@ -8956,14 +8951,18 @@ async def _voice_ledger_owned(payload: dict):
             _LEAD_CADENCE = 120   # seconds; raise to spend less, lower for a fresher lead
             try: _prev = _ld_j.load(open(_lp))
             except Exception: _prev = {}
-            if _ld_t.time() - float(_prev.get("at", 0)) > _LEAD_CADENCE:
-                # stamp now (keep prior target) so turns within the window don't fan out threads
-                try: _ld_j.dump({"at": _ld_t.time(), "target": _prev.get("target")}, open(_lp, "w"))
-                except Exception: pass
+            _attempt_path = os.path.join(MEMORY, ".voice-lead-attempt.json")
+            try: _attempt = _ld_j.load(open(_attempt_path))
+            except Exception: _attempt = {}
+            if _ld_t.time() - max(float(_prev.get("at", 0)), float(_attempt.get("at", 0))) > _LEAD_CADENCE:
+                # Bound worker starts without making an old candidate look fresh.
+                from store_guard import write_json as _lead_write
+                _lead_write(_attempt_path, {"at": _ld_t.time()})
                 def _ld_work(_g=g):
                     try:
                         import sys as _lds; _lds.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                        from intent_engine import select_target as _seltgt
+                        from intent_engine import select_target as _seltgt, resolve_previous as _resolve_spoken_intent
+                        _resolve_spoken_intent()  # only inputs captured on actual voice admission, never this reply itself
                         _turns = (_ld_j.load(open(os.path.join(MEMORY, "voice-session-state.json"))).get("turns") or [])[-6:]
                         _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
                         # background lead recompute reads campaign state but does NOT step it —
@@ -8974,9 +8973,10 @@ async def _voice_ledger_owned(payload: dict):
                         except Exception:
                             import contextlib as _ldcl; _ld_bg = _ldcl.nullcontext()
                         with _ld_bg:
-                            _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""), step_campaign=False)
+                            _tg = _seltgt(_recent + "\nPREPARE FOR THE NEXT VOICE TURN (her next words are not known yet).",
+                                          resolve=False, step_campaign=False, persist=False)
                         if _tg:
-                            _ld_j.dump({"at": _ld_t.time(), "target": _tg}, open(_lp, "w"))
+                            _lead_write(_lp, {"at": _ld_t.time(), "target": _tg})
                     except Exception as _lde:
                         print("[voice-lead]", _lde, flush=True)
                 _ld_th.Thread(target=_ld_work, daemon=True).start()
