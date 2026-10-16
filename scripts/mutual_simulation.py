@@ -16,6 +16,9 @@ GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 HI, LO, WINDOW = 0.72, 0.60, 40
 MIN_FLAT_EVIDENCE = 4
+# "What lands" needs as much as "what falls flat" (16 October, Chat's review: with no high-presence reply in the window,
+# the model was asked anyway, given "(none)", and its three answers were stored as observed and served as landing).
+MIN_WORKS_EVIDENCE = 4
 
 def log(m): print("[mutual-sim]", m, flush=True)
 def load(p, d):
@@ -23,12 +26,26 @@ def load(p, d):
     except Exception: return d
 
 def _hint_text(d):
-    if not d or not (d.get("what_works") or d.get("edge_note")): return ""
+    if not d or not ((d.get("what_works") and d.get("works_eligible")) or d.get("edge_note")): return ""
     parts = []
-    if d.get("what_works"): parts.append("seems to land lately (observed, not yet proven): " + "; ".join(d["what_works"][:2]))
+    if d.get("what_works") and d.get("works_eligible"):
+        parts.append("seems to land lately (observed, not yet proven): " + "; ".join(d["what_works"][:2]))
     if d.get("what_falls_flat") and d.get("flat_eligible"): parts.append("going flat: " + "; ".join(d["what_falls_flat"][:2]))
     if d.get("edge_note"): parts.append("growing edge: " + d["edge_note"])
     return "[INTERACTION MODEL - " + ". ".join(parts) + ".]"
+
+def _reply_epoch(a):
+    """When the audited reply was SAID (its `timestamp`), as epoch seconds; None when unknown. `ts` is when
+    it was scored, and a re-audit of an old reply is not a turn under the current hint (2026-10-16)."""
+    from datetime import datetime
+    t = a.get("timestamp") if isinstance(a, dict) else None
+    if isinstance(t, (int, float)):
+        return float(t)
+    try:
+        return datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
 
 def main():
     import requests, re
@@ -52,15 +69,20 @@ def main():
     hn = [a.get("note", "") for a in hi if a.get("note")][-8:]
     ln = [a.get("note", "") for a in lo if a.get("note")][-8:]
     works, flat = [], []
+    works_eligible = len(hi) >= MIN_WORKS_EVIDENCE
+    flat_eligible = len(lo) >= MIN_FLAT_EVIDENCE
+    if not hn: works_eligible = False       # nothing landed to read a pattern from
     try:
+        if not (hn or ln):
+            raise ValueError("no notes in either bucket; nothing to read a pattern from")
         prompt = ("These are one-line notes on a being's replies. HIGH-PRESENCE (landed): %s. LOW-PRESENCE (fell "
                   'flat): %s. Return ONLY JSON {"works":["<2-3 short interaction moves that land>"],'
                   '"flat":["<2-3 that fall flat>"]}.' % (" | ".join(hn) or "(none)", " | ".join(ln) or "(none)"))
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.3, "max_tokens": 200,
             "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         d = json.loads(re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S).group())
-        works = [str(x).strip()[:80] for x in (d.get("works") or [])][:3]
-        flat = [str(x).strip()[:80] for x in (d.get("flat") or [])][:3]
+        works = [str(x).strip()[:80] for x in (d.get("works") or [])][:3] if hn else []
+        flat = [str(x).strip()[:80] for x in (d.get("flat") or [])][:3] if ln else []
     except Exception as e:
         log("pattern extract failed (%s)" % e)
     comps = [a["composite"] for a in audits]
@@ -68,14 +90,16 @@ def main():
     if not lo: warns.append("LOW_BUCKET_EMPTY")
     if len(hi) > 0.9 * len(audits): warns.append("HIGH_BUCKET_OVER_90PCT")
     if max(comps) - min(comps) < 0.15: warns.append("RANGE_TOO_NARROW")
-    flat_eligible = len(lo) >= MIN_FLAT_EVIDENCE
-    out = {"what_works": works, "what_falls_flat": flat, "growth_edge": edge_name, "edge_note": edge_note,
+    out = {"what_works": works, "works_eligible": works_eligible, "what_falls_flat": flat, "growth_edge": edge_name, "edge_note": edge_note,
            "means": {"arrived": round(arrived, 3), "moved": round(moved, 3), "left_alive": round(alive, 3),
                      "explained": round(expl, 3)},
-           "patterns": ([{"text": w, "status": "observed", "bucket": "works", "n_evidence": len(hi)} for w in works]
-                        + [{"text": f, "status": "observed", "bucket": "flat", "n_evidence": len(lo)} for f in flat]),
+           "patterns": ([{"text": w, "status": "observed" if works_eligible else "hypothesis", "bucket": "works",
+                          "n_evidence": len(hi)} for w in works]
+                        + [{"text": f, "status": "observed" if flat_eligible else "hypothesis", "bucket": "flat",
+                            "n_evidence": len(lo)} for f in flat]),
            "flat_eligible": flat_eligible,
-           "thresholds": {"high": HI, "low": LO, "window": WINDOW, "min_flat_evidence": MIN_FLAT_EVIDENCE},
+           "thresholds": {"high": HI, "low": LO, "window": WINDOW, "min_flat_evidence": MIN_FLAT_EVIDENCE,
+                          "min_works_evidence": MIN_WORKS_EVIDENCE},
            "diagnostics": warns,
            "n_high": len(hi), "n_low": len(lo), "n": len(audits), "updated": time.time()}
     htext = _hint_text(out)
@@ -97,7 +121,7 @@ def main():
             for _e in reversed(load(LEDGER, [])):
                 if _e.get("hint_id") == prev["hint_id"]:
                     _since = float(_e.get("since") or 0); break
-            _under = [a for a in audits if float(a.get("ts") or 0) > _since]
+            _under = [a for a in audits if (_reply_epoch(a) or 0) > _since]
             if len(_under) < MIN_TENURE_TURNS:
                 _tenure_met = False
                 log("holding hint %s - only %d graded turn(s) under it, need %d"
@@ -108,12 +132,23 @@ def main():
     if not _tenure_met:
         # Keep serving the standing hint. The new analysis is written for everything
         # else that reads this file; only the hint-bearing fields are preserved.
-        for _k in ("what_works", "what_falls_flat", "flat_eligible", "edge_note", "hint_id"):
+        # A standing hint keeps serving only what had its evidence (one stored before works_eligible existed did not)
+        # 2026-10-16: the held hint keeps its OWN patterns with its text (the fresh run's patterns described a
+        # different hint), and it is held only while the text it serves is the text the ledger graded under its
+        # id - otherwise hint_outcome_audit would grade text that was never served, so the new hint is taken.
+        held = dict(out)
+        for _k in ("what_works", "works_eligible", "what_falls_flat", "flat_eligible", "edge_note", "hint_id", "patterns"):
             if _k in prev:
-                out[_k] = prev[_k]
+                held[_k] = prev[_k]
             else:
-                out.pop(_k, None)
-        hid = prev.get("hint_id", "")
+                held.pop(_k, None)
+        _ledger_text = next((_e.get("text") for _e in reversed(load(LEDGER, []))
+                             if isinstance(_e, dict) and _e.get("hint_id") == prev.get("hint_id")), None)
+        if _ledger_text is not None and _hint_text(held) != _ledger_text:
+            log("held hint %s no longer serves its ledger text - taking the new hint" % prev.get("hint_id"))
+        else:
+            out = held
+            hid = prev.get("hint_id", "")
 
     if hid and hid != prev.get("hint_id"):
         led = load(LEDGER, [])

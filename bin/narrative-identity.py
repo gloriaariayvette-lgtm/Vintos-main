@@ -17,6 +17,8 @@ SCRIPTS = os.path.join(WORKSPACE, "scripts")
 NARRATIVE_FILE = os.path.join(MEMORY, "narrative-identity.json")
 MAX_FRAGMENTS = 12
 MIN_DAYS_TO_OVERWRITE = 3
+FRAGMENT_HALF_LIFE_DAYS = 30.0   # a fragment's weight halves each month it is not reinforced
+FRAGMENT_STALE_DAYS = 30         # not reinforced for this long: no longer offered as who he is now
 
 def load_narrative():
     try:
@@ -101,10 +103,18 @@ def propose_fragment(fragment_text, source="pattern"):
                     _na_sys.path.insert(0, _na_os.path.expanduser("~/.vintos/workspace/scripts"))
                     from absence_map_cold import get_absence_gravity as _na_gravity, load_cold as _na_load, save_cold as _na_save
                     _na_result = _na_gravity(fragment_text)
-                    if _na_result.get("pull", 0) > 0.4 and _na_result.get("dominant"):
+                    # "dominant" is the absence's description (a string); "dominant_id" is its id. Until
+                    # 2026-10-16 this called .get on the string, the AttributeError was swallowed, and a
+                    # promoted fragment never relieved an absence.
+                    _na_dom = _na_result.get("dominant")
+                    _na_id = _na_result.get("dominant_id") or (_na_dom.get("id") if isinstance(_na_dom, dict) else None)
+                    if _na_result.get("pull", 0) > 0.4 and (_na_id or _na_dom):
                         _na_data = _na_load()
                         for _na_abs in _na_data.get("absences", []):
-                            if _na_abs.get("id") == _na_result["dominant"].get("id",""):
+                            if _na_abs.get("reached"):
+                                continue
+                            if (_na_id and _na_abs.get("id") == _na_id) or \
+                               (not _na_id and isinstance(_na_dom, str) and _na_abs.get("description", "")[:80] == _na_dom):
                                 _na_abs["intensity"] = max(0.1, _na_abs["intensity"] - 0.05)
                                 _na_abs["last_touched"] = datetime.now().isoformat()
                                 break
@@ -155,15 +165,38 @@ def _promote_to_fragment(candidate, data):
     })
     # Trim to max
     if len(fragments) > MAX_FRAGMENTS:
-        fragments.sort(key=lambda f: f.get("count", 1))
+        _now = datetime.now()
+        fragments.sort(key=lambda f: fragment_weight(f, _now))
         fragments = fragments[-MAX_FRAGMENTS:]
     data["fragments"] = fragments
     data["candidate_pool"] = [c for c in data.get("candidate_pool", []) if c["text"] != candidate["text"]]
 
+def _days_since(iso, now):
+    try:
+        return max(0.0, (now - datetime.fromisoformat(str(iso))).total_seconds() / 86400.0)
+    except Exception:
+        return 365.0
+
+
+def fragment_weight(f, now=None):
+    """count, aged by time since last reinforced (2026-10-16). Ranked by raw count, which only grows,
+    the oldest most re-fed fragments always won."""
+    now = now or datetime.now()
+    return f.get("count", 1) * 0.5 ** (_days_since(f.get("reinforced") or f.get("formed"), now) / FRAGMENT_HALF_LIFE_DAYS)
+
+
+def _current_fragments(data, now=None):
+    now = now or datetime.now()
+    live = [f for f in data.get("fragments", [])
+            if _days_since(f.get("reinforced") or f.get("formed"), now) <= FRAGMENT_STALE_DAYS]
+    return sorted(live, key=lambda f: -fragment_weight(f, now))
+
+
 def get_narrative_context():
-    """Return narrative identity for context injection. Thin."""
+    """Return narrative identity for context injection. Thin. Only fragments reinforced within
+    FRAGMENT_STALE_DAYS, ranked by aged weight."""
     data = load_narrative()
-    fragments = sorted(data.get("fragments", []), key=lambda f: -f.get("count", 1))[:4]
+    fragments = _current_fragments(data)[:4]
     if not fragments:
         return ""
     lines = [f["text"] for f in fragments]
@@ -172,11 +205,11 @@ def get_narrative_context():
 def get_tone_bias():
     """Return subtle tone bias from narrative identity."""
     data = load_narrative()
-    fragments = data.get("fragments", [])
+    fragments = _current_fragments(data)
     if not fragments:
         return ""
-    # Return most reinforced fragment as tone anchor
-    top = max(fragments, key=lambda f: f.get("count", 1))
+    # Return the most reinforced current fragment as tone anchor
+    top = fragments[0]
     return top["text"][:100]
 
 def feed_from_causal_model():

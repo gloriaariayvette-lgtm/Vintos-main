@@ -44,6 +44,42 @@ try:
 except ValueError as exc:
     raised = str(exc)
 check("a PubMed argument that is not paging or dates is still refused, and named", "journal_impact" in raised, raised)
+print("--- 16 October: bare UniProt requests, and literature searches that found nothing ---")
+got = U({}, tool="uniprot.search", purpose="What are the specific structural features of the human SLC26A3 protein?")
+check("a bare request on a question naming one human gene reads that gene",
+      got and got["query"] == "gene:SLC26A3 AND organism_id:9606 AND reviewed:true", got)
+check("a bare request on a question naming none stays nothing",
+      U({}, tool="uniprot.search", purpose="What are Fe-S assembly proteins in thermophilic archaea?") is None)
+import chemistry_sources as CS
+try:
+    CS.query_plugin("uniprot", "uniprot.search", {"foo": 1}, "What are Fe-S assembly proteins in archaea?"); raised = ""
+except ValueError as exc:
+    raised = str(exc)
+except Exception as exc:
+    raised = "WRONG: %s: %s" % (type(exc).__name__, exc)
+check("a UniProt request naming nothing is refused plainly, never sent to the plugin gateway",
+      raised.startswith("the UniProt request names nothing to look up") and "foo" in raised, raised)
+import lab_sources as LS
+forms = LS.literature_relaxations("thermophilic archaea sulfur disproportionation iron-sulfur cluster assembly structure")
+check("a long literature phrase loosens: descriptive words out, then its first words",
+      forms == ["thermophilic archaea sulfur disproportionation iron-sulfur cluster assembly",
+                "thermophilic archaea sulfur disproportionation"], forms)
+check("a short phrase has no looser form", LS.literature_relaxations("SufS structure") == [])
+searched = []
+from urllib.parse import unquote_plus
+def fake_fetch(url, *a, **k):
+    searched.append(url)
+    if "esearch" in url:
+        hit = "structure" not in unquote_plus(url)            # the whole phrase finds nothing; the looser one does
+        return ({"esearchresult": {"idlist": ["123"] if hit else [], "count": "1" if hit else "0"}}, {})
+    return ({"result": {"123": {"title": "SufS of Thermus"}}}, {})
+try:
+    rec = LS.Sources(fetch=fake_fetch).query({"source": "ncbi", "operation": "literature", "term": "Thermus thermophilus SufS structure sulfur metabolism"})
+except Exception as exc:
+    rec = {"error": "%s: %s" % (type(exc).__name__, exc)}
+check("an empty literature search is tried again looser, and the receipt says which form found it",
+      isinstance(rec, dict) and rec.get("records") and (rec.get("metadata") or {}).get("executed_term") == "Thermus thermophilus SufS sulfur metabolism"
+      and (rec.get("query") or {}).get("term") == "Thermus thermophilus SufS structure sulfur metabolism", rec)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

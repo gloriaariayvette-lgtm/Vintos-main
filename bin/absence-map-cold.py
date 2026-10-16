@@ -19,6 +19,7 @@ SCRIPTS = os.path.join(WORKSPACE, "scripts")
 COLD_FILE = os.path.join(MEMORY, "absence-cold.json")
 VENV = os.path.join(WORKSPACE, "emotion_model/.venv/bin/python3")
 MAX_ABSENCES = 50
+IMAGINED_MARKER = "[AN IMAGINED POSSIBILITY"   # premonition-dreamer's MARKER opens with this
 
 def log(msg):
     print(f"[Absence] {msg}", flush=True)
@@ -61,22 +62,48 @@ def save_cold(data):
         json.dump(data, open(tmp, "w"), indent=2)
         os.replace(tmp, COLD_FILE)
 
+def _source_ids(a):
+    ids = [i for i in (a.get("source_ids") or []) if i]
+    if a.get("source_id") and a["source_id"] not in ids:
+        ids.insert(0, a["source_id"])
+    return ids
+
+
+def is_imagined_thread(t):
+    """A premonition is an imagined conversation, not an unresolved real one (dream_only, 2026-10-16)."""
+    if not isinstance(t, dict):
+        return False
+    return bool(t.get("dream_only")) or t.get("source") == "premonition" \
+        or str(t.get("thread") or "").lstrip().startswith(IMAGINED_MARKER)
+
+
 def register_absence(description, source, intensity=0.4, source_id=None):
     """Register a structural absence — something never reached, never resolved. source_id (the want or
-    thread id) lets retire_reached() close it when the source is fulfilled (2026-09-04)."""
+    thread id) lets retire_reached() close it when the source is fulfilled (2026-09-04).
+    2026-10-16: matching runs over OPEN absences only (a new absence no longer reinforces, and so hides
+    inside, a retired one); a merge keeps every source id in `source_ids`, so each source reinforces once
+    and retire_reached() closes the merged record by any of them; with no embedding, an identical open
+    description is the duplicate instead of a new record on every scan."""
     data = load_cold()
     absences = data["absences"]
-    if source_id and any(a.get("source_id") == source_id and not a.get("reached") for a in absences):
+    source_id = str(source_id) if source_id else None
+    if source_id and any(source_id in _source_ids(a) for a in _open(absences)):
         return                                    # already registered for this very source; rescans are idempotent
 
     vec = embed(description)
 
-    # Check for existing similar absence
-    for a in absences:
-        if a.get("vector") and cosine_similarity(a["vector"], vec) > 0.7:
+    # Check for existing similar OPEN absence
+    for a in _open(absences):
+        same = (a.get("vector") and vec and cosine_similarity(a["vector"], vec) > 0.7) \
+            or (not vec and a.get("description", "") == description[:200])
+        if same:
             a["intensity"] = min(0.9, a["intensity"] + 0.05)
             a["last_seen"] = datetime.now().isoformat()
             a["count"] = a.get("count", 1) + 1
+            if source_id:
+                ids = _source_ids(a)
+                ids.append(source_id)
+                a["source_ids"] = ids
             save_cold(data)
             log(f"Absence reinforced: {description[:60]}")
             return
@@ -87,6 +114,7 @@ def register_absence(description, source, intensity=0.4, source_id=None):
         "vector": vec,
         "source": source,
         "source_id": source_id,
+        "source_ids": [source_id] if source_id else [],
         "schema_version": 2,          # review 65: one shape across the shared-support mechanisms
         "source_cursor": {"source": source, "source_id": source_id, "registered_at": datetime.now().isoformat()},
         "intensity": round(intensity, 3),
@@ -108,7 +136,7 @@ def retire_reached(source_id=None, text=None, how="reached"):
     data = load_cold(); n = 0
     for a in data["absences"]:
         if a.get("reached"): continue
-        if (source_id and a.get("source_id") == source_id) or (text and a.get("description", "")[:120] == str(text)[:120]):
+        if (source_id and str(source_id) in _source_ids(a)) or (text and a.get("description", "")[:120] == str(text)[:120]):
             a["reached"] = how; a["reached_at"] = datetime.now().isoformat(); n += 1
     if n: save_cold(data); log(f"Absence retired ({how}): {n}")
     return n
@@ -120,15 +148,16 @@ def get_absence_gravity(context_text, context_vec=None):
     """Return pull from nearby absences. High pull → curiosity boost, thread seeding."""
     data = load_cold()
     if not data["absences"]:
-        return {"pull": 0.0, "dominant": None}
+        return {"pull": 0.0, "dominant": None, "dominant_id": None}
 
     if not context_vec:
         context_vec = embed(context_text)
     if not context_vec:
-        return {"pull": 0.0, "dominant": None}
+        return {"pull": 0.0, "dominant": None, "dominant_id": None}
 
     max_pull = 0.0
     dominant = None
+    dominant_id = None
     for a in _open(data["absences"]):          # a reached absence pulls nothing
         if not a.get("vector"):
             continue
@@ -137,8 +166,11 @@ def get_absence_gravity(context_text, context_vec=None):
         if pull > max_pull:
             max_pull = pull
             dominant = a["description"][:80]
+            dominant_id = a.get("id")
 
-    return {"pull": round(max_pull, 3), "dominant": dominant}
+    # "dominant" stays the description (its readers print it); "dominant_id" names the record, so a
+    # caller that wants to touch it does not have to call .get on a string (narrative_identity did).
+    return {"pull": round(max_pull, 3), "dominant": dominant, "dominant_id": dominant_id}
 
 def build_from_unfulfilled():
     """Scan unfulfilled wants and unresolved threads — register cold absences."""
@@ -146,6 +178,7 @@ def build_from_unfulfilled():
 
     # The live queue is current-wants.json.  A missing capability is structural
     # immediately; an otherwise unfinished want becomes cold after seven days.
+    wants = threads = None
     try:
         wants = json.load(open(os.path.join(MEMORY, "current-wants.json")))
         from datetime import timedelta
@@ -181,6 +214,8 @@ def build_from_unfulfilled():
         from datetime import timedelta
         cutoff = (datetime.now() - timedelta(days=14)).isoformat()
         for t in threads:
+            if is_imagined_thread(t):
+                continue                        # an imagined conversation is not a real unresolved thread
             if not t.get("consumed") and not t.get("retired"):
                 if t.get("timestamp", "") < cutoff:
                     register_absence(t.get("thread", "")[:200], source="unresolved-thread",
@@ -189,6 +224,47 @@ def build_from_unfulfilled():
     except: pass
 
     log(f"Built from unfulfilled: {count} absences registered")
+    retired = retire_ended_sources(wants, threads)
+    return count, retired
+
+
+def retire_ended_sources(wants=None, threads=None):
+    """retire_reached() had no caller: a fulfilled want or a resolved thread never closed its absence.
+    Each scan now retires an open absence whose source has ended - the want is fulfilled, dismissed or
+    gone from the live list; the thread is consumed, retired, imagined or gone. A store that did not
+    load (None) retires nothing. Returns how many were retired."""
+    live_wants, ended_wants, live_threads, ended_threads = set(), set(), set(), set()
+    if isinstance(wants, list):
+        for w in wants:
+            if isinstance(w, dict) and w.get("id"):
+                (ended_wants if (w.get("fulfilled") or w.get("dismissed")) else live_wants).add(str(w["id"]))
+    if isinstance(threads, list):
+        for t in threads:
+            if isinstance(t, dict) and t.get("id"):
+                ended = t.get("consumed") or t.get("retired") or is_imagined_thread(t)
+                (ended_threads if ended else live_threads).add(str(t["id"]))
+    data = load_cold()
+    n = 0
+    for a in _open(data["absences"]):
+        ids = _source_ids(a)
+        if not ids:
+            continue
+        src = a.get("source")
+        if src in ("unfulfilled-want", "capability-gap") and isinstance(wants, list):
+            live, ended = live_wants, ended_wants
+        elif src == "unresolved-thread" and isinstance(threads, list):
+            live, ended = live_threads, ended_threads
+        else:
+            continue
+        if any(i in live for i in ids):
+            continue                            # one of its sources is still open
+        a["reached"] = "source-ended" if any(i in ended for i in ids) else "source-gone"
+        a["reached_at"] = datetime.now().isoformat()
+        n += 1
+    if n:
+        save_cold(data)
+        log(f"Absences retired (source ended): {n}")
+    return n
 
 def get_absence_context():
     """Return cold absence layer for context injection."""

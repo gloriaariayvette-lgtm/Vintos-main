@@ -18,7 +18,7 @@ Weighting is SOFT (0.5 + 0.5·align) so an overfit gloria head on the current ti
 without collapsing the signal; it sharpens automatically as the Bold corpus grows.
 Run with the torch venv. SPARK_WORKSPACE switches.
 """
-import os, sys, json, urllib.request
+import os, sys, json, hashlib, urllib.request
 from datetime import datetime, timezone
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -59,18 +59,91 @@ def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
+_raw_load = load
+
+
+def _ev_load(path, default=None):
+    """Learning organ: guarded evidence (the chat history, the ledger) is read through evidence_view, so a
+    tactical turn never counts as ordinary evidence of her (review of 16 October, X2) - as self_pressure does."""
+    try:
+        if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path: sys.path.append(here)
+        import evidence_view as _EV
+        if _EV.is_guarded(path):
+            if os.path.basename(str(path)) == "interaction-ledger.json":
+                return _EV.ledger_view(path)
+            return _EV.open_history(path)
+    except Exception:
+        pass
+    return _raw_load(path, default)
+
+
+load = _ev_load
+
+# what the ledger writes when there were no words of hers; never an example of her voice
+_PLACEHOLDERS = ("(no words, only what she sent)", "[she spoke with her body, not words]", "--source")
+
+
+def her_text(row):
+    """(her own words, kind) for a chat row: a photo's or video's composed description is never hers."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        for _p in (SCRIPTS, here):
+            if _p not in sys.path: sys.path.append(_p)
+        from her_words import her_words
+        return her_words(row)
+    except Exception:
+        c = str((row or {}).get("content") or "")
+        if c.startswith("[Gloria sent you a "):
+            return "", "photo"
+        return c.strip(), "text"
+
+
+def turn_key(row, said):
+    """One key per turn of hers, so a turn is scored once however many runs see it."""
+    return str(row.get("timestamp") or "") + "|" + hashlib.sha1(str(said).encode()).hexdigest()[:12]
+
+
 def is_junk(text):
     t = str(text or "").strip().lower()
     return len(t) < 2 or t == "test" or t.startswith("test received") or t in ("ok", "okay", ".")
 
 def voice_examples(n=5):
+    """Her NEWEST words from the ledger (it used to take the first n entries ever kept)."""
     led = load(LEDGER, [])
     ex = []
     if isinstance(led, list):
         for e in led:
-            if isinstance(e, dict) and e.get("gloria") and e["gloria"] != "--source" and not is_junk(e["gloria"]):
-                ex.append(str(e["gloria"])[:200])
-    return ex[:n]
+            if not (isinstance(e, dict) and e.get("gloria")):
+                continue
+            said = her_text({"role": "user", "content": str(e["gloria"])})[0]
+            if said and said not in _PLACEHOLDERS and not is_junk(said):
+                ex.append(said[:200])
+    return ex[-n:]
+
+
+def assessable(hist, scored=()):
+    """Indices of her newest RECENT_GLORIA turns that carry words of her own, minus turns already scored."""
+    idxs = []
+    for i, e in enumerate(hist):
+        if e.get("role") != "user" or i < CTX_TURNS:
+            continue
+        said = her_text(e)[0]
+        if said and not is_junk(said):
+            idxs.append(i)
+    idxs = idxs[-RECENT_GLORIA:]
+    return [i for i in idxs if turn_key(hist[i], her_text(hist[i])[0]) not in set(scored)]
+
+
+def context_line(t):
+    if t.get("role") == "user":
+        try:
+            from her_words import as_her_turn
+            return "Gloria: " + as_her_turn(t)[:200]
+        except Exception:
+            return "Gloria: " + her_text(t)[0][:200]
+    return "Vintos: " + str(t.get("content", ""))[:200]
 
 def generate(context, examples):
     sysmsg = ("You generate plausible NEXT lines for GLORIA speaking to Vintos. Match HER voice "
@@ -110,10 +183,11 @@ def main():
         log("no gloria head — falling back to unweighted candidates")
 
     hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content")]
-    idxs = [i for i, e in enumerate(hist)
-            if e.get("role") == "user" and i >= CTX_TURNS and not is_junk(e.get("content"))][-RECENT_GLORIA:]
+    prior = _raw_load(OUT, {})
+    scored = list(prior.get("scored") or []) if isinstance(prior, dict) else []
+    idxs = assessable(hist, scored)
     if not idxs:
-        log("no assessable (non-junk) gloria turns"); return
+        log("no new assessable gloria turns (each is scored once) - leaving prior pressure.json"); return
     examples = voice_examples()
     probe_names = list(SHAPE_PROBES)
     probe_vecs = emb([SHAPE_PROBES[k] for k in probe_names])
@@ -121,8 +195,8 @@ def main():
     recent = []
     for i in idxs:
         ctx_turns = [hist[j] for j in range(i - CTX_TURNS, i) if not is_junk(hist[j].get("content"))]
-        ctx = "\n".join(("Gloria: " if t.get("role") == "user" else "Vintos: ")
-                        + str(t.get("content", ""))[:200] for t in ctx_turns)
+        ctx = "\n".join(context_line(t) for t in ctx_turns)
+        said = her_text(hist[i])[0]
         cands = generate(ctx, examples)
         if len(cands) < 3:
             continue
@@ -141,14 +215,14 @@ def main():
         wsum = weights.sum() or 1.0
         centroid = unit((C * weights[:, None]).sum(axis=0) / wsum)   # HIS expectation of her
         coherence = round(float(np.average([float(c @ centroid) for c in C], weights=weights)), 3)
-        actual = unit(emb([str(hist[i].get("content", ""))[:400]])[0])
+        actual = unit(emb([said[:400]])[0])
         avoidance = round(1.0 - max(0.0, float(actual @ centroid)), 3)
         pressure = round(coherence * avoidance, 3)
         shape = probe_names[int(np.argmax([float(centroid @ pv) for pv in probe_vecs]))] if pressure >= 0.10 else None
-        recent.append({"ts": hist[i].get("timestamp"), "said": str(hist[i].get("content", ""))[:120],
+        recent.append({"ts": hist[i].get("timestamp"), "key": turn_key(hist[i], said), "said": said[:120],
                        "pressure": pressure, "coherence": coherence, "avoidance": avoidance,
                        "ground": ground, "shape": shape})
-        log(f"  pressure {pressure} (coh {coherence} x avoid {avoidance}, ground {ground}) [{shape}]  <- said: {str(hist[i].get('content',''))[:40]!r}")
+        log(f"  pressure {pressure} (coh {coherence} x avoid {avoidance}, ground {ground}) [{shape}]  <- said: {said[:40]!r}")
 
     if not recent:
         log("no pressure computed (gemma unreachable?) — leaving prior pressure.json"); return
@@ -159,6 +233,7 @@ def main():
            "peak": {"pressure": top["pressure"], "shape": top["shape"], "coherence": top["coherence"],
                     "avoidance": top["avoidance"], "ground": top["ground"], "ts": top["ts"]},
            "recent": recent,
+           "scored": (scored + [r["key"] for r in recent])[-300:],
            "note": "shape gestures at the avoided expectation (his gloria-head-grounded); candidate lines never stored."}
     json.dump(out, open(OUT, "w"), indent=2)
     log(f"accumulated pressure {accumulated} over {len(recent)} turns -> {OUT}")

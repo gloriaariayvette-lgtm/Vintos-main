@@ -36,9 +36,11 @@ SHADOW_OUT = os.path.join(MEMORY, "jepa-prediction-structured-shadow.json")
 SHADOW_HISTORY = os.path.join(MEMORY, "jepa-prediction-structured-shadow-history.jsonl")
 CALIBRATION_AUDIT = os.path.join(MEMORY, "jepa-calibration.json")
 RANKING_AUDIT = os.path.join(MEMORY, "jepa-ranking-audit.json")
+PRESENCE_CALIBRATION = os.path.join(MEMORY, "jepa-presence-calibration.json")
 SHADOW_RANKING_AUDIT = os.path.join(MEMORY, "jepa-ranking-structured-shadow.json")
 CTX_TURNS = 6
 MIN_PRESENCE_PAIRS = 6
+MIN_PRESENCE_HOLDOUT = 10   # audited replies said AFTER the checkpoint before presence may steer
 MIN_REALIZED_FOR_RETRAIN = 30
 MIN_CALIBRATION_HOLDOUT_FOR_RETRAIN = 30
 EMB_MODEL = "nomic-ai/nomic-embed-text-v1"
@@ -412,6 +414,99 @@ def _decode(vec, cand_turns, enc):
     j = int(np.argmax(sims))
     return str(cand_turns[j].get("content", ""))[:200], round(float(sims[j]), 3)
 
+def _within_training_window(first_ts, target_ts):
+    """The rule build_pairs trains under, for prediction-side use by the self and presence heads only:
+    a window whose first turn is more than a day from its target was never a training example.
+    (build_pairs keeps its own copy; the gloria head's training is not touched from here.)"""
+    try:
+        from datetime import date
+        a, b = str(first_ts or "")[:10], str(target_ts or "")[:10]
+        if a and b and a != b and abs((date.fromisoformat(b) - date.fromisoformat(a)).days) > 1:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _epoch(ts):
+    """Seconds for a stored time; a naive one is local on this host, as datetime.now() wrote it."""
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _write_json(path, obj):
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
+
+def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=None, out_path=None):
+    """The presence head's evidence, which it never had: the replies audited AFTER this checkpoint was
+    trained are a holdout it cannot have seen. Its error on them is compared with the baseline that
+    predicts the mean of the training-era composites. It may steer only when it beats that mean on at
+    least MIN_PRESENCE_HOLDOUT held-out replies (RELEASED); otherwise WITHHELD or INSUFFICIENT.
+    Training is untouched: this reads the checkpoint and the audit file, nothing else."""
+    import numpy as np, torch
+    rec = {"head": "presence", "checkpoint": checkpoint_id, "protocol": "prospective-checkpoint-v1",
+           "baseline": "mean of training-era composites", "minimum_holdout": MIN_PRESENCE_HOLDOUT}
+    try:
+        turns = training_turns() if turns is None else turns
+        comp = {a.get("id"): a.get("composite") for a in load(AUDIT, [])
+                if isinstance(a, dict) and a.get("id") and a.get("composite") is not None}
+        train_y, hold, seen = [], [], set()
+        for i in range(CTX_TURNS, len(turns)):
+            t = turns[i]
+            if t.get("role") != "assistant": continue
+            rid = _rid(t)
+            if rid not in comp or rid in seen: continue
+            seen.add(rid)
+            at = _epoch(t.get("timestamp"))
+            if at is None: continue
+            if at <= trained_at:
+                train_y.append(float(comp[rid]))
+            else:
+                hold.append((format_context(turns[i - CTX_TURNS:i], schema), float(comp[rid]), str(t.get("timestamp"))))
+        rec.update({"n_training_era": len(train_y), "n_holdout": len(hold)})
+        if len(train_y) < MIN_PRESENCE_PAIRS:
+            rec.update({"state": "INSUFFICIENT", "why": "too few training-era composites for a baseline"})
+        elif len(hold) < MIN_PRESENCE_HOLDOUT:
+            rec.update({"state": "INSUFFICIENT",
+                        "why": "%d held-out audited replies; %d needed" % (len(hold), MIN_PRESENCE_HOLDOUT)})
+        else:
+            X = np.asarray(enc.encode([c for c, _, _ in hold], show_progress_bar=False), dtype="float32")
+            with torch.no_grad():
+                _, _, pp, plv = net(torch.tensor(X))
+            pred = np.asarray(pp).reshape(-1)
+            y = np.asarray([v for _, v, _ in hold], dtype="float32")
+            base = float(np.mean(train_y))
+            mae_head = float(np.mean(np.abs(pred - y)))
+            mae_base = float(np.mean(np.abs(base - y)))
+            err = np.abs(pred - y); lvp = np.asarray(plv)[:, 2]
+            def _rk(v): return np.argsort(np.argsort(v)).astype(float)
+            mono = (round(float(np.corrcoef(_rk(lvp), _rk(err))[0, 1]), 3)
+                    if np.std(lvp) > 0 and np.std(err) > 0 else None)
+            rec.update({"baseline_mean": round(base, 4), "mae_head": round(mae_head, 4),
+                        "mae_baseline": round(mae_base, 4),
+                        "logvar_vs_error_spearman": mono,   # want positive: wider variance, bigger miss
+                        "state": "RELEASED" if mae_head < mae_base else "WITHHELD",
+                        "why": ("beats the mean baseline on the holdout" if mae_head < mae_base
+                                else "does not beat predicting the mean on the holdout")})
+    except Exception as e:
+        rec.update({"state": "INSUFFICIENT", "why": "audit failed: %s" % str(e)[:120]})
+    try:
+        from datetime import datetime
+        rec["at"] = datetime.now().isoformat()
+        if out_path:
+            _write_json(out_path, rec)
+    except Exception as e:
+        log(f"presence audit not written: {e}")
+    return rec
+
+
 def _conf(lv):
     import numpy as np
     lv = max(-6.0, min(6.0, float(lv)))
@@ -453,18 +548,40 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     _cal_ctx = [format_context(turns[max(0,i-CTX_TURNS):i], _schema)
                 for i in range(CTX_TURNS, len(turns))][-40:]
     _lv_mean = _lv_std = None
+    # self/presence only: their baseline is drawn from windows their training would have accepted
+    # (no window straddling more than a day), and the live window must be one too. The gloria
+    # head's baseline (_lv_mean/_lv_std) is left exactly as it was.
+    _cal_ok = [_within_training_window(turns[i - CTX_TURNS].get("timestamp"), turns[i].get("timestamp"))
+               for i in range(CTX_TURNS, len(turns))][-40:]
+    _lv_mean_sp = _lv_std_sp = None
     if len(_cal_ctx) >= 12:
         _xc = np.asarray(enc.encode(_cal_ctx, show_progress_bar=False), dtype="float32")
         with torch.no_grad():
             _, _, _, _lvb = net(torch.tensor(_xc))
         _lvb = _lvb.numpy()
         _lv_mean = _lvb.mean(axis=0); _lv_std = _lvb.std(axis=0)
+        _mask = np.asarray(_cal_ok[-len(_lvb):], dtype=bool)
+        if int(_mask.sum()) >= 12:
+            _lv_mean_sp = _lvb[_mask].mean(axis=0); _lv_std_sp = _lvb[_mask].std(axis=0)
+    from datetime import date as _date
+    _live_in_window = _within_training_window(turns[-CTX_TURNS:][0].get("timestamp"), _date.today().isoformat())
     def _relconf(i):
         if _lv_mean is None or float(_lv_std[i]) < 0.02:
             return None
         import math as _m
         return round(1.0 / (1.0 + _m.exp((float(lv[i]) - float(_lv_mean[i])) / max(float(_lv_std[i]), 0.05))), 3)
-    _cg, _cs, _cp = _relconf(0), _relconf(1), _relconf(2)
+    def _relconf_sp(i):
+        if not _live_in_window or _lv_mean_sp is None or float(_lv_std_sp[i]) < 0.02:
+            return None
+        import math as _m
+        return round(1.0 / (1.0 + _m.exp((float(lv[i]) - float(_lv_mean_sp[i])) / max(float(_lv_std_sp[i]), 0.05))), 3)
+    def _qual_sp(c):
+        if c is not None: return "qualified"
+        if not _live_in_window: return "outside_training_window"
+        if _lv_mean_sp is None: return "unavailable"
+        return "unqualified_spreadless"
+    _cg = _relconf(0)
+    _cs, _cp = _relconf_sp(1), _relconf_sp(2)
 
     gloria_turns = [t for t in turns if t.get("role") == "user"][-12:]
     self_turns   = [t for t in turns if t.get("role") == "assistant"][-12:]
@@ -473,16 +590,34 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     gloria = {"nearest": _g_near,
               "confidence": (_cg if _cg is not None else 0.5), "decode_similarity": _g_sim,
               "novelty": round(1.0 - max(0.0, _cos(g, xe[0])), 3)}
+    # presence confidence is null, never a placeholder 0.5, when it is not qualified. Self keeps the
+    # 0.5 stand-in for now, MARKED as one: emoclaw_utils._novelty_directive does float() on it
+    # unguarded and the calibration audit ranks it beside gloria's, so a null would break both.
     self_h = {"nearest": _s_near,
-              "confidence": (_cs if _cs is not None else 0.5), "decode_similarity": _s_sim,
+              "confidence": (_cs if _cs is not None else 0.5), "confidence_placeholder": _cs is None,
+              "decode_similarity": _s_sim,
               "novelty": round(1.0 - max(0.0, _cos(s, xe[0])), 3)}
 
-    presence = None
+    _pid = "JP-" + __import__("uuid").uuid4().hex[:8]
+    _pat = __import__("datetime").datetime.now().isoformat()
+    presence = presence_forecast = presence_cal = None
     if ck.get("presence_trained"):
         recent = [a.get("composite") for a in load(AUDIT, [])[-10:] if isinstance(a, dict) and a.get("composite") is not None]
         base = (sum(recent) / len(recent)) if recent else p
-        presence = {"predicted": round(p, 3), "confidence": (_cp if _cp is not None else 0.5),
-                    "novelty": round(min(1.0, abs(p - base)), 3)}
+        if shadow:
+            presence_cal = {"head": "presence", "state": "SHADOW", "why": "shadow checkpoints may never steer"}
+        else:
+            presence_cal = presence_holdout_audit(net, enc, _schema, os.path.getmtime(model_path), loaded_checkpoint,
+                                                  out_path=PRESENCE_CALIBRATION)
+        _p_steer = (not shadow) and presence_cal.get("state") == "RELEASED"
+        presence_forecast = {"predicted": round(p, 3), "confidence": _cp,
+                             "novelty": round(min(1.0, abs(p - base)), 3),
+                             "qualification": _qual_sp(_cp), "calibration": presence_cal.get("state"),
+                             "steering_allowed": _p_steer,
+                             "prediction_id": _pid, "predicted_at": _pat, "checkpoint_id": loaded_checkpoint}
+        # `presence` is what the live loop reads (presence_audit -> forecast_block). Until the head beats
+        # the mean on held-out replies it is not offered there; the forecast stays on record beside it.
+        presence = presence_forecast if _p_steer else None
 
     def _qual(c):   # per-head qualification state, explicit (astra-models-p6)
         return "qualified" if c is not None else ("unavailable" if _lv_mean is None else "unqualified_spreadless")
@@ -498,18 +633,19 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     except Exception:
         _ck_id = None
     out = {"source": "jepa",
-           "prediction_id": "JP-" + __import__("uuid").uuid4().hex[:8],
-           "predicted_at": __import__("datetime").datetime.now().isoformat(),
+           "prediction_id": _pid,
+           "predicted_at": _pat,
            "context_id": _context_id,           # which exchange window this forecast is about
            "context_last_event": (turns[-1].get("event_id") if turns else None),
            "checkpoint_id": _ck_id,
-           "qualification": {"gloria": _qual(_cg), "self": _qual(_cs), "presence": _qual(_cp)},
+           "qualification": {"gloria": _qual(_cg), "self": _qual_sp(_cs), "presence": _qual_sp(_cp)},
            "steering_allowed": (False if shadow else all(v.get("state") == "RELEASED" for v in _cal_v.values())),
            "calibration": _cal_v,   # per head: RELEASED / WITHHELD / INSUFFICIENT, with the numbers and the criteria version
            # backward-compatible top-level = the gloria triple (gloria_prediction + latent read these)
            "confidence": gloria["confidence"], "novelty": gloria["novelty"],
            "gloria_forecast_nearest": gloria["nearest"],
            "gloria": gloria, "self": self_h, "presence": presence,
+           "presence_forecast": presence_forecast, "presence_calibration": presence_cal,
            "variance_qualified": (_cg is not None),
            "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 held-out predictions (Vrika, 2026-08-10)",
            "context_schema": _schema, "architecture": ck.get("architecture", "shared-v1"),
@@ -533,7 +669,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                      "context_emb": [round(float(x), 4) for x in xe[0]],
                      "gloria": {"confidence": gloria["confidence"], "decode_similarity": gloria["decode_similarity"],
                                 "novelty": gloria["novelty"], "emb": [round(float(x), 4) for x in g]},
-                     "self": {"confidence": self_h["confidence"], "decode_similarity": self_h["decode_similarity"],
+                     "self": {"confidence": self_h["confidence"], "confidence_placeholder": self_h["confidence_placeholder"],
+                              "decode_similarity": self_h["decode_similarity"],
                               "novelty": self_h["novelty"], "emb": [round(float(x), 4) for x in s]},
                      "variance_qualified": (_cg is not None)}
         _hp = history_path or os.path.join(MEMORY, "jepa-prediction-history.jsonl")
@@ -541,7 +678,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     except Exception as _he:
         log(f"history append failed: {_he}")
     log(f"gloria conf {gloria['confidence']} nov {gloria['novelty']} | self conf {self_h['confidence']} nov {self_h['novelty']}"
-        + (f" | presence pred {presence['predicted']} conf {presence['confidence']}" if presence else " | presence n/a"))
+        + (f" | presence pred {presence_forecast['predicted']} conf {presence_forecast['confidence']} "
+           f"[{presence_forecast['calibration']}, steers={presence_forecast['steering_allowed']}]" if presence_forecast else " | presence n/a"))
     log(f"latest gloria turn:  {out['gloria_latest_turn'][:80]}")
     log(f"nearest gloria-forecast: {gloria['nearest'][:80]}")
     return out

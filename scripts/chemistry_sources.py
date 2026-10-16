@@ -26,6 +26,11 @@ def query_plugin(plugin, tool, arguments, purpose):
               or lab.chembl_from_plugin(request))
     if direct:
         return query(direct, question=purpose)
+    if str(plugin or '').lower() in ('uniprot', 'uniprotkb'):
+        # UniProt is a public source, never a connector: a request naming nothing to look up is said so here,
+        # not sent to the gateway to be refused as a tool he may not ask for (16 October, ten times in three hours)
+        named = ', '.join(sorted(map(str, arguments))) if isinstance(arguments, dict) and arguments else 'none'
+        raise ValueError('the UniProt request names nothing to look up (arguments: %s)' % named)
     from plugin_gateway import call, load_receipt
     import claude_connector_gateway
     gateway_call = claude_connector_gateway.call if claude_connector_gateway.owns(plugin) else call

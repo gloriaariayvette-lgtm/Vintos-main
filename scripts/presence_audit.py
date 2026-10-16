@@ -98,6 +98,26 @@ def score(user_msg, reply, at=None):
     except Exception:
         return None
 
+def _her_turn(row):
+    """Her words, not a photo's or video's composed description (her_words, 16 October)."""
+    try:
+        import sys as _hs
+        _hs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from her_words import as_her_turn
+        return as_her_turn(row) or row.get("content", "")
+    except Exception:
+        return row.get("content", "")
+
+
+def _when(value):
+    """A reply's own time, aware, or None."""
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.astimezone()
+    except Exception:
+        return None
+
+
 def main():
     hist = load(CHAT, [])
     audits = load(OUT, [])
@@ -113,7 +133,12 @@ def main():
         um = ""
         for j in range(i - 1, -1, -1):
             if isinstance(hist[j], dict) and hist[j].get("role") == "user":
-                um = hist[j].get("content", ""); break
+                um = _her_turn(hist[j]); break
+        # Recent means when he said it, not when it was scored (16 October, Chat's review: 43 of 78 audited
+        # replies were from before 9 October, an August photo reply audited on 15 October fed the recent trend).
+        said = _when(e.get("timestamp"))
+        if said is None or said < datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS):
+            continue
         pending.append((_id, um, e.get("content", ""), e.get("timestamp", "")))
     added = 0
     # A want of his to analyse less is obeyed here, at the rate rather than at the
@@ -177,12 +202,15 @@ def main():
             except Exception:
                 pass
     cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
+    def said_at(a):
+        return _when(a.get("timestamp")) or _when(a.get("audited_at"))
     def keep(a):
-        try: return datetime.fromisoformat(a["audited_at"]) >= cutoff
-        except Exception: return True
-    audits = [a for a in audits if isinstance(a, dict) and keep(a)][-200:]
+        t = said_at(a)
+        return t is None or t >= cutoff
+    audits = sorted([a for a in audits if isinstance(a, dict) and keep(a)],
+                    key=lambda a: (said_at(a) or datetime.min.replace(tzinfo=timezone.utc)))[-200:]
     json.dump(audits, open(OUT, "w"), indent=2)
-    recent = [a["composite"] for a in audits[-10:] if "composite" in a]
+    recent = [a["composite"] for a in audits[-10:] if "composite" in a]   # the ten said most recently
     trend = round(sum(recent) / len(recent), 3) if recent else None
     print(f"audited {added} new; total {len(audits)}; recent presence trend {trend}")
 

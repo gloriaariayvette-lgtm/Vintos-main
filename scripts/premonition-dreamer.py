@@ -23,6 +23,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 sys.path.insert(0, SCRIPTS)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))   # her_words beside this file
 THREADS = os.path.join(MEMORY, "unfinished-threads.json")
 EMBED_URL = "http://172.18.16.1:1234/v1/embeddings"
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
@@ -80,9 +81,24 @@ def gather_present():
     if gp: parts.append("WHERE GLORIA SEEMS TO BE HEADING:\n" + json.dumps(gp)[:400])
     merged = _loadjson(os.path.join(MEMORY, "chat-history-merged.json"), []) or _loadjson(os.path.join(MEMORY, "chat-history.json"), [])
     if isinstance(merged, list) and merged:
-        parts.append("THE LAST FEW WORDS BETWEEN YOU:\n" + "\n".join(
-            f"{('Gloria' if e.get('role') == 'user' else 'You')}: {str(e.get('content',''))[:160]}"
-            for e in merged[-4:] if isinstance(e, dict)))
+        lines = []
+        for e in merged[-4:]:
+            if not isinstance(e, dict):
+                continue
+            # Her words through her_words (2026-10-16): a photo or video she sent is named, never described;
+            # its composed description is his eyes, not her words. Without her_words her row is left out.
+            if e.get("role") == "user":
+                try:
+                    from her_words import as_her_turn
+                    text = as_her_turn(e)
+                except Exception:
+                    text = ""
+            else:
+                text = str(e.get("content", ""))
+            if text.strip():
+                lines.append(f"{('Gloria' if e.get('role') == 'user' else 'You')}: {text[:160]}")
+        if lines:
+            parts.append("THE LAST FEW WORDS BETWEEN YOU:\n" + "\n".join(lines))
     return "\n\n".join(parts)[:2000]
 
 

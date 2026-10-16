@@ -27,6 +27,41 @@ except Exception:
     def output_can_witness(e=None, claim_kind=None): return False
     def writer_event(*a, **k): return None
 
+_COMPOSED = ("[Gloria sent you a photo", "[Gloria sent you a video")
+_NAMED = re.compile(r"^\(she sent a (?:photo|video)\)\s*")
+
+
+def her_side(gloria_said, sent_media=""):
+    """(her words, what she sent) for one exchange. A photo or video's composed description is never kept under
+    her name (16 October): when the caller passed the composed message, her own words are recovered from the
+    composer's markers and the description moves to the media field; a "(she sent a photo)" prefix the routes
+    use to name what she sent is dropped when the media field already holds it."""
+    said = str(gloria_said or "")
+    media = str(sent_media or "")
+    if said.startswith(_COMPOSED):
+        words = ""
+        try:
+            for _p in (os.path.dirname(os.path.abspath(__file__)), os.path.join(WORKSPACE, "scripts")):
+                if _p not in sys.path: sys.path.append(_p)
+            from her_words import her_words as _hw
+            words = _hw({"role": "user", "content": said})[0]
+        except Exception:
+            m = re.search(r"\[Gloria's message with the (?:photo|video):\]\s*(.*)\Z", said, re.S)
+            words = m.group(1).strip() if m else ""
+        if not media:
+            body = said
+            for cut in ("\n\n[Gloria's message with the video:]", "\n\n[Gloria's message with the photo:]"):
+                if cut in body:
+                    body = body.split(cut)[0]
+            media = body.strip()[:3000]
+        said = words or ""
+        if not said:
+            return "", media
+    if media:
+        said = _NAMED.sub("", said)
+    return said, media
+
+
 MAX_ENTRIES = 300  # ~10 days at 30/day
 
 def _device_marks():
@@ -494,6 +529,7 @@ def main():
 
 
     # Her words only - injected framing and telemetry never enter under her name.
+    gloria_said, sent_media = her_side(gloria_said, sent_media)
     import re as _sre
     _g = _sre.sub(r"\[[^\]]*\]", " ", str(gloria_said))
     _g = "\n".join(l for l in _g.splitlines()

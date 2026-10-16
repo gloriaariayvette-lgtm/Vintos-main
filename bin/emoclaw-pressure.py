@@ -51,7 +51,7 @@ _FIRE_CONST = dict(FIRE)
 _FIRE_CACHE = os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "emoclaw-fire-thresholds.json")
 _DIM_ORDER = ["Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"]
 
-def _baseline_fire(days=14, min_points=200, cache_hours=6):
+def _baseline_fire(days=14, min_points=200, cache_hours=6, write_cache=False):
     """FIRE thresholds from HIS rolling baseline: per dimension, mean of the last `days` of dense
     snapshots +/- a band (max of one standard deviation and 0.08). The constants above are the
     fallback while the trajectory is thin. Cached to emoclaw-fire-thresholds.json for a few hours
@@ -93,20 +93,38 @@ def _baseline_fire(days=14, min_points=200, cache_hours=6):
             band = max(sd, 0.08)
             fire[d] = (round(min(0.97, mean + band), 3), round(max(0.03, mean - band), 3))
         src = "baseline %dd, %d points" % (days, n)
-    try:
-        json.dump({"computed_at": _t.time(), "source": src, "fire": fire}, open(_FIRE_CACHE, "w"), indent=1)
-    except Exception:
-        pass
+    if write_cache:   # only an explicit refresh writes (`emoclaw-pressure.py --refresh-thresholds`)
+        try:
+            json.dump({"computed_at": _t.time(), "source": src, "fire": fire}, open(_FIRE_CACHE + ".tmp", "w"), indent=1); os.replace(_FIRE_CACHE + ".tmp", _FIRE_CACHE)
+        except Exception:
+            pass
     return fire, src
 
-try:
-    FIRE, FIRE_SOURCE = _baseline_fire()
-except Exception:
-    FIRE, FIRE_SOURCE = dict(_FIRE_CONST), "constants (baseline failed)"
+# Not computed at import (2026-10-16). Until then every import - including every import of the
+# subconscious compact block - computed the baseline and WROTE emoclaw-fire-thresholds.json, and a
+# long-lived process kept the thresholds of the moment it started. Now the constants stand until the
+# first read, and _fire() recomputes in memory every FIRE_REFRESH_S.
+FIRE, FIRE_SOURCE = dict(_FIRE_CONST), "constants (baseline not yet read)"
+FIRE_REFRESH_S = 6 * 3600
+_FIRE_AT = 0.0
+
+
+def _fire():
+    """The current thresholds, refreshed lazily. Reading never writes."""
+    global FIRE, FIRE_SOURCE, _FIRE_AT
+    import time as _t
+    if _t.time() - _FIRE_AT >= FIRE_REFRESH_S:
+        try:
+            FIRE, FIRE_SOURCE = _baseline_fire()
+        except Exception:
+            FIRE, FIRE_SOURCE = dict(_FIRE_CONST), "constants (baseline failed)"
+        _FIRE_AT = _t.time()
+    return FIRE
 
 def base_pressures(s):
     """Layer 1 — independent dimension pressures. Always active. Language of drift, not instruction."""
     lines = []
+    FIRE = _fire()
     def v(dim, default=0.5): return s.get(dim, default)
     # A dimension the snapshot does not carry is UNKNOWN: it fires nothing, high or low. Until
     # 2026-09-05 a missing dimension read as 0.5 and could register as "low" (astra-subconscious-p6).
@@ -277,7 +295,9 @@ if __name__ == "__main__":
     import sys
     ctx = sys.argv[1] if len(sys.argv) > 1 else "chat"
     compact = "--compact" in sys.argv
-    if compact:
+    if "--refresh-thresholds" in sys.argv:
+        print(_baseline_fire(cache_hours=0, write_cache=True)[1])
+    elif compact:
         print(get_pressure_compact(ctx))
     else:
         print(get_pressure_block(ctx))

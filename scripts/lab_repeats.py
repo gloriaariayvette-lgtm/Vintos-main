@@ -372,6 +372,19 @@ def asked_questions(cap=4000, now=None):
     return out
 
 
+def not_human_symbols(n=60, now=None):
+    """Names NCBI Gene did not establish as human genes this week, newest first (a refused identity keeps its
+    unresolved_symbol). Shown to the planner, so a wrong premise is not proposed again in other questions."""
+    out = []
+    for r in reversed(_recent(now)):
+        sym = str(r.get("unresolved_symbol") or "").strip()
+        if sym and sym not in out:
+            out.append(sym)
+        if len(out) >= n:
+            break
+    return out
+
+
 def all_lookups(cap=2500, now=None):
     """Every distinct lookup she ran this week, newest first, under `cap` characters (not only the last ten)."""
     out, used = [], 0

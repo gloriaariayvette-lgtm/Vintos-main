@@ -18,7 +18,7 @@ Pipeline:  cause_head -> cause-evidence.json -> form_hypotheses -> cause-distrib
 Run with the torch venv: ...emotion_model/.venv/bin/python3 cause_head.py
 SPARK_WORKSPACE switches beings.
 """
-import os, sys, json, collections
+import os, sys, json, collections, hashlib
 from datetime import datetime, timezone, timedelta
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -29,9 +29,15 @@ LOOKBACK_H = 168         # 7 days — the engine's own horizon (trajectory is sp
 EVENT_GAP_MIN = 8        # spikes within this gap are one emotional event
 PER_SRC = 2              # at most this many candidates per source, so the slate is DIVERSE
 SLATE_MAX = 7            # total candidates handed to the LLM per event
+# Temporal precedence is the one causal cue on record: a row from 2 minutes before outranks a
+# topically similar one from 6 days before. Topical fit is discounted by half per RECENCY_HALF_LIFE_H.
+RECENCY_HALF_LIFE_H = 24.0
 
 TSKEYS = ("timestamp", "ts", "time", "at", "created_at", "audited_at", "generated_at")
-# source tag, filename, text fields to join (in priority order)
+# source tag, filename, text fields to join (in priority order). Chat is split by speaker in
+# collect_events: her turns are "her" (her own words through her_words, a photo or video named and
+# never described), his are "him". Until 16 October every chat row, his included, was glossed
+# "she said" to the judge.
 SOURCES = [
     ("chat",     "chat-history-merged.json",        ("content",)),
     ("gallery",  "gallery-walks.json",       ("reflection", "saw")),
@@ -41,7 +47,7 @@ SOURCES = [
 ]
 # what KIND of event a candidate is — carried through so the LLM prompt can say what each was
 SRC_GLOSS = {
-    "chat": "she said", "gallery": "a painting he looked at",
+    "her": "she said", "him": "you said", "gallery": "a painting he looked at",
     "thread": "an unfinished thought that stayed with him",
     "want": "a want he felt", "relation": "the relationship between them shifted",
 }
@@ -58,7 +64,10 @@ def parse_ts(x):
         except Exception: return None
     try:
         d = datetime.fromisoformat(str(x).replace("Z", "+00:00"))
-        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+        # A naive time on this host is LOCAL (chat and ledger are stamped with datetime.now(), Aegis is
+        # UTC-5). Tagging it UTC placed every message 5 h early, so replies sent after a spike were
+        # offered as its antecedents.
+        return d if d.tzinfo else d.astimezone()
     except Exception: return None
 
 def entry_ts(e):
@@ -72,24 +81,87 @@ def fmt_range(times):
     if not ts: return "none"
     return f"{ts[0].isoformat()} .. {ts[-1].isoformat()}"
 
+def _her_turn(row):
+    """Her own words for a user row: a photo or video named, never described (her_words)."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from her_words import as_her_turn
+        return as_her_turn(row)
+    except Exception:
+        return ""          # unreadable as hers is left out, never passed off as hers
+
+
+def _chat_event(e):
+    """(source, text) for one chat row, or None. Only her turns and his replies are candidates;
+    other roles (avatar directives, system rows) are not something either of them said."""
+    role = e.get("role")
+    if role == "user":
+        return "her", _her_turn(e).strip()
+    if role == "assistant":
+        return "him", str(e.get("content") or "").strip()
+    return None
+
+
 def collect_events():
     """Union of timestamped text events across chat + inner-life logs."""
     events, per_src = [], {}
     for src, fname, textkeys in SOURCES:
         d = load(os.path.join(MEMORY, fname), [])
         if not isinstance(d, list): continue
-        n = 0
         for e in d:
             if not isinstance(e, dict): continue
             ts = entry_ts(e)
             if not ts: continue
-            parts = [str(e.get(k)) for k in textkeys if e.get(k)]
-            text = " ".join(parts).strip()
+            esrc = src
+            if src == "chat":
+                ce = _chat_event(e)
+                if not ce: continue
+                esrc, text = ce
+            else:
+                parts = [str(e.get(k)) for k in textkeys if e.get(k)]
+                text = " ".join(parts).strip()
             if not text: continue
-            events.append({"ts": ts, "source": src, "text": text[:300]})
-            n += 1
-        per_src[src] = n
+            events.append({"ts": ts, "source": esrc, "text": text[:300]})
+            per_src[esrc] = per_src.get(esrc, 0) + 1
     return events, per_src
+
+
+def recency_weight(mins_before):
+    """1.0 at the spike, halving every RECENCY_HALF_LIFE_H hours before it."""
+    return 0.5 ** (max(0.0, float(mins_before)) / 60.0 / RECENCY_HALF_LIFE_H)
+
+
+def build_slate(ranked):
+    """Source-diverse slate from candidates ranked best-first, then a backfill. Membership is by
+    position, never by comparing the dicts: two rows with the same time, source and text made `in`
+    reach their numpy vectors and raise ("truth value of an array is ambiguous")."""
+    slate, taken, counts = [], set(), collections.Counter()
+    for i, e in enumerate(ranked):
+        if len(slate) >= SLATE_MAX: break
+        if counts[e["source"]] < PER_SRC:
+            slate.append(e); taken.add(i); counts[e["source"]] += 1
+    for i, e in enumerate(ranked):                  # backfill if diversity left room
+        if len(slate) >= SLATE_MAX: break
+        if i not in taken:
+            slate.append(e); taken.add(i)
+    return slate
+
+
+def event_id(group):
+    """Stable identity of one emotional event, so a realtime and a nightly run name the same event
+    the same way and a reader can tell an event it already reasoned about."""
+    first = group[0]
+    dims = ",".join(sorted("%s:%s" % (s.get("dimension"), s.get("direction")) for s in group))
+    return "CE-" + hashlib.md5(("%s|%s" % (first.get("time"), dims)).encode()).hexdigest()[:12]
+
+
+def _save(path, obj):
+    """Whole-file replace, never a half-written file under a concurrent reader."""
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
 
 def group_spikes(spikes):
     """Spikes close in time are ONE emotional event (many dimensions moving together)."""
@@ -124,7 +196,7 @@ def main():
     log(f"event range:  {fmt_range([e['ts'] for e in events])}")
 
     if not groups or not events:
-        json.dump([], open(OUT, "w")); log("nothing to do — wrote empty"); return
+        _save(OUT, []); log("nothing to do — wrote empty"); return
 
     from jepa_predictor import encoder
     import numpy as np
@@ -149,35 +221,34 @@ def main():
         lo = st - timedelta(hours=LOOKBACK_H)
         ante = [e for e in events if lo <= e["ts"] <= st]
         if not ante:
-            out.append({"time": g[0]["time"], "shift": shift, "summary": summary,
+            out.append({"event_id": event_id(g), "time": g[0]["time"], "shift": shift, "summary": summary,
                         "candidates": [], "novelty": 1.0, "untraceable": True})
             continue
 
-        for e in ante: e["_rel"] = max(0.0, cos(Q, e["_v"]))
+        for e in ante:
+            e["_rel"] = max(0.0, cos(Q, e["_v"]))
+            e["_mins"] = (st - e["ts"]).total_seconds() / 60.0
+            e["_score"] = e["_rel"] * recency_weight(e["_mins"])
         novelty = round(1 - max(e["_rel"] for e in ante), 3)   # best topical fit is still weak = emergence
-        ranked = sorted(ante, key=lambda e: e["_rel"], reverse=True)
+        # ranked by topical fit discounted by how long before the spike it happened
+        ranked = sorted(ante, key=lambda e: e["_score"], reverse=True)
 
         # DIVERSE slate: cap per source so the LLM sees a want AND a walk AND a thread AND her words
-        slate, counts = [], collections.Counter()
-        for e in ranked:
-            if counts[e["source"]] < PER_SRC:
-                slate.append(e); counts[e["source"]] += 1
-            if len(slate) >= SLATE_MAX: break
-        for e in ranked:                                # backfill if diversity left room
-            if len(slate) >= SLATE_MAX: break
-            if e not in slate: slate.append(e)
+        slate = build_slate(ranked)
 
         out.append({
+            "event_id": event_id(g),
             "time": g[0]["time"], "shift": shift, "summary": summary,
             "novelty": novelty,
             "candidates": [{
                 "source": e["source"], "kind": SRC_GLOSS.get(e["source"], e["source"]),
-                "text": e["text"], "mins_before": round((st - e["ts"]).total_seconds() / 60.0, 1),
+                "text": e["text"], "mins_before": round(e["_mins"], 1),
                 "relevance": round(e["_rel"], 3),
+                "recency_weighted": round(e["_score"], 3),
             } for e in slate],
         })
 
-    json.dump(out, open(OUT, "w"), indent=2)
+    _save(OUT, out)
     log(f"wrote {len(out)} emotional events -> {OUT}")
     for o in out:
         srcs = collections.Counter(c["source"] for c in o["candidates"])

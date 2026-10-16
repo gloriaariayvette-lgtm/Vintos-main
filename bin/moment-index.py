@@ -28,16 +28,56 @@ def _load_archive():
         return {"moments": {}}
 
 def _save_archive(data):
-    json.dump(data, open(MOMENTS_FILE, "w"), indent=2)
+    tmp = MOMENTS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, MOMENTS_FILE)
 
 def _load_index():
+    """The micro-index, or one rebuilt from the archive when it is missing or not an index.
+
+    16 October (Chat's subconscious review): the index file held the archive's shape ({"moments": ...}), so every
+    create_moment saved its moment to the archive and then failed on index["recent"], and get_moment_context returned
+    nothing while the archive held 233 moments. A file without a "recent" list is not an index; it is rebuilt."""
     try:
-        return json.load(open(INDEX_FILE))
-    except:
-        return {"recent": [], "by_source": {}}
+        data = json.load(open(INDEX_FILE))
+        if isinstance(data, dict) and isinstance(data.get("recent"), list):
+            data.setdefault("by_source", {})
+            return data
+    except Exception:
+        pass
+    return _rebuild_index()
+
+
+def _rebuild_index():
+    moments = [m for m in (_load_archive().get("moments") or {}).values() if isinstance(m, dict) and m.get("moment_id")]
+    moments.sort(key=lambda m: str(m.get("timestamp", "")))
+    kept, last = [], {}
+    for m in moments:
+        key = (m.get("source"), str(m.get("content", ""))[:300])
+        if last.get(m.get("source")) == key[1]:
+            continue                     # an unchanged repeat (58 identical mirror placeholders) is one moment
+        last[m.get("source")] = key[1]
+        kept.append(m)
+    index = {"recent": [], "by_source": {}}
+    for m in kept[-MAX_INDEX:]:
+        index["recent"].append({"moment_id": m["moment_id"], "timestamp": m.get("timestamp", ""),
+                                "source": m.get("source", ""), "content_preview": str(m.get("content", ""))[:80],
+                                "intensity": m.get("intensity", 0.5)})
+        index["by_source"].setdefault(m.get("source", ""), []).append(m["moment_id"])
+    for src in index["by_source"]:
+        index["by_source"][src] = index["by_source"][src][-20:]
+    return index
+
+
+def _atomic(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
 
 def _save_index(data):
-    json.dump(data, open(INDEX_FILE, "w"), indent=2)
+    _atomic(INDEX_FILE, data)
 
 def _short_hash(content):
     return hashlib.md5(content.encode()).hexdigest()[:2].upper()
@@ -88,6 +128,15 @@ def create_moment(source, content, links=None, intensity=0.5):
     
     Returns: moment_id
     """
+    # The same source saying the same thing again is not a new moment (58 identical "no sessions yet" mirror
+    # moments by 16 October): the last one stands.
+    index = _load_index()
+    for m in reversed(index["recent"]):
+        if m.get("source") == source:
+            prior = _load_archive().get("moments", {}).get(m.get("moment_id"), {})
+            if str(prior.get("content", "")) == str(content)[:300]:
+                return m["moment_id"]
+            break
     now = datetime.now(timezone.utc)
     ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     h = _short_hash(content + ts)
@@ -112,7 +161,6 @@ def create_moment(source, content, links=None, intensity=0.5):
     _save_archive(archive)
 
     # Update micro-index
-    index = _load_index()
     index["recent"].append({
         "moment_id": moment_id,
         "timestamp": now.isoformat(),
@@ -214,5 +262,11 @@ if __name__ == "__main__":
             print("Not found")
     
     elif cmd == "seed":
+        # A test moment goes to a scratch archive, never the live one (2026-10-16: `seed` wrote a "test"
+        # moment into her moment-archive.json, which RECENT MOMENTS then served to him as lived).
+        import tempfile
+        _scratch = tempfile.mkdtemp(prefix="moment-index-seed-")
+        MOMENTS_FILE = os.path.join(_scratch, "moment-archive.json")
+        INDEX_FILE = os.path.join(_scratch, "moment-index.json")
         mid = create_moment("test", "Test moment creation", intensity=0.5)
-        print(f"Created: {mid}")
+        print(f"Created (scratch archive {_scratch}, live archive untouched): {mid}")

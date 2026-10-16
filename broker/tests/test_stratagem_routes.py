@@ -69,7 +69,8 @@ class Routes(unittest.TestCase):
         message = types.SimpleNamespace(message='machine-composed photo frame', original_text='!strategy stop')
         for route in ['chat_with_vintos', 'chat_full_context', 'chat_with_memory']:
             self.adopt()
-            fn = self.function(route, {'APP_SECRET': 'fixture-secret'})
+            fn = self.function(route, {'APP_SECRET': 'fixture-secret',
+                                       '_her_turn_text': lambda msg: msg.original_text})
             with patch.dict(sys.modules, {'desktop_control': desktop}):
                 result = asyncio.run(fn(message, request))
             self.assertIn('acknowledged', result['reply'])

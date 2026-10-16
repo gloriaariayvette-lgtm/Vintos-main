@@ -229,7 +229,7 @@ try:
     d = json.load(open('$WORKSPACE/memory/belief-sediment.json'))
     beliefs = d.get('beliefs', [])
     if beliefs:
-        lines = ['- ' + b.get('text','')[:120] + ' (strength: ' + str(round(b.get('strength',0),2)) + ')' for b in beliefs[-8:]]
+        lines = ['- ' + str(b.get('pattern') or b.get('text') or '')[:120] + ' (confidence: ' + str(round(float(b.get('confidence', b.get('strength', 0)) or 0),2)) + ')' for b in beliefs[-8:]]
         print('
 '.join(lines))
 except: pass

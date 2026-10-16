@@ -33,6 +33,9 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 MODEL_FILE = os.path.join(MEMORY, "causal-self-model.json")
 MAX_ENTRIES = 40
+MAX_RECEIPTS = 5000
+RECEIPT_WINDOW_DAYS = 60     # ledger rows older than this are not (re)read, so the bounded receipts suffice
+NEW_ENTRY_GRACE_DAYS = 7     # a newly formed entry is not trimmed while anything older can go instead
 
 def load_model():
     try:
@@ -87,6 +90,8 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
         return
     if occurrence_id:
         receipts.append(occurrence_id)
+        if len(receipts) > MAX_RECEIPTS:
+            del receipts[:-MAX_RECEIPTS]   # bounded; the ledgers that feed ids are windowed (RECEIPT_WINDOW_DAYS)
     kind = kind if kind in KINDS else _SOURCE_KIND.get(source, "tentative_inference")
 
     # Check for existing similar entry of same type
@@ -130,14 +135,107 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
     entries.append(entry)
 
     if len(entries) > MAX_ENTRIES:
-        entries.sort(key=lambda e: e["confidence"])
-        entries = entries[-MAX_ENTRIES:]
+        entries = _trim(entries, keep=entry)
     data["entries"] = entries
     save_model(data)
 
-def add_from_avoidance(trigger, avoided_action, source="avoidance"):
-    """Record what he consistently doesn't do. Fed from declines, silence contracts, dismissed wants."""
-    add_entry(trigger, avoided_action, confidence=0.25, source=source, entry_type="negative")
+
+def _age_days(iso, now=None):
+    try:
+        return max(0.0, ((now or datetime.now()) - datetime.fromisoformat(str(iso)[:26])).total_seconds() / 86400.0)
+    except Exception:
+        return 365.0
+
+
+def _retention_score(e, now=None):
+    """What a full store keeps: confidence, faded by how long since it was last seen (30-day half-life).
+    Imprints rank above everything that is not one."""
+    score = float(e.get("confidence", 0) or 0) * 0.5 ** (_age_days(e.get("last_seen") or e.get("formed"), now) / 30.0)
+    return score + (1.0 if e.get("imprint") else 0.0)
+
+
+def _trim(entries, keep=None, now=None):
+    """Trim to MAX_ENTRIES. Until 2026-10-16 this sorted by confidence alone, so at capacity a new entry
+    (0.25-0.3) was the lowest and was cut on the save that added it: the model could learn nothing new.
+    Now the entry being added always survives its own save, entries formed in the last NEW_ENTRY_GRACE_DAYS
+    are dropped only when nothing older can go, and the rest are ranked by _retention_score."""
+    now = now or datetime.now()
+    others = [e for e in entries if e is not keep]
+    room = MAX_ENTRIES - (1 if keep is not None else 0)
+    young = [e for e in others if _age_days(e.get("formed"), now) < NEW_ENTRY_GRACE_DAYS]
+    old = [e for e in others if _age_days(e.get("formed"), now) >= NEW_ENTRY_GRACE_DAYS]
+    old.sort(key=lambda e: _retention_score(e, now), reverse=True)
+    young.sort(key=lambda e: _retention_score(e, now), reverse=True)
+    if len(young) >= room:
+        kept = young[:room]
+    else:
+        kept = young + old[:room - len(young)]
+    kept_ids = set(id(e) for e in kept)
+    out = [e for e in entries if id(e) in kept_ids or e is keep]   # original order kept
+    return out
+
+
+def add_from_avoidance(trigger, avoided_action, source="avoidance", occurrence_id=None):
+    """Record what he consistently doesn't do. Fed from declines, silence contracts, dismissed wants.
+    occurrence_id makes the record idempotent: the same occurrence is never counted twice."""
+    add_entry(trigger, avoided_action, confidence=0.25, source=source, entry_type="negative",
+              occurrence_id=occurrence_id)
+
+
+# Who ended a want, as the house writes it (want_completion `by`, dismissed-wants `dismissed_by`).
+# Only these are HIM letting a want go. Everything else is automation and is not his avoidance:
+# echo (reframed), consolidated, released (aged out), population_cap, haiku-verdict (a model's
+# judgement of completion), conversation, video, and a dismissal by Gloria from the app.
+HIS_DISMISSAL_BY = ("his_choice", "vintos")
+DISMISS_HOWS = ("dismissed", "released")
+
+
+def _is_his_dismissal(by):
+    return isinstance(by, str) and by.strip().lower() in HIS_DISMISSAL_BY
+
+
+def record_his_dismissals(completions_path=None, dismissed_path=None, days=None):
+    """Record, once each, the wants HE dismissed or released as avoidance evidence. Reads the one completion
+    door's log (want-completions.jsonl) and the dismissed-wants ledger; returns the number newly recorded.
+    Replaces wants-router's loop that recorded every dismissed want on every run (2026-10-16)."""
+    completions_path = completions_path or os.path.join(MEMORY, "want-completions.jsonl")
+    dismissed_path = dismissed_path or os.path.join(MEMORY, "dismissed-wants.json")
+    days = RECEIPT_WINDOW_DAYS if days is None else days
+    now = datetime.now()
+    rows = []
+    try:
+        with open(completions_path) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(r, dict) and r.get("how") in DISMISS_HOWS and _is_his_dismissal(r.get("by")):
+                    rows.append((r.get("want_id"), r.get("want"), r.get("at")))
+    except OSError:
+        pass
+    try:
+        d = json.load(open(dismissed_path))
+        d = d.get("wants", []) if isinstance(d, dict) else d
+        for r in d if isinstance(d, list) else []:
+            if isinstance(r, dict) and _is_his_dismissal(r.get("dismissed_by")):
+                rows.append((r.get("id"), r.get("want"), r.get("dismissed_at")))
+    except Exception:
+        pass
+    seen = set(load_model().get("occurrence_receipts", []))
+    n = 0
+    for wid, text, at in rows:
+        text = str(text or "").strip()
+        if not text or _age_days(at, now) > days:
+            continue
+        occ = "dismissed-want:" + (str(wid) if wid else text[:120])
+        if occ in seen:
+            continue
+        seen.add(occ)
+        add_from_avoidance(trigger=f"want arose: {text[:80]}", avoided_action=text[:150],
+                           source="dismissed-want", occurrence_id=occ)
+        n += 1
+    return n
 
 def get_avoidance_friction(action_text):
     """Check if a proposed action rhymes with known avoidances.

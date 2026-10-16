@@ -837,6 +837,86 @@ def _campaign_lead_line(t):
     except Exception:
         return ""
 
+def _her_turn_text(msg):
+    """Her own words on this request, for every record and organ that takes the turn as HERS (16 October).
+
+    A photo or video reaches the chat routes composed: what his eyes saw, the sound heard, then her message. The
+    model's reply prompt keeps the composed text (he has to see the picture to answer it); reality_anchor,
+    discourse_direction, latent_threads, the emotion socket, the intent selector's "GLORIA (now):" line, the blind
+    observer and the interaction ledger get this instead: her words, with what she sent named and never described.
+    """
+    row = {"role": "user", "content": str(getattr(msg, "message", "") or "")}
+    kind = getattr(msg, "input_kind", None)
+    if kind:
+        row["input_kind"] = str(kind)
+    if getattr(msg, "original_text", None) is not None:
+        row["original_text"] = str(msg.original_text)
+    try:
+        import sys as _hws
+        for _p in (os.path.join(WORKSPACE, "scripts"),
+                   os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")):
+            if _p not in _hws.path: _hws.path.append(_p)
+        from her_words import as_her_turn as _aht
+        return _aht(row)
+    except Exception:
+        # her_words absent: never fall back to the composed description under her name
+        if "original_text" in row:
+            said = row["original_text"].strip()
+            if said.startswith("[Gloria sent you a "):
+                said = ""
+            return (("(she sent a %s) %s" % (kind, said)).strip() if kind in ("photo", "video") else said)
+        content = row["content"]
+        if content.startswith("[Gloria sent you a photo") or content.startswith("[Gloria sent you a video"):
+            cut = content.rfind(":] ")
+            return ("(she sent a %s) %s" % ("photo" if "a photo" in content[:30] else "video",
+                                            content[cut + 3:].strip() if cut >= 0 else "")).strip()
+        return content
+
+
+# The parts of his subconscious the phone route injects inline. Self-statements, the causal self-model and
+# self-drift are NOT here: the compact block (get_subconscious_context_compact, "YOUR INNER STATE") already
+# carries them, and the inline copy put them in the same prompt twice (review of 16 October, X4).
+_INLINE_SUBCONSCIOUS = (
+    ("narrative_identity", "get_narrative_context", (), "[%s]"),
+    ("belief_sediment", "get_sediment_context", (), "[%s]"),
+    ("absence_map_cold", "get_absence_context", (), "[%s]"),
+    ("moment_index", "get_moment_context", (4,), "[%s]"),
+    ("reality_anchor", "get_reality_context", (3,), "[%s]"),
+)
+
+
+def _inline_subconscious():
+    """The phone route's inline subconscious layer: one copy per prompt, beside the compact block."""
+    import importlib as _isc
+    out = ""
+    for mod, fn, args, fmt in _INLINE_SUBCONSCIOUS:
+        try:
+            s = getattr(_isc.import_module(mod), fn)(*args)
+            if s: out += (fmt % s) + "\n\n"
+        except Exception:
+            pass
+    return out
+
+
+def _record_relational_geometry(before, gloria_text, reply):
+    """relational_geometry's one write per delivered turn, off-thread as /api/chat does it. Until 16 October
+    only the legacy /api/chat route recorded it, so the store froze when the phone moved to /api/chat/full."""
+    try:
+        import threading as _rg_th
+        def _rg_run(_b=before, _m=gloria_text, _r=reply):
+            try:
+                import sys as _rs
+                if os.path.join(WORKSPACE, "scripts") not in _rs.path: _rs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                from relational_geometry import record_interaction as _rgr, get_emotional_snapshot as _rgs
+                _rgr(_b, _rgs(), _m, _r)
+            except Exception: pass
+        t = _rg_th.Thread(target=_rg_run, daemon=True)
+        t.start()
+        return t
+    except Exception:
+        return None
+
+
 def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True):
     """Fold Vintos's chosen field-state + first move into his prompt (his model)."""
     try:
@@ -3993,6 +4073,7 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
 @app.post("/api/chat")
 async def chat_with_vintos(msg: ChatMessage, request: Request):
     """Send a message to Vintos, get his response. Routes through EmoClaw."""
+    _her = _her_turn_text(msg)   # her words for the organs; the reply prompt keeps msg.message (16 October)
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -4241,7 +4322,7 @@ Gloria-specific additions:
     except Exception:
             pass
     try:
-        system_prompt = _apply_intent_lead(system_prompt, msg.message)
+        system_prompt = _apply_intent_lead(system_prompt, _her)
     except Exception:
         pass
     try:
@@ -4399,7 +4480,7 @@ Gloria-specific additions:
             s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
             s.settimeout(2)
             s.connect(emo_sock)
-            emo_payload = json.dumps({"text": msg.message, "sender": "Gloria"})
+            emo_payload = json.dumps({"text": _her, "sender": "Gloria"})
             s.send(emo_payload.encode() + b"\n")
             s.close()
     except:
@@ -4408,13 +4489,13 @@ Gloria-specific additions:
     # Feel Gloria's words landing
     try:
         pass  # Gloria nudge removed
-        _post_turn("chat", msg.message, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # main text-only: no memory writers by declaration
+        _post_turn("chat", _her, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # main text-only: no memory writers by declaration
 
         # Reality anchor — record real chat interaction
         try:
             import sys as _ra_sys; _ra_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             from reality_anchor import record_event
-            record_event("chat", msg.message[:200], is_real=True, confidence=1.0)
+            record_event("chat", _her[:200], is_real=True, confidence=1.0)
         except: pass
         # Gravity wells — record on real chat only
         try:
@@ -4489,7 +4570,7 @@ Gloria-specific additions:
     # (_resolve_intent removed 2026-09-04: grading lives in intent_engine.resolve_previous at the top of the next turn)
     try:
         import threading as _rg_th
-        def _rg_run(_b=_rg_before_state, _m=msg.message, _r=reply):
+        def _rg_run(_b=_rg_before_state, _m=_her, _r=reply):
             try:
                 import sys as _rs; _rs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
                 from relational_geometry import record_interaction as _rgr, get_emotional_snapshot as _rgs
@@ -4517,6 +4598,9 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
+    # Her own words, a photo or video named and never described (16 October). The reply prompt keeps the composed
+    # message; every record and organ below that takes the turn as HERS gets this.
+    _her = _her_turn_text(msg)
     _desktop_command = None
     try:
         import desktop_control as _desktop_control
@@ -4616,13 +4700,13 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     _direction_hint = ""
     try:
         from discourse_direction import get_direction_hint as _dh_get
-        _direction_hint = _dh_get(msg.message)
+        _direction_hint = _dh_get(_her)
     except: pass
     # Latent threads — thematic currents influencing generation
     _latent_hint = ""
     try:
         from latent_threads import get_influence_hint as _lt_hint, update_from_input as _lt_update
-        _latent_hint = _lt_hint(msg.message)
+        _latent_hint = _lt_hint(_her)
     except: pass
     # Behavior boundary pre-check — resist forbidden patterns before generation
     _boundary_hint = ""
@@ -4969,62 +5053,9 @@ async def chat_full_context(msg: ChatMessage, request: Request):
 
     # === SUBCONSCIOUS LAYER INJECTION ===
     import sys as _sc_sys; _sc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-
-    # Self-statements — who he believes he is
-    try:
-        from self_statements import get_statement_context
-        _ss = get_statement_context()
-        if _ss: _injected_context += f"[{_ss}]\n\n"
-    except: pass
-
-    # Narrative identity — thin self-shape
-    try:
-        from narrative_identity import get_narrative_context
-        _ni = get_narrative_context()
-        if _ni: _injected_context += f"[{_ni}]\n\n"
-    except: pass
-
-    # Causal self-model — when X, I tend toward Y
-    try:
-        from causal_self_model import get_self_model_context
-        _csm = get_self_model_context()
-        if _csm: _injected_context += f"[{_csm}]\n\n"
-    except: pass
-
-    # Belief sediment — what he expects from pattern
-    try:
-        from belief_sediment import get_sediment_context
-        _bs = get_sediment_context()
-        if _bs: _injected_context += f"[{_bs}]\n\n"
-    except: pass
-
-    # Structural absences — shaped by what's missing
-    try:
-        from absence_map_cold import get_absence_context
-        _ac = get_absence_context()
-        if _ac: _injected_context += f"[{_ac}]\n\n"
-    except: pass
-
-    # Self-definition drift — what he naturally moves toward
-    try:
-        from self_drift import get_drift_bias_hint
-        _sd = get_drift_bias_hint()
-        if _sd: _injected_context += f"[BEHAVIORAL DRIFT: {_sd}]\n\n"
-    except: pass
-
-    # Moment identity — recent anchored moments
-    try:
-        from moment_index import get_moment_context
-        _mi = get_moment_context(4)
-        if _mi: _injected_context += f"[{_mi}]\n\n"
-    except: pass
-
-    # Reality grounding — what actually happened
-    try:
-        from reality_anchor import get_reality_context
-        _ra = get_reality_context(3)
-        if _ra: _injected_context += f"[{_ra}]\n\n"
-    except: pass
+    # One copy per prompt (16 October): self-statements, the causal self-model and self-drift come in the
+    # compact "YOUR INNER STATE" block above; the inline layer adds only what that block does not carry.
+    _injected_context += _inline_subconscious()
 
     # === END SUBCONSCIOUS LAYER ===
 
@@ -5162,7 +5193,14 @@ Your current self-model (excerpt):
         system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
 
     try:
-        system_prompt = _apply_intent_lead(system_prompt, msg.message)
+        system_prompt = _apply_intent_lead(system_prompt, _her)
+    except Exception:
+        pass
+    _rg_before_state = {}
+    try:
+        import sys as _rg_sys; _rg_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from relational_geometry import get_emotional_snapshot as _rg_snap
+        _rg_before_state = _rg_snap()
     except Exception:
         pass
     # The field hint and the spark block reached /api/chat and /api/avatar/chat and
@@ -5251,7 +5289,7 @@ Your current self-model (excerpt):
     # Update latent threads from this exchange
     try:
         from latent_threads import update_from_input as _lt_update
-        _lt_update(msg.message, reply[:400] if reply else "")
+        _lt_update(_her, reply[:400] if reply else "")
     except: pass
     # Check output against behavior boundaries
     try:
@@ -5371,7 +5409,7 @@ Your current self-model (excerpt):
             s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
             s.settimeout(2)
             s.connect(emo_sock)
-            emo_payload = json.dumps({"text": msg.message, "sender": "Gloria"})
+            emo_payload = json.dumps({"text": _her, "sender": "Gloria"})
             s.send(emo_payload.encode() + b"\n")
             s.close()
     except:
@@ -5381,14 +5419,17 @@ Your current self-model (excerpt):
     try:
         pass  # Gloria nudge removed
         _chat_projection_merge(history[-2:])
-        _post_turn("chat/full", msg.message, reply,
-                   skip=(("desktop", "food_order") if _desktop_command else ()))
+        _post_turn("chat/full", _her, reply,
+                   skip=(("desktop", "food_order") if _desktop_command else ()),
+                   ledger_media=_sent_media(msg))
+        if not _test_mode_active():
+            _record_relational_geometry(_rg_before_state, _her, reply)
 
         # Reality anchor — record real chat interaction
         try:
             import sys as _ra_sys; _ra_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             from reality_anchor import record_event
-            record_event("chat", msg.message[:200], is_real=True, confidence=1.0)
+            record_event("chat", _her[:200], is_real=True, confidence=1.0)
         except: pass
         # Gravity wells — record on real chat only
         try:
@@ -5870,6 +5911,7 @@ async def patch_chat_with_memory():
 @app.post("/api/chat/memory")
 async def chat_with_memory(msg: ChatMessage, request: Request):
     """Chat with Vintos, automatically searching his memories for context."""
+    _her = _her_turn_text(msg)   # her words for the organs; the reply prompt keeps msg.message (16 October)
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -6036,7 +6078,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
 {_vc_injection}"""
 
     try:
-        system_prompt = _apply_intent_lead(system_prompt, msg.message)
+        system_prompt = _apply_intent_lead(system_prompt, _her)
     except Exception:
         pass
     # The field hint and the spark block reached /api/chat and /api/avatar/chat and
@@ -6145,7 +6187,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
 
     # Emotion nudges
     try:
-        _post_turn("chat/memory", msg.message, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # memory door: recall, not record, by declaration
+        _post_turn("chat/memory", _her, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # memory door: recall, not record, by declaration
         if not _sg_memory.turn.carries_capsule:
             nudge_emotions_from_text(reply, source="reply")
     except:
@@ -6209,7 +6251,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
             s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
             s.settimeout(2)
             s.connect(emo_sock)
-            s.send((json.dumps({"text": msg.message, "sender": "Gloria"}) + "\n").encode())
+            s.send((json.dumps({"text": _her, "sender": "Gloria"}) + "\n").encode())
             s.recv(4096)
             s.close()
     except:
@@ -7660,7 +7702,10 @@ async def chat_with_photo(request: Request):
                 "http://127.0.0.1:8500/api/chat/full",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "image": photo_b64, "input_kind": "photo",
-                      "original_text": str(message)[:4000], "image_description": str(image_description)[:4000]})
+                      # her words, or that she sent none: the form's "What do you see?" default is not hers
+                      "original_text": (str(form.get("message"))[:4000] if str(form.get("message") or "").strip()
+                                        else _SENT_BARE % "a photo"),
+                      "image_description": str(image_description)[:4000]})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I saw the image but could not form words: " + str(e)[:100] + "]"}
@@ -8923,7 +8968,13 @@ async def _voice_ledger_owned(payload: dict):
                         _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
                         # background lead recompute reads campaign state but does NOT step it —
                         # the foreground spoken turn is the one that advances it (Gloria, 2026-09-18)
-                        _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""), step_campaign=False)
+                        # nor is it a turn for the priority vector's neglect count (16 October)
+                        try:
+                            import priority_vector as _ldpv; _ld_bg = _ldpv.background()
+                        except Exception:
+                            import contextlib as _ldcl; _ld_bg = _ldcl.nullcontext()
+                        with _ld_bg:
+                            _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""), step_campaign=False)
                         if _tg:
                             _ld_j.dump({"at": _ld_t.time(), "target": _tg}, open(_lp, "w"))
                     except Exception as _lde:
@@ -9829,7 +9880,8 @@ Your current self-model (excerpt):
 
         # Build messages
         try:
-            system_prompt = _apply_intent_lead(system_prompt, msg.message,
+            # her words on the "GLORIA (now):" line, a photo named and not described; a room event stays itself
+            system_prompt = _apply_intent_lead(system_prompt, msg.message if not _counterpart_text else _her_turn_text(msg),
                                                resolve_previous=bool(getattr(msg, "resolve_previous_intent", True)),
                                                counterpart=bool(_counterpart_text))
         except Exception:

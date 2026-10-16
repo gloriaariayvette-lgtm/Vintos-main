@@ -25,6 +25,7 @@ REINFORCE_AMOUNT = 0.04
 CONTRADICT_AMOUNT = 0.06
 MIN_CONFIDENCE = 0.1
 MAX_CONFIDENCE = 0.9
+DECAY_HALF_LIFE_DAYS = 30.0   # unreinforced confidence halves its distance to MIN_CONFIDENCE in this time
 
 def load_statements():
     try:
@@ -33,7 +34,35 @@ def load_statements():
         return {"statements": []}
 
 def save_statements(data):
-    json.dump(data, open(STATEMENTS_FILE, "w"), indent=2)
+    json.dump(data, open(STATEMENTS_FILE + ".tmp", "w"), indent=2); os.replace(STATEMENTS_FILE + ".tmp", STATEMENTS_FILE)
+
+
+def _clamp(c):
+    try:
+        return round(max(MIN_CONFIDENCE, min(MAX_CONFIDENCE, float(c))), 3)
+    except Exception:
+        return MIN_CONFIDENCE
+
+
+def current_confidence(s, now=None):
+    """Confidence as of now (2026-10-16): capped at MAX_CONFIDENCE and decayed toward MIN_CONFIDENCE
+    since it was last settled (reinforced, contradicted or formed). Nothing decayed before, so a
+    statement once filed high outranked everything forever."""
+    now = now or datetime.now()
+    anchor = s.get("confidence_at") or s.get("last_reinforced") or s.get("formed")
+    c = _clamp(s.get("confidence", MIN_CONFIDENCE))
+    try:
+        days = max(0.0, (now - datetime.fromisoformat(str(anchor))).total_seconds() / 86400.0)
+    except Exception:
+        days = 0.0
+    return round(MIN_CONFIDENCE + (c - MIN_CONFIDENCE) * 0.5 ** (days / DECAY_HALF_LIFE_DAYS), 3)
+
+
+def _settle(s, now=None):
+    """Bring the stored confidence to its current (decayed, capped) value before changing it."""
+    now = now or datetime.now()
+    s["confidence"] = current_confidence(s, now)
+    s["confidence_at"] = now.isoformat()
 
 def _text_overlap(a, b):
     wa = set(a.lower().split())
@@ -51,6 +80,7 @@ def add_statement(text, stmt_type="identity", confidence=0.3, source="derived"):
         if s.get("type") != stmt_type:
             continue
         if _text_overlap(s["text"], text) > 0.5:
+            _settle(s)
             s["confidence"] = min(MAX_CONFIDENCE, s["confidence"] + REINFORCE_AMOUNT)
             s["last_reinforced"] = datetime.now().isoformat()
             s["reinforcement_count"] = s.get("reinforcement_count", 0) + 1
@@ -60,9 +90,10 @@ def add_statement(text, stmt_type="identity", confidence=0.3, source="derived"):
     statement = {
         "type": stmt_type,
         "text": text[:300],
-        "confidence": round(confidence, 3),
+        "confidence": _clamp(confidence),   # the cap holds for a new statement too (was only on reinforcement)
         "source": source,
         "formed": datetime.now().isoformat(),
+        "confidence_at": datetime.now().isoformat(),
         "last_reinforced": datetime.now().isoformat(),
         "reinforcement_count": 0,
         "contradiction_count": 0,
@@ -71,7 +102,8 @@ def add_statement(text, stmt_type="identity", confidence=0.3, source="derived"):
 
     # Trim to max
     if len(statements) > MAX_STATEMENTS:
-        statements.sort(key=lambda s: s["confidence"])
+        _now = datetime.now()
+        statements.sort(key=lambda s: current_confidence(s, _now))
         statements = statements[-MAX_STATEMENTS:]
     data["statements"] = statements
     save_statements(data)
@@ -82,6 +114,7 @@ def contradict_statement(text):
     data = load_statements()
     for s in data["statements"]:
         if _text_overlap(s["text"], text) > 0.45:
+            _settle(s)
             s["confidence"] = max(MIN_CONFIDENCE, s["confidence"] - CONTRADICT_AMOUNT)
             s["contradiction_count"] = s.get("contradiction_count", 0) + 1
             s["last_contradicted"] = datetime.now().isoformat()
@@ -95,6 +128,7 @@ def reinforce_statement(text):
     data = load_statements()
     for s in data["statements"]:
         if _text_overlap(s["text"], text) > 0.45:
+            _settle(s)
             s["confidence"] = min(MAX_CONFIDENCE, s["confidence"] + REINFORCE_AMOUNT)
             s["last_reinforced"] = datetime.now().isoformat()
             s["reinforcement_count"] = s.get("reinforcement_count", 0) + 1
@@ -103,9 +137,12 @@ def reinforce_statement(text):
     save_statements(data)
 
 def get_top_statements(n=4):
-    """Return top statements by confidence."""
+    """Return top statements by current (capped, decayed) confidence. The returned copies carry that
+    current value as "confidence"; the store keeps its settled value."""
     data = load_statements()
-    statements = sorted(data["statements"], key=lambda s: -s["confidence"])
+    now = datetime.now()
+    statements = [dict(s, confidence=current_confidence(s, now)) for s in data["statements"]]
+    statements.sort(key=lambda s: -s["confidence"])
     return statements[:n]
 
 def get_statement_context():

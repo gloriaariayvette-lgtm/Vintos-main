@@ -146,14 +146,23 @@ def deploy(log=None, script=None, follow=True, out=sys.stdout):
         return 0
     failed = [l for l in open(log, errors="replace").read().splitlines() if " FAIL" in l or l.startswith("FAIL")]
     print("\n" + "=" * 60, file=out)
-    if proc.returncode == 0 and "deploy OK" in last:
-        print("DEPLOY OK — installed. (%s)" % last.strip(), file=out)
-    else:
-        print("DEPLOY FAILED — nothing installed. exit %s; last line: %s" % (proc.returncode, last.strip()), file=out)
+    head = verdict(proc.returncode, last, open(log, errors="replace").read())
+    print(head, file=out)
+    if not head.startswith("DEPLOY OK"):
         for l in failed[:12]:
             print("  " + l.strip(), file=out)
     print("=" * 60, file=out, flush=True)
     return 0 if proc.returncode == 0 and "deploy OK" in last else 1
+
+
+def verdict(returncode, last, log_text):
+    """The one line said at the end. A deploy that installed and then named what is left is not "nothing installed"
+    (16 October: that was printed under "files are installed, but: forge not updated (sudo wants a password)")."""
+    if returncode == 0 and "deploy OK" in last:
+        return "DEPLOY OK — installed. (%s)" % last.strip()
+    if "files are installed, but" in log_text:
+        return "DEPLOY INCOMPLETE — files are installed; still to do: %s" % last.strip().lstrip("- ")
+    return "DEPLOY FAILED — nothing installed. exit %s; last line: %s" % (returncode, last.strip())
 
 
 if __name__ == "__main__":
