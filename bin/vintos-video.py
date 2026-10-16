@@ -66,6 +66,30 @@ def _atlas():
     m = _u.module_from_spec(sp); sp.loader.exec_module(m)
     return m
 
+SERVE_BASE = os.environ.get("VINTOS_SERVE_BASE", "http://100.72.225.119:8500")
+
+
+def _send_to_her(fname, want_id=""):
+    """The clip to her phone, the way vintos-send-video delivers his: one ntfy linked to the file, through the shared
+    delivery path (bounded retry, one receipt per clip, never resent). A video made from a want reached only his
+    gallery, so she never heard about it (Gloria, 16 October: "He made the nicest video, but ntfy didn't send it to
+    me"). A clip made for the projector wall is not sent. Never raises; returns the receipt or None."""
+    if want_id == "projector":
+        return None
+    try:
+        import deliver as _deliver
+        path = os.path.join(VID_DIR, fname)
+        url = "%s/api/video/file/%s" % (SERVE_BASE, fname)
+        receipt = _deliver.deliver(fname, "ntfy", "I made you something.", title="Vintos", tags="video_camera",
+                                   click=url, attach=url,
+                                   authority=lambda: (os.path.isfile(path), "clip missing from the shelf"))
+        print("[video] ntfy %s: %s" % (receipt.get("state"), receipt.get("why") or fname))
+        return receipt
+    except Exception as e:
+        print("[video] ntfy not sent: %s" % e)
+        return None
+
+
 def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
     if not img_path:
         img_path = paint_keyframe(text)
@@ -96,6 +120,7 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
                         **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
         _am.append_ledger(GALLERY, gallery[-1])   # review 302: the one shelf transaction
         print(f"[video] saved: {fname}")
+        _send_to_her(fname, want_id)
         return True
 
     try:
@@ -119,6 +144,7 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
                     **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
     _am.append_ledger(GALLERY, gallery[-1])   # review 302: the one shelf transaction
     print(f"[video] saved: {fname}")
+    _send_to_her(fname, want_id)
     return True
 
 def _process_queue():
