@@ -87,6 +87,10 @@ class Turn:
 
 
 def _post(path, body, timeout=2.0):
+    from stratagem import transport
+    supplied = transport.get()
+    if supplied is not None:
+        return supplied(path, body, timeout=timeout)
     import urllib.request
     try:
         req = urllib.request.Request(BROKER + path,

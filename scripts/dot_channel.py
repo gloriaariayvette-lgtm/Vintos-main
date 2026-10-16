@@ -2729,7 +2729,9 @@ def results_pass(api, state, now, opus=None, put=None):
     if rs.get("date") != today:
         rs.update(date=today, answered=0)
     if "since" not in rs:            # the first pass only starts listening there
-        rs["since"] = now; _save(RESULTS_STATE, rs); return lines
+        # Start listening for incoming messages now, but still deliver pending
+        # promise results on this first pass. Listening state is not a delivery gate.
+        rs["since"] = now; _save(RESULTS_STATE, rs)
     try:
         new = fresh(api, rc, state.get("self"), float(rs["since"]), watch=rs.get("threads") or [])
     except Exception as exc:
@@ -2846,9 +2848,10 @@ def results_pass(api, state, now, opus=None, put=None):
 
 
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None):
+         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None, stratagem_post=None):
     """One pass. Returns log lines."""
     HEARD.update(base="", text="")
+    live_api = api is None
     if api is None:
         tok = _token()
         if not tok:
@@ -3139,7 +3142,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
     lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
-    lines += results_pass(api, state, now, opus=results_opus, put=put)
+    # Custom route transports own their external dependencies. They can supply
+    # a broker transport too; absent one, never reach a live broker behind them.
+    import stratagem as _stratagem
+    broker_post = stratagem_post if stratagem_post is not None else (
+        None if live_api else lambda *args, **kwargs: None)
+    with _stratagem.transport_scope(broker_post):
+        lines += results_pass(api, state, now, opus=results_opus, put=put)
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 

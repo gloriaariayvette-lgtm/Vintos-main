@@ -80,6 +80,9 @@ class Expansion(unittest.TestCase):
         self.assertEqual(C._post, self.post)
 
     def expand(self, value):
+        # pathlib.Path.home() uses bare '~' on Python 3.12 as well as '~/...'.
+        if value == '~':
+            return str(Path(self.root, 'house'))
         return str(Path(self.root, 'house', value[2:])) if value.startswith('~/') else value
 
     def tearDown(self):

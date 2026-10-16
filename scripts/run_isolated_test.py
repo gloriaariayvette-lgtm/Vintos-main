@@ -32,8 +32,10 @@ def main():
         copied = root / repo.name
         (root / ".vintos/workspace/memory").mkdir(parents=True)
         (root / "workspace/memory").mkdir(parents=True)
-        # Copy path is the only checkout the child may read or write.
-        bootstrap = "import os,sys,runpy; os.environ.pop('SPARK_WORKSPACE',None); dep=sys.argv[3] if len(sys.argv)>3 else ''; dep and os.environ.__setitem__('VINTOS_TEST_LAB_PYTHON',dep); sys.path.insert(0,sys.argv[1]); sys.argv=sys.argv[2:3]; __import__('test_http_fixture').install(); runpy.run_path(sys.argv[0],run_name='__main__')"
+        # Copy path is the only checkout the child may read or write. Include
+        # the copied test directory, matching direct script execution so sibling
+        # fixtures and shared suites resolve without exposing the original checkout.
+        bootstrap = "import os,sys,runpy; os.environ.pop('SPARK_WORKSPACE',None); dep=sys.argv[3] if len(sys.argv)>3 else ''; dep and os.environ.__setitem__('VINTOS_TEST_LAB_PYTHON',dep); sys.path.insert(0,sys.argv[1]); sys.path.insert(0,os.path.dirname(sys.argv[2])); sys.argv=sys.argv[2:3]; __import__('test_http_fixture').install(); runpy.run_path(sys.argv[0],run_name='__main__')"
         # macOS cannot stack sandbox profiles. A trusted parent launches nested
         # generated-code tests with a stricter sandbox through a scratch-only queue.
         queue=root/"sandbox-requests";queue.mkdir()

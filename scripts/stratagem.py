@@ -6,6 +6,8 @@ Owner controls bypass inference and never appear as model-issued authority.
 """
 import os, json, time
 import urllib.request
+from contextvars import ContextVar
+from contextlib import contextmanager
 
 BROKER = "http://127.0.0.1:8611"
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
@@ -13,9 +15,24 @@ MEM = os.path.expanduser("~/.vintos/workspace/memory")
 # (the old global .stratagem-commitment.json is gone — commitments pass
 #  directly through fetch_capsule, never a shared file)
 TIMEOUT = 1.5
+# A substituted route transport must not silently open a second live connection.
+# Context-local so concurrent real and simulated routes cannot change each other.
+transport = ContextVar("stratagem_transport", default=None)
+
+
+@contextmanager
+def transport_scope(post):
+    token = transport.set(post)
+    try:
+        yield
+    finally:
+        transport.reset(token)
 
 
 def _post(path, body=None, timeout=TIMEOUT):
+    supplied = transport.get()
+    if supplied is not None:
+        return supplied(path, body, timeout=timeout)
     try:
         req = urllib.request.Request(
             BROKER + path,

@@ -9514,8 +9514,12 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
-        _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn,
-                          event_id=request.headers.get("x-client-turn-id"))
+        _turn_event_id = request.headers.get("x-client-turn-id")
+        if _turn_event_id:
+            _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn,
+                              event_id=_turn_event_id)
+        else:
+            _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn)
         if _turn.duplicate_event:
             return {"reply": "", "duplicate": True}
     except Exception as _tc_e:
