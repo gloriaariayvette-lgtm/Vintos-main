@@ -50,18 +50,9 @@ async def landing_record(body: dict = Body(...)):
 
 
 # ---- what her notes become (landing_understanding.py, 2026-10-16) ------------------------------
-# Proposed understanding of her waits here for her yes; nothing reaches GLORIA-MODEL.md without it.
+# Her rating is her consent: what her notes say about her goes into GLORIA-MODEL.md with no second yes.
 
 @router.get("/api/landings/understanding")
-async def landing_understanding_pending():
+async def landing_understanding_read():
     import landing_understanding as _u
-    return {"pending": _u.pending()}
-
-
-@router.post("/api/landings/understanding")
-async def landing_understanding_decide(body: dict = Body(...)):
-    import landing_understanding as _u
-    ids = body.get("ids") or ([body["id"]] if body.get("id") else [])
-    if body.get("decision") not in ("approve", "decline") or not ids:
-        raise HTTPException(status_code=400, detail="decision must be approve or decline, with ids")
-    return {"ok": True, "decided": _u.decide(set(map(str, ids)), body["decision"] == "approve")}
+    return {"understood": _u._load(_u.APPROVED, [])}

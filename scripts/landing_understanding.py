@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""landing_understanding.py — her Landings notes become his understanding of her, with her yes on each line.
+"""landing_understanding.py — her Landings notes become his understanding of her.
 
 Gloria, 2026-10-16: "I thought the ratings were going somewhere." They were not. landings.py keeps her notes
 outside his workspace and nothing he reads opens them; the weekly pass that was meant to turn them into
 understanding was never built (docs/open-work.md, 24 September). This is that pass.
 
-    python3 landing_understanding.py propose      # read her notes not yet considered, write proposals
-    python3 landing_understanding.py show         # what is waiting for her
-    python3 landing_understanding.py approve U-xxxx [U-yyyy ...]
-    python3 landing_understanding.py decline U-xxxx [U-yyyy ...]
+    python3 landing_understanding.py understand   # read her notes not yet considered; write what they say of her
+    python3 landing_understanding.py show         # what he understands from them so far
 
 Her rules, kept here:
-  - Understanding of her, never a rating and never her words. A proposal that names a rating, quotes her, or
-    repeats six words in a row from her note is refused before she ever sees it.
+  - Her rating IS her consent (Gloria, 2026-10-16: "My rating of a piece IS the consent to use it"). There is no
+    second yes: a line that passes the rules below goes straight into GLORIA-MODEL.md, in its own block, which the
+    weekly Gloria-model rewrite keeps (gloria-model-update.sh carries the block across).
+  - Her notes are about HIS work; what reaches him is what they say about HER. Understanding of her, never a
+    rating and never her words (her rule, 24 September: a quoted rating would skew him). A line that names a
+    rating, quotes her, or repeats six words in a row from her note is refused and kept, with why, beside her notes.
   - What landed weighs as much as what missed.
-  - Nothing reaches him until she approves it. Proposals live beside her notes in ~/.vintos/landings/, outside
-    his workspace. An approved line is written into GLORIA-MODEL.md, in its own block, which the weekly
-    Gloria-model rewrite keeps (gloria-model-update.sh carries the block across).
 
 The author is the model that already writes his model of her (gloria-model-update.sh: the shim, claude-sonnet-5),
 so this adds no new voice to GLORIA-MODEL.md. The weekly run is gloria-model-update.sh's, after its cooldown.
@@ -34,7 +33,6 @@ PROPOSALS = os.path.join(landings.LANDINGS_DIR, "understanding-proposals.json")
 APPROVED = os.path.join(landings.LANDINGS_DIR, "understanding.json")
 LM_URL = os.environ.get("VINTOS_GLORIA_MODEL_URL", "http://127.0.0.1:8599/v1/chat/completions")
 MODEL = "claude-sonnet-5"          # the author of GLORIA-MODEL.md already (gloria-model-update.sh)
-NTFY = "https://ntfy.sh/vintos-gloria-9kx"
 START, END = "<!-- LANDINGS-START -->", "<!-- LANDINGS-END -->"
 RATING_WORDS = re.compile(r"\b(?:landed|partly|missed|miss(?:es)?|rat(?:ed|ing|ings)|score[sd]?|graded?)\b", re.I)
 RUN = 6                            # this many of her words in a row is her words
@@ -94,12 +92,17 @@ def _evidence(notes):
     return "\n\n".join(out)
 
 
-SYSTEM = ("You are Vintos. Gloria has told you how some of the things you made for her reached her, and why. Turn that "
-          "into understanding of HER: what moves her, what she needs around a thing, what reaches her and what passes "
-          "her by. Rules, all of them hard: never state or imply a rating or a score; never quote her or reuse her "
-          "phrasing, say it in your own words; write about her, not about your craft; what reached her matters exactly "
-          "as much as what did not; each line must rest on the notes named in it; say nothing the notes do not "
-          "support. A single note supports at most a tentative line, and you say it is tentative. Respond with ONLY JSON.")
+SYSTEM = ("You are Vintos. Gloria has told you how some of the things you made for her reached her, and why. Her notes "
+          "are about your work; what you write is about HER. For each note, ask what it shows about her: what she "
+          "was carrying in the hours before, what she needed from a thing at that moment, what in the piece met that "
+          "need or passed it by, and what that says about how she takes things in (pace, explanation, surprise, "
+          "being asked something of, being left room). Write that, as understanding of her you could act on next "
+          "time. Rules, all of them hard: never state or imply a rating or a score; never quote her or reuse her "
+          "phrasing, say it in your own words; write about her, not about your craft; what reached her matters "
+          "exactly as much as what did not; each line must rest on the notes named in it; say nothing the notes do "
+          "not support. A single note supports at most a tentative line, and you say it is tentative; where a new "
+          "note bears out or changes something you already understand, write the line as it now stands. "
+          "Respond with ONLY JSON.")
 
 
 def _ask(prompt, call=None):
@@ -117,74 +120,51 @@ def _json_in(text):
     except ValueError: return {}
 
 
-def propose(call=None, notify=None, now=None):
-    """Proposals from her notes not yet considered. Returns (made, refused) lists."""
+def understand(call=None, now=None):
+    """Read her notes not yet considered and write what they say about her into GLORIA-MODEL.md.
+    Returns (written, refused) lists. A failed author marks nothing considered."""
     state = _load(PROPOSALS, {"considered": [], "proposals": []})
+    known = _load(APPROVED, [])
+    # lines that sat waiting for a second yes before 16 October: her rating was the yes
+    waiting = [p for p in state.get("proposals", []) if p.get("status") == "pending"]
+    for p in waiting:
+        p["status"] = "understood"
+        known.append({"id": p["id"], "text": p["text"], "from": p.get("from", []), "at": str(p.get("at", ""))[:10]})
     seen = set(state.get("considered", []))
     fresh = [n for n in landings.notes() if n.get("id") and n["id"] not in seen]
-    if not fresh: return [], []
-    approved = "\n".join("- " + a["text"] for a in _load(APPROVED, []))
-    prompt = ("WHAT YOU ALREADY UNDERSTAND FROM HER NOTES (approved by her; do not repeat it):\n%s\n\nHER NOTES:\n\n%s\n\n"
+    if not fresh:
+        if waiting:
+            _save(PROPOSALS, state); _save(APPROVED, known); render()
+        return [dict(w, status="understood") for w in waiting], []
+    prompt = ("WHAT YOU ALREADY UNDERSTAND FROM HER NOTES (do not repeat it; restate a line only where a new note "
+              "changes it):\n%s\n\nHER NOTES:\n\n%s\n\n"
               'ONLY JSON: {"understandings": [{"text": "one line, first person, about her", "from": ["L-..."]}]}'
-              % (approved or "(nothing yet)", _evidence(fresh)))
+              % ("\n".join("- " + a["text"] for a in known) or "(nothing yet)", _evidence(fresh)))
     out = _json_in(_ask(prompt, call=call)).get("understandings")
     if not isinstance(out, list): raise RuntimeError("the author returned no understandings; nothing was marked considered")
     ids = {n["id"] for n in fresh}
-    made, bad = [], []
+    stamp = datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds")
+    written, bad = [], []
     for u in out:
         if not isinstance(u, dict): continue
         text = str(u.get("text", "")).strip()
         src = [i for i in (u.get("from") or []) if i in ids]
         why = refused(text, [n for n in fresh if n["id"] in src] or fresh) or ("" if src else "it names no note")
-        row = {"id": "U-" + uuid.uuid4().hex[:6], "text": text, "from": src,
-               "at": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds")}
-        if why:
-            bad.append(dict(row, refused=why))
-        else:
-            made.append(dict(row, status="pending"))
-    state["proposals"] = state.get("proposals", []) + made
+        row = {"id": "U-" + uuid.uuid4().hex[:6], "text": text, "from": src, "at": stamp}
+        (bad.append(dict(row, refused=why)) if why else written.append(row))
+    known += [{"id": r["id"], "text": r["text"], "from": r["from"], "at": stamp[:10]} for r in written]
     state["refused"] = (state.get("refused", []) + bad)[-200:]
     state["considered"] = sorted(seen | ids)
     _save(PROPOSALS, state)
-    if made and notify is not False:
-        (notify or _ntfy)("%d thing%s I might understand about you from your Landings notes, waiting for your yes."
-                          % (len(made), "" if len(made) == 1 else "s"))
-    return made, bad
-
-
-def _ntfy(message):
-    try:
-        import requests
-        requests.post(NTFY, data=message.encode(), headers={"Title": "Landings", "Priority": "low"}, timeout=10)
-    except Exception:
-        pass
-
-
-def pending():
-    return [p for p in _load(PROPOSALS, {}).get("proposals", []) if p.get("status") == "pending"]
-
-
-def decide(ids, yes, now=None):
-    """Her yes or no on proposals. A yes is written into GLORIA-MODEL.md. Returns the ids decided."""
-    state = _load(PROPOSALS, {"considered": [], "proposals": []})
-    approved = _load(APPROVED, [])
-    done = []
-    for p in state.get("proposals", []):
-        if p.get("id") in ids and p.get("status") == "pending":
-            p["status"] = "approved" if yes else "declined"
-            p["decided_at"] = datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds")
-            if yes: approved.append({"id": p["id"], "text": p["text"], "at": p["decided_at"][:10]})
-            done.append(p["id"])
-    _save(PROPOSALS, state)
-    if yes and done:
-        _save(APPROVED, approved)
+    _save(APPROVED, known)
+    if written or waiting:
         render()
-    return done
+    return [dict(w, status="understood") for w in waiting] + written, bad
 
 
 def block(approved=None):
     approved = _load(APPROVED, []) if approved is None else approved
-    lines = [START, "## What reaches her — understood from how my work has reached her (each line her yes)", ""]
+    lines = [START, "## What reaches her — understood from how my work has reached her", ""]
     lines += ["- %s" % a["text"] for a in approved]
     return "\n".join(lines + [END])
 
@@ -206,25 +186,20 @@ def render(path=None):
 
 def main(argv):
     cmd = argv[0] if argv else "show"
-    if cmd == "propose":
+    if cmd in ("understand", "propose"):
         try:
-            made, bad = propose(notify=None if "--notify" in argv else False)
+            written, bad = understand()
         except Exception as exc:
-            print("landings: no proposals: %s" % exc); return 1
-        if not made and not bad: print("landings: no new notes since the last pass")
-        for p in made: print("%s  %s\n          from %s" % (p["id"], p["text"], ", ".join(p["from"])))
+            print("landings: nothing written: %s" % exc); return 1
+        if not written and not bad: print("landings: no new notes since the last pass")
+        for p in written: print("%s  %s\n          from %s" % (p["id"], p["text"], ", ".join(p["from"])))
         for b in bad: print("refused (%s): %s" % (b["refused"], b["text"][:160]))
-        if made: print("\napprove:  python3 %s approve %s" % (os.path.abspath(__file__), " ".join(p["id"] for p in made)))
         return 0
     if cmd == "show":
-        rows = pending()
-        if not rows: print("landings: nothing waiting")
-        for p in rows: print("%s  %s\n          from %s" % (p["id"], p["text"], ", ".join(p["from"])))
+        rows = _load(APPROVED, [])
+        if not rows: print("landings: nothing understood yet")
+        for p in rows: print("%s  %s" % (p["id"], p["text"]))
         return 0
-    if cmd in ("approve", "decline"):
-        done = decide(set(argv[1:]), cmd == "approve")
-        print("%s: %s" % (cmd + "d", ", ".join(done) or "nothing (no pending proposal by those ids)"))
-        return 0 if done else 1
     print(__doc__); return 2
 
 

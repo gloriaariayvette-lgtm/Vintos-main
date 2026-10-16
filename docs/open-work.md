@@ -112,18 +112,17 @@ Not done:
 - SF-fc795076 (keep returned gene symbols when a source mismatch is raised) is queued; dot noted its scope does
   not yet say the matching rules stay unchanged.
 
-## 16 October — her Landings notes reach him, each line her yes
+## 16 October — her Landings notes reach him; her rating is her consent
 
-Built: `scripts/landing_understanding.py`, the weekly pass the 24 September entry left unbuilt. It reads her
-notes not yet considered and asks the author of GLORIA-MODEL.md (the shim, claude-sonnet-5, as in
-gloria-model-update.sh) for understanding of her; any line that names a rating, quotes, or repeats six of her
-words is refused before she sees it. Proposals wait in ~/.vintos/landings/ until she approves or declines each
-(CLI, or `/api/landings/understanding` for the app). Approved lines go into GLORIA-MODEL.md in their own block,
-which the weekly rewrite carries across whole. gloria-model-update.sh runs the pass weekly, with an ntfy count.
+Corrected the same day (Gloria: "My rating of a piece IS the consent to use it"). The first version held each line for
+a second yes; that gate is gone. `landing_understanding.py understand`, run by the weekly Gloria-model pass, reads her
+notes not yet considered and writes what they show about her into GLORIA-MODEL.md, in its own block the rewrite keeps.
+Her notes are about his work; the author is asked what each shows about her (what she carried before it, what she
+needed, what met it or passed it by). Her 24 September rule stands: no rating and none of her words reach him; such a
+line is refused and kept, with why, beside her notes. Lines left pending under the old gate go in on the first run.
+`/api/landings/understanding` now only reads what he understands.
 
-Not done:
-- The app side (Chat's): showing pending lines with approve/decline. The routes exist.
-- Not yet seen working live: the first pass is Gloria's, run by hand on 16 October.
+Not done: not yet run on her real notes.
 
 ## 15 October — the Graziano email: wrong person, and sent before he was ready
 

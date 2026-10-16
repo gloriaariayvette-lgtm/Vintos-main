@@ -14,9 +14,9 @@ if [ -f "$COOLDOWN_FILE" ]; then
     [ "$ELAPSED" -lt 6 ] && exit 0
 fi
 
-# Her Landings notes -> proposed understanding of her, waiting for her yes (landing_understanding.py, 2026-10-16).
+# Her Landings notes -> understanding of her, into GLORIA-MODEL.md; her rating is her consent (landing_understanding.py, 2026-10-16).
 for LU in "$WORKSPACE/scripts/landing_understanding.py" "$(dirname "$0")/landing_understanding.py"; do
-    [ -f "$LU" ] && { python3 "$LU" propose --notify >/dev/null 2>&1 || true; break; }
+    [ -f "$LU" ] && { python3 "$LU" understand >/dev/null 2>&1 || true; break; }
 done
 
 TODAY=$(date +%Y-%m-%d)
