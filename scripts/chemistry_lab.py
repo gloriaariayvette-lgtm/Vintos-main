@@ -1080,6 +1080,29 @@ def _plan(system, prompt):
                                  "Reply again with the JSON object only, starting with {.", temperature=0.3))
 
 
+# A question that asks two things is unanswered when either is missing. On 16 October after the 17:48 UTC deploy,
+# 11 of 12 reviews were partial, and in each the missing part was a clause no source in the inquiry could return
+# ("and how does the fold-specific binding ... facilitate", "compared to terrestrial secretion systems", "its role
+# in preventing systemic zinc toxicity"), while the one complete answer asked only what its record established.
+_SECOND_ASK = re.compile(r"(?:,\s*|\s+)(?:and\s+(?:how|why|what|which|whether|do|does|did|is|are|can|could)\b"
+                         r"|(?:and\s+)?(?:how\s+(?:do|does|did)\s+(?:these|this|they|it)\b)"
+                         r"|(?:as\s+)?compared\s+(?:to|with)\b|in\s+contrast\s+to\b)", re.I)
+
+
+def second_ask(question):
+    """The clause where a question starts asking a second thing, or ''."""
+    m = _SECOND_ASK.search(str(question or ""))
+    return m.group(0).strip(" ,") if m else ""
+
+
+def first_ask(question):
+    """The question cut to its first ask, ending in a question mark."""
+    q = str(question or "")
+    m = _SECOND_ASK.search(q)
+    if not m: return q
+    return q[:m.start()].rstrip(" ,;:") + "?"
+
+
 def _compact_names(names, cap):
     """Names as one line under `cap` characters: whole gene families as PREFIX*, the rest as they are."""
     names = list(dict.fromkeys(str(n) for n in names if str(n).strip()))
@@ -1630,6 +1653,11 @@ def _orient(context, lean=None):
         "journal has a source-backed open question, advance it only with a discriminating new source or instrument; "
         "do not repeat the same query or conclusion merely because it appeared again. Treat redirects as lessons: "
         "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
+        "Ask ONE thing its sources can answer whole: one protein (or one named pair), one property, the kind of fact "
+        "the source you name returns (a record's annotated features, a structure's metal or ligand contacts, a "
+        "literature finding). Do not add a second question with 'and how', 'and what', 'and do', 'and whether', "
+        "'compared to' or 'its role in'; a mechanism, comparison or consequence is a later question, asked when a "
+        "source that addresses it is in hand. A question with one part missing is unanswered as a whole. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
@@ -1764,6 +1792,22 @@ def _orient(context, lean=None):
                      "by the same kind of retrieval, is refused before it runs; choose a subject not on this list, "
                      "or a genuinely different instrument: %s." % (len(held_questions), _held_names))
     value = _plan(system, task)
+    try:
+        _already_held = bool(_held_question(_inquiry(value, lean)))
+    except Exception:
+        _already_held = False
+    # a question already held keeps its exact words, or its hold would not know it (a new one is narrowed)
+    if second_ask(value.get("question")) and not _already_held:
+        # asked once to narrow, by name; if it still asks two things, the first is kept
+        _two = second_ask(value.get("question"))
+        try:
+            narrowed = _plan(system, task + "\n\nREFUSED, TWO QUESTIONS IN ONE (at '" + _two + "'): a review cannot "
+                             "answer half a question. Ask only the first thing, one property its sources return, and "
+                             "keep the same sources.")
+            value = narrowed if not second_ask(narrowed.get("question")) else dict(narrowed, question=first_ask(narrowed.get("question")))
+        except ModelJSONError:
+            value = dict(value, question=first_ask(value.get("question")))
+        _fault("question_narrowed", ValueError("two asks at: " + _two))
     inquiry = _existing_model_read(_inquiry(value, lean))
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     assigned_continuation = bool(line and inquiry.get("line_id") == line.get("id"))
