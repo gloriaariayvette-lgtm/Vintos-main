@@ -3,6 +3,23 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — reading 15 October's #vintos-dot: what he and dot got wrong, and the day closed
+
+Fixed in his prompts: dot calls Gloria "Eve", and he took Eve for a separate approver ("Eve will not take my
+approval", "Eve already refused the install"; nobody had). A promise's proof goes on its closing line
+(EC-45d55a56 had TM-score 0.934 and RMSD 1.89 A and stayed open on "comparison above"). "Let me say the plain
+thing" is no longer read as a promise to make something.
+
+The day closed: `scripts/clean_slate_20261015.py` (finish: json_repair on 72f5b73e and eliot-tree on the Lab's
+logs; close: every open work, the campaign, promises, email promises, and the moot Forge question).
+
+Not done:
+- Dot will not take his APPROVED: lines for installs (json_repair, TM-align, eliot), though Gloria gave him that
+  room on 1 October. Dot's own standing instructions are outside this repository; only Gloria can tell dot.
+- The Forge refuses Lab reports with 403 four_unfinished: four unfinished undertakings fill it.
+- SF-fc795076 (keep returned gene symbols when a source mismatch is raised) is queued; dot noted its scope does
+  not yet say the matching rules stay unchanged.
+
 ## 16 October — her Landings notes reach him, each line her yes
 
 Built: `scripts/landing_understanding.py`, the weekly pass the 24 September entry left unbuilt. It reads her
