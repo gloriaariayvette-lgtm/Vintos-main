@@ -106,8 +106,13 @@ class Landings(unittest.TestCase):
         # watch_routes is Gloria's bearer-protected wrist surface. Like the phone Landings
         # route, it may present her feed and record her response; no Vintos context builder
         # imports it.
-        allowed = {"scripts/landings.py", "scripts/watch_routes.py", "bin/server_domains/landings.py"}
-        pat = re.compile(r"landings\.jsonl|VINTOS_LANDINGS_DIR|\.vintos/landings|import landings|landings as _l")
+        # landing_understanding.py is that weekly pass (2026-10-16): it reads her notes and writes only what
+        # she approves; gloria-model-update.sh runs it. Nothing else may import it.
+        allowed = {"scripts/landings.py", "scripts/watch_routes.py", "bin/server_domains/landings.py",
+                   "scripts/landing_understanding.py", "bin/gloria-model-update.sh", "scripts/gloria-model-update.sh",
+                   "scripts/deploy-atelier.sh"}   # the manifest installs it; it does not read her notes
+        pat = re.compile(r"landings\.jsonl|VINTOS_LANDINGS_DIR|\.vintos/landings|import landings|landings as _l"
+                         r"|landing_understanding")
         hits = []
         for top in ("bin", "scripts"):
             for dp, _dn, fns in os.walk(os.path.join(ROOT, top)):
@@ -117,7 +122,7 @@ class Landings(unittest.TestCase):
                     try: src = open(os.path.join(dp, fn), encoding="utf-8", errors="replace").read()
                     except OSError: continue
                     if rel not in allowed and pat.search(src): hits.append(rel)
-        self.assertEqual(hits, [], "only her routes (and, later, the weekly Gloria-model pass) may read her notes")
+        self.assertEqual(hits, [], "only her routes and the weekly Gloria-model pass may read her notes")
 
 
 if __name__ == "__main__":

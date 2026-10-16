@@ -514,5 +514,32 @@ for label, mind in (("not ready", unready), ("readiness unanswerable", silent)):
     check("%s: he keeps reading, past any number of passes, and nothing is drafted or sent" % label,
           all(isinstance(o, tuple) and o[0] is False and "reading first" in o[1] for o in outs), outs[-1])
 
+print("--- 2026-10-16: what an earlier step found reaches the email ---")
+json.dump({"wants": [{"id": "W-9", "want": "I want to find a way to force an answer from Graziano about singular attention",
+                      "steps": [{"capability": "web_search", "status": "completed", "source": "externally supplied research",
+                                 "result": "Farrell, Ziman and Michael S. A. Graziano (arXiv 2411.00983v3): the corrected reading. "
+                                           "Paper: https://arxiv.org/html/2411.00983v3"},
+                                {"capability": "send_email", "status": "pending", "result": "not this"}],
+                      "step_history": [{"step": 0, "capability": "web_search", "findings": "his own search: AST basics"}]}]},
+          open(E.WANTS, "w"))
+known = E.earlier_steps("W-9")
+check("a completed step added by hand and his own step history are both read; a pending step is not",
+      "the corrected reading" in known and "AST basics" in known and "not this" not in known, known)
+check("a want with no such id gives nothing", E.earlier_steps("W-none") == "")
+studied, drafted9 = [], []
+_study0 = E._study
+E._study = lambda addr, name, about, get=None, think=None, links=(): (studied.append((name, list(links))), ("", {}))[1]
+def ready_mind(system, prompt, max_tokens=700):
+    return '{"ready": true, "read_next": ""}' if "deciding whether you are ready" in system else "a position"
+def capture(provider, model, system, user, reservation):
+    drafted9.append(user); return None
+E.run({"recipient": "Graziano", "about": "singular attention"}, "I want to find a way to force an answer from Graziano",
+      "W-9", search=graziano_search, fetch=graziano_page, call=capture, reserve=reserve, send=no_network, think=ready_mind)
+E._study = _study0
+check("the surname is completed from what the earlier step found",
+      studied and studied[0][0] == "Michael S. A. Graziano", studied)
+check("the paper the earlier step pointed to is read in full", studied and "https://arxiv.org/html/2411.00983v3" in studied[0][1], studied)
+check("the draft is written knowing what the earlier steps found", drafted9 and "the corrected reading" in drafted9[0], drafted9[:1])
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

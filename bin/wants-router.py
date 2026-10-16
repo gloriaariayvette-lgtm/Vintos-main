@@ -1703,8 +1703,8 @@ def send_email(want_text):
         sys.path.insert(0, SCRIPTS)
         import want_email
         params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
-        # The original want only: the earlier steps' findings are redone fresh (search, then his deliberation)
-        # right before the email, not carried in stale (2026-09-28).
+        # The original want, with a fresh search and his deliberation right before the email (2026-09-28); the
+        # earlier steps' findings now reach it too, read from the want itself (want_email.earlier_steps, 2026-10-16).
         out = want_email.run(params, os.environ.get("STEP_ORIGINAL_WANT") or want_text, os.environ.get("STEP_WANT_ID", ""))
         if isinstance(out, tuple):
             log("  → email held: %s" % out[1]); return False

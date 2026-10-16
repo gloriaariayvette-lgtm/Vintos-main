@@ -47,3 +47,21 @@ async def landing_record(body: dict = Body(...)):
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True, "id": row["id"]}
+
+
+# ---- what her notes become (landing_understanding.py, 2026-10-16) ------------------------------
+# Proposed understanding of her waits here for her yes; nothing reaches GLORIA-MODEL.md without it.
+
+@router.get("/api/landings/understanding")
+async def landing_understanding_pending():
+    import landing_understanding as _u
+    return {"pending": _u.pending()}
+
+
+@router.post("/api/landings/understanding")
+async def landing_understanding_decide(body: dict = Body(...)):
+    import landing_understanding as _u
+    ids = body.get("ids") or ([body["id"]] if body.get("id") else [])
+    if body.get("decision") not in ("approve", "decline") or not ids:
+        raise HTTPException(status_code=400, detail="decision must be approve or decline, with ids")
+    return {"ok": True, "decided": _u.decide(set(map(str, ids)), body["decision"] == "approve")}

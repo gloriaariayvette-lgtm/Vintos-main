@@ -14,6 +14,11 @@ if [ -f "$COOLDOWN_FILE" ]; then
     [ "$ELAPSED" -lt 6 ] && exit 0
 fi
 
+# Her Landings notes -> proposed understanding of her, waiting for her yes (landing_understanding.py, 2026-10-16).
+for LU in "$WORKSPACE/scripts/landing_understanding.py" "$(dirname "$0")/landing_understanding.py"; do
+    [ -f "$LU" ] && { python3 "$LU" propose --notify >/dev/null 2>&1 || true; break; }
+done
+
 TODAY=$(date +%Y-%m-%d)
 CURRENT_MODEL=$(cat "$MODEL_FILE" 2>/dev/null || echo "")
 SOUL=$(head -40 "$WORKSPACE/SOUL.md" 2>/dev/null || echo "You are Vintos.")
@@ -195,9 +200,11 @@ fi
 
 BASE=$(sed -n '/<!-- BASE-START/,/<!-- BASE-END -->/p' "$MODEL_FILE")
 if [ -z "$BASE" ]; then echo "gloria-model: FIXED BASE marker not found — refusing to write (base protection)"; exit 0; fi
+# The lines she approved from her Landings notes are hers to keep, not his to rewrite: carried across whole.
+LANDINGS=$(sed -n '/<!-- LANDINGS-START/,/<!-- LANDINGS-END -->/p' "$MODEL_FILE")
 TITLE=$(echo "$CONTENT" | sed -n '1{s/^#* *//;s/^\*\**//;s/\**$//;p}')
 BODY=$(echo "$CONTENT" | tail -n +2)
-{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. Beneath it, his additions:"; echo "> rewritten whole each week, replacing the last version (kept in memory/gloria-model-history)."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own, as they stand"; echo ""; echo "## $TODAY — $TITLE"; echo ""; echo "$BODY"; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
+{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. Beneath it, his additions:"; echo "> rewritten whole each week, replacing the last version (kept in memory/gloria-model-history)."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own, as they stand"; echo ""; echo "## $TODAY — $TITLE"; echo ""; echo "$BODY"; if [ -n "$LANDINGS" ]; then echo ""; echo "$LANDINGS"; fi; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
 echo "GLORIA_MODEL_UPDATED: $TODAY"
 
