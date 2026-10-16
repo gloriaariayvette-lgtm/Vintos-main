@@ -95,6 +95,7 @@ json.dump(_store, open(G.STORE, "w")); PUSHED.clear(); PUSHED.extend([free, part
 
 # --- Slack links keep their address -------------------------------------------------------------------------------
 import dot_channel as D
+D.GEMMA_OFF_LAB = False   # this suite's stub writer stands in as Gemma on Lab work (test_gemma_off_lab covers the rule)
 check("a Slack link keeps its address, not only its text",
       D._clean("<https://www.amazon.com/dp/B0X|amazon.com/dp/B0X>") == "https://www.amazon.com/dp/B0X"
       and D._clean("<https://a.com/x|Load cell>") == "Load cell (https://a.com/x)" and D._clean("<https://b.com/y>") == "https://b.com/y")

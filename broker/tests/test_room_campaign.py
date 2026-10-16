@@ -36,6 +36,7 @@ socket.socket.connect = _no_net
 
 import room_work as W
 import dot_channel as D
+D.GEMMA_OFF_LAB = False   # this suite's stub writer stands in as Gemma on Lab work (test_gemma_off_lab covers the rule)
 import email_commitments as EC
 import lab_instruments as LI
 

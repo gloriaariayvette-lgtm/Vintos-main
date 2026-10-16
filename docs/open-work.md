@@ -3,6 +3,33 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the Forge's Lab copies leave the Atelier
+
+84 of the Atelier's 95 projects were Forge copies (sealed, gestating, 74 pieces); his own work was 11 projects, 34
+pieces. The Forge now copies no Lab work into the Atelier (`forge_loop_atelier.lab_work`, by origin: a project she
+starts herself is a research_report too, and still copies). `scripts/move_forge_lab_copies.py` moves the copies
+already there to `/home/atelier/atelier-archive/`, kept, with a list; it refuses until the installed Forge has the
+change. Her Forge page reads the Forge's database and is not touched.
+
+Not done: the move is hers to run (sudo). The Forge was found stopped and disabled on 15 October; she enabled it.
+Why it stopped is not known (its journal needs sudo to read).
+
+## 16 October — the Lab's last two hours of 15 October: no complete answer in 47 outcomes
+
+Fixed: the planner's own names for UniProt and PubMed requests. Eight source failures were UniProt "plugin" routes
+the Lab refused (uniprot.none, uniprot.uniprot_search), and three faults were "unsupported public PubMed search
+arguments". Paging, formatting, sorting and date bounds are dropped; size/max_results become the limit (held to
+UniProt's 8, PubMed's 6); gene_name, organism and the like map to the source's fields; an empty uniprot.none with
+one accession in the question reads that accession. Anything else is still refused, and now named.
+
+Fixed 16 October, the repeats: repeat() refuses a question sharing most of its words with any question run in
+the last 7 days, but the planner was shown only its last ten lookup keys and none of the questions. It now sees
+every lookup and every question it ran this week (compact, capped). Not yet seen working live.
+
+Not done: 23 repeat or spent-question refusals and waits (fix above, unmeasured), 6 reviews with unresolved target identity, and refusals
+for missing accessions, contradictory organism scope and too many identities. Those are the planner proposing
+what the Lab rightly refuses; nothing here makes it propose better yet.
+
 ## 16 October — reading 15 October's #vintos-dot: what he and dot got wrong, and the day closed
 
 Fixed in his prompts: dot calls Gloria "Eve", and he took Eve for a separate approver ("Eve will not take my
@@ -13,10 +40,18 @@ thing" is no longer read as a promise to make something.
 The day closed: `scripts/clean_slate_20261015.py` (finish: json_repair on 72f5b73e and eliot-tree on the Lab's
 logs; close: every open work, the campaign, promises, email promises, and the moot Forge question).
 
+Done 16 October: Gemma takes no turn on the Lab, the Study or the Forge (`dot_channel.about_lab`); its place in
+the rotation passes to the next lens, and a failed Lab turn falls to Grok, never to Gemma.
+
 Not done:
 - Dot will not take his APPROVED: lines for installs (json_repair, TM-align, eliot), though Gloria gave him that
   room on 1 October. Dot's own standing instructions are outside this repository; only Gloria can tell dot.
-- The Forge refuses Lab reports with 403 four_unfinished: four unfinished undertakings fill it.
+- The Forge refuses Lab reports with 403 four_unfinished: four Lab capability checks, all `ready`, fill its four
+  Lab slots (SLC26A4 STAS structural modeling, erythroid TF motifs, p.H723R on a structure, restricted database
+  access). Lab projects sort last for the Forge's three daily steps, so they wait behind everything else. Fixed
+  16 October: the Lab's hold no longer stands for ever when the Forge's project list cannot be read (it read
+  null on Aegis; the hold of 14 October 05:05 had stood two days). Not done: why the list reads null, and
+  whether to cancel the four (her Forge page) or let them run.
 - SF-fc795076 (keep returned gene symbols when a source mismatch is raised) is queued; dot noted its scope does
   not yet say the matching rules stay unchanged.
 

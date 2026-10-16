@@ -350,6 +350,39 @@ def recent_lookups(n=10, now=None):
     return seen
 
 
+def asked_questions(cap=4000, now=None):
+    """Every distinct question she asked and ran this week, newest first, each cut short, under `cap` characters.
+
+    repeat() refuses a question that shares SIMILAR of its words with any question run in the last REPEAT_DAYS days,
+    but her prompt showed only her last ten lookup keys and none of the questions (15 October, 21:26-23:26 CDT: 23 of
+    47 outcomes were repeat or spent-question refusals and waits). She cannot steer around what she is not shown."""
+    seen, out, used = set(), [], 0
+    for r in reversed(_recent(now)):
+        q = " ".join(str(r.get("question") or "").split())
+        if r.get("refused") or not r.get("words") or not q:
+            continue
+        k = q.casefold()
+        if k in seen:
+            continue
+        seen.add(k)
+        q = q[:117] + "..." if len(q) > 120 else q
+        if used + len(q) + 3 > cap:
+            break
+        out.append(q); used += len(q) + 3
+    return out
+
+
+def all_lookups(cap=2500, now=None):
+    """Every distinct lookup she ran this week, newest first, under `cap` characters (not only the last ten)."""
+    out, used = [], 0
+    for key in recent_lookups(n=10**6, now=now):
+        k = key[:160]
+        if used + len(k) + 3 > cap:
+            break
+        out.append(k); used += len(k) + 3
+    return out
+
+
 def subjects(text):
     """The accessions and gene/protein symbols a text names."""
     text = str(text or "")
