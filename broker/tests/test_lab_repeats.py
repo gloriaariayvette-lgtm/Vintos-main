@@ -92,6 +92,21 @@ finally:
     L._now = _real_now
 check("off the plan twice: refused, nothing runs", inq.get("refused", "").startswith("off the frontier") and len(asked) == 2, inq.get("refused"))
 check("the week's lookups are in front of her", "LOOKUPS YOU ALREADY RAN THIS WEEK" in asked[0] and "atlas:SLC26A4" in asked[0])
+check("the week's questions are in front of her, not only ten lookups",
+      "QUESTIONS YOU ALREADY ASKED THIS WEEK" in asked[0] and "inter-protomer interface" in asked[0], asked[0][-1500:])
+_real_now, L._now = L._now, (lambda: NOW)
+try:
+    for i in range(14):
+        L.record({"question": "Which residues of protein %d line its central cavity and bind chloride?" % i,
+                  "source_query": {"source": "uniprot", "query": "gene:TEST%d" % i}}, now=NOW - timedelta(minutes=i))
+    L.record({"question": "A refused question that never ran anything"}, now=NOW, refused="repeat")
+    qs = L.asked_questions(now=NOW)
+    check("every question this week is listed, beyond the last ten", sum("central cavity" in q for q in qs) == 14, qs)
+    check("a refused one ran nothing and is not listed", not any("never ran" in q for q in qs))
+    check("the list keeps under its cap", sum(len(q) + 3 for q in L.asked_questions(cap=300, now=NOW)) <= 300)
+    check("every lookup this week is listed too", len([k for k in L.all_lookups(now=NOW) if "test" in k]) == 14)
+finally:
+    L._now = _real_now
 check("what an Atlas record is, in her question step and her reading", "ONE fixed window" in C._atlas_text()
       and "_atlas_text() + _atlas_scorer_hint()" in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
       and '"instructions. " + atlas_guidance' in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())

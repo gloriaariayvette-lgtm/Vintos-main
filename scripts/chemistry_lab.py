@@ -1671,10 +1671,17 @@ def _orient(context, lean=None):
                  step["next_question"], ("\nWhat it kept: " + step["keep"]) if step.get("keep") else ""))
     try:
         import lab_repeats as _lr
-        _done = _lr.recent_lookups()
+        _done = _lr.all_lookups()
         if _done:
             task += ("\n\nLOOKUPS YOU ALREADY RAN THIS WEEK (an identical one is refused before it runs; so is the same "
-                     "question in other words):\n- " + "\n- ".join(d[:160] for d in _done))
+                     "question in other words):\n- " + "\n- ".join(_done))
+        # The questions themselves: a question sharing most of its words with one of these, on the same kind of
+        # retrieval, is refused (16 October: she was shown ten lookups and refused against a week of questions).
+        _asked = _lr.asked_questions()
+        if _asked:
+            task += ("\n\nQUESTIONS YOU ALREADY ASKED THIS WEEK — do not ask any of these again, in these words or "
+                     "others. A follow-up must ask something these did not: a different protein, residue range, "
+                     "organism or instrument:\n- " + "\n- ".join(_asked))
     except Exception:
         pass
     if waiting:

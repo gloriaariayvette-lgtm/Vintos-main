@@ -11,7 +11,11 @@ arguments". Paging, formatting, sorting and date bounds are dropped; size/max_re
 UniProt's 8, PubMed's 6); gene_name, organism and the like map to the source's fields; an empty uniprot.none with
 one accession in the question reads that accession. Anything else is still refused, and now named.
 
-Not done: 23 repeat or spent-question refusals and waits, 6 reviews with unresolved target identity, and refusals
+Fixed 16 October, the repeats: repeat() refuses a question sharing most of its words with any question run in
+the last 7 days, but the planner was shown only its last ten lookup keys and none of the questions. It now sees
+every lookup and every question it ran this week (compact, capped). Not yet seen working live.
+
+Not done: 23 repeat or spent-question refusals and waits (fix above, unmeasured), 6 reviews with unresolved target identity, and refusals
 for missing accessions, contradictory organism scope and too many identities. Those are the planner proposing
 what the Lab rightly refuses; nothing here makes it propose better yet.
 
