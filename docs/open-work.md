@@ -3,6 +3,17 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the intent engine misses most of its targets (not done; handed to Codex)
+
+Measured on Aegis with `scripts/subcon_accuracy.py`, 117 intents over 30 days, each judged per axis:
+field landed 16% / partly 15% / missed 68%; gloria 21% / 32% / 48%; self 27% / 28% / 45%. The judge is his own
+model grading his own move (`intent_engine._judge_realized`), so the real rate is likely lower.
+
+Gloria asked for the source fixed, not the numbers: how targets are chosen and how they reach his reply
+(`scripts/intent_engine.py`: `select_target`, `record_pending`, `resolve_previous`; and its consumers).
+
+Not done: Claude Code cannot work on this one (stopped by its safety check). Proposed on the bench for Codex.
+
 ## 16 October — the Forge's Lab copies leave the Atelier
 
 84 of the Atelier's 95 projects were Forge copies (sealed, gestating, 74 pieces); his own work was 11 projects, 34
