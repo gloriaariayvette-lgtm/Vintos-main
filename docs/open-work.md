@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
+
+Since the deploy, 24 faults and no notebook rows: every pass failed "model returned no JSON object". The kept raw
+replies were the local model answering the Lab's own repeat refusal ("structure_evidence for 5nh1 was already run")
+as a person asking for help, in prose. Every planner request now ends on its output contract (`PLAN_TAIL`), a prose
+reply is asked for once more as JSON, and a planner prompt over 60,000 characters loses its oldest context, not its
+instructions (LM Studio drops the start of an input that will not fit). Each prose reply and each cut is written to
+faults.jsonl with the prompt's size (`plan_not_json`, `plan_prompt_trimmed`).
+
+Not done: not yet seen working live; the next read of faults.jsonl says whether prose replies stopped and how long
+the planner's prompts actually are. Why 5nh1 was proposed again after being refused is not yet known.
+
 ## 16 October — the JEPA self head is trained on him (code done; not yet trained or evaluated on Aegis)
 
 Measured over 30 days: self-head error 0.50-0.52 cosine distance at every confidence, confidence 84% correlated
