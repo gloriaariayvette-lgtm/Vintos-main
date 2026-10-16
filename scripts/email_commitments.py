@@ -234,8 +234,10 @@ def block():
     if len(owed) > len(rows):
         out.append("(%d more after these.)" % (len(owed) - len(rows)))
     out.append("Open one with WORK: naming its EC- id; or close one on its own line: PROMISE DONE EC-id: the proof, or "
-               "PROMISE DROPPED EC-id: why (already done elsewhere, overtaken, or not worth it now). Keep each "
-               "source's numbers as that source wrote them.")
+               "PROMISE DROPPED EC-id: why (already done elsewhere, overtaken, or not worth it now). The proof goes on that "
+               "same line: the numbers, the file or the link themselves; \"above\" or \"posted earlier\" is not proof "
+               "(2026-10-15: EC-45d55a56 had its TM-score and RMSD and stayed open). Keep each source's numbers as that "
+               "source wrote them.")
     return "\n".join(out)
 
 

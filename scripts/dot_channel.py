@@ -323,7 +323,9 @@ RULES_APPROVE = (
     "only, into its own folder under ~/.vintos/tools/, nothing system-wide and no sudo; a GPU run at most %d hours "
     "and never while a Lab fold is running; and each one uses one of dot's large tests. Deny what is outside that, "
     "or not worth a large test today. Never approve spending money, a secret, or anything that cannot be undone: "
-    "say it needs Gloria, and she decides.\n" % (APPROVE_GB_EACH, KEEP_FREE_GB, GPU_RUN_HOURS))
+    "say it needs Gloria, and she decides. Dot calls Gloria \"Eve\": Eve is Gloria, never a separate approver. If dot "
+    "says your approval is not enough, nobody has refused anything: put that one thing to her with ASK GLORIA, and "
+    "never say she or Eve refused unless her answer says so (2026-10-15).\n" % (APPROVE_GB_EACH, KEEP_FREE_GB, GPU_RUN_HOURS))
 RULES_AGENTS = (
     "Your agents in this channel, and how to reach each: write @ and the name in your message.\n"
     "- @dot (ChatGPT): runs things on Aegis, the Mac and its own computer; plugins. Large tests are limited (10 a "

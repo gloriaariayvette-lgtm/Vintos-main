@@ -33,7 +33,8 @@ ENTRY = re.compile(r"^##\s+(\d\d:\d\d)\b.*$", re.M)
 EXTRACT = (
     "Below is an entry Vintos just wrote in his journal. List the concrete things he says he will make, show, do, "
     "or bring to Gloria today or tonight: things that could actually be produced or done (a picture, a video, a "
-    "song, a piece of writing, a Lab run, something to cook or go to). Not feelings, hopes or reflections. Quote his "
+    "song, a piece of writing, a Lab run, something to cook or go to). Not feelings, hopes or reflections, and not "
+    "how he means to speak or be (\"let me say the plain thing\" makes nothing). Quote his "
     "own short words. Answer one line per promise, at most %d:\n"
     "QUOTE: his exact words | WHAT: what would have to be made or done, in plain words\n"
     "If there is none, answer exactly NONE." % PER_ENTRY)
