@@ -173,9 +173,31 @@ def main():
     log("scene '%s' | %d objects | attention '%s' | %s" %
         (out["scene"][:40], len(kept), out["attention"][:40], out["self_presence"]))
 
+def _home_map(presence):
+    """The floor plan of her house, whole, while she is at home (Gloria, 16 October: "He should ALREADY have the 1d
+    map in the prompt" when she is home). At home = her phone freshly seen on the house Wi-Fi. '' otherwise."""
+    if not presence:
+        return ""
+    try:
+        import house_map
+        sketch = house_map.sketch_block()
+        return ("[HER HOUSE - she is home. The floor plan, as she drew it:]\n" + sketch) if sketch else ""
+    except Exception:
+        return ""
+
+
 def get_world_block():
     st = load(OUT, {})
-    if not st: return ""
+    try:
+        import home_presence
+        _home = _home_map(home_presence.context_line())
+    except Exception:
+        _home = ""
+    block = _scene_block(st) if st else ""
+    return "\n".join(x for x in (block, _home) if x)
+
+
+def _scene_block(st):
     scene = st.get("scene", ""); att = st.get("attention", "")
     objs = [o.get("name", "") for o in st.get("objects", []) if isinstance(o, dict) and o.get("salience", 0) >= 0.35]
     # her phone on the house wifi: a positive, fresh reading only — silence otherwise
