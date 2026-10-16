@@ -28,7 +28,8 @@ json.dump(hist, open(os.path.join(MEM, "gloria-prediction-history.json"), "w"))
 json.dump([{"timestamp": iso(1), "realized": "YES", "target": {"goal": "g", "success_criterion": "c"}},
            {"timestamp": iso(1), "realized": "NO", "target": {"goal": "g", "success_criterion": "c"}},
            {"timestamp": iso(1), "realized": "HELD", "target": {}},
-           {"timestamp": iso(1), "realized": None, "target": {"field_state": "x"}}],
+           {"timestamp": iso(1), "realized": None, "target": {"field_state": "x"}},
+           {"timestamp": iso(1), "realized": {"field": "NO", "gloria": "YES", "self": None}, "target": {"goal": "g"}}],
           open(os.path.join(MEM, "intent-ledger.json"), "w"))
 json.dump({"n_joined": 40, "n_holdout": 13, "g": {"monotonicity_conf_vs_err": -0.4, "CONTROL_dsim_vs_err": -0.1,
            "bins_low_mid_high_err": [0.5, 0.4, 0.3]}, "s": {"unmeasured": "placeholder"}, "axis_lockstep_corr": None},
@@ -38,8 +39,9 @@ cut = now - timedelta(days=30)
 g = "\n".join(A.gloria_prediction(cut)); i = "\n".join(A.intent(cut)); j = "\n".join(A.jepa(cut))
 check("graded predictions counted inside the window only", "graded: 10" in g and "held (tactical window): 1" in g, g)
 check("hits and misses split by grade", "right 3 (30%)" in g and "missed 5 (50%)" in g, g)
-check("intent verdicts tallied; unresolved shown, not dropped", "YES 1" in i and "UNRESOLVED 1" in i and "HELD 1" in i, i)
-check("criterion-judged intents reported apart", "with a declared success criterion: 2 of 4" in i and "landed 50%" in i, i)
+check("single verdicts tallied; held and unresolved counted apart", "overall  landed 50%, partly 0%, missed 50%  (2 decided, 2 unresolved)" in i, i)
+check("three-axis verdicts tallied per axis", "gloria   landed 100%" in i and "field    landed 0%" in i and "self" not in i.split("gloria")[-1].split("\n")[1:2], i)
+check("intents with a criterion are counted", "with a declared success criterion: 3 of 5" in i, i)
 check("the self-judging caveat is printed", "his own model grading his own move" in i)
 check("gloria head reads as useful only when it beats its control", "confidence means something" in j, j)
 check("a placeholder self axis is reported unmeasured", "self    unmeasured" in j, j)
