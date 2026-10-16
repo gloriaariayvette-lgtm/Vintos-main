@@ -166,6 +166,7 @@ SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py trial_extractor.py"
 SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py dot_lounge.py eve_depth.py lounge_field.py room_work.py awaiting_evidence.py evidence_delivery.py want_board.py gloria_asks.py grok_reach.py midi_check.py citation_trace.py claude_cache.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
+SCRIPTS="$SCRIPTS mutual_simulation.py"   # in no list, so its fixes never reached Aegis (subconscious review, 2026-10-16)
 SCRIPTS="$SCRIPTS her_words.py"   # her own words apart from a photo or video's composed description (2026-10-16)
 SCRIPTS="$SCRIPTS landing_understanding.py"   # her Landings notes become understanding of her, each line her yes (2026-10-16)
 SCRIPTS="$SCRIPTS policy_decisions.py"   # her four policy decisions, in one place (reviews 189-192, 2026-09-10)
@@ -185,6 +186,7 @@ memory_index.py wal-decay.py interaction_ledger.py"
 # clustering logic behind a file that looked current. Every .py twin that exists on disk is
 # named here, so the two spellings can never drift apart on the host again (2026-09-11).
 BINS="$BINS ambition_review.py behavioral_intercept.py blush_ledger.py causal_cluster.py causal_observations.py confession-writer.py core_engine.py deviation-check.py humor-detector.py humor-reaction.py latent-threads.py music_share.py taste_reflection.py taste_vector.py temporal_memory.py thread_resolution.py thread_triage.py thread-weaver.py wal_decay.py wants_router.py weekly_summary.py"
+BINS="$BINS moment-index.py moment_index.py"   # his recent moments: in no list, so its index fix never reached Aegis (2026-10-16)
 BINS="$BINS want-reconciliation.py"   # nightly: a want is fulfilled only by evidence about it (2026-10-05; was never in the manifest)
 BINS="$BINS soul-review.py soul_review.py wants-ambitions-log.py wants_ambitions_log.py"   # soul-review.sh runs soul_review.py and wants-check runs the log; neither was in the manifest, so edits to them never reached Aegis (2026-10-13)
 BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissioning probes; manual install on Mac
