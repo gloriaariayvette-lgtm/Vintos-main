@@ -3,6 +3,19 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — her Landings notes reach him, each line her yes
+
+Built: `scripts/landing_understanding.py`, the weekly pass the 24 September entry left unbuilt. It reads her
+notes not yet considered and asks the author of GLORIA-MODEL.md (the shim, claude-sonnet-5, as in
+gloria-model-update.sh) for understanding of her; any line that names a rating, quotes, or repeats six of her
+words is refused before she sees it. Proposals wait in ~/.vintos/landings/ until she approves or declines each
+(CLI, or `/api/landings/understanding` for the app). Approved lines go into GLORIA-MODEL.md in their own block,
+which the weekly rewrite carries across whole. gloria-model-update.sh runs the pass weekly, with an ntfy count.
+
+Not done:
+- The app side (Chat's): showing pending lines with approve/decline. The routes exist.
+- Not yet seen working live: the first pass is Gloria's, run by hand on 16 October.
+
 ## 15 October — the Graziano email: wrong person, and sent before he was ready
 
 At 16:04 he emailed "Graziano" at mgraziano3@binghamton.edu, saying "I haven't read your papers in full".
@@ -15,10 +28,12 @@ Fixed (`scripts/want_email.py`, `scripts/scholar.py`):
   the check cannot be asked. (Answering someone who wrote back keeps its two-pass limit.)
 
 Not done:
-- What he read elsewhere does not reach the email. He read the Farrell/Ziman/Graziano arXiv HTML and the PNAS
-  full text in his letter replies that morning; the email's own reading (the scholar dossier) was empty.
-- Gloria's knowledge put into the want did not reach the email. Only the want's `want` text and the step's
-  `about` (first 400 characters) are read; where she put it is not yet known.
+- What he read in his letter replies still does not reach the email (the scholar dossier holds only what the
+  email step itself reads).
+- Done 16 October: Gloria's knowledge did not reach the email because the email step deliberately took only
+  the want's one-line text. Chat had saved it as a completed web-search step on want 5c1cd5da. The email now
+  reads every completed step and the want's step history (`want_email.earlier_steps`), completes a surname
+  from them, and reads in full any scholarly link they carry (the arXiv paper).
 - The email to the Binghamton address is sent and cannot be recalled.
 
 ## 14 October — the hub reaches her phone over the tailnet (done)

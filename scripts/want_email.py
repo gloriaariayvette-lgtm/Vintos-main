@@ -512,6 +512,38 @@ def _send_approved(ap, contacts, send=None):
 
 
 
+WANTS = os.path.join(MEMORY, "current-wants.json")
+
+
+def earlier_steps(want_id, path=None):
+    """What this want's earlier steps already found, as text: his own steps' findings and any completed step
+    Gloria or Chat added by hand (2026-10-16: Chat saved the corrected reading of the Farrell/Ziman/Graziano
+    paper as a completed web-search step on want 5c1cd5da, and the email never saw it, because the email step
+    took only the want's one-line text). '' when the want or its steps cannot be found."""
+    if not want_id: return ""
+    data = _load(path or WANTS, {})
+    wants = data if isinstance(data, list) else (data.get("wants") or []) if isinstance(data, dict) else []
+    want = next((w for w in wants if isinstance(w, dict) and w.get("id") == want_id), None)
+    if not want: return ""
+    out, seen = [], set()
+    def add(label, *values):
+        text = "\n".join(str(v).strip() for v in values if isinstance(v, str) and v.strip())
+        if text and text not in seen:
+            seen.add(text); out.append("- %s: %s" % (label, text))
+    for h in want.get("step_history") or []:
+        if isinstance(h, dict):
+            add("step %s (%s)" % (int(h.get("step", 0)) + 1 if str(h.get("step", "")).isdigit() else "?", h.get("capability", "?")),
+                h.get("findings"), h.get("note") if h.get("note") != h.get("findings") else "")
+    for i, st in enumerate(want.get("steps") or []):
+        if isinstance(st, dict) and str(st.get("status", "")).lower() in ("completed", "done", "complete"):
+            params = st.get("params") if isinstance(st.get("params"), dict) else {}
+            add("step %d (%s)%s" % (i + 1, st.get("capability") or st.get("action") or "?",
+                                    " - %s" % st["source"] if isinstance(st.get("source"), str) else ""),
+                *[st.get(k) for k in ("findings", "result", "results", "output", "summary", "note", "content")],
+                *[params.get(k) for k in ("findings", "result", "summary", "content")])
+    return "\n".join(out)[:12000]
+
+
 HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend reading before he answers anyway
 
 
@@ -524,7 +556,8 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, blocked
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
-    recipient = full_name(recipient, want_text, params.get("about"))
+    known = earlier_steps(want_id)
+    recipient = full_name(recipient, want_text, params.get("about"), known)
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""
     if not to:
@@ -557,12 +590,14 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     found = research(recipient or to, about, search=search, fetch=fetch)
     if not found.strip():
         return False, "a search found nothing about %s to write from" % (recipient or to)
-    # Then their actual work, read in full where it is free to read.
-    reading, dossier = _study(to, recipient, about, get=get, think=think)
+    if known:
+        found += "\n\nWHAT THIS WANT'S EARLIER STEPS ALREADY FOUND (some may be research Gloria supplied):\n" + known
+    # Then their actual work, read in full where it is free to read, and any paper an earlier step pointed to.
+    scholar, _ = _helpers()
+    reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(known) if known else ())
     stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
                         think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
-    scholar, _ = _helpers()
     # He writes only when ready. Never "after two passes, anyway" (2026-10-15: he told Graziano "I haven't read
     # your papers in full" and sent it), and never when the readiness question could not be asked.
     ready, need = scholar.enough(about, stance, reading, think=think,
