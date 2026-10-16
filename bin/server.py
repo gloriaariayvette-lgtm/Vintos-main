@@ -10207,6 +10207,16 @@ Your current self-model (excerpt):
                         _av_lmt.write(str(int(time.time())))
                 except Exception: pass
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
+            if not _test_turn:
+                # The lossless record (chat-canonical.jsonl) took only the chat doors, and her conversation is here:
+                # on Aegis the file had never been written (16 October), so every exchange older than the ledger's
+                # 300 was lost to everything that learns from them. Her row carries her own words beside the
+                # composed text, and both rows the turn id.
+                _cv_tid = _turn.turn_id if _turn is not None else ""
+                _cv_rows = [r for r in av_history[-2:] if isinstance(r, dict)]
+                _canon_append([dict(r, turn_id=_cv_tid, **({"original_text": _counterpart_text} if r.get("role") == "user"
+                                                          and _counterpart_text else {})) for r in _cv_rows],
+                              surface=_surface)
             if _surface != "reelroom" and not _test_turn:
                 with open(av_chat_log, "w") as f:
                     json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in av_history[-40:]], f, indent=2)
