@@ -564,7 +564,10 @@ def _retire_stale_unconfirmed(db, today=None):
             kept.append(h); continue
         tenure = GHOST_BRANCH_TENURE_DAYS if h.get("source") == "ghost_branch" else ORDINARY_TENURE_DAYS
         ready = graduation_readiness(h, today=now)
-        if age < tenure or ready.get("state") == "eligible_day_7":
+        # Keep the final day's review available until the nightly pass has run.
+        final_night_missing = age == tenure and not any(
+            m.get("date") == now.isoformat() for m in _nightly_rows(h))
+        if age < tenure or final_night_missing or ready.get("state") == "eligible_day_7":
             kept.append(h); continue
         h["status"] = "retired"
         h["retirement"] = {"at": datetime.now().isoformat(),
@@ -1066,6 +1069,10 @@ def graduate_hypotheses(db):
                        else ORDINARY_TENURE_DAYS)
 
         if days_old >= tenure_days:
+            if days_old == tenure_days and not any(
+                    m.get("date") == _date.today().isoformat() for m in _nightly_rows(h)):
+                remaining.append(h)
+                continue
             ready = graduation_readiness(h)
             h["graduation_readiness"] = ready
             if ready["state"] != "eligible_day_7":
@@ -1953,14 +1960,10 @@ def main():
     # Load existing hypotheses
     db = load_existing_hypotheses()
 
-    # Test existing hypotheses — always runs before formation cap check
-    log("Testing existing hypotheses...")
-    daily_material = load_testing_context()
-    test_existing_hypotheses(db, daily_material, spikes=spikes, context=daily_material)
-    log(f"Testing complete. Hypotheses with marks: {len([h for h in db['hypotheses'] if h.get('marks')])}")
-    n_grad, n_retired = graduate_hypotheses(db)
-    log(f"Graduation: {n_grad} graduated | {n_retired} retired (not resolved)")
-    save_hypotheses(db)
+    # This is the formation pass, also scheduled before dawn. Only --nightly
+    # consumes the daily review or decides tenure: otherwise 03:37 occupies the
+    # date and the evening review silently skips the rest of that day's evidence.
+    log("Formation pass: daily testing and tenure decisions belong to --nightly")
 
     # Form new hypotheses about recent spikes — capped at 3/day
     from datetime import date as _capdate

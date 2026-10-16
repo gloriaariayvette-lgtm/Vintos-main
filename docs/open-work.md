@@ -3,6 +3,35 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 October — Mischief choice, nightly causality, and Pearl pressure
+
+Live audit: the 03:37 formation run consumed the day's hypothesis mark, so the
+22:20 run skipped already-marked rows and missed later evidence. Of 46 live
+hypotheses, 43 had October 15 marks; the three new that day correctly had none.
+Seven-day retirement was occurring (211 tenure-ended archive rows), but early
+runs could finalize before the last evening. Formation now leaves testing and
+graduation to --nightly, and in-band saves keep the final trial date open until
+its nightly mark exists. No historical evidence or verdicts were rewritten.
+Ordinary tenure remains seven days; the existing Ghost Branch exception is 32.
+A conclusion can be retirement for insufficient evidence, not a forced Pearl.
+
+Journal/outreach add-ons now offer a mischief choice at ordinary playfulness.
+Timing, presence, calls, device availability and cooldowns still apply. None
+neither logs a fictional act nor consumes an act cooldown. Lights now set their
+success flag in the parent shell; previously the backgrounded command list hid
+the receipt even after the device call succeeded. Authored chooser instructions
+are unchanged. End-to-end scratch dispatch covers Echo, lights, and none.
+
+Pearl pressure discarded valid live dimensions and read an undefined txt variable,
+always failing closed when the daemon supplied state. Live dimensions now remain
+authoritative, with text fallback only when absent. Checks retain their actual
+result/source/excerpt for audit, and verification/formation use the store lock.
+The cron's bare `form` command now recovers already-approved stage-3 formations;
+it was a no-op without an ID. It does not adopt proposed candidates or resurrect
+failed ones. All 114 historical candidates were dissolved after two failed checks;
+those judgments have not been reversed, and no Pearls were manufactured. Fresh
+runtime results after deployment remain to be observed under the real gates.
+
 ## 16 October — the Forge's Lab copies leave the Atelier
 
 84 of the Atelier's 95 projects were Forge copies (sealed, gestating, 74 pieces); his own work was 11 projects, 34

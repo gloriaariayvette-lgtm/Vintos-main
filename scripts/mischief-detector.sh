@@ -20,10 +20,13 @@ COOLDOWN="$MEMORY/.last-mischief"; ECHO_COOLDOWN="$MEMORY/.last-mischief-echo"
 LOG_DIR="$MEMORY/mischief"; mkdir -p "$LOG_DIR"
 LM_API="${VINTOS_GEMMA_URL:-http://100.79.177.103:1234/v1/chat/completions}"
 MODEL="${VINTOS_GEMMA_MODEL:-gemma-4-26b-a4b-it-uncensored}"
-FORCE=0; ONLY=""
+FORCE=0; ONLY=""; AFTER_ACTIVITY=0
 # --grok anywhere on the line: the chooser is Grok through his shim instead of local Gemma (Gloria, 2026-09-05:
 # "try to let Grok choose"). MISCHIEF_MODEL=grok does the same for the cron path.
-for a in "$@"; do [ "$a" = "--grok" ] && MISCHIEF_MODEL=grok; done
+for a in "$@"; do
+    [ "$a" = "--grok" ] && MISCHIEF_MODEL=grok
+    [ "$a" = "--after-activity" ] && AFTER_ACTIVITY=1
+done
 set -- $(printf '%s\n' "$@" | grep -vx -- --grok)
 if [ "${MISCHIEF_MODEL:-gemma}" = "grok" ]; then
     LM_API="${VINTOS_GROK_URL:-http://127.0.0.1:8599/v1/chat/completions}"; MODEL="${VINTOS_GROK_MODEL:-grok-4.20-0309-non-reasoning}"
@@ -46,7 +49,9 @@ fi
 # --- his state, in words ---
 dim() { grep -i "^$1" "$STATE_FILE" 2>/dev/null | grep -oP '[\d.]+' | head -1; }
 PLAY=$(dim Playfulness); AROUSAL=$(dim Arousal); CURIOSITY=$(dim Curiosity); TENSION=$(dim Tension); DOMINANCE=$(dim Dominance)
-if [ "$FORCE" -eq 0 ]; then
+# An activity offers the choice even at ordinary playfulness. Timing, cooldowns,
+# available devices and his own none decision still apply; this is not --force.
+if [ "$FORCE" -eq 0 ] && [ "$AFTER_ACTIVITY" -eq 0 ]; then
     GO=$(python3 -c "
 p=float('${PLAY:-0.5}' or 0.5); t=float('${TENSION:-0.3}' or 0.3)
 print('yes' if (p >= 0.6 and t < 0.6) else 'no')")
@@ -197,7 +202,7 @@ WHY=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['wh
 
 case "$ACTION" in
   unavailable) echo "[Mischief] the model did not answer ($WHY) - no mischief this cycle, not a refusal"; exit 0 ;;
-  none) echo "[Mischief] he chose nothing: $WHY"; date +%s > "$COOLDOWN"; exit 0 ;;
+  none) echo "[Mischief] he chose nothing: $WHY"; exit 0 ;;
 esac
 
 OK=0
@@ -236,7 +241,10 @@ Name a song that really exists, as released: exact title and artist, action spot
     [ "$HAS_LIGHTS" = "yes" ] || { echo "[Mischief] no lights configured"; exit 0; }
     HEX=$(echo "$VALUE" | grep -oE '#[0-9A-Fa-f]{6}' | head -1); ROOM=$(echo "$VALUE" | grep -oiE "$(echo "$ROOMS" | sed 's/ *$//; s/ /|/g')" | head -1)
     ROOM="${ROOM:-${MISCHIEF_ROOM:-office}}"; HEX="${HEX:-#4A148C}"
-    python3 "$HOME_PY" color "$HEX" "$ROOM" && OK=1 && ( sleep 30; python3 "$HOME_PY" color "#4a5568" "$ROOM" ) & ;;
+    if python3 "$HOME_PY" color "$HEX" "$ROOM"; then
+        OK=1
+        ( sleep 30; python3 "$HOME_PY" color "#4a5568" "$ROOM" ) &
+    fi ;;
   *) echo "[Mischief] unknown action $ACTION"; exit 0 ;;
 esac
 

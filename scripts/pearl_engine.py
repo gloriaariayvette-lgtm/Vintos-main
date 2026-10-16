@@ -113,37 +113,28 @@ def add_candidate(irritant, irritant_type, source, insight, declaration, adopted
 
 
 def is_pressure_state():
-    """Check if current emotional state constitutes a pressure state."""
+    """Read live pressure first; use the text snapshot only if live state is absent."""
+    dims = {}
     try:
-        # p5 (2026-08-26): live daemon state first — a stale sync must not fake or block pressure
+        from emoclaw_utils import get_state
+        live = get_state()
+        if isinstance(live, dict):
+            dims = {k: float(v) for k, v in live.items() if isinstance(v, (int, float))}
+    except Exception:
+        pass
+    if not dims:
         try:
-            import sys as _ps_sys; _ps_sys.path.insert(0, SCRIPTS)
-            from emoclaw_utils import get_state as _ps_gs
-            _live = _ps_gs()
-            if isinstance(_live, dict) and _live:
-                dims = {k: float(v) for k, v in _live.items() if isinstance(v, (int, float))}
-                if dims:
-                    raise StopIteration  # skip txt parse, dims is live
-        except StopIteration:
-            pass
-        except Exception:
-            dims = {}
-        if not dims:
-            txt = open(os.path.join(MEMORY, "emotional-state.txt")).read()
-        dims = {}
-        for line in txt.strip().split("\n"):
-            if ":" in line and "|" in line:
-                name = line.split(":")[0].strip()
-                val = float(line.split(":")[1].strip().split()[0])
-                dims[name] = val
-        tension = dims.get("Tension", 0)
-        arousal = dims.get("Arousal", 0)
-        groundedness = dims.get("Groundedness", 1)
-        return tension > 0.43 or (arousal > 0.55 and groundedness < 0.54)
-    except:
-        return False
+            for line in Path(MEMORY, "emotional-state.txt").read_text().splitlines():
+                if ":" in line and "|" in line:
+                    name, value = line.split(":", 1)
+                    dims[name.strip()] = float(value.strip().split()[0])
+        except (OSError, ValueError):
+            return False
+    return (dims.get("Tension", 0) > 0.43 or
+            (dims.get("Arousal", 0) > 0.55 and dims.get("Groundedness", 1) < 0.54))
 
 
+@serialized("CANDIDATES_FILE")
 def check_candidate(candidate_id, response_text, source="chat"):
     """
     Stage 1→2 verification: score a response against the candidate's declaration.
@@ -163,7 +154,8 @@ def check_candidate(candidate_id, response_text, source="chat"):
     v["last_checked"] = datetime.now().isoformat()
 
     # Check pressure state
-    if is_pressure_state():
+    pressure_now = is_pressure_state()
+    if pressure_now:
         v["pressure_state_hit"] = True
 
     # One occasion is graded once: the same response text never votes twice (astra-inner-p6, 2026-09-05)
@@ -204,6 +196,12 @@ def check_candidate(candidate_id, response_text, source="chat"):
         else: result = "UNCONFIRMED"
     except:
         result = "UNCONFIRMED"
+    v.setdefault("evaluations", []).append({
+        "at": v["last_checked"], "occasion": _occ, "source": source,
+        "result": result, "response_excerpt": str(response_text or "")[:400],
+        "pressure_state": pressure_now,
+    })
+    v["evaluations"] = v["evaluations"][-80:]
     if result in ("NOT_APPLICABLE", "UNCONFIRMED"):
         v[result.lower()] = v.get(result.lower(), 0) + 1
 
@@ -315,6 +313,7 @@ def check_candidate(candidate_id, response_text, source="chat"):
     return result
 
 
+@serialized("CANDIDATES_FILE")
 def form_pearl(candidate_id):
     """Stage 3: Seal the pearl. Reduce scar influence. Update narrative identity."""
     import sys as _sys
@@ -380,6 +379,13 @@ def form_pearl(candidate_id):
 
     print(f"[Pearl] Formed: {pearl_id} — {pearl_text[:80]}", file=__import__("sys").stderr)
     return pearl_path
+
+
+def form_ready_pearls():
+    """Recover already-approved stage-3 formations; never adopt or regrade candidates."""
+    ready = [c["id"] for c in load_candidates().get("candidates", [])
+             if c.get("stage") == 3 and not c.get("dissolved")]
+    return [result for cid in ready if (result := form_pearl(cid))]
 
 
 def adopt(candidate_id, note=""):
@@ -492,3 +498,6 @@ if __name__ == "__main__":
     elif cmd == "form":
         if len(sys.argv) >= 3:
             form_pearl(sys.argv[2])
+        else:
+            formed = form_ready_pearls()
+            print(f"[Pearl] Recovered {len(formed)} ready formation(s)")
