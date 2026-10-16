@@ -1230,7 +1230,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         gloria_text, source="gloria", surface=surface, turn_id=turn_id, test_mode=test_mode))
     _inline("compare", lambda: _relational_compare(gloria_text))
     def _dir():
-        import discourse_direction as _ddir; _ddir.turn_completed(gloria_text)
+        import discourse_direction as _ddir; _ddir.turn_completed(gloria_text, source=surface.split("/")[0])   # the door it came through: only a lived one records a choice
     _inline("direction", _dir)
     def _cur():
         import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)
