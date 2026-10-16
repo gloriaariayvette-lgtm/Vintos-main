@@ -44,12 +44,23 @@ def _ev_load(path, default=None, _o=load):
 
 load = _ev_load
 
+def _her_turn(row):
+    """Her words, not a photo's or video's composed description (her_words, 16 October)."""
+    try:
+        import sys as _hs, os as _ho
+        _hs.path.insert(0, _ho.path.dirname(_ho.path.abspath(__file__)))
+        from her_words import as_her_turn
+        return as_her_turn(row) or row.get("content", "")
+    except Exception:
+        return row.get("content", "")
+
+
 def _last_exchange():
     hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content")]
     g = v = ""
     for e in reversed(hist):
         if e.get("role") == "assistant" and not v: v = e.get("content", "")
-        elif e.get("role") == "user" and not g: g = e.get("content", "")
+        elif e.get("role") == "user" and not g: g = _her_turn(e)
         if g and v: break
     return g, v
 

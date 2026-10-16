@@ -31,7 +31,10 @@ merged = os.path.join(MEM, "chat-history-merged.json")
 # Fields that must survive the merge or a protection silently stops applying.
 CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          "capsule_commitment", "stratagem_id", "surface", "eligible",
-         "admitted", "offered", "withheld", "tactical")
+         "admitted", "offered", "withheld", "tactical",
+         # what she sent and what she herself said: without these a photo's description reads as her words
+         # to every reader of the merged file (Chat's subconscious review, 16 October)
+         "input_kind", "original_text")
 # Where a per-turn time can legitimately live, in order of preference.
 TIME_KEYS = ("timestamp", "ts", "time", "at", "created")
 
