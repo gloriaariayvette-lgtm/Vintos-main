@@ -19,7 +19,12 @@ the rotation passes to the next lens, and a failed Lab turn falls to Grok, never
 Not done:
 - Dot will not take his APPROVED: lines for installs (json_repair, TM-align, eliot), though Gloria gave him that
   room on 1 October. Dot's own standing instructions are outside this repository; only Gloria can tell dot.
-- The Forge refuses Lab reports with 403 four_unfinished: four unfinished undertakings fill it.
+- The Forge refuses Lab reports with 403 four_unfinished: four Lab capability checks, all `ready`, fill its four
+  Lab slots (SLC26A4 STAS structural modeling, erythroid TF motifs, p.H723R on a structure, restricted database
+  access). Lab projects sort last for the Forge's three daily steps, so they wait behind everything else. Fixed
+  16 October: the Lab's hold no longer stands for ever when the Forge's project list cannot be read (it read
+  null on Aegis; the hold of 14 October 05:05 had stood two days). Not done: why the list reads null, and
+  whether to cancel the four (her Forge page) or let them run.
 - SF-fc795076 (keep returned gene symbols when a source mismatch is raised) is queued; dot noted its scope does
   not yet say the matching rules stay unchanged.
 

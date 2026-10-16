@@ -228,14 +228,30 @@ def _forge_projects(cfg):
         return None
 
 
+UNREADABLE_RETRY_S = 6 * 3600     # a hold on a Forge whose project list cannot be read is tried again after this
+
+
+def _pause_at(pause):
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(pause.get('at'))).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def held(cfg):
     """Why a report may not be sent now, or '': the Forge said four_unfinished and its open count has not moved, or
     another refusal's timed pause has not run out. A changed count lifts the four_unfinished hold."""
     pause = lab._load(REPORT_PAUSE, {}) or {}
     if pause.get('guard') == 'four_unfinished':
         count = forge_unfinished(cfg)
-        if count is None or count == pause.get('unfinished'):
+        if count is None and time.time() - _pause_at(pause) < UNREADABLE_RETRY_S:
             return 'four_unfinished'
+        if count is not None and count == pause.get('unfinished'):
+            return 'four_unfinished'
+        # the count moved, or the Forge's list has been unreadable this long: one offer goes, and a Forge still full
+        # says four_unfinished again and holds afresh (2026-10-16: the list read null and the hold of 14 October 05:05
+        # had stood for two days, with no way to see the count move)
         try: os.unlink(REPORT_PAUSE)
         except FileNotFoundError: pass
         return ''

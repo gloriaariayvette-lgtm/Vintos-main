@@ -92,6 +92,16 @@ class ReportHold(unittest.TestCase):
         self.assertIn(self.flush(), ([["R1"]], [["R3"]]), "a changed count lets the outbox go again")
         self.assertEqual(src.held(lab.config()["forge_report_intake"]), "")
 
+    def test_an_unreadable_forge_does_not_hold_for_ever(self):
+        # 2026-10-16: the Forge's list read null on Aegis, and a hold set on 14 October at 05:05 had stood two days.
+        with self.assertRaises(urllib.error.HTTPError): src.offer_report(["R1"], GAP, send=Full())
+        src.fetch_projects = lambda: (_ for _ in ()).throw(OSError("the Forge does not answer"))
+        cfg = lab.config()["forge_report_intake"]
+        self.assertEqual(src.held(cfg), "four_unfinished", "unreadable, and only just held: still held")
+        pause = lab._load(src.REPORT_PAUSE, {})
+        pause["at"] = "2026-10-14T05:05:50.888886+00:00"; lab._atomic(src.REPORT_PAUSE, pause)
+        self.assertEqual(src.held(cfg), "", "unreadable for hours: one offer may go, and a full Forge holds it again")
+
     def test_an_unnamed_403_keeps_only_the_timed_pause(self):
         bare = lambda req, timeout=0: (_ for _ in ()).throw(
             urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"")))
