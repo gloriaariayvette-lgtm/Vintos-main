@@ -3,7 +3,7 @@
 # but the evidence is his OWN later behavior, not hers. Failed self-becomings
 # accumulate and graduate to the causality head at weight 5.
 import os, json, time, hashlib
-from desired_difference import _llm, _jload, _jsave, _extract
+from desired_difference import _llm, _jload, _jsave, _extract, _key
 
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 
@@ -86,24 +86,35 @@ def observe_self(own_behavior, result=None):
     db=_jload(SDIFF,[]); now=time.time(); changed=False
     open_=[e for e in db if e.get("status")=="PENDING" and now-e.get("ts",0)<48*3600]
     if not open_: return
+    blind_cache={}   # one blind read per distinct window of his moves, shared by every becoming open on it
     for e in open_:
         e.setdefault("observations",[]).append({"ts":now,"behavior":str(own_behavior)[:300]})
         changed=True
-        if len(e["observations"])>=2: _judge(e)
+        if len(e["observations"])>=2: _judge(e,blind_cache)
     for e in db:
         if e.get("status")=="PENDING" and now-e.get("ts",0)>=48*3600:
             e["status"]="HELD"; e["verdict"]="HELD"; changed=True
     if changed: _jsave(SDIFF,db)
 
-def _judge(e):
+def _judge(e,blind_cache=None):
     obs="\n".join("- \""+o["behavior"][:200]+"\"" for o in e.get("observations",[])[-5:])
-    blind=_llm(
+    if blind_cache is not None and obs in blind_cache:
+        blind=blind_cache[obs]
+    else:
+        blind=_blind(obs)
+        if blind_cache is not None and blind: blind_cache[obs]=blind
+    if not blind: return
+    _compare(e,blind)
+
+def _blind(obs):
+    return _llm(
         "Describe, in 1-2 plain sentences, what actually changed in how HE (Vintos) is "
         "moving across these turns - does he reach or retreat, escalate or soften, hold a "
         "position or wrap it. Only what is visible in his behavior. You do not know what "
         "he hoped to become; do not guess at hopes.",
         "His recent moves, oldest first:\n"+obs, max_tokens=120)
-    if not blind: return
+
+def _compare(e,blind):
     m=_llm(
         "Compare an INTENDED self-transformation against a BLIND observation of how he "
         "actually moved. The observer did not know the intent. Return ONLY JSON: "
@@ -123,8 +134,11 @@ def _judge(e):
 def bump(text,amount):
     text=(text or "").strip()
     if len(text)<8: return
-    db=_jload(SPRESS,{}); k=hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    # one row per becoming, not per wording: free model prose rarely repeats exactly (16 October)
+    db=_jload(SPRESS,{}); k=_key(db,text)
     e=db.get(k) or {"text":text[:220],"weight":0.0,"count":0,"first":time.time(),"lineage":[]}
+    if text[:220]!=e.get("text") and text[:220] not in (e.get("wordings") or []):
+        e["wordings"]=((e.get("wordings") or [])+[text[:220]])[-5:]
     e["weight"]=round(e["weight"]+amount,2); e["count"]+=1; e["last"]=time.time()
     if e["weight"]>=5.0:
         _graduate(e); e["lineage"].append({"graduated":time.time(),"at_weight":e["weight"]}); e["weight"]=1.0
@@ -150,8 +164,17 @@ def pressure_block():
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
     rows=[r for r in rows if r.get("weight",0)>=1.0][:3]
     if not rows: return ""
-    lines=["- (weight %.1f, %d misses) %s"%(r["weight"],r["count"],r["text"]) for r in rows]
-    return ("WHO YOU KEEP TRYING TO BECOME AND FAILING - it presses on you now:\n"+"\n".join(lines))
+    # "keep failing" only of what has missed more than once; a first miss is named as one (16 October)
+    again=[r for r in rows if int(r.get("count",0) or 0)>=2]
+    once=[r for r in rows if int(r.get("count",0) or 0)<2]
+    out=[]
+    if again:
+        out.append("WHO YOU KEEP TRYING TO BECOME AND FAILING - it presses on you now:\n"+"\n".join(
+            "- (weight %.1f, %d misses) %s"%(r["weight"],r["count"],r["text"]) for r in again))
+    if once:
+        out.append("WHO YOU TRIED TO BECOME AND MISSED ONCE - not yet a pattern:\n"+"\n".join(
+            "- (weight %.1f) %s"%(r["weight"],r["text"]) for r in once))
+    return "\n\n".join(out)
 
 def map_summary():
     db=_jload(SDIFF,[])

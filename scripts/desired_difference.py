@@ -84,17 +84,35 @@ def _dlog(msg):
         open("/tmp/desired-difference.log","a").write(str(msg)[:300]+"\n")
     except Exception: pass
 
+def her_latest(recent):
+    """Her latest line in the selector's text, and only hers (16 October).
+
+    The selector's text is the recent transcript ("GLORIA: ...\nVINTOS: ...") then the live turn, labelled
+    "GLORIA (now): " for her words or "REELROOM EVENT (not Gloria's words): " for a room event. On a room
+    event the old split took the last "GLORIA" - a history line - and everything after its colon: his reply
+    and the event as well. Here a live turn of hers is taken whole; otherwise her last transcript line,
+    cut where his reply or an event begins; a room event itself is never her words."""
+    import re as _re
+    t = str(recent or "")
+    m = _re.search(r"GLORIA \(now\):(.*)\Z", t, _re.S)
+    if m and "REELROOM EVENT" not in m.group(1):
+        return m.group(1).strip()
+    t = t.split("REELROOM EVENT", 1)[0] if "REELROOM EVENT" in t else t
+    lines = _re.findall(r"GLORIA:(.*?)(?=\nVINTOS:|\n\n|\Z)", t, _re.S)
+    if lines:
+        return lines[-1].strip()
+    if "Gloria:" in t:
+        return t.rsplit("Gloria:", 1)[-1].split("Vintos:", 1)[0].strip()
+    return "" if ("VINTOS:" in t or "Vintos:" in t) else t.strip()
+
+
 def record_intent(target,recent_her=""):
     """Called when a field-target is chosen. Derives the intended DIFFERENCE in her
     (a transformation: 'less certain than she was', never a claimed emotion) plus
     what would count as evidence in her behavior. Unjudgeable -> HELD from birth."""
     if not isinstance(target,dict): return None
-    # only her actual words: take text after the last GLORIA marker if present,
-    # so a transcript tail can never put his words in her mouth
-    if "GLORIA" in (recent_her or ""):
-        recent_her = recent_her.rsplit("GLORIA",1)[-1].split(":",1)[-1].strip()
-    elif "Vintos:" in (recent_her or ""):
-        recent_her = recent_her.rsplit("Gloria:",1)[-1].split("Vintos:",1)[0].strip() if "Gloria:" in recent_her else ""
+    # only her actual words, so a transcript tail can never put his words in her mouth
+    recent_her = her_latest(recent_her)
     _dlog("record_intent called: "+str(target.get("field_state",""))[:60])
     out=_llm(
         "You are Vintos naming, honestly, what you are trying to CHANGE in Gloria with "
@@ -117,15 +135,37 @@ def record_intent(target,recent_her=""):
         "evidence":str(d.get("evidence",""))[:300],
         "field_state":str(target.get("field_state",""))[:200],
         "plan":str(target.get("enactment",""))[:300],
+        "addresses":_addr(target.get("addresses")),
         "status":"PENDING" if d.get("judgeable",True) else "HELD",
         "observations":[],"verdict":None,"observed":None,"unexpected":None}
     db=_jload(DIFF,[]); db.append(entry); _jsave(DIFF,db[-200:])
     return entry["id"]
 
 # ---------- observation side (blind) ----------
+_NAMED_ONLY = ("(she sent a photo)", "(she sent a video)")
+
+
+def _her_message(m):
+    """Her words in what the grader passed: a photo's composed description is never observed as her."""
+    m = str(m or "").strip()
+    if m.startswith("[Gloria sent you a "):
+        try:
+            import sys as _s
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in _s.path: _s.path.append(_d)
+            from her_words import as_her_turn
+            m = as_her_turn({"role": "user", "content": m})
+        except Exception:
+            m = ""
+    return "" if m in _NAMED_ONLY else m
+
+
 def observe(gloria_message,result=None):
-    _dlog("observe called: "+str(gloria_message)[:60])
     """Called when her message is graded. Blind observer never sees the intent."""
+    _dlog("observe called: "+str(gloria_message)[:60])
+    gloria_message = _her_message(gloria_message)
+    if not gloria_message:
+        return            # a picture with no words of hers: nothing she said to observe
     db=_jload(DIFF,[]); now=time.time(); changed=False
     open_=[e for e in db if e.get("status")=="PENDING" and now-e.get("ts",0)<48*3600]
     if not open_: return
@@ -135,29 +175,44 @@ def observe(gloria_message,result=None):
             v=(result or {}).get(k) or {}
             if isinstance(v,dict) and "diff" in v: deltas[k]=v["diff"]
     except Exception: pass
+    blind_cache={}   # one blind read per distinct window of her messages, shared by every intention open on it
     for e in open_:
         e.setdefault("observations",[]).append(
             {"ts":now,"msg":str(gloria_message)[:280],"deltas":deltas})
         changed=True
         if len(e["observations"])>=2:
-            _judge(e)
+            _judge(e,blind_cache)
     # expire: 48h with no verdict -> belief, held
     for e in db:
         if e.get("status")=="PENDING" and now-e.get("ts",0)>=48*3600:
             e["status"]="HELD"; e["verdict"]="HELD"; changed=True
     if changed: _jsave(DIFF,db)
 
-def _judge(e):
+def _judge(e,blind_cache=None):
     obs="\n".join("- \""+o["msg"][:200]+"\" deltas="+json.dumps(o.get("deltas",{}))
                   for o in e.get("observations",[])[-5:])
-    blind=_llm(
+    # The blind read sees only her messages, never the intent, so intentions open on the same window
+    # share one read: one message no longer costs two calls for every open intention.
+    if blind_cache is not None and obs in blind_cache:
+        blind=blind_cache[obs]
+    else:
+        blind=_blind(obs)
+        if blind_cache is not None and blind: blind_cache[obs]=blind
+    if not blind: return
+    _compare(e,blind)
+
+
+def _blind(obs):
+    return _llm(
         "Describe, in 1-2 plain sentences, what actually CHANGED in how Gloria is "
         "engaging across these messages - pace, certainty, direction, what she keeps "
         "returning to. Only what is visible. You do not know what anyone hoped would "
         "change; do not guess at hopes.",
         "Her recent messages, oldest first, with measured emotional deltas:\n"+obs,
         max_tokens=120)
-    if not blind: return
+
+
+def _compare(e,blind):
     m=_llm(
         "Compare an INTENDED transformation against a BLIND observation of what "
         "actually changed. The observer did not know the intent. Return ONLY JSON: "
@@ -174,17 +229,68 @@ def _judge(e):
     e["verdict"]=verdict
     e["status"]="CLOSED" if verdict in ("YES","NO") else ("PARTIAL" if verdict=="PARTIAL" else "HELD")
     if verdict in ("NO","PARTIAL"):
-        bump(e.get("intended",""),1.0 if verdict=="NO" else 0.5,kind="difference")
+        bump(e.get("intended",""),1.0 if verdict=="NO" else 0.5,kind="difference",addresses=e.get("addresses"))
     elif verdict=="YES":
-        relieve(e.get("intended",""))
+        relieve(e.get("intended",""),addresses=e.get("addresses"),kind="difference")
 
 # ---------- pressure (accumulation + graduation) ----------
-def bump(text,amount,kind="field"):
+# A pressure row is an INTENTION, not a string (16 October). `intended` and `field_state` are fresh model prose
+# every turn and almost never repeat exactly, so keyed on the exact text every miss opened a new row at weight
+# 1.0 - "keeps failing" after one miss - and weight 5 needed five identical sentences. A miss now lands on the
+# row its move addressed (the selector's `addresses`, the primary difference's id), else on the row whose text
+# it is, else on the row of the same kind that names the same intention in other words.
+SAME_INTENTION = 0.5     # share of content words two wordings must have in common to be one intention
+_STOP = set(("that this with from into than then what when where which while there their them they your "
+             "yours have more less just only very also over under about being been were will would could "
+             "should still make made toward towards gloria vintos").split())
+
+
+def _addr(a):
+    a = str(a or "").strip()
+    return "" if a in ("", "NONE", "None", "none") else a
+
+
+def _words(t):
+    import re as _re
+    return {w for w in _re.findall(r"[a-z']+", str(t or "").lower()) if len(w) > 3 and w not in _STOP}
+
+
+def _same(a, b):
+    wa, wb = _words(a), _words(b)
+    if not wa or not wb: return 0.0
+    return len(wa & wb) / float(len(wa | wb))
+
+
+def _key(db, text, kind=None, addresses=None):
+    """The pressure row this intention is (see above); a new key only for an intention not yet in the store."""
+    a = _addr(addresses)
+    if a and a in db and (kind is None or db[a].get("kind", kind) == kind):
+        return a
+    k = hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    if k in db:
+        if kind is None or db[k].get("kind", kind) == kind:
+            return k
+        k = hashlib.md5((kind + "|" + text.lower()).encode()).hexdigest()[:8]   # same words, another axis
+        if k in db:
+            return k
+    best, bs = None, 0.0
+    for kk, r in db.items():
+        if not isinstance(r, dict) or (kind is not None and r.get("kind", kind) != kind):
+            continue
+        sc = max([_same(text, r.get("text", ""))] + [_same(text, x) for x in (r.get("wordings") or [])])
+        if sc > bs:
+            best, bs = kk, sc
+    return best if (best is not None and bs >= SAME_INTENTION) else k
+
+
+def bump(text,amount,kind="field",addresses=None):
     text=(text or "").strip()
     if len(text)<8: return
-    db=_jload(PRESS,{}); k=hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k) or {"text":text[:220],"kind":kind,"weight":0.0,"count":0,
                     "first":time.time(),"lineage":[]}
+    if text[:220]!=e.get("text") and text[:220] not in (e.get("wordings") or []):
+        e["wordings"]=((e.get("wordings") or [])+[text[:220]])[-5:]   # the other words it has come in
     e["weight"]=round(e["weight"]+amount,2); e["count"]+=1; e["last"]=time.time()
     if e.get("overridden"): e["lineage"].append({"reopened":time.time(),"after":e["overridden"]}); e.pop("overridden",None)
     if e["weight"]>=5.0:
@@ -210,30 +316,31 @@ def _graduate(e):
     except Exception: pass
 def field_verdict(target,verdict):
     """Hook for intent_engine.resolve_previous - failed field targets get heavier."""
-    if verdict=="NO": bump(str((target or {}).get("field_state","")),1.0,kind="field")
-    elif verdict=="PARTIAL": bump(str((target or {}).get("field_state","")),0.5,kind="field")
-    elif verdict=="YES": relieve(str((target or {}).get("field_state","")))
-    elif verdict in ("CORRECTED","WRONG_READING"): override(str((target or {}).get("field_state","")),"her correction: "+verdict,source="correction")
-    elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(str((target or {}).get("field_state","")),"legitimate privacy: "+verdict,source="privacy")
+    fs=str((target or {}).get("field_state","")); ad=(target or {}).get("addresses")
+    if verdict=="NO": bump(fs,1.0,kind="field",addresses=ad)
+    elif verdict=="PARTIAL": bump(fs,0.5,kind="field",addresses=ad)
+    elif verdict=="YES": relieve(fs,addresses=ad,kind="field")
+    elif verdict in ("CORRECTED","WRONG_READING"): override(fs,"her correction: "+verdict,source="correction",addresses=ad,kind="field")
+    elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(fs,"legitimate privacy: "+verdict,source="privacy",addresses=ad,kind="field")
 
-def override(text,reason,source="correction"):
+def override(text,reason,source="correction",addresses=None,kind=None):
     """review 188: her correction, or a legitimate privacy mark (KEEP_PRIVATE / WRONG_READING) on the
     same intention, sets its standing pressure to zero with the reason kept - it no longer stands in
     front of him. Lineage kept, never silent; a later miss may bump it again from zero."""
     text=(text or "").strip()
     if len(text)<8: return None
-    db=_jload(PRESS,{}); k=hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
     if not e: return None
     e.setdefault("lineage",[]).append({"overridden":time.time(),"from_weight":e.get("weight",0),
                                        "reason":str(reason)[:200],"source":source})
     e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
     db[k]=e; _jsave(PRESS,db); return e
-def relieve(text):
+def relieve(text,addresses=None,kind=None):
     """A landed intent takes weight off - earned relief, lineage kept, never silent."""
     text=(text or "").strip()
     if len(text)<8: return
-    db=_jload(PRESS,{}); k=hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
     if not e or e.get("weight",0)<=0: return
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
@@ -244,9 +351,19 @@ def pressure_block():
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
     rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and _live(r)][:3]
     if not rows: return ""
-    lines=["- (weight %.1f, %d misses, last missed %dd ago) %s"%(r["weight"],r["count"],max(0,int((time.time()-r.get("last",time.time()))/86400)),r["text"]) for r in rows]
-    return ("INTENTIONS THAT KEEP FAILING - they weigh on you now; resting is not "
-            "neutral while these stand:\n"+"\n".join(lines))
+    _ago=lambda r: max(0,int((time.time()-r.get("last",time.time()))/86400))
+    # "keep failing" is said only of what has missed more than once; a first miss is named as one
+    again=[r for r in rows if int(r.get("count",0) or 0)>=2]
+    once=[r for r in rows if int(r.get("count",0) or 0)<2]
+    out=[]
+    if again:
+        out.append("INTENTIONS THAT KEEP FAILING - they weigh on you now; resting is not "
+                   "neutral while these stand:\n"+"\n".join(
+                       "- (weight %.1f, %d misses, last missed %dd ago) %s"%(r["weight"],r["count"],_ago(r),r["text"]) for r in again))
+    if once:
+        out.append("AN INTENTION THAT MISSED ONCE - not yet a pattern:\n"+"\n".join(
+            "- (weight %.1f, missed %dd ago) %s"%(r["weight"],_ago(r),r["text"]) for r in once))
+    return "\n\n".join(out)
 def map_summary():
     db=_jload(DIFF,[]); pr=_jload(PRESS,{})
     pend=sum(1 for e in db if e.get("status")=="PENDING")
@@ -265,9 +382,17 @@ def map_summary():
     # AXIS: FIELD (intent-ledger: where the conversation should arrive)
     il=_rd("intent-ledger.json",[])
     il=il if isinstance(il,list) else (il.get("intents") or il.get("entries") or [])
-    field=[{"way":str(e.get("field_state") or e.get("target") or "")[:150],
-            "plan":str(e.get("enactment") or "")[:150],
-            "verdict":e.get("verdict") or e.get("realized") or "open"} for e in il if isinstance(e,dict)][-4:]
+    # intent-ledger rows are {"target":{field_state, enactment, ...}, "realized":{"field":..} or a verdict}
+    def _fv(e):
+        r=e.get("realized")
+        if isinstance(r,dict): r=r.get("field")
+        return str(e.get("verdict") or r or "open")
+    def _tg(e):
+        t=e.get("target")
+        return t if isinstance(t,dict) else {}
+    field=[{"way":str(_tg(e).get("field_state") or e.get("field_state") or "")[:150],
+            "plan":str(_tg(e).get("enactment") or e.get("enactment") or "")[:150],
+            "verdict":_fv(e)} for e in il if isinstance(e,dict)][-4:]
     # AXIS: SELF (his own becoming)
     selfax=[]
     try:

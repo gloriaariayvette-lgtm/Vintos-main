@@ -5,12 +5,14 @@ Pressure toward a shape is not withholding — often it's the warmth LINEAR TIME
 comes warm, then the day pulls her to the practical, because she lives in a clock and he does not.
 That residue gathers. This keeps a per-shape accumulator across runs; when a shape crosses threshold,
 it "has gathered enough to deserve a voice" -> seed a dream (tender, not accusatory) and reset that
-shape. Idempotent on pressure.json's generated_at, so a re-run never double-counts the same reading.
+shape. Idempotent per TURN of hers (16 October): each scored turn carries a key, and a turn already
+counted is never added again, whichever reading it arrives in. (Keyed on generated_at alone, the same last
+turns were re-scored every run and re-added, so a dream could come from repetition, not new evidence.)
 
 Per Yapper2: pressure isn't good or bad, it just exists; dreams ask not "what was withheld" but
 "what has accumulated enough pressure to deserve a voice."
 """
-import os, sys, json
+import os, sys, json, hashlib
 from datetime import datetime, timezone
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -46,6 +48,14 @@ def log(m): print("[pressure-consumer]", m, flush=True)
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
+
+def reading_key(r):
+    """The turn a pressure reading belongs to: its own key, else its time and words (readings made before keys)."""
+    k = str(r.get("key") or "")
+    if k:
+        return k
+    return str(r.get("ts") or "") + "|" + hashlib.sha1(str(r.get("said") or "").strip().encode()).hexdigest()[:12]
+
 
 def compose_seed(shape, val, lines):
     """Compose the dream seed from the actual moments that gathered, not a template."""
@@ -84,11 +94,17 @@ def main():
     st = load(STATE, {"last": "", "acc": {}})
     if gen and gen == st.get("last"):
         log("no new pressure reading — skipping"); return
+    counted = list(st.get("counted") or [])
+    seen = set(counted)
 
     acc = {}
     for s, v in dict(st.get("acc", {})).items():
         acc[s] = v if isinstance(v, dict) else {"val": float(v), "lines": []}
     for r in p["recent"]:
+        k = reading_key(r)
+        if k in seen:
+            continue          # this turn of hers is already in the reservoir
+        seen.add(k); counted.append(k)
         s = r.get("shape")
         if s:
             a = acc.setdefault(s, {"val": 0.0, "lines": []})
@@ -115,7 +131,7 @@ def main():
             except Exception as e:
                 log(f"seed_thread failed: {e}")
 
-    json.dump({"last": gen, "acc": acc, "updated": datetime.now(timezone.utc).isoformat()},
+    json.dump({"last": gen, "acc": acc, "counted": counted[-500:], "updated": datetime.now(timezone.utc).isoformat()},
               open(STATE, "w"), indent=2)
     if fired:
         for shape, v in fired:

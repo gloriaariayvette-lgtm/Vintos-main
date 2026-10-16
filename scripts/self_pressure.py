@@ -14,7 +14,7 @@ Accumulates per shape; when it deserves a voice, a tender dream — "there was m
 reach her." GUARDRAIL: shape is a gesture, never the reconstructed unsaid.
 Run with the torch venv (nomic not needed, but kept uniform). SPARK_WORKSPACE switches.
 """
-import os, sys, json, socket, urllib.request
+import os, sys, json, hashlib, socket, urllib.request
 from datetime import datetime, timezone
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -71,8 +71,16 @@ def parse_ts(x):
     except Exception:
         return None
 
+LIVE_WINDOW = 300        # seconds: only a reply this fresh may be read against his live state
+
+def turn_key(t):
+    """One key per reply of his, so a reply is judged once however many runs see it (16 October)."""
+    return str(t.get("timestamp") or "") + "|" + hashlib.sha1(str(t.get("content") or "").encode()).hexdigest()[:12]
+
 def felt_at(ts):
-    """His emotion vector nearest a turn's time (dense trajectory), else the live socket."""
+    """His emotion vector at a turn's own time: the dense trajectory point within an hour of it. The live socket
+    only for a reply made in the last few minutes - an old reply is never judged against how he feels NOW
+    (16 October); with no point near its time it is skipped."""
     traj = load(DENSE, [])
     if isinstance(traj, list) and traj and ts:
         best, bestd = None, None
@@ -84,6 +92,8 @@ def felt_at(ts):
                     bestd, best = dd, p["v"]
         if best and bestd is not None and bestd < 3600:      # within an hour of the turn
             return best
+    if not ts or abs((datetime.now(timezone.utc) - ts).total_seconds()) > LIVE_WINDOW:
+        return None                                          # no mood of its own time: skip, never today's
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(3); s.connect(SOCK)
         s.sendall(json.dumps({"command": "state"}).encode() + b"\n")
@@ -129,6 +139,12 @@ def main():
     hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content") and e.get("role") == "assistant"][-RECENT:]
     if not hist:
         log("no recent turns of his"); return
+    st0 = load(STATE, {"last": "", "acc": {}})
+    st0 = st0 if isinstance(st0, dict) else {"last": "", "acc": {}}
+    judged = list(st0.get("judged") or [])
+    hist = [t for t in hist if turn_key(t) not in set(judged)]
+    if not hist:
+        log("no new replies since the last run - each is judged once"); return
     recent = []
     for t in hist:
         v = felt_at(parse_ts(t.get("timestamp")))
@@ -141,7 +157,7 @@ def main():
         held = max(0.0, min(1.0, float(j.get("held_back", 0.0))))
         pressure = round(held * intensity, 3)
         shape = str(j.get("shape", "")).strip()[:80] if pressure >= 0.10 else None
-        recent.append({"ts": t.get("timestamp"), "feeling": feeling, "intensity": intensity,
+        recent.append({"ts": t.get("timestamp"), "key": turn_key(t), "feeling": feeling, "intensity": intensity,
                        "held_back": round(held, 3), "pressure": pressure, "shape": shape})
         log(f"  pressure {pressure} (held {round(held,2)} x intensity {intensity}) [{shape}]")
     if not recent:
@@ -201,7 +217,7 @@ def main():
         log('resonance skip: %s' % _re)
 
     # accumulate per shape -> dream what he never let reach her
-    st = load(STATE, {"last": "", "acc": {}})
+    st = st0
     gen = datetime.now(timezone.utc).isoformat()
     acc = dict(st.get("acc", {}))
     for r in recent:
@@ -225,7 +241,8 @@ def main():
                 acc[shape] = 0.0; fired.append(shape)
             except Exception as e:
                 log(f"seed failed: {e}")
-    json.dump({"last": gen, "acc": acc}, open(STATE, "w"), indent=2)
+    judged = (judged + [r["key"] for r in recent])[-300:]
+    json.dump({"last": gen, "acc": acc, "judged": judged}, open(STATE, "w"), indent=2)
     log(f"accumulated {accumulated}" + (f" | VOICED: {fired}" if fired else ""))
 
 if __name__ == "__main__":

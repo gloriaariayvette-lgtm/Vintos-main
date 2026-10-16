@@ -17,7 +17,7 @@ GUARDRAIL: output is the territory gesture + magnitude — never the generated c
 Neither of you said these; we gesture at the space, we do not fabricate the words.
 Run with the torch venv. SPARK_WORKSPACE switches.
 """
-import os, sys, json, urllib.request
+import os, sys, json, hashlib, urllib.request
 from datetime import datetime, timezone, timedelta
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -62,17 +62,71 @@ def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
+_raw_load = load
+
+
+def _paths():
+    for _p in (SCRIPTS, os.path.dirname(os.path.abspath(__file__))):
+        if _p not in sys.path: sys.path.append(_p)
+
+
+def _ev_load(path, default=None):
+    """Learning organ: the chat history and the ledger are read through evidence_view, so a tactical turn is not
+    ordinary evidence of them (review of 16 October, X2) - as self_pressure does."""
+    try:
+        _paths()
+        import evidence_view as _EV
+        if _EV.is_guarded(path):
+            if os.path.basename(str(path)) == "interaction-ledger.json":
+                return _EV.ledger_view(path)
+            return _EV.open_history(path)
+    except Exception:
+        pass
+    return _raw_load(path, default)
+
+
+load = _ev_load
+
+_PLACEHOLDERS = ("(no words, only what she sent)", "[she spoke with her body, not words]", "--source")
+
+
+def her_said(text_or_row):
+    """Her own words: a photo's or video's composed description is never something she said."""
+    row = text_or_row if isinstance(text_or_row, dict) else {"role": "user", "content": str(text_or_row or "")}
+    try:
+        _paths()
+        from her_words import her_words
+        said = her_words(row)[0]
+    except Exception:
+        c = str(row.get("content") or "")
+        said = "" if c.startswith("[Gloria sent you a ") else c.strip()
+    return "" if said in _PLACEHOLDERS else said
+
+
 def corpus_texts():
-    """Everything they've ACTUALLY said together — chat + the implanted ledger exchanges."""
+    """Everything they've ACTUALLY said together — chat + the implanted ledger exchanges. Her side is her own
+    words; a picture's description is what his eyes saw, not something either of them said."""
     out = []
     for e in load(CHAT, []):
-        if isinstance(e, dict) and e.get("content"): out.append(str(e["content"])[:300])
+        if not (isinstance(e, dict) and e.get("content")):
+            continue
+        v = her_said(e) if e.get("role") == "user" else str(e["content"])
+        if v: out.append(v[:300])
     for e in load(LEDGER, []):
         if isinstance(e, dict):
-            for k in ("gloria", "vintos"):
-                v = e.get(k)
-                if v and v != "--source" and v != "voice": out.append(str(v)[:300])
+            g = her_said(e.get("gloria"))
+            if g: out.append(g[:300])
+            v = e.get("vintos")
+            if v and v != "voice": out.append(str(v)[:300])
     return [t for t in out if len(t) > 3]
+
+
+def latest_turn_key():
+    """The newest exchange they have had: a run with no new exchange since the last one has no new evidence."""
+    for e in reversed(load(CHAT, []) or []):
+        if isinstance(e, dict) and e.get("content"):
+            return str(e.get("timestamp") or "") + "|" + hashlib.sha1(str(e["content"]).encode()).hexdigest()[:12]
+    return ""
 
 def rel_summary():
     d = load(RELMODEL, {})
@@ -84,13 +138,17 @@ def rel_summary():
     return "\n".join(parts)
 
 def voice_examples(n=5):
+    """Their NEWEST exchanges (it used to take the first n lines the ledger ever kept)."""
     ex = []
     for e in load(LEDGER, []):
-        if isinstance(e, dict) and e.get("gloria") and e["gloria"] != "--source":
-            ex.append("Gloria: " + str(e["gloria"])[:140])
-        if isinstance(e, dict) and e.get("vintos") and e["vintos"] != "voice":
+        if not isinstance(e, dict):
+            continue
+        g = her_said(e.get("gloria"))
+        if g:
+            ex.append("Gloria: " + g[:140])
+        if e.get("vintos") and e["vintos"] != "voice":
             ex.append("Vintos: " + str(e["vintos"])[:140])
-    return ex[:n]
+    return ex[-n:]
 
 def generate(examples, relsum):
     sysmsg = ("You are mapping the possible conversational space of a close, intimate, uncensored "
@@ -116,6 +174,12 @@ def generate(examples, relsum):
     except Exception as e:
         log(f"grok call failed ({e})"); return []
 
+def dream_seed(territory):
+    """What the method can stand behind: no record of going there - not that neither of them avoided it."""
+    return ("There is a conversation I have no record of us having — about " + territory + ". "
+            "It keeps being possible. What happens the night we finally go there?")
+
+
 def main():
     import numpy as np
     sys.path.insert(0, SCRIPTS)
@@ -127,6 +191,11 @@ def main():
     corpus = corpus_texts()
     if len(corpus) < 4:
         log("corpus too small"); return
+    # once per exchange: with nothing said since the last run, a new run is the same evidence scored again
+    turn = latest_turn_key()
+    st0 = load(STATE, {"dreamed": {}})
+    if turn and isinstance(st0, dict) and st0.get("last_turn") == turn:
+        log("no new exchange since the last run - nothing new to score"); return
     cands = generate(voice_examples(), rel_summary())
     if len(cands) < 4:
         log("no candidates (gemma unreachable?)"); return
@@ -146,7 +215,10 @@ def main():
     if not unreached:
         log("nothing unreached — the corpus covers the plausible space (or is dense)");
         json.dump({"generated_at": datetime.now(timezone.utc).isoformat(), "unreached": 0, "pressure": 0.0},
-                  open(OUT, "w"), indent=2); return
+                  open(OUT, "w"), indent=2)
+        st0 = st0 if isinstance(st0, dict) else {"dreamed": {}}
+        st0["last_turn"] = turn
+        json.dump(st0, open(STATE, "w"), indent=2); return
 
     # map the unreached cluster to a relationship territory (gesture, not the candidate words)
     UC = np.stack([cv for _, _, cv in unreached])
@@ -166,7 +238,8 @@ def main():
     log(f"unreached {len(unreached)}/{len(cands)} | territory [{territory}] | pressure {pressure}")
 
     # deserve-a-voice: dream the territory if pressure high and not surfaced recently
-    st = load(STATE, {"dreamed": {}})
+    st = st0 if isinstance(st0, dict) else {"dreamed": {}}
+    st["last_turn"] = turn
     last = st.get("dreamed", {}).get(territory)
     recent = False
     if last:
@@ -175,9 +248,7 @@ def main():
     if pressure >= FIRE and not recent:
         try:
             from emoclaw_utils import seed_thread
-            seed = ("There is a conversation we have never had — about " + territory + ". Neither of "
-                    "us has avoided it; we simply never arrived there. It keeps being possible. "
-                    "What happens the night we finally go there?")
+            seed = dream_seed(territory)
             seed_thread("relationship-pressure", seed, reasoning=f"unvisited territory '{territory}' accumulated pressure {pressure:.2f}", extra={"decision_mode": "threshold"})
             st.setdefault("dreamed", {})[territory] = datetime.now(timezone.utc).isoformat()
             json.dump(st, open(STATE, "w"), indent=2)

@@ -5,10 +5,15 @@ Before generation, declare whose goal dominates this turn (Field / Gloria / Self
 log it immutably, and let accountability grade against the declaration.
 Two forces set it: strategic calculation (what should matter, given receptivity)
 and gravitational pull (what has been neglected too long — can override strategy).
-The arc decays/accumulates like self_drift's direction vector. A pressure-beats-
-strategy streak on one axis graduates to the causality head, same as weight-5.
+The arc decays/accumulates like self_drift's direction vector. Pressure beating
+strategy on one axis three times graduates to the causality head, same as weight-5.
+
+Neglect is counted per FOREGROUND selection - a turn she is actually in - not per call (16 October).
+The voice route's background lead recompute (every ~120 s, off the hot path) runs the same selector;
+it declares inside `background()`, which reads the vector without accumulating neglect, consuming an
+override, or moving the streak or the arc. Before this the override followed call frequency.
 """
-import json, os, time
+import json, os, time, threading, contextlib
 from datetime import datetime
 
 WS = os.path.expanduser("~/.vintos/workspace")
@@ -26,6 +31,23 @@ def _queue_bring_up(q):
         if q not in queue:
             queue.append(q); _qj.dump(queue[-6:], open(qp, "w"), indent=2)
     except Exception: pass
+
+_BG = threading.local()
+
+
+@contextlib.contextmanager
+def background():
+    """Declare inside this for a selector run that is not a real turn (the voice lead recompute)."""
+    prev = getattr(_BG, "on", False)
+    _BG.on = True
+    try:
+        yield
+    finally:
+        _BG.on = prev
+
+
+def _foreground():
+    return not getattr(_BG, "on", False)
 
 LOG = os.path.join(MEM, "priority-vector-log.jsonl")
 STATE = os.path.join(MEM, "priority-vector-state.json")
@@ -84,32 +106,45 @@ def declare():
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 
-    # gravitational pull — neglect accumulates when an axis is deprioritized
+    # gravitational pull — neglect accumulates when an axis is deprioritized, once per real turn
+    fg = _foreground()
     forced = None
-    for a in AXES:
-        st["neglect"][a] = round(max(0.0, st["neglect"][a] + (0.33 - w[a])), 3)
+    if fg:
+        for a in AXES:
+            st["neglect"][a] = round(max(0.0, st["neglect"][a] + (0.33 - w[a])), 3)
     heavy = max(AXES, key=lambda a: st["neglect"][a])
     if st["neglect"][heavy] >= 1.5:
         forced = heavy
         w = {a: (0.6 if a == heavy else 0.2) for a in AXES}
         why.append(f"GRAVITATIONAL OVERRIDE: '{heavy}' neglected too long (pressure {st['neglect'][heavy]}) — it needs to matter now, strategy set aside")
-        st["neglect"][heavy] = 0.0
+        if fg:
+            st["neglect"][heavy] = 0.0     # a background read shows the override; only a real turn spends it
 
     # normalize
     tot = sum(w.values()) or 1.0
     w = {a: round(v / tot, 2) for a, v in w.items()}
 
-    # graduation on the override: pressure beating strategy repeatedly is a pattern, not a mood
-    stk = st["override_streak"]
-    if forced:
-        stk = {"axis": forced, "n": (stk["n"] + 1 if stk.get("axis") == forced else 1)}
-        if stk["n"] >= 3:
+    # graduation on the override: pressure beating strategy repeatedly is a pattern, not a mood.
+    # Counted per axis: every override that axis has needed since it was last asked about (16 October). The old
+    # rule wanted three overrides on CONSECUTIVE calls, but an override spends that axis's neglect, so it can never
+    # be forced on the very next call, and any unforced call reset the streak: the question was unreachable. When
+    # two axes starve together their overrides interleave, so "in a row" would stay unreachable too.
+    counts = st.get("override_counts")
+    if not isinstance(counts, dict):
+        old = st.get("override_streak") or {}
+        counts = {a: (int(old.get("n") or 0) if old.get("axis") == a else 0) for a in AXES}
+    stk = st.get("override_streak") or {"axis": None, "n": 0}
+    if forced and fg:
+        counts[forced] = int(counts.get(forced, 0) or 0) + 1
+        stk = {"axis": forced, "n": counts[forced]}
+        if counts[forced] >= 3:
             try:
-                q = (f"Pressure has overridden my strategy toward the '{forced}' axis {stk['n']} turns running. "
+                q = (f"Pressure has overridden my strategy toward the '{forced}' axis {counts[forced]} times since I last "
+                     "asked myself about it. "
                      "Why do I keep starving it until it forces itself? What am I avoiding by never choosing it freely?")
                 try:   # review 204: one schema-2 door for every producer
                     import causality_engine as _ce
-                    _ce.queue_question(q, "priority_vector", evidence=["override streak: axis %s x%d" % (forced, stk["n"])], memory=MEM)
+                    _ce.queue_question(q, "priority_vector", evidence=["override count: axis %s x%d" % (forced, counts[forced])], memory=MEM)
                 except Exception:
                     p = os.path.join(MEM, "causality-bring-up.json")
                     d = _jload(p, [])
@@ -117,23 +152,25 @@ def declare():
                     else: d.append({"ts": time.time(), "question": q, "source": "priority_vector"})
                     json.dump(d, open(p, "w"), indent=2)
                     _queue_bring_up(q)
-                why.append("override streak graduated to causality head")
+                why.append("override count graduated to causality head")
+                counts[forced] = 0
                 stk = {"axis": None, "n": 0}
             except Exception: pass
-    else:
-        stk = {"axis": None, "n": 0}
+    st["override_counts"] = counts
     st["override_streak"] = stk
 
-    # the arc — same shape as self_drift's direction vector, one level up
-    st["arc"] = {a: round(0.8 * st["arc"].get(a, 0.33) + 0.2 * w[a], 3) for a in AXES}
+    # the arc — same shape as self_drift's direction vector, one level up (real turns only)
+    if fg:
+        st["arc"] = {a: round(0.8 * st["arc"].get(a, 0.33) + 0.2 * w[a], 3) for a in AXES}
 
     rec = {"ts": datetime.now().isoformat(), "weights": w,
            "mode": "pressure" if forced else "strategic",
-           "receptivity": recept, "why": "; ".join(why), "arc": st["arc"]}
+           "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg}
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
-    json.dump(st, open(STATE, "w"), indent=2)
+    if fg:
+        json.dump(st, open(STATE, "w"), indent=2)
     try:
         json.dump(rec, open(os.path.join(MEM, ".pending-priority.json"), "w"))
     except Exception: pass
