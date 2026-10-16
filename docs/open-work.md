@@ -34,6 +34,12 @@ phrase; Entrez ANDs every word, so 9 of 14 returned nothing and the review read 
 literature search is now tried again with the descriptive words out, then with its first four words, and the
 receipt names the form that found it.
 
+Fixed 16 October, wrong premises: "human SlyA", "human Sdr" passed admission because only all-capital symbols
+with a digit were checked against NCBI Gene. A bacterial-style name (SlyA, SufS) in a human question is now
+checked too; a wrong premise goes back to the planner once, named, and its corrected question is admitted
+in the same pass; the names that failed are shown to the planner (NOT HUMAN GENES) for a week. Not covered:
+a family acronym (MBL, SOD, SDR) and a nonsense pairing (methane oxidation in wood-decay consortia).
+
 Not done: 23 repeat or spent-question refusals and waits (fix above, unmeasured), 6 reviews with unresolved target identity, and refusals
 for missing accessions, contradictory organism scope and too many identities. Those are the planner proposing
 what the Lab rightly refuses; nothing here makes it propose better yet.

@@ -1677,6 +1677,10 @@ def _orient(context, lean=None):
                      "question in other words):\n- " + "\n- ".join(_done))
         # The questions themselves: a question sharing most of its words with one of these, on the same kind of
         # retrieval, is refused (16 October: she was shown ten lookups and refused against a week of questions).
+        _not_human = _lr.not_human_symbols()
+        if _not_human:
+            task += ("\n\nNOT HUMAN GENES — NCBI Gene has no human gene by these names; never ask about them as human "
+                     "proteins (in an organism where they exist, they may be asked about): " + ", ".join(_not_human) + ".")
         _asked = _lr.asked_questions()
         if _asked:
             task += ("\n\nQUESTIONS YOU ALREADY ASKED THIS WEEK — do not ask any of these again, in these words or "
@@ -1760,6 +1764,9 @@ def _human_question_symbols(question):
     return human_question_symbols(question)
 
 
+BACTERIAL_STYLE = re.compile(r'(?<![\w-])[A-Z][a-z]{2}[A-Z][0-9]?(?![\w-])')
+
+
 def _ground_inquiry(inquiry, client=None):
     """Source-check generated human symbols before admitting them as research targets."""
     from lab_sources import Sources, question_entity_context
@@ -1775,6 +1782,11 @@ def _ground_inquiry(inquiry, client=None):
     human_question = bool(re.search(r'\b(?:human|Homo sapiens)\b', str(inquiry.get('question') or ''), re.I))
     if human_question:
         symbols.extend(_human_question_symbols(inquiry.get('question')))
+        # Bacterial gene names are written SlyA, SufS, SdrM: capital, three letters, capital. "Human SlyA" passed
+        # (16 October: human SlyA, human Sdr, reviewed and found wrong only after a source call and a review) because
+        # only all-capital symbols with a digit were checked. Such a name in a human question is checked too; a real
+        # human gene written that way (IscU, for ISCU) still verifies.
+        symbols.extend(BACTERIAL_STYLE.findall(str(inquiry.get('question') or '')))
     for query in queries:
         taxa = re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)\b', query)
         if human_question and any(t != '9606' for t in taxa):
@@ -2206,6 +2218,18 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
         if not any(re.search(pattern, json.dumps(row.get('records') or [])) for row in returned):
             return refuse('NCBI accession not returned by a source receipt: ' + accession)
     identity = _ground_inquiry(inquiry)
+    if identity['status'] == 'unresolved' and replan and system:
+        # A wrong premise is put back to the planner once, named, so the same pass asks a question that holds, not
+        # only refused a step earlier than its review would have found it (Gloria, 2026-10-16).
+        value2 = _json_object(_ask(system, task + "\n\nREFUSED, A WRONG PREMISE: " + identity['reason'] +
+                                   ". Do not ask about it as a human protein. Ask about it in an organism where it "
+                                   "exists, or ask about a human protein that does."))
+        retry = _existing_model_read(_inquiry(value2, lean))
+        if not (step and not repeats.on_frontier(retry, step)) and not blocked(retry):
+            second = _ground_inquiry(retry)
+            if second['status'] in ('verified', 'not_applicable'):
+                repeats.record(dict(inquiry, identity_check=identity), refused=identity['reason'], identity_validated=True)
+                inquiry, value, identity = retry, value2, second
     if identity['status'] != 'not_applicable':
         inquiry = dict(inquiry, identity_check=identity)
     if identity['status'] in ('unresolved', 'unavailable'):
