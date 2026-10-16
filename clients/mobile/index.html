@@ -4432,7 +4432,7 @@ function _avBrainChipEnsure(){
   var chip=document.getElementById('av-brain-chip');
   if(!chip){
     chip=document.createElement('button'); chip.id='av-brain-chip'; chip.type='button';
-    chip.style.cssText='padding:8px 12px;border-radius:14px;background:rgba(5,5,13,0.6);border:0.5px solid rgba(201,107,60,0.35);color:rgba(201,107,60,0.85);font-size:11px;letter-spacing:0.08em;font-family:JetBrains Mono,monospace;cursor:pointer;white-space:nowrap;';
+    chip.style.cssText='min-height:44px;touch-action:manipulation;padding:8px 12px;border-radius:14px;background:rgba(5,5,13,0.6);border:0.5px solid rgba(201,107,60,0.35);color:rgba(201,107,60,0.85);font-size:11px;letter-spacing:0.08em;font-family:JetBrains Mono,monospace;cursor:pointer;white-space:nowrap;';
     chip.onclick=_avToggleBrain;
     host.insertBefore(chip, host.firstChild);
   }
@@ -4445,15 +4445,15 @@ var _avDrawerDock = (function(){
         if (s && (s.side==='left'||s.side==='right') && typeof s.bottom==='number') return s; } catch(e){}
   return { side:'right', bottom:110 };
 })();
-function _avDrawerApply(){
+function _avDrawerApply(persist){
   var d=document.getElementById('av-drawer'), h=document.getElementById('av-drawer-handle'),
       b=document.getElementById('av-drawer-body'); if(!d||!h||!b) return;
   var right = _avDrawerDock.side==='right';
-  var maxB = Math.max(20, window.innerHeight - 340);
+  var maxB = Math.max(20, window.innerHeight - d.offsetHeight - 16);
   _avDrawerDock.bottom = Math.max(20, Math.min(maxB, _avDrawerDock.bottom));
   d.style.bottom = _avDrawerDock.bottom + 'px';
-  d.style.right = right ? '0' : 'auto';
-  d.style.left  = right ? 'auto' : '0';
+  d.style.right = right ? 'calc(6px + env(safe-area-inset-right, 0px))' : 'auto';
+  d.style.left  = right ? 'auto' : 'calc(6px + env(safe-area-inset-left, 0px))';
   d.style.flexDirection = right ? 'row' : 'row-reverse';
   var rad = right ? '12px 0 0 12px' : '0 12px 12px 0';
   h.style.borderRadius = rad; b.style.borderRadius = rad;
@@ -4461,11 +4461,12 @@ function _avDrawerApply(){
   h.style.borderLeft  = right ? '0.5px solid rgba(201,107,60,0.3)' : 'none';
   b.style.borderRight = h.style.borderRight; b.style.borderLeft = h.style.borderLeft;
   var open = d.getAttribute('data-open')==='1';
-  var closedX = right ? 'translateX(calc(100% - 30px))' : 'translateX(calc(-100% + 30px))';
+  var closedX = right ? 'translateX(calc(100% - 48px))' : 'translateX(calc(-100% + 48px))';
   d.style.transform = open ? 'translateX(0)' : closedX;
   var ch=document.getElementById('av-drawer-chev');
   if(ch){ var out = right ? '‹' : '›'; ch.textContent = open ? (right?'›':'‹') : out; }
-  try { localStorage.setItem('av_drawer_dock', JSON.stringify(_avDrawerDock)); } catch(e){}
+  h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if(persist !== false) try { localStorage.setItem('av_drawer_dock', JSON.stringify(_avDrawerDock)); } catch(e){}
 }
 function avToggleDrawer(){
   var d=document.getElementById('av-drawer'); if(!d) return;
@@ -4474,34 +4475,43 @@ function avToggleDrawer(){
 }
 function _avDrawerInit(){
   var h=document.getElementById('av-drawer-handle'); if(!h) return;
-  var drag=null;
+  var drag=null, suppressClickUntil=0;
   h.addEventListener('pointerdown', function(e){
-    drag={x:e.clientX, y:e.clientY, b:_avDrawerDock.bottom, moved:false};
-    h.setPointerCapture(e.pointerId); e.preventDefault();
+    if(drag || e.isPrimary===false || (e.pointerType==='mouse' && e.button!==0)) return;
+    drag={id:e.pointerId,x:e.clientX,y:e.clientY,b:_avDrawerDock.bottom,moved:false};
+    try{h.setPointerCapture(e.pointerId);}catch(_e){}
+    e.preventDefault();
   });
   h.addEventListener('pointermove', function(e){
-    if(!drag) return;
+    if(!drag || e.pointerId!==drag.id) return;
     var dx=e.clientX-drag.x, dy=e.clientY-drag.y;
-    if(Math.abs(dx)>8||Math.abs(dy)>8) drag.moved=true;
+    if(Math.hypot(dx,dy)>=14) drag.moved=true;
     if(!drag.moved) return;
     var d=document.getElementById('av-drawer');
     if(d) d.style.transition='none';
     _avDrawerDock.bottom = drag.b - dy;
-    // crossing past the middle of the screen flips the dock side
-    _avDrawerDock.side = (e.clientX < window.innerWidth/2) ? 'left' : 'right';
-    _avDrawerApply();
+    // A dead zone at the centre prevents the drawer jumping between edges.
+    if(e.clientX < window.innerWidth/2-24) _avDrawerDock.side='left';
+    else if(e.clientX > window.innerWidth/2+24) _avDrawerDock.side='right';
+    _avDrawerApply(false);
   });
   function end(e){
-    if(!drag) return;
-    var moved=drag.moved; drag=null;
-    try{ if(e && h.hasPointerCapture(e.pointerId)) h.releasePointerCapture(e.pointerId); }catch(_e){}
+    if(!drag || e.pointerId!==drag.id) return;
+    var moved=drag.moved, cancelled=e.type!=='pointerup'; drag=null;
+    suppressClickUntil=Date.now()+600;
+    try{if(h.hasPointerCapture(e.pointerId))h.releasePointerCapture(e.pointerId);}catch(_e){}
     var d=document.getElementById('av-drawer');
     if(d) d.style.transition='transform 0.3s cubic-bezier(.4,0,.2,1)';
-    if(!moved) avToggleDrawer(); else _avDrawerApply();
+    if(!cancelled && !moved) avToggleDrawer(); else _avDrawerApply();
   }
   h.addEventListener('pointerup', end);
   h.addEventListener('pointercancel', end);
   h.addEventListener('lostpointercapture', end);
+  h.addEventListener('click', function(e){
+    // Pointer taps act immediately on release; retain keyboard/VoiceOver clicks.
+    if(Date.now()<suppressClickUntil){e.preventDefault();return;}
+    avToggleDrawer();
+  });
   window.addEventListener('resize', _avDrawerApply);
   _avDrawerApply();
 }
@@ -5205,8 +5215,8 @@ document.querySelector('[data-tab="pearls"]').addEventListener('click', function
   <!-- control drawer: model chip + call, stop, GCS. Tucked off-screen until the
        handle is tapped; drag the handle to move it anywhere along either side
        edge, so it is never in the way. Position persists across launches. -->
-  <div id="av-drawer" style="position:absolute;right:0;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 30px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);pointer-events:auto;">
-  <button id="av-drawer-handle" aria-label="controls" style="touch-action:none;width:30px;height:88px;border-radius:12px 0 0 12px;background:rgba(5,5,13,0.75);border:0.5px solid rgba(201,107,60,0.3);border-right:none;color:rgba(201,107,60,0.8);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:grab;"><span id="av-drawer-chev" style="transition:transform 0.3s ease;">‹</span></button>
+  <div id="av-drawer" style="position:absolute;right:6px;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 48px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);pointer-events:auto;">
+  <button id="av-drawer-handle" type="button" aria-label="Model and call controls" aria-controls="av-drawer-body" aria-expanded="false" style="touch-action:none;-webkit-user-select:none;user-select:none;padding:0;flex:0 0 48px;width:48px;min-width:48px;height:96px;border-radius:12px 0 0 12px;background:rgba(5,5,13,0.75);border:0.5px solid rgba(201,107,60,0.3);border-right:none;color:rgba(201,107,60,0.8);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:grab;"><span id="av-drawer-chev" style="transition:transform 0.3s ease;">‹</span></button>
   <div id="av-drawer-body" style="background:rgba(5,5,13,0.85);border:0.5px solid rgba(201,107,60,0.3);border-right:none;border-radius:12px 0 0 12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;max-height:46vh;overflow-y:auto;">
 
     <!-- voice call -->
