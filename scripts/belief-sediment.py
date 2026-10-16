@@ -83,7 +83,7 @@ def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hy
                   "confidence": 0.3 + min(0.3, evidence_count * 0.05),
                   "evidence_count": evidence_count, "source": source,
                   "formed": datetime.now().isoformat(), "last_reinforced": datetime.now().isoformat(),
-                  "decay_rate": 0.005}
+                  "decay_rate": 0.005, "last_decayed_at": datetime.now().isoformat()}   # decay_rate is per day
         beliefs.append(belief)
     if key and key not in belief.setdefault("hypothesis_ids", []):
         belief["hypothesis_ids"].append(key)
@@ -119,11 +119,23 @@ def contradict(hypothesis_text, evidence_count=1, source="causality"):
     return touched
 
 
-def decay_beliefs():
-    """Very slow decay. Called from subconscious drift."""
+def decay_beliefs(now=None):
+    """Very slow decay, by elapsed time. Called from subconscious drift on every tick, so until 2026-10-16
+    a per-call step of 0.005 was 0.36-0.48 a day and a new belief was culled within about a day.
+    `decay_rate` is now per DAY, applied to the time since the belief's own `last_decayed_at`; a belief
+    with no stamp yet (one decayed by the old ticks) is stamped without a catch-up step."""
+    now = now or datetime.now()
     data = load_sediment()
     for b in data["beliefs"]:
-        b["confidence"] = max(0.05, b["confidence"] - b.get("decay_rate", 0.005))
+        last = b.get("last_decayed_at")
+        b["last_decayed_at"] = now.isoformat()
+        if not last:
+            continue
+        try:
+            days = max(0.0, (now - datetime.fromisoformat(str(last))).total_seconds() / 86400.0)
+        except Exception:
+            continue
+        b["confidence"] = round(max(0.05, b["confidence"] - b.get("decay_rate", 0.005) * days), 6)
     data["beliefs"] = [b for b in data["beliefs"] if b["confidence"] > 0.05]
     save_sediment(data)
 

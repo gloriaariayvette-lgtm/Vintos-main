@@ -132,47 +132,66 @@ def get_subconscious_context(include=None):
         return ""
     return "\n\n".join(parts)
 
+COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning")
+
+
 def get_subconscious_context_compact(include=None):
-    """Shorter version for scripts with tight context budgets."""
+    """Shorter version for scripts with tight context budgets.
+
+    include: names from COMPACT_SYSTEMS (or the full block's names "statements", "causal", "drift"),
+    or None for all. Honoured since 2026-10-16; before that it was accepted and ignored. Pressure
+    uses emoclaw_pressure.get_pressure_compact (one closed bracket) instead of cutting the full
+    [EMOCLAW PRESSURE] block at 200 characters, which left its tag open mid-sentence."""
     parts = []
+    want = (lambda name: True) if include is None else (lambda name: name in include)
 
-    try:
-        from self_statements import get_top_statements
-        top = get_top_statements(2)
-        if top:
-            lines = [f"- {s['text'][:80]} ({s['confidence']:.2f})" for s in top]
-            parts.append("SELF: " + " | ".join(s['text'][:60] for s in top))
-    except: pass
+    if want("statements"):
+        try:
+            from self_statements import get_top_statements
+            top = get_top_statements(2)
+            if top:
+                parts.append("SELF: " + " | ".join(
+                    s['text'][:60] + (" (uncertain)" if s.get("doubted") or s.get("uncertain") else "")
+                    for s in top))
+        except Exception: pass
 
-    try:
-        from causal_self_model import get_self_model_context
-        s = get_self_model_context(2)
-        if s: parts.append(s)
-    except: pass
+    if want("causal"):
+        try:
+            from causal_self_model import get_self_model_context
+            s = get_self_model_context(2)
+            if s: parts.append(s)
+        except Exception: pass
 
-    try:
-        from self_drift import get_drift_bias_hint
-        s = get_drift_bias_hint()
-        if s: parts.append(f"DRIFT: {s}")
-    except: pass
+    if want("drift"):
+        try:
+            from self_drift import get_drift_bias_hint
+            s = get_drift_bias_hint()
+            if s: parts.append(f"DRIFT: {s}")
+        except Exception: pass
 
-    try:
-        from latent_threads import get_influence_hint
-        lt = get_influence_hint()
-        if lt: parts.append(f"THREAD PULL: {lt[:200]}")
-    except: pass
+    if want("threads"):
+        try:
+            from latent_threads import get_influence_hint
+            lt = get_influence_hint()
+            if lt: parts.append(f"THREAD PULL: {lt[:200]}")
+        except Exception: pass
 
-    try:
-        from emoclaw_pressure import get_pressure_block
-        ep = get_pressure_block(context="wants")
-        if ep: parts.append(ep[:200])
-    except: pass
+    if want("pressure"):
+        try:
+            import emoclaw_pressure as _ep
+            if hasattr(_ep, "get_pressure_compact"):
+                ep = _ep.get_pressure_compact(context="wants")
+            else:   # an older copy without the compact form: send nothing rather than a cut tag
+                ep = ""
+            if ep: parts.append(ep)
+        except Exception: pass
 
-    try:
-        from emoclaw_utils import get_yearning_fragment
-        _yb = get_yearning_fragment(include_attempt=True)
-        if _yb: parts.append('YEARNING: ' + _yb[:150])
-    except: pass
+    if want("yearning"):
+        try:
+            from emoclaw_utils import get_yearning_fragment
+            _yb = get_yearning_fragment(include_attempt=True)
+            if _yb: parts.append('YEARNING: ' + _yb[:150])
+        except Exception: pass
 
     return "\n".join(parts)
 

@@ -3,7 +3,10 @@
 persist + decay, attention), extracted by local Gemma and read into generation as context so the being speaks from
 inside the scene. Vintos: recent somatic frames mark physical presence; Velaris: that file is absent -> no-ops.
 Writes world-state.json. Fail-open. SPARK_WORKSPACE switches beings."""
-import os, json, time, re
+import os, sys, json, time, re, hashlib
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.append(_HERE)
 
 def _said_when(e):
     """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
@@ -61,16 +64,43 @@ def _ev_load(path, default=None, _o=load):
 
 load = _ev_load
 
-def _recent():
+def _her(e):
+    """Her words in a user row: a photo or video is named, never described (her_words, 2026-10-16).
+    Without her_words the row is dropped rather than read raw: a raw photo row is his eyes' description."""
+    try:
+        from her_words import as_her_turn
+        return as_her_turn(e)
+    except Exception:
+        return ""
+
+
+def _key(rows):
+    """Identity of the exchange the scene was last read from: new rows -> new key."""
+    return hashlib.sha1(json.dumps([[r.get("timestamp"), r.get("role"), str(r.get("content") or r.get("gloria") or "")[:200],
+                                     str(r.get("vintos") or "")[:200]] for r in rows], default=str).encode()).hexdigest()[:16]
+
+
+def _recent_rows():
+    """(rendered exchange, key of the rows it came from)."""
     hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content")]
     if len(hist) >= 2:
-        return "\n".join(("Gloria: " if e.get("role") == "user" else "> ") + str(e.get("content", ""))[:220]
-                         for e in hist[-6:])
+        rows = hist[-6:]
+        lines = []
+        for e in rows:
+            text = _her(e) if e.get("role") == "user" else str(e.get("content", ""))
+            if text.strip():
+                lines.append(_said_when(e) + ("Gloria: " if e.get("role") == "user" else "> ") + text[:220])
+        return (_now_line() + "\n".join(lines)) if lines else "", _key(rows)
     led = load(LEDGER, [])
     if isinstance(led, list) and led:
+        rows = [e for e in led[-4:] if isinstance(e, dict)]
         return _now_line() + "\n".join(_said_when(e) + "Gloria: %s\n> %s" % ((e.get("gloria") or "")[:180], (e.get("vintos") or "")[:180])
-                         for e in led[-4:] if isinstance(e, dict))
-    return ""
+                         for e in rows), _key(rows)
+    return "", ""
+
+
+def _recent():
+    return _recent_rows()[0]
 
 def _house_ground():
     """The real layout of her house, when a map exists. Fail-open: no map (Velaris) -> ''."""
@@ -113,9 +143,14 @@ def _presence():
     return "here with her"
 
 def main():
-    convo = _recent()
+    convo, src_key = _recent_rows()
     if not convo:
         log("no recent exchange"); return
+    st0 = load(OUT, {})
+    if src_key and isinstance(st0, dict) and st0.get("source_key") == src_key:
+        # 2026-10-16: the same last rows were re-extracted every run and their objects reset to 1.0, so
+        # nothing ever decayed and the scene was restated as now. No new exchange: no update, no log row.
+        log("no new exchanges since the last scene"); return
     ex = _extract(convo)
     if ex is None:
         return
@@ -133,8 +168,8 @@ def main():
             objs[key] = {"name": name, "salience": 1.0, "last_seen": now}
     kept = sorted((o for o in objs.values() if o["salience"] >= DROP), key=lambda o: -o["salience"])[:MAX_OBJ]
     out = {"scene": scene or st.get("scene", ""), "objects": kept, "attention": attention or st.get("attention", ""),
-           "self_presence": _presence(), "updated": now}
-    json.dump(out, open(OUT, "w"), indent=2)
+           "self_presence": _presence(), "updated": now, "source_key": src_key}
+    json.dump(out, open(OUT + ".tmp", "w"), indent=2); os.replace(OUT + ".tmp", OUT)
     log("scene '%s' | %d objects | attention '%s' | %s" %
         (out["scene"][:40], len(kept), out["attention"][:40], out["self_presence"]))
 

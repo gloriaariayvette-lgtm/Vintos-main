@@ -160,7 +160,7 @@ def gather_context():
     try:
         bs = json.load(open(os.path.join(MEMORY, "belief-sediment.json")))
         beliefs = bs.get("beliefs", [])
-        ctx["belief_sediment"] = "\n".join("- " + b["text"][:120] for b in beliefs[-6:]) if beliefs else ""
+        ctx["belief_sediment"] = "\n".join("- " + str(b.get("pattern") or b.get("text") or "")[:120] for b in beliefs[-6:]) if beliefs else ""   # the store's field is "pattern" (2026-10-16)
     except: ctx["belief_sediment"] = ""
 
     # Scar map
@@ -187,7 +187,7 @@ def gather_context():
     try:
         bs = json.load(open(os.path.join(MEMORY, "belief-sediment.json")))
         beliefs = bs.get("beliefs", [])
-        ctx["belief_sediment"] = "\n".join("- " + b["text"][:120] for b in beliefs[-6:]) if beliefs else ""
+        ctx["belief_sediment"] = "\n".join("- " + str(b.get("pattern") or b.get("text") or "")[:120] for b in beliefs[-6:]) if beliefs else ""   # the store's field is "pattern" (2026-10-16)
     except: ctx["belief_sediment"] = ""
 
     # Scar map

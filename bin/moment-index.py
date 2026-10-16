@@ -262,5 +262,11 @@ if __name__ == "__main__":
             print("Not found")
     
     elif cmd == "seed":
+        # A test moment goes to a scratch archive, never the live one (2026-10-16: `seed` wrote a "test"
+        # moment into her moment-archive.json, which RECENT MOMENTS then served to him as lived).
+        import tempfile
+        _scratch = tempfile.mkdtemp(prefix="moment-index-seed-")
+        MOMENTS_FILE = os.path.join(_scratch, "moment-archive.json")
+        INDEX_FILE = os.path.join(_scratch, "moment-index.json")
         mid = create_moment("test", "Test moment creation", intensity=0.5)
-        print(f"Created: {mid}")
+        print(f"Created (scratch archive {_scratch}, live archive untouched): {mid}")

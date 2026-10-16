@@ -15,7 +15,7 @@ API (its importers):
   load_wells() -> {"wells":[...]}   -> read the wells               [latent_threads]
   get_wells_context() -> str        -> describe the deepest well    [subconscious_context]
 """
-import os, json, math
+import os, sys, json, math, uuid
 from datetime import datetime
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +25,15 @@ WELLS_FILE = os.path.join(MEMORY, "gravity-wells.json")
 
 MERGE_DIST = 0.22     # euclidean (emotion space) within which a visit joins a well
 BASE_MASS = 0.10      # mass a fresh visit deposits (plus resonance)
-DECAY = 0.99          # per-write slow forgetting
+DECAY = 0.99          # legacy per-write factor; no longer applied per write (see MASS_HALF_LIFE_DAYS)
+MASS_HALF_LIFE_DAYS = 14.0   # mass decays by elapsed time, not by how often something writes
+VISIT_COOLDOWN_S = 1800      # a return to the same well within this window is the same stay, not a new visit
+PULL_ECHO_S = 3600           # a state this close to the last gravity-pulled state, this soon, is the pull's echo
+PULL_ECHO_DIST = 0.03
+# Callers that write the state file as machinery, not as an event. emoclaw_utils._write_txt records a
+# "visit" on every write of emotional-state.txt - drift, decay, gravity's own nudges - which made the
+# wells deepen themselves (2026-10-16). Those calls are ignored here; the chat routes record the visit.
+MACHINE_CALLERS = (("emoclaw_utils.py", "_write_txt"),)
 PRUNE_MASS = 0.05
 MAX_WELLS = 16
 GRAVITY_K = 0.06      # how hard wells pull the current state
@@ -67,8 +75,45 @@ def _save(d):
         pass
 
 
-def record_visit(vec, resonance=0.0):
-    """A resonant visit to an emotional location. Deepens the nearest well or forms a new one."""
+def _machine_caller(depth=2):
+    try:
+        f = sys._getframe(depth)
+        return (os.path.basename(f.f_code.co_filename), f.f_code.co_name) in MACHINE_CALLERS
+    except Exception:
+        return False
+
+
+def _age_s(iso, now):
+    try:
+        return max(0.0, (now - datetime.fromisoformat(str(iso))).total_seconds())
+    except Exception:
+        return None
+
+
+def _decay_by_time(d, now):
+    """Mass fades by elapsed time since the last decay, whatever the write rate."""
+    last = _age_s(d.get("decayed_at"), now)
+    if last:
+        f = 0.5 ** (last / 86400.0 / MASS_HALF_LIFE_DAYS)
+        for w in d["wells"]:
+            w["mass"] = round(w.get("mass", 0.0) * f, 4)
+    d["decayed_at"] = now.isoformat()
+
+
+def _is_pull_echo(d, v, now):
+    lp = d.get("last_pull") or {}
+    age = _age_s(lp.get("at"), now)
+    return (age is not None and age <= PULL_ECHO_S and isinstance(lp.get("vector"), list)
+            and _dist(v, lp["vector"]) <= PULL_ECHO_DIST)
+
+
+def record_visit(vec, resonance=0.0, source=None):
+    """A resonant visit to an emotional location. Deepens the nearest well or forms a new one.
+    Not a visit (returns None, writes nothing): a call from a state-file write (MACHINE_CALLERS, or
+    source="state-write"); a state that is gravity's own pulled state (its echo would deepen the very well
+    that pulled it); a return to the same well within VISIT_COOLDOWN_S."""
+    if source == "state-write" or (source is None and _machine_caller()):
+        return None
     v = _num_vec(vec)
     if v is None:
         return None
@@ -77,10 +122,12 @@ def record_visit(vec, resonance=0.0):
     except Exception:
         res = 0.0
     deposit = BASE_MASS + max(0.0, min(1.0, res))
+    nowdt = datetime.now()
     d = load_wells()
     wells = d["wells"]
-    for w in wells:
-        w["mass"] = round(w.get("mass", 0.0) * DECAY, 4)
+    if _is_pull_echo(d, v, nowdt):
+        return None
+    _decay_by_time(d, nowdt)
     best, bi = 1e9, -1
     for i, w in enumerate(wells):
         dd = _dist(v, w.get("vector") or [])
@@ -89,6 +136,10 @@ def record_visit(vec, resonance=0.0):
     now = datetime.now().isoformat()
     if bi >= 0 and best <= MERGE_DIST:
         w = wells[bi]
+        _since = _age_s(w.get("last_visit"), nowdt)
+        if _since is not None and _since < VISIT_COOLDOWN_S:
+            _save(d)            # time decay applied; the same stay is not a second visit
+            return d
         w["mass"] = round(w.get("mass", 0.0) + deposit, 4)
         w["visits"] = w.get("visits", 0) + 1
         wv = w["vector"]
@@ -97,7 +148,7 @@ def record_visit(vec, resonance=0.0):
                        for i in range(max(len(wv), len(v)))]
         w["last_visit"] = now
     else:
-        wells.append({"id": "w%d" % (len(wells) + 1), "vector": [round(x, 4) for x in v],
+        wells.append({"id": "w_" + uuid.uuid4().hex[:8], "vector": [round(x, 4) for x in v],
                       "mass": round(deposit, 4), "visits": 1, "first_seen": now, "last_visit": now})
     wells = [w for w in wells if w.get("mass", 0.0) >= PRUNE_MASS]
     wells.sort(key=lambda w: -w.get("mass", 0.0))
@@ -128,7 +179,15 @@ def apply_gravity(vec):
     nudged = [max(0.0, min(1.0, v[i] + GRAVITY_K * pull[i])) for i in range(len(v))]
     if max(abs(nudged[i] - v[i]) for i in range(len(v))) < MIN_NUDGE:
         return vec
-    return [round(x, 4) for x in nudged]
+    out = [round(x, 4) for x in nudged]
+    # Remember the pulled state, so a write of it is not recorded as a visit (record_visit, _is_pull_echo).
+    try:
+        d = load_wells()
+        d["last_pull"] = {"at": datetime.now().isoformat(), "vector": out}
+        _save(d)
+    except Exception:
+        pass
+    return out
 
 
 def get_wells_context():

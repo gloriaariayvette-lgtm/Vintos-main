@@ -60,6 +60,17 @@ def _flatten(seq):
             out.append(e)
     return out
 
+IMAGINED_MARKER = "[AN IMAGINED POSSIBILITY"   # premonition-dreamer's marker
+
+
+def _imagined(e):
+    """A premonition (dream_only) is a conversation that never happened, not an unresolved thread."""
+    if not isinstance(e, dict):
+        return False
+    return bool(e.get("dream_only")) or e.get("source") == "premonition" \
+        or str(e.get("thread") or "").lstrip().startswith(IMAGINED_MARKER)
+
+
 def build():
     wants      = load("current-wants.json", [])
     latent     = load("latent-threads.json", {})
@@ -121,6 +132,8 @@ def build():
         (tensions,       "tension",           ("pressure", "weight", "intensity")),
     ]:
         for e in (src if isinstance(src, list) else []):
+            if _imagined(e):
+                continue        # 2026-10-16: imagined conversations were listed as unresolved threads
             t = deep_text(e, *TXT)
             if not t:
                 continue
@@ -157,7 +170,7 @@ def build():
 def build_and_write():
     traj = build()
     try:
-        json.dump(traj, open(OUT, "w"), indent=2)
+        json.dump(traj, open(OUT + ".tmp", "w"), indent=2); os.replace(OUT + ".tmp", OUT)
     except Exception:
         pass
     return traj

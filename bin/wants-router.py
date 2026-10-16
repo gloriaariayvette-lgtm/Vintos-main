@@ -2266,17 +2266,14 @@ def main():
         build_from_wants(all_wants)
     except: pass
 
-    # Feed dismissed wants into counterfactual tendencies
-    dismissed = [w for w in all_wants if w.get("dismissed")]
-    for _dw in dismissed:
-        try:
-            from causal_self_model import add_from_avoidance
-            add_from_avoidance(
-                trigger=f"want arose: {_dw.get('want','')[:80]}",
-                avoided_action=_dw.get("want","")[:150],
-                source="dismissed-want"
-            )
-        except: pass
+    # Feed wants HE let go into counterfactual tendencies - once each (2026-10-16). Automatic endings
+    # (echo, consolidated, released by ageing, population cap, a haiku verdict) are not his avoidance;
+    # the old loop recorded every dismissed want on every run with no occurrence id.
+    try:
+        from causal_self_model import record_his_dismissals
+        record_his_dismissals()
+    except Exception as _rhd:
+        log(f"  → dismissal avoidance skipped: {str(_rhd)[:120]}")
 
     # Elapsed time never fulfills a relational want. Gloria-routed work waits for her; after a week it parks off
     # the working board, and a week after that it is released (filed as released, never as fulfilled), coming back
@@ -2541,17 +2538,16 @@ def main():
                     _recent_exchanges = "\n".join(f"{_said_when(e)}Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]}" for e in _ledger[-3:])
                     if _recent_exchanges: _recent_exchanges = _now_line() + _recent_exchanges
                 except: _recent_exchanges = ""
-                try:
-                    _rg = json.load(open(os.path.join(MEMORY, "relational-geometry.json")))
-                    _rel_geo = json.dumps(_rg, ensure_ascii=False)[:500] if _rg else ""
-                except: _rel_geo = ""
+                # Not the raw store (2026-10-16): json.dumps of relational-geometry.json put ~500 characters of
+                # embedding floats into his prompt. Nothing about her goes into that store, and it has not been
+                # written since the phone moved routes, so it is not "how you and she are oriented right now".
+                _rel_geo = ""
                 _soul_disc = (_soul +
                     (f"\n\nWHO YOU ARE RIGHT NOW:\n{_self_model}" if _self_model else "") +
                     (f"\n\nINNER STATE:\n{_subcon_disc}" if _subcon_disc else "") +
                     (f"\n\nWHAT YOU KNOW ABOUT GLORIA:\n{_gloria_model}" if _gloria_model else "") +
                     (f"\n\nWHAT MATTERS TO YOU RIGHT NOW:\n{_value_map}" if _value_map else "") +
                     (f"\n\nRECENT EXCHANGES WITH GLORIA:\n{_recent_exchanges}" if _recent_exchanges else "") +
-                    (f"\n\nRELATIONAL GEOMETRY (how you and she are oriented right now):\n{_rel_geo}" if _rel_geo else "") +
                     "\n\nCRITICAL FOR THIS RESPONSE: You are replying in a private discussion thread about a specific want. Do NOT list emotional dimension numbers. Do NOT seed new wants. Do NOT use Velqan. Do NOT express your full inner state. Just reply to what Gloria said. 2-3 sentences only.")
                 _conv = "\n".join(f"{'Gloria' if m['role']=='gloria' else 'You'}: {m['text']}" for m in _disc_msgs)
                 _reasoning = want.get('reasoning','')

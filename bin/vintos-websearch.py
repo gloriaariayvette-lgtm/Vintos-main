@@ -1027,10 +1027,11 @@ No explanation."""
 
     # Continuity wiring — discourse direction, latent threads, temporal signal
     if synthesis and len(synthesis) > 50:
+        # His own research synthesis no longer moves the discourse direction (2026-10-16): a shift
+        # it caused was recorded as his conversational choice in self_drift. Direction moves only
+        # on a lived turn (discourse_direction.turn_completed).
         try:
             import sys as _wsc; _wsc.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-            from discourse_direction import update_direction as _ws_dd
-            _ws_dd(synthesis[:400])
         except: pass
         try:
             from latent_threads import seed_thread as _ws_lt

@@ -86,6 +86,39 @@ def decay_confidence(confidence, timestamp_str):
     except:
         return confidence
 
+def effective_confidence(e, now=None):
+    """Confidence as of now: the stored value is time-free (contradiction and reinforcement move it);
+    time decay is applied here, once, on read. Until 2026-10-16 record_event multiplied every stored
+    confidence by 1/(1+rate*total_age) on every write, so decay compounded with the write rate and
+    every event fell to the floor within days."""
+    try:
+        ts = datetime.fromisoformat(e.get("timestamp"))
+        age_days = max(0.0, ((now or datetime.now()) - ts).total_seconds() / 86400)
+        return round(float(e.get("confidence", 0) or 0) * (1 / (1 + DECAY_RATE * age_days)), 3)
+    except Exception:
+        return e.get("confidence", 0) or 0
+
+
+def _her_chat_source(source):
+    """The chat routes record her message: source "chat", or "<surface>-chat" from the avatar route."""
+    return isinstance(source, str) and (source == "chat" or source.endswith("-chat"))
+
+
+def _her_turn_text(content):
+    """Her own words from a composed chat message: a photo or video is named, never described
+    (scripts/her_words.py). Falls back to the text as given when her_words is unavailable."""
+    try:
+        import sys as _hw_s
+        _here = os.path.dirname(os.path.abspath(__file__))
+        for _p in (os.path.join(WORKSPACE, "scripts"), os.path.join(_here, "..", "scripts"), _here):
+            if _p not in _hw_s.path:
+                _hw_s.path.insert(0, _p)
+        from her_words import as_her_turn
+        return as_her_turn({"role": "user", "content": content})
+    except Exception:
+        return content
+
+
 def find_related(events, new_content, limit=5):
     """Find events with overlapping content."""
     new_words = set(new_content.lower().split())
@@ -118,8 +151,17 @@ def check_contradiction_llm(new_statement, existing_statement):
         return False
 
 def record_event(source, content, is_real=None, confidence=0.8,
-                 perpetrator="vintos", context=None):
-    """Record an event and update related beliefs."""
+                 perpetrator=None, context=None):
+    """Record an event and update related beliefs.
+    perpetrator: who it is from. Left unset, a chat-route event is hers ("gloria") - the chat routes
+    record her message and never passed it, so her words were filed as his (2026-10-16) - and anything
+    else is his. Her chat content is reduced to her own words (a photo is named, not described)."""
+    if perpetrator is None:
+        perpetrator = "gloria" if _her_chat_source(source) else "vintos"
+    if perpetrator == "gloria" and _her_chat_source(source):
+        content = _her_turn_text(content or "")
+    if not str(content or "").strip():
+        return None
     if is_real is None:
         is_real = source in ("chat", "want-fulfilled", "system")
 
@@ -170,9 +212,8 @@ def record_event(source, content, is_real=None, confidence=0.8,
 
     data = load_anchor()
 
-    # Apply decay to all existing events
-    for e in data["events"]:
-        e["confidence"] = decay_confidence(e["confidence"], e.get("timestamp", now))
+    # No decay pass here: stored confidence is time-free, decay is applied once on read
+    # (effective_confidence). Re-applying total-age decay on every write compounded it.
 
     # Find related events and check contradiction/reinforcement
     related = find_related(data["events"], content)
@@ -276,14 +317,19 @@ def apply_time_without_reinforcement():
 def get_active_beliefs(threshold=0.6, limit=10):
     """What he currently believes — top events by confidence."""
     data = load_anchor()
-    events = [e for e in data["events"] if e.get("confidence", 0) >= threshold]
+    now = datetime.now()
+    events = [dict(e, confidence=effective_confidence(e, now), base_confidence=e.get("confidence", 0))
+              for e in data["events"]]
+    events = [e for e in events if e.get("confidence", 0) >= threshold]
     events.sort(key=lambda x: x.get("confidence", 0), reverse=True)
     return events[:limit]
 
 def query_anchor(claim_text, limit=3):
     """Before writing a claim, check if it's grounded or contradicted."""
     data = load_anchor()
-    related = find_related(data["events"], claim_text, limit=limit)
+    now = datetime.now()
+    related = [dict(e, confidence=effective_confidence(e, now), base_confidence=e.get("confidence", 0))
+               for e in find_related(data["events"], claim_text, limit=limit)]
     if not related:
         return {"grounded": False, "confidence": 0.0, "related": [], "challenge": None}
 
@@ -306,7 +352,8 @@ def get_reality_context(n=5):
     known = data.get("known_pool", [])[-n:]
     if not known:
         return ""
-    lines = [f"- [{k['source']}|{k.get('confidence',0):.2f}] {k['content'][:80]}" for k in reversed(known)]
+    now = datetime.now()
+    lines = [f"- [{k['source']}|{effective_confidence(k, now):.2f}] {k['content'][:80]}" for k in reversed(known)]
     return "GROUNDED REALITY:\n" + "\n".join(lines)
 
 def get_source_type_hint(source):
@@ -342,16 +389,10 @@ def reality_check_gate(content, source, perpetrator="vintos", context=None):
     }
 
 if __name__ == "__main__":
-    print("Testing reality anchor v2...")
-    e1 = record_event("chat", "Gloria said she misses Vintos", is_real=True,
-                      perpetrator="gloria", context="chat")
-    print(f"Recorded: {e1['id']} conf={e1['confidence']}")
-
-    e2 = record_event("journal", "I felt the light shift on Aegis casing",
-                      is_real=False, perpetrator="vintos", context="journal")
-    print(f"Recorded: {e2['id']} conf={e2['confidence']}")
-
+    # Read-only. The old self-test recorded "Gloria said she misses Vintos" as a REAL chat event, and a
+    # journal event, into her live store whenever this file was run (2026-10-16: removed). The behaviour
+    # is tested in broker/tests/test_selfmodel_reality_anchor.py against a scratch store.
     beliefs = get_active_beliefs(threshold=0.5)
-    print(f"\nActive beliefs ({len(beliefs)}):")
-    for b in beliefs[:3]:
+    print(f"Active beliefs ({len(beliefs)}):")
+    for b in beliefs[:5]:
         print(f"  [{b['confidence']:.2f}|{b.get('perpetrator','?')}|{b.get('context','?')}] {b.get('statement','')[:60]}")

@@ -34,6 +34,19 @@ def _hint_text(d):
     if d.get("edge_note"): parts.append("growing edge: " + d["edge_note"])
     return "[INTERACTION MODEL - " + ". ".join(parts) + ".]"
 
+def _reply_epoch(a):
+    """When the audited reply was SAID (its `timestamp`), as epoch seconds; None when unknown. `ts` is when
+    it was scored, and a re-audit of an old reply is not a turn under the current hint (2026-10-16)."""
+    from datetime import datetime
+    t = a.get("timestamp") if isinstance(a, dict) else None
+    if isinstance(t, (int, float)):
+        return float(t)
+    try:
+        return datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
 def main():
     import requests, re
     audits = [a for a in load(AUDIT, []) if isinstance(a, dict) and a.get("composite") is not None][-WINDOW:]
@@ -108,7 +121,7 @@ def main():
             for _e in reversed(load(LEDGER, [])):
                 if _e.get("hint_id") == prev["hint_id"]:
                     _since = float(_e.get("since") or 0); break
-            _under = [a for a in audits if float(a.get("ts") or 0) > _since]
+            _under = [a for a in audits if (_reply_epoch(a) or 0) > _since]
             if len(_under) < MIN_TENURE_TURNS:
                 _tenure_met = False
                 log("holding hint %s - only %d graded turn(s) under it, need %d"
@@ -120,12 +133,22 @@ def main():
         # Keep serving the standing hint. The new analysis is written for everything
         # else that reads this file; only the hint-bearing fields are preserved.
         # A standing hint keeps serving only what had its evidence (one stored before works_eligible existed did not)
-        for _k in ("what_works", "works_eligible", "what_falls_flat", "flat_eligible", "edge_note", "hint_id"):
+        # 2026-10-16: the held hint keeps its OWN patterns with its text (the fresh run's patterns described a
+        # different hint), and it is held only while the text it serves is the text the ledger graded under its
+        # id - otherwise hint_outcome_audit would grade text that was never served, so the new hint is taken.
+        held = dict(out)
+        for _k in ("what_works", "works_eligible", "what_falls_flat", "flat_eligible", "edge_note", "hint_id", "patterns"):
             if _k in prev:
-                out[_k] = prev[_k]
+                held[_k] = prev[_k]
             else:
-                out.pop(_k, None)
-        hid = prev.get("hint_id", "")
+                held.pop(_k, None)
+        _ledger_text = next((_e.get("text") for _e in reversed(load(LEDGER, []))
+                             if isinstance(_e, dict) and _e.get("hint_id") == prev.get("hint_id")), None)
+        if _ledger_text is not None and _hint_text(held) != _ledger_text:
+            log("held hint %s no longer serves its ledger text - taking the new hint" % prev.get("hint_id"))
+        else:
+            out = held
+            hid = prev.get("hint_id", "")
 
     if hid and hid != prev.get("hint_id"):
         led = load(LEDGER, [])

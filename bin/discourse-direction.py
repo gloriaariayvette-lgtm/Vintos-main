@@ -153,12 +153,9 @@ def update_direction(input_text="", felt_coherence=None):
                 state["consecutive_count"] = 1
                 state["commitment_level"] = 0.2  # partial reset
                 log(f"{current} → {input_dir}")
-                # Self-drift: record actual direction choice
-                try:
-                    import sys as _sd_sys; _sd_sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
-                    from self_drift import record_direction_choice
-                    record_direction_choice(input_dir)
-                except: pass
+                # No self_drift record here (2026-10-16). update_direction is also called by web
+                # search, journals and other non-turn writers; a shift they cause is not his choice.
+                # turn_completed() is the one recorder, and only for a lived source.
             else:
                 state["direction_weight"] = min(1.0, weight + 0.1)
                 state["consecutive_count"] = consecutive + 1
@@ -357,20 +354,32 @@ def get_direction_hint(input_text=""):
 
     return f"[DIRECTION:{current.upper()}] {hint}"
 
+# Sources that are a lived exchange with her. Anything else (a control, web search, a journal,
+# a photo caption, an unknown caller) may move the vector but is never recorded as his choice.
+LIVED_SOURCES = ("turn", "chat", "voice", "avatar")
+
+
 def turn_completed(input_text="", source="turn"):
     """The one writer for a lived turn: move the direction vector on her actual input, then record
-    the direction he ended up in as a choice for self_drift. Call once per completed exchange,
-    from the post-turn path — never from prompt assembly or a background tick."""
+    the direction he moved INTO as a choice for self_drift. Call once per completed exchange,
+    from the post-turn path — never from prompt assembly or a background tick.
+
+    A choice is recorded only when (a) the direction actually changed on this turn and (b) the
+    source is a lived one. Until 2026-10-16 the unchanged state was recorded on every turn, so the
+    vector grew toward whatever direction it already sat in (self-drift "consecutive 265")."""
     state = load_state()
+    before = state.get("current_direction", "")
     if state.get("direction_slip"):
         state["direction_slip"] = False   # the correction was shown for this turn; one correction turn
         save_state(state)
     update_direction(input_text)
     state = load_state()
     current = state.get("current_direction", "")
+    if not current or current == before:
+        return current   # nothing changed: no choice was made, nothing to record
     # review 220: a direction reached BY a control (a mode block, a lead plan, a stratagem) is that
     # control's own effect, not evidence that this is how he tends. Only a lived turn is a choice.
-    if current and source in ("turn", "chat", "voice", "avatar"):
+    if current and source in ("turn", "chat", "voice", "avatar"):   # == LIVED_SOURCES
         try:
             from self_drift import record_direction_choice as _rdc
             try: _rdc(current, source=source)
