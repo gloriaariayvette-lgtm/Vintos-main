@@ -60,5 +60,9 @@ git(AEGIS, "checkout", "-q", "-b", "elsewhere")
 r = A.sync(checkout=AEGIS, branch=DEPLOY, keep=KEEP)
 check("a checkout on another branch is left alone", not r["ok"] and "not the deploy branch" in r["why"], r)
 
+check("a deploy that installed and named what is left says so, not 'nothing installed'",
+      A.verdict(1, "  - forge not updated (sudo wants a password). Run: sudo bash x", "DEPLOY FAILED — files are installed, but:\n  - forge not updated").startswith("DEPLOY INCOMPLETE — files are installed; still to do: forge not updated"))
+check("a failed suite is still nothing installed", A.verdict(1, "STOP: a suite failed — nothing installed", "STOP").startswith("DEPLOY FAILED — nothing installed"))
+check("a good deploy is OK", A.verdict(0, "deploy OK", "").startswith("DEPLOY OK"))
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
