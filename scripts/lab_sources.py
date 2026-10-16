@@ -34,6 +34,26 @@ NCBI_DATABASES = {'taxonomy': 'taxonomy', 'assembly': 'assembly',
                   'gene': 'gene', 'protein': 'protein', 'literature': 'pubmed'}
 
 
+_LITERATURE_FILLER = set("""specific structural structure structures feature features architecture architectures
+motif motifs mechanism mechanisms role roles function functions functional hallmark hallmarks unique insight insights
+adaptation adaptations basis molecular detailed overview review study studies analysis characterization
+characterisation organization organisation properties property implications involved associated relevant during
+under extreme their its and of the in for with how what which""".split())
+
+
+def literature_relaxations(term, keep=4):
+    """Looser forms of a literature search that found nothing: the descriptive words out, then the first `keep`
+    words that are left (an organism and a protein usually lead). Never the same form twice, never under two words."""
+    words = str(term or "").split()
+    core = [w for w in words if w.lower().strip(".,'") not in _LITERATURE_FILLER]
+    out = []
+    for form in (core, core[:keep]):
+        t = " ".join(form)
+        if len(form) >= 2 and t != " ".join(words) and t not in out:
+            out.append(t)
+    return out
+
+
 def _plain_term(value):
     """A plain search phrase. He writes "polyketide synthase (PKS) in marine actinobacteria"; the brackets,
     colons and Entrez words are taken out rather than the whole question refused (2026-09-28), so no field
@@ -1051,11 +1071,23 @@ class Sources:
                 else:
                     raise ValueError('sourced numeric NCBI taxon_id or an organism name required')
             database = NCBI_DATABASES[operation]
-            search, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
-                'db': database, 'term': term, 'retmode': 'json', 'retmax': limit,
-                'tool': 'vintos_lab'}))
-            result = search.get('esearchresult') or {}
+            def esearch(t):
+                found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+                    'db': database, 'term': t, 'retmode': 'json', 'retmax': limit, 'tool': 'vintos_lab'}))
+                return found.get('esearchresult') or {}
+            result = esearch(term)
             ids = result.get('idlist') or []
+            relaxed_term = None
+            if operation == 'literature' and not ids:
+                # Entrez ANDs every word, so a whole question as a phrase finds nothing (15-16 October: 9 of 14
+                # microbiology searches returned 0, and the review then read unrelated abstracts). Looser forms,
+                # each said in the receipt: the descriptive words out, then the first few that name the subject.
+                for loose in literature_relaxations(term):
+                    result = esearch(loose)
+                    ids = result.get('idlist') or []
+                    if ids:
+                        relaxed_term = loose
+                        break
             if not isinstance(ids, list) or any(not re.fullmatch(r'[0-9]{1,20}', str(x)) for x in ids):
                 raise ValueError('NCBI returned invalid identifiers')
             ids = ids[:limit]
@@ -1066,11 +1098,14 @@ class Sources:
                 payload = summary.get('result') or {}
                 records = [{'uid': uid, 'summary': payload[uid]} for uid in ids if isinstance(payload.get(uid), dict)]
             return receipt(source, {'source': source, 'operation': operation, 'term': spec.get('term'),
+                                    **({'executed_term': relaxed_term} if relaxed_term else {}),
                                     'taxon_id': spec.get('taxon_id'), 'limit': limit,
                                     **({'organism': spec.get('organism'), 'resolved_taxon_id': resolved}
                                        if resolved else {})}, records,
                            metadata={'database': database, 'total_count': result.get('count'),
-                                     'coverage': 'bounded_first_page', 'service': 'NCBI_EUtilities'})
+                                     'coverage': 'bounded_first_page', 'service': 'NCBI_EUtilities',
+                                     **({'relaxed': 'looser_literature_term', 'executed_term': relaxed_term}
+                                        if relaxed_term else {})})
         if source == 'pubmed_abstracts':
             return self._abstracts(spec)
         if source == 'pubmed':

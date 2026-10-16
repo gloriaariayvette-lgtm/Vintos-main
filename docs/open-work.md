@@ -26,6 +26,14 @@ Fixed 16 October, the repeats: repeat() refuses a question sharing most of its w
 the last 7 days, but the planner was shown only its last ten lookup keys and none of the questions. It now sees
 every lookup and every question it ran this week (compact, capped). Not yet seen working live.
 
+Fixed 16 October, from her listing of 02:42-05:29 UTC: (1) UniProt asked for as uniprot.none or
+uniprot.uniprot.search with nothing named still reached the plugin gateway and was refused ten times, after the
+first fix too; a bare request now reads the question's one accession or one human gene, and otherwise is refused
+plainly by the Lab, never sent to the gateway. (2) Microbiology literature searches sent whole questions as one
+phrase; Entrez ANDs every word, so 9 of 14 returned nothing and the review read unrelated abstracts. An empty
+literature search is now tried again with the descriptive words out, then with its first four words, and the
+receipt names the form that found it.
+
 Not done: 23 repeat or spent-question refusals and waits (fix above, unmeasured), 6 reviews with unresolved target identity, and refusals
 for missing accessions, contradictory organism scope and too many identities. Those are the planner proposing
 what the Lab rightly refuses; nothing here makes it propose better yet.

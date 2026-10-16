@@ -2258,7 +2258,7 @@ _UNIPROT_ARGS = ("accession", "protein_name", "gene", "organism_id", "taxonomy_i
 _UNIPROT_ALIASES = {"gene_name": "gene", "gene_symbol": "gene", "genes": "gene", "protein": "protein_name",
                     "name": "protein_name", "organism": "organism_name", "species": "organism_name",
                     "taxon": "taxonomy_id", "taxon_id": "taxonomy_id", "tax_id": "taxonomy_id", "keywords": "keyword"}
-_QUERY_ALIASES = ("query", "search", "term", "terms", "q", "text")
+_QUERY_ALIASES = ("query", "search", "term", "terms", "q", "text", "search_term", "search_query", "query_string")
 _LIMIT_ALIASES = ("limit", "size", "max_results", "retmax", "count", "page_size")
 _INERT_ARGS = {"fields", "format", "sort", "order", "offset", "page", "include_isoforms", "compressed", "fmt",
                "date_from", "date_to", "mindate", "maxdate", "datetype", "retstart", "api_key"}
@@ -2302,6 +2302,11 @@ def uniprot_from_plugin(pq, purpose=""):
         found = sorted(set(_ACCESSION.findall(purpose)))
         if len(found) == 1:
             return {"source": "uniprot", "query": "accession:%s" % found[0], "limit": 1}
+        # or the one human gene the question names (16 October: uniprot.none and uniprot.uniprot.search went to the
+        # plugin gateway and were refused ten times in three hours, the question itself naming its gene)
+        symbols = _human_question_symbols(purpose) if re.search(r'\b(?:human|Homo sapiens)\b', purpose, re.I) else []
+        if len(symbols) == 1:
+            return {"source": "uniprot", "query": "gene:%s AND organism_id:9606 AND reviewed:true" % symbols[0], "limit": 4}
     terms = []
     for key in _UNIPROT_ARGS:
         v = args.get(key)
