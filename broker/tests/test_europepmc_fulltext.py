@@ -126,5 +126,11 @@ t, _ = net([("https://example.org/a.xml", (200, "application/xml", XML))])
 r = L.fetch("https://example.org/a.xml", transport=t, resolve=PUBLIC)
 check("JATS XML at any address is read with its headings", r["fetched"] and "## Discussion" in r["text"] and "<sec" not in r["text"], r["text"][:200])
 
+_ab = E.parse_jats('<article><front><article-meta><article-id pub-id-type="pmc">PMC1</article-id><title-group>'
+                   '<article-title>T</article-title></title-group><abstract><title>Abstract</title><p>The maintenance'
+                   ' of X.</p><p>Second.</p></abstract></article-meta></front><body/></article>')
+check("the abstract's own title is not doubled into its text (Aegis, 16 October: 'AbstractAbstractThe maintenance')",
+      _ab["abstract"] == "The maintenance of X.\n\nSecond.", _ab["abstract"])
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -109,7 +109,10 @@ def parse_jats(xml):
     for ab in (meta.findall("abstract") if meta is not None else []):
         if (ab.get("abstract-type") or "") in ("graphical", "teaser"):
             continue
-        abstracts.append(_text(ab))
+        # its own <title>Abstract</title> is the heading render() already writes, and its paragraphs keep their
+        # breaks (16 October on Aegis, PMC10742211: the text began "AbstractAbstractThe maintenance...")
+        parts = [_text(ch) for ch in ab if _local(ch.tag) != "title"]
+        abstracts.append("\n\n".join(x for x in parts if x) or _text(ab))
     sections = []
 
     def walk(sec, trail):

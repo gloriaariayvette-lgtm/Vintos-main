@@ -351,15 +351,17 @@ Not done:
   more claims supported without rewritten questions, the acceptance criterion is unmet.
 - Not fixed by this: questions whose target is wrong or whose premise is contradictory; more papers do not help them.
 
-## 14 October — Europe PMC full-text reader: built, not yet seen working live
+## 14 October — Europe PMC full-text reader: built; seen working live on Aegis 16 October
 
 - `scripts/europepmc.py` reads an open-access article's JATS XML from Europe PMC (sections with their headings,
   identifiers, figure and table captions, the source URL). `link_fetch.fetch` tries it first for PMC, PubMed,
   Europe PMC and doi links, and falls back to the ordinary page read with the reason it did not apply.
 - Tested offline only (`broker/tests/test_europepmc_fulltext.py`, a structural fixture for PMC10742211 with
   placeholder text). The build environment cannot reach ebi.ac.uk (proxy 403).
-- **Not done:** an end-to-end read of PMC10742211 on Aegis. The Gantsova et al. 2023 retrieval failure is not
-  solved until that read returns `kind: fetched` with its sections there.
+- **Verified live, 16 October (Gloria ran it on Aegis):** `link_fetch.fetch` of PMC10742211 returned
+  `kind: fetched`, `via: europepmc`, HTTP 200, 34,658 bytes; PMCID PMC10742211, PMID 38132452,
+  DOI 10.3390/cimb45120606; 12 sections, 7 figures; no placeholder text, no raw XML left. The one artifact seen,
+  the abstract beginning "AbstractAbstract...", is fixed the same day (its own title is dropped, paragraphs kept).
 
 ## 11 October — Wants card steps
 
