@@ -3,18 +3,6 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 16 October — Lab questions ask one thing its sources can answer whole
-
-After the planner fix, 11 of 12 reviews were partial (17:48 UTC on). In each, the missing part was a second clause
-no source in the inquiry could return ("and how does the fold-specific binding ... facilitate", "compared to
-terrestrial secretion systems", "its role in preventing zinc toxicity"); the one complete answer asked only what its
-record established. The planner is now told to ask one thing its named source returns; a two-part choice is sent
-back once, named, and if it still asks two things its first ask is kept (`second_ask`, `first_ask`; each narrowing
-is written to faults.jsonl as `question_narrowed`). A question already held keeps its words.
-
-Not done: not yet seen live. HMOX1's heme-iron residues in 1N3U came back missing although the structure read
-computes iron contacts; whether that read ran for the review is not yet known.
-
 ## 16 October — the JEPA self head forecasts when her message arrives, and learns from their whole history (code done; not trained, run or measured on Aegis)
 
 On Aegis the rebuilt head was only ~5% better than "say his average" (293 replies; validation 0.1784 vs his recent mean
@@ -52,6 +40,18 @@ Not done:
 - A retrain now waits for 30 judged replies in EACH mode; if on-message forecasts never run, only `train-force` moves it.
 - Nothing schedules the eval; the ranking and calibration audits do not see on-message rows; drift_head still reads the
   shared-trunk self.
+
+## 16 October — Lab questions ask one thing its sources can answer whole
+
+After the planner fix, 11 of 12 reviews were partial (17:48 UTC on). In each, the missing part was a second clause
+no source in the inquiry could return ("and how does the fold-specific binding ... facilitate", "compared to
+terrestrial secretion systems", "its role in preventing zinc toxicity"); the one complete answer asked only what its
+record established. The planner is now told to ask one thing its named source returns; a two-part choice is sent
+back once, named, and if it still asks two things its first ask is kept (`second_ask`, `first_ask`; each narrowing
+is written to faults.jsonl as `question_narrowed`). A question already held keeps its words.
+
+Not done: not yet seen live. HMOX1's heme-iron residues in 1N3U came back missing although the structure read
+computes iron contacts; whether that read ran for the review is not yet known.
 
 ## 16 October — the Lab planned nothing after the 10:12 deploy: its replans ended on the refusal
 
