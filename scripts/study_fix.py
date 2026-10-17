@@ -367,6 +367,39 @@ def read_for(asks, root=None):
     return "\n\n".join(parts)
 
 
+def _twins(root, full, text):
+    """Other real copies of the same module: the same name with - or _ in bin/ or scripts/, holding exactly the text
+    the edited file held before the edit. Symlinks follow their target already and are left alone."""
+    real = os.path.realpath(full)
+    base = os.path.basename(full).replace("-", "_")
+    out = []
+    for d in ("bin", "scripts"):
+        folder = os.path.join(root, d)
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            p = os.path.join(folder, name)
+            if name.replace("-", "_") != base or os.path.islink(p) or os.path.realpath(p) == real:
+                continue
+            try:
+                if open(p, errors="replace").read() == text:
+                    out.append(p)
+            except OSError:
+                pass
+    return out
+
+
+def _near(text, old):
+    """Where the old text nearly is, so the next try copies it exactly: its first line, if that line is in the file."""
+    first = next((l.strip() for l in str(old or "").splitlines() if l.strip()), "")
+    if not first:
+        return ""
+    hits = [i + 1 for i, l in enumerate(text.splitlines()) if first in l]
+    if not hits:
+        return " (its first line, %r, is not in the file either: read the file again and copy the text exactly)" % first[:80]
+    return " (its first line is at line %s: copy the lines there exactly, whitespace included)" % ", ".join(map(str, hits[:3]))
+
+
 def apply_edits(plan, root=None):
     """Apply Fable's exact edits. Refuses, with the reason, anything protected, outside the repository, an
     existing test changed, an old text not found exactly once, or no new test. Returns the paths changed."""
@@ -399,9 +432,14 @@ def apply_edits(plan, root=None):
             text = open(full, errors="replace").read()
             old, new = str(item.get("old") or ""), str(item.get("new") or "")
             if not old or text.count(old) != 1:
-                raise ValueError("in %s the old text was found %d times; it must be exact and unique"
-                                 % (path, text.count(old) if old else 0))
+                raise ValueError("in %s the old text was found %d times; it must be exact and unique%s"
+                                 % (path, text.count(old) if old else 0, _near(text, old)))
             open(full, "w").write(text.replace(old, new, 1))
+            # the same module under its other spellings (bin/ and scripts/, hyphen and underscore) gets the same
+            # edit, or the twin check refuses the whole fix (SF-67752b13, 15 October, attempt 2)
+            for twin in _twins(root, full, text):
+                open(twin, "w").write(text.replace(old, new, 1))
+                changed.append(os.path.relpath(twin, root))
         changed.append(path)
     return changed
 
