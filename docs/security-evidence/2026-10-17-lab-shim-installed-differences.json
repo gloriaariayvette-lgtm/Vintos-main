@@ -1,0 +1,662 @@
+{
+  "at": "2026-10-17T16:12:56.212294+00:00",
+  "branch": "origin/claude/device-visuals-2026-10-13",
+  "commit": "56a9b724bad83bd6fcc8bfc26dd2d85d255622a7",
+  "scope": "scripts/chemistry_*.py, scripts/lab_*.py, scripts/europepmc.py, bin/*shim*.py; canonical installed roots and shim aliases",
+  "tracked_files": 42,
+  "installed_copies": 42,
+  "missing": [],
+  "rows": [
+    {
+      "branch_path": "bin/vintos_claude_shim.py",
+      "installed_path": "/home/gloria/Vintos/vintos_claude_shim.py",
+      "resolved_path": "/home/gloria/Vintos/vintos_claude_shim.py",
+      "branch_sha256": "567c366284fadf8ec73e62c087907e1d51530ff950c15b24274ece813c855b71",
+      "installed_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+      "matches_branch": false,
+      "mtime_utc": "2026-10-17T15:30:48.709221+00:00",
+      "ctime_utc": "2026-10-17T15:30:48.709221+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+      "diff": "--- 56a9b724bad83bd6fcc8bfc26dd2d85d255622a7:bin/vintos_claude_shim.py\n+++ /home/gloria/Vintos/vintos_claude_shim.py\n@@ -310,10 +310,19 @@\n                    if isinstance(x, dict) and x.get(\"type\") == \"message\")\n     usage = {\"input_tokens\": stats.get(\"input_tokens\"),\n              \"output_tokens\": stats.get(\"total_output_tokens\")}\n+    # Native LM Studio versions differ. Keep only an actual stopping field, never manufacture 'stop'.\n+    finish, finish_source = None, None\n+    for source, value in ((\"stats.stop_reason\", stats.get(\"stop_reason\")),\n+                          (\"stop_reason\", d.get(\"stop_reason\")), (\"finish_reason\", d.get(\"finish_reason\"))):\n+        if isinstance(value, str) and value:\n+            finish, finish_source = value[:256], source\n+            break\n     state = \"valid\" if text else \"error\"\n-    return GR.make_result(\"aegis_gemma\", model=d.get(\"model_instance_id\") or AEGIS_GEMMA_MODEL,\n+    result = GR.make_result(\"aegis_gemma\", model=d.get(\"model_instance_id\") or AEGIS_GEMMA_MODEL,\n                           request_id=d.get(\"response_id\", \"\"), status=state, usage=usage,\n-                          text=text, finish_reason=\"stop\", reason=\"\" if text else \"empty completion\")\n+                          text=text, finish_reason=finish, reason=\"\" if text else \"empty completion\")\n+    result[\"finish_reason_source\"] = finish_source\n+    return result\n \n PROVIDERS = {\"anthropic\": claude_complete, \"xai\": xai_complete, \"gemma\": gemma_complete,\n              \"aegis_gemma\": aegis_gemma_complete}\n@@ -365,6 +374,9 @@\n            \"choices\": [{\"index\": 0, \"message\": msg, \"finish_reason\": res[\"finish_reason\"] or \"stop\"}]}\n     if res.get(\"usage\"): out[\"usage\"] = res[\"usage\"]\n     else: out[\"usage_estimated\"] = True\n+    if res[\"provider\"] == \"aegis_gemma\":\n+        out[\"choices\"][0][\"finish_reason\"] = res[\"finish_reason\"] or None\n+        out[\"finish_reason_source\"] = res.get(\"finish_reason_source\")\n     return json.dumps(out).encode()\n \n def error_body(results, message=None, err_type=\"all_providers_failed\"):\n"
+    },
+    {
+      "branch_path": "scripts/chemistry_alignment.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_alignment.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_alignment.py",
+      "branch_sha256": "6c760a2157670ff491aaf82c408592766762718e8f1333f39d9aec854f0ac47b",
+      "installed_sha256": "6c760a2157670ff491aaf82c408592766762718e8f1333f39d9aec854f0ac47b",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.901479+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.901479+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "6c760a2157670ff491aaf82c408592766762718e8f1333f39d9aec854f0ac47b"
+    },
+    {
+      "branch_path": "scripts/chemistry_digest.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_digest.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_digest.py",
+      "branch_sha256": "31e373053dc41eb514cd2ee6979846804eaae1ade1b547c5705e43fa323e80b3",
+      "installed_sha256": "31e373053dc41eb514cd2ee6979846804eaae1ade1b547c5705e43fa323e80b3",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.734912+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.734912+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "31e373053dc41eb514cd2ee6979846804eaae1ade1b547c5705e43fa323e80b3"
+    },
+    {
+      "branch_path": "scripts/chemistry_esmc.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_esmc.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_esmc.py",
+      "branch_sha256": "96d5fe33855396cbe478da898a6b354148bbff1ed6ccee87323ba1cc7a1e03b5",
+      "installed_sha256": "96d5fe33855396cbe478da898a6b354148bbff1ed6ccee87323ba1cc7a1e03b5",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.670848+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.670848+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "96d5fe33855396cbe478da898a6b354148bbff1ed6ccee87323ba1cc7a1e03b5"
+    },
+    {
+      "branch_path": "scripts/chemistry_esmfold.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_esmfold.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_esmfold.py",
+      "branch_sha256": "2c696e5160dfb2911fa97bba35da5df6774997370c6ca58740a1a6d047c0c8d8",
+      "installed_sha256": "2c696e5160dfb2911fa97bba35da5df6774997370c6ca58740a1a6d047c0c8d8",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.670848+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.670848+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "2c696e5160dfb2911fa97bba35da5df6774997370c6ca58740a1a6d047c0c8d8"
+    },
+    {
+      "branch_path": "scripts/chemistry_evo2.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_evo2.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_evo2.py",
+      "branch_sha256": "3d9c2e0fc14f56fe3e76a38af9ff69d7df5547f2e93ab89d0f55f2abb7463338",
+      "installed_sha256": "3d9c2e0fc14f56fe3e76a38af9ff69d7df5547f2e93ab89d0f55f2abb7463338",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.910020+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.910020+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "3d9c2e0fc14f56fe3e76a38af9ff69d7df5547f2e93ab89d0f55f2abb7463338"
+    },
+    {
+      "branch_path": "scripts/chemistry_fold_read.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_fold_read.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_fold_read.py",
+      "branch_sha256": "682e644cc0700a29a0057291fdf6fcc64132543e742da70c7c3b5cd3fa0358ed",
+      "installed_sha256": "682e644cc0700a29a0057291fdf6fcc64132543e742da70c7c3b5cd3fa0358ed",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.692202+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.692202+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "682e644cc0700a29a0057291fdf6fcc64132543e742da70c7c3b5cd3fa0358ed"
+    },
+    {
+      "branch_path": "scripts/chemistry_frontier_bridge.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_frontier_bridge.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_frontier_bridge.py",
+      "branch_sha256": "c8d329a4d744c6d8080b172420be01edf1331a0658d0ff805e58dd40d16a9141",
+      "installed_sha256": "c8d329a4d744c6d8080b172420be01edf1331a0658d0ff805e58dd40d16a9141",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.905749+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.905749+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "c8d329a4d744c6d8080b172420be01edf1331a0658d0ff805e58dd40d16a9141"
+    },
+    {
+      "branch_path": "scripts/chemistry_genomic.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_genomic.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_genomic.py",
+      "branch_sha256": "f9e7fd2480d99932faf3ffaae67b392a3503b282082f0477699774169671c828",
+      "installed_sha256": "f9e7fd2480d99932faf3ffaae67b392a3503b282082f0477699774169671c828",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.811789+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.811789+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "f9e7fd2480d99932faf3ffaae67b392a3503b282082f0477699774169671c828"
+    },
+    {
+      "branch_path": "scripts/chemistry_grade.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_grade.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_grade.py",
+      "branch_sha256": "bbf3fcf13c02d2c7c34fc08de8ed89af9908bd21ef2e663fbc63312d46ad3e28",
+      "installed_sha256": "bbf3fcf13c02d2c7c34fc08de8ed89af9908bd21ef2e663fbc63312d46ad3e28",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.709286+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.709286+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "bbf3fcf13c02d2c7c34fc08de8ed89af9908bd21ef2e663fbc63312d46ad3e28"
+    },
+    {
+      "branch_path": "scripts/chemistry_instrument_probe.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_instrument_probe.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_instrument_probe.py",
+      "branch_sha256": "d69bf39ab873f68be47e93996c0e3756571ccb38834d1fb70d44a3ca1b28521b",
+      "installed_sha256": "d69bf39ab873f68be47e93996c0e3756571ccb38834d1fb70d44a3ca1b28521b",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.717828+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.717828+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "d69bf39ab873f68be47e93996c0e3756571ccb38834d1fb70d44a3ca1b28521b"
+    },
+    {
+      "branch_path": "scripts/chemistry_lab.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+      "branch_sha256": "306914e57392770e297a2dce75627a8ed1730aeab9093162d822a1aad2d13e5d",
+      "installed_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+      "matches_branch": false,
+      "mtime_utc": "2026-10-17T15:30:48.704932+00:00",
+      "ctime_utc": "2026-10-17T15:30:48.709221+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+      "diff": "--- 56a9b724bad83bd6fcc8bfc26dd2d85d255622a7:scripts/chemistry_lab.py\n+++ /home/gloria/.vintos/workspace/scripts/chemistry_lab.py\n@@ -861,7 +861,7 @@\n         super().__init__(label + \"; evidence=\" + evidence_id)\n \n \n-def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=False):\n+def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=False, completion=None):\n     \"\"\"Best-effort bounded evidence; a storage failure never leaks the response or breaks parsing.\n     terminal=True marks the group as a parse that failed for good, so pruning keeps its raw reply.\"\"\"\n     root = os.path.join(ROOT, \"diagnostics\")\n@@ -875,7 +875,8 @@\n         with os.fdopen(os.open(os.path.join(root, \".lock\"), flags, 0o600), \"w\") as lock:\n             fcntl.flock(lock, fcntl.LOCK_EX)\n             payloads = {\"events.json\": json.dumps({\"evidence_id\": evidence_id, \"events\": events,\n-                                                   \"terminal\": bool(terminal)})}\n+                                                   \"terminal\": bool(terminal), \"completion\": completion or\n+                                                   {\"finish_reason\": None, \"token_limit_reached\": None}})}\n             if raw is not None: payloads[\"raw.txt\"] = raw\n             if repaired is not None: payloads[\"repaired.txt\"] = repaired\n             try:\n@@ -998,14 +999,15 @@\n \n \n def _parse_json_object(text, keep=800):\n+    completion = getattr(text, \"completion\", None)\n     raw = str(text or \"\")\n     evidence_id, events = uuid.uuid4().hex, [\"captured\"]\n-    _parser_evidence(evidence_id, events, raw=raw)\n+    _parser_evidence(evidence_id, events, raw=raw, completion=completion)\n     body = re.sub(r\"^\\s*```(?:json)?\\s*|\\s*```\\s*$\", \"\", raw, flags=re.I | re.S)\n     lo = body.find(\"{\")\n     if lo < 0:\n         events.append(\"strict_parse_failed\"); events.append(\"terminal\")\n-        _parser_evidence(evidence_id, events, terminal=True)\n+        _parser_evidence(evidence_id, events, terminal=True, completion=completion)\n         raise ModelJSONError(\"model returned no JSON object\", evidence_id) from None\n     # Strict boundary first: exactly one complete object from the opening brace, whatever follows it. Gemma\n     # sometimes keeps writing after its object (a second one, or a sentence with braces in it); taking the last\n@@ -1017,12 +1019,12 @@\n         except ValueError:\n             if index == 0:\n                 events.append(\"strict_parse_failed\")\n-                _parser_evidence(evidence_id, events)\n+                _parser_evidence(evidence_id, events, completion=completion)\n             continue\n         if isinstance(value, dict):\n             if index:\n                 events.append(\"repaired\")\n-                _parser_evidence(evidence_id, events, repaired=strict[lo:_end])\n+                _parser_evidence(evidence_id, events, repaired=strict[lo:_end], completion=completion)\n             return value\n     hi = body.rfind(\"}\")\n     tries = [body[lo:hi + 1]] if hi > lo else []\n@@ -1036,11 +1038,46 @@\n             continue\n         if isinstance(value, dict):\n             events.append(\"repaired\")\n-            _parser_evidence(evidence_id, events, repaired=candidate)\n+            _parser_evidence(evidence_id, events, repaired=candidate, completion=completion)\n             return value\n     events.append(\"terminal\")\n-    _parser_evidence(evidence_id, events, terminal=True)   # the mark that keeps its raw reply through pruning\n+    _parser_evidence(evidence_id, events, terminal=True, completion=completion)   # keep its raw reply through pruning\n     raise ModelJSONError(\"model returned no usable JSON object\", evidence_id) from None\n+\n+\n+class _ModelReply(str):\n+    \"\"\"String-compatible reply with request-local diagnostics, never a shared 'last response'.\"\"\"\n+    def __new__(cls, content, completion):\n+        reply = super().__new__(cls, content or \"\")\n+        reply.completion = completion\n+        return reply\n+\n+\n+def _completion_metadata(data, choice, max_tokens):\n+    \"\"\"Allowlisted OpenAI-compatible fields; no message, reasoning, headers or arbitrary provider payload.\n+    LM Studio's /v1/chat/completions puts finish_reason on the choice. The Aegis adapter preserves native reasons.\n+    Unknown/missing reasons stay unknown: a token count alone cannot establish why generation stopped.\"\"\"\n+    reason = choice.get(\"finish_reason\")\n+    reason = reason[:256] if isinstance(reason, str) else None\n+    # Older local adapters fabricated 'stop'; do not treat that as a provider observation.\n+    if data.get(\"provider\") == \"aegis_gemma\" and \"finish_reason_source\" not in data:\n+        reason = None\n+    limited = (True if reason in (\"length\", \"maxPredictedTokensReached\") else False if reason in\n+               (\"stop\", \"tool_calls\", \"function_call\", \"content_filter\", \"eosFound\", \"stopStringFound\") else None)\n+    result = {\"finish_reason\": reason, \"token_limit_reached\": limited, \"requested_max_tokens\": max_tokens}\n+    source = data.get(\"finish_reason_source\")\n+    if data.get(\"provider\") == \"aegis_gemma\":\n+        result[\"finish_reason_source\"] = source[:256] if isinstance(source, str) else None\n+    for key in (\"id\", \"model\"):\n+        if isinstance(data.get(key), str): result[key] = data[key][:256]\n+    usage = data.get(\"usage\")\n+    if isinstance(usage, dict):\n+        result[\"usage\"] = {key: usage[key] for key in (\"prompt_tokens\", \"completion_tokens\", \"total_tokens\")\n+                           if type(usage.get(key)) is int and usage[key] >= 0}\n+        count = result[\"usage\"].get(\"completion_tokens\")\n+        # Budget exhaustion is evidence of possible truncation, not a fabricated stopping condition.\n+        result[\"token_budget_exhausted\"] = (count >= max_tokens if count is not None else None)\n+    return result\n \n \n def _ask(system, prompt, max_tokens=500, temperature=0.75):\n@@ -1050,7 +1087,8 @@\n     req = urllib.request.Request(LLM_URL, data=body, headers={\"Content-Type\": \"application/json\"})\n     with urllib.request.urlopen(req, timeout=150) as response:\n         data = json.loads(response.read())\n-    return data[\"choices\"][0][\"message\"][\"content\"]\n+    choice = data[\"choices\"][0]\n+    return _ModelReply(choice[\"message\"][\"content\"], _completion_metadata(data, choice, max_tokens))\n \n \n # Every planner request ends on its output contract. A replan put the refusal last (\"REFUSED, IT IS A REPEAT: ...\"),\n"
+    },
+    {
+      "branch_path": "scripts/chemistry_mac.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mac.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mac.py",
+      "branch_sha256": "367981033e9ea75211beb4abcf6204ee158b86d9c4163a1952a63dd804a33f22",
+      "installed_sha256": "367981033e9ea75211beb4abcf6204ee158b86d9c4163a1952a63dd804a33f22",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.675119+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.675119+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "367981033e9ea75211beb4abcf6204ee158b86d9c4163a1952a63dd804a33f22"
+    },
+    {
+      "branch_path": "scripts/chemistry_mcp.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mcp.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mcp.py",
+      "branch_sha256": "845df8ee4b27ff7dabc7888da1b803463524567a99cd509bcb5de92c6b6e0ecf",
+      "installed_sha256": "845df8ee4b27ff7dabc7888da1b803463524567a99cd509bcb5de92c6b6e0ecf",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.717828+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.717828+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "845df8ee4b27ff7dabc7888da1b803463524567a99cd509bcb5de92c6b6e0ecf"
+    },
+    {
+      "branch_path": "scripts/chemistry_probe.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_probe.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_probe.py",
+      "branch_sha256": "3cf2770ff4e728a755f0845f50b3e843d0d12e2e538dfc24b21ceea0996771ef",
+      "installed_sha256": "3cf2770ff4e728a755f0845f50b3e843d0d12e2e538dfc24b21ceea0996771ef",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.713557+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.713557+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "3cf2770ff4e728a755f0845f50b3e843d0d12e2e538dfc24b21ceea0996771ef"
+    },
+    {
+      "branch_path": "scripts/chemistry_proposal.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_proposal.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_proposal.py",
+      "branch_sha256": "1bb43a349cf4ae28ed075e67fb122460c7671a58335a2adea09a890f5dbf2a00",
+      "installed_sha256": "1bb43a349cf4ae28ed075e67fb122460c7671a58335a2adea09a890f5dbf2a00",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.730641+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.730641+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "1bb43a349cf4ae28ed075e67fb122460c7671a58335a2adea09a890f5dbf2a00"
+    },
+    {
+      "branch_path": "scripts/chemistry_reading.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_reading.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_reading.py",
+      "branch_sha256": "50386399fe3e952b739422c0a7699eca700d50a0b68d95ca0bbe12d9ab8624a3",
+      "installed_sha256": "50386399fe3e952b739422c0a7699eca700d50a0b68d95ca0bbe12d9ab8624a3",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.722099+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.722099+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "50386399fe3e952b739422c0a7699eca700d50a0b68d95ca0bbe12d9ab8624a3"
+    },
+    {
+      "branch_path": "scripts/chemistry_reference_compare.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_reference_compare.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_reference_compare.py",
+      "branch_sha256": "c9172f76596fc099baac9ae44343e2e4cfc71d400e7edeb0710db91c03bdb980",
+      "installed_sha256": "c9172f76596fc099baac9ae44343e2e4cfc71d400e7edeb0710db91c03bdb980",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.687931+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.687931+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "c9172f76596fc099baac9ae44343e2e4cfc71d400e7edeb0710db91c03bdb980"
+    },
+    {
+      "branch_path": "scripts/chemistry_session.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_session.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_session.py",
+      "branch_sha256": "58277407c9935de75a4c17af4f06990c2bcb9bbdf01cbb0c0e95eb4223690658",
+      "installed_sha256": "58277407c9935de75a4c17af4f06990c2bcb9bbdf01cbb0c0e95eb4223690658",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.683661+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.683661+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "58277407c9935de75a4c17af4f06990c2bcb9bbdf01cbb0c0e95eb4223690658"
+    },
+    {
+      "branch_path": "scripts/chemistry_sources.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_sources.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_sources.py",
+      "branch_sha256": "6f4f93c6e861c02a630869dd442e58548b10cbb369f8f41f48b81d967ebf270d",
+      "installed_sha256": "6f4f93c6e861c02a630869dd442e58548b10cbb369f8f41f48b81d967ebf270d",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.807518+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.807518+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "6f4f93c6e861c02a630869dd442e58548b10cbb369f8f41f48b81d967ebf270d"
+    },
+    {
+      "branch_path": "scripts/chemistry_spark.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_spark.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_spark.py",
+      "branch_sha256": "4acec2a6593de7f7f36f94108f5062a9eec5efb4e3f140baf3ee4e97f0b95789",
+      "installed_sha256": "4acec2a6593de7f7f36f94108f5062a9eec5efb4e3f140baf3ee4e97f0b95789",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.730641+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.730641+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "4acec2a6593de7f7f36f94108f5062a9eec5efb4e3f140baf3ee4e97f0b95789"
+    },
+    {
+      "branch_path": "scripts/chemistry_structure.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_structure.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_structure.py",
+      "branch_sha256": "7c2058d23fd537ad2af7492fe3c8d95ab57bb059ac2be839f67a12e81ac4dbeb",
+      "installed_sha256": "7c2058d23fd537ad2af7492fe3c8d95ab57bb059ac2be839f67a12e81ac4dbeb",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.683661+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.683661+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "7c2058d23fd537ad2af7492fe3c8d95ab57bb059ac2be839f67a12e81ac4dbeb"
+    },
+    {
+      "branch_path": "scripts/chemistry_taste.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_taste.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_taste.py",
+      "branch_sha256": "561eefda0c326a2e239a63c58e756018d0addee6c96e792af9d7b67441a3234e",
+      "installed_sha256": "561eefda0c326a2e239a63c58e756018d0addee6c96e792af9d7b67441a3234e",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.726370+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.726370+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "561eefda0c326a2e239a63c58e756018d0addee6c96e792af9d7b67441a3234e"
+    },
+    {
+      "branch_path": "scripts/chemistry_tracing.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_tracing.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_tracing.py",
+      "branch_sha256": "8ad7b0e06968468dfd650f62c34206fab41d568603390d69be94e165438198c3",
+      "installed_sha256": "8ad7b0e06968468dfd650f62c34206fab41d568603390d69be94e165438198c3",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.679389+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.679389+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "8ad7b0e06968468dfd650f62c34206fab41d568603390d69be94e165438198c3"
+    },
+    {
+      "branch_path": "scripts/europepmc.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/europepmc.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/europepmc.py",
+      "branch_sha256": "e48008fe948aa9e40617415e7c10afb70cebff3944b88a16555d60b69d8766e5",
+      "installed_sha256": "e48008fe948aa9e40617415e7c10afb70cebff3944b88a16555d60b69d8766e5",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.747725+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.747725+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "e48008fe948aa9e40617415e7c10afb70cebff3944b88a16555d60b69d8766e5"
+    },
+    {
+      "branch_path": "scripts/lab_asks.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_asks.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_asks.py",
+      "branch_sha256": "9c66b84962529088520a36a14eb8e408c5ad55db1e06c900f551582c17a9490e",
+      "installed_sha256": "9c66b84962529088520a36a14eb8e408c5ad55db1e06c900f551582c17a9490e",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.786163+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.786163+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "9c66b84962529088520a36a14eb8e408c5ad55db1e06c900f551582c17a9490e"
+    },
+    {
+      "branch_path": "scripts/lab_atlas_worker.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_atlas_worker.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_atlas_worker.py",
+      "branch_sha256": "a2c32c83305fa9f5cc194e616f4f7cb985a1480b995fa53e96c64d9a0af3e52c",
+      "installed_sha256": "a2c32c83305fa9f5cc194e616f4f7cb985a1480b995fa53e96c64d9a0af3e52c",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.803247+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.803247+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "a2c32c83305fa9f5cc194e616f4f7cb985a1480b995fa53e96c64d9a0af3e52c"
+    },
+    {
+      "branch_path": "scripts/lab_claim_evidence.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_claim_evidence.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_claim_evidence.py",
+      "branch_sha256": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878",
+      "installed_sha256": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T16:12:13.592002+00:00",
+      "ctime_utc": "2026-10-17T16:12:13.592002+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878"
+    },
+    {
+      "branch_path": "scripts/lab_claim_replay.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_claim_replay.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_claim_replay.py",
+      "branch_sha256": "f998eb27ac4cbc2200ac53d1b66b10d9fb01df4d89653dd77e911540a1bdbba8",
+      "installed_sha256": "f998eb27ac4cbc2200ac53d1b66b10d9fb01df4d89653dd77e911540a1bdbba8",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.756266+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.756266+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "f998eb27ac4cbc2200ac53d1b66b10d9fb01df4d89653dd77e911540a1bdbba8"
+    },
+    {
+      "branch_path": "scripts/lab_crt.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_crt.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_crt.py",
+      "branch_sha256": "31704bb09ac2a2a8b355feea7c58e394b73a947486d4dc9d12f9bd9273a053bd",
+      "installed_sha256": "31704bb09ac2a2a8b355feea7c58e394b73a947486d4dc9d12f9bd9273a053bd",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.773350+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.773350+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "31704bb09ac2a2a8b355feea7c58e394b73a947486d4dc9d12f9bd9273a053bd"
+    },
+    {
+      "branch_path": "scripts/lab_forge_consumer.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_forge_consumer.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_forge_consumer.py",
+      "branch_sha256": "f2e287774f4eba644c2156f94f60cc98c5a6d2be9d7a2cf685a375af3cef4f5a",
+      "installed_sha256": "f2e287774f4eba644c2156f94f60cc98c5a6d2be9d7a2cf685a375af3cef4f5a",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.329172+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.329172+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "f2e287774f4eba644c2156f94f60cc98c5a6d2be9d7a2cf685a375af3cef4f5a"
+    },
+    {
+      "branch_path": "scripts/lab_forge_followup.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_forge_followup.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_forge_followup.py",
+      "branch_sha256": "ea9a5d5de7ac752ca2bcca78b3aa1c9165d22c7042f50258fa3fdc59e36df715",
+      "installed_sha256": "ea9a5d5de7ac752ca2bcca78b3aa1c9165d22c7042f50258fa3fdc59e36df715",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.324901+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.324901+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "ea9a5d5de7ac752ca2bcca78b3aa1c9165d22c7042f50258fa3fdc59e36df715"
+    },
+    {
+      "branch_path": "scripts/lab_gene_locus.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_gene_locus.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_gene_locus.py",
+      "branch_sha256": "7cfdff2d61e3d0736d14d6e0e6b828e04981f4048da356aaea75447056391fea",
+      "installed_sha256": "7cfdff2d61e3d0736d14d6e0e6b828e04981f4048da356aaea75447056391fea",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.324901+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.324901+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "7cfdff2d61e3d0736d14d6e0e6b828e04981f4048da356aaea75447056391fea"
+    },
+    {
+      "branch_path": "scripts/lab_genome_mining.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_genome_mining.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_genome_mining.py",
+      "branch_sha256": "23757f8c645c39fba11addcbee645a89221b95aa6f4d458684a2755c8e082811",
+      "installed_sha256": "23757f8c645c39fba11addcbee645a89221b95aa6f4d458684a2755c8e082811",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.769079+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.769079+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "23757f8c645c39fba11addcbee645a89221b95aa6f4d458684a2755c8e082811"
+    },
+    {
+      "branch_path": "scripts/lab_hmm.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_hmm.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_hmm.py",
+      "branch_sha256": "38e5cbbb229a5297f37ac50b2f8ec51a43c0e2426bd9ba608d694e6536b02560",
+      "installed_sha256": "38e5cbbb229a5297f37ac50b2f8ec51a43c0e2426bd9ba608d694e6536b02560",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.777621+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.777621+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "38e5cbbb229a5297f37ac50b2f8ec51a43c0e2426bd9ba608d694e6536b02560"
+    },
+    {
+      "branch_path": "scripts/lab_http.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_http.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_http.py",
+      "branch_sha256": "4351e3b0aea0b2b4b7df6e414d9c353b7d86d08c35e732ff6cb353904b1e3c21",
+      "installed_sha256": "4351e3b0aea0b2b4b7df6e414d9c353b7d86d08c35e732ff6cb353904b1e3c21",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.743454+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.743454+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "4351e3b0aea0b2b4b7df6e414d9c353b7d86d08c35e732ff6cb353904b1e3c21"
+    },
+    {
+      "branch_path": "scripts/lab_instruments.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_instruments.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_instruments.py",
+      "branch_sha256": "6ced4dcc1ea4441f0ef89d88bfb836a7212a3e2bf18006c2175813373258efa7",
+      "installed_sha256": "6ced4dcc1ea4441f0ef89d88bfb836a7212a3e2bf18006c2175813373258efa7",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.892936+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.892936+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "6ced4dcc1ea4441f0ef89d88bfb836a7212a3e2bf18006c2175813373258efa7"
+    },
+    {
+      "branch_path": "scripts/lab_keepers.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_keepers.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_keepers.py",
+      "branch_sha256": "0c62dec5c488e79a4adfe92290739fcbc9adba240bc48493dd04130b993ad569",
+      "installed_sha256": "0c62dec5c488e79a4adfe92290739fcbc9adba240bc48493dd04130b993ad569",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.786163+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.786163+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "0c62dec5c488e79a4adfe92290739fcbc9adba240bc48493dd04130b993ad569"
+    },
+    {
+      "branch_path": "scripts/lab_lines.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_lines.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_lines.py",
+      "branch_sha256": "0113cf1533d2f9d333845b57307175ff18462b2e3f116ee7467bf668d03234e7",
+      "installed_sha256": "0113cf1533d2f9d333845b57307175ff18462b2e3f116ee7467bf668d03234e7",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.781892+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.781892+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "0113cf1533d2f9d333845b57307175ff18462b2e3f116ee7467bf668d03234e7"
+    },
+    {
+      "branch_path": "scripts/lab_phage.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_phage.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_phage.py",
+      "branch_sha256": "07409fec303109a708c3167832aaf7b8f0a8b42b6d4fc30a6dba65dc587e9d6c",
+      "installed_sha256": "07409fec303109a708c3167832aaf7b8f0a8b42b6d4fc30a6dba65dc587e9d6c",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.781892+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.781892+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "07409fec303109a708c3167832aaf7b8f0a8b42b6d4fc30a6dba65dc587e9d6c"
+    },
+    {
+      "branch_path": "scripts/lab_repeats.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_repeats.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_repeats.py",
+      "branch_sha256": "d9a61fda8fc9bd879a7c328eb3e190d270f311f5ff389c3c95c1b0ac49486d5b",
+      "installed_sha256": "d9a61fda8fc9bd879a7c328eb3e190d270f311f5ff389c3c95c1b0ac49486d5b",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.790434+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.790434+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "d9a61fda8fc9bd879a7c328eb3e190d270f311f5ff389c3c95c1b0ac49486d5b"
+    },
+    {
+      "branch_path": "scripts/lab_sources.py",
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_sources.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_sources.py",
+      "branch_sha256": "fec08d6f3f07dad7cca94c367842525e02e82f7125ab7fd4a2099127d430e871",
+      "installed_sha256": "fec08d6f3f07dad7cca94c367842525e02e82f7125ab7fd4a2099127d430e871",
+      "matches_branch": true,
+      "mtime_utc": "2026-10-17T15:24:22.764808+00:00",
+      "ctime_utc": "2026-10-17T15:24:22.764808+00:00",
+      "os_owner": "gloria",
+      "checkout_sha256": "fec08d6f3f07dad7cca94c367842525e02e82f7125ab7fd4a2099127d430e871"
+    }
+  ],
+  "host_only": [
+    {
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mac_probe.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/chemistry_mac_probe.py",
+      "sha256": "0a42663b5323409af1d4569a6102dc4a94c826c6b4cdf9e37d86d80873f73098"
+    },
+    {
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_daily_digest.py",
+      "resolved_path": "/home/gloria/.vintos/workspace/scripts/lab_daily_digest.py",
+      "sha256": "a5192398a47dbc09f06a38e9b8d106dc1c04dfa679ac6ba7b3418f4a641889ee"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 1642141,
+      "scripts": [
+        "/home/gloria/Vintos-main/bin/vintos_claude_shim.py"
+      ]
+    },
+    {
+      "pid": 1699077,
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py"
+      ]
+    }
+  ],
+  "host_only_metadata": [
+    {
+      "path": "/home/gloria/.vintos/workspace/scripts/chemistry_mac_probe.py",
+      "mtime_utc": "2026-10-17T15:24:23.828273+00:00",
+      "owner": "gloria",
+      "sha256": "0a42663b5323409af1d4569a6102dc4a94c826c6b4cdf9e37d86d80873f73098",
+      "docstring": "Run fixed Chemistry Lab commissioning checks on the Mac and emit receiptable JSON.\n\nEach named check uses its own existing environment. This file accepts no code, paths, or\nmodel-selected arguments; it is a repeatable commissioning surface, not a second bench\ndoorway. Its stdout is one record suitable for ``chemistry_probe --record-run -``.",
+      "functions": [
+        "_record",
+        "_child",
+        "_foundry",
+        "run"
+      ]
+    },
+    {
+      "path": "/home/gloria/.vintos/workspace/scripts/lab_daily_digest.py",
+      "mtime_utc": "2026-09-22T10:47:06.107169+00:00",
+      "owner": "gloria",
+      "sha256": "a5192398a47dbc09f06a38e9b8d106dc1c04dfa679ac6ba7b3418f4a641889ee",
+      "docstring": "Append one evidence-honest Q1 Lab digest \u2014 yesterday's work \u2014 to the inner-life ledger.\n\nThis is a mechanical receipt, not a verdict. It says what the hypothesis ledger\nrecorded and which advisory blocks were withheld in shadow. It deliberately does\nnot infer functional contribution: shadow-trials.jsonl contains assignments, not\nconsequences, and presence/withholding counts are not fitness.",
+      "functions": [
+        "_yesterday",
+        "_rows",
+        "_on_day",
+        "render",
+        "append",
+        "backfill"
+      ]
+    }
+  ],
+  "diagnostics_installation_provenance": {
+    "receipt_path": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/receipt.json",
+    "receipt": {
+      "backup": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017",
+      "installed_at": 1792251048.67613,
+      "files": [
+        {
+          "target": "/home/gloria/Vintos-main/scripts/chemistry_lab.py",
+          "backup": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/0",
+          "before_sha256": "306914e57392770e297a2dce75627a8ed1730aeab9093162d822a1aad2d13e5d",
+          "after_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7"
+        },
+        {
+          "target": "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+          "backup": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/1",
+          "before_sha256": "306914e57392770e297a2dce75627a8ed1730aeab9093162d822a1aad2d13e5d",
+          "after_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7"
+        },
+        {
+          "target": "/home/gloria/Vintos-main/bin/vintos_claude_shim.py",
+          "backup": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/2",
+          "before_sha256": "567c366284fadf8ec73e62c087907e1d51530ff950c15b24274ece813c855b71",
+          "after_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf"
+        },
+        {
+          "target": "/home/gloria/Vintos/vintos_claude_shim.py",
+          "backup": "/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/3",
+          "before_sha256": "567c366284fadf8ec73e62c087907e1d51530ff950c15b24274ece813c855b71",
+          "after_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf"
+        }
+      ],
+      "pids_before": {
+        "vintos-chemistry-lab.service": "1633016",
+        "vintos-claude-shim.service": "412"
+      },
+      "services": {
+        "vintos-chemistry-lab.service": {
+          "active": "active",
+          "pid": "1642143"
+        },
+        "vintos-claude-shim.service": {
+          "active": "active",
+          "pid": "1642141"
+        }
+      }
+    },
+    "current_checks": [
+      {
+        "target": "/home/gloria/Vintos-main/scripts/chemistry_lab.py",
+        "installed_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+        "receipt_after_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+        "matches_receipt": true
+      },
+      {
+        "target": "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+        "installed_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+        "receipt_after_sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+        "matches_receipt": true
+      },
+      {
+        "target": "/home/gloria/Vintos-main/bin/vintos_claude_shim.py",
+        "installed_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+        "receipt_after_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+        "matches_receipt": true
+      },
+      {
+        "target": "/home/gloria/Vintos/vintos_claude_shim.py",
+        "installed_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+        "receipt_after_sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+        "matches_receipt": true
+      }
+    ],
+    "shim_script_alias": {
+      "path": "/home/gloria/.vintos/workspace/scripts/vintos_claude_shim.py",
+      "resolved": "/home/gloria/Vintos/vintos_claude_shim.py",
+      "sha256": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf"
+    },
+    "health": {
+      "house": "307",
+      "shim": "{\"ok\": true}"
+    }
+  },
+  "identified_installer": {
+    "agent": "Codex",
+    "task": "Chemistry Lab completion diagnostics",
+    "installed_at_utc": "2026-10-17T15:30:48Z",
+    "evidence": "Aegis lab-completion-diagnostics-20261017/receipt.json matches current hashes; Codex Desktop session installation command and completion report match that receipt.",
+    "host_only_file_installer": "not established"
+  }
+}

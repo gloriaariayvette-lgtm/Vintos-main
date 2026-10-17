@@ -1,0 +1,390 @@
+{
+  "chain_B_entity": 2,
+  "author_chain": "B",
+  "label_chain": "B",
+  "alignments": [
+    {
+      "align_id": "1",
+      "ref_id": "1",
+      "pdbx_PDB_id_code": "9UTC",
+      "pdbx_strand_id": "A",
+      "seq_align_beg": "30",
+      "pdbx_seq_align_beg_ins_code": "?",
+      "seq_align_end": "843",
+      "pdbx_seq_align_end_ins_code": "?",
+      "pdbx_db_accession": "Q8TE23",
+      "db_align_beg": "26",
+      "pdbx_db_align_beg_ins_code": "?",
+      "db_align_end": "839",
+      "pdbx_db_align_end_ins_code": "?",
+      "pdbx_auth_seq_align_beg": "26",
+      "pdbx_auth_seq_align_end": "839"
+    },
+    {
+      "align_id": "2",
+      "ref_id": "2",
+      "pdbx_PDB_id_code": "9UTC",
+      "pdbx_strand_id": "A",
+      "seq_align_beg": "844",
+      "pdbx_seq_align_beg_ins_code": "?",
+      "seq_align_end": "1078",
+      "pdbx_seq_align_end_ins_code": "?",
+      "pdbx_db_accession": "9UTC",
+      "db_align_beg": "840",
+      "pdbx_db_align_beg_ins_code": "?",
+      "db_align_end": "1074",
+      "pdbx_db_align_end_ins_code": "?",
+      "pdbx_auth_seq_align_beg": "840",
+      "pdbx_auth_seq_align_end": "1074"
+    },
+    {
+      "align_id": "3",
+      "ref_id": "3",
+      "pdbx_PDB_id_code": "9UTC",
+      "pdbx_strand_id": "B",
+      "seq_align_beg": "29",
+      "pdbx_seq_align_beg_ins_code": "?",
+      "seq_align_end": "860",
+      "pdbx_seq_align_end_ins_code": "?",
+      "pdbx_db_accession": "Q7RTX0",
+      "db_align_beg": "21",
+      "pdbx_db_align_beg_ins_code": "?",
+      "db_align_end": "852",
+      "pdbx_db_align_end_ins_code": "?",
+      "pdbx_auth_seq_align_beg": "21",
+      "pdbx_auth_seq_align_end": "852"
+    },
+    {
+      "align_id": "4",
+      "ref_id": "4",
+      "pdbx_PDB_id_code": "9UTC",
+      "pdbx_strand_id": "B",
+      "seq_align_beg": "876",
+      "pdbx_seq_align_beg_ins_code": "?",
+      "seq_align_end": "1110",
+      "pdbx_seq_align_end_ins_code": "?",
+      "pdbx_db_accession": "A0A1S4NYF2",
+      "db_align_beg": "26",
+      "pdbx_db_align_beg_ins_code": "?",
+      "db_align_end": "260",
+      "pdbx_db_align_end_ins_code": "?",
+      "pdbx_auth_seq_align_beg": "868",
+      "pdbx_auth_seq_align_end": "1102"
+    }
+  ],
+  "chains": {
+    "A": {
+      "occupied_atom_count": 4036,
+      "observed_residue_count_any_atom": 500,
+      "observed_residue_count_CA": 500,
+      "author_intervals": [
+        [
+          26,
+          44
+        ],
+        [
+          58,
+          342
+        ],
+        [
+          357,
+          552
+        ]
+      ],
+      "entity_intervals": [
+        [
+          30,
+          48
+        ],
+        [
+          62,
+          346
+        ],
+        [
+          361,
+          556
+        ]
+      ],
+      "deposited_entity_length": 1078,
+      "unobserved_entity_intervals": [
+        [
+          1,
+          29
+        ],
+        [
+          49,
+          61
+        ],
+        [
+          347,
+          360
+        ],
+        [
+          557,
+          1078
+        ]
+      ],
+      "declared_unobserved_intervals": [
+        [
+          1,
+          29
+        ],
+        [
+          49,
+          61
+        ],
+        [
+          347,
+          360
+        ],
+        [
+          557,
+          1078
+        ]
+      ],
+      "missing_annotations_match_coordinates": true,
+      "mapped_components": [
+        {
+          "accession": "Q8TE23",
+          "entity_interval": [
+            30,
+            843
+          ],
+          "reference_interval": [
+            26,
+            839
+          ],
+          "author_interval": [
+            26,
+            839
+          ],
+          "observed_reference_intervals": [
+            [
+              26,
+              44
+            ],
+            [
+              58,
+              342
+            ],
+            [
+              357,
+              552
+            ]
+          ],
+          "observed_count": 500,
+          "sequence_only_reference_intervals": [
+            [
+              45,
+              57
+            ],
+            [
+              343,
+              356
+            ],
+            [
+              553,
+              839
+            ]
+          ]
+        },
+        {
+          "accession": "9UTC",
+          "entity_interval": [
+            844,
+            1078
+          ],
+          "reference_interval": [
+            840,
+            1074
+          ],
+          "author_interval": [
+            840,
+            1074
+          ],
+          "observed_reference_intervals": [],
+          "observed_count": 0,
+          "sequence_only_reference_intervals": [
+            [
+              840,
+              1074
+            ]
+          ]
+        }
+      ],
+      "closest_sucralose_heavy_atom_pair": {
+        "distance_A": 1.938,
+        "ligand_component": "RRJ",
+        "ligand_author_residue": "2",
+        "protein_residue": "GLU",
+        "protein_author_residue": "302",
+        "protein_atom": "OE2"
+      }
+    },
+    "B": {
+      "occupied_atom_count": 4084,
+      "observed_residue_count_any_atom": 526,
+      "observed_residue_count_CA": 526,
+      "author_intervals": [
+        [
+          22,
+          356
+        ],
+        [
+          366,
+          556
+        ]
+      ],
+      "entity_intervals": [
+        [
+          30,
+          364
+        ],
+        [
+          374,
+          564
+        ]
+      ],
+      "deposited_entity_length": 1130,
+      "unobserved_entity_intervals": [
+        [
+          1,
+          29
+        ],
+        [
+          365,
+          373
+        ],
+        [
+          565,
+          1130
+        ]
+      ],
+      "declared_unobserved_intervals": [
+        [
+          1,
+          29
+        ],
+        [
+          365,
+          373
+        ],
+        [
+          565,
+          1130
+        ]
+      ],
+      "missing_annotations_match_coordinates": true,
+      "mapped_components": [
+        {
+          "accession": "Q7RTX0",
+          "entity_interval": [
+            29,
+            860
+          ],
+          "reference_interval": [
+            21,
+            852
+          ],
+          "author_interval": [
+            21,
+            852
+          ],
+          "observed_reference_intervals": [
+            [
+              22,
+              356
+            ],
+            [
+              366,
+              556
+            ]
+          ],
+          "observed_count": 526,
+          "sequence_only_reference_intervals": [
+            [
+              21,
+              21
+            ],
+            [
+              357,
+              365
+            ],
+            [
+              557,
+              852
+            ]
+          ]
+        },
+        {
+          "accession": "A0A1S4NYF2",
+          "entity_interval": [
+            876,
+            1110
+          ],
+          "reference_interval": [
+            26,
+            260
+          ],
+          "author_interval": [
+            868,
+            1102
+          ],
+          "observed_reference_intervals": [],
+          "observed_count": 0,
+          "sequence_only_reference_intervals": [
+            [
+              26,
+              260
+            ]
+          ]
+        }
+      ],
+      "closest_sucralose_heavy_atom_pair": {
+        "distance_A": 12.712,
+        "ligand_component": "RRY",
+        "ligand_author_residue": "1",
+        "protein_residue": "LYS",
+        "protein_author_residue": "155",
+        "protein_atom": "NZ"
+      }
+    }
+  },
+  "existing_chain_reader_B": {
+    "count": 526,
+    "author_intervals": [
+      [
+        22,
+        356
+      ],
+      [
+        366,
+        556
+      ]
+    ]
+  },
+  "RCSB_B_alignment": [
+    {
+      "provenance_source": "SIFTS",
+      "reference_database_accession": "Q7RTX0",
+      "reference_database_name": "UniProt",
+      "aligned_regions": [
+        {
+          "entity_beg_seq_id": 29,
+          "length": 832,
+          "ref_beg_seq_id": 21
+        }
+      ]
+    }
+  ],
+  "B_description": "Taste receptor type 1 member 3,mNeonGreen",
+  "instance_mapping_check": {
+    "length": 1130,
+    "non_missing_intervals": [
+      [
+        1,
+        1130
+      ]
+    ]
+  }
+}

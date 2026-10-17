@@ -1,0 +1,291 @@
+{
+  "deployment": {
+    "commit": "412ea7a13db15a7df9c140310f81360fbeb87b1a",
+    "release": "/tmp/vintos-dns-release.3erbq1",
+    "tests_passed": 421,
+    "files": [
+      {
+        "source": "/tmp/vintos-dns-release.3erbq1/repo/scripts/link_fetch.py",
+        "installed_at": "/home/gloria/.vintos/workspace/scripts/link_fetch.py",
+        "before_sha256": "65fe3e6f34f902bb1d2b5208eeff84255dc0cabf714a1afa03d62941dc49e6b3",
+        "after_sha256": "11942e5766c43d5b7e976b575f89eab8a9b6f36ce9dc1b9dd8ea36e59ef5703a"
+      },
+      {
+        "source": "/tmp/vintos-dns-release.3erbq1/repo/scripts/lab_claim_evidence.py",
+        "installed_at": "/home/gloria/.vintos/workspace/scripts/lab_claim_evidence.py",
+        "before_sha256": "6c992c4b202f3d9f4565d99d70a8b8293b6700e41875e63a18001f52ece6faa7",
+        "after_sha256": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878"
+      }
+    ],
+    "restart_units": [
+      "vintos-server.service",
+      "vintos-chemistry-lab.service",
+      "vintos-mcp.service"
+    ],
+    "preserve_sha256": {
+      "/home/gloria/Vintos-main/scripts/chemistry_lab.py": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+      "/home/gloria/Vintos-main/bin/vintos_claude_shim.py": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+      "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+      "/home/gloria/.vintos/workspace/scripts/want_email.py": "60bae14b2109f2c7aea37c236646ff5c35793665243be199d1c3477228bf8523",
+      "/home/gloria/.vintos/workspace/scripts/received_mail.py": "1954353b364dc0ff3ff3c59b6cb8b0757563c0a22578bcf3269d75c500d768de",
+      "/home/gloria/.vintos/workspace/scripts/scholar.py": "7d1235c736fb4642cea2d9318da951ad90f35be7201ceddfd6b59afb83414355"
+    },
+    "services_before": {
+      "vintos-server.service": {
+        "MainPID": "1633673",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 10:24:37 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-server.service"
+      },
+      "vintos-chemistry-lab.service": {
+        "MainPID": "1642143",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 10:30:48 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-chemistry-lab.service"
+      },
+      "vintos-mcp.service": {
+        "MainPID": "1633325",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 10:24:34 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-mcp.service"
+      }
+    },
+    "isolated_validation": {
+      "commit": "412ea7a13db15a7df9c140310f81360fbeb87b1a",
+      "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+      "passed": 421,
+      "failed": 0
+    },
+    "isolated_results_sha256": "17ec518a45a9ddb83d81ba1df8b24533cf9622a8e186003a904db8001668a889",
+    "backup": "/home/gloria/.vintos/backups/dns-pinning-20261017-111213",
+    "rollback": "/home/gloria/.vintos/backups/dns-pinning-20261017-111213/restore.sh",
+    "services_after": {
+      "vintos-server.service": {
+        "MainPID": "1699071",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 11:12:14 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-server.service"
+      },
+      "vintos-chemistry-lab.service": {
+        "MainPID": "1699077",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 11:12:14 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-chemistry-lab.service"
+      },
+      "vintos-mcp.service": {
+        "MainPID": "1699084",
+        "ExecMainStartTimestamp": "Sat 2026-10-17 11:12:14 CDT",
+        "ActiveState": "active",
+        "SubState": "running",
+        "FragmentPath": "/home/gloria/.config/systemd/user/vintos-mcp.service"
+      }
+    },
+    "installed_sha256": {
+      "link_fetch.py": "11942e5766c43d5b7e976b575f89eab8a9b6f36ce9dc1b9dd8ea36e59ef5703a",
+      "lab_claim_evidence.py": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878"
+    },
+    "success": true
+  },
+  "public_probes": {
+    "checked_at": "2026-10-17T16:14:49Z",
+    "installed_path": "/home/gloria/.vintos/workspace/scripts/link_fetch.py",
+    "installed_sha256": "11942e5766c43d5b7e976b575f89eab8a9b6f36ce9dc1b9dd8ea36e59ef5703a",
+    "expected_sha256": "11942e5766c43d5b7e976b575f89eab8a9b6f36ce9dc1b9dd8ea36e59ef5703a",
+    "module_file": "/home/gloria/.vintos/workspace/scripts/link_fetch.py",
+    "probes": [
+      {
+        "url": "https://www.rcsb.org/structure/8SGW",
+        "receipt": {
+          "kind": "fetched",
+          "via": null,
+          "why": "",
+          "final_url": "https://www.rcsb.org/structure/8SGW",
+          "bytes": 157339,
+          "http_status": 200,
+          "hops": [
+            "https://www.rcsb.org/structure/8SGW"
+          ]
+        },
+        "text_chars": 13301,
+        "dns": [
+          {
+            "host": "www.rcsb.org",
+            "addresses": [
+              "128.6.158.51",
+              "128.6.158.50"
+            ]
+          }
+        ],
+        "connections": [
+          {
+            "hostname": "www.rcsb.org",
+            "validated_addresses": [
+              "128.6.158.51",
+              "128.6.158.50"
+            ],
+            "peer": [
+              "128.6.158.51",
+              443
+            ]
+          }
+        ]
+      },
+      {
+        "url": "https://www.google.com/url?q=https%3A%2F%2Fwww.rcsb.org%2Fstructure%2F8SGW",
+        "receipt": {
+          "kind": "fetched",
+          "via": null,
+          "why": "",
+          "final_url": "https://www.rcsb.org/structure/8SGW",
+          "bytes": 157339,
+          "http_status": 200,
+          "hops": [
+            "https://www.rcsb.org/structure/8SGW"
+          ]
+        },
+        "text_chars": 13301,
+        "dns": [
+          {
+            "host": "www.rcsb.org",
+            "addresses": [
+              "128.6.158.51",
+              "128.6.158.50"
+            ]
+          }
+        ],
+        "connections": [
+          {
+            "hostname": "www.rcsb.org",
+            "validated_addresses": [
+              "128.6.158.51",
+              "128.6.158.50"
+            ],
+            "peer": [
+              "128.6.158.51",
+              443
+            ]
+          }
+        ]
+      },
+      {
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10742211/",
+        "receipt": {
+          "kind": "fetched",
+          "via": "europepmc",
+          "why": "",
+          "final_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC10742211/fullTextXML",
+          "bytes": 34652,
+          "http_status": 200,
+          "hops": [
+            "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC10742211/fullTextXML"
+          ]
+        },
+        "text_chars": 34652,
+        "dns": [
+          {
+            "host": "www.ebi.ac.uk",
+            "addresses": [
+              "193.62.193.80"
+            ]
+          }
+        ],
+        "connections": [
+          {
+            "hostname": "www.ebi.ac.uk",
+            "validated_addresses": [
+              "193.62.193.80"
+            ],
+            "peer": [
+              "193.62.193.80",
+              443
+            ]
+          }
+        ]
+      },
+      {
+        "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:38132452&format=json",
+        "receipt": {
+          "kind": "fetched",
+          "via": null,
+          "why": "",
+          "final_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:38132452&format=json",
+          "bytes": 1070,
+          "http_status": 200,
+          "hops": [
+            "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:38132452&format=json"
+          ]
+        },
+        "text_chars": 1070,
+        "dns": [
+          {
+            "host": "www.ebi.ac.uk",
+            "addresses": [
+              "193.62.193.80"
+            ]
+          }
+        ],
+        "connections": [
+          {
+            "hostname": "www.ebi.ac.uk",
+            "validated_addresses": [
+              "193.62.193.80"
+            ],
+            "peer": [
+              "193.62.193.80",
+              443
+            ]
+          }
+        ]
+      }
+    ],
+    "lab_claim_evidence": {
+      "installed_path": "/home/gloria/.vintos/workspace/scripts/lab_claim_evidence.py",
+      "sha256": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878"
+    }
+  },
+  "final_runtime_check": {
+    "at": "2026-10-17T16:17:06.640671+00:00",
+    "services": {
+      "vintos-server.service": {
+        "MainPID": "1699071",
+        "NRestarts": "0",
+        "ExecMainStatus": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "vintos-chemistry-lab.service": {
+        "MainPID": "1699077",
+        "NRestarts": "0",
+        "ExecMainStatus": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "vintos-mcp.service": {
+        "MainPID": "1699084",
+        "NRestarts": "0",
+        "ExecMainStatus": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "vintos-claude-shim.service": {
+        "MainPID": "1642141",
+        "NRestarts": "0",
+        "ExecMainStatus": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      }
+    },
+    "hashes": {
+      "/home/gloria/.vintos/workspace/scripts/link_fetch.py": "11942e5766c43d5b7e976b575f89eab8a9b6f36ce9dc1b9dd8ea36e59ef5703a",
+      "/home/gloria/.vintos/workspace/scripts/lab_claim_evidence.py": "d2f77bd81a80afd575f7dbe3dd5834090cb7be7754b6aa1d2dcce63c481f9878",
+      "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+      "/home/gloria/Vintos-main/bin/vintos_claude_shim.py": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf",
+      "/home/gloria/Vintos/vintos_claude_shim.py": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf"
+    }
+  }
+}

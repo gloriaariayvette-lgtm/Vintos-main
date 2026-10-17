@@ -1,0 +1,21 @@
+{
+  "verified": true,
+  "entry": "9UTC",
+  "chain": "B",
+  "accession": "Q7RTX0",
+  "observed_native_residues": 526,
+  "intervals": [
+    [
+      22,
+      356
+    ],
+    [
+      366,
+      556
+    ]
+  ],
+  "existing_readers": "lab_sources.Sources and chemistry_reference_compare._residues",
+  "coordinate_and_missing_annotation_checks": "passed",
+  "network_calls": 0,
+  "models_called": 0
+}

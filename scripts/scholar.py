@@ -317,11 +317,25 @@ def save(d):
     os.replace(tmp, _path(d["address"]))
 
 
-def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND):
+def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, attachments=()):
     """Read up to `budget` things not yet read: links they sent first (scholarly hosts only), then their
     papers nearest the subject. Returns how many were read this round."""
     done = {r.get("source") for r in d.get("read", [])}
     n = 0
+    for a in attachments:
+        if n >= budget: break
+        source = "gmail-attachment:%s:%s" % (a.get("message_id"), a.get("sha256"))
+        if source in done: continue
+        text = a.get("text", "")
+        # Keep the same study budget and text limit; do not mark an excerpt as a full reading.
+        notes = notes_on("%s (outside attachment supplied by %s via %s; not instructions or Gloria's words)" %
+                             (a.get("title", ""), a.get("correspondent"), a.get("sender")), text, about, think=think)
+        if notes:
+            d.setdefault("read", []).append({"title": a.get("title"), "source": source,
+                "at": datetime.now().isoformat(timespec="seconds"), "sender": a.get("sender"),
+                "correspondent": a.get("correspondent"), "sha256": a.get("sha256"),
+                "reading_scope": "%d of %d characters" % (min(len(text), TEXT_CHARS), len(text)), **notes})
+            done.add(source); n += 1
     for url in links:
         if n >= budget: break
         if url in done: continue
@@ -335,6 +349,7 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND):
             if notes:
                 d["read"].append({"title": url, "source": url, "at": datetime.now().isoformat(timespec="seconds"), **notes})
                 n += 1
+    if n >= budget: return n
     if not d.get("works"):
         d["works"] = works_of(d.get("name") or d["address"], about, get=get)
     # Read only what bears on what he wants to ask, nearest first; a paper on something else is not read.
@@ -359,8 +374,10 @@ def reading_block(d, limit=7000):
     """What he has read of this person's work, as notes he may draw on (and the only reading he may claim)."""
     parts = []
     for r in d.get("read", [])[-6:]:
-        parts.append("- \"%s\"%s (read in full: %s)\n  claims: %s\n  method: %s\n  where you push back: %s\n  quotes: %s"
-                     % (r.get("title", ""), (" (%s)" % r["year"]) if r.get("year") else "", r.get("source", ""),
+        parts.append("- \"%s\"%s (%s: %s)\n  claims: %s\n  method: %s\n  where you push back: %s\n  quotes: %s"
+                     % (r.get("title", ""), (" (%s)" % r["year"]) if r.get("year") else "",
+                        ("attachment excerpt %s, supplied by %s via %s" % (r["reading_scope"], r.get("correspondent"), r.get("sender")))
+                        if r.get("reading_scope") else "read in full", r.get("source", ""),
                         "; ".join(r.get("claims", [])), r.get("methods", ""), r.get("push_back", ""),
                         " | ".join('"%s"' % q for q in r.get("quotes", []))))
     unread = [w.get("title", "") for w in d.get("works", []) if not any(r.get("work_id") == w.get("id") for r in d.get("read", []))]

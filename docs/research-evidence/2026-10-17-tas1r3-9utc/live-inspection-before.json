@@ -1,0 +1,319 @@
+{
+  "scope": "bounded recent live Lab inspection before ingestion",
+  "host": "Aegis",
+  "notebook_tail_limit_bytes": 33554432,
+  "source_receipts_tail_limit_bytes": 33554432,
+  "whole_history_absence_claim": false,
+  "9UTC_in_inspected_records": false,
+  "observed_reads": [
+    "9NOR"
+  ],
+  "original_question_preserved": true,
+  "target_entry_ids": [
+    "CLF-c189c2309c1fc6c4",
+    "CLF-0a9db862d4e5e5da"
+  ],
+  "files": [
+    {
+      "file": "notebook.jsonl",
+      "total_matching_rows_in_tail": 54,
+      "latest_returned_rows": [
+        {
+          "at": "2026-10-16T16:22:26.328367+00:00",
+          "kind": "inquiry"
+        },
+        {
+          "at": "2026-10-16T16:22:53.738973+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "7c2a3b7a76c9a75046a2eee79de5af542a0c4741fe57c74c105c39c8aec4c018",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-16T16:24:13.232324+00:00",
+          "kind": "structure_read",
+          "entry_id": "9OPW",
+          "receipt_id": "5ec4123d9704d2d3b0cb22ea2b21e752fd8d0da3b1b615760ecd09c66f849c4b",
+          "for_accession": "Q925D8"
+        },
+        {
+          "at": "2026-10-16T16:25:39.216778+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-fab07c01324b0cdb",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-16T17:35:37.228554+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "ae0323093e3260ef97f9aca8cfdc37102a8d3c3878da9764f8d5759bfa912fdf",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-16T17:36:32.838510+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-c189c2309c1fc6c4",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-16T23:42:48.049913+00:00",
+          "kind": "inquiry"
+        },
+        {
+          "at": "2026-10-16T23:43:15.068284+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "660dc3dcb3b731f3698ca484feb841118123df7945a200796a50310e752f678b",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-16T23:44:33.734226+00:00",
+          "kind": "structure_read",
+          "entry_id": "9OPW",
+          "receipt_id": "152d2c6291d5fed4732ef64512bef39f94e74f4f3b887f7a08ec2297a31e9156",
+          "for_accession": "Q925D8"
+        },
+        {
+          "at": "2026-10-16T23:45:59.816724+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-49877ea561924096",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-17T00:44:52.386081+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "2723728593dc734e5c0b53c69b3eb115d66db654bc1d498944b15b829468f034",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-17T00:45:46.394287+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-17b4467c3b6e0350",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-17T07:37:53.110970+00:00",
+          "kind": "inquiry"
+        },
+        {
+          "at": "2026-10-17T07:38:20.607995+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "845474aa08ed8a884fd00d86412597204438e8b047aa78b996d19eec0cf9cfb0",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-17T07:39:35.776026+00:00",
+          "kind": "structure_read",
+          "entry_id": "9OPW",
+          "receipt_id": "05c6b58c5feef0dcab58c571f21794b71eb37d23310695c90b7909aef5521b70",
+          "for_accession": "Q925D8"
+        },
+        {
+          "at": "2026-10-17T07:41:03.590699+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-d1ffd26fafb0a761",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-17T08:48:17.771765+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "1f5e6b6c5d9a5def0bd493c6cec12304898eb5e6193728e723821efa76af6256",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-17T08:49:11.808296+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-0a9db862d4e5e5da",
+          "evidence_status": "partial"
+        },
+        {
+          "at": "2026-10-17T14:21:07.512818+00:00",
+          "kind": "inquiry"
+        },
+        {
+          "at": "2026-10-17T14:21:33.526083+00:00",
+          "kind": "structure_read",
+          "entry_id": "9NOR",
+          "receipt_id": "2c5e30c3e023a615e8d1ecce22d755d5ff58572e7a6799ecb8a5e1ade450a075",
+          "for_accession": "Q7RTX0"
+        },
+        {
+          "at": "2026-10-17T14:22:49.650208+00:00",
+          "kind": "structure_read",
+          "entry_id": "9OPW",
+          "receipt_id": "4e513710f779a2d1c9f5cdd168c7c44a50847e8493df2e57977a36af2323710d",
+          "for_accession": "Q925D8"
+        },
+        {
+          "at": "2026-10-17T14:24:15.696239+00:00",
+          "kind": "reflection",
+          "entry_id": "CLF-6eea4af010d117e8",
+          "evidence_status": "partial"
+        }
+      ]
+    },
+    {
+      "file": "source-receipts.jsonl",
+      "total_matching_rows_in_tail": 14,
+      "latest_returned_rows": [
+        {
+          "retrieved_at": "2026-10-16T16:22:53.349137+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "7c2a3b7a76c9a75046a2eee79de5af542a0c4741fe57c74c105c39c8aec4c018"
+        },
+        {
+          "retrieved_at": "2026-10-16T16:22:53.349137+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "7c2a3b7a76c9a75046a2eee79de5af542a0c4741fe57c74c105c39c8aec4c018"
+        },
+        {
+          "retrieved_at": "2026-10-16T17:35:36.808934+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "ae0323093e3260ef97f9aca8cfdc37102a8d3c3878da9764f8d5759bfa912fdf"
+        },
+        {
+          "retrieved_at": "2026-10-16T17:35:36.808934+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "ae0323093e3260ef97f9aca8cfdc37102a8d3c3878da9764f8d5759bfa912fdf"
+        },
+        {
+          "retrieved_at": "2026-10-16T23:43:14.708818+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "660dc3dcb3b731f3698ca484feb841118123df7945a200796a50310e752f678b"
+        },
+        {
+          "retrieved_at": "2026-10-16T23:43:14.708818+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "660dc3dcb3b731f3698ca484feb841118123df7945a200796a50310e752f678b"
+        },
+        {
+          "retrieved_at": "2026-10-17T00:44:52.048660+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "2723728593dc734e5c0b53c69b3eb115d66db654bc1d498944b15b829468f034"
+        },
+        {
+          "retrieved_at": "2026-10-17T00:44:52.048660+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "2723728593dc734e5c0b53c69b3eb115d66db654bc1d498944b15b829468f034"
+        },
+        {
+          "retrieved_at": "2026-10-17T07:38:20.187221+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "845474aa08ed8a884fd00d86412597204438e8b047aa78b996d19eec0cf9cfb0"
+        },
+        {
+          "retrieved_at": "2026-10-17T07:38:20.187221+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "845474aa08ed8a884fd00d86412597204438e8b047aa78b996d19eec0cf9cfb0"
+        },
+        {
+          "retrieved_at": "2026-10-17T08:48:16.959168+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "1f5e6b6c5d9a5def0bd493c6cec12304898eb5e6193728e723821efa76af6256"
+        },
+        {
+          "retrieved_at": "2026-10-17T08:48:16.959168+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "1f5e6b6c5d9a5def0bd493c6cec12304898eb5e6193728e723821efa76af6256"
+        },
+        {
+          "retrieved_at": "2026-10-17T14:21:33.092714+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "2c5e30c3e023a615e8d1ecce22d755d5ff58572e7a6799ecb8a5e1ade450a075"
+        },
+        {
+          "retrieved_at": "2026-10-17T14:21:33.092714+00:00",
+          "source": "pdb",
+          "query": {
+            "entry_id": "9NOR",
+            "operation": "structure_evidence",
+            "source": "pdb"
+          },
+          "receipt_id": "2c5e30c3e023a615e8d1ecce22d755d5ff58572e7a6799ecb8a5e1ade450a075"
+        }
+      ]
+    }
+  ],
+  "installed_modules": [
+    {
+      "installed_file": "/home/gloria/.vintos/workspace/scripts/lab_sources.py",
+      "sha256": "fec08d6f3f07dad7cca94c367842525e02e82f7125ab7fd4a2099127d430e871"
+    },
+    {
+      "installed_file": "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+      "sha256": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7"
+    },
+    {
+      "installed_file": "/home/gloria/.vintos/workspace/scripts/chemistry_reference_compare.py",
+      "sha256": "c9172f76596fc099baac9ae44343e2e4cfc71d400e7edeb0710db91c03bdb980"
+    }
+  ]
+}

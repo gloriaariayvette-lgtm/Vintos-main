@@ -1,0 +1,173 @@
+{
+  "source": "pdb",
+  "query": {
+    "source": "pdb",
+    "entry_id": "9UTC",
+    "operation": "structure_evidence"
+  },
+  "records": [
+    {
+      "entry_id": "9UTC",
+      "title": "The VFT domains of human sweet taste receptor TAS1R2 and TAS1R3 in the sucralose-bound state",
+      "experimental_methods": [
+        "ELECTRON MICROSCOPY"
+      ],
+      "resolution_angstroms": [
+        3.33
+      ],
+      "primary_citation": {
+        "title": "Structural and functional characterization of human sweet taste receptor.",
+        "pdbx_database_id_PubMed": 40555359,
+        "pdbx_database_id_DOI": "10.1038/s41586-025-09302-6"
+      },
+      "numbering": "PDB author residue numbering; not asserted to match UniProt",
+      "interpretation": "deposited coordinates; nearby atoms within 3.2 angstroms are geometric contacts, not a claim of chemical bonds or biological activity",
+      "metal_sites": [],
+      "occupied_atom_count": 8143,
+      "geometry": {
+        "method": "first deposited model; occupied C-alpha atoms; inter-chain proximity cutoff 8 angstroms; not proof of biological interfaces or membrane orientation",
+        "chains": [
+          {
+            "chain": "A",
+            "observed_residues": 500,
+            "author_residue_min": 26,
+            "author_residue_max": 552
+          },
+          {
+            "chain": "B",
+            "observed_residues": 526,
+            "author_residue_min": 22,
+            "author_residue_max": 556
+          }
+        ],
+        "inter_chain_contacts": [
+          {
+            "chains": [
+              "A",
+              "B"
+            ],
+            "ca_pair_count": 93,
+            "closest_pairs": [
+              {
+                "chain_1": "B",
+                "residue_1": 126,
+                "chain_2": "A",
+                "residue_2": 121,
+                "ca_distance_angstroms": 4.079
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 124,
+                "chain_2": "A",
+                "residue_2": 123,
+                "ca_distance_angstroms": 4.115
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 129,
+                "chain_2": "A",
+                "residue_2": 359,
+                "ca_distance_angstroms": 4.668
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 514,
+                "chain_2": "A",
+                "residue_2": 236,
+                "ca_distance_angstroms": 4.807
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 515,
+                "chain_2": "A",
+                "residue_2": 236,
+                "ca_distance_angstroms": 4.872
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 127,
+                "chain_2": "A",
+                "residue_2": 120,
+                "ca_distance_angstroms": 4.953
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 125,
+                "chain_2": "A",
+                "residue_2": 122,
+                "ca_distance_angstroms": 5.025
+              },
+              {
+                "chain_1": "B",
+                "residue_1": 127,
+                "chain_2": "A",
+                "residue_2": 113,
+                "ca_distance_angstroms": 5.029
+              }
+            ]
+          }
+        ]
+      },
+      "secondary_structure_coverage": {
+        "helix_records_in_file": 31,
+        "sheet_records_in_file": 40,
+        "shown_records": 40,
+        "definition": "HELIX describes an alpha-helical secondary-structure segment, not a transmembrane assignment. Counts across deposited chains and a bounded excerpt must not be compared as though they were the number of membrane-spanning helices in one protein."
+      },
+      "secondary_structure_records": [
+        "HELIX    1 AA1 LYS A   65  ASP A   85  1                                  21    ",
+        "HELIX    2 AA2 VAL A  108  PHE A  114  1                                   7    ",
+        "HELIX    3 AA3 ASN A  143  SER A  155  1                                  13    ",
+        "HELIX    4 AA4 SER A  168  ASP A  173  5                                   6    ",
+        "HELIX    5 AA5 SER A  186  PHE A  201  1                                  16    ",
+        "HELIX    6 AA6 ASP A  213  ARG A  230  1                                  18    ",
+        "HELIX    7 AA7 THR A  250  SER A  267  1                                  18    ",
+        "HELIX    8 AA8 PRO A  277  GLN A  291  1                                  15    ",
+        "HELIX    9 AA9 VAL A  309  THR A  314  5                                   6    ",
+        "HELIX   10 AB1 GLU A  315  GLY A  320  5                                   6    ",
+        "HELIX   11 AB2 GLY A  334  TRP A  341  1                                   8    ",
+        "HELIX   12 AB3 ASN A  365  PHE A  373  1                                   9    ",
+        "HELIX   13 AB4 PHE A  373  GLY A  381  1                                   9    ",
+        "HELIX   14 AB5 VAL A  384  GLY A  404  1                                  21    ",
+        "HELIX   15 AB6 TYR A  416  TRP A  425  1                                  10    ",
+        "HELIX   16 AB7 SER B   26  ARG B   30  5                                   5    ",
+        "HELIX   17 AB8 SER B   66  LYS B   86  1                                  21    ",
+        "HELIX   18 AB9 PRO B  106  PHE B  116  1                                  11    ",
+        "HELIX   19 AC1 SER B  146  LEU B  161  1                                  16    ",
+        "HELIX   20 AC2 SER B  189  PHE B  204  1                                  16    ",
+        "HELIX   21 AC3 ASP B  216  GLY B  234  1                                  19    ",
+        "HELIX   22 AC4 ASP B  250  SER B  266  1                                  17    ",
+        "HELIX   23 AC5 SER B  276  SER B  290  1                                  15    ",
+        "HELIX   24 AC6 SER B  306  GLY B  311  1                                   6    ",
+        "HELIX   25 AC7 GLU B  333  ALA B  345  1                                  13    ",
+        "HELIX   26 AC8 ASP B  347  GLU B  356  1                                  10    ",
+        "HELIX   27 AC9 CYS B  370  CYS B  375  1                                   6    ",
+        "HELIX   28 AD1 THR B  377  SER B  382  1                                   6    ",
+        "HELIX   29 AD2 GLN B  389  LEU B  408  1                                  20    ",
+        "HELIX   30 AD3 LYS B  422  TYR B  431  1                                  10    ",
+        "HELIX   31 AD4 ARG B  482  ILE B  485  5                                   4    ",
+        "SHEET    1 AA1 4 LEU A  94  ILE A  98  0                                        ",
+        "SHEET    2 AA1 4 TYR A  33  GLY A  37  1  N  LEU A  35   O  GLY A  95           ",
+        "SHEET    3 AA1 4 VAL A 135  ILE A 139  1  O  ILE A 139   N  GLY A  36           ",
+        "SHEET    4 AA1 4 GLN A 161  ILE A 162  1  O  ILE A 162   N  VAL A 138           ",
+        "SHEET    1 AA2 2 HIS A  42  ALA A  43  0                                        ",
+        "SHEET    2 AA2 2 GLU A  63  VAL A  64 -1  O  GLU A  63   N  ALA A  43           ",
+        "SHEET    1 AA3 2 LEU A 121  PRO A 123  0                                        ",
+        "SHEET    2 AA3 2 ASP B 124  ALA B 126 -1  O  ILE B 125   N  LEU A 122           ",
+        "SHEET    1 AA4 8 CYS A 233  THR A 239  0                                        "
+      ]
+    }
+  ],
+  "retrieved_at": "2026-10-17T16:14:40.960786+00:00",
+  "response_sha256": "9c0a41466ea9d3360f02112d9a2114a8599a4bcc85c0eab51f0f5804067e16fe",
+  "metadata": {
+    "evidence": "experimental_structure",
+    "coverage": "one_deposited_model_bounded_site_records",
+    "coordinate_url": "https://files.rcsb.org/download/9UTC.pdb",
+    "comparison": "construct_species_conditions_and_residue_numbering_must_be_checked"
+  },
+  "truth_status": "source_observation_not_validation",
+  "literature_coverage": "not_assessed",
+  "novelty": "not_established",
+  "receipt_id": "048a0f54b5f5f5be50fc589aa4a3c62efbbc775fdfa7671ed0ffd650ee8f4eb7"
+}

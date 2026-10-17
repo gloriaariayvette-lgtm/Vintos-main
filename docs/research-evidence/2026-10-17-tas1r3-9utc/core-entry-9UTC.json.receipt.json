@@ -1,0 +1,94 @@
+{
+  "ok": true,
+  "source": "data-rcsb-org",
+  "path": "core/entry/9UTC",
+  "method": "GET",
+  "status_code": 200,
+  "record_path": null,
+  "raw_output_path": "/tmp/tas1r3-evidence/core-entry-9UTC.json",
+  "warnings": [],
+  "summary": {
+    "audit_author": [
+      {
+        "name": "Shi, Z.J.",
+        "pdbx_ordinal": 1
+      },
+      {
+        "name": "Xu, W.X.",
+        "pdbx_ordinal": 2
+      },
+      {
+        "name": "Yue, X.L.",
+        "pdbx_ordinal": 3
+      },
+      {
+        "name": "Wu, L.J.",
+        "pdbx_ordinal": 4
+      },
+      {
+        "name": "Hua, T.",
+        "pdbx_ordinal": 5
+      },
+      "... (+1 more)"
+    ],
+    "citation": [
+      {
+        "country": "UK",
+        "id": "primary",
+        "journal_abbrev": "Nature",
+        "journal_id_ASTM": "NATUAS",
+        "journal_id_CSD": "0006",
+        "_truncated_keys": 11
+      }
+    ],
+    "database_2": [
+      {
+        "database_code": "9UTC",
+        "database_id": "PDB",
+        "pdbx_DOI": "10.2210/pdb9utc/pdb",
+        "pdbx_database_accession": "pdb_00009utc"
+      },
+      {
+        "database_code": "D_1300058891",
+        "database_id": "WWPDB"
+      },
+      {
+        "database_code": "EMD-64488",
+        "database_id": "EMDB"
+      }
+    ],
+    "em_3d_fitting": [
+      {
+        "id": "1"
+      }
+    ],
+    "em_3d_reconstruction": [
+      {
+        "id": "1",
+        "image_processing_id": "1",
+        "num_particles": 84470,
+        "resolution": 3.33,
+        "resolution_method": "FSC 0.143 CUT-OFF",
+        "_truncated_keys": 1
+      }
+    ],
+    "_truncated_keys": 31
+  },
+  "top_keys": [
+    "audit_author",
+    "citation",
+    "database_2",
+    "em_3d_fitting",
+    "em_3d_reconstruction"
+  ],
+  "sources": [
+    {
+      "name": "RCSB Protein Data Bank",
+      "url": "https://data.rcsb.org/rest/v1/core/entry/9UTC",
+      "retrieved_at": "2026-10-17T16:14:39.810636+00:00",
+      "supports_claim": true,
+      "kind": "evidence",
+      "request_url": "https://data.rcsb.org/rest/v1/core/entry/9UTC"
+    }
+  ]
+}

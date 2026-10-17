@@ -3,6 +3,25 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
+
+The Lab retains actual stopping metadata, usage and token-budget observations beside
+each private parser evidence ID, through repairs and terminal failures. The local-only
+Aegis proxy no longer invents a normal stop when its native LM Studio response omits
+the reason. Missing reasons remain unknown. Routing, parsing, retry limits, private
+diagnostic caps and pruning are unchanged.
+
+Installed on Aegis on 17 October at 15:30:48 UTC; matching source hashes, new service
+PIDs and proxy health verified. Eleven affected OS-isolated suites passed on macOS
+and Linux (209 assertions/tests); the installed-source regression also passed.
+Ordinary post-install parses now retain completion metadata (309/500 and 244/500
+output tokens). The native response supplied no recognized stopping field; those
+records correctly say unknown rather than the proxy's former invented normal stop.
+Malformed/length-limited cases passed isolated fixtures. A local one-token smoke was
+deferred by compute admission and sent no request. No paid model call or folding job
+was launched for validation. Details and inspection commands:
+[completion diagnostics](chemistry-lab-completion-diagnostics.md).
+
 ## 16 October — avatar controls touch handling
 
 The app-side control drawer now has a 48px handle and a 44px minimum model-button
@@ -12,7 +31,7 @@ and clamps the actual panel inside the viewport. Both app HTML copies agree.
 No Lab, model routing, server, or authored prompt changed. Native installation
 and Gloria's physical touch acceptance are separate from the isolated gesture tests.
 
-## 16 October — intent selection reaches the reply (source repaired; not yet deployed)
+## 16 October — intent selection reaches the reply (source repaired; installed on Aegis 16 October with Codex 4da57191, "DEPLOY OK"; not yet measured — run `subcon_accuracy.py --days 3` from 19 October)
 
 The selector declared a goal and success criterion, but the text/phone/avatar speaking prompt received only
 its field and first move, plus a blanket instruction not to answer her question. Axis actions were omitted,
@@ -973,8 +992,11 @@ Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, w
 - Test: `broker/tests/test_link_fetch.py` (40 checks). Stubbed transport and resolver; requests and sockets are
   replaced so nothing can reach the network. It fails on the old code.
 - **Not done:**
-  - A DNS answer can change between the check and the connection (rebinding). The resolved address is checked
-    but not pinned for the request.
+  - DNS rebinding: corrected in source on 17 October on `claude/device-visuals-2026-10-13`;
+    each hop connects only to its validated public address snapshot, including retries. HTTP Host and HTTPS
+    SNI/certificate verification keep the URL hostname. Environment proxies are intentionally bypassed;
+    direct connection failures are reported without a proxy fallback. See the 17 October record below.
+    Installed and hash/import verified on Aegis on 17 October at 11:12 CDT; see the 17 October DNS record below.
   - `chemistry_reference_compare.fetch_reference` and the Lab's own fetches are left as they are (fixed RCSB
     host; lab_http).
   - Not yet verified on Aegis.
@@ -3687,3 +3709,134 @@ Done (Claude Code): both song paths, a want's song (wants-router -> creative-exp
 (music-composer.py), now draft with Sonnet and finish with Grok (`scripts/song_draft.py`). Each finished spec has
 its Sonnet draft beside it as `<spec>.sonnet-draft.md`. A failed draft leaves Grok writing alone; a failed or
 repeating finish leaves Sonnet's spec standing; both are logged. Not yet seen on Aegis.
+
+
+## 17 October — research-link connections pinned to validated DNS answers
+
+Inspected the current `claude/device-visuals-2026-10-13` head `f715dd6`, including the 16–17 October
+mail/Europe PMC/Lab changes. The older check/connect DNS gap remained. `link_fetch` now carries one
+validated address snapshot from each hop into a dedicated urllib3 connection pool. Numeric IPv4/IPv6
+sockets connect directly; connection retries use only that snapshot, close failed sockets, and never
+resolve again. All DNS answers must still be public. DNS errors/empty answers fail closed.
+
+The original URL hostname remains the HTTP Host and HTTPS SNI/certificate identity; certificate chain
+and hostname verification are required. Requests' CA file/directory overrides remain supported.
+Environment HTTP/HTTPS/ALL proxies and netrc do not participate: a remote-resolving proxy would bypass
+the address restriction. A direct connection failure remains a named `http_failure`, with no proxy fallback.
+Existing URL restrictions, redirect limits, per-connection/read timeouts, decompressed byte caps and
+receipt kinds remain in force. HTTP redirects, meta-refresh, Europe PMC and public X embeds all use
+the same hop validation and pinned production transport. Mail/want/Lab source changes are preserved.
+
+Deterministic offline coverage in `test_link_fetch_pinning.py` uses fake IP sockets and real TLS over
+AF_UNIX socket pairs, with a public test certificate/key fixture. It covers public-to-private rebinding
+(no private destination contacted), same-host redirects/meta-refresh that rebind, public redirect
+snapshots, IPv6/IPv4 retry and exhaustion, DNS errors/mixed answers, proxy environment variables,
+Host/SNI, correct/trusted and wrong-host/untrusted certificates, gzip limits, HTTP errors, and alternate
+article/embed paths. The Lab claim-evidence reader previously injected a separate unpinned urllib
+transport; `live_fetch()` now uses the same pinned production transport, with its own rebinding/redirect
+regression and unchanged raw article receipts. The separate fixed-host Lab API clients remain unchanged. Focused OS-isolated regression results are recorded in
+`docs/security-evidence/2026-10-17-link-fetch-focused.json`.
+
+The complete repair is pushed as `412ea7a` on `claude/device-visuals-2026-10-13` (transport in `13ddf3f`).
+The clean Aegis release snapshot passed all **421/421 OS-isolated suites** on Python 3.12.3.
+The focused final regressions passed **399 checks in 11 suites**; the preceding complete Mac Python 3.12
+run passed 421/421 suites, followed by the final focused Lab-path regressions.
+
+**Installed after explicit owner approval, 17 October at 11:12 CDT.** A targeted two-file transaction
+installed only `link_fetch.py` and `lab_claim_evidence.py` from the clean, 421-suite-tested security release.
+Server, Chemistry Lab and MCP were restarted and confirmed running with new PIDs. Both installed/imported
+SHA-256 values match the tested sources. Direct and wrapped RCSB links, Europe PMC full text, and the Lab's
+claim-evidence search all returned HTTP 200/fetched; each connected peer belonged to its validated snapshot.
+The standard broad deployment remained refused. Concurrent installed Lab/shim completion-diagnostics and
+mail-attachment changes were preserved byte for byte; neither the live checkout nor those files was overwritten.
+Backup/rollback: `/home/gloria/.vintos/backups/dns-pinning-20261017-111213/restore.sh`.
+Evidence: `docs/security-evidence/2026-10-17-dns-pinning-installed.json`.
+
+Read-only comparison against branch `56a9b72` covered all 42 tracked Lab/shim files in the named scope:
+only `chemistry_lab.py` and `vintos_claude_shim.py` differ. Both contain Codex's separate completion-diagnostics
+repair, installed at 10:30:48 CDT, verified against its installation receipt and current hashes. The shim's
+active checkout copy and its installed symlink target carry the same correction. Two additional host-only
+Lab scripts (`chemistry_mac_probe.py`, `lab_daily_digest.py`) are absent from the branch; their installers
+were not established. All are preserved. Full paths, hashes, diffs, metadata, and provenance are recorded in
+`docs/security-evidence/2026-10-17-lab-shim-installed-differences.json`.
+
+
+## 17 October — trusted text research attachments are ingested
+
+Done (Codex), from `claude/device-visuals-2026-10-13`, including the later DNS-pinning changes through
+`412ea7a1`. The installed Gmail gateway was inspected: it supports `gmail.read_attachment` using the parent
+message ID and the complete attachment ID (exact filename when the ID is unavailable). Its extracted inline
+text can be truncated; ingestion reads the original connector file instead, through the existing public-host
+fetcher, with redirects refused. No email-body URL is used as an attachment download URL.
+
+`want_email` keeps attached text separate from the message body. Supported types are `text/plain` and
+`text/markdown`; decoding is explicit and strict, with an allowlist of text charsets. Trust requires an existing
+contact address or an agent letter whose sender exactly matches the gateway's mailbox profile (including the
+live profile's `email` field). Each attachment keeps message/part ID, filename, MIME type, actual mailbox
+sender, correspondent, decoded byte/character counts and SHA-256. Missing/unsupported/oversized/failed reads
+are explicit receipts. Limits: 128 KiB per attachment, 256 KiB and eight attachments per check, four per message,
+100 MIME parts and depth ten. Attachment excerpts share the existing 15,000-character mail reading budget.
+The four daily searches, morning reservation, link rules, send limits and research study budget remain intact.
+
+`received_mail.research_attachments()` makes complete stored texts available to the existing correspondence
+study. Want context and mail replies show attributed excerpts and retrieval provenance. Scholar notes share
+the existing per-round budget and name their actual excerpt scope; ingestion is not described as full model
+understanding. No conclusions are supplied by the ingestion code.
+
+Validation: the full integrated OS-isolated suite passed 422/422; the last profile-field compatibility correction
+then passed all ten focused suites, including 29 deterministic attachment regressions. Coverage includes
+multiple and duplicate attachments/reads, MIME/charset/byte failures, gateway failures, trust, download-host
+and redirect restrictions, shared prompt limits, concurrent inbox arrivals, and one-message backfill. Providers,
+senders and sockets were blocked/stubbed; no paid model validation was used. See
+`docs/mail-attachments-validation.json` for source hashes, suite results and runtime receipts.
+
+Installed and hash/import verified on Aegis: `want_email.py`, `received_mail.py`, `scholar.py`. Pre-install copies
+and inbox data are recoverable in `~/.vintos/backups/mail-attachments-20261017-103459`; the profile compatibility
+correction has a second backup at `mail-attachments-20261017-103917`. No services or timers were restarted or
+changed, and the separate link-fetch security work was not overwritten.
+
+Live recovery succeeded at 10:39:28 CDT from the original October 16 message `1a144e0973a0ba3e` in thread
+`1a144e033ab33f41`: `wilterson_graziano_2021_pnas.txt` (62,759 bytes / 62,544 characters) and
+`butlin_2025_indicators_tics.txt` (70,013 bytes / 69,555 characters), plus `links.txt`. Complete decoded texts and
+hashes were verified through the installed research retrieval; both papers appear as labelled excerpts in
+want context. They remain Grok Bot's material, with the actual mailbox sender retained, never Gloria's words.
+The original interpretation and read date were preserved. Wants, contacts, reply ledger and schedule hashes
+were unchanged; recovery made zero model calls and sent zero correspondence. A second recovery made no
+Gmail call and changed no inbox bytes. A model's later assessment of the complete papers remains distinct
+from this verified storage/retrieval result; no scientific conclusion was changed.
+
+
+
+## 17 October — TAS1R3 9UTC evidence attached, no code deployment
+
+Codex checked `claude/device-visuals-2026-10-13` through `56a9b724` and inspected bounded recent live Lab
+records before acting. They showed repeated 9NOR reads and unresolved TAS1R3 questions, with no 9UTC in
+the inspected window. The existing `lab_sources.Sources` PDB `structure_evidence` path and
+`chemistry_reference_compare` mmCIF/chain reader were used; no new general-purpose reader or fold was built.
+
+9UTC chain B (both author and label chain) maps to human TAS1R3/Q7RTX0. Occupied first-model residues are
+22–356 and 366–556 (526), corroborated by atomic rows, deposited missing-residue records, RCSB's explicit
+unobserved-XYZ feature, and both existing readers. The native mapped construct is residues 21–852;
+21, 357–365 and 557–852 are sequence-only here, and canonical positions 1–20 are outside that mapping.
+The mNeonGreen component and other engineered terminal/linker sequences have no occupied coordinates in
+this VFT model. Sequence-number mappings alone are not observed coverage: the instance's
+`auth_to_entity_poly_seq_mapping` includes all 1130 entity positions.
+
+The published Nature abstract assigns the demonstrated sucralose binding to TAS1R2's VFT, not TAS1R3.
+This does not establish TAS1R3 high-affinity L-glutamate binding, explain the presupposed mechanism, or prove
+that TAS1R3 cannot bind sucralose under any condition. The original question is preserved verbatim with its
+hash and links to `CLF-c189c2309c1fc6c4` and `CLF-0a9db862d4e5e5da`; it remains unresolved.
+
+A data-only import completed on Aegis at 16:25:07 UTC, using the installed append-only receipt/notebook APIs.
+The first redundant live PDB request met the existing cooldown and stopped. The successful import made zero
+provider requests and left that cooldown intact, importing the already completed, independently verified
+public retrieval instead. Notebook pointer `SRC-TAS1R3-683d2013cfc641dd` links the source and derived coverage
+receipts and their artifacts. Existing `_structure_cached('9UTC')` retrieves the source; the exact-question
+planning-evidence reader sees the new content. The general 3800-character context did not expose the excerpt;
+no model assessment or comprehension is claimed. No code deployment, service restart, fold, model call,
+question rewrite, hold bypass, or change to earlier scientific conclusions was performed.
+
+Evidence, raw-data hashes, supported query specifications, offline reproducibility checks and the exact
+idempotent data-import commands are in `docs/research-evidence/2026-10-17-tas1r3-9utc/README.md`.
+Production-module hashes before and after the handoff match. No software installation is needed; the supplied
+helper can be run from a temporary directory to repeat only the data attachment.

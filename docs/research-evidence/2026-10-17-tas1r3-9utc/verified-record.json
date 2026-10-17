@@ -1,0 +1,196 @@
+{
+  "entry_id": "9UTC",
+  "accession": "Q7RTX0",
+  "protein": "human TAS1R3",
+  "entity_id": "2",
+  "author_chain": "B",
+  "label_chain": "B",
+  "experimental_method": "ELECTRON MICROSCOPY",
+  "resolution_angstroms": 3.33,
+  "released": "2025-07-16",
+  "coordinate_interpretation": "occupied atoms in the first deposited model; coordinate existence does not establish complete native coverage, local map quality, or binding affinity",
+  "observed_native_residue_intervals": [
+    [
+      22,
+      356
+    ],
+    [
+      366,
+      556
+    ]
+  ],
+  "observed_native_residue_count": 526,
+  "deposited_native_sequence_interval": [
+    21,
+    852
+  ],
+  "sequence_only_native_intervals": [
+    [
+      21,
+      21
+    ],
+    [
+      357,
+      365
+    ],
+    [
+      557,
+      852
+    ]
+  ],
+  "native_positions_not_in_mapped_construct": [
+    [
+      1,
+      20
+    ]
+  ],
+  "entity_sequence_length": 1130,
+  "entity_to_uniprot_alignment": {
+    "entity_interval": [
+      29,
+      860
+    ],
+    "uniprot_interval": [
+      21,
+      852
+    ],
+    "native_author_numbers_match_uniprot": true,
+    "mapping_sources": [
+      "_struct_ref_seq",
+      "RCSB SIFTS alignment"
+    ]
+  },
+  "engineered_components": {
+    "description": "Taste receptor type 1 member 3,mNeonGreen",
+    "mNeonGreen": {
+      "reference_accession": "A0A1S4NYF2",
+      "entity_interval": [
+        876,
+        1110
+      ],
+      "author_interval": [
+        868,
+        1102
+      ],
+      "reference_interval": [
+        26,
+        260
+      ],
+      "observed_residues": 0
+    },
+    "unmapped_engineered_entity_intervals": [
+      [
+        1,
+        28
+      ],
+      [
+        861,
+        875
+      ],
+      [
+        1111,
+        1130
+      ]
+    ],
+    "native_TAS1R3_and_engineered_components_are_not_interchangeable": true
+  },
+  "chain_A": {
+    "protein": "human TAS1R2",
+    "accession": "Q8TE23",
+    "engineered_component": "mScarlet3",
+    "observed_native_intervals": [
+      [
+        26,
+        44
+      ],
+      [
+        58,
+        342
+      ],
+      [
+        357,
+        552
+      ]
+    ]
+  },
+  "ligand_interpretation": {
+    "ligand": "sucralose",
+    "ligand_label_chain": "C",
+    "publication_supported_binding_subunit": "TAS1R2 Venus flytrap domain",
+    "TAS1R3_direct_sucralose_binding_supported": false,
+    "TAS1R3_cannot_bind_sucralose_in_any_conditions_proven": false,
+    "TAS1R3_high_affinity_L_glutamate_binding_established": false,
+    "source": "https://pubmed.ncbi.nlm.nih.gov/40555359/"
+  },
+  "checks": {
+    "mmcif_declared_missing_matches_occupied_coordinates": true,
+    "rcsb_UNOBSERVED_RESIDUE_XYZ_matches_mmcif": true,
+    "existing_reference_compare_chain_reader_matches": true,
+    "existing_lab_pdb_structure_evidence_CA_count_matches": true
+  },
+  "metadata_caveat": "auth_to_entity_poly_seq_mapping has all 1130 sequence positions populated for this instance. It maps numbering; its non-missing values are not observed-coordinate coverage. Atomic rows and UNOBSERVED_RESIDUE_XYZ establish coverage here.",
+  "provenance": [
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/entry/9UTC",
+      "file": "core-entry-9UTC.json",
+      "sha256": "71266b1c451675a6c389e8f234791376144b51e91074d550d9bf4b7d633ae181"
+    },
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/2",
+      "file": "core-polymer_entity-9UTC-2.json",
+      "sha256": "c25668a00378b9c237a19281ff4b55871eeb002eaa280d879d3d1f4f369ee6c1"
+    },
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/polymer_entity_instance/9UTC/B",
+      "file": "core-polymer_entity_instance-9UTC-B.json",
+      "sha256": "3bada1a8ae23d5ba0ecd01af15aaf04d88f2e8421597b60971e457267f4e5a50"
+    },
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/1",
+      "file": "core-polymer_entity-9UTC-1.json",
+      "sha256": "774e09b35423e0405232c7d86b4aedf51486723dedddba2179d6f15e2b67da42"
+    },
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/entry/9NOT",
+      "file": "core-entry-9NOT.json",
+      "sha256": "3def6a64c9c77f5cbd5b28e85c998ec27c6600e582a3b6f136f509a1c104d557"
+    },
+    {
+      "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9NOT/1",
+      "file": "core-polymer_entity-9NOT-1.json",
+      "sha256": "f86ab1c12a2f9aabc7fa73ae11abd932724dd5a5b11921ca5316a5b0a258af51"
+    },
+    {
+      "url": "https://files.rcsb.org/download/9UTC.pdb",
+      "file": "9UTC.pdb",
+      "sha256": "ca6e7e0e49cf4a2928248c9e2268966a9cc86caabe9624833e44021b8d366ee1"
+    },
+    {
+      "url": "https://files.rcsb.org/download/9UTC.cif",
+      "file": "9UTC.cif",
+      "sha256": "f9382b78432458522645607e02e977fa4710c54e17160a8646aa4113d01a1585"
+    }
+  ],
+  "original_question": "What are the specific structural features of the human T1R3 (umami taste receptor) extracellular Venus Flytrap Domain (VFD), and how do the specific hydrogen-bonding networks and hydrophobic pockets within this domain facilitate its high-affinity binding to L-glutamate?",
+  "question_sha256": "9a181cc7dd8f414ecda210365d6d29d748f13351783d195cfeb07ef5fd76887e",
+  "linked_lab_entries": [
+    "CLF-c189c2309c1fc6c4",
+    "CLF-0a9db862d4e5e5da"
+  ],
+  "interpretation_boundary": "Corrects coordinate availability only. The original L-glutamate mechanism question remains unresolved; no inference of ligand binding, affinity or native full-length experimental coverage is made.",
+  "discovery_provenance": {
+    "sender": "Grok Bot",
+    "message_id": "1a14a06659adfe16",
+    "date": "2026-10-17",
+    "role": "lead only, independently checked against deposited coordinates and primary publication abstract; not Gloria's scientific conclusion"
+  },
+  "related_entry": {
+    "entry_id": "9NOT",
+    "resolution_angstroms": 3.8,
+    "TAS1R3_entity_id": "1",
+    "label_chain": "A",
+    "author_chain": "B",
+    "primary_citation_doi": "10.1016/j.cell.2025.04.021",
+    "scope": "metadata cross-check only; do not reuse 9UTC label-chain assignments without checking"
+  }
+}

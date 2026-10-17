@@ -9826,6 +9826,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 if _sc2: _vt_subblock_a += "\n\n" + _sc2
             except Exception: pass
             try:
+                _bl = _blanket_line()
+                if _bl: _vt_subblock_a += "\n\n" + _bl
+            except Exception: pass
+            try:
                 _arb = _after_resonance_block(_counterpart_text)
                 if _arb: _vt_subblock_a += "\n\n" + _arb
             except Exception: pass
@@ -10371,6 +10375,12 @@ Your current self-model (excerpt):
                 reply = _fhi(reply, context=(_turn.context if _turn is not None
                                              else _tc_av.effect_context(_surface)))   # fire his [DO: ...], authorized against the turn
             except Exception as _fe: print("[DO fire]", _fe, flush=True)
+            try:
+                if _test_turn or (_prov_envelope and not _prov_envelope.get("may_witness")):
+                    reply = __import__("re").sub(r"\s*\[HOME:[^\]]*\]\s*", " ", reply or "").strip()
+                else:
+                    reply, _home_done = _home_tags(reply)
+            except Exception as _hte: print("[avatar/home]", _hte, flush=True)
             try:
                 from command_bubble import extract_and_post as _cb_post2
                 reply = _cb_post2(reply, _surface)
@@ -11809,6 +11819,64 @@ async def start_daily_inner_door_guard():
     import asyncio as _dg_asyncio
     if _door_guard_task is None or _door_guard_task.done():
         _door_guard_task = _dg_asyncio.create_task(_daily_inner_door_guard())
+
+
+def _vintos_home():
+    import importlib.util as _vh_u
+    _sp = _vh_u.spec_from_file_location("vintos_home_blanket", os.path.join(WORKSPACE, "scripts", "vintos-home.py"))
+    _m = _vh_u.module_from_spec(_sp); _sp.loader.exec_module(_m)
+    return _m
+
+
+def _blanket_line():
+    """What he knows about the heated blanket, once its plug is in his house config (Gloria, 2026-10-17)."""
+    _m = _vintos_home()
+    if not _m.named_device("blanket"):
+        return ""
+    st = _m.device_state("blanket")
+    return ("THE HEATED BLANKET on Gloria's bed is a plug you can switch: [HOME: blanket_on] warms it for two hours "
+            "(only while she is home; it switches itself off after), [HOME: blanket_off] turns it off. "
+            + ("It is %s right now." % st if st != "unknown" else "Its state cannot be read right now."))
+
+
+def _home_tags(reply):
+    """His [HOME: blanket_on|blanket_off] in an avatar or ReelRoom reply: acted on and taken out of the words.
+    (reply, what happened)."""
+    import re as _ht
+    done = []
+    for _act in _ht.findall(r"\[HOME:\s*([^\]]+)\]", reply or ""):
+        _a = _act.strip().lower()
+        try:
+            if _a == "blanket_on": ok, why = _vintos_home().blanket_on()
+            elif _a == "blanket_off": ok, why = _vintos_home().blanket_off()
+            else: continue
+        except Exception as e:
+            ok, why = False, str(e)[:120]
+        done.append("%s [%s]" % (_a, why if not ok else "ok: " + why))
+        print("[avatar/home]", _a, ok, why, flush=True)
+    return _ht.sub(r"\s*\[HOME:[^\]]*\]\s*", " ", reply or "").strip(), done
+
+
+_blanket_task = None
+
+
+async def _blanket_timer():
+    """Its two hours, kept by the server: every minute, a blanket past its time is switched off."""
+    import asyncio as _bt
+    while True:
+        try:
+            await _bt.get_event_loop().run_in_executor(None, lambda: _vintos_home().blanket_expire())
+        except Exception as e:
+            print("[blanket timer]", e, flush=True)
+        await _bt.sleep(60)
+
+
+@app.on_event("startup")
+async def start_blanket_timer():
+    global _blanket_task
+    import asyncio as _bt_a
+    if _blanket_task is None or _blanket_task.done():
+        _blanket_task = _bt_a.create_task(_blanket_timer())
 
 
 @app.post("/api/game/reelroom/film")

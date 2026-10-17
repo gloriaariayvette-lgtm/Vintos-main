@@ -1,0 +1,211 @@
+{
+  "tested_source_commit": "13ddf3f772fc4e21e820d38a9f180f979b396c47",
+  "initial_python": "3.9.6 (system Xcode Python, missing subprocess NumPy/Biopython/Node)",
+  "initial_suites": 421,
+  "initial_passed": 414,
+  "initial_failed": 7,
+  "failures": [
+    {
+      "suite": "test_intent_source.py",
+      "returncode": 1,
+      "tail": "..............F.....\n======================================================================\nFAIL: test_selection_reads_attempts_and_keeps_declared_priority (__main__.IntentSource)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/vs-r_tc7l9k/vintos-main/broker/tests/test_intent_source.py\", line 100, in test_selection_reads_attempts_and_keeps_declared_priority\n    self.assertEqual(selected['priority'], {'field': .6, 'gloria': .3, 'self': .1})\nAssertionError: {'field': 0.6000000000000001, 'gloria': 0.300000000000[30 chars]0002} != {'field': 0.6, 'gloria': 0.3, 'self': 0.1}\n+ {'field': 0.6, 'gloria': 0.3, 'self': 0.1}\n- {'field': 0.6000000000000001,\n-  'gloria': 0.30000000000000004,\n-  'self': 0.10000000000000002}\n\n----------------------------------------------------------------------\nRan 20 tests in 0.203s\n\nFAILED (failures=1)\n"
+    },
+    {
+      "suite": "test_memory_search_embedding.py",
+      "returncode": 1,
+      "tail": "PASS the memory store is scratch\nPASS a good reply searches as before, best first\nPASS a non-200 answer is a clear EmbeddingError, without the reply's text\nPASS an answer that is not JSON is a clear EmbeddingError, without the reply's text\nPASS an error object with no data is a clear EmbeddingError, without the reply's text\nPASS an empty data list is a clear EmbeddingError, without the reply's text\nPASS an item with no embedding is a clear EmbeddingError, without the reply's text\nPASS an embedding that is not numbers is a clear EmbeddingError, without the reply's text\nPASS an unreachable service is a clear EmbeddingError, without the reply's text\n--- the command ---\nFAIL a bad reply exits 2 with one clear line  ->  (1, 'Traceback (most recent call last):\\n  File \"/tmp/vs-0yytm33u/vintos-main/scripts/memory-search.py\", line 10, in <module>\\n    import numpy as np\\nModuleNotFoundError: No module named \\'numpy\\'\\n')\nPASS and prints no reply body or key\nFAIL no traceback  ->  Traceback (most recent call last):\n  File \"/tmp/vs-0yytm33u/vintos-main/scripts/memory-search.py\", line 10, in <module>\n    import numpy as np\nModuleNotFoundError: No module named 'numpy'\n\n--- the twins ---\nPASS scripts/memory-search.py and bin/memory_search.py are the same file\nPASS and their underscore and hyphen names still point at them\nPASS nothing reached the network\n13/15\n"
+    },
+    {
+      "suite": "test_moves_on.py",
+      "returncode": 1,
+      "tail": "led with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020\n  warnings.warn(\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 268, in run_path\n    return _run_module_code(code, init_globals, run_name,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 97, in _run_module_code\n    _run_code(code, mod_globals, init_globals,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 87, in _run_code\n    exec(code, run_globals)\n  File \"/tmp/vs-9rbz72pl/vintos-main/broker/tests/test_moves_on.py\", line 84, in <module>\n    WAL = importlib.util.module_from_spec(spec); spec.loader.exec_module(WAL)\n  File \"<frozen importlib._bootstrap_external>\", line 846, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 983, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 913, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 228, in _call_with_frames_removed\n  File \"/private/tmp/vs-9rbz72pl/vintos-main/bin/wants-ambitions-log.py\", line 175\n    lines.append(f\"  \u2192 multistep: {\" \u2192 \".join(s.get(\"capability\",\"?\") for s in steps if isinstance(s,dict))}\")\n                                     ^\nSyntaxError: invalid character '\u2192' (U+2192)\n"
+    },
+    {
+      "suite": "test_reference_compare.py",
+      "returncode": 1,
+      "tail": "g>\", line 1, in <module>\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 268, in run_path\n    return _run_module_code(code, init_globals, run_name,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 97, in _run_module_code\n    _run_code(code, mod_globals, init_globals,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 87, in _run_code\n    exec(code, run_globals)\n  File \"/tmp/vs-0qrd8ild/vintos-main/broker/tests/test_reference_compare.py\", line 45, in <module>\n    subprocess.run([python, \"-c\", \"import sys; from Bio.PDB import PDBParser, MMCIFIO; io = MMCIFIO(); \"\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py\", line 528, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['/Applications/Xcode.app/Contents/Developer/usr/bin/python3', '-c', \"import sys; from Bio.PDB import PDBParser, MMCIFIO; io = MMCIFIO(); io.set_structure(PDBParser(QUIET=True).get_structure('TEST', sys.argv[1])); io.save(sys.argv[2])\", '/private/tmp/vs-0qrd8ild/ref-compare-ephaesa0/entry.pdb', '/private/tmp/vs-0qrd8ild/ref-compare-ephaesa0/.vintos/workspace/memory/chemistry-lab/artifacts/reference/9ZZZ.cif']' returned non-zero exit status 1.\n"
+    },
+    {
+      "suite": "test_value_map_choices.py",
+      "returncode": 1,
+      "tail": "ile \"<string>\", line 1, in <module>\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 268, in run_path\n    return _run_module_code(code, init_globals, run_name,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 97, in _run_module_code\n    _run_code(code, mod_globals, init_globals,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 87, in _run_code\n    exec(code, run_globals)\n  File \"/tmp/vs-4oq7pil1/vintos-main/broker/tests/test_value_map_choices.py\", line 43, in <module>\n    VM = importlib.util.module_from_spec(spec); spec.loader.exec_module(VM)\n  File \"<frozen importlib._bootstrap_external>\", line 846, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 983, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 913, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 228, in _call_with_frames_removed\n  File \"/private/tmp/vs-4oq7pil1/vintos-main/scripts/value_map.py\", line 356\n    parts.append(f\"RELATIONAL MISMATCHES (where you misread Gloria):\\n{next((e.strip()[:300] for e in reversed(rm_entries) if e.strip()), \"\")}\")\n                                                                                                                                               ^\nSyntaxError: f-string: unmatched '('\n"
+    },
+    {
+      "suite": "test_value_map_day.py",
+      "returncode": 1,
+      "tail": "\n  File \"<string>\", line 1, in <module>\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 268, in run_path\n    return _run_module_code(code, init_globals, run_name,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 97, in _run_module_code\n    _run_code(code, mod_globals, init_globals,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 87, in _run_code\n    exec(code, run_globals)\n  File \"/tmp/vs-i6zh8gzb/vintos-main/broker/tests/test_value_map_day.py\", line 36, in <module>\n    VM = importlib.util.module_from_spec(spec); spec.loader.exec_module(VM)\n  File \"<frozen importlib._bootstrap_external>\", line 846, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 983, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 913, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 228, in _call_with_frames_removed\n  File \"/private/tmp/vs-i6zh8gzb/vintos-main/scripts/value_map.py\", line 356\n    parts.append(f\"RELATIONAL MISMATCHES (where you misread Gloria):\\n{next((e.strip()[:300] for e in reversed(rm_entries) if e.strip()), \"\")}\")\n                                                                                                                                               ^\nSyntaxError: f-string: unmatched '('\n"
+    },
+    {
+      "suite": "test_wants_panel.py",
+      "returncode": 1,
+      "tail": " line 1, in <module>\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 268, in run_path\n    return _run_module_code(code, init_globals, run_name,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 97, in _run_module_code\n    _run_code(code, mod_globals, init_globals,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py\", line 87, in _run_code\n    exec(code, run_globals)\n  File \"/tmp/vs-oiyhvqej/vintos-main/broker/tests/test_wants_panel.py\", line 10, in <module>\n    subprocess.run([\"node\",str(fixture),str(root/\"clients/mobile/index.html\")],env=env,check=True)\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py\", line 505, in run\n    with Popen(*popenargs, **kwargs) as process:\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py\", line 951, in __init__\n    self._execute_child(args, executable, preexec_fn, close_fds,\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py\", line 1821, in _execute_child\n    raise child_exception_type(errno_num, err_msg, err_filename)\nFileNotFoundError: [Errno 2] No such file or directory: 'node'\n"
+    }
+  ],
+  "configured_environment": "Existing /tmp/vintos-stratagem-test-python environment: Python 3.12.14, NumPy 2.3.5, requests 2.34.2, urllib3 2.8.0, Biopython 1.88, Node on PATH",
+  "configured_environment_rechecks": [
+    {
+      "suite": "test_intent_source",
+      "exit_code": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_memory_search_embedding",
+      "exit_code": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_moves_on",
+      "exit_code": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_reference_compare",
+      "exit_code": 0,
+      "seconds": 1.25
+    },
+    {
+      "suite": "test_value_map_choices",
+      "exit_code": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_value_map_day",
+      "exit_code": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_wants_panel",
+      "exit_code": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_link_fetch_pinning",
+      "exit_code": 0,
+      "seconds": 0.49
+    }
+  ],
+  "full_python312_rerun": {
+    "source_commit": "13ddf3f",
+    "suites": 421,
+    "passed": 421,
+    "failed": 0
+  },
+  "deployment": "Completed after explicit owner approval using a targeted two-file transaction; installed hashes, consumer restarts, preserved concurrent files, and four public link probes verified. See 2026-10-17-dns-pinning-installed.json.",
+  "subsequent_lab_transport_fix_focused": [
+    {
+      "suite": "test_link_fetch_pinning",
+      "exit_code": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_lab_claim_evidence",
+      "exit_code": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_chemistry_lab",
+      "exit_code": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_europepmc_fulltext",
+      "exit_code": 0,
+      "seconds": 0.51
+    },
+    {
+      "suite": "test_received_mail",
+      "exit_code": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_link_fetch",
+      "exit_code": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_want_email_and_outward",
+      "exit_code": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_letter_links",
+      "exit_code": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_email_reading_and_approval",
+      "exit_code": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_email_whole",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "suite": "test_curiosity_answer_link",
+      "exit_code": 0,
+      "seconds": 0.52
+    }
+  ],
+  "final_clean_aegis_validation": {
+    "source_commit": "412ea7a13db15a7df9c140310f81360fbeb87b1a",
+    "release_path": "/tmp/vintos-dns-release.3erbq1",
+    "python": "3.12.3",
+    "suites": 421,
+    "passed": 421,
+    "failed": 0
+  },
+  "concurrent_mail_preserved": {
+    "commit": "78daf34e19e4b5447c49ed9d8a705cae6518de6c",
+    "integration_base": "46a83d0",
+    "focused_suites": [
+      {
+        "suite": "test_mail_attachments",
+        "exit_code": 0,
+        "seconds": 0.88
+      },
+      {
+        "suite": "test_want_email_and_outward",
+        "exit_code": 0,
+        "seconds": 1.05
+      },
+      {
+        "suite": "test_received_mail",
+        "exit_code": 0,
+        "seconds": 0.99
+      },
+      {
+        "suite": "test_europepmc_fulltext",
+        "exit_code": 0,
+        "seconds": 0.82
+      },
+      {
+        "suite": "test_link_fetch_pinning",
+        "exit_code": 0,
+        "seconds": 0.63
+      },
+      {
+        "suite": "test_link_fetch",
+        "exit_code": 0,
+        "seconds": 0.65
+      },
+      {
+        "suite": "test_email_reading_and_approval",
+        "exit_code": 0,
+        "seconds": 0.62
+      },
+      {
+        "suite": "test_email_whole",
+        "exit_code": 0,
+        "seconds": 0.56
+      },
+      {
+        "suite": "test_scholar_pdf_text",
+        "exit_code": 0,
+        "seconds": 0.5
+      }
+    ],
+    "pinning_source_hashes_unchanged": true
+  }
+}

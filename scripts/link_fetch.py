@@ -14,7 +14,9 @@ so "could not reach it", "refused", "nothing readable on it" and "never tried" a
         original_url, url (after unwrapping), final_url (after redirects), hops, http_status, bytes, text, why
 
 Safety, at every hop: http(s) only, no user:password in the address, standard ports only, every address the
-host resolves to must be public (no loopback, private, link-local, reserved, multicast), at most MAX_REDIRECTS
+host resolves to must be public (no loopback, private, link-local, reserved, multicast). Each connection is pinned
+to that validated snapshot; HTTP Host and HTTPS SNI/certificate verification keep the original hostname. Only
+direct connections are used (environment proxies cannot perform unchecked destination resolution). At most MAX_REDIRECTS
 redirects, at most max_bytes read. Nothing sends credentials: the only header is a User-Agent, and no cookie,
 Authorization or token header is ever passed to any host. lab_http.py's no-redirect rule for the Lab's API
 calls is separate and unchanged; this is for reading public pages people send him.
@@ -151,36 +153,46 @@ def _resolve(host):
     return [info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)]
 
 
-def refusal(url, resolve=None):
-    """Why this address may not be opened, or ''."""
+def _destination(url, resolve=None):
+    """(validated addresses, reason). One DNS snapshot for validation AND connection."""
     try:
         parts = urlsplit(url)
         port = parts.port
     except ValueError as exc:
-        return "not a valid address: %s" % exc
+        return (), "not a valid address: %s" % exc
     scheme = (parts.scheme or "").lower()
     if scheme not in PORTS:
-        return "only http and https links are opened (this is %s)" % (scheme or "no scheme")
+        return (), "only http and https links are opened (this is %s)" % (scheme or "no scheme")
     if parts.username or parts.password or "@" in parts.netloc:
-        return "the address carries a user name or password"
+        return (), "the address carries a user name or password"
     if port not in PORTS[scheme]:
-        return "non-standard port %s" % port
+        return (), "non-standard port %s" % port
     host = (parts.hostname or "").rstrip(".").lower()
     if not host:
-        return "no host"
+        return (), "no host"
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".lan", ".home.arpa")):
-        return "a local host name (%s)" % host
+        return (), "a local host name (%s)" % host
     try:
         addresses = [host] if _is_ip(host) else (resolve or _resolve)(host)
     except (OSError, UnicodeError) as exc:
-        return "could not resolve %s: %s" % (host, exc)
+        return (), "could not resolve %s: %s" % (host, exc)
     if not addresses:
-        return "could not resolve %s" % host
+        return (), "could not resolve %s" % host
     for a in addresses:
-        ip = ipaddress.ip_address(a.split("%")[0])
+        try:
+            ip = ipaddress.ip_address(a)
+        except ValueError:
+            return (), "invalid address returned for %s" % host
+        if "%" in a:
+            return (), "a scoped address (%s)" % a
         if not ip.is_global or ip.is_multicast or ip.is_reserved:
-            return "%s resolves to a non-public address (%s)" % (host, a)
-    return ""
+            return (), "%s resolves to a non-public address (%s)" % (host, a)
+    return tuple(dict.fromkeys(addresses)), ""
+
+
+def refusal(url, resolve=None):
+    """Why this address may not be opened, or ''."""
+    return _destination(url, resolve)[1]
 
 
 def _is_ip(host):
@@ -192,18 +204,87 @@ def _is_ip(host):
 
 
 # ── the transport (tests replace it) ───────────────────────────────────────────────────────────────
-def _transport(url, headers, timeout, max_bytes):
-    """(status, response headers, body bytes, over_cap). Never follows a redirect itself."""
+def _pinned_socket(connection, addresses):
+    """Connect numeric sockaddr values only; never resolve a hostname on retry.
+
+    Called by urllib3's ordinary HTTP/HTTPS connection, so HTTP Host, TLS SNI,
+    certificate chain verification and hostname matching still name the URL host.
+    No process-global resolver changes or shared mutable connection pools.
+    """
+    from urllib3.exceptions import ConnectTimeoutError, NewConnectionError
+    last = None
+    for address in addresses:
+        sock = None
+        try:
+            ip = ipaddress.ip_address(address)
+            family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+            sock = socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+            sock.settimeout(connection.timeout)
+            for option in connection.socket_options or ():
+                sock.setsockopt(*option)
+            sockaddr = (str(ip), connection.port, 0, 0) if ip.version == 6 else (str(ip), connection.port)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            last = exc
+            if sock is not None:
+                sock.close()
+    if isinstance(last, socket.timeout):
+        raise ConnectTimeoutError(connection, "Connection timed out (%s)" % last) from last
+    raise NewConnectionError(connection, "Could not connect to validated addresses: %s" % last) from last
+
+
+def _transport(url, headers, timeout, max_bytes, addresses=None):
+    """One direct, pinned hop. Ambient proxies/netrc/cookies never participate.
+
+    A proxy may resolve the hostname remotely, defeating local DNS validation.
+    Use a dedicated direct pool rather than requests' environment proxy settings.
+    Requests' CA bundle overrides remain supported; verification is always required.
+    """
+    import os
+    import ssl
     import requests
-    with requests.get(url, headers=headers, timeout=timeout, allow_redirects=False, stream=True) as r:
-        body, over = b"", False
-        if not r.is_redirect:
-            for chunk in r.iter_content(65536):
-                body += chunk
-                if len(body) > max_bytes:
-                    body, over = body[:max_bytes], True
-                    break
-        return r.status_code, {k.lower(): v for k, v in r.headers.items()}, body, over
+    from urllib3 import HTTPConnectionPool, HTTPSConnectionPool
+    from urllib3.connection import HTTPConnection, HTTPSConnection
+    from urllib3.util import Timeout, parse_url
+
+    if addresses is None:
+        addresses, why = _destination(url)
+        if why:
+            raise ValueError(why)
+    parts = parse_url(url)  # urllib3's IDNA/hostname normalization, also used for TLS and Host
+    base = HTTPSConnection if parts.scheme == "https" else HTTPConnection
+
+    class PinnedConnection(base):
+        def _new_conn(self):
+            return _pinned_socket(self, addresses)
+
+    options = {}
+    if parts.scheme == "https":
+        ca = (os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE")
+              or requests.certs.where())
+        options = dict(cert_reqs=ssl.CERT_REQUIRED)
+        options["ca_cert_dir" if os.path.isdir(ca) else "ca_certs"] = ca
+    pool_type = HTTPSConnectionPool if parts.scheme == "https" else HTTPConnectionPool
+    pool = pool_type(parts.host, port=parts.port, timeout=Timeout(connect=timeout, read=timeout), **options)
+    pool.ConnectionCls = PinnedConnection
+    try:
+        r = pool.urlopen("GET", parts.request_uri, headers=headers, redirect=False, retries=False,
+                         preload_content=False)
+        try:
+            body, over = b"", False
+            if r.status not in (301, 302, 303, 307, 308):
+                for chunk in r.stream(65536, decode_content=True):
+                    body += chunk
+                    if len(body) > max_bytes:
+                        body, over = body[:max_bytes], True
+                        break
+            return r.status, {k.lower(): v for k, v in r.headers.items()}, body, over
+        finally:
+            r.close()
+            r.release_conn()
+    finally:
+        pool.close()
 
 
 def _text_of(body, ctype, url, pdf=None):
@@ -347,13 +428,16 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
         if hop and not _x_inner and x_post(here) is not None:     # a shortener (t.co) that led to an X post
             out["url"] = here
             return _x_read(out, x_post(here), done, transport, resolve, timeout)
-        why = refusal(here, resolve)
+        addresses, why = _destination(here, resolve)
         if why:
             out["final_url"] = here
             return done("refused", why)
         out["hops"].append(here)
         try:
-            status, rh, body, over = transport(here, dict(headers), timeout, max_bytes)
+            if transport is _transport:
+                status, rh, body, over = transport(here, dict(headers), timeout, max_bytes, addresses=addresses)
+            else:
+                status, rh, body, over = transport(here, dict(headers), timeout, max_bytes)
         except Exception as exc:
             out["final_url"] = here
             return done("http_failure", "%s: %s" % (type(exc).__name__, str(exc)[:200]))

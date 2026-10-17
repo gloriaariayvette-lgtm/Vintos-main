@@ -128,7 +128,26 @@ def items(row):
                 read.append({"url": u, "text": str(p["text"])[:PAGE_CHARS]})
         title = next((_clean_title(l) for l in block if _clean_title(l)), "")
         out.append({"n": n, "title": title, "text": text[:ITEM_CHARS], "links": list(dict.fromkeys(links)), "read": read})
+    for a in row.get("attachments") or []:
+        if a.get("status") == "ingested" and a.get("text"):
+            out.append({"n": len(out) + 1, "title": "Attachment: " + a.get("filename", ""),
+                        "text": a["text"][:ITEM_CHARS], "links": [], "read": [],
+                        "attachment": {k: a.get(k) for k in ("filename", "sha256", "message_id", "sender", "characters")}})
     return out
+
+
+def research_attachments(want, mail=None, limit=3):
+    """Full stored text for the existing correspondence study, with sender provenance. No model or I/O beyond
+    the inbox log; retrieval does not mean the complete paper has been understood or assessed."""
+    found = []
+    for row in (rows() if mail is None else mail):
+        for a in row.get("attachments") or []:
+            if a.get("status") != "ingested" or not a.get("text"): continue
+            title = a.get("filename", "") + " " + a["text"][:500]
+            relevance, _ = score(want_words(want), title)
+            if relevance:
+                found.append(dict(a, title=a.get("filename"), correspondent=sender(row), score=relevance))
+    return sorted(found, key=lambda a: -a["score"])[:limit]
 
 
 # ── a want's topic ─────────────────────────────────────────────────────────────────────────────────
@@ -232,6 +251,10 @@ def _block(found, heading):
         lines.append("- From %s, the email \"%s\" (read %s), its item \"%s\":\n  %s" % (
             f["sender"], f["subject"] or "(no subject)", f["read_at"] or "?", f["title"] or "(untitled)",
             " ".join(f["text"].split())[:900]))
+        if f.get("attachment"):
+            a = f["attachment"]
+            lines.append("  [Attachment excerpt, not a full reading: %s; message %s; sender %s; %s characters stored; sha256 %s]" %
+                         (a["filename"], a["message_id"], a["sender"], a["characters"], a["sha256"]))
         if f.get("links"):
             lines.append("  Its links (each one's real address; the link fetcher opens any of them): " + ", ".join(f["links"][:4]))
         for p in f.get("read") or []:

@@ -1,0 +1,582 @@
+{
+  "at": "2026-10-17T16:38:50.601137+00:00",
+  "branch": "claude/device-visuals-2026-10-13",
+  "source_commit": "80c92bb5278c4a1718c9a0d99e67e5403cac6817",
+  "environment": "darwin",
+  "python": "3.9.6",
+  "runner": "scripts/run_isolated_test.py",
+  "os_isolated": true,
+  "deployment_performed": false,
+  "seconds": 28.75,
+  "passed": 92,
+  "total": 92,
+  "results": [
+    {
+      "suite": "broker/tests/test_chemistry_alignment.py",
+      "exit_code": 0,
+      "seconds": 0.96,
+      "tail": "rvation holds without calling\nPASS the timer fires four times a day\nPASS each fire aligns; the experiment runs only once a day\nPASS the deploy installs the alignment module\n\n17/17\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_digest.py",
+      "exit_code": 0,
+      "seconds": 0.65,
+      "tail": "all chemistry-digest checks passed (append + backfill + orphan heal)\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_divergence.py",
+      "exit_code": 0,
+      "seconds": 1.11,
+      "tail": "n exactly its reserved model\nPASS a lens reading goes to the frontier lens with the prediction in front of it\nPASS the prospector was a stub and nothing reached the network\n\n43/43\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_evo2.py",
+      "exit_code": 0,
+      "seconds": 0.77,
+      "tail": "35/35 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_frontier_bridge.py",
+      "exit_code": 0,
+      "seconds": 0.69,
+      "tail": "18/18 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_gallery.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": " structure gallery cannot hold the review refresh\nPASS the routes are all behind the secret\nPASS no Lab endpoint writes anything\nPASS the Lab pane never reaches the Atelier\n\n48/48\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_genomic.py",
+      "exit_code": 0,
+      "seconds": 0.76,
+      "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.001s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_grade.py",
+      "exit_code": 0,
+      "seconds": 0.7,
+      "tail": " it asks for reading compute\nPASS the reading is given the verdict\nPASS the session still cannot submit code\nPASS the doorway refuses any action outside the named allowlist\n\n48/48\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_instrument_probe.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "s every advertised name with the house registry\nPASS failures are typed and nonzero\nPASS failures digest their diagnostic\nPASS probe writes no Lab, memory, or network state\n\n10/10\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_lab.py",
+      "exit_code": 0,
+      "seconds": 0.85,
+      "tail": "ground and scheduled workers\nPASS release and rollback own the new service\nPASS self-review consumes only the Chemistry text adapter\nPASS nothing reached the network\n\n43/43 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_mac_probe.py",
+      "exit_code": 0,
+      "seconds": 0.71,
+      "tail": "S Mac ESMC records its actual device\nPASS Foundry requires real artifacts\nPASS a success is hash-bound and receiptable\nPASS the probe does not write the bench or Lab stores\n\n10/10\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_mcp.py",
+      "exit_code": 0,
+      "seconds": 0.86,
+      "tail": "PASS bounded MCP source, receipt, planner route, worker and store isolation\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_probe.py",
+      "exit_code": 0,
+      "seconds": 0.96,
+      "tail": "the probe writes only below the Lab root\nPASS the session files the host report and the run attestation\nPASS the lens is shown instrument states rather than a filtered list\n\n45/45\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_proposal.py",
+      "exit_code": 0,
+      "seconds": 1.36,
+      "tail": "r\nPASS adopting still writes no want\nPASS the prose path is untouched for a lab that is a folder of notes\nPASS and pointing it back at the feed restores the structured rows\n\n52/52\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_reading.py",
+      "exit_code": 0,
+      "seconds": 1.12,
+      "tail": "eading module holds its own lock, not the session's or the daemon's\nPASS the reading module writes only below the Lab root\nPASS the reading module never touches the Atelier\n\n36/36\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_sequence_binding.py",
+      "exit_code": 0,
+      "seconds": 0.68,
+      "tail": "PASS named protein sequence binding, full ESMFold route, Mac contract, and grader mismatch\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_session.py",
+      "exit_code": 0,
+      "seconds": 0.91,
+      "tail": "Chemistry session regressions passed\nDirect PubMed session receipt regression passed\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_structure.py",
+      "exit_code": 0,
+      "seconds": 0.64,
+      "tail": " rows remain computational claims\nPASS unknown ids cannot become arbitrary paths\nPASS module has no network or write surface\nPASS atom and byte bounds are code-level\n\n10/10 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_taste.py",
+      "exit_code": 0,
+      "seconds": 0.83,
+      "tail": "k, not the Lab's\nPASS his taste enters his context\nPASS a completed session records its taste\nPASS taste writes only below the Lab root\nPASS taste never touches the Atelier\n\n55/55\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_tracing_prerequisites.py",
+      "exit_code": 0,
+      "seconds": 2.83,
+      "tail": "\nPASS a log that cannot be opened leaves the Lab untraced, not broken\nPASS unless required: then it fails naming the log and the interpreter\nPASS nothing reached the network\n24/24\n"
+    },
+    {
+      "suite": "broker/tests/test_chemistry_tracing_real.py",
+      "exit_code": 0,
+      "seconds": 0.56,
+      "tail": "SKIP: eliot is not installed in /Applications/Xcode.app/Contents/Developer/usr/bin/python3 (ModuleNotFoundError: No module named 'eliot'); nothing about emission was tested\n"
+    },
+    {
+      "suite": "broker/tests/test_gemma_off_lab.py",
+      "exit_code": 0,
+      "seconds": 0.65,
+      "tail": " is passed by for the next lens\nPASS with the paid lenses spent, a Lab turn never falls to Gemma\nPASS a failed Lab turn falls to Grok, and a failed Grok Lab turn to nothing\n\n17/17\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_alias_names.py",
+      "exit_code": 0,
+      "seconds": 0.65,
+      "tail": " tool's missing view ---\nPASS each partially supported question is listed with what it lacked and its sources\nPASS the notebook is unchanged\nPASS nothing reached the network\n14/14\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_archive_assignment.py",
+      "exit_code": 0,
+      "seconds": 0.77,
+      "tail": "esourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 13 tests in 0.062s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_asks.py",
+      "exit_code": 0,
+      "seconds": 0.66,
+      "tail": "d\nPASS ... and when it cannot become one, the note keeps the refusal itself, not only that it may not be asked for\nPASS the deploy installs it\nPASS nothing left the machine\n\n84/84\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_asks_what_it_asked.py",
+      "exit_code": 0,
+      "seconds": 0.89,
+      "tail": "on\nPASS source pubmed, as he writes it, is the PubMed search, not an unknown source\nPASS a word no paper contains is dropped before the search, and his other words are kept\n\n72/72\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_assignment_scope.py",
+      "exit_code": 0,
+      "seconds": 0.84,
+      "tail": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.113s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_atlas_route.py",
+      "exit_code": 0,
+      "seconds": 0.88,
+      "tail": " on that turn, and the Atlas read is kept\nPASS the menu offers Atlas by gene, not by coordinates he cannot have\nPASS an empty UniProt search still goes on to the Atlas read\n\n15/15\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_atlas_sdk.py",
+      "exit_code": 0,
+      "seconds": 0.77,
+      "tail": "s\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK (skipped=1)\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_atlas_wait.py",
+      "exit_code": 0,
+      "seconds": 0.81,
+      "tail": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.002s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_checker_cases.py",
+      "exit_code": 0,
+      "seconds": 0.82,
+      "tail": "l the checker can copy (#1, #2), not a hex digest\nPASS a carried-forward quote stays citable; its citation label and requirement name do not\nPASS nothing reached the network\n31/31\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_checker_retry.py",
+      "exit_code": 0,
+      "seconds": 0.89,
+      "tail": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.018s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_chembl_organism.py",
+      "exit_code": 0,
+      "seconds": 0.85,
+      "tail": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_claim_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.74,
+      "tail": "ith passages and the earlier quotes\nPASS only questions missing evidence are searched\nPASS the summary counts before and after\nPASS the live claim ledger is not the replay's\n36/36\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_claim_progress.py",
+      "exit_code": 0,
+      "seconds": 0.84,
+      "tail": "urceWarning: Enable tracemalloc to get the object allocation traceback\n..........\n----------------------------------------------------------------------\nRan 10 tests in 0.053s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_class_scope.py",
+      "exit_code": 0,
+      "seconds": 0.69,
+      "tail": "\n--- what is still refused ---\nPASS a contradicted alias is still refused, kind or not\nPASS a kind with no retrieved member is still refused\nPASS nothing reached the network\n21/21\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_comparison_targets.py",
+      "exit_code": 0,
+      "seconds": 0.78,
+      "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.014s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_completion_diagnostics.py",
+      "exit_code": 0,
+      "seconds": 0.86,
+      "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.048s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_consumer_missing.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "NotFoundError reaches the fault log\nPASS the missing consumer is written down once, not once per tick\nPASS the second tick still works\nPASS nothing reached the network\n\n7/7 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_coverage_budget.py",
+      "exit_code": 0,
+      "seconds": 0.8,
+      "tail": ".......\n----------------------------------------------------------------------\nRan 7 tests in 0.039s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_coverage_split.py",
+      "exit_code": 0,
+      "seconds": 0.88,
+      "tail": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.039s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_eliot_trace.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "nvoke runs under an eliot action naming the accession\nPASS parser after the fold shares the fold's task_uuid\nPASS parser before the fold did not\nPASS nothing left the machine\n\n9/9\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_evidence_addresses.py",
+      "exit_code": 0,
+      "seconds": 0.81,
+      "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.040s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_evidence_repeats.py",
+      "exit_code": 0,
+      "seconds": 0.79,
+      "tail": "PASS: duplicate tick skips reviewer; new evidence, instruments, expiry preserved\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_failed_runs.py",
+      "exit_code": 0,
+      "seconds": 0.75,
+      "tail": "PASS: failed-run replay, repeat recovery, PubMed subject preservation, finding gate, exact Pendrin interval; isolated\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_forge_completion.py",
+      "exit_code": 0,
+      "seconds": 0.97,
+      "tail": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.087s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_forge_consumer.py",
+      "exit_code": 0,
+      "seconds": 0.95,
+      "tail": ".................\n----------------------------------------------------------------------\nRan 17 tests in 0.080s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_forge_followup.py",
+      "exit_code": 0,
+      "seconds": 0.84,
+      "tail": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.016s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_gene_grounding.py",
+      "exit_code": 0,
+      "seconds": 0.96,
+      "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.016s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_gene_mismatch_names.py",
+      "exit_code": 0,
+      "seconds": 0.88,
+      "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_hold_store_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.86,
+      "tail": ")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.....\n----------------------------------------------------------------------\nRan 9 tests in 0.015s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_instruments.py",
+      "exit_code": 0,
+      "seconds": 0.7,
+      "tail": "ds\nPASS 25 runs a day at most, and the menu goes quiet\nPASS his Lab turn can ask for one, and the sources phase runs it\nPASS a fetched sequence is saved for the instruments\n\n13/13\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_json_boundary.py",
+      "exit_code": 0,
+      "seconds": 0.76,
+      "tail": " refused\nPASS a reply that is a list, not an object is refused\nPASS no model was called\nPASS nothing left the machine\nPASS nothing was written outside the scratch workspace\n\n17/17\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_json_parser.py",
+      "exit_code": 0,
+      "seconds": 0.77,
+      "tail": "list, not an object is refused\nPASS errors identify evidence without exposing model text\nPASS a long truncated reply is repaired, not reported\nPASS nothing left the machine\n\n20/20\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_keepers.py",
+      "exit_code": 0,
+      "seconds": 0.9,
+      "tail": "is not a test that answered nothing\nPASS the frontier reviews see what he settled for his Lab in Slack\nPASS the deploy installs lab_keepers.py\nPASS nothing left the machine\n\n28/28\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_line_ownership.py",
+      "exit_code": 0,
+      "seconds": 0.63,
+      "tail": "sourceWarning: Enable tracemalloc to get the object allocation traceback\n.........\n----------------------------------------------------------------------\nRan 9 tests in 0.013s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_lines.py",
+      "exit_code": 0,
+      "seconds": 2.42,
+      "tail": "s old ground\nPASS his recent tests are listed with what came back\nPASS the page calls it priority\nPASS the deploy installs the new Lab modules\nPASS nothing left the machine\n\n46/46\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_literature_scope.py",
+      "exit_code": 0,
+      "seconds": 0.68,
+      "tail": "...............\n----------------------------------------------------------------------\nRan 15 tests in 0.012s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_named_gene_fetch.py",
+      "exit_code": 0,
+      "seconds": 0.65,
+      "tail": "ism is not rewritten\nPASS a gene written with its alias fetches both spellings\nPASS a question that is not about a human gene is not touched\nPASS nothing reached the network\n11/11\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_named_targets.py",
+      "exit_code": 0,
+      "seconds": 0.62,
+      "tail": "tten\nPASS two named genes, two records: each is established\nPASS a wrong alias is refused with both identities named\nPASS a right alias passes\nPASS nothing reached the network\n9/9\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_numeric_payload.py",
+      "exit_code": 0,
+      "seconds": 0.78,
+      "tail": ".......\n----------------------------------------------------------------------\nRan 7 tests in 0.117s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_oct10_identity.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "................\n----------------------------------------------------------------------\nRan 16 tests in 0.031s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_oct10_strategy.py",
+      "exit_code": 0,
+      "seconds": 0.85,
+      "tail": "c full text supplies missing topology; exact article identity and bounded structural excerpts; isolated\nPASS: refused pass resumes sourced pending work before replanning; isolated\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_oct9_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.91,
+      "tail": "ated\nPASS: MMP9 failed-cycle replay reaches coordinates, journal and review state; no network\nPASS: an exact historic target advances through deposited evidence; species preserved\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_one_ask.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": " the cache before the source\nPASS and no longer writes a receipt the source layer already wrote\nPASS no planner call bypasses the narrowing\nPASS nothing reached the network\n\n26/26\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_parser_diagnostics.py",
+      "exit_code": 0,
+      "seconds": 1.54,
+      "tail": "alse)\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 7 tests in 0.732s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_partial_assessment.py",
+      "exit_code": 0,
+      "seconds": 0.85,
+      "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.070s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_partial_identity.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "usal\n--- what still stops the pass ---\nPASS a contradicted alias still stops the pass\nPASS a target nothing establishes still stops the pass\nPASS nothing reached the network\n10/10\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_plan_contract.py",
+      "exit_code": 0,
+      "seconds": 0.7,
+      "tail": "ps its instructions and loses its oldest context\nPASS and the cut is written down with its sizes\nPASS no planner call bypasses the contract\nPASS nothing reached the network\n\n11/11\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_plugin_args.py",
+      "exit_code": 0,
+      "seconds": 0.71,
+      "tail": "ords\nPASS a short phrase has no looser form\nPASS an empty literature search is tried again looser, and the receipt says which form found it\nPASS nothing reached the network\n\n17/17\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_premise_route.py",
+      "exit_code": 0,
+      "seconds": 0.69,
+      "tail": "ried is named\nPASS with no time given the window starts at the last deploy, not a fixed number of hours\nPASS a time given by hand still wins\nPASS nothing reached the network\n36/36\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_productive_path.py",
+      "exit_code": 0,
+      "seconds": 1.06,
+      "tail": ") ... ok\ntest_wrong_species_and_mscl_still_rejected (__main__.Productive) ... ok\n\n----------------------------------------------------------------------\nRan 29 tests in 0.285s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_query_perimeter.py",
+      "exit_code": 0,
+      "seconds": 0.8,
+      "tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.045s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_query_syntax_and_families.py",
+      "exit_code": 0,
+      "seconds": 0.77,
+      "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.043s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_question_holds.py",
+      "exit_code": 0,
+      "seconds": 1.42,
+      "tail": "..............................\n----------------------------------------------------------------------\nRan 30 tests in 0.638s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_question_shape.py",
+      "exit_code": 0,
+      "seconds": 0.75,
+      "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.008s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_reading_fallback.py",
+      "exit_code": 0,
+      "seconds": 0.75,
+      "tail": "eading\": null}\nPASS local reading validates before coercing: {\"reading\": []}\nPASS local reading validates before coercing: {\"reading\": \" \"}\nPASS nothing reached the network\n\n18/18\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_relevance_context.py",
+      "exit_code": 0,
+      "seconds": 0.81,
+      "tail": "........................\n----------------------------------------------------------------------\nRan 24 tests in 0.060s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_repeats.py",
+      "exit_code": 0,
+      "seconds": 0.87,
+      "tail": "S empty cross-references are explicitly bounded in the reading prompt\nPASS reflection remains a stub\nPASS all newly used stores are scratch\nPASS nothing reached the network\n\n52/52\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_saved_model_step.py",
+      "exit_code": 0,
+      "seconds": 6.29,
+      "tail": "R))\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n..\n----------------------------------------------------------------------\nRan 15 tests in 5.566s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_says_why.py",
+      "exit_code": 0,
+      "seconds": 1.27,
+      "tail": " holds something on it, he reads that instead\nPASS an Atlas answer still goes on as before\nPASS nothing reached the world: the source client and literature reader were stubs\n13/13\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_sequence.py",
+      "exit_code": 0,
+      "seconds": 0.76,
+      "tail": "ed by its length, and short motifs and words are left alone\nPASS no stretch of sequence is shown to him part-way, from any part of his context\nPASS nothing left the machine\n\n22/22\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_slack_followup.py",
+      "exit_code": 0,
+      "seconds": 0.73,
+      "tail": "PASS: equivalent-query replay, historical keys, OR/NOT separation, unchanged full prompts, no network\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_sources.py",
+      "exit_code": 0,
+      "seconds": 1.43,
+      "tail": "ning: Enable tracemalloc to get the object allocation traceback\n.................\n----------------------------------------------------------------------\nRan 29 tests in 0.598s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_spent_list.py",
+      "exit_code": 0,
+      "seconds": 0.59,
+      "tail": "t a lowercase joiner\nPASS a spent subject is still refused\nPASS and the refusal can name it\nPASS the planner's refusal names the spent subject\nPASS nothing reached the network\n9/9\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_stray_value.py",
+      "exit_code": 0,
+      "seconds": 0.69,
+      "tail": " refused\nPASS a reply that is a list, not an object is refused\nPASS no model was called\nPASS nothing left the machine\nPASS nothing was written outside the scratch workspace\n\n14/14\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_structure_reads.py",
+      "exit_code": 0,
+      "seconds": 0.69,
+      "tail": "S when the structures would not fit, the retry goes on with its saved evidence alone\nPASS asking whether it fits writes no deferred snapshot\nPASS nothing reached the network\n24/24\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_terminal_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.75,
+      "tail": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.087s\n\nOK\n"
+    },
+    {
+      "suite": "broker/tests/test_lab_wrong_premise.py",
+      "exit_code": 0,
+      "seconds": 0.61,
+      "tail": "PASS the name that failed is remembered and shown to the planner from now on\nPASS a retry that is wrong too is refused, once, not asked again\nPASS nothing reached the network\n\n8/8\n"
+    },
+    {
+      "suite": "broker/tests/test_shim_learned_cache.py",
+      "exit_code": 0,
+      "seconds": 0.65,
+      "tail": " a prompt that splits itself keeps its own split\nPASS the usage log says how much of each prompt was cached\nPASS Grok calls of one job carry the same conversation id\n\n15/15 passed\n"
+    },
+    {
+      "suite": "broker/tests/test_shim_mends_surrogates.py",
+      "exit_code": 0,
+      "seconds": 0.57,
+      "tail": "e result is valid for any strict JSON reader\nPASS a clean request passes byte for byte\nPASS bytes that are not JSON pass untouched\nPASS every POST is mended before it is read\n\n7/7\n"
+    },
+    {
+      "suite": "broker/tests/test_shim_result_contract.py",
+      "exit_code": 0,
+      "seconds": 0.86,
+      "tail": "ompute ledger is isolated in this suite\nPASS provider clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /private/tmp/vs-su2wf1pw/shim-zj3ci9ls\n\n50/50 passed\n"
+    }
+  ],
+  "base_commit": "88b5e645",
+  "diagnostics_commit": "ff24c26a",
+  "preservation_checks": {
+    "chemistry_lab_ast_outside_diagnostics_unchanged": true,
+    "shim_ast_outside_native_completion_adapter_unchanged": true,
+    "question_narrowing_structure_cache_no_double_receipt_commits_retained": [
+      "2f8aa5de",
+      "2280f31c",
+      "8dcbbb0c"
+    ]
+  },
+  "sha256": {
+    "scripts/chemistry_lab.py": "3f4b6b4a1cbbe4db91d9ee9d2d2b3ff067a0933d5f6b183f21254997411240e7",
+    "bin/vintos_claude_shim.py": "65c4c034355fb7089f707656183ba7dc5f8df3b364ab4f2b7b84847e2c70e8cf"
+  }
+}

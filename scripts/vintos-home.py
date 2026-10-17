@@ -24,6 +24,8 @@ own he runs on Govee alone: every bulb the key can see, with govee-rooms.json fo
       }
     }
     "lights" (a flat list) is still honoured when present; otherwise it is every room's lights.
+    "devices": {"blanket": "switch.<the Linkind plug>"} names a plug by what it powers, not by its room (the heated
+    blanket, 2026-10-17: a Matter plug shared from Apple Home into Home Assistant).
 
     Govee, directly (no Home Assistant step): put the key in "govee_api_key" (or ~/.vintos/secrets/govee.key,
     or env GOVEE_API_KEY). A room's light or plug may then be a Govee device written as "govee:<device id>";
@@ -32,6 +34,8 @@ own he runs on Govee alone: every bulb the key can see, with govee-rooms.json fo
     python3 vintos-home.py entities            # what Home Assistant sees: lights, switches, media players
     python3 vintos-home.py speak "text" | announce "text" | color "#4a5568" [room] | flicker [room]
     python3 vintos-home.py plug <room> on|off | music "query" | stop | tv_status | tv_on | tv_off | projector_on | projector_off
+    python3 vintos-home.py device blanket on|off|status
+    python3 vintos-home.py blanket on|off|status|expire     on = two hours, only while she is home
 """
 import sys, json, os, time, colorsys
 import requests
@@ -241,6 +245,14 @@ def _plug_for_light(ent):
 def _power_plug(ent, on=True):
     """'govee:<id>' switches the whole plug; 'govee:<id>#2' switches socket 2 only (the H5082 has two).
     The bedroom bulbs hang off socket 2 and the projector off socket 1 (Gloria, 2026-09-05)."""
+    if str(ent).startswith("alexa:"):
+        # a plug only Alexa can reach (Matter, shared from Apple Home to the Echo): the Echo is told, as a command,
+        # through Home Assistant's Alexa media player. Aegis's WSL network cannot see Matter devices (2026-10-17).
+        cfg = load_config()
+        code, _ = ha_request("media_player/play_media", {"entity_id": cfg.get("media_player", "media_player.echo"),
+                             "media_content_id": "turn %s %s" % ("on" if on else "off", ent.split(":", 1)[1]),
+                             "media_content_type": "custom"})
+        return code == 200
     if _is_govee(ent):
         dev, _, sock = ent.split(":", 1)[1].partition("#")
         if sock:
@@ -275,6 +287,74 @@ def plug(room, on=True):
     ok = _power_plug(ent, on)
     print(f"[HOME] plug {room} {'on' if on else 'off'}: {'ok' if ok else 'failed'}")
     return ok
+
+
+def named_device(name):
+    """The entity a named device ("blanket") is plugged into, or None."""
+    return (load_config().get("devices") or {}).get(_room_key(name))
+
+
+def device(name, on=True):
+    """Switch a named device's plug. Off is off."""
+    ent = named_device(name)
+    if not ent:
+        print(f"[HOME] no device named {name}"); return False
+    ok = _power_plug(ent, on)
+    print(f"[HOME] {name} {'on' if on else 'off'}: {'ok' if ok else 'failed'}")
+    return ok
+
+
+def device_state(name):
+    """'on', 'off', or 'unknown' (not configured, unreachable, or Home Assistant cannot see the plug)."""
+    ent = named_device(name)
+    if not ent or _is_govee(ent) or str(ent).startswith("alexa:"): return "unknown"
+    try:
+        st = (ha_state(ent) or {}).get("state")
+    except Exception:
+        return "unknown"
+    return st if st in ("on", "off") else "unknown"
+
+
+BLANKET_STATE = os.path.expanduser("~/.vintos/workspace/memory/blanket.json")
+BLANKET_HOURS = 2
+
+
+def _she_is_home():
+    """Her phone seen on the house Wi-Fi in the last 15 minutes (home_presence.py)."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import home_presence
+        return bool(home_presence.context_line())
+    except Exception:
+        return False
+
+
+def blanket_on(hours=BLANKET_HOURS):
+    """The heated blanket for two hours, only while she is home (Gloria, 2026-10-17). (ok, why)."""
+    if not named_device("blanket"):
+        return False, "the blanket's plug is not in the house config"
+    if not _she_is_home():
+        return False, "Gloria is not home"
+    if not device("blanket", True):
+        return False, "the plug did not switch"
+    until = time.time() + hours * 3600
+    json.dump({"on_until": until, "at": time.time()}, open(BLANKET_STATE, "w"))
+    return True, "on until %s" % time.strftime("%H:%M", time.localtime(until))
+
+
+def blanket_off():
+    ok = device("blanket", False)
+    try: os.remove(BLANKET_STATE)
+    except OSError: pass
+    return ok, "off" if ok else "the plug did not switch"
+
+
+def blanket_expire(now=None):
+    """Switch it off when its two hours are up. Returns True when it switched off."""
+    try: st = json.load(open(BLANKET_STATE))
+    except Exception: return False
+    if (now or time.time()) < float(st.get("on_until") or 0): return False
+    return blanket_off()[0]
 
 
 # ---------------------------------------------------------------- echo
@@ -576,6 +656,17 @@ if __name__ == "__main__":
     elif cmd == "color": set_room_color(args[0], room=(args[1] if len(args) > 1 else None))
     elif cmd == "flicker": flicker(args[0] if args else None)
     elif cmd == "plug": plug(args[0], args[1].lower() != "off")
+    elif cmd == "blanket":
+        w = (args[0].lower() if args else "")
+        if w == "on": print(blanket_on())
+        elif w == "off": print(blanket_off())
+        elif w == "expire": print("switched off" if blanket_expire() else "nothing to do")
+        elif w == "status": print(device_state("blanket"), json.load(open(BLANKET_STATE)) if os.path.exists(BLANKET_STATE) else "")
+        else: print("blanket on|off|status|expire")
+    elif cmd == "device":
+        if len(args) < 2 or args[1].lower() not in ("on", "off", "status"): print("device <name> on|off|status")
+        elif args[1].lower() == "status": print(args[0], device_state(args[0]))
+        else: device(args[0], args[1].lower() == "on")
     elif cmd == "music": play_music(msg)
     elif cmd == "song-check": print(song_exists(msg))
     elif cmd == "tv_adb": print(tv_adb_state())
