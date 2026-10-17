@@ -155,5 +155,57 @@
     "suites": 421,
     "passed": 421,
     "failed": 0
+  },
+  "concurrent_mail_preserved": {
+    "commit": "78daf34e19e4b5447c49ed9d8a705cae6518de6c",
+    "integration_base": "46a83d0",
+    "focused_suites": [
+      {
+        "suite": "test_mail_attachments",
+        "exit_code": 0,
+        "seconds": 0.88
+      },
+      {
+        "suite": "test_want_email_and_outward",
+        "exit_code": 0,
+        "seconds": 1.05
+      },
+      {
+        "suite": "test_received_mail",
+        "exit_code": 0,
+        "seconds": 0.99
+      },
+      {
+        "suite": "test_europepmc_fulltext",
+        "exit_code": 0,
+        "seconds": 0.82
+      },
+      {
+        "suite": "test_link_fetch_pinning",
+        "exit_code": 0,
+        "seconds": 0.63
+      },
+      {
+        "suite": "test_link_fetch",
+        "exit_code": 0,
+        "seconds": 0.65
+      },
+      {
+        "suite": "test_email_reading_and_approval",
+        "exit_code": 0,
+        "seconds": 0.62
+      },
+      {
+        "suite": "test_email_whole",
+        "exit_code": 0,
+        "seconds": 0.56
+      },
+      {
+        "suite": "test_scholar_pdf_text",
+        "exit_code": 0,
+        "seconds": 0.5
+      }
+    ],
+    "pinning_source_hashes_unchanged": true
   }
 }
