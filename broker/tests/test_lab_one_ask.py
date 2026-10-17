@@ -49,6 +49,25 @@ check("a question that only resembles a held one is still cut to one ask (17 Oct
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 _note = src[src.index('"kind": "structure_read"'):][:1600]
 check("a structure read writes what it found into the notebook", '"metal_sites": [' in _note and '"chains":' in _note)
+print("--- a structure already read is reused, and written once ---")
+from datetime import datetime as _d, timezone as _tz, timedelta as _td
+def _rcpt(entry, days_ago, metals=True):
+    rec = {"entry_id": entry}
+    if metals: rec["metal_sites"] = [{"element": "FE", "residue": "HEM", "residue_number": 300, "chain": "A"}]
+    return {"source": "pdb", "query": {"source": "pdb", "entry_id": entry, "operation": "structure_evidence"},
+            "records": [rec], "retrieved_at": (_d.now(_tz.utc) - _td(days=days_ago)).isoformat(), "receipt_id": entry + str(days_ago)}
+RCPT = os.path.join(C.ROOT, "source-receipts.jsonl"); os.makedirs(C.ROOT, exist_ok=True)
+with open(RCPT, "a") as f:
+    for r in (_rcpt("1N3U", 2), _rcpt("7LGU", 45), _rcpt("9NOR", 1, metals=False)):
+        f.write(json.dumps(r) + "\n")
+hit = C._structure_cached("1n3u")
+check("an entry read in the last 30 days is reused", hit and hit["receipt"]["receipt_id"] == "1N3U2", hit)
+check("an older read is fetched fresh", C._structure_cached("7LGU") is None)
+check("a read from before metal sites were recorded is fetched fresh", C._structure_cached("9NOR") is None)
+check("an entry never read is fetched", C._structure_cached("2SHP") is None)
+_phase = src[src.index('elif phase in ("embed", "reflect") and _structure_pending(state):'):][:2600]
+check("the structure step asks the cache before the source", "sourced = cached or chemistry_sources.query(" in _phase)
+check("and no longer writes a receipt the source layer already wrote", '_append(os.path.join(ROOT, "source-receipts.jsonl"), receipt_row)' not in _phase)
 _outside = src.replace(src[src.index("def _narrow("):src.index("def _compact_names(")], "")
 check("no planner call bypasses the narrowing", "_json_object(_ask(system," not in _outside and "_plan_raw(" not in _outside)
 check("nothing reached the network", not NET)

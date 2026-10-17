@@ -2475,6 +2475,31 @@ _STRUCTURAL = re.compile(r'structur|topolog|helix|helic|fold|hinge|pocket|loops?
 STRUCTURE_TARGETS = 2
 
 
+STRUCTURE_CACHE_DAYS = 30
+
+
+def _structure_cached(entry_id):
+    """A deposited entry already read, reused instead of downloaded and parsed again. On 17 October 674 structure
+    reads held the same few entries over and over (7LGU about 30 times, 9NOR and 1XMI about 20). Deposited
+    coordinates do not change between questions; a read older than STRUCTURE_CACHE_DAYS is fetched fresh."""
+    entry = str(entry_id or '').upper()
+    if not entry: return None
+    for row in reversed(_tail_jsonl(os.path.join(ROOT, 'source-receipts.jsonl'), nbytes=8*1024*1024)):
+        q = row.get('query') or {}
+        if row.get('source') != 'pdb' or q.get('operation') != 'structure_evidence' or str(q.get('entry_id', '')).upper() != entry:
+            continue
+        recs = row.get('records') or []
+        if not recs or not isinstance(recs[0], dict) or 'metal_sites' not in recs[0]: continue
+        try:
+            age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 <= age < STRUCTURE_CACHE_DAYS * 86400:
+            return {'receipt': row}
+        return None
+    return None
+
+
 def structure_reads(inquiry, records):
     """The deposited entries a structural question should read beside whatever source he chose.
 
@@ -4726,8 +4751,9 @@ def tick():
                 # straight to the review, and those reviews got no structure (15 October, after 16:09 UTC).
                 spec = state["structure_pending"][0]
                 import chemistry_sources
+                cached = _structure_cached(spec.get("entry_id"))
                 try:
-                    sourced = chemistry_sources.query({k: v for k, v in spec.items() if k != 'for_accession'},
+                    sourced = cached or chemistry_sources.query({k: v for k, v in spec.items() if k != 'for_accession'},
                                                       question=(state.get("inquiry") or {}).get("question", ""))
                 except RuntimeError as exc:
                     if 'cooldown' in str(exc):    # the one PDB request a minute: wait for it, as his own sources do
@@ -4739,7 +4765,8 @@ def tick():
                 state["structure_pending"] = state["structure_pending"][1:]
                 receipt_row = (sourced or {}).get("receipt") or (sourced or {}).get("source_receipt") or {}
                 if sourced:
-                    _append(os.path.join(ROOT, "source-receipts.jsonl"), receipt_row)
+                    # chemistry_sources.query already wrote this receipt; writing it here too doubled every
+                    # structure read in source-receipts.jsonl (17 October). A cached read is not written again.
                     for rec in receipt_row.get("records") or []:
                         state.setdefault("structure_evidence", []).append(dict(rec, for_accession=spec.get("for_accession")))
                 next_phase = phase
@@ -4747,6 +4774,7 @@ def tick():
                         "question": str((state.get("inquiry") or {}).get("question") or "")[:300],
                         "for_accession": spec.get("for_accession"), "receipt_id": receipt_row.get("receipt_id"),
                         "records_returned": len(receipt_row.get("records") or []),
+                        **({"reused_receipt": True} if cached else {}),
                         # what the read found, so the notebook shows it (17 October: every read looked empty here
                         # while its metal sites sat only in source-receipts.jsonl)
                         "metal_sites": ["%s %s%s chain %s, %d atoms within 3.2 A" % (m.get("element"), m.get("residue") or "",
