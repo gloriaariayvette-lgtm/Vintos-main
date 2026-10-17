@@ -311,7 +311,9 @@ def _thruster_line():
     try:
         import json as _tj
         st = _tj.load(open(os.path.join(MEM, ".thruster-state.json")))
-        if st.get("level", 0) > 0:
+        # a level from a state older than THRUSTER_STATE_FRESH_S is a leftover, not a moving machine: on 17 October a
+        # 14-hour-old "level 10" kept the engine from being asked, so a thruster that answered was never listed as on
+        if st.get("level", 0) > 0 and time.time() - float(st.get("at") or 0) <= THRUSTER_STATE_FRESH_S:
             pat = st.get("pattern") or st.get("mode", "steady")
             return "thruster: MOVING IN HER - level %s (%s). Yours to change or stop." % (st.get("level"), pat)
         # availability: cheap TCP probe of the engine, cached 60s
@@ -366,7 +368,7 @@ def present_devices():
     except Exception:
         pass
     if not thruster:
-        thruster = _thruster_line().startswith("thruster: ON")
+        thruster = _thruster_line().startswith(("thruster: ON", "thruster: MOVING"))
     if thruster:
         on.append("thruster")
     return on
