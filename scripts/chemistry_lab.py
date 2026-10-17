@@ -1072,7 +1072,7 @@ def _completion_metadata(data, choice, max_tokens):
     source = data.get("finish_reason_source")
     if data.get("provider") == "aegis_gemma":
         result["finish_reason_source"] = source[:256] if isinstance(source, str) else None
-    for key in ("id", "model", "provider", "status"):
+    for key in ("id", "model"):
         if isinstance(data.get(key), str): result[key] = data[key][:256]
     usage = data.get("usage")
     if isinstance(usage, dict):
@@ -1084,44 +1084,13 @@ def _completion_metadata(data, choice, max_tokens):
     return result
 
 
-def _error_metadata(payload, max_tokens):
-    """What the shim's error body says about the providers that failed, kept the same allowlisted way as a
-    completion: provider, status, reason, request id, model, usage and stopping reason; never the reply or the
-    prompt. A field the provider did not give stays None (unknown); nothing is deduced from a token count."""
-    error = payload.get("error") if isinstance(payload, dict) else None
-    rows = error.get("providers") if isinstance(error, dict) and isinstance(error.get("providers"), list) else []
-    providers = []
-    for row in rows:
-        if not isinstance(row, dict): continue
-        data = {"provider": row.get("provider"), "status": row.get("status"), "model": row.get("model"),
-                "id": row.get("request_id"), "usage": row.get("usage")}
-        if "finish_reason_source" in row: data["finish_reason_source"] = row.get("finish_reason_source")
-        item = _completion_metadata(data, {"finish_reason": row.get("finish_reason")}, max_tokens)
-        reason = row.get("reason")
-        item["reason"] = reason[:256] if isinstance(reason, str) else None
-        providers.append(item)
-    last = providers[-1] if providers else {"finish_reason": None, "token_limit_reached": None,
-                                            "requested_max_tokens": max_tokens}
-    return dict(last, providers=providers)
-
-
 def _ask(system, prompt, max_tokens=500, temperature=0.75):
     body = json.dumps({"model": LLM_MODEL, "temperature": temperature, "max_tokens": max_tokens,
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=150) as response:
-            data = json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        # The shim answers a failed chain with 502 and a body naming each provider, its status, request id and
-        # counts. urlopen turns that into an exception and the body was lost: the fault said "HTTP 502" and nothing
-        # of which model answered what. The body is read once here and its metadata kept on the exception,
-        # request-local like a reply's, before it is raised on unchanged.
-        try: payload = json.loads(exc.read() or b"{}")
-        except Exception: payload = None
-        exc.completion = _error_metadata(payload, max_tokens)
-        raise
+    with urllib.request.urlopen(req, timeout=150) as response:
+        data = json.loads(response.read())
     choice = data["choices"][0]
     return _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
 

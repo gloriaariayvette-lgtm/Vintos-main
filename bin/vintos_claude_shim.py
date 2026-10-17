@@ -380,16 +380,7 @@ def openai_wrap(res, requested_model=None):
     return json.dumps(out).encode()
 
 def error_body(results, message=None, err_type="all_providers_failed"):
-    # What each provider actually said about its own attempt travels with the error: an empty completion from
-    # Aegis Gemma still has a response id, counts and a stopping reason, and a caller recording the failure needs
-    # them. A field the provider did not give is None, never filled in.
-    prov = []
-    for r in results:
-        p = {"provider": r["provider"], "status": r["status"], "reason": r["reason"], "model": r["model"],
-             "request_id": r.get("request_id") or None, "finish_reason": r.get("finish_reason") or None,
-             "usage": r.get("usage") or None}
-        if r["provider"] == "aegis_gemma": p["finish_reason_source"] = r.get("finish_reason_source")
-        prov.append(p)
+    prov = [{"provider": r["provider"], "status": r["status"], "reason": r["reason"], "model": r["model"]} for r in results]
     msg = message or ("shim: no provider answered: " + "; ".join("%s=%s(%s)" % (p["provider"], p["status"], p["reason"][:80]) for p in prov))
     return json.dumps({"error": {"message": msg, "type": err_type, "providers": prov}}).encode()
 
