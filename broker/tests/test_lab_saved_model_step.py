@@ -16,6 +16,9 @@ MODEL = 'artifacts/esmfold/O43511-60e20d840671.pdb'
 
 class SavedModelStep(unittest.TestCase):
     def setUp(self):
+        # These pin the empty-pass behaviour when truly nothing is eligible; the fresh-protein fallback
+        # (17 October) is tested in test_lab_one_ask, so it is switched off here.
+        _nf = patch.object(C, '_fresh_free_inquiry', return_value=None); _nf.start(); self.addCleanup(_nf.stop)
         Perimeter.setUp(self)
         self.packet = json.loads(FIXTURE.read_text())
         self.line = copy.deepcopy(self.packet['line'])

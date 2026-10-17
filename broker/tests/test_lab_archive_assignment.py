@@ -38,6 +38,9 @@ def payloads():
 class ArchiveAssignment(unittest.TestCase):
     original_ground=staticmethod(C._ground_inquiry)
     def setUp(self):
+        # These pin the empty-pass behaviour when truly nothing is eligible; the fresh-protein fallback
+        # (17 October) is tested in test_lab_one_ask, so it is switched off here.
+        _nf = patch.object(C, '_fresh_free_inquiry', return_value=None); _nf.start(); self.addCleanup(_nf.stop)
         Perimeter.setUp(self)
         self.line={'id':'L-fd723427','state':'open','question':QUESTION,'next_step':STEP}
         self.stack.enter_context(patch.dict(sys.modules,{'lab_lines':L,'lab_instruments':I}))

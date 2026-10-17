@@ -15,6 +15,9 @@ THIRD = {'question':'Which residues coordinate calcium in calmodulin?', 'uniprot
 
 class QuestionHolds(Perimeter):
     def setUp(self):
+        # These pin the empty-pass behaviour when truly nothing is eligible; the fresh-protein fallback
+        # (17 October) is tested in test_lab_one_ask, so it is switched off here.
+        _nf = patch.object(C, '_fresh_free_inquiry', return_value=None); _nf.start(); self.addCleanup(_nf.stop)
         super().setUp()
         self.snapshot=json.loads(SNAPSHOT.read_text())
         self.cftr=copy.deepcopy(self.snapshot['inquiry'])
