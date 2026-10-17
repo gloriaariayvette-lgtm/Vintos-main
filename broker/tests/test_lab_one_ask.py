@@ -35,8 +35,11 @@ C._ask = lambda system, prompt, **k: json.dumps({"browse_lane": "protein", "ques
     "What are the structural features of Tryptophan synthase in Streptomyces coelicolor, and how do the active site geometries facilitate catalysis?"})
 v = C._plan("Return JSON only.", "TASK\n\nREFUSED, IT IS A REPEAT: x.")
 check("a replan's two-part answer is cut to its first ask", v["question"].endswith("Streptomyces coelicolor?"), v["question"])
-faults = [json.loads(l) for l in open(C.FAULTS)]
-check("and the cut is written down with what was kept", any(f["stage"] == "question_narrowed" and f.get("kept") for f in faults))
+faults = [json.loads(l) for l in open(C.FAULTS)] if os.path.exists(C.FAULTS) else []
+edits = [json.loads(l) for l in open(C.QUESTION_EDITS)]
+check("and the cut is written down as an edit, with the second ask kept, not as a fault",
+      any(e["kind"] == "narrowed" and "how do the active site geometries" in e.get("second_ask_dropped", "") for e in edits)
+      and not any(str(f.get("stage", "")).startswith("question_") for f in faults), edits[-1:])
 held_q = "What are the structural features of the CFTR R-domain and how does AKAP influence gating?"
 C._question_holds = lambda: [{"question": held_q}]
 C._held_question = lambda inquiry: {"question": held_q}   # a paraphrase or same-lookup match: not a reason to keep two asks
@@ -83,8 +86,8 @@ _held_saved = C._question_holds; C._question_holds = lambda: []
 v = C._plan("x", "TASK")
 check("narrowing and the rewrite both run on a planner answer", v["question"].startswith("Which domains") and "thioredoxin" in v["question"], v)
 C._question_holds = _held_saved
-faults = [json.loads(l) for l in open(C.FAULTS)]
-check("the rewrite is written down", any(f["stage"] == "question_made_concrete" for f in faults))
+faults = [json.loads(l) for l in open(C.FAULTS)] if os.path.exists(C.FAULTS) else []
+check("the rewrite is written down as an edit", any(e["kind"] == "made_concrete" for e in [json.loads(l) for l in open(C.QUESTION_EDITS)]))
 
 print("--- the checker's size estimate is set from a measurement ---")
 req = ("s" * 1000, "p" * 9000, 800)
