@@ -303,13 +303,6 @@ def aegis_gemma_complete(j, call=None):
     output = d.get("output") if isinstance(d.get("output"), list) else []
     reasoning = [x for x in output if isinstance(x, dict) and x.get("type") == "reasoning" and x.get("content")]
     stats = d.get("stats") if isinstance(d.get("stats"), dict) else {}
-    if reasoning or int(stats.get("reasoning_output_tokens") or 0) != 0:
-        return GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
-                              status="error", reason="thinking-off contract violated")
-    text = "".join(str(x.get("content") or "") for x in output
-                   if isinstance(x, dict) and x.get("type") == "message")
-    usage = {"input_tokens": stats.get("input_tokens"),
-             "output_tokens": stats.get("total_output_tokens")}
     # Native LM Studio versions differ. Keep only an actual stopping field, never manufacture 'stop'.
     finish, finish_source = None, None
     for source, value in (("stats.stop_reason", stats.get("stop_reason")),
@@ -317,6 +310,16 @@ def aegis_gemma_complete(j, call=None):
         if isinstance(value, str) and value:
             finish, finish_source = value[:256], source
             break
+    if reasoning or int(stats.get("reasoning_output_tokens") or 0) != 0:
+        # The refusal keeps the stop the provider reported: a refused reply that was also cut is two facts, not one.
+        result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+                                status="error", reason="thinking-off contract violated", finish_reason=finish)
+        result["finish_reason_source"] = finish_source
+        return result
+    text = "".join(str(x.get("content") or "") for x in output
+                   if isinstance(x, dict) and x.get("type") == "message")
+    usage = {"input_tokens": stats.get("input_tokens"),
+             "output_tokens": stats.get("total_output_tokens")}
     state = "valid" if text else "error"
     result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
                           request_id=d.get("response_id", ""), status=state, usage=usage,
@@ -380,7 +383,11 @@ def openai_wrap(res, requested_model=None):
     return json.dumps(out).encode()
 
 def error_body(results, message=None, err_type="all_providers_failed"):
-    prov = [{"provider": r["provider"], "status": r["status"], "reason": r["reason"], "model": r["model"]} for r in results]
+    # Each provider's stop reason and its provenance ride the error too, so the Lab's diagnostic of a failed request
+    # can say how the reply ended, not only that it failed. A reason never given is null, not the contract's "".
+    prov = [{"provider": r["provider"], "status": r["status"], "reason": r["reason"], "model": r["model"],
+             "finish_reason": r.get("finish_reason") or None,
+             "finish_reason_source": r.get("finish_reason_source") or None} for r in results]
     msg = message or ("shim: no provider answered: " + "; ".join("%s=%s(%s)" % (p["provider"], p["status"], p["reason"][:80]) for p in prov))
     return json.dumps({"error": {"message": msg, "type": err_type, "providers": prov}}).encode()
 

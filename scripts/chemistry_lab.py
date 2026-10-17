@@ -1092,10 +1092,44 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=150) as response:
-        data = json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req, timeout=150) as response:
+            data = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        # The shim's error body names every provider it tried with the stop reason each saw. Written to the
+        # diagnostic before the error goes on unchanged; nothing is retried or rerouted here.
+        _failed_request_evidence(exc, max_tokens)
+        raise
     choice = data["choices"][0]
     return _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
+
+
+def _failed_request_evidence(exc, max_tokens):
+    """A terminal diagnostic for a request the shim refused. The last provider tried is the one whose stop reason
+    describes the reply; a reason it never gave stays null, and token_limit_reached is only ever read from a reason
+    the allowlist already knows, never from the failure itself."""
+    try:
+        raw = exc.read().decode("utf-8", "replace")
+    except Exception:
+        raw = ""
+    try:
+        error = (json.loads(raw) or {}).get("error")
+    except (ValueError, AttributeError):
+        error = None
+    providers = error.get("providers") if isinstance(error, dict) else None
+    providers = [p for p in providers if isinstance(p, dict)] if isinstance(providers, list) else []
+    last = providers[-1] if providers else {}
+    data = {k: last[k] for k in ("provider", "finish_reason_source", "model") if k in last}
+    completion = _completion_metadata(data, {"finish_reason": last.get("finish_reason") or None}, max_tokens)
+    completion["http_status"] = int(getattr(exc, "code", 0) or 0)
+    completion["providers"] = [{"provider": str(p.get("provider") or "")[:64], "status": str(p.get("status") or "")[:64],
+                                "reason": str(p.get("reason") or "")[:200],
+                                "finish_reason": p["finish_reason"][:256] if isinstance(p.get("finish_reason"), str)
+                                and p["finish_reason"] else None,
+                                "finish_reason_source": p["finish_reason_source"][:256]
+                                if isinstance(p.get("finish_reason_source"), str) and p["finish_reason_source"] else None}
+                               for p in providers[:8]]
+    _parser_evidence(uuid.uuid4().hex, ["request_failed", "terminal"], raw=raw, terminal=True, completion=completion)
 
 
 # Every planner request ends on its output contract. A replan put the refusal last ("REFUSED, IT IS A REPEAT: ..."),
