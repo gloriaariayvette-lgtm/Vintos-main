@@ -38,10 +38,17 @@ check("a replan's two-part answer is cut to its first ask", v["question"].endswi
 faults = [json.loads(l) for l in open(C.FAULTS)]
 check("and the cut is written down with what was kept", any(f["stage"] == "question_narrowed" and f.get("kept") for f in faults))
 held_q = "What are the structural features of the CFTR R-domain and how does AKAP influence gating?"
-C._held_question = lambda inquiry: {"question": held_q} if inquiry.get("question") == held_q else None
+C._question_holds = lambda: [{"question": held_q}]
+C._held_question = lambda inquiry: {"question": held_q}   # a paraphrase or same-lookup match: not a reason to keep two asks
 C._ask = lambda system, prompt, **k: json.dumps({"browse_lane": "protein", "question": held_q})
 check("a question already held keeps its exact words", C._plan("x", "TASK")["question"] == held_q)
+near = "What are the structural features of the CFTR R-domain, and how does PKA phosphorylation open the channel?"
+C._ask = lambda system, prompt, **k: json.dumps({"browse_lane": "protein", "question": near})
+check("a question that only resembles a held one is still cut to one ask (17 October: 124 of 146 incomplete)",
+      C._plan("x", "TASK")["question"].endswith("CFTR R-domain?"), C._plan("x", "TASK")["question"])
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
+_note = src[src.index('"kind": "structure_read"'):][:1600]
+check("a structure read writes what it found into the notebook", '"metal_sites": [' in _note and '"chains":' in _note)
 _outside = src.replace(src[src.index("def _narrow("):src.index("def _compact_names(")], "")
 check("no planner call bypasses the narrowing", "_json_object(_ask(system," not in _outside and "_plan_raw(" not in _outside)
 check("nothing reached the network", not NET)

@@ -1075,11 +1075,20 @@ def _narrow(value):
     two = second_ask(q)
     if not two: return value
     try:
-        if _held_question(_inquiry(value)): return value
+        if _held_exactly(q): return value
     except Exception:
         pass
     _fault("question_narrowed", ValueError("two asks at: " + two), kept=first_ask(q)[:200])
     return dict(value, question=first_ask(q))
+
+
+def _held_exactly(question):
+    """A hold whose question is these exact words. _held_question also matches a paraphrase or another question on the
+    same lookup, and on 17 October that kept compound questions whole (pendrin and prestin "and how do their folds",
+    SLC34A1 and SLC34A2 "and how do these architectures"): 124 of 146 reviews were incomplete."""
+    norm = lambda t: ' '.join(str(t or '').casefold().split())
+    q = norm(question)
+    return bool(q) and any(norm(old.get('question')) == q for old in _question_holds())
 
 
 def _plan(system, prompt):
@@ -4738,6 +4747,13 @@ def tick():
                         "question": str((state.get("inquiry") or {}).get("question") or "")[:300],
                         "for_accession": spec.get("for_accession"), "receipt_id": receipt_row.get("receipt_id"),
                         "records_returned": len(receipt_row.get("records") or []),
+                        # what the read found, so the notebook shows it (17 October: every read looked empty here
+                        # while its metal sites sat only in source-receipts.jsonl)
+                        "metal_sites": ["%s %s%s chain %s, %d atoms within 3.2 A" % (m.get("element"), m.get("residue") or "",
+                                        m.get("residue_number") or "", m.get("chain") or "?", len(m.get("nearby_atoms") or []))
+                                        for rec in receipt_row.get("records") or [] if isinstance(rec, dict)
+                                        for m in (rec.get("metal_sites") or []) if isinstance(m, dict)][:8],
+                        "chains": sum(len(((rec.get("geometry") or {}).get("chains") or [])) for rec in receipt_row.get("records") or [] if isinstance(rec, dict)),
                         **({"failure": failure} if not sourced else {}),
                         "truth_status": "deposited_experimental_structure_not_native_state_claim"}
             elif phase == "embed":
