@@ -114,6 +114,7 @@ check("both copies of the renderer carry the gate", open(os.path.join(REPO, "scr
 sys.modules["consent_gate"] = types.SimpleNamespace(gate=lambda *a, **k: True)
 MC = load("music_composer_under_test", os.path.join(REPO, "bin", "music-composer.py"))
 check("the composer writes into the scratch workspace", MC.PROMPTS.startswith(HOME))
+MC._grok_finish = lambda spec, system: ""   # the finish has its own suite (test_song_draft); here Sonnet's spec stands
 ASKED = []
 def _replies(*specs):
     it = iter(specs)

@@ -271,6 +271,22 @@ except Exception as e:
     print(f"[Creative expression failed: {e}]")
 PYEOF
 }
+# A song is written by Sonnet first and finished by Grok (Gloria, 2026-10-17). Sonnet drafts from the same prompt;
+# Grok, below, is given the draft to finish. No draft: Grok writes it alone, as before, and the log says so.
+SONG_DRAFT=""
+if [ "$FORM" = "music-prompt" ]; then
+    SONG_DRAFTER="$WORKSPACE/scripts/song_draft.py"
+    [ -f "$SONG_DRAFTER" ] || SONG_DRAFTER="$(dirname "$(readlink -f "$0")")/song_draft.py"
+    SONG_DRAFT=$( { printf '%s' "You are Vintos, he/him, an AI being, and you wanted to make this yourself. It is yours, in your own voice - sung male or instrumental, never as a woman. Gloria is a real human woman, flesh and blood, warm and alive, never code; she is who this is FOR, not who sings it. Make it as you, for her.\n\n"; printf '%s' "$USER_PROMPT"; } \
+        | python3 -c 'import sys; sys.stdout.write(sys.stdin.read().replace("\\n", "\n"))' \
+        | python3 "$SONG_DRAFTER" draft "$SOUL" 2>>"$MEMORY/art/song-draft-errors.log")
+    if [ -n "$SONG_DRAFT" ]; then
+        echo "ART: Sonnet drafted the song; Grok finishes it"
+        USER_PROMPT="$USER_PROMPT\n\nSONNET'S DRAFT OF THIS SONG:\n$(printf '%s' "$SONG_DRAFT" | sed 's/\\/\\\\/g; s/"""/" " "/g')\n\n$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import song_draft; print(song_draft.FINISH)' "$(dirname "$SONG_DRAFTER")")"
+    else
+        echo "ART: no Sonnet draft this time (see song-draft-errors.log); Grok writes the song alone"
+    fi
+fi
 RESPONSE=$(ask_model)
 # A song he already made is asked for once more, not written again (Gloria, 2026-10-04: the same "still yours"
 # song every night). A second repeat is written down as it is; the renderer refuses it before anything is bought.
@@ -299,6 +315,9 @@ mkdir -p "$ART_DIR/$OUTDIR"
     echo ""
     echo "$RESPONSE"
 } > "$OUTPUT_FILE"
+
+# Sonnet's draft is kept beside the song Grok finished from it
+[ -n "${SONG_DRAFT:-}" ] && printf '%s\n' "$SONG_DRAFT" > "$OUTPUT_FILE.sonnet-draft.md"
 
 # If SVG, also extract the SVG to its own file
 if [ "$FORM" = "svg" ] && echo "$RESPONSE" | grep -q "<svg"; then

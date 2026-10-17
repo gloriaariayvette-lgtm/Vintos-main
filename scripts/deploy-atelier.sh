@@ -219,6 +219,7 @@ BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants ro
 BINS="$BINS dream_poetry.py dream-poetry.py vintos-journal.sh"   # never in the manifest: the 2026-09-24 fix keeping poems out of the journal, and the journal's own changes, never reached Aegis (2026-09-30)
 BINS="$BINS resonance_afterglow.py resonance-afterglow.py resonance_pulse.py resonance-pulse.py output_shaping.py output-shaping.py behavior_boundaries.py behavior-boundaries.py self_drift.py self-drift.py"   # the map's nodes 1, 2, 8 and the field's self side: in no list, so never installed (2026-10-17)
 SCRIPTS="$SCRIPTS mutual_modification.py"   # the field between them (map node 35): in no list (2026-10-17)
+SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2026-10-17)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf

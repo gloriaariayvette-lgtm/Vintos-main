@@ -3680,3 +3680,10 @@ Not done:
 - `scripts/introspective_planning.py` (via some suite) writes `plans.json` / `plan-outcomes.jsonl` into the
   checkout's `memory/`; not traced.
 - `scripts/manifest_gap.py` still lists many scripts as not installed.
+
+## 17 October — songs: Sonnet drafts, Grok finishes
+
+Done (Claude Code): both song paths, a want's song (wants-router -> creative-expression.sh) and the 5:15 dream music
+(music-composer.py), now draft with Sonnet and finish with Grok (`scripts/song_draft.py`). Each finished spec has
+its Sonnet draft beside it as `<spec>.sonnet-draft.md`. A failed draft leaves Grok writing alone; a failed or
+repeating finish leaves Sonnet's spec standing; both are logged. Not yet seen on Aegis.

@@ -124,6 +124,16 @@ EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, l
     "[0:22-0:50] Piano enters, soft, single spaced notes, no chord yet, just intervals like counting hours on fingers; pad holds underneath.\n"
     "[1:15-1:45] First swell: warm cello and viola enter mid-volume rising under the vocal, piano to full soft chords. The arrangement thickens here without a clear reason — the emotional move is an unbidden lift the listener feels before they can name it.\n"
     "[2:10-2:35] Drop back: drums fall away entirely, just piano, voice, one sustained cello note; vocal quieter, closest mic distance in the whole piece.")
+def _grok_finish(spec, system):
+    """The finish, through the one shared step (song_draft.finish)."""
+    try:
+        import sys as _sd
+        for _p in (os.path.join(WS,"scripts"), os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"scripts")):
+            if _p not in _sd.path: _sd.path.insert(0,_p)
+        import song_draft
+        return song_draft.finish(spec, system=system)
+    except Exception as e:
+        print("composer: finish step unavailable:", e); return ""
 def compose():
     # Consent gate (#7): announce the activity and honour Gloria's yes/no on music.
     try:
@@ -167,8 +177,16 @@ def compose():
         msgs+= [{"role":"assistant","content":spec},
                 {"role":"user","content":"That is a song you already made: "+again+". Write a different song: a different "
                  "title, a different chorus, a different central phrase. Output only the spec, starting with **Title:**."}]
+    # Sonnet wrote it first; Grok finishes it (Gloria, 2026-10-17). A finish that fails, has no Title, or lands on a
+    # song he already made is not used: Sonnet's spec stands and the log says so.
+    sonnet_spec=spec; finished=_grok_finish(spec, sysp)
+    if finished and not _repeats(finished): spec=finished; print("composer: Grok finished Sonnet's draft")
+    else: print("composer: Grok's finish not used ("+("a repeat" if finished else "no answer")+"); Sonnet's spec stands")
     now=datetime.datetime.now(); os.makedirs(PROMPTS,exist_ok=True)
     fp=os.path.join(PROMPTS,now.strftime("%Y-%m-%d_%H%M%S")+".md")
+    if spec is not sonnet_spec:
+        try: open(fp+".sonnet-draft.md","w",encoding="utf-8").write(sonnet_spec+"\n")
+        except Exception: pass
     open(fp,"w",encoding="utf-8").write("# Music-prompt — "+now.strftime("%B %d, %Y %H:%M")+"\nEmotional state: "+estr+"\n\n"+spec+"\n")
     try:   # sidecar: dream-music reads it at completion and writes the title onto those shares
         json.dump({"share_ids": [x for x in SHARE_IDS_IN_CONTEXT if x], "written_at": now.isoformat()}, open(fp + ".shares.json", "w"))
