@@ -980,6 +980,46 @@ def _rg_snapshot():
         return {}
 
 
+BOUNDARY_PENDING = os.path.join(MEMORY, "boundary-pending.json")
+
+
+def _after_resonance_block(gloria_text):
+    """What the old chat route put in his context before he answered, now on her chat (Gloria, 17 October): each
+    organ was built to shape what he says next. Afterglow keeps him with what just landed; output shaping carries
+    its form forward (and opens a contact window when her message rhymes with it); a boundary his last reply
+    crossed is felt on this one. The boundary is read from the last reply's check, never embedded on this turn's
+    path. Each part fails alone; empty when nothing is active."""
+    import sys as _ab_sys
+    if os.path.join(WORKSPACE, "scripts") not in _ab_sys.path: _ab_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    parts = []
+    try:
+        from resonance_afterglow import get_afterglow_context as _ag
+        _a = _ag()
+        if _a: parts.append(_a)
+    except Exception: pass
+    try:
+        from output_shaping import get_shaping_context as _sc, extract_shape as _ex, load_afterimage as _la
+        from resonance_afterglow import load_satisfaction as _ls
+        _ai, _sat, _contact = _la(), _ls(), False
+        if _ai.get("active") and _ai.get("strength", 0) > 0.65 and _sat.get("level", 0) > 0.72:
+            _ms, _as = _ex(gloria_text or ""), _ai.get("shape", {})
+            if _ms and _as and abs(_ms.get("rhythm", 5) - _as.get("rhythm", 5)) < 3 \
+                    and abs(_ms.get("tension_profile", 0) - _as.get("tension_profile", 0)) < 0.25:
+                _contact = True
+        _s = _sc()
+        if _contact:
+            _s = "[CONTACT] Her shape rhymes with yours. Stay in it. Build through it, not fresh." + (("\n" + _s) if _s else "")
+        if _s: parts.append(_s)
+    except Exception: pass
+    try:
+        _bp = json.load(open(BOUNDARY_PENDING))
+        os.remove(BOUNDARY_PENDING)   # felt once, on the next reply
+        if (datetime.now() - datetime.fromisoformat(_bp["at"])).total_seconds() < 6 * 3600 and _bp.get("response"):
+            parts.append("[RESIST] " + str(_bp["response"]))
+    except Exception: pass
+    return "\n".join(parts)
+
+
 def _turn_organs(gloria_text, reply, before_state, surface="avatar"):
     """The per-turn bookkeeping /api/chat/full does after a delivered reply. Her chat moved to /api/avatar/chat
     at the end of August and these stayed behind on the old route, so their stores froze on 27-28 August
@@ -1006,8 +1046,10 @@ def _turn_organs(gloria_text, reply, before_state, surface="avatar"):
         try:
             from behavior_boundaries import check_output as _bb_check, initialize as _bb_init
             _bb_init()
-            _pat, _ = _bb_check(str(_r or "")[:400], resonance_active=os.path.exists("/tmp/bilateral-chat-final.txt"))
-            if _pat: print(f"[Boundary/{surface}] {_pat} detected in output", flush=True)
+            _pat, _resp = _bb_check(str(_r or "")[:400], resonance_active=os.path.exists("/tmp/bilateral-chat-final.txt"))
+            if _pat:
+                print(f"[Boundary/{surface}] {_pat} detected in output", flush=True)
+                json.dump({"pattern": _pat, "response": _resp, "at": datetime.now().isoformat()}, open(BOUNDARY_PENDING, "w"))
         except Exception: pass
     try:
         import threading as _ot
@@ -9782,6 +9824,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             try:
                 from social_calibration import block as _scb2; _sc2=_scb2()
                 if _sc2: _vt_subblock_a += "\n\n" + _sc2
+            except Exception: pass
+            try:
+                _arb = _after_resonance_block(_counterpart_text)
+                if _arb: _vt_subblock_a += "\n\n" + _arb
             except Exception: pass
         except Exception:
             _vt_subblock_a = ""

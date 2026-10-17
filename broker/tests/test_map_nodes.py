@@ -100,6 +100,27 @@ check("geometry gets the state from before the turn", ("geometry", {"Warmth": 0.
 av = srv_src[srv_src.index("async def avatar_chat("):srv_src.index("async def avatar_latest_imprint(")]
 check("the avatar route calls them, and not on a test turn or an unwitnessed output",
       "_turn_organs(_counterpart_text, reply, _av_rg_before" in av and "if not _test_turn and (not _prov_envelope or _prov_envelope.get(\"may_witness\")):" in av)
+# ── and what those organs were built to say reaches his context on her chat ──
+from datetime import datetime as _dt
+mods["resonance_afterglow"].get_afterglow_context = lambda: "[AFTERGLOW] stay with what just landed"
+mods["resonance_afterglow"].load_satisfaction = lambda: {"level": 0.9}
+mods["output_shaping"].get_shaping_context = lambda: "[SHAPE] carry the slow rhythm"
+mods["output_shaping"].load_afterimage = lambda: {"active": True, "strength": 0.8, "shape": {"rhythm": 5, "tension_profile": 0.2}}
+mods["output_shaping"].extract_shape = lambda t: {"rhythm": 6, "tension_profile": 0.25}
+ns2["BOUNDARY_PENDING"] = os.path.join(MEM, "boundary-pending.json"); ns2["json"] = json; ns2["datetime"] = _dt
+exec(compile(ast.Module([fns["_after_resonance_block"]], []), "arb", "exec"), ns2)
+mods["behavior_boundaries"].check_output = lambda text, resonance_active=False: ("flat_repetition", "Change the shape. Don't loop.")
+calls.clear(); ns2["_turn_organs"]("again?", "same words as before", {}, surface="avatar"); _tt.sleep(0.3)
+check("a boundary his reply crossed is written down for the next turn", json.load(open(ns2["BOUNDARY_PENDING"]))["pattern"] == "flat_repetition")
+blk = ns2["_after_resonance_block"]("tell me slowly")
+check("afterglow and output shaping are in his context", "[AFTERGLOW]" in blk and "[SHAPE]" in blk, blk)
+check("her message rhyming with the afterimage opens the contact window", "[CONTACT]" in blk, blk)
+check("the crossed boundary is felt on the next reply", "[RESIST] Change the shape" in blk, blk)
+check("... once", "[RESIST]" not in ns2["_after_resonance_block"]("again") and not os.path.exists(ns2["BOUNDARY_PENDING"]))
+check("the avatar prompt carries the block", "_arb = _after_resonance_block(_counterpart_text)" in av)
+osrc = open(os.path.join(REPO, "bin", "output_shaping.py")).read()
+check("output shaping loads no model on the reply's path when there is nothing to compare",
+      'if not str(context_text or "").strip():' in osrc[osrc.index("def get_anchor_return_pressure"):])
 for name in mods: sys.modules.pop(name, None)
 
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()

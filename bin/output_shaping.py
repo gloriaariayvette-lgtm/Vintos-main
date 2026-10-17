@@ -273,6 +273,8 @@ def get_anchor_return_pressure(context_text):
     anchors = [a for a in data.get("anchors", []) if a.get("strength", 0) > 0.05]
     if not anchors: return 0.0, None
 
+    if not str(context_text or "").strip():   # nothing to compare: no model load on the reply's path (2026-10-17)
+        return 0.0, None
     ctx_vec = embed(context_text[:400])
     if not ctx_vec: return 0.0, None
 
