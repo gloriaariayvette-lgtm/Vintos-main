@@ -2217,7 +2217,8 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
     for name in _FRESH_PROTEINS:
         inquiry = _inquiry({
             'browse_lane':'protein', 'uniprot_query':'protein_name:"%s" AND reviewed:true' % name,
-            'question':_record_connection_question(name),
+            # one ask a record answers whole, not structure + function + their relationship (17 October)
+            'question':concrete_ask('What are the structural features of %s?' % name),
             'why_now':'fresh source discovery after exhausted free selection',
             'source_query':None, 'plugin_query':None, 'material_terms':[],
             'line_id':None, 'new_line':None}, lean)
