@@ -112,13 +112,22 @@ Original files and a hash/PID receipt are retained privately at
 `/home/gloria/.vintos/deploy/lab-completion-diagnostics-20261017/` (`receipt.json`
 maps each target to its backup). No automatic GitHub push was performed.
 
-**Remaining runtime evidence:** at the initial post-install check, ordinary work
-had not yet produced a new parser record. A one-token local-only smoke was deferred
-by the existing background compute-admission gate; no model request was sent.
-Passing fixtures and a healthy restarted service establish source/installation
-correctness, not a fresh observed provider stop condition.
+**Live evidence path verified:** ordinary Lab traffic subsequently produced
+`97c6b46814164f20a4fad16f51638ea4` (309 completion tokens / 500 requested) and
+`b6ef155e61334d3d8c8939b534977c98` (244 / 500). Both records contain the new
+completion object and `token_budget_exhausted: false`. Both have null provider
+finish reason, null source, and null `token_limit_reached`: no recognized stopping
+field was supplied by the native response. This confirms the metadata survives
+the deployed route without fabricating a normal stop. Both were strict parser
+successes; malformed and length-limited handling was verified with isolated
+fixtures, not a deliberately induced live failure.
 
-No installation remains. To verify the first ordinary post-install parser record
+A one-token local-only smoke was deferred by the existing background
+compute-admission gate; no validation model request was sent. The service evidence
+above came from ordinary Lab activity. At the final check, both installed hashes
+still matched and both services were active with zero restarts after installation.
+
+No installation remains. To inspect the latest ordinary post-install parser record
 without printing raw replies, run this from a host with authorized SSH access:
 
 ```sh

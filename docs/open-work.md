@@ -3,7 +3,7 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 17 October — Chemistry Lab completion diagnostics (installed; fresh provider evidence pending)
+## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 
 The Lab retains actual stopping metadata, usage and token-budget observations beside
 each private parser evidence ID, through repairs and terminal failures. The local-only
@@ -14,10 +14,13 @@ diagnostic caps and pruning are unchanged.
 Installed on Aegis on 17 October at 15:30:48 UTC; matching source hashes, new service
 PIDs and proxy health verified. Eleven affected OS-isolated suites passed on macOS
 and Linux (209 assertions/tests); the installed-source regression also passed.
-Remaining: inspect the first ordinary post-install completion record. The local
-one-token smoke was deferred by compute admission and sent no request. No paid
-model call or folding job was launched for validation. Details and exact verification
-commands: [completion diagnostics](chemistry-lab-completion-diagnostics.md).
+Ordinary post-install parses now retain completion metadata (309/500 and 244/500
+output tokens). The native response supplied no recognized stopping field; those
+records correctly say unknown rather than the proxy's former invented normal stop.
+Malformed/length-limited cases passed isolated fixtures. A local one-token smoke was
+deferred by compute admission and sent no request. No paid model call or folding job
+was launched for validation. Details and inspection commands:
+[completion diagnostics](chemistry-lab-completion-diagnostics.md).
 
 ## 16 October — avatar controls touch handling
 
