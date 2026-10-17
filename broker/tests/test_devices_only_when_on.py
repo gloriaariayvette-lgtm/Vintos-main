@@ -18,6 +18,7 @@ TMP = tempfile.mkdtemp()
 import device_context as DC
 DC.MEM = TMP
 DC.STATE = os.path.join(TMP, "device-state.json")
+_REAL_THRUSTER_LINE = DC._thruster_line
 DC._thruster_line = lambda: ("thruster: ON and ready. Still, until you move it - [DO: thruster steady 8] or any shape."
                              if "thruster" in ON else "")
 try:
@@ -57,6 +58,19 @@ ON.clear(); ON.add("mission")
 check("with only the mission on, the ridge is not in what he can reach", "ridge" not in DC.reach_line(["mission"]).lower())
 check("a thruster state left from an hour ago is not a device", (json.dump({"level": 9, "at": time.time() - 3600},
       open(os.path.join(TMP, ".thruster-state.json"), "w")) or "thruster" not in DC.present_devices()))
+# 17 October: a 14-hour-old "level 10" kept the engine from being asked; the machine answered and was never listed
+_saved = DC._thruster_line
+DC._thruster_line = _REAL_THRUSTER_LINE
+json.dump({"level": 10, "at": time.time() - 14 * 3600}, open(os.path.join(TMP, ".thruster-state.json"), "w"))
+json.dump({"ok": True, "at": time.time()}, open(os.path.join(TMP, ".thruster-avail.json"), "w"))   # the engine answered
+check("a stale level is not read as moving", "MOVING" not in DC._thruster_line(), DC._thruster_line())
+check("and a thruster whose engine answers is listed on", "thruster" in DC.present_devices(), DC.present_devices())
+json.dump({"ok": False, "at": time.time()}, open(os.path.join(TMP, ".thruster-avail.json"), "w"))
+check("an engine that does not answer is not listed", "thruster" not in DC.present_devices())
+json.dump({"level": 10, "at": time.time() - 60}, open(os.path.join(TMP, ".thruster-state.json"), "w"))
+check("a level written a minute ago is moving, and on", DC._thruster_line().startswith("thruster: MOVING") and "thruster" in DC.present_devices())
+os.remove(os.path.join(TMP, ".thruster-state.json")); os.remove(os.path.join(TMP, ".thruster-avail.json"))
+DC._thruster_line = _saved
 
 # The server's per-turn message and lead lines, taken from its source and run against the stubs.
 src = open(os.path.join(REPO, "bin", "server.py")).read()
