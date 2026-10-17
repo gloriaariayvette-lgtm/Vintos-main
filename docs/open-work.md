@@ -12,7 +12,7 @@ and clamps the actual panel inside the viewport. Both app HTML copies agree.
 No Lab, model routing, server, or authored prompt changed. Native installation
 and Gloria's physical touch acceptance are separate from the isolated gesture tests.
 
-## 16 October — intent selection reaches the reply (source repaired; not yet deployed)
+## 16 October — intent selection reaches the reply (source repaired; installed on Aegis 16 October with Codex 4da57191, "DEPLOY OK"; not yet measured — run `subcon_accuracy.py --days 3` from 19 October)
 
 The selector declared a goal and success criterion, but the text/phone/avatar speaking prompt received only
 its field and first move, plus a blanket instruction not to answer her question. Axis actions were omitted,
