@@ -1,0 +1,42 @@
+[
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/entry/9UTC",
+    "file": "core-entry-9UTC.json",
+    "sha256": "71266b1c451675a6c389e8f234791376144b51e91074d550d9bf4b7d633ae181"
+  },
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/2",
+    "file": "core-polymer_entity-9UTC-2.json",
+    "sha256": "c25668a00378b9c237a19281ff4b55871eeb002eaa280d879d3d1f4f369ee6c1"
+  },
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/polymer_entity_instance/9UTC/B",
+    "file": "core-polymer_entity_instance-9UTC-B.json",
+    "sha256": "3bada1a8ae23d5ba0ecd01af15aaf04d88f2e8421597b60971e457267f4e5a50"
+  },
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/1",
+    "file": "core-polymer_entity-9UTC-1.json",
+    "sha256": "774e09b35423e0405232c7d86b4aedf51486723dedddba2179d6f15e2b67da42"
+  },
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/entry/9NOT",
+    "file": "core-entry-9NOT.json",
+    "sha256": "3def6a64c9c77f5cbd5b28e85c998ec27c6600e582a3b6f136f509a1c104d557"
+  },
+  {
+    "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9NOT/1",
+    "file": "core-polymer_entity-9NOT-1.json",
+    "sha256": "f86ab1c12a2f9aabc7fa73ae11abd932724dd5a5b11921ca5316a5b0a258af51"
+  },
+  {
+    "url": "https://files.rcsb.org/download/9UTC.pdb",
+    "file": "9UTC.pdb",
+    "sha256": "ca6e7e0e49cf4a2928248c9e2268966a9cc86caabe9624833e44021b8d366ee1"
+  },
+  {
+    "url": "https://files.rcsb.org/download/9UTC.cif",
+    "file": "9UTC.cif",
+    "sha256": "f9382b78432458522645607e02e977fa4710c54e17160a8646aa4113d01a1585"
+  }
+]

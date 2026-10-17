@@ -1,0 +1,150 @@
+{
+  "ok": true,
+  "source": "data-rcsb-org",
+  "path": "core/polymer_entity_instance/9UTC/B",
+  "method": "GET",
+  "status_code": 200,
+  "record_path": null,
+  "raw_output_path": "/tmp/tas1r3-evidence/core-polymer_entity_instance-9UTC-B.json",
+  "warnings": [],
+  "summary": {
+    "pdbx_modification_feature": [
+      {
+        "category": "Disulfide bridge",
+        "comp_id_linking_atom": "SG",
+        "label_asym_id": "B",
+        "label_comp_id": "CYS",
+        "label_seq_id": 32,
+        "_truncated_keys": 8
+      },
+      {
+        "category": "Disulfide bridge",
+        "comp_id_linking_atom": "SG",
+        "label_asym_id": "B",
+        "label_comp_id": "CYS",
+        "label_seq_id": 70,
+        "_truncated_keys": 8
+      },
+      {
+        "category": "Disulfide bridge",
+        "comp_id_linking_atom": "SG",
+        "label_asym_id": "B",
+        "label_comp_id": "CYS",
+        "label_seq_id": 244,
+        "_truncated_keys": 8
+      },
+      {
+        "category": "Disulfide bridge",
+        "comp_id_linking_atom": "SG",
+        "label_asym_id": "B",
+        "label_comp_id": "CYS",
+        "label_seq_id": 378,
+        "_truncated_keys": 8
+      },
+      {
+        "category": "Disulfide bridge",
+        "comp_id_linking_atom": "SG",
+        "label_asym_id": "B",
+        "label_comp_id": "CYS",
+        "label_seq_id": 418,
+        "_truncated_keys": 8
+      },
+      "... (+4 more)"
+    ],
+    "pdbx_vrpt_summary_entity_fit_to_map": [
+      {
+        "PDB_model_num": 1,
+        "Q_score": 0.39,
+        "average_residue_inclusion": 0.8793
+      }
+    ],
+    "pdbx_vrpt_summary_entity_geometry": [
+      {
+        "PDB_model_num": 1,
+        "angles_RMSZ": 0.36,
+        "bonds_RMSZ": 0.2,
+        "num_angles_RMSZ": 5676,
+        "num_bonds_RMSZ": 4183
+      }
+    ],
+    "rcsb_polymer_entity_instance_container_identifiers": {
+      "asym_id": "B",
+      "auth_asym_id": "B",
+      "auth_to_entity_poly_seq_mapping": [
+        "-7",
+        "-6",
+        "-5",
+        "-4",
+        "-3",
+        "... (+1125 more)"
+      ],
+      "entity_id": "2",
+      "entry_id": "9UTC",
+      "_truncated_keys": 1,
+      "canonical_url": "https://www.rcsb.org/structure/9UTC"
+    },
+    "rcsb_polymer_instance_feature": [
+      {
+        "assignment_version": "V1.0",
+        "description": "anti-parallel sense sheet",
+        "feature_id": "AA3",
+        "name": "sheet",
+        "ordinal": 5,
+        "_truncated_keys": 4
+      },
+      {
+        "assignment_version": "V1.0",
+        "description": "parallel sense sheet",
+        "feature_id": "AA9",
+        "name": "sheet",
+        "ordinal": 11,
+        "_truncated_keys": 4
+      },
+      {
+        "assignment_version": "V1.0",
+        "description": "parallel sense sheet",
+        "feature_id": "AB1",
+        "name": "sheet",
+        "ordinal": 12,
+        "_truncated_keys": 4
+      },
+      {
+        "assignment_version": "V1.0",
+        "description": "parallel sense sheet",
+        "feature_id": "AB2",
+        "name": "sheet",
+        "ordinal": 13,
+        "_truncated_keys": 4
+      },
+      {
+        "assignment_version": "V1.0",
+        "description": "anti-parallel sense sheet",
+        "feature_id": "AB3",
+        "name": "sheet",
+        "ordinal": 14,
+        "_truncated_keys": 4
+      },
+      "... (+23 more)"
+    ],
+    "_truncated_keys": 4,
+    "canonical_url": "https://www.rcsb.org/structure/9UTC"
+  },
+  "top_keys": [
+    "pdbx_modification_feature",
+    "pdbx_vrpt_summary_entity_fit_to_map",
+    "pdbx_vrpt_summary_entity_geometry",
+    "rcsb_polymer_entity_instance_container_identifiers",
+    "rcsb_polymer_instance_feature"
+  ],
+  "sources": [
+    {
+      "name": "RCSB Protein Data Bank",
+      "url": "https://www.rcsb.org/structure/9UTC",
+      "retrieved_at": "2026-10-17T16:14:40.088572+00:00",
+      "supports_claim": true,
+      "kind": "evidence",
+      "request_url": "https://data.rcsb.org/rest/v1/core/polymer_entity_instance/9UTC/B",
+      "canonical_url": "https://www.rcsb.org/structure/9UTC"
+    }
+  ]
+}

@@ -3774,3 +3774,38 @@ were unchanged; recovery made zero model calls and sent zero correspondence. A s
 Gmail call and changed no inbox bytes. A model's later assessment of the complete papers remains distinct
 from this verified storage/retrieval result; no scientific conclusion was changed.
 
+
+
+## 17 October — TAS1R3 9UTC evidence attached, no code deployment
+
+Codex checked `claude/device-visuals-2026-10-13` through `56a9b724` and inspected bounded recent live Lab
+records before acting. They showed repeated 9NOR reads and unresolved TAS1R3 questions, with no 9UTC in
+the inspected window. The existing `lab_sources.Sources` PDB `structure_evidence` path and
+`chemistry_reference_compare` mmCIF/chain reader were used; no new general-purpose reader or fold was built.
+
+9UTC chain B (both author and label chain) maps to human TAS1R3/Q7RTX0. Occupied first-model residues are
+22–356 and 366–556 (526), corroborated by atomic rows, deposited missing-residue records, RCSB's explicit
+unobserved-XYZ feature, and both existing readers. The native mapped construct is residues 21–852;
+21, 357–365 and 557–852 are sequence-only here, and canonical positions 1–20 are outside that mapping.
+The mNeonGreen component and other engineered terminal/linker sequences have no occupied coordinates in
+this VFT model. Sequence-number mappings alone are not observed coverage: the instance's
+`auth_to_entity_poly_seq_mapping` includes all 1130 entity positions.
+
+The published Nature abstract assigns the demonstrated sucralose binding to TAS1R2's VFT, not TAS1R3.
+This does not establish TAS1R3 high-affinity L-glutamate binding, explain the presupposed mechanism, or prove
+that TAS1R3 cannot bind sucralose under any condition. The original question is preserved verbatim with its
+hash and links to `CLF-c189c2309c1fc6c4` and `CLF-0a9db862d4e5e5da`; it remains unresolved.
+
+A data-only import completed on Aegis at 16:25:07 UTC, using the installed append-only receipt/notebook APIs.
+The first redundant live PDB request met the existing cooldown and stopped. The successful import made zero
+provider requests and left that cooldown intact, importing the already completed, independently verified
+public retrieval instead. Notebook pointer `SRC-TAS1R3-683d2013cfc641dd` links the source and derived coverage
+receipts and their artifacts. Existing `_structure_cached('9UTC')` retrieves the source; the exact-question
+planning-evidence reader sees the new content. The general 3800-character context did not expose the excerpt;
+no model assessment or comprehension is claimed. No code deployment, service restart, fold, model call,
+question rewrite, hold bypass, or change to earlier scientific conclusions was performed.
+
+Evidence, raw-data hashes, supported query specifications, offline reproducibility checks and the exact
+idempotent data-import commands are in `docs/research-evidence/2026-10-17-tas1r3-9utc/README.md`.
+Production-module hashes before and after the handoff match. No software installation is needed; the supplied
+helper can be run from a temporary directory to repeat only the data attachment.

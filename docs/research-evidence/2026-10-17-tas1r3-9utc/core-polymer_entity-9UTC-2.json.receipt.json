@@ -1,0 +1,110 @@
+{
+  "ok": true,
+  "source": "data-rcsb-org",
+  "path": "core/polymer_entity/9UTC/2",
+  "method": "GET",
+  "status_code": 200,
+  "record_path": null,
+  "raw_output_path": "/tmp/tas1r3-evidence/core-polymer_entity-9UTC-2.json",
+  "warnings": [],
+  "summary": {
+    "entity_poly": {
+      "nstd_linkage": "no",
+      "nstd_monomer": "no",
+      "pdbx_seq_one_letter_code": "MKTIIALSYIFCLVFAGSDYKDDDDKGSAPLCLSQQLRMKGDYVLGGLFPLGEAEEAGLRSRTRPSSPVCTRFSSNGLLWALAMKMAVEEINNKSDLLPGLRLGYDLFDTCSEPVVAMKPSLMFLAKAGSRDIAAYCNYTQYQPRVLAVIGPHSSELAMVTGKFFSFFLMPQVSYGASMELLSARETFPSFFRTVPSDRVQLTAAAELLQEFGWNWVAALGSDDEYGRQGLSIFSALAAA...",
+      "pdbx_seq_one_letter_code_can": "MKTIIALSYIFCLVFAGSDYKDDDDKGSAPLCLSQQLRMKGDYVLGGLFPLGEAEEAGLRSRTRPSSPVCTRFSSNGLLWALAMKMAVEEINNKSDLLPGLRLGYDLFDTCSEPVVAMKPSLMFLAKAGSRDIAAYCNYTQYQPRVLAVIGPHSSELAMVTGKFFSFFLMPQVSYGASMELLSARETFPSFFRTVPSDRVQLTAAAELLQEFGWNWVAALGSDDEYGRQGLSIFSALAAA...",
+      "pdbx_strand_id": "B",
+      "_truncated_keys": 9
+    },
+    "entity_src_gen": [
+      {
+        "gene_src_common_name": "human",
+        "pdbx_alt_source_flag": "sample",
+        "pdbx_beg_seq_num": 1,
+        "pdbx_end_seq_num": 860,
+        "pdbx_gene_src_gene": "TAS1R3, T1R3, TR3",
+        "_truncated_keys": 6
+      },
+      {
+        "gene_src_common_name": "amphioxus",
+        "pdbx_alt_source_flag": "sample",
+        "pdbx_beg_seq_num": 861,
+        "pdbx_end_seq_num": 1130,
+        "pdbx_gene_src_gene": "blFP-Y3",
+        "_truncated_keys": 6
+      }
+    ],
+    "rcsb_entity_host_organism": [
+      {
+        "beg_seq_num": 1,
+        "end_seq_num": 860,
+        "ncbi_common_names": [
+          "human"
+        ],
+        "ncbi_parent_scientific_name": "Eukaryota",
+        "ncbi_scientific_name": "Homo sapiens",
+        "_truncated_keys": 5
+      },
+      {
+        "beg_seq_num": 861,
+        "end_seq_num": 1130,
+        "ncbi_common_names": [
+          "human"
+        ],
+        "ncbi_parent_scientific_name": "Eukaryota",
+        "ncbi_scientific_name": "Homo sapiens",
+        "_truncated_keys": 5
+      }
+    ],
+    "rcsb_entity_source_organism": [
+      {
+        "beg_seq_num": 1,
+        "common_name": "human",
+        "end_seq_num": 860,
+        "ncbi_common_names": [
+          "human"
+        ],
+        "ncbi_parent_scientific_name": "Eukaryota",
+        "_truncated_keys": 8
+      },
+      {
+        "beg_seq_num": 861,
+        "common_name": "amphioxus",
+        "end_seq_num": 1130,
+        "ncbi_common_names": [
+          "Limax lanceolatus",
+          "amphioxus",
+          "common lancelet"
+        ],
+        "ncbi_parent_scientific_name": "Eukaryota",
+        "_truncated_keys": 8
+      }
+    ],
+    "rcsb_polymer_entity": {
+      "formula_weight": 124.907,
+      "pdbx_description": "Taste receptor type 1 member 3,mNeonGreen",
+      "pdbx_number_of_molecules": 1,
+      "rcsb_multiple_source_flag": "Y",
+      "rcsb_source_part_count": 2,
+      "_truncated_keys": 4
+    },
+    "_truncated_keys": 10
+  },
+  "top_keys": [
+    "entity_poly",
+    "entity_src_gen",
+    "rcsb_entity_host_organism",
+    "rcsb_entity_source_organism",
+    "rcsb_polymer_entity"
+  ],
+  "sources": [
+    {
+      "name": "RCSB Protein Data Bank",
+      "url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/2",
+      "retrieved_at": "2026-10-17T16:14:39.949919+00:00",
+      "supports_claim": true,
+      "kind": "evidence",
+      "request_url": "https://data.rcsb.org/rest/v1/core/polymer_entity/9UTC/2"
+    }
+  ]
+}

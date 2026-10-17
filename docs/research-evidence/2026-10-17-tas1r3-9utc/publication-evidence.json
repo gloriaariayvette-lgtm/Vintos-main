@@ -1,0 +1,16 @@
+{
+  "publication": "Structural and functional characterization of human sweet taste receptor",
+  "authors": "Shi et al.",
+  "journal": "Nature 645, 801-808 (2025)",
+  "pmid": "40555359",
+  "doi": "10.1038/s41586-025-09302-6",
+  "source_url": "https://pubmed.ncbi.nlm.nih.gov/40555359/",
+  "evidence_scope": "published abstract; full Nature article was not retrieved",
+  "supported_statement": "The paper assigns the demonstrated sucralose binding site to TAS1R2's Venus flytrap domain.",
+  "short_source_quote": "with sucralose binding exclusively to the Venus flytrap domain of TAS1R2.",
+  "limitations": [
+    "Not evidence of TAS1R3 high-affinity L-glutamate binding",
+    "Not proof that TAS1R3 cannot bind sucralose in any condition",
+    "Not an assessment of every native TAS1R3 residue or local cryo-EM density"
+  ]
+}

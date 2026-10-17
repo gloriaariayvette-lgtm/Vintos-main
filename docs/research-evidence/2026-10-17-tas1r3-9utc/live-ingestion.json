@@ -1,0 +1,23 @@
+{
+  "attached": true,
+  "at": "2026-10-17T16:25:07.260968+00:00",
+  "evidence_key": "683d2013cfc641ddccbbcf7e582bc1bffa21c024f7ea77a8a922ce39a0304ebf",
+  "entry_id": "SRC-TAS1R3-683d2013cfc641dd",
+  "source_receipt_id": "048a0f54b5f5f5be50fc589aa4a3c62efbbc775fdfa7671ed0ffd650ee8f4eb7",
+  "analysis_receipt_id": "66c0caede31b70c9de1f4a5501fd99d8270ed33253cb76ffd4de913de7979e50",
+  "source_receipt_origin": "completed bounded public retrieval using lab_sources.Sources on the Mac",
+  "provider_requests_during_import": 0,
+  "source_throttle_modified": false,
+  "original_question_sha256": "9a181cc7dd8f414ecda210365d6d29d748f13351783d195cfeb07ef5fd76887e",
+  "linked_lab_entries": [
+    "CLF-c189c2309c1fc6c4",
+    "CLF-0a9db862d4e5e5da"
+  ],
+  "artifact": "/home/gloria/.vintos/workspace/memory/chemistry-lab/artifacts/reference/9UTC-TAS1R3-683d2013cfc6",
+  "deployed": false,
+  "models_called": 0,
+  "folding_jobs": 0,
+  "prior_reflections_edited": false,
+  "original_question_answered": false,
+  "existing_lab_context_exposes_coverage": false
+}

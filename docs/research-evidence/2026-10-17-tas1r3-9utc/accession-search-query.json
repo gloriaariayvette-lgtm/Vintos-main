@@ -1,0 +1,6 @@
+{
+  "source": "pdb",
+  "operation": "search_accession",
+  "accession": "Q7RTX0",
+  "limit": 4
+}

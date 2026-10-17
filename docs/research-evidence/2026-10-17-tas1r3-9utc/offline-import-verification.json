@@ -1,0 +1,12 @@
+{
+  "method": "real installed-source Lab APIs in a scratch SPARK_WORKSPACE; requests, sockets and plugin gateway replaced by refusing stubs",
+  "receipt_imports": 2,
+  "appended_notebook_rows": 1,
+  "idempotent": true,
+  "original_reflection_unchanged": true,
+  "original_question_preserved": true,
+  "source_throttle_untouched": true,
+  "network_calls": 0,
+  "model_calls": 0,
+  "send_calls": 0
+}
