@@ -35,5 +35,14 @@ try:
 except ValueError as e:
     msg = str(e)
 check("a missed old text says where its first line is", "found 0 times" in msg and "line 1" in msg, msg)
+# --- a refused deploy is recorded by the suite that failed, not by the log's tail (17 October, SF-98b8b8ac) ---
+_out = ("== suites ==\n  test_aegis_sync.py                 PASS (exit 0)\n  test_lab_question_holds.py         FAIL (exit 1)\n"
+        "      FAIL: test_two_held_questions (__main__.QuestionHolds.test_two_held_questions)\n"
+        "      AssertionError: 'inquiry' != 'evidence_wait'\n" + "".join("  test_z%02d.py PASS (exit 0)\n" % i for i in range(40))
+        + "STOP: a suite failed — nothing installed\n")
+_why = S.deploy_refusal(_out)
+check("a refused deploy names the failing suite and its assertion", "test_lab_question_holds.py" in _why
+      and "AssertionError" in _why and "test_z39" not in _why, _why)
+check("output with no FAIL line still says something", S.deploy_refusal("deploy exploded") == "deploy exploded")
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

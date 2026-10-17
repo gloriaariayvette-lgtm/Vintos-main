@@ -746,6 +746,24 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
     return _after_deploy(row, out, changed, run=run, post=post, send=send)
 
 
+def deploy_refusal(out, limit=600):
+    """Why the deploy refused, in its own words: the suites marked FAIL and their failing assertions. The tail of the
+    output was kept instead, and the deploy lists suites alphabetically and ends on its STOP line, so every refusal
+    read "...test_websearch_quality.py PASS ... STOP: a suite failed" and never named the suite (17 October,
+    SF-98b8b8ac: "his Study fixes always fail", and no record said why)."""
+    text = str(out or "")
+    if "DEPLOY FAILED" in text:   # the deploy's own summary: what failed, already chosen by the deploy
+        return " ".join(text[text.rindex("DEPLOY FAILED"):].split())[:limit]
+    lines = [l.strip() for l in text.splitlines()
+             if re.search(r"\bFAIL\b|FAILED|AssertionError|Error:|NOT SYNCED|refus", l) and "PASS (exit 0)" not in l]
+    seen, keep = set(), []
+    for l in lines:
+        if l not in seen:
+            seen.add(l); keep.append(l)
+    why = " | ".join(keep)
+    return (why[:limit] if why else " ".join(text.split())[-300:])
+
+
 def _after_deploy(row, out, changed, run=sh, post=None, send=None):
     """A pushed fix, after the deploy answered: live and watched, waiting for a clean checkout, or reverted."""
     if str(out or "").startswith(DIRTY):
@@ -766,12 +784,12 @@ def _after_deploy(row, out, changed, run=sh, post=None, send=None):
     m = re.search(r"rollback: bash (\S+restore\.sh)", out or "")
     if "deploy OK" not in (out or ""):
         revert(row, run=run, why="the deploy refused it")
-        _failed(row, "the deploy refused it: " + (out or "")[-300:])
+        _failed(row, "the deploy refused it: " + deploy_refusal(out))
         say("\U0001F6E0 Study fix %s was refused by the deploy, so it was reverted. Nothing changed." % row["id"], post)
         # she is told every time one of his fixes does not stay, not only when the watch undoes it (2026-10-03: the
         # first fix was refused by the deploy and reverted, and only #vintos-dot heard)
         tell_gloria("A fix Vintos made in the Study (%s) was refused by the deploy and reverted; nothing changed. "
-                    "The deploy said: %s" % (row["id"], " ".join((out or "").split())[-240:]), send)
+                    "The deploy said: %s" % (row["id"], deploy_refusal(out, 400)), send)
         return row
     row.update(state="watching", restore=(m.group(1) if m else ""), live_at=time.time(),
                services=[u for u in SERVICES if _active(u, run)], tests=[c for c in changed if c.startswith(TESTS)])
