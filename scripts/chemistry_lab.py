@@ -44,6 +44,9 @@ STATE = os.path.join(ROOT, "state.json")
 NOTEBOOK = os.path.join(ROOT, "notebook.jsonl")
 RECEIPTS = os.path.join(ROOT, "context-receipts.jsonl")
 FAULTS = os.path.join(ROOT, "faults.jsonl")
+# A question the Lab reworded before asking it: not a fault. Written to the fault log as a ValueError, the cut read as a
+# crash, to him and to the hourly reports (17 October: "four ValueErrors ... each one kills the question").
+QUESTION_EDITS = os.path.join(ROOT, "question-edits.jsonl")
 INVENTORY = os.path.join(ROOT, "tool-inventory.json")   # materialized view; read by nobody
 PROBE_LEDGER = os.path.join(ROOT, "tool-probes.jsonl")   # the authority
 COLLISION_ADAPTER = os.path.join(ROOT, "collision-adapter.jsonl")
@@ -1122,12 +1125,21 @@ def _narrow(value):
     two = second_ask(out)
     if two:
         out = first_ask(out)
-        _fault("question_narrowed", ValueError("two asks at: " + two), kept=out[:200])
+        _question_edit("narrowed", q, out, second_ask_dropped=str(q)[len(out.rstrip("?")):].strip(" ,?")[:300], at_words=two)
     concrete = concrete_ask(out)
     if concrete != out:
-        _fault("question_made_concrete", ValueError("structural hallmarks of one protein"), kept=concrete[:200])
+        _question_edit("made_concrete", out, concrete)
         out = concrete
     return value if out == q else dict(value, question=out)
+
+
+def _question_edit(kind, before, after, **detail):
+    """The planner's question as written and as asked. The dropped second ask is kept, so it can be asked later."""
+    try:
+        _append(QUESTION_EDITS, dict({"at": now_iso(), "kind": kind, "before": str(before)[:600], "after": str(after)[:600]},
+                                     **detail))
+    except Exception:
+        pass
 
 
 def _held_exactly(question):
