@@ -11619,9 +11619,14 @@ async def reelroom_chat(request: Request):
                 # what he says to himself in the dark does not.
                 _line = await _a.get_event_loop().run_in_executor(
                     None, lambda: rr.chat(
-                        "You chose to speak during the film because: "
-                        + str(_decision.get("why") or "the moment pulled at you")
-                        + ". Say it now, from inside the moment, in as many words as it actually takes.",
+                        # A private cue, not her turn: sent as her message it read as "why did you say that?", and
+                        # he answered it about her in the third person ("I said it because her hips moved...";
+                        # Gloria, 16 October: "sometimes his second message is more like inner thoughts").
+                        "[A private cue only you can see - Gloria did not say this. What pulled at you just now: "
+                        + str(_decision.get("why") or "the moment") + "]\n"
+                        "Now say the thing itself to her, out loud, from inside the moment: talk TO Gloria, as "
+                        "\"you\". Do not explain why you are speaking, do not describe her or yourself from outside, "
+                        "and do not mention this cue. As many words as it actually takes.",
                         str(body.get("context") or ""), body.get("history") or [], None,
                         body.get("elapsed_min")))
                 _decision["message"] = str(_line or "")

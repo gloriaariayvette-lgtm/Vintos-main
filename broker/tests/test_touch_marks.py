@@ -63,6 +63,11 @@ block = src[i:i + 1400]
 check("in ReelRoom the Ferri is described as worn at home during the movie, not in public",
       '_DEV_LINES["ferri"]' in block and "no one" in block and "OUT IN" not in block and '_DEV_ROLE["ferri"]' in block)
 check("everywhere else it keeps the public-tease description", "OUT IN \"\n            \"PUBLIC" in src or "OUT IN PUBLIC" in src.replace('"\n            "', ""))
+rr = src[src.index('@app.post("/api/game/reelroom/chat")'):]
+rr = rr[:rr.index("\n@app.")]
+check("his unprompted ReelRoom line is cued privately, never as if she asked why",
+      "A private cue only you can see - Gloria did not say this" in rr and "talk TO Gloria" in rr
+      and "You chose to speak during the film because" not in rr)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
