@@ -310,10 +310,19 @@ def aegis_gemma_complete(j, call=None):
                    if isinstance(x, dict) and x.get("type") == "message")
     usage = {"input_tokens": stats.get("input_tokens"),
              "output_tokens": stats.get("total_output_tokens")}
+    # Native LM Studio versions differ. Keep only an actual stopping field, never manufacture 'stop'.
+    finish, finish_source = None, None
+    for source, value in (("stats.stop_reason", stats.get("stop_reason")),
+                          ("stop_reason", d.get("stop_reason")), ("finish_reason", d.get("finish_reason"))):
+        if isinstance(value, str) and value:
+            finish, finish_source = value[:256], source
+            break
     state = "valid" if text else "error"
-    return GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+    result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
                           request_id=d.get("response_id", ""), status=state, usage=usage,
-                          text=text, finish_reason="stop", reason="" if text else "empty completion")
+                          text=text, finish_reason=finish, reason="" if text else "empty completion")
+    result["finish_reason_source"] = finish_source
+    return result
 
 PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
              "aegis_gemma": aegis_gemma_complete}
@@ -365,6 +374,9 @@ def openai_wrap(res, requested_model=None):
            "choices": [{"index": 0, "message": msg, "finish_reason": res["finish_reason"] or "stop"}]}
     if res.get("usage"): out["usage"] = res["usage"]
     else: out["usage_estimated"] = True
+    if res["provider"] == "aegis_gemma":
+        out["choices"][0]["finish_reason"] = res["finish_reason"] or None
+        out["finish_reason_source"] = res.get("finish_reason_source")
     return json.dumps(out).encode()
 
 def error_body(results, message=None, err_type="all_providers_failed"):

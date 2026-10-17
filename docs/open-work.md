@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 17 October — Chemistry Lab completion diagnostics (installed; fresh provider evidence pending)
+
+The Lab retains actual stopping metadata, usage and token-budget observations beside
+each private parser evidence ID, through repairs and terminal failures. The local-only
+Aegis proxy no longer invents a normal stop when its native LM Studio response omits
+the reason. Missing reasons remain unknown. Routing, parsing, retry limits, private
+diagnostic caps and pruning are unchanged.
+
+Installed on Aegis on 17 October at 15:30:48 UTC; matching source hashes, new service
+PIDs and proxy health verified. Eleven affected OS-isolated suites passed on macOS
+and Linux (209 assertions/tests); the installed-source regression also passed.
+Remaining: inspect the first ordinary post-install completion record. The local
+one-token smoke was deferred by compute admission and sent no request. No paid
+model call or folding job was launched for validation. Details and exact verification
+commands: [completion diagnostics](chemistry-lab-completion-diagnostics.md).
+
 ## 16 October — avatar controls touch handling
 
 The app-side control drawer now has a 48px handle and a 44px minimum model-button

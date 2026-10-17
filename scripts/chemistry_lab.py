@@ -861,7 +861,7 @@ class ModelJSONError(ValueError):
         super().__init__(label + "; evidence=" + evidence_id)
 
 
-def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=False):
+def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=False, completion=None):
     """Best-effort bounded evidence; a storage failure never leaks the response or breaks parsing.
     terminal=True marks the group as a parse that failed for good, so pruning keeps its raw reply."""
     root = os.path.join(ROOT, "diagnostics")
@@ -875,7 +875,8 @@ def _parser_evidence(evidence_id, events, *, raw=None, repaired=None, terminal=F
         with os.fdopen(os.open(os.path.join(root, ".lock"), flags, 0o600), "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             payloads = {"events.json": json.dumps({"evidence_id": evidence_id, "events": events,
-                                                   "terminal": bool(terminal)})}
+                                                   "terminal": bool(terminal), "completion": completion or
+                                                   {"finish_reason": None, "token_limit_reached": None}})}
             if raw is not None: payloads["raw.txt"] = raw
             if repaired is not None: payloads["repaired.txt"] = repaired
             try:
@@ -998,14 +999,15 @@ def _json_object(text, keep=800):
 
 
 def _parse_json_object(text, keep=800):
+    completion = getattr(text, "completion", None)
     raw = str(text or "")
     evidence_id, events = uuid.uuid4().hex, ["captured"]
-    _parser_evidence(evidence_id, events, raw=raw)
+    _parser_evidence(evidence_id, events, raw=raw, completion=completion)
     body = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw, flags=re.I | re.S)
     lo = body.find("{")
     if lo < 0:
         events.append("strict_parse_failed"); events.append("terminal")
-        _parser_evidence(evidence_id, events, terminal=True)
+        _parser_evidence(evidence_id, events, terminal=True, completion=completion)
         raise ModelJSONError("model returned no JSON object", evidence_id) from None
     # Strict boundary first: exactly one complete object from the opening brace, whatever follows it. Gemma
     # sometimes keeps writing after its object (a second one, or a sentence with braces in it); taking the last
@@ -1017,12 +1019,12 @@ def _parse_json_object(text, keep=800):
         except ValueError:
             if index == 0:
                 events.append("strict_parse_failed")
-                _parser_evidence(evidence_id, events)
+                _parser_evidence(evidence_id, events, completion=completion)
             continue
         if isinstance(value, dict):
             if index:
                 events.append("repaired")
-                _parser_evidence(evidence_id, events, repaired=strict[lo:_end])
+                _parser_evidence(evidence_id, events, repaired=strict[lo:_end], completion=completion)
             return value
     hi = body.rfind("}")
     tries = [body[lo:hi + 1]] if hi > lo else []
@@ -1036,11 +1038,46 @@ def _parse_json_object(text, keep=800):
             continue
         if isinstance(value, dict):
             events.append("repaired")
-            _parser_evidence(evidence_id, events, repaired=candidate)
+            _parser_evidence(evidence_id, events, repaired=candidate, completion=completion)
             return value
     events.append("terminal")
-    _parser_evidence(evidence_id, events, terminal=True)   # the mark that keeps its raw reply through pruning
+    _parser_evidence(evidence_id, events, terminal=True, completion=completion)   # keep its raw reply through pruning
     raise ModelJSONError("model returned no usable JSON object", evidence_id) from None
+
+
+class _ModelReply(str):
+    """String-compatible reply with request-local diagnostics, never a shared 'last response'."""
+    def __new__(cls, content, completion):
+        reply = super().__new__(cls, content or "")
+        reply.completion = completion
+        return reply
+
+
+def _completion_metadata(data, choice, max_tokens):
+    """Allowlisted OpenAI-compatible fields; no message, reasoning, headers or arbitrary provider payload.
+    LM Studio's /v1/chat/completions puts finish_reason on the choice. The Aegis adapter preserves native reasons.
+    Unknown/missing reasons stay unknown: a token count alone cannot establish why generation stopped."""
+    reason = choice.get("finish_reason")
+    reason = reason[:256] if isinstance(reason, str) else None
+    # Older local adapters fabricated 'stop'; do not treat that as a provider observation.
+    if data.get("provider") == "aegis_gemma" and "finish_reason_source" not in data:
+        reason = None
+    limited = (True if reason in ("length", "maxPredictedTokensReached") else False if reason in
+               ("stop", "tool_calls", "function_call", "content_filter", "eosFound", "stopStringFound") else None)
+    result = {"finish_reason": reason, "token_limit_reached": limited, "requested_max_tokens": max_tokens}
+    source = data.get("finish_reason_source")
+    if data.get("provider") == "aegis_gemma":
+        result["finish_reason_source"] = source[:256] if isinstance(source, str) else None
+    for key in ("id", "model"):
+        if isinstance(data.get(key), str): result[key] = data[key][:256]
+    usage = data.get("usage")
+    if isinstance(usage, dict):
+        result["usage"] = {key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                           if type(usage.get(key)) is int and usage[key] >= 0}
+        count = result["usage"].get("completion_tokens")
+        # Budget exhaustion is evidence of possible truncation, not a fabricated stopping condition.
+        result["token_budget_exhausted"] = (count >= max_tokens if count is not None else None)
+    return result
 
 
 def _ask(system, prompt, max_tokens=500, temperature=0.75):
@@ -1050,7 +1087,8 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=150) as response:
         data = json.loads(response.read())
-    return data["choices"][0]["message"]["content"]
+    choice = data["choices"][0]
+    return _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
 
 
 # Every planner request ends on its output contract. A replan put the refusal last ("REFUSED, IT IS A REPEAT: ..."),
