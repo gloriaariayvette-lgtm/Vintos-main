@@ -245,6 +245,14 @@ def _plug_for_light(ent):
 def _power_plug(ent, on=True):
     """'govee:<id>' switches the whole plug; 'govee:<id>#2' switches socket 2 only (the H5082 has two).
     The bedroom bulbs hang off socket 2 and the projector off socket 1 (Gloria, 2026-09-05)."""
+    if str(ent).startswith("alexa:"):
+        # a plug only Alexa can reach (Matter, shared from Apple Home to the Echo): the Echo is told, as a command,
+        # through Home Assistant's Alexa media player. Aegis's WSL network cannot see Matter devices (2026-10-17).
+        cfg = load_config()
+        code, _ = ha_request("media_player/play_media", {"entity_id": cfg.get("media_player", "media_player.echo"),
+                             "media_content_id": "turn %s %s" % ("on" if on else "off", ent.split(":", 1)[1]),
+                             "media_content_type": "custom"})
+        return code == 200
     if _is_govee(ent):
         dev, _, sock = ent.split(":", 1)[1].partition("#")
         if sock:
@@ -299,7 +307,7 @@ def device(name, on=True):
 def device_state(name):
     """'on', 'off', or 'unknown' (not configured, unreachable, or Home Assistant cannot see the plug)."""
     ent = named_device(name)
-    if not ent or _is_govee(ent): return "unknown"
+    if not ent or _is_govee(ent) or str(ent).startswith("alexa:"): return "unknown"
     try:
         st = (ha_state(ent) or {}).get("state")
     except Exception:

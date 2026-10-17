@@ -35,6 +35,16 @@ check("when two hours are up, the timer switches it off", VH.blanket_expire(now=
       and SENT[-1] == ("switch/turn_off", "switch.linkind_plug") and not os.path.exists(VH.BLANKET_STATE))
 check("with nothing running, the timer does nothing", VH.blanket_expire(now=time.time() + 9e9) is False)
 check("off works whether or not she is home", (HOME_NOW.__setitem__(0, False), VH.blanket_off())[1][0] and SENT[-1][0] == "switch/turn_off")
+json.dump({"url": "http://ha.test", "token": "t", "rooms": {}, "media_player": "media_player.echo",
+           "devices": {"blanket": "alexa:blanket"}}, open(VH.CONFIG_FILE, "w"))
+SENT2 = []
+VH.ha_request = lambda endpoint, payload: (SENT2.append((endpoint, payload)), (200, ""))[1]
+HOME_NOW[0] = True; VH.blanket_on()
+check("a plug only Alexa reaches is switched by telling the Echo", SENT2[-1] == ("media_player/play_media",
+      {"entity_id": "media_player.echo", "media_content_id": "turn on blanket", "media_content_type": "custom"}), SENT2)
+VH.blanket_off()
+check("... and off the same way", SENT2[-1][1]["media_content_id"] == "turn off blanket")
+check("its state is not claimed", VH.device_state("blanket") == "unknown")
 src = open(os.path.join(REPO, "scripts", "vintos-home.py")).read()
 check("status from the command line never switches it", "elif w == \"status\": print(device_state(\"blanket\")" in src)
 
