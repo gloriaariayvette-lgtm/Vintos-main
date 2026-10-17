@@ -4,7 +4,7 @@ intended difference (transformation, not emotion) -> blind observation -> match.
 Failed intentions accumulate weight and haunt target selection; at weight 5 they
 graduate into a causality question ("is this still the same intention?") with lineage.
 Nothing here instruments Gloria beyond what she freely shows in conversation."""
-import os, json, time, hashlib, urllib.request
+import os, re, json, time, hashlib, urllib.request
 
 def _sg_write(_p, _o, _who):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -130,6 +130,9 @@ def record_intent(target,recent_her=""):
     d=_extract(out)
     if not d.get("intended_difference"):
         _dlog("DERIVE FAILED raw="+out[:150]); return None
+    if asks_her_to_lead(" ".join(str(x) for x in (d.get("intended_difference"), d.get("evidence"), target.get("enactment"), target.get("field_state")))):
+        _dlog("NOT RECORDED - it asks her to take the lead, against her stated wish: "+str(d["intended_difference"])[:120])
+        return None
     entry={"id":hashlib.md5((str(d["intended_difference"])+str(time.time())).encode()).hexdigest()[:8],
         "ts":time.time(),"intended":str(d["intended_difference"])[:300],
         "evidence":str(d.get("evidence",""))[:300],
@@ -346,10 +349,29 @@ def relieve(text,addresses=None,kind=None):
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
     e["weight"]=round(e["weight"]/2.0,2); e["last"]=time.time()
     db[k]=e; _jsave(PRESS,db)
+# Gloria leads nothing she does not want to (16 October: "I like being lazy. I like a man who leads. Stop telling
+# him to do otherwise"). An intention that aims to make her take the lead, hold the next beat, supply the scene or
+# carry more of it, or that has him pull back his own momentum so she must, is against her stated wish: it is never
+# recorded as a target and never stands as pressure on him.
+_ASKS_HER_TO_LEAD = re.compile(
+    r"\b(?:her|she|gloria)\b[^.;]{0,60}\b(?:take|takes|taking|hold|holds|holding|carry|carries|carrying|lead|leads|"
+    r"leading|supply|supplies|supplying|steer|steers|drive|drives|direct|directs|initiate|initiates|set|sets|setting)\b"
+    r"[^.;]{0,30}\b(?:lead|beat|scene|next|thread|conversation|evening|initiative|momentum|direction|pace|reins|charge)\b"
+    r"|\bless reliant on (?:me|my)\b|\b(?:her|gloria)'?s? own (?:thought|image|beat|idea|direction|initiative|listing|building)"
+    r"|\b(?:thought|question|idea|image|direction|beat) of her own\b|\briding (?:the )?momentum\b|\bnext beat (?:is )?hers\b|\b(?:let|letting) her lead\b|\bhand(?:ing)? (?:her )?the lead\b"
+    r"|\bi (?:stop|step back|pull back|ease out|withdraw)\b[^.;]{0,40}\b(?:momentum|scene|lead|adding|her)\b", re.I)
+
+
+def asks_her_to_lead(text):
+    """True when an intention would have her take over the leading he does (her stated wish is that he leads)."""
+    return bool(_ASKS_HER_TO_LEAD.search(str(text or "")))
+
+
 def pressure_block():
     db=_jload(PRESS,{})
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
-    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and _live(r)][:3]
+    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and _live(r)
+          and not asks_her_to_lead(r.get("text"))][:3]
     if not rows: return ""
     _ago=lambda r: max(0,int((time.time()-r.get("last",time.time()))/86400))
     # "keep failing" is said only of what has missed more than once; a first miss is named as one
@@ -369,7 +391,8 @@ def map_summary():
     pend=sum(1 for e in db if e.get("status")=="PENDING")
     held=sum(1 for e in db if e.get("status")=="HELD" and not e.get("scene_quarantined"))
     yes=sum(1 for e in db if e.get("verdict")=="YES")
-    top=max((r for r in pr.values() if _live(r) and not r.get("overridden")),key=lambda r:r.get("weight",0),default=None) if pr else None
+    top=max((r for r in pr.values() if _live(r) and not r.get("overridden") and not asks_her_to_lead(r.get("text"))),
+            key=lambda r:r.get("weight",0),default=None) if pr else None
     MEM=os.path.dirname(DIFF)
     def _rd(fn,d):
         try: return json.load(open(os.path.join(MEM,fn)))
