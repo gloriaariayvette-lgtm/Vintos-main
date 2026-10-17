@@ -1,0 +1,37 @@
+[
+  {
+    "suite": "test_letter_links.py",
+    "returncode": 0,
+    "log": "/tmp/test_letter_links.py.log"
+  },
+  {
+    "suite": "test_received_mail.py",
+    "returncode": 0,
+    "log": "/tmp/test_received_mail.py.log"
+  },
+  {
+    "suite": "test_europepmc_fulltext.py",
+    "returncode": 0,
+    "log": "/tmp/test_europepmc_fulltext.py.log"
+  },
+  {
+    "suite": "test_email_reading_and_approval.py",
+    "returncode": 0,
+    "log": "/tmp/test_email_reading_and_approval.py.log"
+  },
+  {
+    "suite": "test_email_whole.py",
+    "returncode": 0,
+    "log": "/tmp/test_email_whole.py.log"
+  },
+  {
+    "suite": "test_want_email_and_outward.py",
+    "returncode": 0,
+    "log": "/tmp/test_want_email_and_outward.py.log"
+  },
+  {
+    "suite": "test_curiosity_answer_link.py",
+    "returncode": 0,
+    "log": "/tmp/test_curiosity_answer_link.py.log"
+  }
+]

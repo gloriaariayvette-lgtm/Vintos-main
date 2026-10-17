@@ -973,8 +973,11 @@ Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, w
 - Test: `broker/tests/test_link_fetch.py` (40 checks). Stubbed transport and resolver; requests and sockets are
   replaced so nothing can reach the network. It fails on the old code.
 - **Not done:**
-  - A DNS answer can change between the check and the connection (rebinding). The resolved address is checked
-    but not pinned for the request.
+  - DNS rebinding: corrected in source on 17 October on `claude/device-visuals-2026-10-13`;
+    each hop connects only to its validated public address snapshot, including retries. HTTP Host and HTTPS
+    SNI/certificate verification keep the URL hostname. Environment proxies are intentionally bypassed;
+    direct connection failures are reported without a proxy fallback. See the 17 October record below.
+    Installation/runtime verification is still pending.
   - `chemistry_reference_compare.fetch_reference` and the Lab's own fetches are left as they are (fixed RCSB
     host; lab_http).
   - Not yet verified on Aegis.
@@ -3687,3 +3690,30 @@ Done (Claude Code): both song paths, a want's song (wants-router -> creative-exp
 (music-composer.py), now draft with Sonnet and finish with Grok (`scripts/song_draft.py`). Each finished spec has
 its Sonnet draft beside it as `<spec>.sonnet-draft.md`. A failed draft leaves Grok writing alone; a failed or
 repeating finish leaves Sonnet's spec standing; both are logged. Not yet seen on Aegis.
+
+
+## 17 October — research-link connections pinned to validated DNS answers
+
+Inspected the current `claude/device-visuals-2026-10-13` head `f715dd6`, including the 16–17 October
+mail/Europe PMC/Lab changes. The older check/connect DNS gap remained. `link_fetch` now carries one
+validated address snapshot from each hop into a dedicated urllib3 connection pool. Numeric IPv4/IPv6
+sockets connect directly; connection retries use only that snapshot, close failed sockets, and never
+resolve again. All DNS answers must still be public. DNS errors/empty answers fail closed.
+
+The original URL hostname remains the HTTP Host and HTTPS SNI/certificate identity; certificate chain
+and hostname verification are required. Requests' CA file/directory overrides remain supported.
+Environment HTTP/HTTPS/ALL proxies and netrc do not participate: a remote-resolving proxy would bypass
+the address restriction. A direct connection failure remains a named `http_failure`, with no proxy fallback.
+Existing URL restrictions, redirect limits, per-connection/read timeouts, decompressed byte caps and
+receipt kinds remain in force. HTTP redirects, meta-refresh, Europe PMC and public X embeds all use
+the same hop validation and pinned production transport. Mail/want/Lab source changes are preserved.
+
+Deterministic offline coverage in `test_link_fetch_pinning.py` uses fake IP sockets and real TLS over
+AF_UNIX socket pairs, with a public test certificate/key fixture. It covers public-to-private rebinding
+(no private destination contacted), same-host redirects/meta-refresh that rebind, public redirect
+snapshots, IPv6/IPv4 retry and exhaustion, DNS errors/mixed answers, proxy environment variables,
+Host/SNI, correct/trusted and wrong-host/untrusted certificates, gzip limits, HTTP errors, and alternate
+article/embed paths. Focused OS-isolated regression results are recorded in
+`docs/security-evidence/2026-10-17-link-fetch-focused.json`.
+
+Deployment and installed-version evidence: pending; source/test completion does not establish runtime protection.
