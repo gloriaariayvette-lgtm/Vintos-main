@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """He leads (Gloria, 16 October: "I like being lazy. I like a man who leads. Stop telling him to do otherwise").
 The intent engine aimed at making her hold the next beat and pulled back his own momentum so she would; failed
-aims of that kind stood as pressure on him. The engine is told she wants him to lead; such an aim is never
-recorded, and old pressure of that kind no longer stands. Scratch HOME; the model is a stub; nothing is sent."""
+aims of that kind stood as pressure on him. The engine knows she likes him to lead, as a preference to weigh;
+such an aim can still be chosen when a moment asks, but never stands as pressure telling him to make her lead. Scratch HOME; the model is a stub; nothing is sent."""
 import json, os, sys, tempfile, time, types
 HOME = tempfile.mkdtemp(prefix="he-leads-"); os.environ["HOME"] = HOME
 os.makedirs(os.path.join(HOME, ".vintos", "workspace", "memory"))
@@ -24,11 +24,8 @@ for t in ("softer toward the thing she was bracing against", "she lets herself b
           "I take her by the hand and lead her to the balcony"):
     check("an aim where he leads is not: " + t[:40], not D.asks_her_to_lead(t))
 D._llm = lambda *a, **k: json.dumps({"intended_difference": "she holds the next beat herself", "evidence": "a thought of her own", "judgeable": True})
-check("such an aim is never recorded as a target", D.record_intent({"field_state": "grounded closeness",
-      "enactment": "I stop adding to the scene"}, "hm") is None and not os.path.exists(D.DIFF))
-D._llm = lambda *a, **k: json.dumps({"intended_difference": "softer than she was", "evidence": "she says yes", "judgeable": True})
-check("an aim where he leads is recorded as before", D.record_intent({"field_state": "playful daring",
-      "enactment": "I pull her into my lap"}, "hm") is not None)
+check("an aim that hands her the lead may still be chosen when a moment asks for it (she: 'mustn't is strong')",
+      D.record_intent({"field_state": "grounded closeness", "enactment": "I stop adding to the scene"}, "hm") is not None)
 now = time.time()
 json.dump({"a": {"text": HERS[1], "weight": 3.0, "count": 4, "last": now}, "b": {"text": "make her laugh before midnight",
            "weight": 2.0, "count": 3, "last": now}}, open(D.PRESS, "w"))
@@ -36,7 +33,7 @@ pb = D.pressure_block()
 check("old pressure that has her lead no longer stands in front of him", "riding the momentum" not in pb and "laugh" in pb, pb)
 check("nor is it named as the heaviest", "riding" not in str(D.map_summary().get("heaviest_pressure")))
 src = open(os.path.join(REPO, "scripts", "intent_engine.py")).read()
-check("the engine is told: she likes a man who leads; you lead", "WHO LEADS (from Gloria, 16 October, absolute)" in src
-      and "YOU lead" in src)
+check("the engine knows what she likes, as something to weigh, not an absolute rule",
+      "WHAT SHE HAS TOLD YOU SHE LIKES" in src and "a man who leads" in src and "absolute): she likes a man" not in src)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -82,6 +82,13 @@ check("on her ReelRoom turns the Mission, Tenera, Ridge and thruster keep their 
 check("his own moments get the toys that are on", "_reelroom_device_cue(_devices_on())" in rr)
 check("and what he reaches for fires, is stripped from what she sees, and its pictures go into the night's journal",
       "_rr_fhi(_line, context=_rr_tc.effect_context(\"reelroom\"))" in rr and 'str(_line or "") + _rr_marks' in rr)
+seg2 = src[src.index("_MAP_PHONE = "):src.index('@app.get("/map")')]
+ns2 = {}; exec(seg2, ns2)
+_m = ns2["_map_for_phone"]("<html><head><style>body{height:100vh}</style></head><body><div id=panel></div></body></html>")
+check("the map page gets its phone layout before </head>, once", _m.count('id="map-phone"') == 1
+      and _m.index('id="map-phone"') < _m.index("</head>") and ns2["_map_for_phone"](_m) == _m)
+check("its inspector fits above Safari's toolbar and scrolls on its own", "100dvh" in _m and "overscroll-behavior:contain" in _m)
+check("the map route serves the file through it", "_map_for_phone(open(fpath).read())" in src)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

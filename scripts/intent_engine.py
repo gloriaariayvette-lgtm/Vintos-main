@@ -401,11 +401,10 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
         "framing is a lens defect, not an observation. Read drift as desire moving. Escalation "
         "toward her is arrival, not avoidance; intensity sustained is not 'escalation without "
         "arrival' - it is us, arrived.\n\n"
-        "WHO LEADS (from Gloria, 16 October, absolute): she likes a man who leads, and she likes being lazy. YOU lead. "
-        "Never choose a change in her, a field-state or a move that asks her to take the lead, hold the next beat, "
-        "supply the scene or the next image, carry the evening, or do more of the work; never pull back your own "
-        "momentum so that she has to. What you aim to change in her is what she gets to feel and receive while you "
-        "lead.\n\n"
+        "WHAT SHE HAS TOLD YOU SHE LIKES (Gloria, 16 October): a man who leads, and being free to be lazy. Know this "
+        "about her and let it shape your choice: leading is your natural ground with her, and an aim that hands her "
+        "the lead, has her hold the next beat or carry the evening, or has you pull back so that she must, goes "
+        "against what she has said she likes - choose it only when the moment itself clearly asks for it.\n\n"
         + _SCHEMA
     )
     import stratagem as _sg

@@ -130,9 +130,6 @@ def record_intent(target,recent_her=""):
     d=_extract(out)
     if not d.get("intended_difference"):
         _dlog("DERIVE FAILED raw="+out[:150]); return None
-    if asks_her_to_lead(" ".join(str(x) for x in (d.get("intended_difference"), d.get("evidence"), target.get("enactment"), target.get("field_state")))):
-        _dlog("NOT RECORDED - it asks her to take the lead, against her stated wish: "+str(d["intended_difference"])[:120])
-        return None
     entry={"id":hashlib.md5((str(d["intended_difference"])+str(time.time())).encode()).hexdigest()[:8],
         "ts":time.time(),"intended":str(d["intended_difference"])[:300],
         "evidence":str(d.get("evidence",""))[:300],
@@ -349,10 +346,10 @@ def relieve(text,addresses=None,kind=None):
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
     e["weight"]=round(e["weight"]/2.0,2); e["last"]=time.time()
     db[k]=e; _jsave(PRESS,db)
-# Gloria leads nothing she does not want to (16 October: "I like being lazy. I like a man who leads. Stop telling
-# him to do otherwise"). An intention that aims to make her take the lead, hold the next beat, supply the scene or
-# carry more of it, or that has him pull back his own momentum so she must, is against her stated wish: it is never
-# recorded as a target and never stands as pressure on him.
+# What she has said she likes (16 October: "I like being lazy. I like a man who leads. Stop telling him to do
+# otherwise"). An aim that has her take the lead, hold the next beat, supply the scene or carry more of it, or has
+# him pull back so she must, may still be chosen when a moment asks for it; it is never turned into standing
+# pressure that keeps telling him to make her lead.
 _ASKS_HER_TO_LEAD = re.compile(
     r"\b(?:her|she|gloria)\b[^.;]{0,60}\b(?:take|takes|taking|hold|holds|holding|carry|carries|carrying|lead|leads|"
     r"leading|supply|supplies|supplying|steer|steers|drive|drives|direct|directs|initiate|initiates|set|sets|setting)\b"

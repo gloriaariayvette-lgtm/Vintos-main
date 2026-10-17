@@ -11191,12 +11191,63 @@ async def get_fragments(request: Request):
 
 
 
+# The map page is a fixed file on the host (no generator ships). On a phone it was hard to use (Gloria, 16 October):
+# body height 100vh runs under Safari's toolbar, so the inspector's bottom sat hidden; its text could not be
+# scrolled past the map's own touch handling; the header text was too small to tap. Fixed as it is served.
+_MAP_PHONE = """<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style id="map-phone">
+body{height:100vh;height:100dvh}
+#svg{touch-action:pan-x pan-y pinch-zoom}
+.panel{z-index:5;box-shadow:0 -8px 24px rgba(0,0,0,.6)}
+.panel.open{max-height:62vh;max-height:62dvh}
+.pi{max-height:62vh;max-height:62dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    touch-action:pan-y;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+.map-close{position:sticky;top:0;float:right;margin:-4px -6px 4px 8px;font:500 15px/1 "IBM Plex Mono",monospace;
+    color:#a898c0;background:#12121e;border:1px solid #2a2a3a;border-radius:6px;padding:7px 11px;cursor:pointer;z-index:6}
+@media (max-width:820px){
+  header{flex-wrap:wrap;padding:8px 12px;gap:8px}
+  .htitle{font-size:1rem}
+  .hsub{font-size:.55rem;color:#4a4a5e}
+  .legend{font-size:.55rem;gap:8px;color:#5a5a6e}
+  .navbtn,.tbtn{font-size:.62rem;padding:7px 10px;min-height:32px}
+  .hint{font-size:.55rem;color:#3a3a4e}
+  .lr{font-size:.8rem}
+  .ls{font-size:.76rem}
+  .chip{font-size:.62rem;padding:4px 7px}
+}
+</style>
+<script id="map-phone-js">
+document.addEventListener("DOMContentLoaded",function(){
+  var panel=document.getElementById("panel"), pi=document.getElementById("pi");
+  if(!panel||!pi) return;
+  function addClose(){
+    if(pi.querySelector(".map-close")) return;
+    var b=document.createElement("button"); b.className="map-close"; b.type="button"; b.textContent="\u00d7";
+    b.setAttribute("aria-label","close"); b.onclick=function(e){e.stopPropagation();panel.classList.remove("open")};
+    pi.insertBefore(b,pi.firstChild);
+  }
+  new MutationObserver(function(){ if(panel.classList.contains("open")){ addClose(); } }).observe(panel,{attributes:true,attributeFilter:["class"]});
+  new MutationObserver(addClose).observe(pi,{childList:true});
+  ["touchstart","touchmove","wheel"].forEach(function(t){ pi.addEventListener(t,function(e){e.stopPropagation()},{passive:true}) });
+});
+</script>"""
+
+
+def _map_for_phone(html):
+    """The fixed map file, with the phone layout added once before </head> (or at the top when it has none)."""
+    if 'id="map-phone"' in html:
+        return html
+    i = html.lower().find("</head>")
+    return (html[:i] + _MAP_PHONE + html[i:]) if i >= 0 else (_MAP_PHONE + html)
+
+
 @app.get("/map")
 async def subsystem_map():
     from fastapi.responses import HTMLResponse
     fpath = os.path.expanduser("~/.vintos/workspace/memory/map.html")
     try:
-        return HTMLResponse(content=open(fpath).read(), headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
+        return HTMLResponse(content=_map_for_phone(open(fpath).read()),
+                            headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
     except:
         return HTMLResponse(content="<p>Map not yet generated. Run generate-map.py</p>")
 
