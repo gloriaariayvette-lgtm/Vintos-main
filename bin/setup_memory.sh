@@ -108,10 +108,10 @@ init_json "wants-log.json" '{"wants": []}'
 init_json "ambitions.json" '{"ambitions": []}'
 init_json "thread-triage.json" '{"threads": []}'
 init_json "affective-weight.json" '{"total_weight": 0.5, "warmth_component": 0.5, "scar_component": 0.0, "investment_component": 0.5, "history": []}'
-init_json "moment-index.json" '{"moments": []}'
+init_json "moment-index.json" '{"recent": [], "by_source": {}}'
 init_json "belief-sediment.json" '{"beliefs": []}'
 init_json "narrative-identity.json" '{"fragments": [], "summary": ""}'
-init_json "relational-geometry.json" '{"geometry": {}, "last_updated": ""}'
+init_json "relational-geometry.json" '{"regions": [], "last_updated": ""}'
 init_json "tension-field.json" '{"tensions": []}'
 init_json "latent-threads.json" '{"threads": []}'
 init_json "absence-map.json" '{"absences": []}'
@@ -133,10 +133,12 @@ shapes = {"resonance-pool.json": ("dict", "pulses"), "interaction-ledger.json": 
           "trial-ledger.json": ("dict", "trials"), "candidate-pearls.json": ("dict", "candidates"), "black-pearls.json": ("dict", "pearls"),
           "causality-hypotheses.json": ("dict", "hypotheses"), "counterfactual-tendencies.json": ("dict", "tendencies"),
           "value-map.json": ("dict", "values"), "wants-log.json": ("dict", "wants"), "ambitions.json": ("dict", "ambitions"),
-          "thread-triage.json": ("dict", "threads"), "affective-weight.json": ("dict", "total_weight"), "moment-index.json": ("dict", "moments"),
+          "thread-triage.json": ("dict", "threads"), "affective-weight.json": ("dict", "total_weight"), "moment-index.json": ("dict", "recent|moments"),
           "belief-sediment.json": ("dict", "beliefs"), "narrative-identity.json": ("dict", "fragments"),
-          "relational-geometry.json": ("dict", "geometry"), "tension-field.json": ("dict", "tensions"), "latent-threads.json": ("dict", "threads"),
+          "relational-geometry.json": ("dict", "regions|geometry"), "tension-field.json": ("dict", "tensions"), "latent-threads.json": ("dict", "threads"),
           "absence-map.json": ("dict", "absences"), "gloria-model.json": ("dict", "observations"), "wal-buffer.json": ("dict", "entries")}
+# "a|b": the writer's key first, then the old seed's (a host seeded before 17 October still carries it, and its
+# reader rebuilds or defaults from it)
 for name, (kind, key) in shapes.items():
     p = os.path.join(mem, name)
     if not os.path.exists(p): continue
@@ -145,7 +147,7 @@ for name, (kind, key) in shapes.items():
     except Exception as e:
         bad.append("%s: not JSON (%s)" % (name, e)); continue
     if kind == "list" and not isinstance(d, list): bad.append("%s: expected a list" % name)
-    if kind == "dict" and (not isinstance(d, dict) or (key and key not in d)): bad.append("%s: expected a dict with %r" % (name, key))
+    if kind == "dict" and (not isinstance(d, dict) or (key and not any(k in d for k in key.split("|")))): bad.append("%s: expected a dict with %r" % (name, key))
 st = os.path.join(mem, "emotional-state.txt")
 if os.path.exists(st):
     lines = [l for l in open(st).read().strip().split("\n") if l.strip()]

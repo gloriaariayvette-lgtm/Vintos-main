@@ -10813,26 +10813,51 @@ async def map_state():
     bb = rj("behavior-boundaries.json", {})
     state[8] = {"boundaries": [{"name": b.get("id","").replace("boundary_","").replace("_"," "), "pressure": round(b.get("pressure",0),2)} for b in bb.get("boundaries",[])]}
     # 16 Moment Identity
+    # the index keeps the last 100; the archive holds every moment, and an index still in its setup seed
+    # (no "recent") is rebuilt from the archive by moment-index.py, so the map reads the archive too
     mi = rj("moment-index.json", {})
-    recent = mi.get("recent", [])
-    state[16] = {"total": len(recent), "last_source": recent[-1].get("source","—") if recent else "—"}
+    recent = mi.get("recent", []) if isinstance(mi, dict) else []
+    _arch = (rj("moment-archive.json", {}) or {}).get("moments", {})
+    _arch = list(_arch.values()) if isinstance(_arch, dict) else (_arch if isinstance(_arch, list) else [])
+    _last = recent[-1] if recent else (max((m for m in _arch if isinstance(m, dict)), key=lambda m: str(m.get("timestamp", "")), default=None))
+    state[16] = {"total": max(len(recent), len(_arch)), "last_source": (_last or {}).get("source", "—"),
+                 "last": str((_last or {}).get("timestamp", "—"))[:16]}
     # 20 Belief Sediment
     bs = rj("belief-sediment.json", {})
     beliefs = bs.get("beliefs", [])
-    state[20] = {"beliefs": [(b.get("text","") if isinstance(b,dict) else str(b))[:80] for b in beliefs[:3]], "count": len(beliefs)}
+    # a belief's words are its "pattern" (belief_sediment.promote_hypothesis); strongest first, as his context reads them
+    _bl = sorted([b for b in beliefs if isinstance(b, dict)], key=lambda b: -(b.get("confidence") or 0))
+    state[20] = {"beliefs": [("%s (%.2f)" % ((b.get("pattern") or b.get("text") or "")[:80], b.get("confidence") or 0)) for b in _bl[:3]], "count": len(beliefs)}
     # 21 Narrative Identity
+    # a fragment carries a count, not a weight: its weight is the count aged by time since reinforced, and only
+    # fragments reinforced within 30 days are his (narrative_identity._current_fragments, which his context uses)
     ni = rj("narrative-identity.json", {})
-    frags = ni.get("fragments", [])
-    third = ni.get("third_order_pressure", "")
-    state[21] = {"fragments": [{"text": (f.get("text","") if isinstance(f,dict) else str(f))[:90], "weight": round(f.get("weight",0),2) if isinstance(f,dict) else 0} for f in frags[:3]], "pressure": str(third)[:80] if third else "—"}
+    try:
+        import sys as _nis; _nis.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import importlib as _nil; _nim = _nil.import_module("narrative_identity")
+        frags = [(f, _nim.fragment_weight(f)) for f in _nim._current_fragments(ni)]
+    except Exception:
+        frags = [(f, f.get("count", 0)) for f in ni.get("fragments", []) if isinstance(f, dict)]
+    third = ni.get("third_order_pressure", [])
+    if isinstance(third, list):   # emoclaw_utils appends {"text", "created", "resolved"}
+        _open3 = [p for p in third if isinstance(p, dict) and not p.get("resolved")]
+        _p3 = ("%s (%d open)" % (str(_open3[-1].get("text", ""))[:80], len(_open3))) if _open3 else "—"
+    else:
+        _p3 = str(third)[:80] if third else "—"
+    state[21] = {"fragments": [{"text": str(f.get("text", ""))[:90], "weight": round(w, 2)} for f, w in frags[:3]],
+                 "fragments held": len(ni.get("fragments", [])), "pressure": _p3}
     # 22 Structural Absence
     sa = rj("absence-cold.json", {})
     absences = sa.get("absences", [])
     state[22] = {"absent": [(a.get("dimension", a.get("label", str(a))) if isinstance(a,dict) else str(a))[:60] for a in absences[:4]]}
     # 23 Relational Geometry
+    # regions are a list (relational_geometry.record_interaction); nothing writes snapshots
     rg = rj("relational-geometry.json", {})
-    regions = rg.get("regions", {})
-    state[23] = {"regions": list(regions.keys())[:4] if isinstance(regions,dict) else [], "snapshots": len(rg.get("snapshots",[]))}
+    regions = [r for r in (rg.get("regions") or []) if isinstance(r, dict)] if isinstance(rg, dict) else []
+    _top = sorted(regions, key=lambda r: -(r.get("familiarity", 0) * r.get("visit_count", 1)))[:4]
+    state[23] = {"regions": ["%s/%s x%d" % (r.get("dominant_outcome", "?"), r.get("dominant_direction", "?"), r.get("visit_count", 1)) for r in _top],
+                 "count": len(regions), "avoided": sum(1 for r in regions if r.get("avoided")),
+                 "updated": str(rg.get("last_updated") or "never")[:16] if isinstance(rg, dict) else "never"}
     # 24 Causal Self-Model
     csm = rj("causal-self-model.json", {})
     entries = csm.get("entries", [])
