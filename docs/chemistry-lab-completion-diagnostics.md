@@ -153,3 +153,19 @@ The remote installed-source regression command is:
 ```sh
 ssh gloria@aegis 'cd ~/Vintos-main && python3 -B scripts/run_isolated_test.py broker/tests/test_lab_completion_diagnostics.py'
 ```
+
+## Branch publication validation — 17 October
+
+The previously local diagnostics commits were applied with Git's three-way merge
+on top of remote `claude/device-visuals-2026-10-13` at `88b5e645`, preserving the
+branch's question narrowing, structure-read cache and receipt-deduplication changes.
+The implementation commit is `ff24c26a`. An AST comparison verified all code outside
+the diagnostics functions and native completion adapter is unchanged from that
+remote base. The resulting Lab/shim hashes match the installed diagnostics hashes
+above. No Aegis files or services were changed during this publication task.
+
+All **92 Lab, Chemistry and shim suites passed** through the repository's macOS
+OS-isolated runner. The machine-readable results are recorded in
+`docs/chemistry-lab-completion-push-validation.json`. The publication checkout
+contains only the diagnostics changes and their evidence on top of the remote
+branch; the separate Forge credentials audit is not part of this push.
