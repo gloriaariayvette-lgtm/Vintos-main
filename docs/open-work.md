@@ -3718,7 +3718,16 @@ transport; `live_fetch()` now uses the same pinned production transport, with it
 regression and unchanged raw article receipts. The separate fixed-host Lab API clients remain unchanged. Focused OS-isolated regression results are recorded in
 `docs/security-evidence/2026-10-17-link-fetch-focused.json`.
 
-Deployment and installed-version evidence: pending; source/test completion does not establish runtime protection.
+The complete repair is pushed as `412ea7a` on `claude/device-visuals-2026-10-13` (transport in `13ddf3f`).
+The clean Aegis release snapshot passed all **421/421 OS-isolated suites** on Python 3.12.3.
+The focused final regressions passed **399 checks in 11 suites**; the preceding complete Mac Python 3.12
+run passed 421/421 suites, followed by the final focused Lab-path regressions.
+
+**Not installed.** The standard deployment guard stopped before installation because concurrent
+uncommitted changes appeared in `scripts/chemistry_lab.py` and `bin/vintos_claude_shim.py`. The Lab
+change is already installed; a broad release would overwrite it. Those changes and their test remain
+intact. A targeted two-file install with backups, rollback, restarts and installed-hash verification
+has been prepared separately and awaits owner approval. Runtime protection is not yet established.
 
 
 ## 17 October — trusted text research attachments are ingested
@@ -3764,3 +3773,4 @@ The original interpretation and read date were preserved. Wants, contacts, reply
 were unchanged; recovery made zero model calls and sent zero correspondence. A second recovery made no
 Gmail call and changed no inbox bytes. A model's later assessment of the complete papers remains distinct
 from this verified storage/retrieval result; no scientific conclusion was changed.
+

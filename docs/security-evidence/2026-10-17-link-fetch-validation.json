@@ -90,7 +90,7 @@
     "passed": 421,
     "failed": 0
   },
-  "deployment": "First deployment stopped during tests (exit 143), before installation, to include the Lab article transport correction. Final deployment pending.",
+  "deployment": "Standard workflow refused concurrent, already-installed, uncommitted Lab diagnostics changes before installation. Targeted two-file installer prepared and scratch-validated; owner approval pending. Runtime protection not yet established.",
   "subsequent_lab_transport_fix_focused": [
     {
       "suite": "test_link_fetch_pinning",
@@ -147,5 +147,13 @@
       "exit_code": 0,
       "seconds": 0.52
     }
-  ]
+  ],
+  "final_clean_aegis_validation": {
+    "source_commit": "412ea7a13db15a7df9c140310f81360fbeb87b1a",
+    "release_path": "/tmp/vintos-dns-release.3erbq1",
+    "python": "3.12.3",
+    "suites": 421,
+    "passed": 421,
+    "failed": 0
+  }
 }
