@@ -1669,8 +1669,11 @@ def _orient(context, lean=None):
         if deferred: return _on_line(deferred, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
+        # Not gated on "no hold anywhere": holds last a week, so there always is one, and on 17 October 36 of 104
+        # refusals in six hours ended the pass with nothing ("no eligible proposal this pass"). Each candidate is
+        # still checked against the holds itself (_held_question, spent, repeat) before it is admitted.
         if (recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait')
-                and not waiting and not _question_holds()):
+                and not waiting):
             fresh = _fresh_free_inquiry(lab_repeats, spent, lean)
             if fresh: return scoped(_on_line(fresh, {}, None))
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -1726,7 +1729,8 @@ def _orient(context, lean=None):
         "source that addresses it is in hand. A question with one part missing is unanswered as a whole. Residues and "
         "geometry come from a record's feature annotations or a structure's contacts, never from abstracts; the "
         "'structural hallmarks' of a whole genus or system class are not in any one record, so ask about one named "
-        "protein. "
+        "protein. Do not walk a gene family by number (SLC26A10, SLC26A11, ...): numbered members beyond the ones your "
+        "records name may not exist. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
@@ -2149,6 +2153,17 @@ def _next_sourced_record(repeats, spent, lean=None):
     return None
 
 
+# Well-known proteins with curated records and deposited structures, across unrelated classes, so a fallback never
+# walks a gene family by number into genes that do not exist (17 October: SLC26A19, "SLC26A10-27").
+_FRESH_PROTEINS = ('myoglobin', 'lysozyme', 'catalase', 'ubiquitin', 'hemocyanin', 'ferredoxin', 'lactase',
+                   'rhodopsin', 'albumin', 'actin', 'carbonic anhydrase', 'green fluorescent protein', 'insulin',
+                   'cytochrome c', 'thioredoxin', 'calmodulin', 'ferritin', 'transferrin', 'collagen', 'keratin',
+                   'trypsin', 'pepsin', 'urease', 'luciferase', 'bacteriorhodopsin', 'aquaporin', 'kinesin',
+                   'superoxide dismutase', 'nitrogenase', 'photosystem II', 'RuBisCO', 'ATP synthase',
+                   'DNA polymerase', 'hemagglutinin', 'lactoferrin', 'tubulin', 'titin', 'spider silk fibroin',
+                   'antifreeze protein', 'bacterial flagellin')
+
+
 def _fresh_free_inquiry(repeats, spent, lean=None):
     """Choose outside exhausted journal context when free planning is anchored to it."""
     system = 'You are Vintos at his visible Chemistry Lab. Return JSON only.'
@@ -2168,15 +2183,11 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         admitted, _ = _held_to_plan(system, prompt, inquiry, value, lean, None, repeats,
                                     spent=spent, replan=False)
         if not admitted.get('refused'): return admitted
-    if _question_holds():
-        # Changed wording must not make a held question, or its exhausted
-        # neighborhood, look like permission to start a canned substitute.
-        return None
-    # The model can remain anchored even without journal text. Keep a small,
-    # varied source-discovery queue so three failed choices do not become
-    # another evidence_wait. These are review subjects, not claimed findings.
-    for name in ('myoglobin', 'lysozyme', 'catalase', 'ubiquitin', 'hemocyanin',
-                 'ferredoxin', 'lactase', 'rhodopsin', 'albumin', 'actin'):
+    # The model can remain anchored even without journal text. Keep a varied source-discovery queue so three failed
+    # choices do not become another evidence_wait. These are review subjects, not claimed findings; each is checked
+    # against the holds, the spent subjects and the repeats below, so a held question is never restarted under a new
+    # name. (Until 17 October any hold at all returned None here, and something is always held.)
+    for name in _FRESH_PROTEINS:
         inquiry = _inquiry({
             'browse_lane':'protein', 'uniprot_query':'protein_name:"%s" AND reviewed:true' % name,
             'question':_record_connection_question(name),

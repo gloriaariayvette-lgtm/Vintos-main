@@ -3,7 +3,7 @@
 no source could return; the one complete answer asked only what its record established). The planner is told so,
 a two-part question is sent back once to narrow, and if it still asks two things its first is kept.
 The planner is a stub; scratch HOME; no socket."""
-import json, os, socket, sys, tempfile
+import json, os, socket, sys, tempfile, types
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="lab-one-ask-"); os.environ["HOME"] = HOME
 os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
@@ -68,6 +68,25 @@ check("an entry never read is fetched", C._structure_cached("2SHP") is None)
 _phase = src[src.index('elif phase in ("embed", "reflect") and _structure_pending(state):'):][:2600]
 check("the structure step asks the cache before the source", "sourced = cached or chemistry_sources.query(" in _phase)
 check("and no longer writes a receipt the source layer already wrote", '_append(os.path.join(ROOT, "source-receipts.jsonl"), receipt_row)' not in _phase)
+print("--- a refused pass falls back to a fresh real protein, holds or not ---")
+_saved = (C._plan, C._held_to_plan, C._held_question, C.spent_retrieval, C._question_holds, C._existing_model_read)
+C._plan = lambda system, prompt: {"browse_lane": "protein", "question": "What are the structural hallmarks of human SLC26A19?"}
+C._existing_model_read = lambda inq: inq
+C._question_holds = lambda: [{"question": "something else entirely"}]   # something is always held
+C._held_question = lambda inq: {"refused": "held"} if "myoglobin" in str(inq.get("uniprot_query") or "").lower() else None
+C.spent_retrieval = lambda inq, spent: False
+def _h2p(system, task, inq, value, lean, step, repeats, spent=None, replan=True):
+    return ((dict(inq, refused="repeat") if "SLC26A19" in str(inq.get("question")) else inq), value)
+C._held_to_plan = _h2p
+rep = types.SimpleNamespace(repeat=lambda inq: None)
+got = C._fresh_free_inquiry(rep, {"subjects": []})
+check("three refused picks no longer end the pass while any hold exists", got is not None and not got.get("refused"), got)
+check("a held fallback is skipped, the next real protein is taken", got and "lysozyme" in str(got.get("uniprot_query")).lower(), got)
+check("the fallback list is real, varied proteins and long enough to outlast a week of holds", len(C._FRESH_PROTEINS) >= 30)
+check("the planner is told not to walk a gene family by number", "Do not walk a gene family by number" in src)
+_o = src[src.index("def _orient("):src.index("lean_text = ((")]
+check("the free pass after a refusal is not switched off by unrelated holds", "and not waiting and not _question_holds()" not in _o)
+(C._plan, C._held_to_plan, C._held_question, C.spent_retrieval, C._question_holds, C._existing_model_read) = _saved
 _outside = src.replace(src[src.index("def _narrow("):src.index("def _compact_names(")], "")
 check("no planner call bypasses the narrowing", "_json_object(_ask(system," not in _outside and "_plan_raw(" not in _outside)
 check("nothing reached the network", not NET)
