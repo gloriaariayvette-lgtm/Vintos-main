@@ -3669,8 +3669,11 @@ Not done:
 - **His side of the field barely moves.** `self_magnitude` is the change in self-drift's strongest direction, which
   changes only when discourse direction changes on a lived turn, so "he moved: 0" is usually true by
   construction. Measuring him from something that moves per turn is a design choice, not made.
-- **Behavior boundaries / relational geometry may be blind.** Both spawn a fresh subprocess per call to load the
-  embedder. Whether that fails on Aegis is unknown until `embed-failures.json` is read after the deploy.
+- **Why boundaries, geometry, output shaping froze on 27-28 August** (Gloria's Aegis check, 17 October: the
+  embedder works offline; the stores are 50 days old): they ran only in `/api/chat/full`, and her chat moved to
+  `/api/avatar/chat`. The avatar route now runs their after-turn bookkeeping (`_turn_organs`). NOT done, her call:
+  the pre-turn hints those organs gave the old route (afterglow context, output shaping, boundary hint) are not in
+  the avatar prompt, so Output Shaping's trace stays frozen and boundaries are counted but never felt.
 - `resonance_afterglow.py decay` (claim weights) has no caller in the repo; only a host crontab could run it.
 - The map's hard-coded "138 trials" is in the host-only `memory/map.html` (no generator in the repo); the
   ledger has 53 and nothing prunes it.

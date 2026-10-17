@@ -61,7 +61,8 @@ def embed(text):
              "from sentence_transformers import SentenceTransformer; import json; "
              "m = SentenceTransformer('nomic-ai/nomic-embed-text-v1', trust_remote_code=True); "
              f"print(json.dumps(m.encode({repr(text[:300])}).tolist()))"],
-            capture_output=True, text=True, timeout=20
+            capture_output=True, text=True, timeout=20,
+            env=dict(os.environ, HF_HUB_OFFLINE="1")   # the model is cached; a hub check per call can outlast the timeout
         )
         if r.returncode == 0:
             v = json.loads(r.stdout.strip()); _note_embed(True); return v

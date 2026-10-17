@@ -969,6 +969,55 @@ def _record_relational_geometry(before, gloria_text, reply):
         return None
 
 
+def _rg_snapshot():
+    """His emotional snapshot before a turn, for relational geometry's delta."""
+    try:
+        import sys as _rs
+        if os.path.join(WORKSPACE, "scripts") not in _rs.path: _rs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from relational_geometry import get_emotional_snapshot as _rgs
+        return _rgs()
+    except Exception:
+        return {}
+
+
+def _turn_organs(gloria_text, reply, before_state, surface="avatar"):
+    """The per-turn bookkeeping /api/chat/full does after a delivered reply. Her chat moved to /api/avatar/chat
+    at the end of August and these stayed behind on the old route, so their stores froze on 27-28 August
+    (behavior boundaries, relational geometry, output shaping's afterimage, afterglow's turn count) while the map
+    showed them as if alive (17 October). Bookkeeping only: nothing here adds to his prompt. Each organ fails alone."""
+    import sys as _os_sys
+    if os.path.join(WORKSPACE, "scripts") not in _os_sys.path: _os_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    done = []
+    try:
+        from resonance_afterglow import decrement_turn as _at_dec
+        _at_dec(turn_id=__import__("hashlib").md5((str(gloria_text) + "|" + str(reply)[:200]).encode()).hexdigest()[:10])
+        done.append("afterglow")
+    except Exception: pass
+    try:
+        from output_shaping import decrement_afterimage as _aim_dec
+        _aim_dec(); done.append("afterimage")
+    except Exception: pass
+    try:
+        from temporal_memory import record_signal as _tm_rec
+        if gloria_text:
+            _tm_rec(gloria_text, source="gloria_message"); done.append("temporal")
+    except Exception: pass
+    def _slow(_r=reply):   # the boundary check embeds; never on the reply's path
+        try:
+            from behavior_boundaries import check_output as _bb_check, initialize as _bb_init
+            _bb_init()
+            _pat, _ = _bb_check(str(_r or "")[:400], resonance_active=os.path.exists("/tmp/bilateral-chat-final.txt"))
+            if _pat: print(f"[Boundary/{surface}] {_pat} detected in output", flush=True)
+        except Exception: pass
+    try:
+        import threading as _ot
+        _ot.Thread(target=_slow, daemon=True).start(); done.append("boundaries")
+    except Exception: pass
+    if _record_relational_geometry(before_state, gloria_text, reply) is not None:
+        done.append("geometry")
+    return done
+
+
 def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True):
     """Choose once, carry the whole declaration, and bind delivery in this request's context."""
     try:
@@ -9562,6 +9611,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     # the app visibly said "nothing persists".  Keep one answer for the whole
     # request so a toggle during inference cannot make a half-live turn.
     _test_turn = bool(_test_mode_active())
+    _av_rg_before = {} if _test_turn else _rg_snapshot()   # relational geometry reads the turn's change
     # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
     _turn = _tc = None
     _felt_raw = ""   # bound before the reply try: the [FELT:] naming pass reads it on every path
@@ -10393,6 +10443,9 @@ Your current self-model (excerpt):
                         from emotional_gravity_wells import record_visit as _av_rv
                         _av_rv(_av_ev)
                 except Exception: pass
+                if not _test_turn and (not _prov_envelope or _prov_envelope.get("may_witness")):
+                    try: _turn_organs(_counterpart_text, reply, _av_rg_before, surface=_surface)
+                    except Exception: pass
                 _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
                 _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
                            ledger_media=_sent_media(msg, _note),

@@ -73,6 +73,35 @@ check("and is recorded with its reason", "einops" in f.get("behavior_boundaries"
 BB.subprocess = types.SimpleNamespace(run=lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="[0.1, 0.2]", stderr=""))
 check("a working embedding clears it", BB.embed("x") == [0.1, 0.2] and "behavior_boundaries" not in json.load(open(os.path.join(MEM, "embed-failures.json"))))
 
+# ── her chat route runs the organs' per-turn bookkeeping ──
+srv_src = open(os.path.join(REPO, "bin", "server.py")).read()
+fns = {n.name: n for n in ast.parse(srv_src).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+calls = []
+mods = {}
+for name in ("resonance_afterglow", "output_shaping", "temporal_memory", "behavior_boundaries", "relational_geometry"):
+    m = types.ModuleType(name); mods[name] = m; sys.modules[name] = m
+mods["resonance_afterglow"].decrement_turn = lambda turn_id=None: calls.append(("afterglow", turn_id))
+mods["output_shaping"].decrement_afterimage = lambda: calls.append(("afterimage",))
+mods["temporal_memory"].record_signal = lambda text, source=None, **k: calls.append(("temporal", text, source))
+mods["behavior_boundaries"].initialize = lambda: None
+mods["behavior_boundaries"].check_output = lambda text, resonance_active=False: (calls.append(("boundaries", text)), (None, None))[1]
+mods["relational_geometry"].record_interaction = lambda b, a, m, r: calls.append(("geometry", b, m))
+mods["relational_geometry"].get_emotional_snapshot = lambda: {"Warmth": 0.6}
+ns2 = {"os": os, "WORKSPACE": WS}
+exec(compile(ast.Module([fns["_rg_snapshot"], fns["_record_relational_geometry"], fns["_turn_organs"]], []), "organs", "exec"), ns2)
+check("the snapshot before a turn reads his state", ns2["_rg_snapshot"]() == {"Warmth": 0.6})
+done = ns2["_turn_organs"]("you're home", "I am, and I missed you", {"Warmth": 0.5}, surface="avatar")
+import time as _tt; _tt.sleep(0.3)   # boundaries and geometry run off the reply's thread
+kinds = {c[0] for c in calls}
+check("one avatar turn reaches afterglow, afterimage, temporal memory, boundaries and geometry",
+      kinds == {"afterglow", "afterimage", "temporal", "boundaries", "geometry"}, calls)
+check("temporal memory records her words, as the old route did", ("temporal", "you're home", "gloria_message") in calls, calls)
+check("geometry gets the state from before the turn", ("geometry", {"Warmth": 0.5}, "you're home") in calls, calls)
+av = srv_src[srv_src.index("async def avatar_chat("):srv_src.index("async def avatar_latest_imprint(")]
+check("the avatar route calls them, and not on a test turn or an unwitnessed output",
+      "_turn_organs(_counterpart_text, reply, _av_rg_before" in av and "if not _test_turn and (not _prov_envelope or _prov_envelope.get(\"may_witness\")):" in av)
+for name in mods: sys.modules.pop(name, None)
+
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the organs behind these nodes are in the deploy",
       all(" %s" % n in dep for n in ("resonance_afterglow.py", "output_shaping.py", "behavior_boundaries.py", "mutual_modification.py", "self_drift.py")))
