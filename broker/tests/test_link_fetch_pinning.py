@@ -157,6 +157,24 @@ class PinnedTests(unittest.TestCase):
         self.assertTrue(r['fetched'], r)
         self.assertEqual(self.dns, ['publish.twitter.com'])
         self.assertEqual(self.contacts, [(socket.AF_INET, (PUBLIC, 443))])
+    def test_lab_claim_evidence_reader_uses_pinned_transport(self):
+        import lab_claim_evidence
+        from urllib3.connection import HTTPConnection, HTTPSConnection
+        reader = lab_claim_evidence.live_fetch()
+        with patch.object(HTTPSConnection, 'connect', HTTPConnection.connect):
+            self.answers = [(response(b'claim evidence'), None)]
+            r = reader('https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=fixture')
+        self.assertTrue(r['fetched'], r)
+        self.assertEqual(r['raw'], 'claim evidence')
+        self.assertEqual(self.dns, ['www.ebi.ac.uk'])
+        self.assertEqual(self.contacts, [(socket.AF_INET, (PUBLIC, 443))])
+        self.dns.clear(); self.contacts.clear()
+        with patch.object(HTTPSConnection, 'connect', HTTPConnection.connect):
+            self.answers = [(response(status=302, headers=[('Location', '/private')]), None)]
+            r = reader('https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=fixture')
+        self.assertEqual(r['kind'], 'refused', r)
+        self.assertEqual(len(self.contacts), 1)
+        self.assertEqual(self.dns, ['www.ebi.ac.uk', 'www.ebi.ac.uk'])
     def tls(self, host, trust):
         # Real TLS over AF_UNIX socketpair: zero IP traffic, including loopback.
         self.sockets.stop()

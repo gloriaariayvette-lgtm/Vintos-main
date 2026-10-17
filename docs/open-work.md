@@ -3713,7 +3713,9 @@ AF_UNIX socket pairs, with a public test certificate/key fixture. It covers publ
 (no private destination contacted), same-host redirects/meta-refresh that rebind, public redirect
 snapshots, IPv6/IPv4 retry and exhaustion, DNS errors/mixed answers, proxy environment variables,
 Host/SNI, correct/trusted and wrong-host/untrusted certificates, gzip limits, HTTP errors, and alternate
-article/embed paths. Focused OS-isolated regression results are recorded in
+article/embed paths. The Lab claim-evidence reader previously injected a separate unpinned urllib
+transport; `live_fetch()` now uses the same pinned production transport, with its own rebinding/redirect
+regression and unchanged raw article receipts. The separate fixed-host Lab API clients remain unchanged. Focused OS-isolated regression results are recorded in
 `docs/security-evidence/2026-10-17-link-fetch-focused.json`.
 
 Deployment and installed-version evidence: pending; source/test completion does not establish runtime protection.
