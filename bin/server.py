@@ -11976,6 +11976,26 @@ async def reelroom_summary(request: Request):
         return {"summary": "", "error": str(e)[:200], "ledger": "written" if _c.get("committed") else "not written", "file": _c.get("file", "")}
 
 
+@app.get("/api/game/reelroom/last-reply")
+async def reelroom_last_reply(request: Request, message: str = ""):
+    """His reply to her message, from tonight's journal, for when the phone gave up waiting before it arrived (Gloria,
+    16 October: "his reply failed - Load failed", while the reply was there in the log). Read-only."""
+    _require_secret(request)
+    try:
+        j = json.load(open(os.path.join(MEMORY, "reelroom", "live-session.json")))
+        hist = [m for m in (j.get("chat_history") or []) if isinstance(m, dict)]
+        want = " ".join(str(message or "").split())
+        for i in range(len(hist) - 1, -1, -1):
+            if hist[i].get("role") == "user" and " ".join(str(hist[i].get("content") or "").split()) == want:
+                nxt = hist[i + 1] if i + 1 < len(hist) else None
+                if nxt and nxt.get("role") == "assistant" and nxt.get("content"):
+                    return {"ok": True, "found": True, "reply": str(nxt["content"])}
+                return {"ok": True, "found": False}
+        return {"ok": True, "found": False}
+    except Exception as e:
+        return {"ok": False, "found": False, "error": str(e)[:200]}
+
+
 @app.get("/api/game/reelroom/sessions")
 async def reelroom_sessions(request: Request):
     _require_secret(request)
@@ -12013,10 +12033,16 @@ async def home_lights_color(req: LightsColorRequest, request: Request):
     try:
         import sys as _vrh_sys; _vrh_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
+        try:
+            _vh_mod.hex_to_rgb(req.hex)
+        except ValueError as _bad:
+            raise HTTPException(status_code=400, detail=str(_bad))   # a bad colour is her request's fault, not a crash
         ok = _vh_mod.set_room_color(req.hex, req.brightness, room=(req.room or None))
         if not ok:
             raise RuntimeError("no light confirmed the colour")
         return {"ok": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

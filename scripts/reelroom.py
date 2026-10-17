@@ -309,7 +309,9 @@ def decide(question: str, context: str = "", history: Optional[List[Dict[str, st
               f"{ring + chr(10) if ring else ''}"
               f"What you know of the film:\n{context[:1500]}\n\nRecently said:\n{recent or '  (nothing)'}\n\n{question}\n"
               'Answer ONLY this JSON: {"speak": true|false, "why": "one sentence", "action": "none|flicker_lights|speak_phone|change_light_color|tv_volume_nudge", '
-              '"action_payload": "", "action_emoji": "✦"}. Most of the time speak is false and action is none: a film night is mostly silence.')
+              '"action_payload": "", "action_emoji": "✦"}. action_payload: for change_light_color a colour as #rrggbb '
+              '(e.g. "#7a0a1e"); for tv_volume_nudge a whole number (e.g. -2); for speak_phone the line; otherwise "". '
+              'Most of the time speak is false and action is none: a film night is mostly silence.')
     try:
         raw = ((gemma or _react_gemma)([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=200) or "").strip()
         d = _json_in(raw)

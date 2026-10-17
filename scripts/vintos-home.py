@@ -354,8 +354,22 @@ def stop_music():
 
 
 # ---------------------------------------------------------------- lights
+COLOR_NAMES = {"red": "#b3122e", "deep red": "#7a0a1e", "crimson": "#a3122a", "blood red": "#6e0b14", "scarlet": "#c21f1f",
+               "orange": "#d9622b", "amber": "#d98a1f", "gold": "#c9a227", "yellow": "#d8c23a", "warm white": "#f2d7a6",
+               "white": "#f4f1ea", "green": "#2f8f4e", "teal": "#1f7f7a", "cyan": "#2aa7b8", "blue": "#2446a8",
+               "deep blue": "#16245e", "navy": "#14204a", "indigo": "#2e1f6e", "violet": "#5b2a86", "purple": "#5a2380",
+               "magenta": "#a3207a", "pink": "#d0607f", "rose": "#b0475e", "black": "#000000", "off": "#000000"}
+
+
 def hex_to_rgb(hex_color):
-    h = hex_color.lstrip("#")
+    """'#rrggbb', 'rrggbb', '#rgb', or a plain colour name ('deep red'), as [r, g, b]. ValueError otherwise.
+    The in-the-moment ReelRoom choice could arrive as a word, and int('de', 16) became a 500 (16 October)."""
+    raw = str(hex_color or "").strip().lower()
+    raw = COLOR_NAMES.get(raw, COLOR_NAMES.get(raw.replace("_", " ").replace("-", " "), raw))
+    h = raw.lstrip("#")
+    if len(h) == 3: h = "".join(c * 2 for c in h)
+    if len(h) != 6 or any(c not in "0123456789abcdef" for c in h):
+        raise ValueError("not a colour: %r (use #rrggbb or a colour name)" % str(hex_color)[:40])
     return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
 
 
