@@ -125,6 +125,10 @@ SEQUENCE_KEPT = 5000
 BASELINE_QUERY = "reviewed:true"
 RANDOM_QUERY = "reviewed:true AND length:[40 TO 1000]"
 DEFAULTS = {
+    # The coverage checker's size estimate, from a measurement on Aegis (scripts/lab_token_measure.py --apply). The
+    # defaults are the old byte-per-token preflight, so nothing changes until a measurement replaces them.
+    "coverage_tokens_per_byte": 1.0,
+    "coverage_context_tokens": None,   # None: COVERAGE_CONTEXT_BUDGET
     # Version 3 makes the background Lab near-continuous. Only orient and reflect
     # are Gemma phases, so a 120s phase poll meant an average four-minute gap
     # between Gemma calls. Persisted older cadence must migrate too.
@@ -1110,14 +1114,20 @@ def _narrow(value):
     question already held keeps its exact words, or its hold would not know it. The cut is written down."""
     if not isinstance(value, dict): return value
     q = value.get("question")
-    two = second_ask(q)
-    if not two: return value
     try:
         if _held_exactly(q): return value
     except Exception:
         pass
-    _fault("question_narrowed", ValueError("two asks at: " + two), kept=first_ask(q)[:200])
-    return dict(value, question=first_ask(q))
+    out = q
+    two = second_ask(out)
+    if two:
+        out = first_ask(out)
+        _fault("question_narrowed", ValueError("two asks at: " + two), kept=out[:200])
+    concrete = concrete_ask(out)
+    if concrete != out:
+        _fault("question_made_concrete", ValueError("structural hallmarks of one protein"), kept=concrete[:200])
+        out = concrete
+    return value if out == q else dict(value, question=out)
 
 
 def _held_exactly(question):
@@ -1153,6 +1163,23 @@ def _plan_raw(system, prompt):
 _SECOND_ASK = re.compile(r"(?:,\s*|\s+)(?:and\s+(?:how|why|what|which|whether|do|does|did|is|are|can|could)\b"
                          r"|(?:and\s+)?(?:how\s+(?:do|does|did)\s+(?:these|this|they|it)\b)"
                          r"|(?:as\s+)?compared\s+(?:to|with)\b|in\s+contrast\s+to\b)", re.I)
+
+
+_HALLMARKS = re.compile(r"^\s*what (?:are|is) (?:the )?(?:specific |key |main |defining |distinctive )?structural "
+                        r"(?:hallmarks?|features?|characteristics?)(?: and (?:localization|localisation|function))? "
+                        r"of (?:the )?(?P<x>[^?]{3,90}?)\s*\??\s*$", re.I)
+
+
+def concrete_ask(question):
+    """"What are the structural hallmarks of X?" is the planner's habit (41 of 102 reviews on 17 October) and no record
+    holds "hallmarks": it is answered by what the curated record and its structure list. Asked that way, the review
+    has something to find whole. Other questions pass unchanged."""
+    m = _HALLMARKS.match(str(question or ""))
+    if not m or re.search(r"\b(?:that|which|how|why|whether|in|during|when)\b", m.group("x"), re.I):
+        return question
+    # the record alone, so a protein with no deposited structure is not a missing part; a structure is still read
+    # beside it when one exists (structure_reads: "binding site" is structural)
+    return "Which domains, binding sites and annotated residues does the curated record of %s list?" % m.group("x").strip()
 
 
 def second_ask(question):
@@ -1669,8 +1696,11 @@ def _orient(context, lean=None):
         if deferred: return _on_line(deferred, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
+        # Not gated on "no hold anywhere": holds last a week, so there always is one, and on 17 October 36 of 104
+        # refusals in six hours ended the pass with nothing ("no eligible proposal this pass"). Each candidate is
+        # still checked against the holds itself (_held_question, spent, repeat) before it is admitted.
         if (recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait')
-                and not waiting and not _question_holds()):
+                and not waiting):
             fresh = _fresh_free_inquiry(lab_repeats, spent, lean)
             if fresh: return scoped(_on_line(fresh, {}, None))
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -1726,7 +1756,8 @@ def _orient(context, lean=None):
         "source that addresses it is in hand. A question with one part missing is unanswered as a whole. Residues and "
         "geometry come from a record's feature annotations or a structure's contacts, never from abstracts; the "
         "'structural hallmarks' of a whole genus or system class are not in any one record, so ask about one named "
-        "protein. "
+        "protein. Do not walk a gene family by number (SLC26A10, SLC26A11, ...): numbered members beyond the ones your "
+        "records name may not exist. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
@@ -2149,6 +2180,17 @@ def _next_sourced_record(repeats, spent, lean=None):
     return None
 
 
+# Well-known proteins with curated records and deposited structures, across unrelated classes, so a fallback never
+# walks a gene family by number into genes that do not exist (17 October: SLC26A19, "SLC26A10-27").
+_FRESH_PROTEINS = ('myoglobin', 'lysozyme', 'catalase', 'ubiquitin', 'hemocyanin', 'ferredoxin', 'lactase',
+                   'rhodopsin', 'albumin', 'actin', 'carbonic anhydrase', 'green fluorescent protein', 'insulin',
+                   'cytochrome c', 'thioredoxin', 'calmodulin', 'ferritin', 'transferrin', 'collagen', 'keratin',
+                   'trypsin', 'pepsin', 'urease', 'luciferase', 'bacteriorhodopsin', 'aquaporin', 'kinesin',
+                   'superoxide dismutase', 'nitrogenase', 'photosystem II', 'RuBisCO', 'ATP synthase',
+                   'DNA polymerase', 'hemagglutinin', 'lactoferrin', 'tubulin', 'titin', 'spider silk fibroin',
+                   'antifreeze protein', 'bacterial flagellin')
+
+
 def _fresh_free_inquiry(repeats, spent, lean=None):
     """Choose outside exhausted journal context when free planning is anchored to it."""
     system = 'You are Vintos at his visible Chemistry Lab. Return JSON only.'
@@ -2168,15 +2210,11 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         admitted, _ = _held_to_plan(system, prompt, inquiry, value, lean, None, repeats,
                                     spent=spent, replan=False)
         if not admitted.get('refused'): return admitted
-    if _question_holds():
-        # Changed wording must not make a held question, or its exhausted
-        # neighborhood, look like permission to start a canned substitute.
-        return None
-    # The model can remain anchored even without journal text. Keep a small,
-    # varied source-discovery queue so three failed choices do not become
-    # another evidence_wait. These are review subjects, not claimed findings.
-    for name in ('myoglobin', 'lysozyme', 'catalase', 'ubiquitin', 'hemocyanin',
-                 'ferredoxin', 'lactase', 'rhodopsin', 'albumin', 'actin'):
+    # The model can remain anchored even without journal text. Keep a varied source-discovery queue so three failed
+    # choices do not become another evidence_wait. These are review subjects, not claimed findings; each is checked
+    # against the holds, the spent subjects and the repeats below, so a held question is never restarted under a new
+    # name. (Until 17 October any hold at all returned None here, and something is always held.)
+    for name in _FRESH_PROTEINS:
         inquiry = _inquiry({
             'browse_lane':'protein', 'uniprot_query':'protein_name:"%s" AND reviewed:true' % name,
             'question':_record_connection_question(name),
@@ -3570,12 +3608,19 @@ COVERAGE_FRAMING_RESERVE = 1024
 
 
 def _coverage_budget(request):
+    """Every byte counted as a token until a measurement on Aegis set the real worst ratio (with its margin) and the
+    loaded context (17 October: 14 reviews in six hours were deferred whole under the byte-per-token guess)."""
     system, prompt, output = request
     size = len(system.encode('utf-8')) + len(prompt.encode('utf-8'))
-    total = size + COVERAGE_FRAMING_RESERVE + output
-    return {'prompt_utf8_bytes':size, 'framing_reserve':COVERAGE_FRAMING_RESERVE,
+    cfg = config()
+    try: ratio = min(1.0, max(0.05, float(cfg.get('coverage_tokens_per_byte', 1.0))))
+    except (TypeError, ValueError): ratio = 1.0
+    try: budget = int(cfg.get('coverage_context_tokens') or COVERAGE_CONTEXT_BUDGET)
+    except (TypeError, ValueError): budget = COVERAGE_CONTEXT_BUDGET
+    total = int(size * ratio + 0.999) + COVERAGE_FRAMING_RESERVE + output
+    return {'prompt_utf8_bytes':size, 'tokens_per_byte':ratio, 'framing_reserve':COVERAGE_FRAMING_RESERVE,
             'output_reservation':output, 'conservative_total':total,
-            'context_budget':COVERAGE_CONTEXT_BUDGET, 'fits':total <= COVERAGE_CONTEXT_BUDGET}
+            'context_budget':budget, 'fits':total <= budget}
 
 
 def _coverage_fits(inquiry, observations):
