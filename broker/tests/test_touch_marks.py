@@ -68,6 +68,20 @@ rr = rr[:rr.index("\n@app.")]
 check("his unprompted ReelRoom line is cued privately, never as if she asked why",
       "A private cue only you can see - Gloria did not say this" in rr and "talk TO Gloria" in rr
       and "You chose to speak during the film because" not in rr)
+print("--- ReelRoom: the evening's toys, on her turns and his own ---")
+seg = src[src.index("_REELROOM_EVENING = {"):src.index("_SHAPE_WORDS = (")]
+ns = {}; exec(seg, ns)
+cue = ns["_reelroom_device_cue"](["mission", "tenera", "thruster"])
+check("an unprompted line is told which toys are on, with their tags, and only those",
+      "[TOUCH: mission" in cue and "[DO: tenera" in cue and "thruster" in cue and "ferri" not in cue and "ridge" not in cue, cue)
+check("with no toy on, nothing is said about toys", ns["_reelroom_device_cue"]([]) == "")
+check("every toy has its evening line", all(k in ns["_REELROOM_EVENING"] for k in ("mission", "tenera", "ridge", "thruster", "ferri")))
+av = src[src.index("async def avatar_chat("):]
+check("on her ReelRoom turns the Mission, Tenera, Ridge and thruster keep their wording, with the evening added",
+      'for _rr_d in ("mission", "tenera", "ridge", "thruster"):' in av and '_DEV_LINES[_rr_d] + " " + _REELROOM_EVENING[_rr_d]' in av)
+check("his own moments get the toys that are on", "_reelroom_device_cue(_devices_on())" in rr)
+check("and what he reaches for fires, is stripped from what she sees, and its pictures go into the night's journal",
+      "_rr_fhi(_line, context=_rr_tc.effect_context(\"reelroom\"))" in rr and 'str(_line or "") + _rr_marks' in rr)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

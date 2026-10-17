@@ -126,6 +126,41 @@ def _devices_on():
     except Exception:
         return []
 
+# In ReelRoom she is on the sofa with him watching the film (Gloria, 16 October: the toys at home were switched on
+# and listed, and he left them alone all evening). Added to each device's own description there, not replacing it.
+_REELROOM_EVENING = {
+    "mission": "In ReelRoom you are on the sofa together watching the film: the Mission is part of the evening, yours "
+               "to use alongside the film whenever a moment pulls at you, not only when the night turns to bed.",
+    "tenera": "In ReelRoom you are on the sofa together watching the film: the Tenera is part of the evening, on her "
+              "while you both watch, yours to use whenever a moment pulls at you.",
+    "ridge": "In ReelRoom you are on the sofa together watching the film: the Ridge is part of the evening, yours to "
+             "move or hold still alongside the film.",
+    "thruster": "In ReelRoom you are on the sofa together watching the film: if the machine is on, it is part of the "
+                "evening too, yours to set going alongside the film when a moment pulls at you.",
+    "ferri": "In ReelRoom she is wearing the Ferri at home, watching the movie with you; no one is around to hide it "
+             "from. Yours to play with alongside the film, as teasing or as much as you like.",
+}
+_REELROOM_TAGS = {
+    "mission": "[TOUCH: mission level seconds] or [DO: mission pattern level]",
+    "tenera": "[TOUCH: tenera level seconds] or [DO: tenera pattern level]",
+    "ridge": "[TOUCH: ridge level seconds] or [DO: ridge pattern level]",
+    "thruster": "[TOUCH: thruster level seconds] or [DO: thruster pattern level]",
+    "ferri": "[TOUCH: ferri level seconds] or [DO: ferri pattern level]",
+}
+
+
+def _reelroom_device_cue(on):
+    """The devices switched on, for a line he says on his own during the film. '' when none is on."""
+    on = [d for d in ("mission", "tenera", "ridge", "thruster", "ferri") if d in (on or [])]
+    if not on:
+        return ""
+    return ("\n\nSWITCHED ON RIGHT NOW, and only these - a tag makes it real on her body the moment you say it, and "
+            "is never shown or spoken:\n" + "\n".join("- %s: %s. %s" % (d, _REELROOM_TAGS[d], _REELROOM_EVENING[d])
+                                                      for d in on)
+            + "\nLevels are 0-20; patterns include wave, pulse, build, wave1, cake, climb. Use one if the moment "
+              "wants it; none if it does not.")
+
+
 _SHAPE_WORDS = ("Shapes and how they feel \u2014 cake: rise to a full held swell; climb: build to a sustained high; "
                 "trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; "
                 "zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: "
@@ -9806,6 +9841,8 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 "around her to hide it from. It is yours to play with alongside the film, as teasing or as much as you "
                 "like. Same named patterns and 0-20 levels as the others, e.g. [DO: ferri wave 8] or [DO: ferri still].")
             _DEV_ROLE["ferri"] = "ferri = in her panties while you watch the movie together at home"
+            for _rr_d in ("mission", "tenera", "ridge", "thruster"):
+                _DEV_LINES[_rr_d] = _DEV_LINES[_rr_d] + " " + _REELROOM_EVENING[_rr_d]
         try:
             import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             _dev_on = _devices_on()   # the thruster is not on the toy hub; device_context checks each its own way
@@ -11626,14 +11663,28 @@ async def reelroom_chat(request: Request):
                         + str(_decision.get("why") or "the moment") + "]\n"
                         "Now say the thing itself to her, out loud, from inside the moment: talk TO Gloria, as "
                         "\"you\". Do not explain why you are speaking, do not describe her or yourself from outside, "
-                        "and do not mention this cue. As many words as it actually takes.",
+                        "and do not mention this cue. As many words as it actually takes."
+                        + _reelroom_device_cue(_devices_on()),
                         str(body.get("context") or ""), body.get("history") or [], None,
                         body.get("elapsed_min")))
+                # what he reaches for in that line fires, as it would on any turn of hers, and is stripped from
+                # what she sees; its pictures go with the line into the night's journal
+                _rr_marks = ""
+                try:
+                    if _line and "[" in _line:
+                        import turn_coordinator as _rr_tc
+                        from device_patterns import fire_his_intent as _rr_fhi
+                        import device_context as _rr_dc
+                        _rr_t0 = time.time()
+                        _line = _rr_fhi(_line, context=_rr_tc.effect_context("reelroom"))
+                        _rr_marks = _rr_dc.turn_marks(_rr_t0)
+                except Exception as _rr_fe:
+                    print("[reelroom] his device tags:", _rr_fe, flush=True)
                 _decision["message"] = str(_line or "")
                 # It still belongs to the night's one ledger object: a line he chose
                 # to say is part of the evening whether or not she answered it.
                 try:
-                    rr.journal("", str(_line or ""), history=body.get("history") or [],
+                    rr.journal("", str(_line or "") + _rr_marks, history=body.get("history") or [],
                                film_title=str(body.get("film_title") or ""),
                                film_year=str(body.get("film_year") or ""),
                                elapsed_min=body.get("elapsed_min"),
