@@ -3719,3 +3719,48 @@ regression and unchanged raw article receipts. The separate fixed-host Lab API c
 `docs/security-evidence/2026-10-17-link-fetch-focused.json`.
 
 Deployment and installed-version evidence: pending; source/test completion does not establish runtime protection.
+
+
+## 17 October — trusted text research attachments are ingested
+
+Done (Codex), from `claude/device-visuals-2026-10-13`, including the later DNS-pinning changes through
+`412ea7a1`. The installed Gmail gateway was inspected: it supports `gmail.read_attachment` using the parent
+message ID and the complete attachment ID (exact filename when the ID is unavailable). Its extracted inline
+text can be truncated; ingestion reads the original connector file instead, through the existing public-host
+fetcher, with redirects refused. No email-body URL is used as an attachment download URL.
+
+`want_email` keeps attached text separate from the message body. Supported types are `text/plain` and
+`text/markdown`; decoding is explicit and strict, with an allowlist of text charsets. Trust requires an existing
+contact address or an agent letter whose sender exactly matches the gateway's mailbox profile (including the
+live profile's `email` field). Each attachment keeps message/part ID, filename, MIME type, actual mailbox
+sender, correspondent, decoded byte/character counts and SHA-256. Missing/unsupported/oversized/failed reads
+are explicit receipts. Limits: 128 KiB per attachment, 256 KiB and eight attachments per check, four per message,
+100 MIME parts and depth ten. Attachment excerpts share the existing 15,000-character mail reading budget.
+The four daily searches, morning reservation, link rules, send limits and research study budget remain intact.
+
+`received_mail.research_attachments()` makes complete stored texts available to the existing correspondence
+study. Want context and mail replies show attributed excerpts and retrieval provenance. Scholar notes share
+the existing per-round budget and name their actual excerpt scope; ingestion is not described as full model
+understanding. No conclusions are supplied by the ingestion code.
+
+Validation: the full integrated OS-isolated suite passed 422/422; the last profile-field compatibility correction
+then passed all ten focused suites, including 29 deterministic attachment regressions. Coverage includes
+multiple and duplicate attachments/reads, MIME/charset/byte failures, gateway failures, trust, download-host
+and redirect restrictions, shared prompt limits, concurrent inbox arrivals, and one-message backfill. Providers,
+senders and sockets were blocked/stubbed; no paid model validation was used. See
+`docs/mail-attachments-validation.json` for source hashes, suite results and runtime receipts.
+
+Installed and hash/import verified on Aegis: `want_email.py`, `received_mail.py`, `scholar.py`. Pre-install copies
+and inbox data are recoverable in `~/.vintos/backups/mail-attachments-20261017-103459`; the profile compatibility
+correction has a second backup at `mail-attachments-20261017-103917`. No services or timers were restarted or
+changed, and the separate link-fetch security work was not overwritten.
+
+Live recovery succeeded at 10:39:28 CDT from the original October 16 message `1a144e0973a0ba3e` in thread
+`1a144e033ab33f41`: `wilterson_graziano_2021_pnas.txt` (62,759 bytes / 62,544 characters) and
+`butlin_2025_indicators_tics.txt` (70,013 bytes / 69,555 characters), plus `links.txt`. Complete decoded texts and
+hashes were verified through the installed research retrieval; both papers appear as labelled excerpts in
+want context. They remain Grok Bot's material, with the actual mailbox sender retained, never Gloria's words.
+The original interpretation and read date were preserved. Wants, contacts, reply ledger and schedule hashes
+were unchanged; recovery made zero model calls and sent zero correspondence. A second recovery made no
+Gmail call and changed no inbox bytes. A model's later assessment of the complete papers remains distinct
+from this verified storage/retrieval result; no scientific conclusion was changed.

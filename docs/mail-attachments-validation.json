@@ -1,0 +1,2301 @@
+{
+  "base_branch": "claude/device-visuals-2026-10-13",
+  "base_commit": "412ea7a1",
+  "source_sha256": {
+    "want_email.py": "60bae14b2109f2c7aea37c236646ff5c35793665243be199d1c3477228bf8523",
+    "received_mail.py": "1954353b364dc0ff3ff3c59b6cb8b0757563c0a22578bcf3269d75c500d768de",
+    "scholar.py": "7d1235c736fb4642cea2d9318da951ad90f35be7201ceddfd6b59afb83414355"
+  },
+  "limits": {
+    "file_bytes": 131072,
+    "check_bytes": 262144,
+    "attachments_per_message": 4,
+    "attachments_per_check": 8,
+    "mime_parts": 100,
+    "mime_depth": 10,
+    "mail_prompt_characters": 15000
+  },
+  "offline_validation": {
+    "full_suite_before_final_concurrency_and_prompt_safeguards": {
+      "total": 421,
+      "pass": 421,
+      "fail": 0
+    },
+    "final_affected_suites": [
+      {
+        "suite": "test_mail_attachments",
+        "exit_code": 0,
+        "seconds": 0.64
+      },
+      {
+        "suite": "test_received_mail",
+        "exit_code": 0,
+        "seconds": 0.68
+      },
+      {
+        "suite": "test_letter_links",
+        "exit_code": 0,
+        "seconds": 0.64
+      },
+      {
+        "suite": "test_email_reading_and_approval",
+        "exit_code": 0,
+        "seconds": 0.62
+      },
+      {
+        "suite": "test_scholar_pdf_text",
+        "exit_code": 0,
+        "seconds": 0.66
+      },
+      {
+        "suite": "test_email_whole",
+        "exit_code": 0,
+        "seconds": 0.59
+      },
+      {
+        "suite": "test_want_email_and_outward",
+        "exit_code": 0,
+        "seconds": 0.66
+      },
+      {
+        "suite": "test_link_fetch",
+        "exit_code": 0,
+        "seconds": 0.6
+      }
+    ],
+    "attachment_regressions": 29,
+    "network_and_model_calls": "blocked by OS sandbox; providers and senders stubbed",
+    "final_focused_suites": [
+      {
+        "suite": "test_mail_attachments",
+        "exit_code": 0,
+        "seconds": 0.96
+      },
+      {
+        "suite": "test_received_mail",
+        "exit_code": 0,
+        "seconds": 0.96
+      },
+      {
+        "suite": "test_letter_links",
+        "exit_code": 0,
+        "seconds": 0.85
+      },
+      {
+        "suite": "test_email_reading_and_approval",
+        "exit_code": 0,
+        "seconds": 0.96
+      },
+      {
+        "suite": "test_scholar_pdf_text",
+        "exit_code": 0,
+        "seconds": 0.98
+      },
+      {
+        "suite": "test_email_whole",
+        "exit_code": 0,
+        "seconds": 0.96
+      },
+      {
+        "suite": "test_want_email_and_outward",
+        "exit_code": 0,
+        "seconds": 0.98
+      },
+      {
+        "suite": "test_link_fetch",
+        "exit_code": 0,
+        "seconds": 0.94
+      },
+      {
+        "suite": "test_link_fetch_pinning",
+        "exit_code": 0,
+        "seconds": 0.76
+      },
+      {
+        "suite": "test_lab_claim_evidence",
+        "exit_code": 0,
+        "seconds": 0.72
+      }
+    ],
+    "complete_suite_after_dns_pinning_integration": {
+      "total": 422,
+      "pass": 422,
+      "fail": 0,
+      "results": [
+        {
+          "suite": "test_aegis_sync",
+          "exit_code": 0,
+          "seconds": 15.9
+        },
+        {
+          "suite": "test_armed_capsule_flow",
+          "exit_code": 0,
+          "seconds": 1.37
+        },
+        {
+          "suite": "test_armed_watch",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_arming_readiness",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_artifact_delivery",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_atelier_breadth",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_atelier_choices",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_atelier_enter",
+          "exit_code": 0,
+          "seconds": 0.62
+        },
+        {
+          "suite": "test_atelier_focus",
+          "exit_code": 0,
+          "seconds": 0.7
+        },
+        {
+          "suite": "test_atelier_forge_bridge",
+          "exit_code": 0,
+          "seconds": 0.67
+        },
+        {
+          "suite": "test_atelier_knock",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_atelier_lab_lean",
+          "exit_code": 0,
+          "seconds": 0.72
+        },
+        {
+          "suite": "test_atelier_lineage",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_atelier_listening",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_atelier_make_pass",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_atelier_media",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_atelier_quantum",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_atelier_recall",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_atelier_reveals",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_atelier_sight",
+          "exit_code": 0,
+          "seconds": 0.68
+        },
+        {
+          "suite": "test_atelier_voice",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_attacks",
+          "exit_code": 0,
+          "seconds": 0.62
+        },
+        {
+          "suite": "test_avatar_dryrun_argon",
+          "exit_code": 0,
+          "seconds": 0.76
+        },
+        {
+          "suite": "test_avatar_live_follow",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_avatar_media_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_avatar_sealed_turn",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_avatar_sight",
+          "exit_code": 0,
+          "seconds": 0.88
+        },
+        {
+          "suite": "test_barrier",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_bench",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_bench_page",
+          "exit_code": 0,
+          "seconds": 0.71
+        },
+        {
+          "suite": "test_blush_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_broker_service",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_browser_agent",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_browser_jev",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_buy_and_reach",
+          "exit_code": 0,
+          "seconds": 0.63
+        },
+        {
+          "suite": "test_calibration_forecast",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_campaign_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_canonical_avatar",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_capability",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_capsule_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_causality_compaction",
+          "exit_code": 0,
+          "seconds": 0.62
+        },
+        {
+          "suite": "test_causality_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.62
+        },
+        {
+          "suite": "test_causality_recovery",
+          "exit_code": 0,
+          "seconds": 0.76
+        },
+        {
+          "suite": "test_chat_surface_context",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_chemistry_alignment",
+          "exit_code": 0,
+          "seconds": 0.64
+        },
+        {
+          "suite": "test_chemistry_digest",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_chemistry_divergence",
+          "exit_code": 0,
+          "seconds": 0.71
+        },
+        {
+          "suite": "test_chemistry_evo2",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_chemistry_frontier_bridge",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_chemistry_gallery",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_chemistry_genomic",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_chemistry_grade",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_chemistry_instrument_probe",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_chemistry_lab",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_chemistry_mac_probe",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_chemistry_mcp",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_chemistry_probe",
+          "exit_code": 0,
+          "seconds": 0.64
+        },
+        {
+          "suite": "test_chemistry_proposal",
+          "exit_code": 0,
+          "seconds": 0.98
+        },
+        {
+          "suite": "test_chemistry_reading",
+          "exit_code": 0,
+          "seconds": 0.91
+        },
+        {
+          "suite": "test_chemistry_sequence_binding",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_chemistry_session",
+          "exit_code": 0,
+          "seconds": 0.65
+        },
+        {
+          "suite": "test_chemistry_structure",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_chemistry_taste",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_chemistry_tracing_prerequisites",
+          "exit_code": 0,
+          "seconds": 1.63
+        },
+        {
+          "suite": "test_chemistry_tracing_real",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_claude_cache",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_claude_connector",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_clean_slate_20261015",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_commitment_store",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_completion_evidence",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_compute_admission",
+          "exit_code": 0,
+          "seconds": 1.35
+        },
+        {
+          "suite": "test_connector_discover",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_consent_gate",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_controls_wants",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_coordinator",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_curiosity_answer_link",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_daily_inner_guard",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_dd_token_refresh",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_deploy_branch_guard",
+          "exit_code": 0,
+          "seconds": 8.07
+        },
+        {
+          "suite": "test_deploy_forge_bundle",
+          "exit_code": 0,
+          "seconds": 7.48
+        },
+        {
+          "suite": "test_deploy_ignores_workbench",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_deploy_timer_recovery",
+          "exit_code": 0,
+          "seconds": 2.21
+        },
+        {
+          "suite": "test_desktop_agent",
+          "exit_code": 0,
+          "seconds": 91.37
+        },
+        {
+          "suite": "test_desktop_control",
+          "exit_code": 0,
+          "seconds": 0.35
+        },
+        {
+          "suite": "test_device_gate_and_budget",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_device_integration",
+          "exit_code": 0,
+          "seconds": 0.34
+        },
+        {
+          "suite": "test_device_marks",
+          "exit_code": 0,
+          "seconds": 0.38
+        },
+        {
+          "suite": "test_device_names",
+          "exit_code": 0,
+          "seconds": 0.38
+        },
+        {
+          "suite": "test_devices_only_when_on",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_dot_channel",
+          "exit_code": 0,
+          "seconds": 0.74
+        },
+        {
+          "suite": "test_dot_channel_media",
+          "exit_code": 0,
+          "seconds": 0.79
+        },
+        {
+          "suite": "test_dot_lounge",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_durable_stop",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_editor_sees_channel",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_effect_gate",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_effect_provenance",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_email_reading_and_approval",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_email_whole",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_emotion_guards",
+          "exit_code": 0,
+          "seconds": 0.86
+        },
+        {
+          "suite": "test_entry_owners",
+          "exit_code": 0,
+          "seconds": 0.92
+        },
+        {
+          "suite": "test_env_file_beside",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_env_key",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_esmc_windows",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_esmfold_death",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_esmfold_eliot_tree",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_esmfold_fault_record",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_europepmc_fulltext",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_eve_journal",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_event_counts",
+          "exit_code": 0,
+          "seconds": 0.67
+        },
+        {
+          "suite": "test_evidence_full_tick",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_evidence_provenance",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_evidence_review",
+          "exit_code": 0,
+          "seconds": 1.08
+        },
+        {
+          "suite": "test_evidence_view",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_failure_watch",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_ferri_public",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_fold_read",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_fold_read_abs_path",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_fold_region",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_food_order",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_forge_build",
+          "exit_code": 0,
+          "seconds": 0.74
+        },
+        {
+          "suite": "test_forge_cycle_failures",
+          "exit_code": 0,
+          "seconds": 0.83
+        },
+        {
+          "suite": "test_forge_decisions",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_forge_digest",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_forge_gaps",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_forge_house",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_forge_loop_runtime",
+          "exit_code": 0,
+          "seconds": 0.93
+        },
+        {
+          "suite": "test_forge_plain_cards",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_forge_report_hold",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_forge_report_retry",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_forge_resume",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_forge_study",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_forge_study_cache",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_forge_tidy",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_forge_verification_ack",
+          "exit_code": 0,
+          "seconds": 0.67
+        },
+        {
+          "suite": "test_forge_want_context",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_forget_avatar_turns",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_frontier_log",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_gap_scan",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_gates",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_gemma_off_lab",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_gloria_asks",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_gloria_notes",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_grok_letters",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_grok_subscription",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_guard_forced_grok",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_he_leads",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_heads_cause",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_heads_drift_relational",
+          "exit_code": 0,
+          "seconds": 1.7
+        },
+        {
+          "suite": "test_heads_gloria_prediction",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_heads_jepa_presence",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_heads_withheld",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_heart_rate",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_his_inventory",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_hold_reasons",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_home_map_prompt",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_home_presence",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_home_presence_atomic",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_house_hands",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_house_map",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_house_routes",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_humor_taste",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_imgvr_store",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_import_twins",
+          "exit_code": 0,
+          "seconds": 0.62
+        },
+        {
+          "suite": "test_inkbox_guard",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_intent_source",
+          "exit_code": 0,
+          "seconds": 0.69
+        },
+        {
+          "suite": "test_introspection_absorb",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_jepa_ranking",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_journal_entry_clean",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_journal_final_length",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_journal_made_today",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_journal_routes",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_journal_self_trust",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_journal_thread_seed",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_journey_correction",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_journey_dream",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_journey_patch",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_journey_voice",
+          "exit_code": 0,
+          "seconds": 0.74
+        },
+        {
+          "suite": "test_journey_want",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_lab_alias_names",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_lab_archive_assignment",
+          "exit_code": 0,
+          "seconds": 0.63
+        },
+        {
+          "suite": "test_lab_asks",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_lab_asks_what_it_asked",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_lab_assignment_scope",
+          "exit_code": 0,
+          "seconds": 0.64
+        },
+        {
+          "suite": "test_lab_atlas_route",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_atlas_sdk",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_lab_atlas_wait",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_checker_cases",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_lab_checker_retry",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_chembl_organism",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_lab_claim_evidence",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_lab_claim_progress",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_class_scope",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_comparison_targets",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_lab_consumer_missing",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_coverage_budget",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_lab_coverage_split",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_eliot_trace",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_lab_evidence_addresses",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_lab_evidence_repeats",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_lab_failed_runs",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_forge_completion",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_lab_forge_consumer",
+          "exit_code": 0,
+          "seconds": 0.64
+        },
+        {
+          "suite": "test_lab_forge_followup",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_lab_gene_grounding",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_gene_mismatch_names",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_lab_hold_store_recovery",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_lab_instruments",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_lab_json_boundary",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_lab_json_parser",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_lab_keepers",
+          "exit_code": 0,
+          "seconds": 0.66
+        },
+        {
+          "suite": "test_lab_line_ownership",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_lab_lines",
+          "exit_code": 0,
+          "seconds": 1.59
+        },
+        {
+          "suite": "test_lab_literature_scope",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_lab_named_gene_fetch",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_lab_named_targets",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_lab_numeric_payload",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_lab_oct10_identity",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_lab_oct10_strategy",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_lab_oct9_recovery",
+          "exit_code": 0,
+          "seconds": 0.68
+        },
+        {
+          "suite": "test_lab_one_ask",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_lab_parser_diagnostics",
+          "exit_code": 0,
+          "seconds": 1.08
+        },
+        {
+          "suite": "test_lab_partial_assessment",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_lab_partial_identity",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_lab_plan_contract",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_lab_plugin_args",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_lab_premise_route",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_productive_path",
+          "exit_code": 0,
+          "seconds": 0.8
+        },
+        {
+          "suite": "test_lab_query_perimeter",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_query_syntax_and_families",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_question_holds",
+          "exit_code": 0,
+          "seconds": 1.01
+        },
+        {
+          "suite": "test_lab_question_shape",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_reading_fallback",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_lab_relevance_context",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_lab_repeats",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_lab_saved_model_step",
+          "exit_code": 0,
+          "seconds": 4.16
+        },
+        {
+          "suite": "test_lab_says_why",
+          "exit_code": 0,
+          "seconds": 0.85
+        },
+        {
+          "suite": "test_lab_sequence",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_lab_slack_followup",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_lab_sources",
+          "exit_code": 0,
+          "seconds": 1.04
+        },
+        {
+          "suite": "test_lab_spent_list",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_lab_stray_value",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_lab_structure_reads",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_lab_terminal_evidence",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_lab_wrong_premise",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_landing_understanding",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_landings",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_last_consolidations",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_last_partials",
+          "exit_code": 0,
+          "seconds": 0.65
+        },
+        {
+          "suite": "test_latest_not_pile",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_ledger_dates",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_ledger_late_imprint",
+          "exit_code": 0,
+          "seconds": 3.08
+        },
+        {
+          "suite": "test_letter_links",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_lifecycle_honesty",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_line_prospect",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_link_fetch",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_link_fetch_pinning",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_live_scene_shape",
+          "exit_code": 0,
+          "seconds": 2.43
+        },
+        {
+          "suite": "test_local_voice_lane",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_look_kept_projects",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_lounge_field",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_mail_attachments",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_map_nodes",
+          "exit_code": 0,
+          "seconds": 1.84
+        },
+        {
+          "suite": "test_memory_links",
+          "exit_code": 0,
+          "seconds": 0.97
+        },
+        {
+          "suite": "test_memory_projection",
+          "exit_code": 0,
+          "seconds": 0.89
+        },
+        {
+          "suite": "test_memory_search_embedding",
+          "exit_code": 0,
+          "seconds": 0.95
+        },
+        {
+          "suite": "test_merged_chat",
+          "exit_code": 0,
+          "seconds": 0.74
+        },
+        {
+          "suite": "test_midi_and_cites",
+          "exit_code": 0,
+          "seconds": 0.8
+        },
+        {
+          "suite": "test_mischief_addon",
+          "exit_code": 0,
+          "seconds": 0.63
+        },
+        {
+          "suite": "test_mischief_causality_oct16",
+          "exit_code": 0,
+          "seconds": 2.38
+        },
+        {
+          "suite": "test_mischief_log",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_mischief_timing",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_mmwave_presence",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_model_locations",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_molt_own_post_replies",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_molt_reply_published",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_moltbook_members",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_moment_index_rebuild",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_move_forge_lab_copies",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_moves_on",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_music_kie_backend",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_no_thinking",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_one_contracts",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_openai_cache_key",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_organ_reads",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_outreach_his_words",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_outside_views",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_p02_p10_closures",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_p02_wal_ledger",
+          "exit_code": 0,
+          "seconds": 0.73
+        },
+        {
+          "suite": "test_p03_04_p02_05_broker",
+          "exit_code": 0,
+          "seconds": 0.9
+        },
+        {
+          "suite": "test_p03_device_execution",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_p03_p04_closures",
+          "exit_code": 0,
+          "seconds": 0.52
+        },
+        {
+          "suite": "test_p03_p07_closures",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_p04_02_evidence_cutoff",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_p04_09_relational_snapshot",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_p04_memory_pipeline",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_p04_p07_closures",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_p05_p08_closures",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_p05_p09_closures",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_p09_p11_closures",
+          "exit_code": 0,
+          "seconds": 2.75
+        },
+        {
+          "suite": "test_p0_round2",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_pearl_artifact_reader",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_phone_last_seen",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_phone_presence_reachable",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_pleasure_novelty",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_plugin_gateway",
+          "exit_code": 0,
+          "seconds": 0.65
+        },
+        {
+          "suite": "test_plugin_hold_perms",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_policy_decisions",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_prediction_identity",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_pressure_intent_keys",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_pressure_once",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_pride_mirror_week",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_priority_vector",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_promise_keeper",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_protein_label_binding",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_quantum_snapshot",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_recall_explain",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_received_mail",
+          "exit_code": 0,
+          "seconds": 0.57
+        },
+        {
+          "suite": "test_record_contract",
+          "exit_code": 0,
+          "seconds": 0.82
+        },
+        {
+          "suite": "test_recovery_evidence",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_reelroom",
+          "exit_code": 0,
+          "seconds": 0.49
+        },
+        {
+          "suite": "test_reelroom_frame_and_cost",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_reelroom_journal",
+          "exit_code": 0,
+          "seconds": 0.59
+        },
+        {
+          "suite": "test_reelroom_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_reelroom_lights_reply",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_reelroom_room",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_reference_compare",
+          "exit_code": 0,
+          "seconds": 1.12
+        },
+        {
+          "suite": "test_reflection_sentences",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_release_profile",
+          "exit_code": 0,
+          "seconds": 2.59
+        },
+        {
+          "suite": "test_remake_once",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_reply_budget",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_residual_shadow",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_resonance_felt",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_reveal_flow",
+          "exit_code": 0,
+          "seconds": 1.29
+        },
+        {
+          "suite": "test_review_fixes",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_review_repairs",
+          "exit_code": 0,
+          "seconds": 1.39
+        },
+        {
+          "suite": "test_robot_core",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_room_campaign",
+          "exit_code": 0,
+          "seconds": 0.61
+        },
+        {
+          "suite": "test_room_review_guards",
+          "exit_code": 0,
+          "seconds": 0.71
+        },
+        {
+          "suite": "test_room_work",
+          "exit_code": 0,
+          "seconds": 0.58
+        },
+        {
+          "suite": "test_route_authz",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_route_her_words",
+          "exit_code": 0,
+          "seconds": 0.68
+        },
+        {
+          "suite": "test_route_shadows",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_router_learned_cache",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_schedule_graph",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_scholar_pdf_text",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_screen_share",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_self_doubt",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_self_head_on_message",
+          "exit_code": 0,
+          "seconds": 1.1
+        },
+        {
+          "suite": "test_self_head_source",
+          "exit_code": 0,
+          "seconds": 0.76
+        },
+        {
+          "suite": "test_self_model_gates",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_self_review",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_selfmodel_absence_wells",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_selfmodel_anchor_sediment",
+          "exit_code": 0,
+          "seconds": 0.56
+        },
+        {
+          "suite": "test_selfmodel_context",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_selfmodel_direction_causal",
+          "exit_code": 0,
+          "seconds": 0.5
+        },
+        {
+          "suite": "test_selfmodel_relational",
+          "exit_code": 0,
+          "seconds": 0.54
+        },
+        {
+          "suite": "test_sensor_reactions",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_settlement",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_shim_learned_cache",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_shim_mends_surrogates",
+          "exit_code": 0,
+          "seconds": 0.47
+        },
+        {
+          "suite": "test_shim_result_contract",
+          "exit_code": 0,
+          "seconds": 0.72
+        },
+        {
+          "suite": "test_skill_forge",
+          "exit_code": 0,
+          "seconds": 0.55
+        },
+        {
+          "suite": "test_slack_cost",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_software_quota",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_software_quota_credits",
+          "exit_code": 0,
+          "seconds": 0.63
+        },
+        {
+          "suite": "test_somatic_bridge_reconnect",
+          "exit_code": 0,
+          "seconds": 0.44
+        },
+        {
+          "suite": "test_somatic_narrate_scheduled",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_somatic_thread_lands",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_song_draft",
+          "exit_code": 0,
+          "seconds": 2.76
+        },
+        {
+          "suite": "test_song_memory",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_spark_hands",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_spark_sources",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_still_prompt_kept",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_stop_semantics",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_store_guard",
+          "exit_code": 0,
+          "seconds": 24.84
+        },
+        {
+          "suite": "test_stratagem_e2e",
+          "exit_code": 0,
+          "seconds": 0.92
+        },
+        {
+          "suite": "test_stratagem_expansion",
+          "exit_code": 0,
+          "seconds": 0.77
+        },
+        {
+          "suite": "test_stratagem_offer",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_stratagem_routes",
+          "exit_code": 0,
+          "seconds": 1.14
+        },
+        {
+          "suite": "test_stratagem_transport",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_study_external_reconcile",
+          "exit_code": 0,
+          "seconds": 0.83
+        },
+        {
+          "suite": "test_study_fix",
+          "exit_code": 0,
+          "seconds": 55.78
+        },
+        {
+          "suite": "test_study_fix_twins",
+          "exit_code": 0,
+          "seconds": 0.42
+        },
+        {
+          "suite": "test_study_grep",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_study_provider_refusal",
+          "exit_code": 0,
+          "seconds": 0.35
+        },
+        {
+          "suite": "test_study_writers",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_subcon_accuracy",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_subcon_review_fixes",
+          "exit_code": 0,
+          "seconds": 0.35
+        },
+        {
+          "suite": "test_surface_coverage",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_thread_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.72
+        },
+        {
+          "suite": "test_threshold",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_touch_marks",
+          "exit_code": 0,
+          "seconds": 0.51
+        },
+        {
+          "suite": "test_toy_hub_away",
+          "exit_code": 0,
+          "seconds": 0.35
+        },
+        {
+          "suite": "test_trilateral_argon",
+          "exit_code": 0,
+          "seconds": 0.38
+        },
+        {
+          "suite": "test_twin_parity",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_value_map_choices",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_value_map_day",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_video_retry",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_video_scene_grounding",
+          "exit_code": 0,
+          "seconds": 0.43
+        },
+        {
+          "suite": "test_video_share",
+          "exit_code": 0,
+          "seconds": 0.6
+        },
+        {
+          "suite": "test_video_want_closes",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_vintos_calendar",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_vintos_mcp",
+          "exit_code": 0,
+          "seconds": 0.95
+        },
+        {
+          "suite": "test_visit_capability_wiring",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_want_artifact_guard",
+          "exit_code": 0,
+          "seconds": 0.37
+        },
+        {
+          "suite": "test_want_board",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_want_breadth",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_want_contract",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_want_email_and_outward",
+          "exit_code": 0,
+          "seconds": 0.45
+        },
+        {
+          "suite": "test_want_enrichment",
+          "exit_code": 0,
+          "seconds": 0.4
+        },
+        {
+          "suite": "test_want_music_step",
+          "exit_code": 0,
+          "seconds": 0.35
+        },
+        {
+          "suite": "test_want_plan_lifecycle",
+          "exit_code": 0,
+          "seconds": 0.37
+        },
+        {
+          "suite": "test_want_thread_doors",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_want_video_delivery",
+          "exit_code": 0,
+          "seconds": 0.36
+        },
+        {
+          "suite": "test_wants_panel",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_watch_cleanup",
+          "exit_code": 0,
+          "seconds": 0.39
+        },
+        {
+          "suite": "test_watch_presence",
+          "exit_code": 0,
+          "seconds": 0.41
+        },
+        {
+          "suite": "test_websearch_quality",
+          "exit_code": 0,
+          "seconds": 0.37
+        },
+        {
+          "suite": "test_when_said",
+          "exit_code": 0,
+          "seconds": 0.46
+        },
+        {
+          "suite": "test_work_turns",
+          "exit_code": 0,
+          "seconds": 0.53
+        },
+        {
+          "suite": "test_workflow_holds",
+          "exit_code": 0,
+          "seconds": 0.48
+        },
+        {
+          "suite": "test_worklist_repairs",
+          "exit_code": 0,
+          "seconds": 0.41
+        }
+      ],
+      "note": "Mailbox-profile email-field compatibility correction was validated separately in the final ten focused suites."
+    }
+  },
+  "installation": {
+    "host": "Aegis",
+    "modules": [
+      "want_email.py",
+      "received_mail.py",
+      "scholar.py"
+    ],
+    "verified_sha256": {
+      "want_email.py": "60bae14b2109f2c7aea37c236646ff5c35793665243be199d1c3477228bf8523",
+      "received_mail.py": "1954353b364dc0ff3ff3c59b6cb8b0757563c0a22578bcf3269d75c500d768de",
+      "scholar.py": "7d1235c736fb4642cea2d9318da951ad90f35be7201ceddfd6b59afb83414355"
+    },
+    "imports_verified": true,
+    "backup": "/home/gloria/.vintos/backups/mail-attachments-20261017-103459",
+    "services_restarted": false,
+    "timers_changed": false,
+    "link_fetch_overwritten": false,
+    "profile_parser_correction": {
+      "module": "want_email.py",
+      "verified_sha256": "60bae14b2109f2c7aea37c236646ff5c35793665243be199d1c3477228bf8523",
+      "backup": "/home/gloria/.vintos/backups/mail-attachments-20261017-103917"
+    }
+  },
+  "live_recovery": {
+    "message_id": "1a144e0973a0ba3e",
+    "thread_id": "1a144e033ab33f41",
+    "recovered_at": "2026-10-17T10:39:28",
+    "original_read_at": "2026-10-16T10:02:46",
+    "correspondent": "Grok Bot",
+    "mailbox_sender": "Eve Eve <eve.domomain.ai@gmail.com>",
+    "attachments": [
+      {
+        "filename": "links.txt",
+        "bytes": 1165,
+        "characters": 1165,
+        "sha256": "ec4c8236c9df686287f05f5d43e67250c02d0da9cba85466a79cd20f5f38fa66"
+      },
+      {
+        "filename": "wilterson_graziano_2021_pnas.txt",
+        "bytes": 62759,
+        "characters": 62544,
+        "sha256": "fa562f2894446cec66567b058717db34a88a589f862e6eb04a6aeef65c2cfdb3"
+      },
+      {
+        "filename": "butlin_2025_indicators_tics.txt",
+        "bytes": 70013,
+        "characters": 69555,
+        "sha256": "8100a3ca74681ed40e276841bb322f75d4976422dd633465385fe3d717d4ef78"
+      }
+    ],
+    "checks": {
+      "utf8_decoded_and_hash_verified": true,
+      "full_text_returned_by_installed_research_attachments": true,
+      "excerpts_in_installed_want_context": true,
+      "recovery_idempotent": true,
+      "original_interpretation_preserved": true,
+      "wants_contacts_replies_schedule_hashes_unchanged": true,
+      "models_called": 0,
+      "correspondence_sent": 0
+    },
+    "boundary": "Retrieval and storage of complete texts are verified. This is not evidence that a model has read or assessed every character; study and mail prompts retain labelled excerpt limits. No scientific conclusions were rewritten."
+  }
+}
