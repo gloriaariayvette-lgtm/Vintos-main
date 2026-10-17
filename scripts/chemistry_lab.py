@@ -3664,9 +3664,21 @@ def _coverage_preflight(inquiry, observations, prepared):
     directory = os.path.join(ROOT, 'coverage-deferred')
     path = os.path.join(directory, digest + '.json')
     os.makedirs(directory, exist_ok=True)
+    # The same question over the same evidence is one deferral, whatever else its inquiry carries: on 17 October the
+    # twelve newest snapshots were one 77 KB review saved twelve times, each under a new content address.
+    reused = False
+    if not os.path.exists(path):
+        for name in os.listdir(directory):
+            if not name.endswith('.json'): continue
+            old = _load(os.path.join(directory, name), None)
+            if (isinstance(old, dict) and old.get('original_question') == payload['original_question']
+                    and old.get('coverage_evidence') == evidence):
+                path, digest, reused = os.path.join(directory, name), name[:-5], True
+                break
     # Atomic durable write only once for identical inputs. No evidence is removed
     # to make the request fit; new evidence or scope is evaluated independently.
-    if not os.path.exists(path): _atomic(path, payload)
+    if reused: pass   # an earlier snapshot of this question and evidence stands
+    elif not os.path.exists(path): _atomic(path, payload)
     elif _load(path, None) != payload: raise ValueError('deferred evidence snapshot mismatch')
     return {'answers_question':'not assessed: ' + reason, 'missing_evidence':reason,
             'original_question':inquiry['question'], 'factual_observation':'',

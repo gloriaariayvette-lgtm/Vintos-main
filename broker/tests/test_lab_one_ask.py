@@ -110,6 +110,19 @@ rows = M.measure([snap], post=fake_post)
 check("each saved review is replayed for one token, to the Lab's own model", sent and sent[0]["max_tokens"] == 1
       and sent[0]["model"] == C.LLM_MODEL and rows[0][1] == 1234, (rows, sent[:1]))
 
+print("--- one oversized review is one deferral ---")
+import glob as _g
+_q = {"question": "What does the supplied source establish?"}
+_obs = {"records": [], "LITERATURE": [{"pmid": "111", "abstract": "x" * 200}]}
+json.dump({"coverage_context_tokens": 2000}, open(C.CONFIG, "w"))
+d1 = C._coverage_preflight(dict(_q, id="first"), _obs, C._coverage_request(_q, _obs))
+d2 = C._coverage_preflight(dict(_q, id="second attempt", why_now="again"), _obs, C._coverage_request(_q, _obs))
+snaps = _g.glob(os.path.join(C.ROOT, "coverage-deferred", "*.json"))
+check("the same question over the same evidence is saved once, whatever else its inquiry carries",
+      d1 and d2 and d1["coverage_snapshot"] == d2["coverage_snapshot"] and len(snaps) == 1, (d1 and d1.get("coverage_snapshot"), snaps))
+check("and the saved snapshot still passes the resume check", C._coverage_snapshot(snaps[0])[1] == d1["coverage_snapshot_sha256"])
+os.remove(C.CONFIG)
+
 print("--- a refused pass falls back to a fresh real protein, holds or not ---")
 _saved = (C._plan, C._held_to_plan, C._held_question, C.spent_retrieval, C._question_holds, C._existing_model_read)
 C._plan = lambda system, prompt: {"browse_lane": "protein", "question": "What are the structural hallmarks of human SLC26A19?"}
