@@ -51,6 +51,21 @@ DETECTION_THRESHOLD = 0.62
 def log(msg):
     print(f"[Boundary {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
 
+def _note_embed(ok, why=""):
+    """An embedding that fails leaves this organ blind with nothing to show for it (17 October: every boundary
+    pressure 0, every geometry region absent). The last outcome is kept where the map can read it."""
+    p = os.path.join(MEMORY, "embed-failures.json")
+    try: d = json.load(open(p))
+    except Exception: d = {}
+    if ok:
+        if "behavior_boundaries" not in d: return
+        d.pop("behavior_boundaries", None)
+    else:
+        d["behavior_boundaries"] = {"at": datetime.now().isoformat(timespec="seconds"), "why": str(why)[-300:]}
+    try:
+        tmp = p + ".tmp"; json.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, p)
+    except Exception: pass
+
 def embed(text):
     try:
         r = subprocess.run(
@@ -61,8 +76,10 @@ def embed(text):
             capture_output=True, text=True, timeout=30
         )
         if r.returncode == 0:
-            return json.loads(r.stdout.strip())
-    except: pass
+            v = json.loads(r.stdout.strip()); _note_embed(True); return v
+        _note_embed(False, r.stderr or "exit %s" % r.returncode)
+    except Exception as e:
+        _note_embed(False, "%s: %s" % (type(e).__name__, e))
     return []
 
 def cosine_similarity(a, b):

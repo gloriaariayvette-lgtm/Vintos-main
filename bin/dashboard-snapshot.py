@@ -40,12 +40,12 @@ def snap():
 
     try:
         ni = json.load(open(os.path.join(MEMORY, "narrative-identity.json")))
-        s["narrative_fragments"] = [{"text": f.get("text","")[:100], "weight": f.get("weight",0)} for f in ni.get("fragments",[])[:5]]
+        s["narrative_fragments"] = [{"text": f.get("text","")[:100], "weight": f.get("weight", f.get("count",0))} for f in ni.get("fragments",[])[:5]]
     except: s["narrative_fragments"] = []
 
     try:
         gw = json.load(open(os.path.join(MEMORY, "gravity-wells.json")))
-        s["gravity_wells"] = [{"id": w.get("id",""), "depth": w.get("depth",0), "visit_count": w.get("visit_count",0)} for w in gw.get("wells",[])[:5]]
+        s["gravity_wells"] = [{"id": w.get("id",""), "depth": w.get("mass",0), "visit_count": w.get("visits",0)} for w in gw.get("wells",[])[:5]]
     except: s["gravity_wells"] = []
 
     try:

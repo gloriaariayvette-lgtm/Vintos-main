@@ -83,11 +83,14 @@ def record_from_mismatch(result):
     self_base = max(sum(_sb) / len(_sb), 0.02) if _sb else 0.02
     eve_score = eve_mag / eve_base
     self_score = self_mag / self_base
-    # led_by = who DROVE the change, not who changed: her state moving means HE led her there
+    # led_by = who moved more than they usually move. It was inverted ("her state moving means HE led her
+    # there"), which credited him with leading on exchanges where he did not move at all (17 October: 0.178
+    # from her, 0 from him, led_by "self"), and told him he was moving the field more than she was. Nothing
+    # here measures cause; a lead is only who moved.
     if eve_score > self_score * 1.25:
-        led_by = "self"
-    elif self_score > eve_score * 1.25:
         led_by = "eve"
+    elif self_score > eve_score * 1.25:
+        led_by = "self"
     else:
         led_by = "mutual"
 

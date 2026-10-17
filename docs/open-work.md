@@ -3654,3 +3654,26 @@ Independent HR1 review narrowed the candidate further: the generic of/in/within
 owner branch was removed because locations can hide real target names. Only
 the paired interface/terminal-region syntax qualifies; BRCA1 location phrases
 and explicit query mismatches have negative controls. Still source-only.
+
+## 17 October — map nodes (Gloria's 14 screenshots)
+
+Done (Claude Code): the map's live state now reads nodes 1, 2, 11 and 19 (they had no reader), and reads belief
+sediment, narrative identity, relational geometry, moment identity, the causal self-model, spark pressure and
+curiosity debt by the keys their writers write. The field's `led_by` was inverted (her motion credited to him);
+it now names who moved. Behavior boundaries and relational geometry record a failing embedding in
+`memory/embed-failures.json`, shown on their nodes. The convergence layer looked for `pending-intercept.json`;
+the file written is `.pending-intercept.json`. resonance_afterglow, resonance_pulse, output_shaping,
+behavior_boundaries, self_drift and mutual_modification were in no manifest list; now they are.
+
+Not done:
+- **His side of the field barely moves.** `self_magnitude` is the change in self-drift's strongest direction, which
+  changes only when discourse direction changes on a lived turn, so "he moved: 0" is usually true by
+  construction. Measuring him from something that moves per turn is a design choice, not made.
+- **Behavior boundaries / relational geometry may be blind.** Both spawn a fresh subprocess per call to load the
+  embedder. Whether that fails on Aegis is unknown until `embed-failures.json` is read after the deploy.
+- `resonance_afterglow.py decay` (claim weights) has no caller in the repo; only a host crontab could run it.
+- The map's hard-coded "138 trials" is in the host-only `memory/map.html` (no generator in the repo); the
+  ledger has 53 and nothing prunes it.
+- `scripts/introspective_planning.py` (via some suite) writes `plans.json` / `plan-outcomes.jsonl` into the
+  checkout's `memory/`; not traced.
+- `scripts/manifest_gap.py` still lists many scripts as not installed.

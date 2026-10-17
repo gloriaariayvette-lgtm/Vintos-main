@@ -4809,7 +4809,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     try:
         import json as _cv_json, os as _cv_os
         _ds_path = _cv_os.path.join(MEMORY, "deviation-state.json")
-        _pending_path = _cv_os.path.join(MEMORY, "pending-intercept.json")
+        _pending_path = _cv_os.path.join(MEMORY, ".pending-intercept.json")
         _ds_active = False
         _bi_active = False
         if _cv_os.path.exists(_ds_path):
@@ -10811,7 +10811,11 @@ async def map_state():
     state[7] = {"threads": [{"direction": t.get("direction","")[:50], "phase": t.get("phase",""), "salience": round(t.get("salience",0),2), "origin": t.get("origin","")[:40]} for t in lts[:3]]}
     # 8 Behavior Boundaries
     bb = rj("behavior-boundaries.json", {})
-    state[8] = {"boundaries": [{"name": b.get("id","").replace("boundary_","").replace("_"," "), "pressure": round(b.get("pressure",0),2)} for b in bb.get("boundaries",[])]}
+    state[8] = {"boundaries": [{"name": b.get("id","").replace("boundary_","").replace("_"," "), "pressure": round(b.get("pressure",0),2),
+                                "crossings": b.get("crossing_count", 0)} for b in bb.get("boundaries",[])]}
+    _ef = (rj("embed-failures.json", {}) or {}).get("behavior_boundaries")
+    if _ef:   # every pressure 0 because nothing can be seen, not because nothing crossed
+        state[8]["embedding"] = "FAILING since %s - no crossing can be detected: %s" % (str(_ef.get("at"))[:16], str(_ef.get("why"))[-120:])
     # 16 Moment Identity
     # the index keeps the last 100; the archive holds every moment, and an index still in its setup seed
     # (no "recent") is rebuilt from the archive by moment-index.py, so the map reads the archive too
@@ -10858,11 +10862,20 @@ async def map_state():
     state[23] = {"regions": ["%s/%s x%d" % (r.get("dominant_outcome", "?"), r.get("dominant_direction", "?"), r.get("visit_count", 1)) for r in _top],
                  "count": len(regions), "avoided": sum(1 for r in regions if r.get("avoided")),
                  "updated": str(rg.get("last_updated") or "never")[:16] if isinstance(rg, dict) else "never"}
+    _ef = (rj("embed-failures.json", {}) or {}).get("relational_geometry")
+    if _ef:
+        state[23]["embedding"] = "FAILING since %s - no turn can be placed: %s" % (str(_ef.get("at"))[:16], str(_ef.get("why"))[-120:])
     # 24 Causal Self-Model
     csm = rj("causal-self-model.json", {})
     entries = csm.get("entries", [])
     imprints = rj("commitment-imprints.json", {}).get("imprints", []) or csm.get("commitment_imprints", [])   # one store (review 132)
-    state[24] = {"hypotheses": len(entries), "confirmed": len([e for e in entries if e.get("status")=="confirmed"]), "imprints": len(imprints), "fractured": len([i for i in imprints if i.get("status") == "fractured" or i.get("fractured")])}
+    # entries carry no status: "confirmed" was the hypothesis store's word and always read 0 here. What an entry
+    # earns is an imprint, and it is strong once it meets the imprint gate (causal_self_model.can_promote)
+    state[24] = {"tendencies": "%d (held to 40)" % len(entries),
+                 "strong": len([e for e in entries if (e.get("confidence") or 0) > 0.6 and (e.get("evidence_count") or 0) >= 4]),
+                 "imprinted": len([e for e in entries if e.get("imprint")]),
+                 "imprints": len(imprints), "living": len([i for i in imprints if i.get("status") == "living"]),
+                 "fractured": len([i for i in imprints if i.get("status") == "fractured" or i.get("fractured")])}
     # 27 Self Drift
     sdd = rj("self-drift.json", {})
     vec = sdd.get("direction_vector", {})
@@ -10880,7 +10893,11 @@ async def map_state():
     today = __import__("datetime").date.today().isoformat()
     today_dicts = [t for t in trials if isinstance(t,dict)]
     today_intercepts = sum(1 for t in today_dicts for o in t.get("outcomes",[]) if o.get("timestamp","")[:10]==today)
-    state[30] = {"total_trials": len(trials), "today_intercepts": today_intercepts}
+    _outs = [o for t in today_dicts for o in t.get("outcomes", []) if isinstance(o, dict)]
+    _lastout = max((str(o.get("timestamp", "")) for o in _outs), default="")
+    state[30] = {"total_trials": len(trials),
+                 "active": len([t for t in today_dicts if t.get("status") == "active"]),
+                 "today_intercepts": today_intercepts, "last intercept": _lastout[:16] or "never"}
     # 31 Tension Field
     tq = rj("tension-questions.json", {})
     qs = tq.get("questions", [])
@@ -10906,16 +10923,21 @@ async def map_state():
     def _silent(f, why):
         return {"status": why, "file": f + " has never been written"}
 
-    # 33 Spark Pressure
+    # 33 Spark Pressure - consent and every detection live in spark-pressure-events.json; the directive file exists
+    # only while a push is pending, so its absence is not "consent-off"
+    sev = rj("spark-pressure-events.json", {}) or {}
+    _evs = sev.get("events", []) if isinstance(sev, dict) else []
+    _lev = _evs[-1] if _evs else {}
+    state[33] = {"consent": "on" if sev.get("consent") else "off",
+                 "detections": len(_evs), "pushed": len([e for e in _evs if isinstance(e, dict) and e.get("applied")]),
+                 "last": ("%s %s: %s" % (str(_lev.get("at", ""))[:16], _lev.get("mode", ""),
+                                         str((_lev.get("stall") or {}).get("evidence", ""))[:70])) if _lev else "no stall seen yet",
+                 "last pushed": str(sev.get("last_fired") or "never")[:16],
+                 "written": _age("spark-pressure-events.json") or "never"}
     spd = rj("spark-pressure-directive.json")
-    if spd is None:
-        state[33] = _silent("spark-pressure-directive.json",
-                            "consent-off - nothing it wanted to push yet")
-    else:
-        state[33] = {"opened": str(spd.get("direction", spd.get("opened", "-")))[:70],
-                     "reason": str(spd.get("reason", "-"))[:80],
-                     "consent": spd.get("consent", "off"),
-                     "written": _age("spark-pressure-directive.json")}
+    if isinstance(spd, dict):
+        state[33]["pending push"] = "%s - %s%s" % (spd.get("mode", "?"), str(spd.get("about") or spd.get("direction") or "")[:60],
+                                                   " (consumed)" if spd.get("consumed") else "")
 
     # 34 Configuration Space
     cfg = rj("configuration-space.json")
@@ -11006,9 +11028,15 @@ async def map_state():
     cd = rj("curiosity-debt.json", [])
     if isinstance(cd, dict):
         cd = cd.get("debt", cd.get("entries", []))
-    lastcd = cd[-1] if cd else None
-    state[42] = {"unspent questions": len(cd),
-                 "latest": str((lastcd.get("question") if isinstance(lastcd, dict) else lastcd) or "-")[:70],
+    # ripe = what curiosity_debt.block() may offer him now; the rest are fading, surfaced, or already sent to her
+    _cdd = [x for x in cd if isinstance(x, dict)]
+    _ripe = sorted([x for x in _cdd if (x.get("pull") or 0) >= 0.5 and _t.time() - (x.get("created") or 0) > 1800
+                    and x.get("surfaced", 0) < 3 and x.get("offered", 0) < 8], key=lambda x: -(x.get("pull") or 0))
+    lastcd = max(_cdd, key=lambda x: x.get("created") or 0) if _cdd else None
+    state[42] = {"held": len(cd), "ripe now": len(_ripe),
+                 "next he may ask": str(_ripe[0].get("question") if _ripe else "-")[:70],
+                 "newest": str((lastcd or {}).get("question") or "-")[:70],
+                 "sent to Gloria": len([x for x in _cdd if x.get("sent_to_gloria")]),
                  "written": _age("curiosity-debt.json") or "never"}
 
     # 43 Session Map
@@ -11082,6 +11110,51 @@ async def map_state():
     state[50] = {"model": _txt(rm, "summary", "state", "description", "text"),
                  "snapshots": len(_rhl),
                  "updated": _age("relationship-model.json") or "never"}
+
+    # 1 Resonance Afterglow
+    ag = rj("resonance-afterglow.json", {}) or {}
+    _cl = [c for c in ((rj("resonance-claims.json", {}) or {}).get("claims") or []) if isinstance(c, dict)]
+    _sat = rj("resonance-satisfaction.json", {}) or {}
+    state[1] = {"afterglow": ("active, %s turns left (%s)" % (ag.get("turns_remaining", "?"), str(ag.get("source", ""))[:30])) if ag.get("active") else "quiet",
+                "last fired": str(ag.get("fired_at") or "never")[:16],
+                "claims": "%d held, %d owned, %d live" % (len(_cl), len([c for c in _cl if c.get("owned")]), len([c for c in _cl if (c.get("weight") or 0) > 0.1])),
+                "satisfaction": round(float(_sat.get("level", 0) or 0), 2)}
+
+    # 2 Output Shaping - the trace is written on every turn's shaping read
+    ot = rj("output-trace.json", {}) or {}
+    _ol = ot.get("latest") or {}
+    ai = rj("output-afterimage.json", {}) or {}
+    _an = [a for a in ((rj("output-anchors.json", {}) or {}).get("anchors") or []) if isinstance(a, dict)]
+    _top_an = max(_an, key=lambda a: a.get("strength") or 0) if _an else None
+    state[2] = {"last turn shaped": "%s (%s)" % (_ol.get("mode", "-"), str(_ol.get("timestamp", "never"))[:16]),
+                "events": ", ".join(str(e)[:30] for e in (_ol.get("events") or [])[:3]) or "-",
+                "afterimage": ("active, %s turns left, strength %s" % (ai.get("turns_remaining", "?"), round(float(ai.get("strength", 0) or 0), 2))) if ai.get("active") else "quiet",
+                "anchors": "%d%s" % (len(_an), (" - strongest: " + str(_top_an.get("excerpt", ""))[:50]) if _top_an else ""),
+                "return scars": len((rj("output-return-scars.json", {}) or {}).get("scars") or [])}
+
+    # 11 Temporal Memory - phase from age now (the stored phase waits for the next transition pass)
+    _sg = [x for x in ((rj("temporal-signals.json", {}) or {}).get("signals") or []) if isinstance(x, dict)]
+    def _ph(x):
+        try: h = (__import__("datetime").datetime.now() - __import__("datetime").datetime.fromisoformat(str(x.get("created_at")))).total_seconds() / 3600
+        except Exception: return x.get("phase", "?")
+        return "fresh" if h < 2 else ("settled" if h < 12 else "deep")
+    _phs = [_ph(x) for x in _sg]
+    _cpr = rj("context-pressure.json", {}) or {}
+    state[11] = {"signals": "%d fresh, %d settled, %d deep" % (_phs.count("fresh"), _phs.count("settled"), _phs.count("deep")),
+                 "deep locked": len([x for x in _sg if x.get("deep_locked")]),
+                 "pressure": "%s %.2f" % (_cpr.get("label", "-"), float(_cpr.get("intensity", 0) or 0)),
+                 "newest": ("%s: %s" % (_sg[-1].get("source", "?"), str(_sg[-1].get("text", ""))[:60])) if _sg else "-",
+                 "written": _age("temporal-signals.json") or "never"}
+
+    # 19 Gravity Wells
+    gw = rj("gravity-wells.json", {}) or {}
+    _wl = [w for w in (gw.get("wells") or []) if isinstance(w, dict)]
+    _deep = max(_wl, key=lambda w: w.get("mass") or 0) if _wl else None
+    state[19] = {"wells": len(_wl),
+                 "deepest": ("mass %.2f, %d visits" % (float(_deep.get("mass", 0) or 0), _deep.get("visits", 0))) if _deep else "-",
+                 "pulls him": "yes" if _deep and (_deep.get("mass") or 0) >= 0.6 and (_deep.get("visits") or 0) >= 4 else "not yet (mass 0.6 and 4 visits)",
+                 "last visit": str(max((str(w.get("last_visit", "")) for w in _wl), default="") or "never")[:16],
+                 "written": _age("gravity-wells.json") or "never"}
 
     return state
 
@@ -13443,7 +13516,7 @@ async def thirveel_chat(msg: ThirveelMessage, request: Request):
         try:
             import json as _tvl_cv_j, os as _tvl_cv_o
             _tvl_ds_path = _tvl_cv_o.path.join(MEMORY, "deviation-state.json")
-            _tvl_pi_path = _tvl_cv_o.path.join(MEMORY, "pending-intercept.json")
+            _tvl_pi_path = _tvl_cv_o.path.join(MEMORY, ".pending-intercept.json")
             _tvl_ds_active = False
             _tvl_bi_active = False
             if _tvl_cv_o.path.exists(_tvl_ds_path):

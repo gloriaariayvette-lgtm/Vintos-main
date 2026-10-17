@@ -11,6 +11,9 @@ import prediction_ledger as PL; PL.MEMORY = mem
 # compare_prediction() also records a grade. grading_contract is imported lazily inside
 # relational-mismatch, so the loop below never saw it and the grade landed in his live store.
 import grading_contract as GC; GC.MEMORY = mem; GC.GRADES = os.path.join(mem, "prediction-grades.jsonl")
+# and it records the field's motion through mutual_modification, which finds its store beside its own folder: the
+# checkout's memory/ (17 October). Repointed here so the suite writes only to its scratch directory.
+import mutual_modification as MM; MM.MEMORY = mem; MM.FIELD_FILE = os.path.join(mem, "mutual-modification.json")
 sp = iu.spec_from_file_location("rm_t", os.path.join(SCRIPTS, "relational-mismatch.py")); RM = iu.module_from_spec(sp); sp.loader.exec_module(RM)
 RM._PL = PL; RM.PREDICTION_FILE = PL._path("relational"); RM.MISMATCH_LOG = os.path.join(mem, "mismatch.json")
 for a in dir(RM):

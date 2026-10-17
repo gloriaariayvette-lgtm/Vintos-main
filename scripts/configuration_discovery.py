@@ -59,7 +59,7 @@ def _field_motion_lines(entries):
     for e in entries:
         fd = e.get("field_delta", {})
         mag = fd.get("magnitude", 0.0)
-        led = fd.get("led_by", "?")
+        led = {"eve": "Gloria", "self": "you", "mutual": "both of you"}.get(fd.get("led_by"), "?")
         surp = " — and she surprised your model of her" if fd.get("surprise") else ""
         msg = (e.get("gloria_message") or "").replace("\n", " ").strip()
         ts = (e.get("ts") or "")[:16]

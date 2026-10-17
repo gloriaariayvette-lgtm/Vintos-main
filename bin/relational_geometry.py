@@ -38,6 +38,21 @@ def cos_sim(a, b):
     mb = math.sqrt(sum(x*x for x in b))
     return dot / (ma * mb) if ma and mb else 0.0
 
+def _note_embed(ok, why=""):
+    """An embedding that fails leaves this organ blind with nothing to show for it (17 October: every boundary
+    pressure 0, every geometry region absent). The last outcome is kept where the map can read it."""
+    p = os.path.join(MEMORY, "embed-failures.json")
+    try: d = json.load(open(p))
+    except Exception: d = {}
+    if ok:
+        if "relational_geometry" not in d: return
+        d.pop("relational_geometry", None)
+    else:
+        d["relational_geometry"] = {"at": datetime.now().isoformat(timespec="seconds"), "why": str(why)[-300:]}
+    try:
+        tmp = p + ".tmp"; json.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, p)
+    except Exception: pass
+
 def embed(text):
     import subprocess
     try:
@@ -48,9 +63,12 @@ def embed(text):
              f"print(json.dumps(m.encode({repr(text[:300])}).tolist()))"],
             capture_output=True, text=True, timeout=20
         )
-        return json.loads(r.stdout.strip()) if r.returncode == 0 else []
-    except:
-        return []
+        if r.returncode == 0:
+            v = json.loads(r.stdout.strip()); _note_embed(True); return v
+        _note_embed(False, r.stderr or "exit %s" % r.returncode)
+    except Exception as e:
+        _note_embed(False, "%s: %s" % (type(e).__name__, e))
+    return []
 
 def get_emotional_snapshot():
     """Read current emotional state as dict."""
