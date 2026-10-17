@@ -160,25 +160,15 @@ def claim_queries(names, claim):
     return list(dict.fromkeys(out))
 
 
-def _lab_transport(url, headers, timeout, max_bytes):
-    """link_fetch's transport through the Lab's own HTTP opener (lab_http), which the Lab's suites stub."""
-    import urllib.error, urllib.request
-    import lab_http
-    try:
-        response = lab_http.open_request(urllib.request.Request(url, headers=headers), timeout=timeout)
-    except urllib.error.HTTPError as exc:
-        response = exc
-    body = response.read(max_bytes + 1) or b""
-    over = len(body) > max_bytes
-    return (getattr(response, "status", None) or response.getcode(),
-            {k.lower(): v for k, v in (response.headers or {}).items()}, body[:max_bytes], over)
-
-
 def live_fetch():
-    """Europe PMC through link_fetch's address checks and byte cap, over the Lab's HTTP opener. Only the Lab's own
-    process wires this in (chemistry_lab.py daemon/tick, and the replay); an imported module never reaches out."""
+    """Europe PMC through link_fetch's validated, DNS-pinned production transport.
+
+    Only the Lab daemon/tick and replay wire this in; importing the module never
+    reaches out. Do not inject lab_http here: its separate hostname resolution
+    would reopen the check/connect gap on this alternate article-reading path.
+    """
     import link_fetch
-    return lambda url, **kw: link_fetch.fetch(url, keep_raw=True, article_route=False, transport=_lab_transport, **kw)
+    return lambda url, **kw: link_fetch.fetch(url, keep_raw=True, article_route=False, **kw)
 
 
 def search(query, fetch):

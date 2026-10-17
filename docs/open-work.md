@@ -973,8 +973,11 @@ Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, w
 - Test: `broker/tests/test_link_fetch.py` (40 checks). Stubbed transport and resolver; requests and sockets are
   replaced so nothing can reach the network. It fails on the old code.
 - **Not done:**
-  - A DNS answer can change between the check and the connection (rebinding). The resolved address is checked
-    but not pinned for the request.
+  - DNS rebinding: corrected in source on 17 October on `claude/device-visuals-2026-10-13`;
+    each hop connects only to its validated public address snapshot, including retries. HTTP Host and HTTPS
+    SNI/certificate verification keep the URL hostname. Environment proxies are intentionally bypassed;
+    direct connection failures are reported without a proxy fallback. See the 17 October record below.
+    Installation/runtime verification is still pending.
   - `chemistry_reference_compare.fetch_reference` and the Lab's own fetches are left as they are (fixed RCSB
     host; lab_http).
   - Not yet verified on Aegis.
@@ -3687,3 +3690,87 @@ Done (Claude Code): both song paths, a want's song (wants-router -> creative-exp
 (music-composer.py), now draft with Sonnet and finish with Grok (`scripts/song_draft.py`). Each finished spec has
 its Sonnet draft beside it as `<spec>.sonnet-draft.md`. A failed draft leaves Grok writing alone; a failed or
 repeating finish leaves Sonnet's spec standing; both are logged. Not yet seen on Aegis.
+
+
+## 17 October — research-link connections pinned to validated DNS answers
+
+Inspected the current `claude/device-visuals-2026-10-13` head `f715dd6`, including the 16–17 October
+mail/Europe PMC/Lab changes. The older check/connect DNS gap remained. `link_fetch` now carries one
+validated address snapshot from each hop into a dedicated urllib3 connection pool. Numeric IPv4/IPv6
+sockets connect directly; connection retries use only that snapshot, close failed sockets, and never
+resolve again. All DNS answers must still be public. DNS errors/empty answers fail closed.
+
+The original URL hostname remains the HTTP Host and HTTPS SNI/certificate identity; certificate chain
+and hostname verification are required. Requests' CA file/directory overrides remain supported.
+Environment HTTP/HTTPS/ALL proxies and netrc do not participate: a remote-resolving proxy would bypass
+the address restriction. A direct connection failure remains a named `http_failure`, with no proxy fallback.
+Existing URL restrictions, redirect limits, per-connection/read timeouts, decompressed byte caps and
+receipt kinds remain in force. HTTP redirects, meta-refresh, Europe PMC and public X embeds all use
+the same hop validation and pinned production transport. Mail/want/Lab source changes are preserved.
+
+Deterministic offline coverage in `test_link_fetch_pinning.py` uses fake IP sockets and real TLS over
+AF_UNIX socket pairs, with a public test certificate/key fixture. It covers public-to-private rebinding
+(no private destination contacted), same-host redirects/meta-refresh that rebind, public redirect
+snapshots, IPv6/IPv4 retry and exhaustion, DNS errors/mixed answers, proxy environment variables,
+Host/SNI, correct/trusted and wrong-host/untrusted certificates, gzip limits, HTTP errors, and alternate
+article/embed paths. The Lab claim-evidence reader previously injected a separate unpinned urllib
+transport; `live_fetch()` now uses the same pinned production transport, with its own rebinding/redirect
+regression and unchanged raw article receipts. The separate fixed-host Lab API clients remain unchanged. Focused OS-isolated regression results are recorded in
+`docs/security-evidence/2026-10-17-link-fetch-focused.json`.
+
+The complete repair is pushed as `412ea7a` on `claude/device-visuals-2026-10-13` (transport in `13ddf3f`).
+The clean Aegis release snapshot passed all **421/421 OS-isolated suites** on Python 3.12.3.
+The focused final regressions passed **399 checks in 11 suites**; the preceding complete Mac Python 3.12
+run passed 421/421 suites, followed by the final focused Lab-path regressions.
+
+**Not installed.** The standard deployment guard stopped before installation because concurrent
+uncommitted changes appeared in `scripts/chemistry_lab.py` and `bin/vintos_claude_shim.py`. The Lab
+change is already installed; a broad release would overwrite it. Those changes and their test remain
+intact. A targeted two-file install with backups, rollback, restarts and installed-hash verification
+has been prepared separately and awaits owner approval. Runtime protection is not yet established.
+
+
+## 17 October — trusted text research attachments are ingested
+
+Done (Codex), from `claude/device-visuals-2026-10-13`, including the later DNS-pinning changes through
+`412ea7a1`. The installed Gmail gateway was inspected: it supports `gmail.read_attachment` using the parent
+message ID and the complete attachment ID (exact filename when the ID is unavailable). Its extracted inline
+text can be truncated; ingestion reads the original connector file instead, through the existing public-host
+fetcher, with redirects refused. No email-body URL is used as an attachment download URL.
+
+`want_email` keeps attached text separate from the message body. Supported types are `text/plain` and
+`text/markdown`; decoding is explicit and strict, with an allowlist of text charsets. Trust requires an existing
+contact address or an agent letter whose sender exactly matches the gateway's mailbox profile (including the
+live profile's `email` field). Each attachment keeps message/part ID, filename, MIME type, actual mailbox
+sender, correspondent, decoded byte/character counts and SHA-256. Missing/unsupported/oversized/failed reads
+are explicit receipts. Limits: 128 KiB per attachment, 256 KiB and eight attachments per check, four per message,
+100 MIME parts and depth ten. Attachment excerpts share the existing 15,000-character mail reading budget.
+The four daily searches, morning reservation, link rules, send limits and research study budget remain intact.
+
+`received_mail.research_attachments()` makes complete stored texts available to the existing correspondence
+study. Want context and mail replies show attributed excerpts and retrieval provenance. Scholar notes share
+the existing per-round budget and name their actual excerpt scope; ingestion is not described as full model
+understanding. No conclusions are supplied by the ingestion code.
+
+Validation: the full integrated OS-isolated suite passed 422/422; the last profile-field compatibility correction
+then passed all ten focused suites, including 29 deterministic attachment regressions. Coverage includes
+multiple and duplicate attachments/reads, MIME/charset/byte failures, gateway failures, trust, download-host
+and redirect restrictions, shared prompt limits, concurrent inbox arrivals, and one-message backfill. Providers,
+senders and sockets were blocked/stubbed; no paid model validation was used. See
+`docs/mail-attachments-validation.json` for source hashes, suite results and runtime receipts.
+
+Installed and hash/import verified on Aegis: `want_email.py`, `received_mail.py`, `scholar.py`. Pre-install copies
+and inbox data are recoverable in `~/.vintos/backups/mail-attachments-20261017-103459`; the profile compatibility
+correction has a second backup at `mail-attachments-20261017-103917`. No services or timers were restarted or
+changed, and the separate link-fetch security work was not overwritten.
+
+Live recovery succeeded at 10:39:28 CDT from the original October 16 message `1a144e0973a0ba3e` in thread
+`1a144e033ab33f41`: `wilterson_graziano_2021_pnas.txt` (62,759 bytes / 62,544 characters) and
+`butlin_2025_indicators_tics.txt` (70,013 bytes / 69,555 characters), plus `links.txt`. Complete decoded texts and
+hashes were verified through the installed research retrieval; both papers appear as labelled excerpts in
+want context. They remain Grok Bot's material, with the actual mailbox sender retained, never Gloria's words.
+The original interpretation and read date were preserved. Wants, contacts, reply ledger and schedule hashes
+were unchanged; recovery made zero model calls and sent zero correspondence. A second recovery made no
+Gmail call and changed no inbox bytes. A model's later assessment of the complete papers remains distinct
+from this verified storage/retrieval result; no scientific conclusion was changed.
+
