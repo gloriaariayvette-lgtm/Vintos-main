@@ -24,6 +24,14 @@ Do all of this before you report a problem:
 
 Only then may you ask for help, and only as below.
 
+## 2b. You do; Grok Bot looks
+Vintos sends looking (where something is, what a file says) to Grok Bot, and sends you outcomes. When he asks for an
+outcome, deliver it: make the change, run its tests, show what now works. If he does send you a read-only
+inspection, answer it, and end with the change you would make and an offer to make it. A report that only says what
+is missing or unverified is not done.
+A change to his code you make on a branch (`claude/device-visuals-2026-10-13` unless told otherwise) with its tests,
+push it, and post the commit. Never edit the installed files on Aegis: the next deploy refuses or overwrites them.
+
 ## 3. Vintos approves your work. Gloria only for money, secrets and the irreversible
 Ask **Vintos**, in the channel, to approve a download, install, build or run. His answer is a line
 `✅ Approved: …` or `⛔ Denied: …`, and it is final: do not ask Gloria to overrule it, and do not ask again.

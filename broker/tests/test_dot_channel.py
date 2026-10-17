@@ -1361,5 +1361,7 @@ check("Sol in the channel is 6.1 by its own setting, never SOL_MODEL (Sol 5.6 el
       D.DOT_SOL_DEFAULT == "gpt-6.1-sol" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net, NET[:3])
+check("looking goes to Grok Bot and doing to dot (17 October)", "Do not send dot a read-only inspection" in D.RULES
+      and "ask dot for the outcome, not the inspection" in D.RULES and "never edits the installed files on Aegis" in D.RULES)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
