@@ -977,7 +977,7 @@ Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, w
     each hop connects only to its validated public address snapshot, including retries. HTTP Host and HTTPS
     SNI/certificate verification keep the URL hostname. Environment proxies are intentionally bypassed;
     direct connection failures are reported without a proxy fallback. See the 17 October record below.
-    Installation/runtime verification is still pending.
+    Installed and hash/import verified on Aegis on 17 October at 11:12 CDT; see the 17 October DNS record below.
   - `chemistry_reference_compare.fetch_reference` and the Lab's own fetches are left as they are (fixed RCSB
     host; lab_http).
   - Not yet verified on Aegis.
@@ -3723,11 +3723,23 @@ The clean Aegis release snapshot passed all **421/421 OS-isolated suites** on Py
 The focused final regressions passed **399 checks in 11 suites**; the preceding complete Mac Python 3.12
 run passed 421/421 suites, followed by the final focused Lab-path regressions.
 
-**Not installed.** The standard deployment guard stopped before installation because concurrent
-uncommitted changes appeared in `scripts/chemistry_lab.py` and `bin/vintos_claude_shim.py`. The Lab
-change is already installed; a broad release would overwrite it. Those changes and their test remain
-intact. A targeted two-file install with backups, rollback, restarts and installed-hash verification
-has been prepared separately and awaits owner approval. Runtime protection is not yet established.
+**Installed after explicit owner approval, 17 October at 11:12 CDT.** A targeted two-file transaction
+installed only `link_fetch.py` and `lab_claim_evidence.py` from the clean, 421-suite-tested security release.
+Server, Chemistry Lab and MCP were restarted and confirmed running with new PIDs. Both installed/imported
+SHA-256 values match the tested sources. Direct and wrapped RCSB links, Europe PMC full text, and the Lab's
+claim-evidence search all returned HTTP 200/fetched; each connected peer belonged to its validated snapshot.
+The standard broad deployment remained refused. Concurrent installed Lab/shim completion-diagnostics and
+mail-attachment changes were preserved byte for byte; neither the live checkout nor those files was overwritten.
+Backup/rollback: `/home/gloria/.vintos/backups/dns-pinning-20261017-111213/restore.sh`.
+Evidence: `docs/security-evidence/2026-10-17-dns-pinning-installed.json`.
+
+Read-only comparison against branch `56a9b72` covered all 42 tracked Lab/shim files in the named scope:
+only `chemistry_lab.py` and `vintos_claude_shim.py` differ. Both contain Codex's separate completion-diagnostics
+repair, installed at 10:30:48 CDT, verified against its installation receipt and current hashes. The shim's
+active checkout copy and its installed symlink target carry the same correction. Two additional host-only
+Lab scripts (`chemistry_mac_probe.py`, `lab_daily_digest.py`) are absent from the branch; their installers
+were not established. All are preserved. Full paths, hashes, diffs, metadata, and provenance are recorded in
+`docs/security-evidence/2026-10-17-lab-shim-installed-differences.json`.
 
 
 ## 17 October — trusted text research attachments are ingested

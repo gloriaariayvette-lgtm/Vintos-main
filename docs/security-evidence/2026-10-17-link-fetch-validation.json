@@ -90,7 +90,7 @@
     "passed": 421,
     "failed": 0
   },
-  "deployment": "Standard workflow refused concurrent, already-installed, uncommitted Lab diagnostics changes before installation. Targeted two-file installer prepared and scratch-validated; owner approval pending. Runtime protection not yet established.",
+  "deployment": "Completed after explicit owner approval using a targeted two-file transaction; installed hashes, consumer restarts, preserved concurrent files, and four public link probes verified. See 2026-10-17-dns-pinning-installed.json.",
   "subsequent_lab_transport_fix_focused": [
     {
       "suite": "test_link_fetch_pinning",
