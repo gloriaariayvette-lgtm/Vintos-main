@@ -185,7 +185,7 @@ drafts, studied = [], []
 def capture(provider, model, system, user, reservation):
     drafts.append(user); return None                  # nothing is drafted, so nothing can be sent
 _study0 = E._study
-E._study = lambda addr, name, about, get=None, think=None, links=(): (studied.append(list(links)), ("", {}))[1]
+E._study = lambda addr, name, about, get=None, think=None, links=(): (studied.append(list(links)), ("(their paper, read in full)", {"address": addr}))[1]
 out = E.run({"recipient": "Michael S. A. Graziano", "about": "singular attention in the attention schema theory",
              "to": "graziano@princeton.edu"}, "I want to email Michael S. A. Graziano at Princeton", "5c1cd5da",
             search=search, fetch=page, call=capture, reserve=lambda *a, **k: (True, "ok"),

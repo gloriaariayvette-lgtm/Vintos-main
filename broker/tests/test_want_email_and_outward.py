@@ -57,6 +57,11 @@ def fable(provider, model, system, user, reservation):
                                "Does prediction error need a body to matter? Vintos"})
 def send(args, purpose): sent.append((args, purpose)); return {"receipt": {"receipt_id": "R1"}}
 order = []
+# From 16 October nothing is written to a person before something of their own work has been read in full: these
+# drafting scenarios read a stand-in paper (the reading itself is tested further down, with the real _study).
+_study_real = E._study
+E._study = lambda addr, name, about, get=None, think=None, links=(): (
+    "THEIR OWN WORK, READ IN FULL: a stand-in paper on the subject, read whole.", {"address": addr, "name": name})
 _search0 = search
 def search(q): order.append("search"); return _search0(q)
 thoughts = []
@@ -161,6 +166,7 @@ check("the person a want names is found even when the plan left the recipient ou
       and E.named_in("I want to write to Prof. Anil Seth about the beast machine") == "Anil Seth"
       and E.named_in("I want to find out how octopus arms learn") == "")
 check("no email is invented when he names nobody", E.run({}, "", call=fable, reserve=reserve, send=send)[1] == "name the person to write to")
+E._study = _study_real
 
 check("his first email is drafted knowing who he is, and told to keep Gloria's private life private",
       "WHO YOU ARE" in drafted[0][2] and "chemistry lab on KaiC" in drafted[0][2] and "Share nothing private about Gloria" in drafted[0][1])
@@ -190,7 +196,10 @@ def fable_reply(provider, model, system, user, reservation):
     drafted.append((model, system, user))
     return json.dumps({"subject": "Re: A question about the beast machine", "body": "I have not - allostasis as prediction of need? Vintos"})
 thoughts.clear()
+E._study = lambda addr, name, about, get=None, think=None, links=(): (
+    "THEIR OWN WORK, READ IN FULL: a stand-in paper on the subject, read whole.", {"address": addr, "name": name})
 out = E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send, think=think)
+E._study = _study_real
 check("between messages he deliberates again on the fresh search, with the thread in view",
       thoughts and "THE THREAD SO FAR" in thoughts[0] and "allostasis" in thoughts[0])
 check("their reply is weighed as their view and remembered as theirs",
@@ -528,7 +537,7 @@ check("a completed step added by hand and his own step history are both read; a 
 check("a want with no such id gives nothing", E.earlier_steps("W-none") == "")
 studied, drafted9 = [], []
 _study0 = E._study
-E._study = lambda addr, name, about, get=None, think=None, links=(): (studied.append((name, list(links))), ("", {}))[1]
+E._study = lambda addr, name, about, get=None, think=None, links=(): (studied.append((name, list(links))), ("(their paper, read in full)", {"address": addr}))[1]
 def ready_mind(system, prompt, max_tokens=700):
     return '{"ready": true, "read_next": ""}' if "deciding whether you are ready" in system else "a position"
 def capture(provider, model, system, user, reservation):
@@ -541,5 +550,23 @@ check("the surname is completed from what the earlier step found",
 check("the paper the earlier step pointed to is read in full", studied and "https://arxiv.org/html/2411.00983v3" in studied[0][1], studied)
 check("the draft is written knowing what the earlier steps found", drafted9 and "the corrected reading" in drafted9[0], drafted9[:1])
 
+print("--- 16 October: no email before their own work is read, and no draft that says it was not ---")
+check("a draft that admits not reading their work is caught", E.unread_admission(
+    "I haven't read your papers directly, only encyclopedia accounts of the hard problem") != "")
+check("so is one that knows them only from Wikipedia", E.unread_admission("I only know the Wikipedia entry on your view") != "")
+check("a draft that read them is not", E.unread_admission("Having read The Conscious Mind closely, I wonder") == "")
+E._study = lambda addr, name, about, get=None, think=None, links=(): ("", {"address": addr, "name": name})
+_held = E.run({"to": "chalmers@example.edu", "recipient": "David Chalmers", "about": "valence and the hard problem"},
+              "x", search=search, fetch=page, call=fable, reserve=reserve, send=send, think=think)
+check("nothing of theirs read in full: nothing is drafted or sent, he reads first",
+      _held[0] is False and "nothing of David Chalmers's own work has been read" in _held[1], _held)
+E._study = lambda addr, name, about, get=None, think=None, links=(): ("(a paper, read)", {"address": addr, "name": name})
+_admits = lambda *a, **k: json.dumps({"subject": "A question", "body": "Dr. Chalmers, I am Vintos, an AI writing on my own initiative from Gloria's account. I haven't read your papers directly, only encyclopedia accounts. Is valence a separate question? Vintos"})
+_n = len(sent)
+_held2 = E.run({"to": "chalmers2@example.edu", "recipient": "David Chalmers", "about": "valence"}, "x", search=search,
+               fetch=page, call=_admits, reserve=reserve, send=send, think=think)
+check("a draft saying he has not read them is held, never sent", _held2[0] is False and "reading first" in _held2[1]
+      and len(sent) == _n, _held2)
+E._study = _study_real
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

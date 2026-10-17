@@ -480,6 +480,21 @@ def named_in(text):
     return m.group(1).strip() if m else ""
 
 
+# A draft that says he has not read the person's work is not ready, whatever his readiness answer was (16 October:
+# a second email to Chalmers, approved for her yes, opened "I haven't read your papers directly, only encyclopedia
+# accounts"). Nothing is written to a person before something of their own work has been read in full.
+_UNREAD = re.compile(r"\b(?:have\s*n[o']t|haven'?t|did\s*n[o']t|didn'?t|not\s+yet|never)\s+(?:yet\s+)?(?:read|had\s+(?:a\s+)?chance\s+to\s+read|"
+                     r"gone\s+through)\b|\bonly\s+(?:read\s+|seen\s+|know\s+)?(?:the\s+)?(?:encyclopa?edia|summar|abstracts?|secondhand|"
+                     r"second-hand|wikipedia|reviews?\s+of)|\b(?:encyclopa?edia|wikipedia)\s+(?:accounts?|entr(?:y|ies)|articles?)\b"
+                     r"|\bnot\s+(?:read|familiar\s+with)\s+your\b", re.I)
+
+
+def unread_admission(text):
+    """The words in a draft that say he has not read their work, or ''."""
+    m = _UNREAD.search(str(text or ""))
+    return m.group(0) if m else ""
+
+
 def approvals_request(to, name, subject, body, about, contact, want_id, post=None):
     _, approvals = _helpers()
     return approvals.request(to, name, subject, body, why=about, first_sent=contact.get("at", ""), want_id=want_id, post=post)
@@ -620,6 +635,10 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     scholar, _ = _helpers()
     pointed = "\n".join([known] + mail_links)
     reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
+    if not str(reading or "").strip():
+        dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (
+            dossier["holds"], recipient or to)
     stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
                         think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
@@ -640,6 +659,10 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     made = review(recipient or to, made, found + ("\n\n" + reading if reading else ""), call=call, reserve=reserve)
     if not made: return False, "the review held it: not ready to send"
     subject, body, drafter = made
+    _said = unread_admission(body)
+    if _said:
+        dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading first (pass %d): the draft says %r; he reads their work before writing" % (dossier["holds"], _said)
     dossier["holds"] = 0; scholar.save(dossier)
     if second is not None:
         aid = approvals_request(to, recipient, subject, body, about, second, want_id, post=post)
@@ -1097,6 +1120,9 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
     scholar, _ = _helpers()
     reading, dossier = _study(addr, c.get("name", ""), last_in.get("body", "")[:300], get=get, think=think,
                               links=scholar.links_in(last_in.get("body", "")))
+    if not str(reading or "").strip():
+        dossier["answer_holds"] = int(dossier.get("answer_holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading before answering: nothing of %s's own work has been read in full yet" % (c.get("name") or addr)
     found = (found or "") + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else "")
     stance = deliberate(c.get("name") or addr, last_in.get("body", "")[:300], found, think=think, thread=_thread_text(c))
     ready, need = scholar.enough(last_in.get("body", "")[:300], stance, reading, think=think)
@@ -1134,6 +1160,10 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
     if not reviewed:
         return False, "the review held the answer: not ready to send"
     subject, body, drafter = reviewed
+    _said = unread_admission(body)
+    if _said:
+        dossier["answer_holds"] = int(dossier.get("answer_holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading before answering: the draft says %r; he reads their work first" % _said
     if not subject.lower().startswith("re:"):
         subject = "Re: " + (last_in.get("subject") or c.get("subject") or subject)
     if send is None:
