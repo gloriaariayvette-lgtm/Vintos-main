@@ -236,7 +236,12 @@ def _kie_poll(tid):
             d = (data.get("data") or {})
             status = str(d.get("status") or "")
             if status in FAIL:
-                print(f"  Kie failed: {status}", file=sys.stderr); return None
+                detail = str(d.get("errorMessage") or "")
+                if KIE_KEY: detail = detail.replace(KIE_KEY, "[redacted]")
+                detail = " ".join(detail.split())[:400]
+                print(f"  Kie failed: {status} (code {d.get('errorCode')}): {detail}", file=sys.stderr)
+                _landing_failed("kie:" + tid, status, d.get("errorCode"), detail)
+                return None
             resp = d.get("response") or {}
             items = resp.get("sunoData") or resp.get("data") or []
             tracks = [{"file": (it.get("audioUrl") or it.get("audio_url") or it.get("streamAudioUrl")),
@@ -364,9 +369,16 @@ def parse_prompt(fp):
     d["raw"] = content
     return d
 
+def _without_reference_sections(style):
+    """A named reference is an instruction to a writer, not a renderer tag.
+    Keep the sonic description around it; do not maintain an incomplete artist blacklist."""
+    return re.sub(r"\b(?:references?|reference points?|influences?|inspirations?)\s*:\s*[^.\n]*(?:\.|$)",
+                  "", style, flags=re.I).strip()
+
+
 def style_str(d):
     parts=[x for x in [d.get("genre"),d.get("tempo"),d.get("key")] if x]
-    style = ", ".join(parts) if parts else "Instrumental"
+    style = _without_reference_sections(", ".join(parts)) if parts else "Instrumental"
     # Reference phrasing ("think X meets Y") is stripped before the style reaches the backend. The
     # original reason was Kie.ai's rejection of artist names; the backend is now local ACE-Step, whose
     # handling of references has NOT been tested from here (fable-creative-p4, 2026-09-05) - the strip
@@ -381,7 +393,7 @@ def style_str(d):
     if not style:
         return "Instrumental"
     # If original had artist references, use LLM to rephrase as pure sonic descriptors
-    original = ", ".join(parts) if parts else ""
+    original = _without_reference_sections(", ".join(parts)) if parts else ""
     if original != style:
         try:
             import urllib.request as _ur, json as _js
@@ -450,6 +462,21 @@ def _landing_done(tid, files):
             if l.get("task_id")==tid: l["state"]="landed"; l["files"]=[os.path.basename(f) for f in files]; l["landed_at"]=datetime.now().isoformat()
         save_log(log)
     except Exception as _le: print("  landing record not closed:", _le)
+
+
+def _landing_failed(tid, status, code, detail):
+    """A provider's terminal refusal is not an in-flight task to poll forever.
+    Timeouts and transport errors remain pending: their outcome is still unknown."""
+    from store_guard import transaction
+    with transaction(LOG):
+        log = load_log()
+        changed = False
+        for landing in log.get("landings", []):
+            if landing.get("task_id") == tid and landing.get("state") == "landing":
+                landing.update(state="failed", failed_at=datetime.now().isoformat(),
+                               failure={"status": status, "code": code, "detail": detail})
+                changed = True
+        if changed: save_log(log)
 
 def pending_landings(max_age_h=48):
     """Landings that began and never closed (state landing): the pieces a crash left mid-air."""
@@ -793,7 +820,8 @@ def main():
         todo=[f for f in files if f not in done]
         if not todo: print("All done: no prompt waiting to be rendered"); sys.exit(0)
         target=todo[-1]
-        process_file(target,a.force)
+        if process_file(target,a.force) is False:
+            raise SystemExit(1)
 
 # Resolve sibling helpers for direct file loading as well as deployed entrypoints.
 import sys as _guard_sys
