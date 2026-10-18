@@ -33,7 +33,7 @@ move again (#9); architecture.html carries #82-85, #93, #94 and today's numbers 
 - #6 server side: the repository daemon (`skills/emoclaw/engine/emotion_model/daemon.py`) now carries the installed
   copy's nudge, set_state, read and live state file beside version; unknown commands no longer run inference.
   **Not done:** installing it over `~/.vintos/workspace/emotion_model/daemon.py` (the deploy places files by
-  basename and "daemon.py" is not safe to add) and restarting `vintos-emotion.service`; the command is with her.
+  basename and "daemon.py" is not safe to add) and restarting `vintos-emoclaw.service` (the guard named a unit that never existed; fixed); she installed the file 18 October, restart pending.
 - `inclination_engine.py` is not in the deploy manifest; the host copy may differ.
 - Her Anthropic spend (~$30 in two days): no Anthropic call is in the paid-call ledger. The shim sends every request
   over 120 tokens to Anthropic first (Haiku 5.5 for a non-Claude name), so scripts that ask for "grok" run on
