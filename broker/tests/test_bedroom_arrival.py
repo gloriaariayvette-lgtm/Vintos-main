@@ -12,6 +12,9 @@ socket.socket.connect = _no
 SENT = []; ASLEEP = [False]
 sys.modules["watch_apns"] = types.SimpleNamespace(send=lambda title, body, kind="message", media_url="", **k:
                                                   (SENT.append((title, kind, media_url)), {"state": "sent"})[1])
+PHONE = []
+sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, message="", title="", click=None, authority=None, **k:
+                                               (PHONE.append((aid, ch, title, click, authority()[0])), {"state": "sent", "channel": ch})[1])
 sys.modules["watch_presence"] = types.SimpleNamespace(should_hold=lambda: (ASLEEP[0], "Gloria is asleep" if ASLEEP[0] else ""))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import bedroom_arrival as B
@@ -56,6 +59,22 @@ ASLEEP[0] = False
 row = B.observe("gloria-watch", 1.0, now=T + 60000)
 check("awake, away long enough, a new song: sent", row and row["sent"] and SENT[-1][2] == "https://cdn.test/b.mp3", row)
 check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 5)
+check("while the Watch push works, the phone is not used", not PHONE)
+
+def no_key(*a, **k): raise FileNotFoundError("apns-watch.json")
+sys.modules["watch_apns"].send = no_key
+d = json.load(open(B.MUSIC)); d["generated"].append({"title": "Hum", "tracks": [{"audio_url": "https://cdn.test/c.mp3"}]})
+json.dump(d, open(B.MUSIC, "w"))
+row = B.observe("gloria-watch", 1.0, now=T + 90000)
+check("no Watch push set up (17 October): it goes to her phone, tap opens the song, and is written down as sent",
+      row and row["sent"] and row["channel"] == "phone" and PHONE[-1][:4] == ("bedroom-song:https://cdn.test/c.mp3", "ntfy", "Hum", "https://cdn.test/c.mp3")
+      and "apns-watch.json" in row["why"] and json.loads(open(B.ARRIVALS).read().splitlines()[-1])["song"] == "Hum", (row, PHONE))
+sys.modules["deliver"].deliver = lambda *a, **k: (_ for _ in ()).throw(OSError("ntfy down"))
+d["generated"].append({"title": "Late", "tracks": [{"audio_url": "https://cdn.test/d.mp3"}]}); json.dump(d, open(B.MUSIC, "w"))
+row = B.observe("gloria-watch", 1.0, now=T + 120000)
+last = json.loads(open(B.ARRIVALS).read().splitlines()[-1])
+check("both fail: nothing raised, the failed arrival is written down, and the song is not spent",
+      row and not row["sent"] and "ntfy down" in last["why"] and json.load(open(B.STATE))["last_song_url"] == "https://cdn.test/c.mp3", (row, last))
 
 # --- the relay: a fake socket speaking MQTT ---
 def pub(topic, payload):

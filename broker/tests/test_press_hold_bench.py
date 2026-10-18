@@ -16,6 +16,7 @@ import press_hold_bench as B
 
 WORDS = ["tap", "press", "hold", "push", "pause", "stay", "touch", "wait"]
 DURATIONS = [100, 250, 500, 750, 1000]
+PAPER_PLAN = Path(__file__).resolve().parents[2] / "scripts/press_hold_run_plan.json"
 
 
 class BenchTests(unittest.TestCase):
@@ -72,6 +73,67 @@ class BenchTests(unittest.TestCase):
         self.assertEqual(len(result["missing_scored_cells"]), 40)
         self.assertEqual(result["trial_count"], 0)
         self.assertFalse(result["complete"])
+
+    def test_paper_plan_is_exactly_40_unobserved_compatible_cells(self):
+        plan = B.load_plan(PAPER_PLAN)
+        self.assertEqual(plan["words"], ["heavy", "bold", "thick", "slow", "ticklish", "tingling", "prickling", "tap"])
+        self.assertEqual(plan["durations_ms"], [10, 100, 1000, 2000, 3000])
+        cells = {(word, duration) for word in plan["words"] for duration in plan["durations_ms"]}
+        self.assertEqual(len(cells), plan["planned_cell_count"])
+        self.assertEqual(len(cells), 40)
+        self.assertEqual(len(plan["planned_rows"]), 40)
+        self.assertEqual({(row["word"], row["requested_duration_ms"]) for row in plan["planned_rows"]}, cells)
+        self.assertEqual(PAPER_PLAN.parent, Path(B.__file__).parent)
+        for row in plan["planned_rows"]:
+            self.assertEqual(row["status"], "planned")
+            for field in ["measured_duration_ms", "expected_label", "observed_label", "score", "score_method"]:
+                self.assertIsNone(row[field])
+        self.assertEqual((plan["observations"], plan["scores"]), ([], []))
+        self.assertIsNone(plan["provenance"]["citation"])
+        result = B.create_run(self.store, run_id="paper-plan", plan=PAPER_PLAN, data_kind="synthetic")
+        self.assertEqual(result["manifest"]["plan_id"], plan["plan_id"])
+        self.assertEqual(self.logfile("paper-plan").read_bytes(), b"")
+        self.assertEqual(sorted(p.name for p in (self.store / "paper-plan").iterdir()), ["manifest.json", "scores.jsonl"])
+        coverage = B.coverage(self.store, "paper-plan")
+        self.assertEqual((coverage["expected_cells"], coverage["trial_count"], coverage["scored_cells"]), (40, 0, 0))
+        self.assertEqual({(cell["word"], cell["requested_duration_ms"]) for cell in coverage["missing_scored_cells"]}, cells)
+
+    def test_plan_rejects_populated_results_invalid_matrix_and_mixed_options(self):
+        original = B.load_plan(PAPER_PLAN)
+        candidate = self.scratch / "invalid-plan.json"
+        changes = [dict(observations=[{"fixture": "invalid input"}]), dict(scores=[0]),
+                   dict(observations=None), dict(scores={}), dict(planned_cell_count=39),
+                   dict(planned_cell_count=True), dict(schema_version=True), dict(record_type="observed"),
+                   dict(words=["heavy"] * 8), dict(durations_ms=[10] * 5), dict(provenance={})]
+        changes += [dict(planned_rows=original["planned_rows"][:-1]),
+                    dict(planned_rows=[original["planned_rows"][0]] * 40)]
+        for field, value in [("measured_duration_ms", 10), ("score", 0), ("observed_label", "press"),
+                             ("expected_label", "hold"), ("score_method", "invented"), ("status", "scored")]:
+            rows = [dict(row) for row in original["planned_rows"]]
+            rows[0][field] = value
+            changes.append(dict(planned_rows=rows))
+        for change in changes:
+            with self.subTest(change=change):
+                candidate.write_text(json.dumps(dict(original, **change)))
+                with self.assertRaises(ValueError):
+                    B.create_run(self.store, run_id="invalid-plan", plan=candidate, data_kind="synthetic")
+                self.assertFalse((self.store / "invalid-plan").exists())
+        with self.assertRaisesRegex(ValueError, "either"):
+            B.create_run(self.store, run_id="mixed", plan=PAPER_PLAN, words=WORDS,
+                         durations_ms=DURATIONS, data_kind="synthetic")
+        self.assertFalse((self.store / "mixed").exists())
+
+    def test_cli_plan_initializes_empty_future_observation_run(self):
+        code, output, error = self.cli(["init", "--store", str(self.store), "--run-id", "future-observations",
+                                       "--plan", str(PAPER_PLAN), "--data-kind", "observed"])
+        self.assertEqual((code, error), (0, ""))
+        manifest = json.loads(output)["manifest"]
+        self.assertEqual(manifest["data_kind"], "observed")
+        self.assertEqual(manifest["words"], B.load_plan(PAPER_PLAN)["words"])
+        self.assertEqual(self.logfile("future-observations").read_bytes(), b"")
+        code, output, error = self.cli(["coverage", "--store", str(self.store), "--run-id", "future-observations", "--require-complete"])
+        self.assertEqual((code, error), (1, ""))
+        self.assertEqual(json.loads(output)["scored_cells"], 0)
 
     def test_invalid_run_config_creates_no_run(self):
         bad = [dict(words=WORDS[:-1]), dict(words=[WORDS[0]] * 8), dict(words=[" bad"] + WORDS[1:]),
