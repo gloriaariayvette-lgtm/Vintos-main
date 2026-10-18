@@ -1230,11 +1230,25 @@ def _plan(system, prompt):
     return _narrow(_plan_raw(system, prompt))
 
 
+def _plan_chars(system, max_tokens=500):
+    """How much planner prompt fits the context the model is actually loaded with. A fixed 60,000 characters fitted
+    32k; at 24,576 tokens (17 October) it overflowed, LM Studio dropped the start of the prompt where the
+    instructions are, and the model answered in prose: 310 "no JSON object" faults in two days (18 October)."""
+    cfg = config()
+    try: ratio = min(1.0, max(0.05, float(cfg.get('coverage_tokens_per_byte', 1.0))))
+    except (TypeError, ValueError): ratio = 1.0
+    try: ctx = int(cfg.get('coverage_context_tokens') or COVERAGE_CONTEXT_BUDGET)
+    except (TypeError, ValueError): ctx = COVERAGE_CONTEXT_BUDGET
+    room = int((ctx - max_tokens - COVERAGE_FRAMING_RESERVE) / ratio) - len(str(system).encode('utf-8')) - len(PLAN_TAIL) - 400
+    return max(8000, min(PLAN_MAX_CHARS, room))
+
+
 def _plan_raw(system, prompt):
-    if len(prompt) > PLAN_MAX_CHARS:
+    limit = _plan_chars(system)
+    if len(prompt) > limit:
         _fault("plan_prompt_trimmed", ValueError("planner prompt over budget"),
-               prompt_chars=len(prompt), kept_chars=PLAN_MAX_CHARS)
-        prompt = "[older Lab context cut to fit]\n" + prompt[-PLAN_MAX_CHARS:]
+               prompt_chars=len(prompt), kept_chars=limit)
+        prompt = "[older Lab context cut to fit]\n" + prompt[-limit:]
     try:
         return _json_object(_ask(system, prompt + PLAN_TAIL))
     except ModelJSONError as exc:
@@ -2236,6 +2250,15 @@ def _sourced_record_index():
     return candidates
 
 
+SOURCED_SET_ASIDE = os.path.join(ROOT, "sourced-set-aside.json")
+
+
+def _set_aside_sourced(accession):
+    held = set(_load(SOURCED_SET_ASIDE, []) or [])
+    if accession and accession not in held:
+        _atomic(SOURCED_SET_ASIDE, sorted(held | {accession}))
+
+
 def _sourced_record_snapshot(accession):
     for item in _sourced_record_index():
         if item.get('accession') == accession and not item.get('reviewed') and isinstance(item.get('record'), dict):
@@ -2252,9 +2275,11 @@ def _record_connection_question(name, accession=None):
 
 def _next_sourced_record(repeats, spent, lean=None):
     """Give a free pass one exact, previously returned protein when planning yields only held work."""
+    set_aside = set(_load(SOURCED_SET_ASIDE, []) or [])
     for record in _sourced_record_index():
         if record.get('reviewed') or not isinstance(record.get('record'), dict): continue
         accession = record['accession']
+        if accession in set_aside: continue
         name = record['protein_name']
         organism = record['organism']
         question = _record_connection_question(name, accession)
@@ -4674,6 +4699,9 @@ def tick():
                         accession = str((inquiry.get('assignment_resolution') or {}).get('accession') or '')
                         record = _sourced_record_snapshot(accession)
                         if not record:
+                            # Set aside, or the next free pass picks it again: Q9NY35 failed here 47 times in two
+                            # days (18 October).
+                            _set_aside_sourced(accession)
                             raise ValueError('saved sourced record unavailable: ' + accession)
                         state['records'] = [record]
                         state['embeddings'] = []

@@ -245,6 +245,9 @@ def claude_complete(j, call=None, model=None):
             "cache_read": _u.get("cache_read_input_tokens"),
             "cache_write": _u.get("cache_creation_input_tokens"),
             "sys_sha": hashlib.md5(sys_txt.encode()).hexdigest()[:10], "sys_len": len(sys_txt),
+            # which part of him paid for this: the shim's callers all say "grok" and most are answered by Claude, so
+            # the bill could not be traced (18 October); the opening words of the system prompt name the organ
+            "sys_head": " ".join((sys_txt[len(FLOOR):] if sys_txt.startswith(FLOOR) else sys_txt).split())[:80],
             "cached_head": (locals().get("_learned") or {}).get("auto", 0)}) + "\n")
     except Exception: pass
     if res["status"] not in ("valid", "truncated"):

@@ -6536,7 +6536,7 @@ async def get_art(form: str = None, limit: int = 20):
         if not os.path.isdir(d):
             continue
         for fname in sorted(os.listdir(d), reverse=True):
-            if not fname.endswith(".md"):
+            if not fname.endswith(".md") or fname.endswith(".sonnet-draft.md"):   # a draft is not a piece (18 October)
                 continue
             try:
                 filepath = os.path.join(d, fname)
@@ -12648,7 +12648,7 @@ def gather_game_context() -> str:
 
     def read_latest_from_dir(dirpath, n=1, max_chars=800):
         try:
-            files = sorted(glob.glob(os.path.join(dirpath, "*.md")), key=os.path.getmtime, reverse=True)
+            files = sorted((f for f in glob.glob(os.path.join(dirpath, "*.md")) if not f.endswith(".sonnet-draft.md")), key=os.path.getmtime, reverse=True)
             results = []
             for f in files[:n]:
                 with open(f) as fh:
@@ -12913,7 +12913,7 @@ def gather_vintos_context() -> str:
     def read_latest_from_dir(dirpath, n=3, max_chars=800):
         """Read the N most recent .md files from a directory."""
         try:
-            files = sorted(glob.glob(os.path.join(dirpath, "*.md")), key=os.path.getmtime, reverse=True)
+            files = sorted((f for f in glob.glob(os.path.join(dirpath, "*.md")) if not f.endswith(".sonnet-draft.md")), key=os.path.getmtime, reverse=True)
             results = []
             for f in files[:n]:
                 try:
@@ -14281,7 +14281,7 @@ def gather_game_context() -> str:
 
     def read_latest_from_dir(dirpath, n=1, max_chars=800):
         try:
-            files = sorted(glob.glob(os.path.join(dirpath, "*.md")), key=os.path.getmtime, reverse=True)
+            files = sorted((f for f in glob.glob(os.path.join(dirpath, "*.md")) if not f.endswith(".sonnet-draft.md")), key=os.path.getmtime, reverse=True)
             results = []
             for f in files[:n]:
                 with open(f) as fh:

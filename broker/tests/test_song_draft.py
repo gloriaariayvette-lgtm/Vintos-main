@@ -76,6 +76,13 @@ check("the draft is kept beside the finished song", '"$OUTPUT_FILE.sonnet-draft.
 wr = open(os.path.join(REPO, "bin", "wants-router.py")).read()
 check("a want's song still goes through that script", '"creative-expression.sh"), "music-prompt"]' in wr)
 check("the step is in the deploy", " song_draft.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
+dm = open(os.path.join(REPO, "bin", "dream_music.py")).read()
+check("the renderer never takes Sonnet's draft for a song (it sorted after the song and was taken first)",
+      'if not f.endswith(".sonnet-draft.md")' in dm)
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("nor does the app's art list or his recent-art context", 'fname.endswith(".sonnet-draft.md")' in srv
+      and srv.count('if not f.endswith(".sonnet-draft.md")') >= 2)
+check("two songs in one second get two files", fp2 != fp)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

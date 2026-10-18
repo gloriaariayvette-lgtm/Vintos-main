@@ -775,7 +775,8 @@ def main():
             sys.exit(0)
     if a.title and a.style: sys.exit(0 if direct(a.title,a.style,a.description,a.lyrics) else 1)
     elif a.title or a.style: print("Need both --title and --style"); sys.exit(1)
-    files=sorted(set(f for pat in [os.path.join(PROMPTS,"*.md"),os.path.join(PROMPTS,"**","*.md")] for f in glob.glob(pat,recursive=True)))
+    files=sorted(set(f for pat in [os.path.join(PROMPTS,"*.md"),os.path.join(PROMPTS,"**","*.md")] for f in glob.glob(pat,recursive=True)
+                     if not f.endswith(".sonnet-draft.md")))   # Sonnet's draft is kept beside the song, never rendered as one (18 October)
     if not files: print(f"No prompts in {PROMPTS}"); sys.exit(0)
     log=load_log(); done=set(log.get("processed_files",[]))
     if a.all:

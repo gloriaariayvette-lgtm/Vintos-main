@@ -47,6 +47,16 @@ for name in ("chemistry_sources.py", "chemistry_mcp.py", "chemistry_alignment.py
     check("%s never loads the whole ledger" % name, "_jsonl(os.path.join(lab.ROOT, 'source-receipts.jsonl'))" not in src
           and '_jsonl(os.path.join(lab.ROOT, "source-receipts.jsonl"))' not in src)
 check("each tick rotates when due", "rotate_source_receipts()" in open(C.__file__).read().split("def tick():")[1][:600])
+# --- the planner prompt fits the context the model is loaded with (18 October: 310 prose replies in two days) ---
+json.dump({"coverage_tokens_per_byte": 0.4231, "coverage_context_tokens": 24576}, open(C.CONFIG, "w"))
+lim = C._plan_chars("s" * 4000)
+check("at 24,576 tokens the planner keeps under ~53K characters, not 60K", 40000 < lim < 54000
+      and lim * 0.4231 + 4000 * 0.4231 + 500 + C.COVERAGE_FRAMING_RESERVE <= 24576, lim)
+json.dump({"coverage_tokens_per_byte": 0.4231, "coverage_context_tokens": 131072}, open(C.CONFIG, "w"))
+check("a bigger context never raises it past the old ceiling", C._plan_chars("s") == C.PLAN_MAX_CHARS)
+# --- a saved record that cannot be loaded is set aside, not picked again ---
+C._set_aside_sourced("Q9NY35")
+check("a record set aside is remembered", "Q9NY35" in C._load(C.SOURCED_SET_ASIDE, []))
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
