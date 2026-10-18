@@ -73,6 +73,20 @@ check("the diffuser no longer logs a seeding that does not happen", "seeded the 
       and "log(\"seeded" not in ld)
 check("... and it is in the deploy, so the fix reaches Aegis",
       'SCRIPTS="$SCRIPTS latent_diffuser.py"' in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
+# --- self-prediction: after a turn, grade the last prediction, then make the next (stopped 27 August) ---
+import importlib.util
+sys.modules["emoclaw_utils"] = types.SimpleNamespace(recent_pearls=lambda *a, **k: [])
+spec = importlib.util.spec_from_file_location("self_prediction_t", os.path.join(REPO, "scripts", "self-prediction.py"))
+SP = importlib.util.module_from_spec(spec); spec.loader.exec_module(SP)
+check("self-prediction stores are throwaway", SP.PREDICTION_FILE.startswith(HOME) and SP.BLIND_SPOTS_DATA.startswith(HOME))
+ORDER = []
+SP.compare_prediction = lambda: (ORDER.append("compare"), None)[1]
+SP.predict_next_state = lambda: (ORDER.append("predict"), None)[1]
+sys.argv = ["self-prediction.py", "settle"]; SP.main()
+check("settle grades first, then predicts, in one process", ORDER == ["compare", "predict"], ORDER)
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("every surface's post-turn settles instead of only predicting",
+      '"self-prediction.py"), "settle"]' in srv and '"self-prediction.py"), "predict"]' not in srv)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -22,18 +22,17 @@ Fixed in source (not yet deployed): Narrative Identity's naive/Z time mix (every
 its drift log claiming an update that may not have happened; Lead Planning's grade() crash (undefined st, ts); the
 latent diffuser logging a dream seed it does not do, and the diffuser was not in the deploy manifest at all.
 
-**Not done — need Gloria's decision, nothing changed:**
-- LAM (#42): installed, never scheduled, no model, nothing reads its forecast.
-- Lead Planning per-turn trial (#51): the server stopped calling `turn_trial_lines` on 31 August and only shows the
-  weekly plan line; re-wiring puts a "LEAD TRIAL" line back in his prompt each turn.
-- Thread Weaver (#34): installed, no cron line or caller.
-- Self-prediction grading (#5): avatar turns predict but never compare; the history stopped 27 August.
-- TCN growth-alignment and Reality-EBM scores (#43, #40): written nightly, read by nothing.
-- Relational geometry (#28): the avatar reads discourse-state's geometry, not relational-geometry.json.
-- Skill surf (#79): last read 5 October though the timer fired 12 October; reason not retained.
-- `~/.vintos/vintos.env` line 13 is run as a command by the cron wrappers ("command not found").
-- Narrative Identity's fragments were last reinforced in July: whether the causal model offers anything eligible is
-  now in the drift log after deploy.
+Self-prediction grading (#5) restored the same day, at her yes: every post-turn now runs `self-prediction.py settle`
+(grade the last prediction, then predict).
+
+Her answers (18 October), nothing else changed:
+- Lead Planning per-turn trial (#51): no record of why it was turned off; it was already off when server.py came into
+  this repository on 31 August. Left off; the weekly plan line stays.
+- LAM (#42), TCN and Reality-EBM scores (#43, #40): she does not know them; left as they are.
+- Thread Weaver (#34): hers, deliberately unscheduled. Not a fault.
+- **Not done:** relational geometry's two stores (#28); skill surf stale since 5 October (#79); Narrative Identity's
+  July fragments (the drift log names what feeding did after deploy).
+- `~/.vintos/vintos.env` line 13 (`LOVENSE_TAILNET_HOST`) is run as a command by the cron wrappers; fix given to her.
 
 ## 17 October, evening — the Lab's six-hour check after the fixes: worse, one loop found
 
