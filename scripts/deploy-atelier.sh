@@ -61,6 +61,7 @@ SOMATIC_NAME="vintos-somatic-narrate"
 SOMATIC_SERVICE_SRC="$SRC/broker/$SOMATIC_NAME.service"; SOMATIC_SERVICE_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.service"
 SOMATIC_TIMER_SRC="$SRC/broker/$SOMATIC_NAME.timer"; SOMATIC_TIMER_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.timer"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
+BEDROOM_UNIT_NAME="vintos-bedroom-arrival"; BEDROOM_UNIT_SRC="$SRC/broker/$BEDROOM_UNIT_NAME.service"; BEDROOM_UNIT_DST="$HOME/.config/systemd/user/$BEDROOM_UNIT_NAME.service"   # the bedroom ESP32 (2026-10-17)
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
 # service: the thing to install and confirm is the TIMER. Until now both files were a
 # manual cp + systemctl --user on the host, so a fresh deploy left him with no weekly read.
@@ -221,11 +222,14 @@ BINS="$BINS resonance_afterglow.py resonance-afterglow.py resonance_pulse.py res
 SCRIPTS="$SCRIPTS mutual_modification.py"   # the field between them (map node 35): in no list (2026-10-17)
 SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2026-10-17)
 SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit from real token counts (2026-10-17)
+SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
+SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
+            [ -f "$BEDROOM_UNIT_SRC" ] && printf 'broker/%s\n' "$BEDROOM_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             printf 'broker/%s\n' "$DOTCH_UNIT_NAME.service" "$DOTCH_UNIT_NAME.timer"
             printf 'broker/%s\n' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"
@@ -630,6 +634,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write runtime map: $HOME/.vintos/workspace/memory/self-review-runtime-map.json"
     say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    [ -f "$BEDROOM_UNIT_SRC" ] && say "  would install + restart (user)   $BEDROOM_UNIT_NAME -> $BEDROOM_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
     say "  would install + restart (user)   $PLUGIN_GATEWAY_UNIT_NAME -> $PLUGIN_GATEWAY_UNIT_DST, loopback only"
@@ -687,7 +692,7 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$BEDROOM_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
@@ -895,6 +900,22 @@ if [ -f "$ROBOT_UNIT_SRC" ]; then
         confirm_unit --user "$ROBOT_UNIT_NAME" && say "  $ROBOT_UNIT_NAME on port ${VINTOS_ROBOT_PORT:-8404}"
     else
         flag "$ROBOT_UNIT_NAME installed but did not start - run: systemctl --user enable $ROBOT_UNIT_NAME && systemctl --user restart $ROBOT_UNIT_NAME"
+    fi
+fi
+say
+
+# The bedroom listener holds one connection to the Mac's relay; until a device of hers is
+# named in memory/bedroom-arrival.json it only writes down which devices it hears.
+say "== bedroom arrival =="
+if [ -f "$BEDROOM_UNIT_SRC" ]; then
+    mkdir -p "$(dirname -- "$BEDROOM_UNIT_DST")"
+    install -m 644 "$(staged "$BEDROOM_UNIT_SRC")" "$BEDROOM_UNIT_DST" || die "failed to install $BEDROOM_UNIT_DST — rollback: bash $BACKUP/restore.sh"
+    systemctl --user daemon-reload
+    if systemctl --user enable "$BEDROOM_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$BEDROOM_UNIT_NAME" >/dev/null 2>&1; then
+        sleep 1
+        confirm_unit --user "$BEDROOM_UNIT_NAME" && say "  $BEDROOM_UNIT_NAME listening to the bedroom"
+    else
+        flag "$BEDROOM_UNIT_NAME installed but did not start - run: systemctl --user enable $BEDROOM_UNIT_NAME && systemctl --user restart $BEDROOM_UNIT_NAME"
     fi
 fi
 say

@@ -22,6 +22,7 @@ What it must never do is move without her. This holds that:
 And it is not his room. `agent-room/` belongs to Vintos; the bench shares no store,
 no path and no process with it."""
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -189,7 +190,7 @@ check("the bench wrote no ledger outside its throwaway root, and none into the c
 
 print("\n--- and the deploy does not install it onto him ---")
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
-check("bench.py is not in the manifest", "bench.py" not in dep)
+check("bench.py is not in the manifest", not re.search(r"(?<![\w-])bench\.py", dep))   # press_hold_bench.py is his, and deployed
 check("nor the bench directory", "bench/" not in dep)
 
 print("\n--- every agent is told the same thing, in the file it reads ---")

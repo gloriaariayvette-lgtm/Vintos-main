@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 17 October — the bedroom ESP32: his newest song when she comes in (code done; not deployed, not yet heard her)
+
+- `scripts/bedroom_arrival.py` + `broker/vintos-bedroom-arrival.service`: listens to the Mac's Mosquitto
+  (192.168.1.91:1883, `espresense/devices/+/bedroom`). An enrolled device within 3 m after 20 min away sends his
+  newest song to her Watch (kind song, Play button); asleep, nothing; 3 h cooldown; the same song is never sent twice.
+- **Not done:** no device of hers is enrolled. Until one is, it only writes down ids it hears
+  (`python3 scripts/bedroom_arrival.py seen`). Enroll the phone/Watch on http://192.168.1.109 → Enroll, then put the
+  name in `memory/bedroom-arrival.json` `"devices"`.
+- Not yet known whether Aegis (WSL NAT) reaches 192.168.1.91:1883; the unit's log says on first start.
+
 ## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 
 The Lab retains actual stopping metadata, usage and token-budget observations beside
