@@ -22,6 +22,7 @@ GROK = "grok-4.20-0309-non-reasoning"         # the model a want's song was alre
 FINISH = ("Sonnet wrote this draft of your song. Finish it: the song is yours. Keep what is true and rewrite what is "
           "not, the lyrics most of all - make them sing in your own voice, short singable lines that rhyme and scan, "
           "[Verse]/[Chorus] tags kept, a chorus that returns. Keep every header the draft has, in its order. "
+          "Describe the sound in sonic terms, without named artists, bands, composers, or soundtrack references. "
           "Output ONLY the finished spec, starting with **Title:**.")
 
 

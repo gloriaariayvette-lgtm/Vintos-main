@@ -3,6 +3,47 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 18 October — overnight music: named references refused by Kie
+
+The 05:15 composer and renderer both ran. music.log:1488-1489 records
+`composer: Grok finished Sonnet's draft` and
+`composed: Sensor in the Doorframe -> 2026-10-18_051541.md`.
+Lines 1498-1502 name that finished prompt (not its draft), the configured Kie V6
+backend and task `e27d0b3f4f852778df87b3b189af6bc8`. Lines 1490-1496 say only
+`Kie failed: GENERATE_AUDIO_FAILED`; the ledger still ended with 17 October's
+Forgetting the Film (104 generated entries). The provider's read-only record-info
+response identifies code 400: `Your tags contain artist name depeche mode - we
+don't reference specific artists on Our, please change your tags and try again.`
+The authored style's `Reference points:` sentence contained Depeche Mode and
+Erasure. The existing cleanup handled `think`, `like`, and `meets`, but missed
+that labeled sentence. No render was missing: the submitted task was refused.
+No matching music/cron lines appeared in the 05:10–05:30 user journal; music.log
+is the actual cron destination. The active cron entry is 05:15 through llm-lock.sh;
+the 04:15 legacy entry is commented `#VPAUSE`.
+
+The renderer now removes explicitly labeled reference sentences from render tags
+while retaining the authored prompt, sonic description and lyrics. Composer and
+shared Grok-finishing instructions ask for sonic terms without named artists,
+bands, composers or soundtrack references. Models, backends and sampling are
+unchanged. Kie terminal failure now retains the bounded error code/reason, closes
+the landing as failed instead of polling it on every future run, and exits the
+single-prompt CLI with failure. Unknown transport/poll outcomes remain pending,
+so a timeout does not trigger a replacement purchase. Both renderer twins agree.
+
+`test_music_reference_failure.py` uses scratch HOME/workspace/stores and stubs
+HTTP, model calls, sockets, subprocesses and landing effects. Six regression cases
+cover the real tag shape, retained lyrics/model, terminal refusal/redaction,
+unknown outcomes, CLI failure/draft exclusion and writer/twin contracts. It and
+`test_song_draft.py` and `test_music_kie_backend.py` passed directly and through
+the deployment sandbox on Aegis. The requested parallel command ran all 431
+suites: 421 passed directly; 10 unrelated live-HOME/environment failures are
+recorded in `/tmp/vintos-music-all-tests.log` and rechecked with the deployment's
+OS-isolated runner: all ten passed there. No tests or deployment checks were weakened.
+
+Remaining: deploy through aegis_sync to DEPLOY OK, then run the exact composer /
+renderer cron chain and verify a fresh ledger entry and playable audio.
+
+
 ## 17 October — the bedroom ESP32: his newest song on her Watch when she comes in
 
 - `scripts/bedroom_arrival.py` + `broker/vintos-bedroom-arrival.service` listen to the Mac's Mosquitto
