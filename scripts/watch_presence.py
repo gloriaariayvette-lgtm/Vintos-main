@@ -22,6 +22,9 @@ REPLIES = os.path.join(MEMORY, "watch-replies.jsonl")
 MOMENTS = os.path.join(MEMORY, "watch-shared-moments.jsonl")
 DEVICES = os.path.join(MEMORY, "watch-apns-devices.json")
 HELD = os.path.join(MEMORY, "watch-held-notifications.jsonl")
+SONG = os.path.join(MEMORY, "watch-arrival-song.json")   # the bedroom song waiting for the Watch app (17 October)
+SONG_OFFER_S = 30 * 60      # how long an undelivered arrival song waits for the Watch to check in
+SONG_TOP_S = 12 * 3600      # how long it stays first in the Watch's list
 TOKEN_FILE = os.path.join(SECRETS, "watch-bearer")
 
 ALLOWED_KINDS = {
@@ -245,3 +248,48 @@ def should_hold():
     fresh = time.time() - float(state.get("received_ts") or 0) <= 7200
     asleep = bool(state.get("asleep")) and fresh
     return asleep, ("Gloria is asleep" if asleep else "")
+
+
+# --- the bedroom song, handed to the Watch app when it next checks in (Gloria, 17 October) ---------------------------
+# Aegis has no APNs key, so it cannot push. The Watch app wakes on its own (HealthKit, motion) and posts telemetry;
+# the reply carries this song, and the app raises its own local notification with Play, puts the song first in its
+# list, and plays it at once when the app is open on her wrist.
+
+def offer_song(title, media_url, ref="", now=None):
+    now = time.time() if now is None else now
+    song = {"id": hashlib.sha256(("%s|%s" % (media_url, now)).encode()).hexdigest()[:16], "title": str(title)[:120],
+            "media_url": str(media_url)[:1000], "ref": str(ref or title)[:200], "offered_ts": now, "taken_ts": None}
+    _atomic(SONG, song)
+    return song
+
+
+def _song():
+    try:
+        value = json.load(open(SONG)); return value if isinstance(value, dict) and value.get("id") else None
+    except Exception: return None
+
+
+def pending_song(now=None):
+    """The arrival song the Watch has not taken yet, while it is still fresh; else None."""
+    now = time.time() if now is None else now
+    song = _song()
+    if not song or song.get("taken_ts") or now - float(song.get("offered_ts") or 0) > SONG_OFFER_S: return None
+    return {k: song[k] for k in ("id", "title", "media_url")}
+
+
+def take_song(song_id, now=None):
+    song = _song()
+    if not song or song.get("id") != song_id: return False
+    if not song.get("taken_ts"):
+        song["taken_ts"] = time.time() if now is None else now; _atomic(SONG, song)
+    return True
+
+
+def top_song(now=None):
+    """The arrival song as a landing, for the top of the Watch's list, for SONG_TOP_S after it was offered."""
+    now = time.time() if now is None else now
+    song = _song()
+    if not song or now - float(song.get("offered_ts") or 0) > SONG_TOP_S: return None
+    at = datetime.fromtimestamp(float(song["offered_ts"])).isoformat(timespec="minutes")
+    return {"surface": "song", "ref": song.get("ref") or song["title"], "at": at,
+            "piece": {"type": "song", "title": song["title"], "tracks": [{"src": song["media_url"], "version": 1}]}}

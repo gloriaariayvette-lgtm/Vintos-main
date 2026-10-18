@@ -37,7 +37,18 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         if not body.get("asleep"):
             import watch_apns
             background_tasks.add_task(watch_apns.flush_held)
+            song = watch_presence.pending_song()
+            if song: result = dict(result, song=song)   # the Watch raises its own notification and plays it
         return result
+
+    @routes.get("/api/watch/song")
+    async def arrival_song(request: Request):
+        auth(request); return {"song": watch_presence.pending_song()}
+
+    @routes.post("/api/watch/song/taken")
+    async def arrival_song_taken(request: Request):
+        auth(request); body = await request.json()
+        return {"ok": watch_presence.take_song(str(body.get("id") or ""))}
 
     @routes.post("/api/watch/register")
     async def register(request: Request):
@@ -50,7 +61,10 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
     async def landings(request: Request, days: int = 7):
         auth(request)
         import landings as source
-        return {"items": source.sent(days=max(1, min(int(days), 30)))[:5]}
+        items = source.sent(days=max(1, min(int(days), 30)))
+        top = watch_presence.top_song()
+        if top: items = [top] + [i for i in items if not (i.get("surface") == "song" and i.get("ref") == top["ref"])]
+        return {"items": items[:5]}
 
     @routes.post("/api/watch/landing")
     async def landing(request: Request):

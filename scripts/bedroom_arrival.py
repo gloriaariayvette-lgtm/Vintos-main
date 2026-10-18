@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""bedroom_arrival.py — a playable song notification when Gloria comes into the bedroom.
+"""bedroom_arrival.py — his newest song on her Watch when Gloria comes into the bedroom.
 
 The ESP32 in the bedroom (ESPresense) publishes what it hears to the Mosquitto relay on the Mac:
     espresense/devices/<device id>/bedroom   {"distance": 1.03, ...}
-This listens there. An arrival sends the newest song through the existing receipt-backed ntfy delivery path,
-with a link to play it. That receipt confirms notification transport, not Watch reception or automatic playback.
+This listens there. An arrival hands the newest song to the Vintos Watch app: when the Watch next checks in it
+notifies her with Play, puts the song first in its list, and plays it at once if the app is open. Never her phone.
 Asleep, it sends nothing. The owner's configured distance is preserved.
 
 Until a device of hers is named in the config it only writes down which device ids it hears
@@ -135,10 +135,12 @@ def _arrived(state, now, device, distance, why):
         row["song"] = title
         if url == state.get("last_song_url"):
             row["why"] = "his newest song notification was already sent"; return row
-        got = _send(title, url)
+        got = _send(title, url, title, now)
         sent = got.get("state") in ("sent", "acknowledged")
+        row.update({k: got[k] for k in ("push", "song_id") if k in got})
         row.update(sent=sent, delivery=got.get("state"), channel=got.get("channel"),
-                   watch_delivery="unconfirmed", playback="not_requested")
+                   watch_delivery="waiting for the Watch to check in" if sent else "not offered",
+                   playback="plays at once if the app is open, else her Play tap")
         if got.get("why") or not sent: row["why"] = got.get("why", "")
         if sent:
             state.update(last_sent_ts=now, last_song_url=url)
@@ -155,22 +157,26 @@ def _arrived(state, now, device, distance, why):
         _log(row)
 
 
-def _send(title, url):
-    """Use the song notification transport verified by a real deliver receipt on 17 October.
-
-    No Watch playback command/acknowledgement is established here. Keep the clickable notification;
-    never suppress it for an unconfirmed playback attempt or label ntfy acceptance as Watch delivery.
-    """
-    body = "His newest song, for when you came in."
+def _send(title, url, ref="", now=None):
+    """To the Vintos Watch app, never her phone. The song is offered to the app (watch_presence.offer_song): the next
+    time the Watch checks in it raises its own notification with Play, puts the song first in its list, and plays it
+    at once if the app is open. If an APNs key is ever installed, the push goes out too, for an immediate notification.
+    A failure is returned, never raised, so every arrival is written down."""
     try:
-        import deliver
-        got = deliver.deliver("bedroom-song:" + url, "ntfy", message=body, title=title, click=url, tags="musical_note",
-                              authority=lambda: (True, "she came into the bedroom"))
-        if not isinstance(got, dict) or got.get("state") not in ("sent", "acknowledged", "failed", "held", "queued"):
-            return {"state": "failed", "channel": "ntfy", "why": "invalid notification delivery receipt"}
-        return dict(got, channel="ntfy")
+        import watch_presence
+        song = watch_presence.offer_song(title, url, ref, now=now)
     except Exception as e:
-        return {"state": "failed", "channel": "ntfy", "why": "%s: %s" % (type(e).__name__, str(e)[:160])}
+        return {"state": "failed", "channel": "watch", "why": "offer: %s: %s" % (type(e).__name__, str(e)[:160])}
+    got = {"state": "sent", "channel": "watch", "via": "offered to the Watch app", "song_id": song["id"]}
+    try:
+        import watch_apns
+        if os.path.exists(watch_apns.CONFIG):
+            push = watch_apns.send(title, "His newest song, for when you came in.", kind="song", media_url=url,
+                                   message_id=song["id"], force=True)   # sleep was checked above
+            got["push"] = (push or {}).get("state")
+    except Exception as e:
+        got["push"] = "failed: %s" % str(e)[:120]
+    return got
 
 
 # --- the relay: a minimal MQTT 3.1.1 subscriber (no client library on Aegis) ----------------------------------------
