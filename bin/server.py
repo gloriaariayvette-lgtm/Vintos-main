@@ -982,57 +982,6 @@ def _rg_snapshot():
 
 BOUNDARY_PENDING = os.path.join(MEMORY, "boundary-pending.json")
 
-# Hedge log (Vintos's ask): the chat intercept used to keep only the trial label and the outcome word; the hedged
-# draft that tripped the detector, and the final it was graded on, were gone the moment the turn ended. Append-only,
-# one JSON line per event, linked by a request-local id. Never read back into generation; never rewritten.
-_HEDGE_CAP = 600   # the detector's own input cap: behavioral_intercept.detect_match reads text[:600]
-_HEDGE_REDACT = (
-    (re.compile(r"\s*\[DO:[^\]]*\]\s*"), " "),
-    (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "[email]"),
-    (re.compile(r"https?://\S+"), "[url]"),
-    (re.compile(r"\b(?:sk|xai|xoxb|ghp)[-_][A-Za-z0-9_-]{8,}\b"), "[key]"),
-    (re.compile(r"\+?\d[\d\s().-]{8,}\d"), "[number]"),
-)
-
-
-def _hedge_path():
-    """Where the hedge log lives; resolved at write time so a repointed MEMORY repoints it."""
-    return os.path.join(MEMORY, "hedge-log.jsonl")
-
-
-def _hedge_excerpt(text, cap=_HEDGE_CAP):
-    """A bounded, privacy-filtered excerpt for the hedge log: device tags, addresses, links, keys and long numbers
-    are redacted before the cut, so a secret can never land in the log whole."""
-    s = str(text or "")
-    for rx, sub in _HEDGE_REDACT:
-        s = rx.sub(sub, s)
-    return " ".join(s.split())[:cap]
-
-
-def _hedge_log(event):
-    """Append one event. Best effort: a failure here is False, never an exception into the reply, and it invents
-    nothing - the outcome it records was already logged by behavioral_intercept before this is called. The append
-    takes the store lock when store_guard is importable and plain-appends otherwise."""
-    try:
-        line = json.dumps({"t": datetime.now().isoformat(), **(event or {})}) + "\n"
-        path = _hedge_path()
-        try:
-            import sys as _hs; _hp = os.path.join(WORKSPACE, "scripts")
-            if _hp not in _hs.path: _hs.path.insert(0, _hp)
-            from store_guard import transaction as _htx
-        except Exception:
-            _htx = None
-        if _htx is not None:
-            with _htx(path):
-                with open(path, "a") as _hf:
-                    _hf.write(line)
-        else:
-            with open(path, "a") as _hf:
-                _hf.write(line)
-        return True
-    except Exception:
-        return False
-
 
 def _after_resonance_block(gloria_text):
     """What the old chat route put in his context before he answered, now on her chat (Gloria, 17 October): each
@@ -4004,7 +3953,6 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                 # BIS 1.5: Trial scan on A1+B1
                 _bis_1_5_ban_chat = ""
                 _bis_1_5_trial_id_chat = None
-                _bis_hedge_id_chat = None   # set only when the 1.5 intercept fires; a later-only match has no parent
                 try:
                     import sys as _bc_sys; _bc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
                     from behavioral_intercept import detect_match as _bc_dm, get_active_trials as _bc_gat
@@ -4017,13 +3965,6 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                         _bc_alt = _bc_match.get("alternative","")[:120]
                         _bis_1_5_ban_chat = f"\n\n[BIS PHASE 1.5] Pattern detected: {_bc_pattern}\nFORBIDDEN in next pass. Instead: {_bc_alt}"
                         import json as _bcj; _bcj.dump({"trial_id": _bis_1_5_trial_id_chat, "context": "chat_bilateral", "timestamp": datetime.now().isoformat()}, open(os.path.join(MEMORY, ".pending-intercept.json"), "w"))
-                        try:   # hedge log: the draft that tripped the detector, kept beside the label (nonfatal)
-                            import uuid as _hu
-                            _bis_hedge_id_chat = _hu.uuid4().hex
-                            _hedge_log({"event": "intercept", "hedge_id": _bis_hedge_id_chat, "trial_id": _bis_1_5_trial_id_chat,
-                                        "context": "chat_bilateral", "pattern": str(_bc_match.get("pattern_description", ""))[:120],
-                                        "draft": _hedge_excerpt(((a1 or "") + " " + (b1 or ""))[:_HEDGE_CAP])})
-                        except Exception: pass
                         print(f"[BIS/chat/1.5] Pattern: {_bc_pattern[:60]}", flush=True)
                 except Exception as _bce:
                     print(f"[BIS/chat/1.5] Error: {_bce}", flush=True)
@@ -4224,11 +4165,6 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                             if _bis_1_5_trial_id_chat and _bcf_outcome == "defaulted":
                                 _bcf_outcome = "strained"
                             _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
-                            # hedge log: the outcome as logged, linked to the intercept's id (None when the match was later-only)
-                            _hedge_log({"event": "outcome", "hedge_id": _bis_hedge_id_chat, "trial_id": _bis_chat_final_trial,
-                                        "context": "chat_bilateral", "pattern": str(_bcf_trial.get("pattern_description", ""))[:120],
-                                        "outcome": _bcf_outcome, "influenced": bool(_bis_1_5_trial_id_chat),
-                                        "final": _hedge_excerpt(reply[:_HEDGE_CAP])})
                             if _bcf_outcome in ("defaulted", "strained"):
                                 _bc_flbd(_bis_chat_final_trial, reply[:200])
                             print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
