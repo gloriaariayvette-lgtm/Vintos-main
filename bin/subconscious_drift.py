@@ -464,8 +464,8 @@ def _check_rare_events():
     try:
         if random.random() < 0.04:
             from narrative_identity import feed_from_causal_model
-            feed_from_causal_model()
-            log("Rare: narrative identity updated from causal model")
+            _ni = feed_from_causal_model() or {}
+            log("Rare: narrative identity fed from causal model: %s" % _ni)
     except: pass
 
     # Rare: check for imprint promotions

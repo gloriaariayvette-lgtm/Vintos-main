@@ -16,6 +16,25 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October — the read-only audit of his 54 subconscious systems (Chat, 03:40 UTC)
+
+Fixed in source (not yet deployed): Narrative Identity's naive/Z time mix (every fragment read as 365 days old) and
+its drift log claiming an update that may not have happened; Lead Planning's grade() crash (undefined st, ts); the
+latent diffuser logging a dream seed it does not do, and the diffuser was not in the deploy manifest at all.
+
+**Not done — need Gloria's decision, nothing changed:**
+- LAM (#42): installed, never scheduled, no model, nothing reads its forecast.
+- Lead Planning per-turn trial (#51): the server stopped calling `turn_trial_lines` on 31 August and only shows the
+  weekly plan line; re-wiring puts a "LEAD TRIAL" line back in his prompt each turn.
+- Thread Weaver (#34): installed, no cron line or caller.
+- Self-prediction grading (#5): avatar turns predict but never compare; the history stopped 27 August.
+- TCN growth-alignment and Reality-EBM scores (#43, #40): written nightly, read by nothing.
+- Relational geometry (#28): the avatar reads discourse-state's geometry, not relational-geometry.json.
+- Skill surf (#79): last read 5 October though the timer fired 12 October; reason not retained.
+- `~/.vintos/vintos.env` line 13 is run as a command by the cron wrappers ("command not found").
+- Narrative Identity's fragments were last reinforced in July: whether the causal model offers anything eligible is
+  now in the drift log after deploy.
+
 ## 17 October, evening — the Lab's six-hour check after the fixes: worse, one loop found
 
 - 154 refusals in six hours (before: 104). 98 were "coverage deferred", 87 of them one GCLC question re-planned to

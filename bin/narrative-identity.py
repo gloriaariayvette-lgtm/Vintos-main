@@ -172,8 +172,13 @@ def _promote_to_fragment(candidate, data):
     data["candidate_pool"] = [c for c in data.get("candidate_pool", []) if c["text"] != candidate["text"]]
 
 def _days_since(iso, now):
+    """Days since an ISO time. Stored times are naive local or UTC with a Z; mixing them raised, and the except
+    turned every fragment into 365 days old (audit, 18 October). Both are compared in one frame now."""
     try:
-        return max(0.0, (now - datetime.fromisoformat(str(iso))).total_seconds() / 86400.0)
+        then = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if (then.tzinfo is None) != (now.tzinfo is None):
+            then, now = then.astimezone(), now.astimezone()   # a naive time is local
+        return max(0.0, (now - then).total_seconds() / 86400.0)
     except Exception:
         return 365.0
 
@@ -213,12 +218,15 @@ def get_tone_bias():
     return top["text"][:100]
 
 def feed_from_causal_model():
-    """Pull top causal self-model entries and propose as narrative fragments."""
+    """Pull top causal self-model entries and propose as narrative fragments. Returns what happened, so the caller's
+    log says it (it logged "updated" whether or not anything was proposed: audit, 18 October)."""
+    tally = {"entries": 0, "eligible": 0}
     try:
         import sys as _nm_sys; _nm_sys.path.insert(0, SCRIPTS)
         from causal_self_model import load_model
         data = load_model()
         entries = sorted(data["entries"], key=lambda e: -e["confidence"])[:8]
+        tally["entries"] = len(data["entries"])
         _metric_terms = ["Valence", "Playfulness", "Groundedness", "Arousal", "Tension",
                          "shifted simultaneously", "spike", "carryover", "image generation",
                          "recurring pattern", "this cluster", "this spike", "this follows"]
@@ -233,9 +241,12 @@ def feed_from_causal_model():
                     fragment = f"I tend to avoid {tendency[:100]} when {trigger[:80]}"
                 else:
                     fragment = f"I tend to {tendency[:100]} when {trigger[:80]}"
-                propose_fragment(fragment, source="causal-self-model")
-    except:
-        pass
+                tally["eligible"] += 1
+                result = propose_fragment(fragment, source="causal-self-model")
+                tally[result] = tally.get(result, 0) + 1
+    except Exception as e:
+        tally["error"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+    return tally
 
 if __name__ == "__main__":
     import sys
