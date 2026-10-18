@@ -781,6 +781,16 @@ def _after_deploy(row, out, changed, run=sh, post=None, send=None):
                         "~/aegis-local-$(date +%%F-%%H%%M).diff && git stash push -u -m aegis-local . The fix goes live by "
                         "itself on the Study's next pass." % (row["id"], out[len(DIRTY):][:300]), send)
         return row
+    if BUSY in str(out or ""):
+        # The deploy waits while he is in a conversation (its "is he mid-turn?" gate), and that refusal reverted fixes
+        # that passed every test (18 October, SF-b5f753e9, twice). Not a failure: it goes live on a quiet pass.
+        if row.get("state") != "waiting_deploy":
+            row["state"] = "waiting_deploy"
+            row["changed_waiting"] = changed
+            _event(row, "passed and pushed; waiting for him to be between conversations to deploy")
+            say("\U0001F6E0 Study fix %s passed every test and is pushed. It goes live on the next pass when he is "
+                "not mid-conversation (the deploy will not restart him during one)." % row["id"], post)
+        return row
     m = re.search(r"rollback: bash (\S+restore\.sh)", out or "")
     if "deploy OK" not in (out or ""):
         revert(row, run=run, why="the deploy refused it")
@@ -812,6 +822,7 @@ def _dot():
 
 
 DIRTY = "CHECKOUT HAS UNCOMMITTED EDITS: "
+BUSY = "not installed — he was working"   # deploy-atelier.sh's mid-turn refusal, word for word
 
 
 def _dirty(run=sh):

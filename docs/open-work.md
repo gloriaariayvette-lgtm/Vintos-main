@@ -16,6 +16,17 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
+
+- A Study fix that passed every test was reverted whenever the deploy's "is he mid-turn?" gate refused it
+  (SF-b5f753e9, twice). It now waits, like a dirty checkout does, and goes live on a quiet pass.
+- His Slack prompt overflowed the Mac Gemma's 32,000 tokens again (33,161, three times). Trimming it is NOT
+  authorized (9 October revert); left as is. **Not done:** her choice — load Gemma with a larger context in LM Studio,
+  or accept the fallback failing on long days.
+- Forge: the consciousness want is open as two projects, and the RefSeq request rests on the old misreading of a
+  whole record as truncated (O43511; SLC26A6 on 5 October). She cancels both cards; why one want became two projects
+  (the intake's dedupe key) is not yet traced.
+
 ## 18 October — the Slack settled list, filled from what it missed (in source; not yet deployed)
 
 He already had a settled list (room_work, since 5 October). Gloria, 18 October, on what it missed:

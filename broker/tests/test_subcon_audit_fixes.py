@@ -112,6 +112,19 @@ json.dump({"trials": [{"id": "permanent_x", "status": "promoting", "created": "2
 live = [t["id"] for t in BI.get_active_trials()]
 check("a permanent trial left 'promoting' is live again; an ordinary one stays promoted", live == ["permanent_x"]
       and json.load(open(BI.LEDGER))["trials"][0].get("promoted"), live)
+# --- a deploy that waits for him to finish a conversation does not revert a Study fix (18 October, SF-b5f753e9) ---
+import study_fix as SFX
+check("the Study's stores are throwaway", SFX.MEMORY.startswith(HOME))
+REVERTED, SAID = [], []
+SFX.revert = lambda row, run=None, why="": REVERTED.append(why)
+SFX.tell_gloria = lambda *a, **k: SAID.append(a)
+row = {"id": "SF-test", "state": "deploying", "events": []}
+out = "== is he mid-turn? ==\n  Active in the last 3 minutes; a broker restart would interrupt a live return.\n" \
+      "not installed — he was working (rerun when quiet, or from a terminal)"
+SFX._after_deploy(row, out, ["scripts/x.py"], run=lambda *a, **k: None, post=lambda *a, **k: None, send=lambda *a, **k: None)
+check("he was mid-conversation: the fix waits for a quiet pass, it is not reverted", row["state"] == "waiting_deploy"
+      and not REVERTED and row["changed_waiting"] == ["scripts/x.py"], (row, REVERTED))
+check("the refusal it waits on is the deploy's own words", SFX.BUSY in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
