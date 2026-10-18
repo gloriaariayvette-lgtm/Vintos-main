@@ -125,6 +125,20 @@ SFX._after_deploy(row, out, ["scripts/x.py"], run=lambda *a, **k: None, post=lam
 check("he was mid-conversation: the fix waits for a quiet pass, it is not reverted", row["state"] == "waiting_deploy"
       and not REVERTED and row["changed_waiting"] == ["scripts/x.py"], (row, REVERTED))
 check("the refusal it waits on is the deploy's own words", SFX.BUSY in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
+# --- the Watch push speaks HTTP/2 (urllib's HTTP/1.1 was refused by Apple every time, 18 October) ---
+import importlib, watch_apns as WA
+CALLS = []
+def fake_run(cmd, input=None, capture_output=None, timeout=None):
+    hfile = cmd[cmd.index("-H") + 1][1:]
+    CALLS.append((cmd, input, open(hfile).read()))
+    return types.SimpleNamespace(returncode=0, stdout=b'{"reason":"ok"}\n200', stderr=b"")
+status, body = WA._http("https://api.sandbox.push.apple.com/3/device/abc", b'{"aps":{}}',
+                        {"authorization": "bearer SECRET", "apns-topic": "dev.vintos.app.watchkitapp"}, run=fake_run)
+cmd, sent, hdrs = CALLS[0]
+check("APNs is reached over HTTP/2, the body on stdin, the answer's status read", "--http2" in cmd and sent == b'{"aps":{}}'
+      and status == 200 and body == b'{"reason":"ok"}', (cmd, status, body))
+check("the signed token is never on the command line, and its header file is gone after",
+      "SECRET" not in " ".join(cmd) and "bearer SECRET" in hdrs and not os.path.exists(cmd[cmd.index("-H") + 1][1:]))
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

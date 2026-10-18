@@ -83,6 +83,13 @@ models or bypassed the normal pipeline. No second composer/render attempt was ne
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October — the Watch push never reached Apple
+
+The first push after the APNs key was installed (10:48 CDT, "Light Left On") was refused: Apple accepts only HTTP/2
+and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for both registered Watches. It now posts
+through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
+been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
+
 ## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
 
 - A Study fix that passed every test was reverted whenever the deploy's "is he mid-turn?" gate refused it

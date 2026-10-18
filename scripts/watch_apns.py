@@ -31,10 +31,26 @@ def _jwt(config, now=None):
     return header + "." + claims + "." + _b64(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
 
 
-def _http(url, body, headers, timeout=20):
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.status, response.read(4096)
+def _http(url, body, headers, timeout=20, run=None):
+    """One POST to APNs over HTTP/2. Apple accepts nothing else, and urllib speaks only HTTP/1.1: every push from Aegis
+    came back "Unexpected HTTP/1.x request" (18 October, the first push after the key was installed). curl carries it;
+    the headers, which hold the signed token, go through a private file, never the command line."""
+    import subprocess, tempfile
+    fd, hfile = tempfile.mkstemp(prefix="apns-h-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write("".join("%s: %s\n" % (k, v) for k, v in headers.items()))
+        r = (run or subprocess.run)(["curl", "-sS", "--http2", "-X", "POST", "-H", "@" + hfile, "--data-binary", "@-",
+                                     "--max-time", str(int(timeout)), "-w", "\n%{http_code}", url],
+                                    input=body, capture_output=True, timeout=timeout + 5)
+    finally:
+        try: os.unlink(hfile)
+        except OSError: pass
+    out = r.stdout or b""
+    text, _, code = out.rpartition(b"\n")
+    if r.returncode != 0 and not code.strip().isdigit():
+        raise RuntimeError("curl: %s" % (r.stderr or b"").decode(errors="replace")[:200])
+    return int(code.strip() or 0), text[:4096]
 
 
 TRANSPORT = _http
