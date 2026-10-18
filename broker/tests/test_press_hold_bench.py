@@ -16,7 +16,7 @@ import press_hold_bench as B
 
 WORDS = ["tap", "press", "hold", "push", "pause", "stay", "touch", "wait"]
 DURATIONS = [100, 250, 500, 750, 1000]
-PAPER_PLAN = Path(__file__).resolve().parents[2] / "examples/press_hold/paper-duration-plan.json"
+PAPER_PLAN = Path(__file__).resolve().parents[2] / "scripts/press_hold_run_plan.json"
 
 
 class BenchTests(unittest.TestCase):
@@ -81,6 +81,13 @@ class BenchTests(unittest.TestCase):
         cells = {(word, duration) for word in plan["words"] for duration in plan["durations_ms"]}
         self.assertEqual(len(cells), plan["planned_cell_count"])
         self.assertEqual(len(cells), 40)
+        self.assertEqual(len(plan["planned_rows"]), 40)
+        self.assertEqual({(row["word"], row["requested_duration_ms"]) for row in plan["planned_rows"]}, cells)
+        self.assertEqual(PAPER_PLAN.parent, Path(B.__file__).parent)
+        for row in plan["planned_rows"]:
+            self.assertEqual(row["status"], "planned")
+            for field in ["measured_duration_ms", "expected_label", "observed_label", "score", "score_method"]:
+                self.assertIsNone(row[field])
         self.assertEqual((plan["observations"], plan["scores"]), ([], []))
         self.assertIsNone(plan["provenance"]["citation"])
         result = B.create_run(self.store, run_id="paper-plan", plan=PAPER_PLAN, data_kind="synthetic")
@@ -98,6 +105,13 @@ class BenchTests(unittest.TestCase):
                    dict(observations=None), dict(scores={}), dict(planned_cell_count=39),
                    dict(planned_cell_count=True), dict(schema_version=True), dict(record_type="observed"),
                    dict(words=["heavy"] * 8), dict(durations_ms=[10] * 5), dict(provenance={})]
+        changes += [dict(planned_rows=original["planned_rows"][:-1]),
+                    dict(planned_rows=[original["planned_rows"][0]] * 40)]
+        for field, value in [("measured_duration_ms", 10), ("score", 0), ("observed_label", "press"),
+                             ("expected_label", "hold"), ("score_method", "invented"), ("status", "scored")]:
+            rows = [dict(row) for row in original["planned_rows"]]
+            rows[0][field] = value
+            changes.append(dict(planned_rows=rows))
         for change in changes:
             with self.subTest(change=change):
                 candidate.write_text(json.dumps(dict(original, **change)))

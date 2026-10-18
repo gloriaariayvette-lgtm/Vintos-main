@@ -116,7 +116,7 @@ def load_plan(path):
     with _open(path, os.O_RDONLY, "r") as stream:
         plan = _json(stream.read())
     fields = {"schema_version", "record_type", "plan_id", "provenance", "words",
-              "durations_ms", "planned_cell_count", "observations", "scores"}
+              "durations_ms", "planned_cell_count", "planned_rows", "observations", "scores"}
     if not isinstance(plan, dict) or set(plan) != fields:
         raise ValueError("invalid run plan fields")
     if type(plan["schema_version"]) is not int or plan["schema_version"] != SCHEMA_VERSION or plan["record_type"] != "paper_derived_run_plan":
@@ -128,6 +128,22 @@ def load_plan(path):
         raise ValueError("planned_cell_count must match the 40-cell matrix")
     if plan["observations"] != [] or plan["scores"] != []:
         raise ValueError("run plan observations and scores must be empty lists")
+    rows = plan["planned_rows"]
+    if not isinstance(rows, list) or len(rows) != count:
+        raise ValueError("run plan must contain exactly 40 planned rows")
+    expected = {(word, duration) for word in matrix["words"] for duration in matrix["durations_ms"]}
+    empty_fields = {"measured_duration_ms", "expected_label", "observed_label", "score", "score_method"}
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != empty_fields | {"word", "requested_duration_ms", "status"}:
+            raise ValueError("invalid planned row fields")
+        _text(row["word"], "planned word", 64)
+        cell = (row["word"], _number(row["requested_duration_ms"], "planned duration_ms", positive=True))
+        if cell not in expected or cell in seen:
+            raise ValueError("planned rows must cover every word-duration cell exactly once")
+        if row["status"] != "planned" or any(row[key] is not None for key in empty_fields):
+            raise ValueError("planned rows must have empty observations, labels and scores")
+        seen.add(cell)
     provenance = plan["provenance"]
     if not isinstance(provenance, dict) or set(provenance) != {"basis", "citation"}:
         raise ValueError("run plan requires explicit provenance")

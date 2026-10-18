@@ -46,12 +46,13 @@ empty log and refuses an existing run directory; it never resets a run.
 
 ## Requested paper-derived run plan: no observations or scores
 
-[`examples/press_hold/paper-duration-plan.json`](../examples/press_hold/paper-duration-plan.json)
-is a configuration manifest for the requested words **heavy, bold, thick, slow,
+[`scripts/press_hold_run_plan.json`](../scripts/press_hold_run_plan.json), beside
+the bench script, is a configuration manifest for the requested words **heavy, bold, thick, slow,
 ticklish, tingling, prickling, tap** and durations **10, 100, 1000, 2000, 3000 ms**.
-Their Cartesian product is exactly 40 distinct planned cells. `observations` and
-`scores` are empty arrays; no trial rows, expected/observed labels, measurements
-or ratings are invented. There is no second score ledger.
+`planned_rows` explicitly lists all 40 distinct Cartesian-product cells with
+`status:"planned"`. Every row's measured duration, expected/observed labels,
+score and scoring method is null. Top-level `observations` and `scores` are empty
+arrays. These configuration rows are not trial observations or a second score ledger.
 
 The plan's `record_type` identifies it as a paper-derived plan requested via
 Vintos. The actual paper citation was not supplied, so `provenance.citation` is
@@ -63,7 +64,7 @@ cannot validate those physical claims.
 Initialize an **empty container for future actual observations** with that plan:
 
 ```sh
-python3 scripts/press_hold_bench.py init --store /tmp/press-hold-plan --run-id paper-plan-01 --plan examples/press_hold/paper-duration-plan.json --data-kind observed
+python3 scripts/press_hold_bench.py init --store /tmp/press-hold-plan --run-id paper-plan-01 --plan scripts/press_hold_run_plan.json --data-kind observed
 python3 scripts/press_hold_bench.py coverage --store /tmp/press-hold-plan --run-id paper-plan-01 --require-complete
 ```
 
@@ -74,8 +75,10 @@ words/durations and `--plan` cannot be combined. `--data-kind` remains mandatory
 use `synthetic` for software fixtures, `observed` for a future real-data run.
 An observed-kind empty container contains **zero observations**, not evidence
 of a completed experiment. Initial coverage is 0/40 and exits 1 with the flag.
-The loader refuses a plan with nonempty observations/scores or an inconsistent
-matrix/count. All eventual trial data goes into that run's single `scores.jsonl`.
+The loader refuses populated observation/score/label fields, duplicate/missing
+planned rows, or an inconsistent matrix/count. All eventual trial data goes into
+that run's single `scores.jsonl`; initializing from the plan copies no planned
+row into the log, so the initial trial count and scored coverage are both zero.
 
 Before any physical collection, the missing inputs must be supplied:
 
