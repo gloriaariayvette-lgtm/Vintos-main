@@ -3,18 +3,19 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 17 October — the bedroom ESP32: his newest song when she comes in (code done; not deployed, not yet heard her)
+## 17 October — the bedroom ESP32: song notification when she comes in
 
 - `scripts/bedroom_arrival.py` + `broker/vintos-bedroom-arrival.service`: listens to the Mac's Mosquitto
-  (192.168.1.91:1883, `espresense/devices/+/bedroom`). An enrolled device within 3 m after 20 min away sends his
-  newest song to her Watch (kind song, Play button); asleep, nothing; 3 h cooldown; the same song is never sent twice.
-- **Not done:** no device of hers is enrolled. Until one is, it only writes down ids it hears
-  (`python3 scripts/bedroom_arrival.py seen`). Enroll the phone/Watch on http://192.168.1.109 → Enroll, then put the
-  name in `memory/bedroom-arrival.json` `"devices"`.
+  (192.168.1.91:1883, `espresense/devices/+/bedroom`). An enrolled device within the configured distance after
+  20 min away sends a playable song notification; asleep, nothing; 3 h cooldown; the same song is never sent twice.
 - Deployed and configured by Gloria 17 October 20:05 CDT (`gloria-phone`, 4.0 m); Aegis reaches the relay.
-- The first real arrival (20:06) failed: the Watch push has no APNs key on Aegis (`~/.vintos/secrets/apns-watch.json`
-  missing), and the error escaped unrecorded. Fixed: failures are written down, and while the Watch push is not set up
-  the song goes as her phone notification (ntfy, tap opens it). **Not done:** the Watch app's own APNs push.
+- The first real arrival (20:06) failed before logging because APNs config was absent. The later real arrival at
+  21:03:40 CDT has an ntfy HTTP-200 receipt for “Forgetting the Film”; this proves notification transport, not Watch
+  reception/playback. Source now calls that existing `deliver.deliver` path directly and logs every arrival attempt,
+  including exceptions, with its actual channel. The click link remains available; no unconfirmed playback attempt
+  suppresses it. **Not done:** deploying this source repair, proving Watch reception, or automatic playback. No Watch
+  playback command/ack protocol or current Watch client implementation is established in this checkout; app work
+  remains separately coordinated. The owner's `gloria-phone`, 4.0 m runtime config is not changed by this repair.
 
 ## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 

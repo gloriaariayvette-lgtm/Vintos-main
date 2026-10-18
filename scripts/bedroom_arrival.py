@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""bedroom_arrival.py — when Gloria walks into the bedroom, his newest song reaches her Watch (Gloria, 17 October).
+"""bedroom_arrival.py — a playable song notification when Gloria comes into the bedroom.
 
 The ESP32 in the bedroom (ESPresense) publishes what it hears to the Mosquitto relay on the Mac:
     espresense/devices/<device id>/bedroom   {"distance": 1.03, ...}
-This listens there. When one of her enrolled devices comes within reach after being away a while, the newest song
-he made goes to her Watch with its Play button (watch_apns kind="song"). Asleep, it sends nothing.
+This listens there. An arrival sends the newest song through the existing receipt-backed ntfy delivery path,
+with a link to play it. That receipt confirms notification transport, not Watch reception or automatic playback.
+Asleep, it sends nothing. The owner's configured distance is preserved.
 
 Until a device of hers is named in the config it only writes down which device ids it hears
 (memory/bedroom-seen.json), so enrolling on the board's page and naming the id here is the whole setup.
@@ -119,50 +120,57 @@ def observe(device, distance, now=None, cfg=None):
 
 
 def _arrived(state, now, device, distance, why):
-    row = {"at": _now_iso(now), "device": device, "distance": round(distance, 2)}
-    if why:
-        row["sent"] = False; row["why"] = why; _log(row); return row
-    import watch_presence
-    asleep, _ = watch_presence.should_hold()
-    if asleep:
-        row.update(sent=False, why="asleep"); _log(row); return row
-    song = newest_song()
-    if not song:
-        row.update(sent=False, why="no song with a track yet"); _log(row); return row
-    title, url = song
-    if url == state.get("last_song_url"):
-        row.update(sent=False, why="his newest song already reached her", song=title); _log(row); return row
-    got = _send(title, url)
-    sent = got.get("state") == "sent"
-    row.update(sent=sent, song=title, delivery=got.get("state"), channel=got.get("channel"))
-    if got.get("why") or not sent: row["why"] = got.get("why", "")   # sent by phone: why the Watch push could not
-    if sent:
-        state.update(last_sent_ts=now, last_song_url=url)
-        _atomic(STATE, state)
-    _log(row)
-    return row
+    row = {"at": _now_iso(now), "device": device, "distance": round(distance, 2), "sent": False}
+    try:
+        if why:
+            row["why"] = why; return row
+        import watch_presence
+        asleep, _ = watch_presence.should_hold()
+        if asleep:
+            row["why"] = "asleep"; return row
+        song = newest_song()
+        if not song:
+            row["why"] = "no song with a track yet"; return row
+        title, url = song
+        row["song"] = title
+        if url == state.get("last_song_url"):
+            row["why"] = "his newest song notification was already sent"; return row
+        got = _send(title, url)
+        sent = got.get("state") in ("sent", "acknowledged")
+        row.update(sent=sent, delivery=got.get("state"), channel=got.get("channel"),
+                   watch_delivery="unconfirmed", playback="not_requested")
+        if got.get("why") or not sent: row["why"] = got.get("why", "")
+        if sent:
+            state.update(last_sent_ts=now, last_song_url=url)
+            try:
+                _atomic(STATE, state)
+            except Exception as e:
+                # Keep the transport result true even if its local dedup state could not be saved.
+                row["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
+        return row
+    except Exception as e:
+        row.update(delivery="failed", why="%s: %s" % (type(e).__name__, str(e)[:160]))
+        return row
+    finally:
+        _log(row)
 
 
 def _send(title, url):
-    """The Watch app's own push first; while that has no APNs key or no registered Watch (it had neither on
-    17 October), the phone notification he already uses for her, which her Watch shows too; tapping it opens the
-    song. A failure of either is returned, never raised, so the arrival is still written down."""
+    """Use the song notification transport verified by a real deliver receipt on 17 October.
+
+    No Watch playback command/acknowledgement is established here. Keep the clickable notification;
+    never suppress it for an unconfirmed playback attempt or label ntfy acceptance as Watch delivery.
+    """
     body = "His newest song, for when you came in."
-    try:
-        import watch_apns
-        got = watch_apns.send(title, body, kind="song", media_url=url)
-        if isinstance(got, dict) and got.get("state") not in ("failed", None):
-            return dict(got, channel="watch", state="sent" if got.get("state") != "held" else "held")
-        why = (got or {}).get("why", "") if isinstance(got, dict) else ""
-    except Exception as e:
-        why = "%s: %s" % (type(e).__name__, str(e)[:160])
     try:
         import deliver
         got = deliver.deliver("bedroom-song:" + url, "ntfy", message=body, title=title, click=url, tags="musical_note",
                               authority=lambda: (True, "she came into the bedroom"))
-        return dict(got, channel="phone", why=(got.get("why") or "") + ("; watch: " + why if why else ""))
+        if not isinstance(got, dict) or got.get("state") not in ("sent", "acknowledged", "failed", "held", "queued"):
+            return {"state": "failed", "channel": "ntfy", "why": "invalid notification delivery receipt"}
+        return dict(got, channel="ntfy")
     except Exception as e:
-        return {"state": "failed", "channel": "phone", "why": "watch: %s; phone: %s: %s" % (why, type(e).__name__, str(e)[:160])}
+        return {"state": "failed", "channel": "ntfy", "why": "%s: %s" % (type(e).__name__, str(e)[:160])}
 
 
 # --- the relay: a minimal MQTT 3.1.1 subscriber (no client library on Aegis) ----------------------------------------
