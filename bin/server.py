@@ -4150,6 +4150,9 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                         reply = _puj.sub(r"\s*\[PURSUIT:[^\]]*\]\s*", " ", reply).strip()
                 except Exception as _pue:
                     print("[pursuit/tag]", _pue, flush=True)
+                try:
+                    import bedroom_arrival as _ba; reply = _ba.take_picks(reply)   # his [ARRIVAL SONGS: ...]
+                except Exception as _bae: print("[bedroom/picks]", _bae, flush=True)
                 import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
 
                 # BIS final outcome
@@ -10381,6 +10384,10 @@ Your current self-model (excerpt):
                 else:
                     reply, _home_done = _home_tags(reply)
             except Exception as _hte: print("[avatar/home]", _hte, flush=True)
+            try:
+                import bedroom_arrival as _ba
+                reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
+            except Exception as _bae: print("[avatar/bedroom-picks]", _bae, flush=True)
             try:
                 from command_bubble import extract_and_post as _cb_post2
                 reply = _cb_post2(reply, _surface)

@@ -90,6 +90,16 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 18 October — he chooses three songs a day for her arrivals
+
+Gloria: with "never the same song twice" a day with one new song had one arrival song. Now he writes
+`[ARRIVAL SONGS: a | b | c]` in any chat or avatar reply (taken out of the words; a test or witness-less turn strips it
+without choosing), matched loosely against his library (`memory/bedroom-arrival-picks.json`). Each arrival plays the
+next of today's three not yet played; a new day starts fresh. Until he chooses, the newest song and the two
+longest-unplayed stand in, and his bedroom line asks him to choose and lists his library. **Not done:** the line
+reaches his avatar/ReelRoom world block only, not the main chat's context; whether he chooses unprompted is not yet seen.
+**Asked, not built:** him choosing a Spotify song for the Watch while they talk — waiting on her choice of route.
+
 ## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
 
 - A Study fix that passed every test was reverted whenever the deploy's "is he mid-turn?" gate refused it
