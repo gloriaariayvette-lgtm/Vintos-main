@@ -73,7 +73,7 @@ def _json(raw):
     return json.loads(raw, object_pairs_hook=_unique, parse_constant=invalid_constant)
 
 
-def _config(words, durations_ms, data_kind, source_commit):
+def _matrix(words, durations_ms):
     if not isinstance(words, (list, tuple)) or len(words) != 8:
         raise ValueError("a run requires exactly eight words")
     words = [_text(word, "word", 64) for word in words]
@@ -84,11 +84,16 @@ def _config(words, durations_ms, data_kind, source_commit):
     durations = [_number(value, "duration_ms", positive=True) for value in durations_ms]
     if len(set(durations)) != 5:
         raise ValueError("run durations_ms must be distinct")
+    return {"words": words, "durations_ms": durations}
+
+
+def _config(words, durations_ms, data_kind, source_commit):
+    matrix = _matrix(words, durations_ms)
     if data_kind not in ("synthetic", "observed"):
         raise ValueError("data_kind must be synthetic or observed")
     if source_commit is not None and (not isinstance(source_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", source_commit)):
         raise ValueError("source_commit must be a full lowercase Git SHA or null")
-    return {"words": words, "durations_ms": durations, "data_kind": data_kind, "source_commit": source_commit}
+    return dict(matrix, data_kind=data_kind, source_commit=source_commit)
 
 
 def _directory(store, run_id):
@@ -106,12 +111,46 @@ def _open(path, flags, mode):
     return os.fdopen(fd, mode, encoding="utf-8", newline="")
 
 
-def create_run(store, *, words, durations_ms, data_kind, run_id=None, source_commit=None):
+def load_plan(path):
+    """Read an unobserved plan; a plan is configuration, never trial evidence."""
+    with _open(path, os.O_RDONLY, "r") as stream:
+        plan = _json(stream.read())
+    fields = {"schema_version", "record_type", "plan_id", "provenance", "words",
+              "durations_ms", "planned_cell_count", "observations", "scores"}
+    if not isinstance(plan, dict) or set(plan) != fields:
+        raise ValueError("invalid run plan fields")
+    if type(plan["schema_version"]) is not int or plan["schema_version"] != SCHEMA_VERSION or plan["record_type"] != "paper_derived_run_plan":
+        raise ValueError("invalid run plan identity/version")
+    _identifier(plan["plan_id"], "plan_id")
+    matrix = _matrix(plan["words"], plan["durations_ms"])
+    count = len(matrix["words"]) * len(matrix["durations_ms"])
+    if type(plan["planned_cell_count"]) is not int or plan["planned_cell_count"] != count:
+        raise ValueError("planned_cell_count must match the 40-cell matrix")
+    if plan["observations"] != [] or plan["scores"] != []:
+        raise ValueError("run plan observations and scores must be empty lists")
+    provenance = plan["provenance"]
+    if not isinstance(provenance, dict) or set(provenance) != {"basis", "citation"}:
+        raise ValueError("run plan requires explicit provenance")
+    _text(provenance["basis"], "provenance basis", 512)
+    if provenance["citation"] is not None:
+        _text(provenance["citation"], "citation", 2000)
+    return dict(plan, **matrix)
+
+
+def create_run(store, *, words=None, durations_ms=None, data_kind, run_id=None, source_commit=None, plan=None):
     """Create a new immutable manifest and empty ledger; existing runs are refused."""
+    selected_plan = None
+    if plan is not None:
+        if words is not None or durations_ms is not None:
+            raise ValueError("use either a run plan or explicit words/durations, not both")
+        selected_plan = load_plan(plan)
+        words, durations_ms = selected_plan["words"], selected_plan["durations_ms"]
     config = _config(words, durations_ms, data_kind, source_commit)
     run_id = _identifier(run_id if run_id is not None else uuid.uuid4().hex, "run_id")
     directory = _directory(store, run_id)
     manifest = dict(config, schema_version=SCHEMA_VERSION, run_id=run_id, created_at_utc=_now())
+    if selected_plan is not None:
+        manifest["plan_id"] = selected_plan["plan_id"]
     directory.parent.mkdir(parents=True, exist_ok=True)
     directory.mkdir()  # Exclusive creation: never replace a previous run.
     with _open(directory / "manifest.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, "w") as stream:
@@ -128,12 +167,14 @@ def create_run(store, *, words, durations_ms, data_kind, run_id=None, source_com
 def _manifest(directory, run_id):
     with _open(directory / "manifest.json", os.O_RDONLY, "r") as stream:
         manifest = _json(stream.read())
-    if not isinstance(manifest, dict) or set(manifest) != MANIFEST_FIELDS:
+    if not isinstance(manifest, dict) or set(manifest) not in (MANIFEST_FIELDS, MANIFEST_FIELDS | {"plan_id"}):
         raise ValueError("invalid run manifest fields")
     if type(manifest["schema_version"]) is not int or manifest["schema_version"] != SCHEMA_VERSION or manifest["run_id"] != run_id:
         raise ValueError("run manifest identity/version mismatch")
     _timestamp(manifest["created_at_utc"])
     _config(manifest["words"], manifest["durations_ms"], manifest["data_kind"], manifest["source_commit"])
+    if "plan_id" in manifest:
+        _identifier(manifest["plan_id"], "plan_id")
     return manifest
 
 
@@ -268,8 +309,9 @@ def main(argv=None):
     init = sub.add_parser("init", help="create an eight-word/five-duration run; no experiment is run")
     init.add_argument("--store", required=True)
     init.add_argument("--run-id")
-    init.add_argument("--words", nargs=8, required=True)
-    init.add_argument("--durations-ms", nargs=5, type=float, required=True)
+    init.add_argument("--words", nargs=8)
+    init.add_argument("--durations-ms", nargs=5, type=float)
+    init.add_argument("--plan", help="unobserved JSON run plan, instead of explicit words/durations")
     init.add_argument("--data-kind", choices=("synthetic", "observed"), required=True)
     init.add_argument("--source-commit")
     record = sub.add_parser("record", help="append supplied trial data; does not acquire or compute it")

@@ -44,6 +44,58 @@ The manifest records `schema_version`, `run_id`, `data_kind`, `created_at_utc`,
 `words`, `durations_ms`, and nullable `source_commit`. Initialization creates an
 empty log and refuses an existing run directory; it never resets a run.
 
+## Requested paper-derived run plan: no observations or scores
+
+[`examples/press_hold/paper-duration-plan.json`](../examples/press_hold/paper-duration-plan.json)
+is a configuration manifest for the requested words **heavy, bold, thick, slow,
+ticklish, tingling, prickling, tap** and durations **10, 100, 1000, 2000, 3000 ms**.
+Their Cartesian product is exactly 40 distinct planned cells. `observations` and
+`scores` are empty arrays; no trial rows, expected/observed labels, measurements
+or ratings are invented. There is no second score ledger.
+
+The plan's `record_type` identifies it as a paper-derived plan requested via
+Vintos. The actual paper citation was not supplied, so `provenance.citation` is
+null and the source has not been independently verified. The word/duration matrix
+is the supplied plan, not a claim about a paper's measured effects, actuator
+capabilities or a validated physical protocol. Software tests are synthetic and
+cannot validate those physical claims.
+
+Initialize an **empty container for future actual observations** with that plan:
+
+```sh
+python3 scripts/press_hold_bench.py init --store /tmp/press-hold-plan --run-id paper-plan-01 --plan examples/press_hold/paper-duration-plan.json --data-kind observed
+python3 scripts/press_hold_bench.py coverage --store /tmp/press-hold-plan --run-id paper-plan-01 --require-complete
+```
+
+This only writes configuration and an empty `scores.jsonl`. It performs no
+experiment. The run manifest adds `plan_id` and reuses the existing `words` and
+`durations_ms` fields; older manifests without `plan_id` remain valid. Explicit
+words/durations and `--plan` cannot be combined. `--data-kind` remains mandatory:
+use `synthetic` for software fixtures, `observed` for a future real-data run.
+An observed-kind empty container contains **zero observations**, not evidence
+of a completed experiment. Initial coverage is 0/40 and exits 1 with the flag.
+The loader refuses a plan with nonempty observations/scores or an inconsistent
+matrix/count. All eventual trial data goes into that run's single `scores.jsonl`.
+
+Before any physical collection, the missing inputs must be supplied:
+
+- The paper citation and relevant methods/conditions, plus the intended mapping
+  from words/durations to expected `press`/`hold` labels and a defined normalized
+  scoring method. The plan does not infer those labels from the words.
+- Exact actuator/driver identification and datasheets; its supported command
+  interface, timing/response limits, mechanical mounting/load and calibration.
+  These requested software durations are not measured actuator pulse durations
+  or device-specific output settings.
+- Actual acquisition setup: what measures stimulus onset/offset and duration,
+  clock resolution, sampling/timestamp conventions, uncertainty, repetitions and
+  ordering, and which supplied observation supports each trial's label/score.
+- Per-trial measured duration, observed label, score/method or explicit failed/
+  unscored status. Do not copy the requested duration into the measured field or
+  replace missing observations with synthetic data/zero scores.
+
+No hardware stimulus, device command, calibration, collection or validation is
+implemented or implied by loading this plan.
+
 ## Trial schema and validation
 
 Each UTF-8 JSONL row has exactly these keys (schema version 1):
