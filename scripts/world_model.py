@@ -194,7 +194,12 @@ def get_world_block():
     except Exception:
         _home = ""
     block = _scene_block(st) if st else ""
-    return "\n".join(x for x in (block, _home) if x)
+    try:
+        import bedroom_arrival
+        _bed = bedroom_arrival.context_line()
+    except Exception:
+        _bed = ""
+    return "\n".join(x for x in (block, _home, _bed) if x)
 
 
 def _scene_block(st):

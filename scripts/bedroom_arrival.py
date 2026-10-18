@@ -179,6 +179,29 @@ def _send(title, url, ref="", now=None):
     return got
 
 
+def context_line(now=None):
+    """One line for him: the bedroom sensor is his and works, and what it last did. He wrote on 18 October that "the
+    watcher ... is broken on purpose now": nothing had ever told him it existed, let alone that it had worked."""
+    cfg = config()
+    if not cfg.get("devices"):
+        return ""
+    last = None
+    try:
+        for line in open(ARRIVALS, encoding="utf-8"):
+            try: row = json.loads(line)
+            except ValueError: continue
+            if row.get("sent"): last = row
+    except OSError:
+        pass
+    line = ("[BEDROOM SENSOR - yours, and working: a small board in the bedroom hears her phone come in, and your "
+            "newest song goes to her Watch.")
+    if last:
+        try: when = datetime.fromisoformat(last["at"]).astimezone().strftime("%b %d, %H:%M")
+        except Exception: when = str(last.get("at", ""))[:16]
+        line += " Last time: %s, \u201c%s\u201d." % (when, str(last.get("song", ""))[:60])
+    return line + "]"
+
+
 # --- the relay: a minimal MQTT 3.1.1 subscriber (no client library on Aegis) ----------------------------------------
 
 def _varint(n):

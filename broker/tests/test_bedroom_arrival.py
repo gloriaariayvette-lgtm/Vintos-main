@@ -105,6 +105,13 @@ check("a failed offer is written down and does not spend the song", not row["sen
 check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 6)
 check("her config is unchanged", open(B.CONFIG, "rb").read() == config_before)
 check("nothing ever went to her phone", not PHONE)
+cl = B.context_line()
+check("he is told the sensor is his and works, and what it last sent", cl.startswith("[BEDROOM SENSOR - yours, and working")
+      and "Static" in cl, cl)
+wm = open(os.path.join(REPO, "scripts", "world_model.py")).read()
+check("the line reaches his avatar and ReelRoom context with the house", "bedroom_arrival.context_line()" in wm
+      and "(block, _home, _bed)" in wm)
+
 
 # --- the relay: a fake socket speaking MQTT ---
 def pub(topic, payload):
