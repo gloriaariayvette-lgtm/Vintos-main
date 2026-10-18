@@ -4,7 +4,7 @@ intended difference (transformation, not emotion) -> blind observation -> match.
 Failed intentions accumulate weight and haunt target selection; at weight 5 they
 graduate into a causality question ("is this still the same intention?") with lineage.
 Nothing here instruments Gloria beyond what she freely shows in conversation."""
-import os, re, json, time, hashlib, urllib.request
+import os, re, json, time, hashlib, urllib.request, urllib.error
 
 def _sg_write(_p, _o, _who):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -43,7 +43,11 @@ def _live(r,now=None):
     return (now or time.time())-float(r.get("last") or r.get("first") or 0) <= STALE_DAYS*86400
 API="http://127.0.0.1:8599/v1/chat/completions"
 MODEL="grok-4.20-0309-non-reasoning"
+# Why the last _llm call came back empty. A shim 502, the 60s timeout, no shim and a body without choices all
+# returned the same "" and DERIVE FAILED could not tell them apart (audit, 18 October)
+_LAST={"why":""}
 def _llm(system,user,max_tokens=220,temperature=0.4):
+    _LAST["why"]=""
     try:
         body=json.dumps({"model":MODEL,"messages":[{"role":"system","content":system},
             {"role":"user","content":user}],"temperature":temperature,
@@ -51,8 +55,15 @@ def _llm(system,user,max_tokens=220,temperature=0.4):
         req=urllib.request.Request(API,data=body,headers={"Content-Type":"application/json",
             "Authorization":"Bearer "+os.environ.get("XAI_API_KEY","")})
         with urllib.request.urlopen(req,timeout=60) as r:
-            return json.loads(r.read())["choices"][0]["message"]["content"].strip()
-    except Exception:
+            out=(json.loads(r.read())["choices"][0]["message"]["content"] or "").strip()
+            if not out: _LAST["why"]="empty content"
+            return out
+    except urllib.error.HTTPError as e:
+        try: _LAST["why"]="HTTP %s %s"%(e.code,e.read()[:200].decode("utf-8","replace"))
+        except Exception: _LAST["why"]="HTTP %s"%e.code
+        return ""
+    except Exception as e:
+        _LAST["why"]=(type(e).__name__+": "+str(e))[:200]
         return ""
 def _jload(p,d):
     try: return json.load(open(p))
@@ -79,9 +90,11 @@ def _salvage(t):
     return out
 
 # ---------- intent side ----------
+# A suite repoints this: its lines were landing undated in the log on her host (audit, 18 October)
+DLOG="/tmp/desired-difference.log"
 def _dlog(msg):
     try:
-        open("/tmp/desired-difference.log","a").write(str(msg)[:300]+"\n")
+        open(DLOG,"a").write(time.strftime("%Y-%m-%d %H:%M:%S ")+str(msg)[:300]+"\n")
     except Exception: pass
 
 def her_latest(recent):
@@ -129,7 +142,9 @@ def record_intent(target,recent_her=""):
         max_tokens=450)
     d=_extract(out)
     if not d.get("intended_difference"):
-        _dlog("DERIVE FAILED raw="+out[:150]); return None
+        # transport, prose (a decline), or JSON naming nothing - each needs a different fix (audit, 18 October)
+        why=_LAST["why"] if not out else ("no JSON in reply" if "{" not in out else "JSON without intended_difference")
+        _dlog("DERIVE FAILED ("+why+") raw="+out[:150]); return None
     entry={"id":hashlib.md5((str(d["intended_difference"])+str(time.time())).encode()).hexdigest()[:8],
         "ts":time.time(),"intended":str(d["intended_difference"])[:300],
         "evidence":str(d.get("evidence",""))[:300],

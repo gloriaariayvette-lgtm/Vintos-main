@@ -35,7 +35,9 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 
 import desired_difference as DD
+DD.DLOG = os.path.join(HOME, "desired-difference.log")   # never her host's /tmp log (audit, 18 October)
 import self_difference as SD
+SD.SDLOG = os.path.join(HOME, "self-difference.log")
 spec = importlib.util.spec_from_file_location("priority_vector_keys_t", os.path.join(REPO, "scripts", "priority_vector.py"))
 PV = importlib.util.module_from_spec(spec); spec.loader.exec_module(PV)
 DD._queue_bring_up = lambda q: None
@@ -47,7 +49,7 @@ def fake_llm(system, user, max_tokens=220, temperature=0.4):
     return '{"verdict":"NO","unexpected":""}'
 DD._llm = fake_llm
 SD._llm = fake_llm
-check("every store is the scratch one", all(p.startswith(HOME) for p in (DD.PRESS, DD.DIFF, SD.SPRESS, SD.SDIFF, PV.STATE, PV.LOG)))
+check("every store is the scratch one", all(p.startswith(HOME) for p in (DD.PRESS, DD.DIFF, DD.DLOG, SD.SPRESS, SD.SDIFF, SD.SDLOG, PV.STATE, PV.LOG)))
 check("the model and the causality head are stubs", DD._llm is fake_llm and urllib.request.urlopen is _no_urlopen)
 
 print("\n--- one intention, one row ---")

@@ -72,6 +72,9 @@ def main():
     works_eligible = len(hi) >= MIN_WORKS_EVIDENCE
     flat_eligible = len(lo) >= MIN_FLAT_EVIDENCE
     if not hn: works_eligible = False       # nothing landed to read a pattern from
+    # The Mac's Gemma over Tailscale may be asleep at 01:26. Unreachable used to fall through with works/flat empty,
+    # overwrite the model and open a new hint born of the outage; now it leaves the model as it was (audit, 18 October)
+    _net_err = getattr(getattr(requests, "exceptions", None), "RequestException", ())   # () when a suite stubs requests
     try:
         if not (hn or ln):
             raise ValueError("no notes in either bucket; nothing to read a pattern from")
@@ -79,10 +82,13 @@ def main():
                   'flat): %s. Return ONLY JSON {"works":["<2-3 short interaction moves that land>"],'
                   '"flat":["<2-3 that fall flat>"]}.' % (" | ".join(hn) or "(none)", " | ".join(ln) or "(none)"))
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.3, "max_tokens": 200,
-            "messages": [{"role": "user", "content": prompt}]}, timeout=90)
+            "messages": [{"role": "user", "content": prompt}]}, timeout=(10, 90))
         d = json.loads(re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S).group())
         works = [str(x).strip()[:80] for x in (d.get("works") or [])][:3] if hn else []
         flat = [str(x).strip()[:80] for x in (d.get("flat") or [])][:3] if ln else []
+    except _net_err as e:
+        log("pattern extract failed - %s unreachable (%s); interaction model left as it was" % (GEMMA, e))
+        return
     except Exception as e:
         log("pattern extract failed (%s)" % e)
     comps = [a["composite"] for a in audits]
