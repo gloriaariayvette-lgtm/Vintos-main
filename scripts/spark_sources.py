@@ -262,6 +262,25 @@ def gather(now=None):
 SURF_STATE = os.path.join(MEMORY, "skill-surf-state.json")
 PAGES_PER_WEEK = 2    # Gloria, 11 September: he reads 1-2 pages of the OpenClaw skills page a week
 SURF_EVERY_DAYS = 7
+# The gate is a week less half a day (audit, 18 October). A read stamps the second it ran, and the timer fires
+# Monday 09:00 with up to a minute of accuracy, or later as a Persistent catch-up: a read at 09:00:40 made the
+# next Monday's 09:00:05 "under seven days", and that week was skipped. Half a day still holds two firings apart.
+SURF_SLACK = timedelta(hours=12)
+
+
+def _surf_note(st, now, reason):
+    """A firing that did not read says why, beside the last read (audit, 18 October: the 12 October firing left
+    nothing behind, so a state stale since 5 October could not say gated, unpointed or offline). Never moves
+    "last" or "next_start": only a read does."""
+    st = dict(st) if isinstance(st, dict) else {}
+    st["last_attempt"] = now.isoformat(); st["last_reason"] = str(reason)[:200]
+    try:
+        os.makedirs(MEMORY, exist_ok=True)
+        _tmp = SURF_STATE + ".tmp"; json.dump(st, open(_tmp, "w"), indent=2); os.replace(_tmp, SURF_STATE)
+    except Exception:
+        pass
+    print("skill surf: did not read: %s" % reason, file=sys.stderr, flush=True)
+    return {"read": False, "reason": reason}
 
 
 def weekly_skill_surf(now=None, force=False):
@@ -278,8 +297,8 @@ def weekly_skill_surf(now=None, force=False):
     st = _load(SURF_STATE, {})
     if not force and st.get("last"):
         try:
-            if now - datetime.fromisoformat(st["last"]) < timedelta(days=SURF_EVERY_DAYS):
-                return {"read": False, "reason": "already read a page this week"}
+            if now - datetime.fromisoformat(st["last"]) < timedelta(days=SURF_EVERY_DAYS) - SURF_SLACK:
+                return _surf_note(st, now, "already read a page this week (last %s)" % st["last"][:16])
         except Exception:
             pass
     try:
@@ -287,12 +306,19 @@ def weekly_skill_surf(now=None, force=False):
         sys.path.insert(0, os.path.join(WS, "scripts"))
         import openclaw_skills as _sk
     except Exception as e:
-        return {"read": False, "reason": "openclaw reader unavailable: %s" % str(e)[:120]}
+        return _surf_note(st, now, "openclaw reader unavailable: %s" % str(e)[:120])
     total_pages = len(_sk.pages())
     if not total_pages:
-        return {"read": False, "reason": "pointed nowhere: set skills_url in openclaw-config.json"}
+        return _surf_note(st, now, "pointed nowhere: set skills_url in openclaw-config.json")
     start = int(st.get("next_start", 0)) % total_pages
-    skills, labels = _sk.read_pages(budget=PAGES_PER_WEEK, start=start)
+    # A page that cannot be fetched raised out of here with no state written (audit, 18 October). A user unit's
+    # After=network-online.target waits on nothing, so a catch-up at WSL start can run before the network is up.
+    try:
+        skills, labels = _sk.read_pages(budget=PAGES_PER_WEEK, start=start)
+    except Exception as e:
+        return _surf_note(st, now, "skills page could not be read: %s" % str(e.__cause__ or e)[:120])
+    if not labels:
+        return _surf_note(st, now, "no page was read")
     mine = {_sk._norm(x) for x in _sk.his()}
     already_seen = _sk.seen_names()
     rows = _sparks()

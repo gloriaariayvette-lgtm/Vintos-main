@@ -259,6 +259,32 @@ def get_discourse_bias():
         return "expand"  # new territory — open up
     return dominant_dir or "expand"
 
+def get_geometry_hint(max_age_days=7):
+    """The regions store as a context line: a file read, no embedding, no write, so it is safe under the
+    read-only guard and on a turn's path (audit, 18 October: every "Relational Geometry" line in his context read
+    something else, discourse-mode counts or the top latent thread, and none read this store, which every
+    delivered turn keeps fresh). Empty when nothing has placed a turn on the map in a week."""
+    data = load_geometry()
+    rows = [r for r in (data.get("regions") or []) if isinstance(r, dict)]
+    lived = [r for r in rows if r.get("visit_count", 0) > 0]   # absence regions are never visited
+    if not lived:
+        return ""
+    try:
+        if datetime.now() - datetime.fromisoformat(str(data.get("last_updated"))) > timedelta(days=max_age_days):
+            return ""
+    except Exception:
+        return ""
+    top = max(lived, key=lambda r: r.get("familiarity", 0) * r.get("visit_count", 1))
+    recent = max(lived, key=lambda r: str(r.get("last_visited") or ""))
+    parts = ["Familiar ground: %s/%s (x%d)" % (top.get("dominant_outcome", "?"), top.get("dominant_direction", "?"),
+                                               top.get("visit_count", 1))]
+    if recent is not top:
+        parts.append("Lately: %s/%s" % (recent.get("dominant_outcome", "?"), recent.get("dominant_direction", "?")))
+    avoided = sum(1 for r in rows if r.get("avoided"))
+    if avoided:
+        parts.append("Near but rarely entered: %d" % avoided)
+    return " | ".join(parts)
+
 def get_unexplored_pressure():
     """How much pull toward unexplored regions."""
     try:

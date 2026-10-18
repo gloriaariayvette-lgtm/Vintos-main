@@ -103,6 +103,15 @@ check("an unreachable Mac leaves the interaction model as it was", "interaction 
 eu = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
 check("a daemon that does not answer version is named as such", "does not answer version" in eu
       and eu == open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read())
+# --- a permanent BIS trial stays live after promotion, so its inclination can move again (frozen since July) ---
+import behavioral_intercept as BI
+check("the trial ledger is throwaway", BI.LEDGER.startswith(HOME))
+os.makedirs(BI.MEMORY, exist_ok=True)
+json.dump({"trials": [{"id": "permanent_x", "status": "promoting", "created": "2026-07-01", "outcomes": [1]},
+                      {"id": "t_once", "status": "promoting", "created": "2026-10-01"}]}, open(BI.LEDGER, "w"))
+live = [t["id"] for t in BI.get_active_trials()]
+check("a permanent trial left 'promoting' is live again; an ordinary one stays promoted", live == ["permanent_x"]
+      and json.load(open(BI.LEDGER))["trials"][0].get("promoted"), live)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

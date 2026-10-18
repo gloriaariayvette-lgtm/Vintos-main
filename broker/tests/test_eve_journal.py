@@ -99,7 +99,7 @@ for name, fn, said in [("emotional_gravity_wells", "get_wells_context", "SUB-wel
                        ("latent_threads", "get_influence_hint", "SUB-threads"),
                        ("absence_map_cold", "get_absence_context", "SUB-absence"),
                        ("mutual_simulation", "get_interaction_hint", "REL-mutual"),
-                       ("relational_geometry", "get_thread_context", "REL-geometry"),
+                       ("relational_geometry", "get_geometry_hint", "REL-geometry"),
                        ("configuration_space", "get_config_hint", "REL-config"),
                        ("relational_head", "get_relational_hint", "REL-head"),
                        ("desired_difference", "pressure_block", "REL-pressure")]:
