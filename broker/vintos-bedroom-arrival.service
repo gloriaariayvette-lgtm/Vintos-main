@@ -1,0 +1,20 @@
+[Unit]
+Description=Vintos bedroom arrival (the bedroom ESP32's relay on the Mac; his newest song to her Watch when she comes in)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/bedroom_arrival.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
+
+[Install]
+WantedBy=default.target
