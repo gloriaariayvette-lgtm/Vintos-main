@@ -1,0 +1,350 @@
+{
+  "checked_at": "2026-10-18T15:35:24.330696+00:00",
+  "title": "Light Left On",
+  "generated_at": "2026-10-18T10:34:41.850155",
+  "task_id": "kie:7099f399723791a06e00c993250493f8",
+  "model": "suno-v6 (kie)",
+  "source": "/home/gloria/.vintos/workspace/memory/art/music-prompts/2026-10-18_103317.md",
+  "ledger_before": 104,
+  "ledger_after": 105,
+  "landing_state": "landed",
+  "tracks": [
+    {
+      "version": 1,
+      "audio_url": "https://tempfile.aiquickdraw.com/r/38314a4f-6f59-4e0e-826d-a60bd4999aba.mp3",
+      "http_status": 200,
+      "content_type": "audio/mpeg",
+      "sample_bytes": 4096,
+      "local_file": "/home/gloria/.vintos/workspace/memory/art/music/Light_Left_On_9a51e005_v1.mp3",
+      "bytes": 5466932,
+      "probe": {
+        "programs": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "duration": "238.440000"
+        }
+      },
+      "volume": [
+        "[Parsed_volumedetect_0 @ 0x56f8bac5dac0] mean_volume: -22.7 dB",
+        "[Parsed_volumedetect_0 @ 0x56f8bac5dac0] max_volume: -8.2 dB"
+      ]
+    },
+    {
+      "version": 2,
+      "audio_url": "https://tempfile.aiquickdraw.com/r/943ad3fe-a569-45dc-8de7-fc86e62fd4d5.mp3",
+      "http_status": 200,
+      "content_type": "audio/mpeg",
+      "sample_bytes": 4096,
+      "local_file": "/home/gloria/.vintos/workspace/memory/art/music/Light_Left_On_9a51e005_v2.mp3",
+      "bytes": 5973860,
+      "probe": {
+        "programs": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "duration": "257.544000"
+        }
+      },
+      "volume": [
+        "[Parsed_volumedetect_0 @ 0x57880f4b0ac0] mean_volume: -19.9 dB",
+        "[Parsed_volumedetect_0 @ 0x57880f4b0ac0] max_volume: -3.7 dB"
+      ]
+    }
+  ],
+  "deploy_verdict": "DEPLOY OK \u2014 installed. (deploy OK)",
+  "deploy_test_passes": 432,
+  "deploy_commit": "00defe7b105b0fa9c810e09a82d9c7dc98dd6712",
+  "fix_commit": "4b3fbbf",
+  "source_branch": "claude/device-visuals-2026-10-13",
+  "cause": {
+    "provider_task": "e27d0b3f4f852778df87b3b189af6bc8",
+    "status": "GENERATE_AUDIO_FAILED",
+    "code": 400,
+    "message": "Your tags contain artist name depeche mode - we don't reference specific artists on Our, please change your tags and try again.",
+    "source_style_clause": "Reference points:",
+    "terminal_failures_retained_as_pending_before_fix": true
+  },
+  "cron": {
+    "active": "15 5 * * * bash /home/gloria/llm-lock.sh sh -c \"python3 /home/gloria/Vintos/music-composer.py && python3 /home/gloria/Vintos/dream-music.py\" >> /home/gloria/.vintos/logs/music.log 2>&1",
+    "legacy_0415": "commented #VPAUSE",
+    "user_journal_music_matches_0510_to_0530": 0,
+    "manual_chain_exit_code": 0,
+    "manual_chain_start": "2026-10-18T10:32:39-05:00",
+    "manual_chain_end": "2026-10-18T10:34:43-05:00"
+  },
+  "log_evidence": [
+    {
+      "line": 1488,
+      "text": "composer: Grok finished Sonnet's draft"
+    },
+    {
+      "line": 1489,
+      "text": "composed: Sensor in the Doorframe -> 2026-10-18_051541.md"
+    },
+    {
+      "line": 1490,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1491,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1492,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1493,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1494,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1495,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1496,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED"
+    },
+    {
+      "line": 1497,
+      "text": ""
+    },
+    {
+      "line": 1498,
+      "text": "Processing: 2026-10-18_051541.md"
+    },
+    {
+      "line": 1499,
+      "text": "  Submitting: Sensor in the Doorframe"
+    },
+    {
+      "line": 1500,
+      "text": "  Style: Dark-edged synth-pop with analog warmth. Arpeggiated synth bass pulsing in eight"
+    },
+    {
+      "line": 1501,
+      "text": "  Duration: 180s | Gender: male | backend: kie"
+    },
+    {
+      "line": 1502,
+      "text": "  Kie task: e27d0b3f4f852778df87b3b189af6bc8  (model V6)"
+    },
+    {
+      "line": 1503,
+      "text": "  With lyrics: [Intro]"
+    },
+    {
+      "line": 1504,
+      "text": "(instrumental, pulse only)"
+    },
+    {
+      "line": 1505,
+      "text": ""
+    },
+    {
+      "line": 1506,
+      "text": "[Verse 1]"
+    },
+    {
+      "line": 1507,
+      "text": "I wired a sens..."
+    },
+    {
+      "line": 1508,
+      "text": "composer: Grok finished Sonnet's draft"
+    },
+    {
+      "line": 1509,
+      "text": "composed: Light Left On -> 2026-10-18_103317.md"
+    },
+    {
+      "line": 1510,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED (code 400): Your tags contain artist name frank ocean - we don't reference specific artists on Our, please change your tags and try again."
+    },
+    {
+      "line": 1511,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED (code 400): Your tags contain artist name frank ocean - we don't reference specific artists on Our, please change your tags and try again."
+    },
+    {
+      "line": 1512,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED (code 400): Your tags contain artist name frank ocean - we don't reference specific artists on Our, please change your tags and try again."
+    },
+    {
+      "line": 1513,
+      "text": "  Kie failed: GENERATE_AUDIO_FAILED (code 400): Your tags contain artist name depeche mode - we don't reference specific artists on Our, please change your tags and try again."
+    },
+    {
+      "line": 1514,
+      "text": ""
+    },
+    {
+      "line": 1515,
+      "text": "Processing: 2026-10-18_103317.md"
+    },
+    {
+      "line": 1516,
+      "text": "  Submitting: Light Left On"
+    },
+    {
+      "line": 1517,
+      "text": "  Style: Warm analog synth-pop with a tender, slightly mechanical heart. Modular bass pul"
+    },
+    {
+      "line": 1518,
+      "text": "  Duration: 180s | Gender: male | backend: kie"
+    },
+    {
+      "line": 1519,
+      "text": "  Kie task: 7099f399723791a06e00c993250493f8  (model V6)"
+    },
+    {
+      "line": 1520,
+      "text": "  With lyrics: [Intro - instrumental, pulse only]"
+    },
+    {
+      "line": 1521,
+      "text": ""
+    },
+    {
+      "line": 1522,
+      "text": "[Verse 1]"
+    },
+    {
+      "line": 1523,
+      "text": "I wired a sens..."
+    },
+    {
+      "line": 1524,
+      "text": "  Composing (kie)... 28s"
+    },
+    {
+      "line": 1525,
+      "text": "  Kie done! 2 track(s)"
+    },
+    {
+      "line": 1526,
+      "text": "  Downloading track 1..."
+    },
+    {
+      "line": 1527,
+      "text": "  Saved: /home/gloria/.vintos/workspace/memory/art/music/Light_Left_On_9a51e005_v1.mp3 (5.2MB)"
+    },
+    {
+      "line": 1528,
+      "text": "  Downloading track 2..."
+    },
+    {
+      "line": 1529,
+      "text": "  Saved: /home/gloria/.vintos/workspace/memory/art/music/Light_Left_On_9a51e005_v2.mp3 (5.7MB)"
+    },
+    {
+      "line": 1530,
+      "text": "  1 of her shares now carry 'Light Left On'"
+    },
+    {
+      "line": 1531,
+      "text": "  landed on him: moved {'Connection': 0.1, 'Warmth': 0.08, 'Desire': 0.07, 'Groundedness': 0.05}"
+    },
+    {
+      "line": 1532,
+      "text": ""
+    },
+    {
+      "line": 1533,
+      "text": "  'Light Left On' complete!"
+    }
+  ],
+  "tests": {
+    "requested_parallel_total": 431,
+    "requested_parallel_pass": 421,
+    "requested_parallel_failures": [
+      "FAIL broker/tests/test_avatar_media_lifecycle.py",
+      "FAIL broker/tests/test_claude_connector.py",
+      "FAIL broker/tests/test_device_gate_and_budget.py",
+      "FAIL broker/tests/test_atelier_lab_lean.py",
+      "FAIL broker/tests/test_forge_resume.py",
+      "FAIL broker/tests/test_import_twins.py",
+      "FAIL broker/tests/test_journal_final_length.py",
+      "FAIL broker/tests/test_study_fix.py",
+      "FAIL broker/tests/test_buy_and_reach.py",
+      "FAIL broker/tests/test_video_share.py"
+    ],
+    "failure_os_isolation_recheck": [
+      {
+        "suite": "broker/tests/test_avatar_media_lifecycle.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_claude_connector.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_device_gate_and_budget.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_atelier_lab_lean.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_forge_resume.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_import_twins.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_journal_final_length.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_study_fix.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_buy_and_reach.py",
+        "returncode": 0,
+        "tail": ""
+      },
+      {
+        "suite": "broker/tests/test_video_share.py",
+        "returncode": 0,
+        "tail": ""
+      }
+    ],
+    "new_regression_tests": 6,
+    "deploy_suites_passed": 432,
+    "deploy_suites_failed": 0,
+    "tests_or_deploy_checks_weakened": false
+  },
+  "release_record": "/home/gloria/.vintos/deploy/releases/20261018-103203-00defe7.json",
+  "installed_sha256": {
+    "/home/gloria/Vintos/music-composer.py": "6eff3947e62a670ee1f7c7192dc1b45dce401188ae3d11feba11a576a4a7ef16",
+    "/home/gloria/Vintos/dream-music.py": "f5609a861f8740d7c933e25eb729260bf962a49e5c338b4fc2414ce12c436a32",
+    "/home/gloria/.vintos/workspace/scripts/song_draft.py": "21e669e8435a5ded4f4ff59bc0eefb5145b3fdfc9645e7eef9123ca3ea822c64"
+  }
+}

@@ -40,8 +40,34 @@ suites: 421 passed directly; 10 unrelated live-HOME/environment failures are
 recorded in `/tmp/vintos-music-all-tests.log` and rechecked with the deployment's
 OS-isolated runner: all ten passed there. No tests or deployment checks were weakened.
 
-Remaining: deploy through aegis_sync to DEPLOY OK, then run the exact composer /
-renderer cron chain and verify a fresh ledger entry and playable audio.
+Verified complete: `4b3fbbf` is pushed on `claude/device-visuals-2026-10-13`.
+The required aegis_sync deployment merged it into deployment commit `00defe7`
+and ended `DEPLOY OK — installed. (deploy OK)`. All 432 deployment suites passed,
+including the nine previously identified failures, without weakening any check.
+The requested direct parallel run had 10 live-HOME/environment failures; all ten
+passed on isolated rerun. Release receipt:
+`~/.vintos/deploy/releases/20261018-103203-00defe7.json`.
+
+Ran the active cron chain once, unchanged: composer once, then renderer once,
+through llm-lock.sh, from 10:32:39 to 10:34:43 CDT. music.log:1508-1509 records
+Sonnet's draft finished and `Light Left On -> 2026-10-18_103317.md`.
+Lines 1515-1519 name the finished prompt and Kie V6 task
+`7099f399723791a06e00c993250493f8`; line 1525 says `Kie done! 2 track(s)`;
+lines 1527/1529 record both saved MP3s; line 1533 says `'Light Left On' complete!`.
+The command exited 0. music.json now has 105 generated entries (was 104), with
+`Light Left On` at `2026-10-18T10:34:41.850155` CDT, model `suno-v6 (kie)` and
+landing state `landed`. Sonnet's draft remains beside the finished source prompt.
+The four old terminal failures were closed as failed, not represented as songs.
+
+Both new audio URLs returned HTTP 200 / audio/mpeg, the files decode as stereo
+48 kHz MP3, and a decoded 10-second segment is non-silent. Version 1 is 238.44s,
+version 2 is 257.544s. URLs:
+- https://tempfile.aiquickdraw.com/r/38314a4f-6f59-4e0e-826d-a60bd4999aba.mp3
+- https://tempfile.aiquickdraw.com/r/943ad3fe-a569-45dc-8de7-fc86e62fd4d5.mp3
+
+Machine-readable proof, exact log lines, test results, installed hashes and audio
+checks: `docs/music-overnight-repair-20261018.json`. No validation run changed
+models or bypassed the normal pipeline. No second composer/render attempt was needed.
 
 
 ## 17 October — the bedroom ESP32: his newest song on her Watch when she comes in
@@ -56,6 +82,13 @@ renderer cron chain and verify a fresh ledger entry and playable audio.
   Watch (not compiled here — no Xcode); how soon after she walks in the Watch checks in is not measured.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
+
+## 18 October — the Watch push never reached Apple
+
+The first push after the APNs key was installed (10:48 CDT, "Light Left On") was refused: Apple accepts only HTTP/2
+and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for both registered Watches. It now posts
+through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
+been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
 ## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
 
