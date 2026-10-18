@@ -252,6 +252,20 @@ class Productive(unittest.TestCase):
   with patch.object(C,'_strategy_change',return_value=None):
    self.assertIsNone(C._planning_hold(q['planning_scope'],R,{'subjects':[]},None))
 
+ def test_coverage_deferred_question_is_held_not_refetched_unchanged(self):
+  # 17 October: one GCLC question re-planned to itself and deferred again 87 times in six hours.
+  q=self.exhaust();q['coverage_deferred']=True
+  C._append(C.NOTEBOOK,{'kind':'reflection','inquiry':q,'coverage_deferred':True})
+  same=dict(q,question='  '+q['question'].upper()+' ')
+  for key in ('refused','evidence_status','coverage_deferred'): same.pop(key,None)
+  with patch.object(C,'_strategy_change',return_value=same):
+   held=C._planning_hold(q['planning_scope'],R,{'subjects':[]},None)
+  self.assertTrue(held['planning_wait']);self.assertTrue(held['coverage_deferred'])
+  other=dict(same,question='Which residues of the GCLC catalytic subunit bind glutamate?')
+  with patch.object(C,'_strategy_change',return_value=other):
+   moved=C._planning_hold(q['planning_scope'],R,{'subjects':[]},None)
+  self.assertEqual(moved['question'],other['question']);self.assertNotIn('planning_wait',moved)
+
  def test_context_expansion_resumes_preserved_coverage_before_sourced_fallback(self):
   self.line=None
   q=C._inquiry({'question':'What does the saved literature establish about P12345?',

@@ -55,8 +55,11 @@ check("Sonnet's draft is kept beside it", open(fp + ".sonnet-draft.md").read().s
 import time; time.sleep(1.1)   # one spec file per second
 SD._ask = boom
 fp2 = MC.compose()
-check("when Grok fails, Sonnet's spec stands and the song is not lost", "Leave the porch light on" in open(fp2).read()
-      and not os.path.exists(fp2 + ".sonnet-draft.md"))
+body2 = open(fp2).read() if fp2 else ""
+check("when Grok fails, Sonnet's spec stands and the song is not lost", fp2 != fp and "Leave the porch light on" in body2,
+      (fp, fp2, body2[-300:]))
+check("... and no draft file is written beside it (there is no finish to set it against)",
+      not os.path.exists(fp2 + ".sonnet-draft.md"), (fp2, sorted(os.listdir(os.path.dirname(fp2)))))
 SD._ask = lambda model, messages, **k: FINAL
 MC._repeats = lambda s: "Porch Light" if "burning low" in s else None
 time.sleep(1.1)
