@@ -30,12 +30,16 @@ move again (#9); architecture.html carries #82-85, #93, #94 and today's numbers 
   9733de2, never deployed); 310 "no JSON object" — the planner prompt was trimmed at 60,000 characters, more than a
   24,576-token context holds, so LM Studio dropped the instructions (now sized from the config); 47 retries of one
   unloadable saved record (Q9NY35, now set aside). Not yet measured after deploy.
-- #6 server side: the daemon serving `/tmp/Vintos-emotion.sock` is `~/.vintos/workspace/emotion_model/daemon.py`,
-  installed by hand, not in this repository, and has no `version` reply. Bringing it in is its own task.
+- #6 server side: the repository daemon (`skills/emoclaw/engine/emotion_model/daemon.py`) now carries the installed
+  copy's nudge, set_state, read and live state file beside version; unknown commands no longer run inference.
+  **Not done:** installing it over `~/.vintos/workspace/emotion_model/daemon.py` (the deploy places files by
+  basename and "daemon.py" is not safe to add) and restarting `vintos-emotion.service`; the command is with her.
 - `inclination_engine.py` is not in the deploy manifest; the host copy may differ.
 - Her Anthropic spend (~$30 in two days): no Anthropic call is in the paid-call ledger. The shim sends every request
   over 120 tokens to Anthropic first (Haiku 5.5 for a non-Claude name), so scripts that ask for "grok" run on
-  Claude and reserve nothing. The usage log now records which organ (`sys_head`); totals by model are with her.
+  Claude and reserve nothing. The usage log now records which organ (`sys_head`). Logged spend for 16-18 October:
+  ~$8.40 (Opus 4.8 $3.56, Sonnet 5 $3.48, Fable 5.1 $1.15, Haiku $0.17). The rest is in callers that write no usage
+  (study_fix/forge Fable calls, code review, browser agent, robot core, music share...) or outside Aegis; not traced.
 
 ## 18 October — the read-only audit of his 54 subconscious systems (Chat, 03:40 UTC)
 
