@@ -11,7 +11,10 @@ It is the only place with a to-do in it.
 - **Not done:** no device of hers is enrolled. Until one is, it only writes down ids it hears
   (`python3 scripts/bedroom_arrival.py seen`). Enroll the phone/Watch on http://192.168.1.109 → Enroll, then put the
   name in `memory/bedroom-arrival.json` `"devices"`.
-- Not yet known whether Aegis (WSL NAT) reaches 192.168.1.91:1883; the unit's log says on first start.
+- Deployed and configured by Gloria 17 October 20:05 CDT (`gloria-phone`, 4.0 m); Aegis reaches the relay.
+- The first real arrival (20:06) failed: the Watch push has no APNs key on Aegis (`~/.vintos/secrets/apns-watch.json`
+  missing), and the error escaped unrecorded. Fixed: failures are written down, and while the Watch push is not set up
+  the song goes as her phone notification (ntfy, tap opens it). **Not done:** the Watch app's own APNs push.
 
 ## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 

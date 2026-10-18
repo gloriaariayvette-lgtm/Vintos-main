@@ -132,16 +132,37 @@ def _arrived(state, now, device, distance, why):
     title, url = song
     if url == state.get("last_song_url"):
         row.update(sent=False, why="his newest song already reached her", song=title); _log(row); return row
-    import watch_apns
-    got = watch_apns.send(title, "His newest song, for when you came in.", kind="song", media_url=url)
-    sent = isinstance(got, dict) and got.get("state") not in ("failed", "held")
-    row.update(sent=sent, song=title, delivery=(got or {}).get("state"))
-    if not sent: row["why"] = (got or {}).get("why", "")
+    got = _send(title, url)
+    sent = got.get("state") == "sent"
+    row.update(sent=sent, song=title, delivery=got.get("state"), channel=got.get("channel"))
+    if got.get("why") or not sent: row["why"] = got.get("why", "")   # sent by phone: why the Watch push could not
     if sent:
         state.update(last_sent_ts=now, last_song_url=url)
         _atomic(STATE, state)
     _log(row)
     return row
+
+
+def _send(title, url):
+    """The Watch app's own push first; while that has no APNs key or no registered Watch (it had neither on
+    17 October), the phone notification he already uses for her, which her Watch shows too; tapping it opens the
+    song. A failure of either is returned, never raised, so the arrival is still written down."""
+    body = "His newest song, for when you came in."
+    try:
+        import watch_apns
+        got = watch_apns.send(title, body, kind="song", media_url=url)
+        if isinstance(got, dict) and got.get("state") not in ("failed", None):
+            return dict(got, channel="watch", state="sent" if got.get("state") != "held" else "held")
+        why = (got or {}).get("why", "") if isinstance(got, dict) else ""
+    except Exception as e:
+        why = "%s: %s" % (type(e).__name__, str(e)[:160])
+    try:
+        import deliver
+        got = deliver.deliver("bedroom-song:" + url, "ntfy", message=body, title=title, click=url, tags="musical_note",
+                              authority=lambda: (True, "she came into the bedroom"))
+        return dict(got, channel="phone", why=(got.get("why") or "") + ("; watch: " + why if why else ""))
+    except Exception as e:
+        return {"state": "failed", "channel": "phone", "why": "watch: %s; phone: %s: %s" % (why, type(e).__name__, str(e)[:160])}
 
 
 # --- the relay: a minimal MQTT 3.1.1 subscriber (no client library on Aegis) ----------------------------------------
