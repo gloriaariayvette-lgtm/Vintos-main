@@ -221,6 +221,7 @@ BINS="$BINS resonance_afterglow.py resonance-afterglow.py resonance_pulse.py res
 SCRIPTS="$SCRIPTS mutual_modification.py"   # the field between them (map node 35): in no list (2026-10-17)
 SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2026-10-17)
 SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit from real token counts (2026-10-17)
+SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
