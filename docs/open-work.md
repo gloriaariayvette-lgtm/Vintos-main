@@ -16,6 +16,22 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October — the audit's ten follow-ups (all in source; not yet deployed)
+
+Done: the 4.66 GB receipt ledger is read from its newest end and rotated past 512 MB (#1); a frontier session is
+stopped after 45 minutes (#2); desired-difference failures say why, and its log no longer takes suite lines (#4);
+mutual simulation leaves its model alone when the Mac is unreachable (#5); the emotion-daemon handshake log names
+the real fault (#6, client side); skill surf records why it skips and no longer misses a week by seconds (#7);
+relational geometry reads its own store (#8); permanent BIS trials stay live after promotion, so inclinations can
+move again (#9); architecture.html carries #82-85, #93, #94 and today's numbers (#10).
+
+**Not done:**
+- #3 Lab faults (ModelJSONError, material HTTPError): waiting on the fault counts from Aegis.
+- #6 server side: the daemon serving `/tmp/Vintos-emotion.sock` is `~/.vintos/workspace/emotion_model/daemon.py`,
+  installed by hand, not in this repository, and has no `version` reply. Bringing it in is its own task.
+- `inclination_engine.py` is not in the deploy manifest; the host copy may differ.
+- Where her Anthropic spend goes: the paid-call ledger query is with her.
+
 ## 18 October — the read-only audit of his 54 subconscious systems (Chat, 03:40 UTC)
 
 Fixed in source (not yet deployed): Narrative Identity's naive/Z time mix (every fragment read as 365 days old) and
