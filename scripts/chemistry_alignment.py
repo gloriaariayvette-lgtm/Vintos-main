@@ -97,10 +97,10 @@ def shared_log(limit=LOG_ENTRIES):
 
 def _receipt_abstracts(receipt_id, keep=2):
     if not receipt_id: return []
-    for row in reversed(lab._jsonl(os.path.join(lab.ROOT, "source-receipts.jsonl"))):
-        if isinstance(row, dict) and row.get("receipt_id") == receipt_id:
-            return [{"pmid": r.get("pmid"), "title": r.get("title"), "abstract": str(r.get("abstract", ""))[:600]}
-                    for r in (row.get("records") or [])[:keep]]
+    row = lab.find_receipts([receipt_id]).get(receipt_id)   # not the whole 4.66 GB ledger (18 October)
+    if isinstance(row, dict):
+        return [{"pmid": r.get("pmid"), "title": r.get("title"), "abstract": str(r.get("abstract", ""))[:600]}
+                for r in (row.get("records") or [])[:keep]]
     return []
 
 

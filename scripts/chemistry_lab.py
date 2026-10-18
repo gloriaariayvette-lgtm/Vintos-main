@@ -446,6 +446,81 @@ def _tail_jsonl(path, nbytes=512 * 1024):
     return out
 
 
+SOURCE_RECEIPTS = os.path.join(ROOT, "source-receipts.jsonl")
+RECEIPT_ARCHIVE = os.path.join(ROOT, "receipt-archive")
+SOURCE_RECEIPTS_ROTATE_BYTES = 512 * 1024 * 1024
+
+
+def find_receipts(ids, path=None, chunk=8 * 1024 * 1024):
+    """{receipt_id: row} for the ids asked, newest copy of each. The ledger was 4.66 GB on 18 October and three
+    readers loaded all of it to find one row (the Frontier Session's alignment among them: a session ran for hours).
+    This reads backwards from the newest end and stops when every id is found, then the archives, newest first;
+    only lines that contain an asked id are parsed."""
+    want = {str(i) for i in (ids or []) if i}
+    found = {}
+    if not want: return found
+    def take(line):
+        if not any(i in line for i in want - set(found)): return
+        try: row = json.loads(line)
+        except ValueError: return
+        rid = row.get("receipt_id") if isinstance(row, dict) else None
+        if rid in want and rid not in found: found[rid] = row
+    path = path or SOURCE_RECEIPTS
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2); end = f.tell(); rest = b""
+            while end > 0 and len(found) < len(want):
+                start = max(0, end - chunk); f.seek(start)
+                block = f.read(end - start) + rest; end = start
+                lines = block.split(b"\n")
+                rest = lines.pop(0) if start else b""
+                for raw in reversed(lines):
+                    if raw.strip(): take(raw.decode("utf-8", "replace"))
+            if rest.strip() and len(found) < len(want): take(rest.decode("utf-8", "replace"))
+    except OSError:
+        pass
+    if len(found) < len(want) and path == SOURCE_RECEIPTS:
+        import gzip
+        try: older = sorted(os.listdir(RECEIPT_ARCHIVE), reverse=True)
+        except OSError: older = []
+        for name in older:
+            if len(found) >= len(want): break
+            full = os.path.join(RECEIPT_ARCHIVE, name)
+            opener = gzip.open if name.endswith(".gz") else open
+            if not (name.endswith(".jsonl") or name.endswith(".jsonl.gz")): continue
+            try:
+                newest = {}
+                with opener(full, "rt", encoding="utf-8", errors="replace") as stream:
+                    for line in stream:   # forward through a closed segment: the last copy in it wins
+                        if any(i in line for i in want - set(found)):
+                            try: row = json.loads(line)
+                            except ValueError: continue
+                            if isinstance(row, dict) and row.get("receipt_id") in want: newest[row["receipt_id"]] = row
+                for rid, row in newest.items(): found.setdefault(rid, row)
+            except OSError:
+                continue
+    return found
+
+
+def rotate_source_receipts(limit=None):
+    """Past the limit, the live ledger becomes a closed archive segment (compressed in the background) and a new
+    one starts. Every tail reader still sees the newest rows; find_receipts reaches the archives (18 October)."""
+    limit = SOURCE_RECEIPTS_ROTATE_BYTES if limit is None else limit
+    try:
+        if os.path.getsize(SOURCE_RECEIPTS) <= limit: return None
+    except OSError:
+        return None
+    os.makedirs(RECEIPT_ARCHIVE, exist_ok=True)
+    target = os.path.join(RECEIPT_ARCHIVE, "source-receipts-%s.jsonl" % datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    os.replace(SOURCE_RECEIPTS, target)
+    try:
+        subprocess.Popen(["nice", "-n", "19", "gzip", "-6", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as exc:
+        _fault("receipt_archive_compress", exc)
+    return target
+
+
 def search_misses(limit=6):
     """The searches that found nothing, so he stops sending them. "No such record" was written down and
     then asked again a minute later, because nothing showed it to him (2026-09-26)."""
@@ -4513,6 +4588,8 @@ def tick():
     """Run one short, checkpointed turn. A foreground arrival prevents the next turn, never erases this one."""
     cfg = config()
     if not cfg["enabled"]: return {"ok": True, "state": "off"}
+    try: rotate_source_receipts()
+    except Exception as exc: _fault("receipt_rotate", exc)
     with _locked():
         state = _load(STATE, {"phase": "orient"})
         state["effective_state"] = "waiting_for_compute"; _atomic(STATE, state)

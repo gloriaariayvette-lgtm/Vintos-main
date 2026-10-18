@@ -74,8 +74,7 @@ def capabilities():
 def _source(rid):
     if not isinstance(rid, str) or not RECEIPT_ID.fullmatch(rid):
         raise ValueError("source receipt id required")
-    rows = lab._jsonl(os.path.join(lab.ROOT, "source-receipts.jsonl"))
-    row = next((item for item in reversed(rows) if item.get("receipt_id") == rid), None)
+    row = lab.find_receipts([rid]).get(rid)   # not the whole ledger (18 October)
     if not row: raise ValueError("unknown source receipt")
     return row
 

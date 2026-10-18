@@ -128,6 +128,8 @@ real_mac = load("chemistry_mac_real", os.path.join(REPO, "scripts", "chemistry_m
 assert real_mac.request({"action": "code", "source": "print(1)"})["refused"] == "action_not_allowed"
 unit = open(os.path.join(REPO, "broker", "vintos-chemistry-session.service")).read()
 assert "EnvironmentFile=-%h/.vintos/vintos.env" in unit
+# A stuck session is stopped, not left running for hours (18 October: no limit at all).
+assert "TimeoutStartSec=45min" in unit
 # Instrument states ride with the session, and nothing is available without a receipt.
 assert row["instrument_states"]["qpanda"] == "not_measured", row["instrument_states"]
 assert row["instrument_states"]["foundry"] == "not_measured"

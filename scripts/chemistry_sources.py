@@ -172,8 +172,7 @@ def report_packet(receipt_ids):
     """Exact, sourced input for a Forge report. Does not declare publication novelty."""
     if not isinstance(receipt_ids, list) or not 1 <= len(receipt_ids) <= 8:
         raise ValueError('choose 1..8 source receipts')
-    rows = lab._jsonl(os.path.join(lab.ROOT, 'source-receipts.jsonl'))
-    by_id = {r['receipt_id']: r for r in rows}
+    by_id = lab.find_receipts(receipt_ids)   # not the whole ledger (18 October)
     if any(rid not in by_id for rid in receipt_ids): raise ValueError('unknown source receipt')
     selected = [by_id[rid] for rid in receipt_ids]
     from lab_sources import receipt

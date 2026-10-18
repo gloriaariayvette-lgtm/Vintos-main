@@ -9,6 +9,9 @@ WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=-%h/.vintos/vintos.env
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/chemistry_session.py run
+# A session takes minutes. One started 18 October 02:20 UTC was still running hours later with no limit at all
+# (oneshot defaults to infinity); a stuck session also blocks the next four timer runs.
+TimeoutStartSec=45min
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
