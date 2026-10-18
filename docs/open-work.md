@@ -16,6 +16,17 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 17 October, evening — the Lab's six-hour check after the fixes: worse, one loop found
+
+- 154 refusals in six hours (before: 104). 98 were "coverage deferred", 87 of them one GCLC question re-planned to
+  itself and deferred again; "no eligible proposal" barely moved (35, was 36). 383 deferred snapshots on disk.
+- Fixed in source: a coverage-deferred question whose strategy change returns the same question is held, not
+  re-fetched; the snapshot resumes on its own if it ever fits. **Not done:** evidence of ~35K tokens still cannot
+  be read in a 24,576-token context (the independent-sufficiency stage cannot be split); "no eligible proposal"
+  not yet diagnosed.
+- The 21:xx deploy stopped on `test_song_draft.py` ("when Grok fails, Sonnet's spec stands"), which passes off
+  Aegis; the check now prints what it saw.
+
 ## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 
 The Lab retains actual stopping metadata, usage and token-budget observations beside

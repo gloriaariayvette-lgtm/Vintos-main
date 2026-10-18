@@ -1593,6 +1593,13 @@ def _planning_hold(scope, repeats, spent, step):
         if old['planning_evidence'] != _planning_evidence(old):
             return None
         candidate = _strategy_change(old, repeats)
+        if (candidate and old.get('coverage_deferred')
+                and ' '.join(str(candidate.get('question') or '').casefold().split())
+                    == ' '.join(str(old.get('question') or '').casefold().split())):
+            # Evidence too large for the context is not fixed by fetching it again: the same question re-planned
+            # re-read the same evidence and deferred again (17 October: one GCLC question, 87 times in six hours).
+            # It stays held; the snapshot resumes on its own once it fits (_next_fitting_deferred_coverage).
+            return dict(old, planning_wait=True)
         if candidate and (not step or repeats.on_frontier(candidate, step)) and not spent_retrieval(candidate, spent):
             for key in ('refused', 'planning_wait', 'evidence_status', 'planning_scope', 'planning_evidence', 'coverage_deferred'):
                 candidate.pop(key, None)
