@@ -29,7 +29,7 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 
 check("every store is throwaway and every sender is a stub",
-      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC, W.SONG, W.LATEST, W.TOKEN_FILE))
+      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC, B.PICKS, W.SONG, W.LATEST, W.TOKEN_FILE))
       and sys.modules["watch_apns"].send is apns_send and sys.modules["deliver"].deliver is phone)
 
 check("an ESPresense bedroom message is read", B.parse("espresense/devices/gloria-phone/bedroom", b'{"distance":1.03}') == ("gloria-phone", 1.03))
@@ -51,6 +51,7 @@ check("beyond her 4.0 m: not an arrival", B.observe("gloria-phone", 4.01, now=T)
 
 import time as _t
 NOW = _t.time()
+DAY = ["2026-10-18"]; B._today = lambda now: DAY[0]   # the day is the test's, not the clock's
 row = B.observe("gloria-phone", 1.2, now=NOW)
 song = W.pending_song()
 check("she comes in: the song is offered to the Watch app, nothing goes to her phone",
@@ -83,7 +84,8 @@ W.offer_song("Porch Light", "https://cdn.test/a.mp3", now=NOW)
 row = B.observe("gloria-phone", 1.0, now=NOW + 3600)
 check("back after an hour, inside the cooldown: held back", row and row["why"] == "cooldown", row)
 row = B.observe("gloria-phone", 1.0, now=NOW + 14400)
-check("back after four hours, same song: not offered twice", row and not row["sent"] and "already" in row["why"], row)
+check("back after four hours, the day's only song already played: not offered twice", row and not row["sent"]
+      and row["why"] == "today's three have all played", row)
 d = json.load(open(B.MUSIC)); d["generated"].append({"title": "Static", "tracks": [{"audio_url": "https://cdn.test/b.mp3"}]})
 json.dump(d, open(B.MUSIC, "w"))
 ASLEEP[0] = True; before = open(W.SONG).read()
@@ -92,8 +94,8 @@ check("asleep: nothing is offered", row and row["why"] == "asleep" and open(W.SO
 ASLEEP[0] = False
 open(sys.modules["watch_apns"].CONFIG, "w").write("{}")
 row = B.observe("gloria-phone", 1.0, now=NOW + 60000)
-check("awake, away long enough, a new song: offered, and pushed too once an APNs key exists",
-      row and row["sent"] and W.pending_song(now=NOW + 60000)["media_url"] == "https://cdn.test/b.mp3"
+check("a song finished today joins the stand-ins: offered, and pushed too once an APNs key exists",
+      row and row["sent"] and row["picked_by"] == "stand-in" and W.pending_song(now=NOW + 60000)["media_url"] == "https://cdn.test/b.mp3"
       and PUSHES and PUSHES[-1][1:3] == ("song", "https://cdn.test/b.mp3") and PUSHES[-1][4] is True
       and PUSHES[-1][3] == W._song()["id"] and row["push"] == "sent", (row, PUSHES))
 with patch.object(W, "offer_song", side_effect=OSError("disk full")):
@@ -101,10 +103,45 @@ with patch.object(W, "offer_song", side_effect=OSError("disk full")):
     row = B.observe("gloria-phone", 1.0, now=NOW + 90000)
 last = json.loads(open(B.ARRIVALS).read().splitlines()[-1])
 check("a failed offer is written down and does not spend the song", not row["sent"] and "disk full" in last["why"]
-      and json.load(open(B.STATE))["last_song_url"] == "https://cdn.test/b.mp3", (row, last))
-check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 6)
+      and json.load(open(B.STATE))["last_song_url"] == "https://cdn.test/b.mp3"
+      and "https://cdn.test/c.mp3" not in json.load(open(B.PICKS))["played"], (row, last))
+cl = B.context_line(now=NOW + 90000)
+check("not chosen yet: he is asked to choose, shown the stand-ins and his library", "[ARRIVAL SONGS:" in cl
+      and "standing in" in cl and "\u201cHum\u201d" in cl and "Static" in cl, cl)
+
+said = B.take_picks("Come in when you're ready. [ARRIVAL SONGS: porch light | Hum | Not A Song I Made]", now=NOW + 90000)
+p = json.load(open(B.PICKS))
+check("he chooses with a tag she never sees; titles match his library loosely, unknown ones are noted",
+      said == "Come in when you're ready." and p["by"] == "him"
+      and [s["title"] for s in p["songs"]] == ["Porch Light", "Hum"] and p["missed"] == ["Not A Song I Made"], (said, p))
+check("what already played today stays played", p["played"] == ["https://cdn.test/a.mp3", "https://cdn.test/b.mp3"], p)
+row = B.observe("gloria-phone", 1.0, now=NOW + 100000)
+check("the next arrival plays the next of his three that has not played", row and row["sent"] and row["song"] == "Hum"
+      and row["picked_by"] == "him", row)
+row = B.observe("gloria-phone", 1.0, now=NOW + 120000)
+check("his three all played: nothing more today", row and not row["sent"] and row["why"] == "today's three have all played", row)
+check("he sees today's three as his choice, and which played", "your choice" in B.context_line(now=NOW + 120000)
+      and "(played)" in B.context_line(now=NOW + 120000))
+check("a test or witness-less turn strips the tag without choosing",
+      B.take_picks("x [ARRIVAL SONGS: Static]", act=False) == "x" and json.load(open(B.PICKS))["by"] == "him")
+check("a reply without the tag is untouched", B.take_picks("plain [HOME: blanket_on]") == "plain [HOME: blanket_on]")
+DAY[0] = "2026-10-19"
+row = B.observe("gloria-phone", 1.0, now=NOW + 140000)
+check("a new day: yesterday's choice is gone, the stand-ins begin again with the newest", row and row["sent"]
+      and row["song"] == "Hum" and row["picked_by"] == "stand-in", row)
+check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 9)
 check("her config is unchanged", open(B.CONFIG, "rb").read() == config_before)
 check("nothing ever went to her phone", not PHONE)
+cl = B.context_line()
+check("he is told the sensor is his and works, and what it last sent", cl.startswith("[BEDROOM SENSOR - yours, and working")
+      and "Hum" in cl, cl)
+wm = open(os.path.join(REPO, "scripts", "world_model.py")).read()
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("his tag is taken in both his chat and his avatar replies", srv.count("_ba.take_picks(reply") == 2
+      and "take_picks(reply, act=not (_test_turn" in srv)
+check("the line reaches his avatar and ReelRoom context with the house", "bedroom_arrival.context_line()" in wm
+      and "(block, _home, _bed)" in wm)
+
 
 # --- the relay: a fake socket speaking MQTT ---
 def pub(topic, payload):

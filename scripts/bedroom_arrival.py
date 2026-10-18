@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""bedroom_arrival.py — his newest song on her Watch when Gloria comes into the bedroom.
+"""bedroom_arrival.py — one of his songs on her Watch when Gloria comes into the bedroom.
 
 The ESP32 in the bedroom (ESPresense) publishes what it hears to the Mosquitto relay on the Mac:
     espresense/devices/<device id>/bedroom   {"distance": 1.03, ...}
-This listens there. An arrival hands the newest song to the Vintos Watch app: when the Watch next checks in it
+This listens there. Each day he chooses three songs from his library for her arrivals ([ARRIVAL SONGS: a | b | c] in
+any reply; memory/bedroom-arrival-picks.json). Each arrival plays the next of today's three that has not played yet,
+so a day with one new song still has three to come in to. If he has not chosen by her first arrival, the newest
+song and the two that have gone longest unplayed stand in, and he is told so. An arrival hands the song to the Vintos Watch app: when the Watch next checks in it
 notifies her with Play, puts the song first in its list, and plays it at once if the app is open. Never her phone.
 Asleep, it sends nothing. The owner's configured distance is preserved.
 
@@ -30,6 +33,8 @@ STATE = os.path.join(MEM, "bedroom-arrival-state.json")
 SEEN = os.path.join(MEM, "bedroom-seen.json")
 ARRIVALS = os.path.join(MEM, "bedroom-arrivals.jsonl")
 MUSIC = os.path.join(MEM, "art", "music", "music.json")
+PICKS = os.path.join(MEM, "bedroom-arrival-picks.json")
+PICKS_PER_DAY = 3
 TOPIC = "espresense/devices/+/bedroom"
 DEFAULTS = {"broker": "192.168.1.91", "port": 1883, "devices": [], "max_distance_m": 3.0,
             "away_minutes": 20, "cooldown_minutes": 180}
@@ -94,6 +99,113 @@ def newest_song():
     return None
 
 
+def library():
+    """[(title, audio_url)] of every song he made with a playable track, newest first, each once."""
+    log = _load(MUSIC, {})
+    out, urls = [], set()
+    for r in reversed(log.get("generated", []) if isinstance(log, dict) else []):
+        if not isinstance(r, dict): continue
+        for t in r.get("tracks") or []:
+            u = str((t or {}).get("audio_url") or "") if isinstance(t, dict) else ""
+            if u.startswith("http"):
+                if u not in urls:
+                    urls.add(u); out.append((r.get("title") or "A song", u))
+                break
+    return out
+
+
+def _today(now): return datetime.fromtimestamp(now).astimezone().strftime("%Y-%m-%d")
+
+
+def _last_played():
+    """{audio_url: ts} of when each song last went to her Watch on an arrival."""
+    seen = {}
+    try:
+        for line in open(ARRIVALS, encoding="utf-8"):
+            try: row = json.loads(line)
+            except ValueError: continue
+            if row.get("sent") and row.get("url"):
+                try: seen[row["url"]] = datetime.fromisoformat(row["at"]).timestamp()
+                except Exception: pass
+    except OSError:
+        pass
+    return seen
+
+
+def _norm(t): return " ".join("".join(c for c in str(t).lower() if c.isalnum() or c.isspace()).split())
+
+
+def choose(titles, now=None):
+    """His choice of today's arrival songs, by title, matched against his library. Returns what was kept."""
+    now = time.time() if now is None else now
+    lib = library(); by = {}
+    for title, url in lib: by.setdefault(_norm(title), (title, url))
+    songs, missed = [], []
+    for t in titles:
+        hit = by.get(_norm(t))
+        if hit and hit[1] not in [s["url"] for s in songs]: songs.append({"title": hit[0], "url": hit[1]})
+        elif not hit and str(t).strip(): missed.append(str(t).strip()[:80])
+        if len(songs) == PICKS_PER_DAY: break
+    if not songs: return {"kept": [], "missed": missed}
+    old = _load(PICKS, {})
+    played = old.get("played", []) if isinstance(old, dict) and old.get("date") == _today(now) else []
+    _atomic(PICKS, {"date": _today(now), "by": "him", "at": _now_iso(now), "songs": songs, "played": played,
+                    "missed": missed})
+    return {"kept": [s["title"] for s in songs], "missed": missed}
+
+
+_TAG = r"\[ARRIVAL SONGS?:\s*([^\]]*)\]"
+
+
+def take_picks(reply, now=None, act=True):
+    """His [ARRIVAL SONGS: a | b | c] in a reply: chosen (unless act is False) and taken out of the words."""
+    import re
+    if not reply or "[ARRIVAL SONG" not in reply.upper(): return reply
+    if act:
+        for body in re.findall(_TAG, reply, re.I):
+            try:
+                got = choose([t for t in re.split(r"\s*[|;\n]\s*", body) if t.strip()], now)
+                print("[bedroom] his arrival songs today: %s%s" % (", ".join(got["kept"]) or "none matched",
+                      (" (not in his library: %s)" % ", ".join(got["missed"])) if got["missed"] else ""), flush=True)
+            except Exception as e:
+                print("[bedroom/picks]", e, flush=True)
+    return re.sub(r"\s*" + _TAG + r"\s*", " ", reply, flags=re.I).strip()
+
+
+def today_picks(now=None):
+    """Today's three: his, or until he chooses, the newest song and the two longest unplayed."""
+    now = time.time() if now is None else now
+    got = _load(PICKS, {})
+    today = isinstance(got, dict) and got.get("date") == _today(now)
+    if today and got.get("by") == "him" and got.get("songs"):
+        return got
+    played = list(got.get("played") or []) if today else []
+    lib = library()
+    if not lib: return {"date": _today(now), "by": "none", "songs": [], "played": played}
+    # Stand-ins are drawn again each time, so a song he finishes today joins them; what played today stays played.
+    last = _last_played()
+    rest = sorted(lib[1:], key=lambda s: last.get(s[1], 0))   # never played first, then longest ago
+    songs = [{"title": t, "url": u} for t, u in [lib[0]] + rest[:PICKS_PER_DAY - 1]]
+    picks = {"date": _today(now), "by": "stand-in", "at": _now_iso(now), "songs": songs, "played": played}
+    _atomic(PICKS, picks)
+    return picks
+
+
+def next_song(now=None):
+    """(title, url) of the next of today's three that has not played today, or None."""
+    picks = today_picks(now)
+    for s in picks.get("songs") or []:
+        if s.get("url") not in (picks.get("played") or []):
+            return (s.get("title") or "A song", s["url"])
+    return None
+
+
+def _played(url, now):
+    picks = today_picks(now)
+    picks["played"] = list(picks.get("played") or []) + [url]
+    _atomic(PICKS, picks)
+
+
 def _log(row):
     os.makedirs(os.path.dirname(ARRIVALS), exist_ok=True)
     with open(ARRIVALS, "a") as f: f.write(json.dumps(row) + "\n")
@@ -128,13 +240,13 @@ def _arrived(state, now, device, distance, why):
         asleep, _ = watch_presence.should_hold()
         if asleep:
             row["why"] = "asleep"; return row
-        song = newest_song()
-        if not song:
+        if not library():
             row["why"] = "no song with a track yet"; return row
+        song = next_song(now)
+        if not song:
+            row["why"] = "today's three have all played"; return row
         title, url = song
-        row["song"] = title
-        if url == state.get("last_song_url"):
-            row["why"] = "his newest song notification was already sent"; return row
+        row.update(song=title, url=url, picked_by=today_picks(now).get("by"))
         got = _send(title, url, title, now)
         sent = got.get("state") in ("sent", "acknowledged")
         row.update({k: got[k] for k in ("push", "song_id") if k in got})
@@ -145,6 +257,7 @@ def _arrived(state, now, device, distance, why):
         if sent:
             state.update(last_sent_ts=now, last_song_url=url)
             try:
+                _played(url, now)
                 _atomic(STATE, state)
             except Exception as e:
                 # Keep the transport result true even if its local dedup state could not be saved.
@@ -171,12 +284,51 @@ def _send(title, url, ref="", now=None):
     try:
         import watch_apns
         if os.path.exists(watch_apns.CONFIG):
-            push = watch_apns.send(title, "His newest song, for when you came in.", kind="song", media_url=url,
+            push = watch_apns.send(title, "His song, for when you came in.", kind="song", media_url=url,
                                    message_id=song["id"], force=True)   # sleep was checked above
             got["push"] = (push or {}).get("state")
     except Exception as e:
         got["push"] = "failed: %s" % str(e)[:120]
     return got
+
+
+def context_line(now=None):
+    """One line for him: the bedroom sensor is his and works, and what it last did. He wrote on 18 October that "the
+    watcher ... is broken on purpose now": nothing had ever told him it existed, let alone that it had worked."""
+    cfg = config()
+    if not cfg.get("devices"):
+        return ""
+    last = None
+    try:
+        for line in open(ARRIVALS, encoding="utf-8"):
+            try: row = json.loads(line)
+            except ValueError: continue
+            if row.get("sent"): last = row
+    except OSError:
+        pass
+    line = ("[BEDROOM SENSOR - yours, and working: a small board in the bedroom hears her phone come in, and one of "
+            "your songs goes to her Watch.")
+    if last:
+        try: when = datetime.fromisoformat(last["at"]).astimezone().strftime("%b %d, %H:%M")
+        except Exception: when = str(last.get("at", ""))[:16]
+        line += " Last time: %s, \u201c%s\u201d." % (when, str(last.get("song", ""))[:60])
+    now = time.time() if now is None else now
+    picks = _load(PICKS, {})
+    if isinstance(picks, dict) and picks.get("date") == _today(now) and picks.get("by") == "him":
+        played = picks.get("played") or []
+        line += " Today's three, your choice: %s." % "; ".join(
+            "\u201c%s\u201d%s" % (str(s.get("title"))[:50], " (played)" if s.get("url") in played else "")
+            for s in picks.get("songs") or [])
+    else:
+        titles = [t for t, _ in library()][:12]
+        if titles:
+            line += (" You choose three songs a day for her to come in to, one per arrival - write [ARRIVAL SONGS: "
+                     "title | title | title] in any reply; she will not see the tag. Not chosen yet today")
+            if isinstance(picks, dict) and picks.get("date") == _today(now) and picks.get("songs"):
+                line += " (standing in: %s)" % "; ".join("\u201c%s\u201d" % str(s.get("title"))[:50]
+                                                       for s in picks["songs"])
+            line += ". Your library: %s." % "; ".join("\u201c%s\u201d" % t[:50] for t in titles)
+    return line + "]"
 
 
 # --- the relay: a minimal MQTT 3.1.1 subscriber (no client library on Aegis) ----------------------------------------

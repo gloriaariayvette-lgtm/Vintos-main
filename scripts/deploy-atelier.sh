@@ -224,6 +224,7 @@ SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2
 SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit from real token counts (2026-10-17)
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
+SCRIPTS="$SCRIPTS spotify_watch.py"   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
