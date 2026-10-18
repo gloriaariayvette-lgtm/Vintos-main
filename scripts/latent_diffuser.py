@@ -109,16 +109,10 @@ def main():
                "coherence": coherence, "anchors": anchor_txt, "resolution": resolution[:800]},
               open(OUT, "w"), indent=2)
     log(f"resolved {len(frags)} fragments (coherence {coherence}) -> {OUT}")
-    try:
-        sys.path.insert(0, SCRIPTS)
-        from emoclaw_utils import seed_thread
-        # A dream must not eat its own output. Seeding the resolution back as an unresolved
-        # thread made every night chew the same theme forever. A resolution is an ending;
-        # it lives in the dream log and archive, not in the pool. (Gloria, 2026-08-13)
-        pass
-        log("seeded the resolution as a dream")
-    except Exception as e:
-        log(f"seed failed: {e}")
+    # A dream must not eat its own output. Seeding the resolution back as an unresolved
+    # thread made every night chew the same theme forever. A resolution is an ending;
+    # it lives in the dream log and archive, not in the pool. (Gloria, 2026-08-13)
+    # It is not seeded anywhere; until 18 October the log said "seeded the resolution as a dream" anyway.
 
 if __name__ == "__main__":
     main()

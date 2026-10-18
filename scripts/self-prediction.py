@@ -486,10 +486,20 @@ def _blind_spot_rows(dim_errors):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: self-prediction.py predict|compare|report")
+        print("Usage: self-prediction.py predict|compare|settle|report")
         sys.exit(1)
 
     command = sys.argv[1]
+
+    if command == "settle":
+        # After a turn: grade the prediction he made last time against the state he is in now, then predict the
+        # next. Avatar turns only ever predicted, so grading stopped on 27 August (audit, 18 October). One process,
+        # in order, so the new prediction cannot replace the old one before it is read.
+        for step in ("compare", "predict"):
+            sys.argv[1:2] = [step]
+            try: main()
+            except SystemExit: pass
+        return
 
     if command == "predict":
         prediction = predict_next_state()

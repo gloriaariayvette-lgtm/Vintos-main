@@ -1414,7 +1414,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
                 try: on_writer(False)
                 except Exception: pass
     SC = os.path.join(WORKSPACE, "scripts")
-    _bg("self_prediction", ["", os.path.join(SC, "self-prediction.py"), "predict"], "/tmp/self-predict.log", needs_venv=True)
+    _bg("self_prediction", ["", os.path.join(SC, "self-prediction.py"), "settle"], "/tmp/self-predict.log", needs_venv=True)   # grade the last, then predict (audit, 18 October)
     _bg("wal", ["", os.path.join(SC, "wal-extract.py"), gloria_text[:1000], reply[:1000]], f"/tmp/wal-extract{log_suffix}.log")
     _bg("imprint", ["", os.path.join(SC, "imprint.py"), "capture", gloria_text[:300], reply[:300]], f"/tmp/imprint{log_suffix}.log")
     # a photo or video she sent: the scene he saw and the sound he heard go in the entry's own field, never

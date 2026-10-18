@@ -74,7 +74,7 @@ def grade():
         "Otherwise: did he actually LEAD with this plan - move the conversation somewhere by his own "
         "weight, not just respond well? "
         'ONLY JSON: {"verdict":"LED|PARTIAL|NO|SKIP", "where_he_took_it":"one line, or empty"}' % (ptxt, _said_when(ex), g, v)))
-    st["last_ts"] = ts; save(STATE, st)
+    st = load(STATE, {}); st["last_ts"] = datetime.now().isoformat(); save(STATE, st)   # st, ts were never defined (audit, 18 October)
     if not d or d.get("verdict") not in ("LED", "PARTIAL", "NO"): 
         print("[lead] %s - no trial" % (d.get("verdict") if d else "unparseable")); return
     trials = load(TRIALS, [])
