@@ -3,18 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 17 October — the bedroom ESP32: his newest song when she comes in (code done; not deployed, not yet heard her)
+## 17 October — the bedroom ESP32: his newest song on her Watch when she comes in
 
-- `scripts/bedroom_arrival.py` + `broker/vintos-bedroom-arrival.service`: listens to the Mac's Mosquitto
-  (192.168.1.91:1883, `espresense/devices/+/bedroom`). An enrolled device within 3 m after 20 min away sends his
-  newest song to her Watch (kind song, Play button); asleep, nothing; 3 h cooldown; the same song is never sent twice.
-- **Not done:** no device of hers is enrolled. Until one is, it only writes down ids it hears
-  (`python3 scripts/bedroom_arrival.py seen`). Enroll the phone/Watch on http://192.168.1.109 → Enroll, then put the
-  name in `memory/bedroom-arrival.json` `"devices"`.
-- Deployed and configured by Gloria 17 October 20:05 CDT (`gloria-phone`, 4.0 m); Aegis reaches the relay.
-- The first real arrival (20:06) failed: the Watch push has no APNs key on Aegis (`~/.vintos/secrets/apns-watch.json`
-  missing), and the error escaped unrecorded. Fixed: failures are written down, and while the Watch push is not set up
-  the song goes as her phone notification (ntfy, tap opens it). **Not done:** the Watch app's own APNs push.
+- `scripts/bedroom_arrival.py` + `broker/vintos-bedroom-arrival.service` listen to the Mac's Mosquitto
+  (192.168.1.91:1883, `espresense/devices/+/bedroom`); `gloria-phone`, 4.0 m, set by Gloria. Asleep, nothing;
+  3 h cooldown; the same song never twice. Never her phone (she said so, 17 October).
+- Aegis has no APNs key, so the song is offered to the Watch app (`watch_presence.offer_song`, 30 min): the Watch's
+  next check-in (`/api/watch/telemetry`) or opening the app (`/api/watch/song`) takes it; the app raises its own
+  VINTOS_SONG notification with Play, puts it first in Landings (12 h), and plays it at once if the app is open.
+- Watch app: vintos-app `claude/watch-arrival-song-2026-10-17` (e09c58e). **Not done:** built and installed on her
+  Watch (not compiled here — no Xcode); how soon after she walks in the Watch checks in is not measured.
+- If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
+  push goes out too and the notification is immediate.
 
 ## 17 October — Chemistry Lab completion diagnostics (installed; live evidence path verified)
 

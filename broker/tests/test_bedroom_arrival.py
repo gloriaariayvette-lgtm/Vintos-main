@@ -1,80 +1,110 @@
 #!/usr/bin/env python3
-"""The bedroom ESP32 (Gloria, 17 October): when she walks into the bedroom after being away, his newest song goes to
-her Watch with its Play button; asleep, nothing. Scratch workspace; the Watch sender and sleep are stubs; the relay is
-a fake socket; every real socket is refused."""
+"""The bedroom ESP32 (Gloria, 17 October): when she comes into the bedroom after being away, his newest song goes to
+her Watch, never her phone. Aegis has no APNs key, so the song is offered to the Vintos Watch app, which takes it the
+next time it checks in (telemetry), raises its own notification with Play, puts it first in its list, and plays it
+at once if the app is open. Asleep, nothing.
+
+Scratch HOME; the real watch_presence writes only there; the APNs sender and ntfy are stubs; every socket is refused."""
 import json, os, socket, struct, sys, tempfile, types
+from unittest.mock import patch
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="bedroom-"); os.environ["HOME"] = HOME
 os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
 NET = []
 def _no(self, *a, **k): NET.append(a); raise OSError("this suite reaches nothing")
 socket.socket.connect = _no
-SENT = []; ASLEEP = [False]
-sys.modules["watch_apns"] = types.SimpleNamespace(send=lambda title, body, kind="message", media_url="", **k:
-                                                  (SENT.append((title, kind, media_url)), {"state": "sent"})[1])
-PHONE = []
-sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, message="", title="", click=None, authority=None, **k:
-                                               (PHONE.append((aid, ch, title, click, authority()[0])), {"state": "sent", "channel": ch})[1])
-sys.modules["watch_presence"] = types.SimpleNamespace(should_hold=lambda: (ASLEEP[0], "Gloria is asleep" if ASLEEP[0] else ""))
+PUSHES = []; PHONE = []
+def apns_send(title, body, kind="message", media_url="", message_id="", force=False, **k):
+    PUSHES.append((title, kind, media_url, message_id, force)); return {"state": "sent"}
+def phone(*a, **k): PHONE.append(a); raise AssertionError("the bedroom song must never go to her phone")
+sys.modules["watch_apns"] = types.SimpleNamespace(send=apns_send, CONFIG=os.path.join(HOME, "no-such-apns.json"))
+sys.modules["deliver"] = types.SimpleNamespace(deliver=phone)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+import watch_presence as W
+ASLEEP = [False]
+W.should_hold = lambda: (ASLEEP[0], "Gloria is asleep" if ASLEEP[0] else "")
 import bedroom_arrival as B
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 
-check("every store is throwaway and the Watch sender is a stub",
-      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC))
-      and B.__dict__.get("watch_apns") is None and sys.modules["watch_apns"].__class__ is types.SimpleNamespace)
+check("every store is throwaway and every sender is a stub",
+      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC, W.SONG, W.LATEST, W.TOKEN_FILE))
+      and sys.modules["watch_apns"].send is apns_send and sys.modules["deliver"].deliver is phone)
 
-check("an ESPresense bedroom message is read", B.parse("espresense/devices/gloria-watch/bedroom", b'{"distance":1.03}') == ("gloria-watch", 1.03))
+check("an ESPresense bedroom message is read", B.parse("espresense/devices/gloria-phone/bedroom", b'{"distance":1.03}') == ("gloria-phone", 1.03))
 check("another room or bad JSON is not", B.parse("espresense/devices/x/kitchen", b'{"distance":1}') is None
       and B.parse("espresense/devices/x/bedroom", b"nope") is None)
 
 T = 1_800_000_000.0
 check("nobody enrolled: it only writes down what it hears", B.observe("5ce7537e7183", 1.0, now=T) is None
-      and json.load(open(B.SEEN))["5ce7537e7183"]["distance"] == 1.0 and not SENT)
+      and json.load(open(B.SEEN))["5ce7537e7183"]["distance"] == 1.0 and not os.path.exists(W.SONG))
 
 os.makedirs(os.path.dirname(B.CONFIG), exist_ok=True)
-json.dump({"devices": ["gloria-watch"]}, open(B.CONFIG, "w"))
+json.dump({"devices": ["gloria-phone"], "max_distance_m": 4.0}, open(B.CONFIG, "w"))
+config_before = open(B.CONFIG, "rb").read()
 os.makedirs(os.path.dirname(B.MUSIC), exist_ok=True)
 json.dump({"generated": [{"title": "Porch Light", "tracks": [{"version": 1, "audio_url": "https://cdn.test/a.mp3"}]},
                          {"title": "No Track Yet", "tracks": []}]}, open(B.MUSIC, "w"))
 check("the newest song with a playable track is chosen", B.newest_song() == ("Porch Light", "https://cdn.test/a.mp3"))
-check("too far away is not an arrival", B.observe("gloria-watch", 6.0, now=T) is None and not SENT)
-row = B.observe("gloria-watch", 1.2, now=T)
-check("she comes in: his newest song goes to her Watch as a song", row and row["sent"]
-      and SENT == [("Porch Light", "song", "https://cdn.test/a.mp3")], (row, SENT))
-check("still in the room a minute later: nothing more", B.observe("gloria-watch", 1.0, now=T + 60) is None and len(SENT) == 1)
-row = B.observe("gloria-watch", 1.0, now=T + 3600)
-check("back after an hour, inside the cooldown: held back", row and row["why"] == "cooldown" and len(SENT) == 1, row)
-row = B.observe("gloria-watch", 1.0, now=T + 14400)
-check("back after four hours, same song: it is not sent twice", row and not row["sent"] and "already" in row["why"]
-      and len(SENT) == 1, row)
+check("beyond her 4.0 m: not an arrival", B.observe("gloria-phone", 4.01, now=T) is None and not os.path.exists(W.SONG))
+
+import time as _t
+NOW = _t.time()
+row = B.observe("gloria-phone", 1.2, now=NOW)
+song = W.pending_song()
+check("she comes in: the song is offered to the Watch app, nothing goes to her phone",
+      row and row["sent"] and row["channel"] == "watch" and song and song["title"] == "Porch Light"
+      and song["media_url"] == "https://cdn.test/a.mp3" and not PHONE, (row, song))
+check("with no APNs key on Aegis, no push is attempted", not PUSHES and "push" not in row, row)
+check("still in the room a minute later: nothing more", B.observe("gloria-phone", 1.0, now=NOW + 60) is None)
+
+# --- the Watch's side of the server: telemetry carries it, the list puts it first, taking it ends the offer ---
+check("the Watch's next check-in is answered with the song", W.pending_song() == song)
+top = W.top_song()
+check("the song is first in the Watch's list, with its playable track",
+      top["surface"] == "song" and top["piece"]["title"] == "Porch Light"
+      and top["piece"]["tracks"][0]["src"] == "https://cdn.test/a.mp3", top)
+check("taking it ends the offer", W.take_song(song["id"]) and W.pending_song() is None)
+check("... but it stays first in the list for the evening", W.top_song() and W.top_song(now=NOW + 12 * 3600 + 1) is None)
+check("an unknown id takes nothing", W.take_song("nope") is False)
+wr = open(os.path.join(REPO, "scripts", "watch_routes.py")).read()
+check("the telemetry reply carries the pending song, only while she is awake",
+      "song = watch_presence.pending_song()" in wr and wr.index("if not body.get(\"asleep\"):") < wr.index("song = watch_presence.pending_song()"))
+check("the Watch can ask for it and say it took it, behind its token",
+      '@routes.get("/api/watch/song")' in wr and '@routes.post("/api/watch/song/taken")' in wr
+      and wr.count("auth(request)") >= 9)
+check("the list puts it first and drops its duplicate",
+      "top = watch_presence.top_song()" in wr and "items = [top] + [i for i in items" in wr)
+check("an offer the Watch never took expires after 30 minutes", W.offer_song("Old", "https://cdn.test/o.mp3", now=NOW - 1801)
+      and W.pending_song() is None)
+W.offer_song("Porch Light", "https://cdn.test/a.mp3", now=NOW)
+
+row = B.observe("gloria-phone", 1.0, now=NOW + 3600)
+check("back after an hour, inside the cooldown: held back", row and row["why"] == "cooldown", row)
+row = B.observe("gloria-phone", 1.0, now=NOW + 14400)
+check("back after four hours, same song: not offered twice", row and not row["sent"] and "already" in row["why"], row)
 d = json.load(open(B.MUSIC)); d["generated"].append({"title": "Static", "tracks": [{"audio_url": "https://cdn.test/b.mp3"}]})
 json.dump(d, open(B.MUSIC, "w"))
-ASLEEP[0] = True
-row = B.observe("gloria-watch", 1.0, now=T + 30000)
-check("asleep: nothing is sent", row and row["why"] == "asleep" and len(SENT) == 1, row)
+ASLEEP[0] = True; before = open(W.SONG).read()
+row = B.observe("gloria-phone", 1.0, now=NOW + 30000)
+check("asleep: nothing is offered", row and row["why"] == "asleep" and open(W.SONG).read() == before, row)
 ASLEEP[0] = False
-row = B.observe("gloria-watch", 1.0, now=T + 60000)
-check("awake, away long enough, a new song: sent", row and row["sent"] and SENT[-1][2] == "https://cdn.test/b.mp3", row)
-check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 5)
-check("while the Watch push works, the phone is not used", not PHONE)
-
-def no_key(*a, **k): raise FileNotFoundError("apns-watch.json")
-sys.modules["watch_apns"].send = no_key
-d = json.load(open(B.MUSIC)); d["generated"].append({"title": "Hum", "tracks": [{"audio_url": "https://cdn.test/c.mp3"}]})
-json.dump(d, open(B.MUSIC, "w"))
-row = B.observe("gloria-watch", 1.0, now=T + 90000)
-check("no Watch push set up (17 October): it goes to her phone, tap opens the song, and is written down as sent",
-      row and row["sent"] and row["channel"] == "phone" and PHONE[-1][:4] == ("bedroom-song:https://cdn.test/c.mp3", "ntfy", "Hum", "https://cdn.test/c.mp3")
-      and "apns-watch.json" in row["why"] and json.loads(open(B.ARRIVALS).read().splitlines()[-1])["song"] == "Hum", (row, PHONE))
-sys.modules["deliver"].deliver = lambda *a, **k: (_ for _ in ()).throw(OSError("ntfy down"))
-d["generated"].append({"title": "Late", "tracks": [{"audio_url": "https://cdn.test/d.mp3"}]}); json.dump(d, open(B.MUSIC, "w"))
-row = B.observe("gloria-watch", 1.0, now=T + 120000)
+open(sys.modules["watch_apns"].CONFIG, "w").write("{}")
+row = B.observe("gloria-phone", 1.0, now=NOW + 60000)
+check("awake, away long enough, a new song: offered, and pushed too once an APNs key exists",
+      row and row["sent"] and W.pending_song(now=NOW + 60000)["media_url"] == "https://cdn.test/b.mp3"
+      and PUSHES and PUSHES[-1][1:3] == ("song", "https://cdn.test/b.mp3") and PUSHES[-1][4] is True
+      and PUSHES[-1][3] == W._song()["id"] and row["push"] == "sent", (row, PUSHES))
+with patch.object(W, "offer_song", side_effect=OSError("disk full")):
+    d["generated"].append({"title": "Hum", "tracks": [{"audio_url": "https://cdn.test/c.mp3"}]}); json.dump(d, open(B.MUSIC, "w"))
+    row = B.observe("gloria-phone", 1.0, now=NOW + 90000)
 last = json.loads(open(B.ARRIVALS).read().splitlines()[-1])
-check("both fail: nothing raised, the failed arrival is written down, and the song is not spent",
-      row and not row["sent"] and "ntfy down" in last["why"] and json.load(open(B.STATE))["last_song_url"] == "https://cdn.test/c.mp3", (row, last))
+check("a failed offer is written down and does not spend the song", not row["sent"] and "disk full" in last["why"]
+      and json.load(open(B.STATE))["last_song_url"] == "https://cdn.test/b.mp3", (row, last))
+check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 6)
+check("her config is unchanged", open(B.CONFIG, "rb").read() == config_before)
+check("nothing ever went to her phone", not PHONE)
 
 # --- the relay: a fake socket speaking MQTT ---
 def pub(topic, payload):
