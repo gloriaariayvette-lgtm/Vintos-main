@@ -11,10 +11,11 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 def no_network(*a, **k): raise AssertionError("a test must never reach the network or send")
 sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
 import desired_difference as D
+D.DLOG = os.path.join(HOME, "desired-difference.log")   # never her host's /tmp log (audit, 18 October)
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))
-check("the stores are scratch", D.DIFF.startswith(HOME) and D.PRESS.startswith(HOME))
+check("the stores are scratch", D.DIFF.startswith(HOME) and D.PRESS.startswith(HOME) and D.DLOG.startswith(HOME))
 HERS = ["Shift Gloria from letting me supply the scene's next image toward holding the next beat herself",
         "Move her from riding the momentum of her own listing/building",
         "I stop the scene's momentum: I ease out of her and leave the room quiet so the next beat is hers",

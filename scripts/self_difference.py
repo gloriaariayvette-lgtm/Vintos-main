@@ -23,8 +23,9 @@ def _queue_bring_up(q):
 SDIFF=os.path.join(MEM,"self-difference.json")
 SPRESS=os.path.join(MEM,"self-difference-pressure.json")
 
+SDLOG="/tmp/self-difference.log"   # a suite repoints this (audit, 18 October)
 def _dlog(m):
-    try: open("/tmp/self-difference.log","a").write(str(time.time())+" "+str(m)[:200]+"\n")
+    try: open(SDLOG,"a").write(str(time.time())+" "+str(m)[:200]+"\n")
     except Exception: pass
 
 def record_self_intent(target, recent_own=""):

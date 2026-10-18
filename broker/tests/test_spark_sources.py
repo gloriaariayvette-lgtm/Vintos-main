@@ -152,9 +152,21 @@ check("a weekly read reads at most two pages", res.get("read") and len(res["page
 check("only the two pages read become sparks, not the third", res.get("new_sparks") == 2 and res.get("skills_on_pages") == 2, res)
 res2 = S.weekly_skill_surf(now=now + timedelta(days=1))
 check("a second read in the same week does nothing", res2.get("read") is False, res2)
+_st = json.load(open(S.SURF_STATE))
+check("and says why in the state, without moving the read that gated it (audit, 18 October)",
+      _st.get("last_reason", "").startswith("already read") and _st.get("last") == now.isoformat(), _st)
 res3 = S.weekly_skill_surf(now=now + timedelta(days=8))
 check("a week later he reads again and moves on to the next page",
       res3.get("read") and any("page3" in p for p in res3["pages"]), res3)
+res4 = S.weekly_skill_surf(now=now + timedelta(days=15) - timedelta(minutes=1))
+check("next Monday's firing reads though it lands a minute short of seven days", res4.get("read"), res4)
+_rp = K.read_pages
+def _offline(**kw): raise RuntimeError("skills page could not be read")
+K.read_pages = _offline
+res5 = S.weekly_skill_surf(now=now + timedelta(days=30))
+K.read_pages = _rp
+check("a page that cannot be fetched is a reason in the state, not a traceback",
+      res5.get("read") is False and "could not be read" in json.load(open(S.SURF_STATE)).get("last_reason", ""), res5)
 check("the OpenClaw read is not folded into the ordinary gather",
       "skill_surfing" not in {r["source"] for r in S.gather(now=now + timedelta(days=8))})
 

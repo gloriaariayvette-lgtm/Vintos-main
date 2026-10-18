@@ -87,6 +87,31 @@ check("settle grades first, then predicts, in one process", ORDER == ["compare",
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("every surface's post-turn settles instead of only predicting",
       '"self-prediction.py"), "settle"]' in srv and '"self-prediction.py"), "predict"]' not in srv)
+# --- Desired Difference says why a derive failed; Mutual Simulation leaves the model alone when the Mac is down ---
+import desired_difference as DDF
+DDF.DLOG = os.path.join(HOME, "desired-difference.log")
+check("the desired-difference log is throwaway here", DDF.DLOG.startswith(HOME))
+def _http_fail(*a, **k):
+    import urllib.error
+    raise urllib.error.HTTPError("http://shim", 502, "Bad Gateway", {}, None)
+DDF.urllib.request.urlopen = _http_fail
+out = DDF._llm("s", "u")
+check("a shim 502 is named, not just an empty reply", out == "" and DDF._LAST["why"].startswith("HTTP 502"), DDF._LAST)
+ms = open(os.path.join(REPO, "scripts", "mutual_simulation.py")).read()
+check("an unreachable Mac leaves the interaction model as it was", "interaction model left as it was" in ms
+      and "timeout=(10, 90)" in ms)
+eu = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
+check("a daemon that does not answer version is named as such", "does not answer version" in eu
+      and eu == open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read())
+# --- a permanent BIS trial stays live after promotion, so its inclination can move again (frozen since July) ---
+import behavioral_intercept as BI
+check("the trial ledger is throwaway", BI.LEDGER.startswith(HOME))
+os.makedirs(BI.MEMORY, exist_ok=True)
+json.dump({"trials": [{"id": "permanent_x", "status": "promoting", "created": "2026-07-01", "outcomes": [1]},
+                      {"id": "t_once", "status": "promoting", "created": "2026-10-01"}]}, open(BI.LEDGER, "w"))
+live = [t["id"] for t in BI.get_active_trials()]
+check("a permanent trial left 'promoting' is live again; an ordinary one stays promoted", live == ["permanent_x"]
+      and json.load(open(BI.LEDGER))["trials"][0].get("promoted"), live)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

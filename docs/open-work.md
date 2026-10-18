@@ -16,6 +16,41 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October — the Slack settled list, filled from what it missed (in source; not yet deployed)
+
+He already had a settled list (room_work, since 5 October). Gloria, 18 October, on what it missed:
+- another agent's answer: the same question to a different agent is sent back with that answer to weigh, never
+  closed by it; the want or fix may change with it, or a NEW: line says what is different;
+- her No from her phone settles the topic like her word in the channel;
+- the list keeps every closure that has not expired (it kept the last 24);
+- a file read again within a week, unchanged, is answered from what he read before (`memory/dot-channel-reads.json`).
+The campaign rule and the rotating threads stay as they are (her decision). **Not done:** measured on Aegis.
+
+## 18 October — the audit's ten follow-ups (all in source; not yet deployed)
+
+Done: the 4.66 GB receipt ledger is read from its newest end and rotated past 512 MB (#1); a frontier session is
+stopped after 45 minutes (#2); desired-difference failures say why, and its log no longer takes suite lines (#4);
+mutual simulation leaves its model alone when the Mac is unreachable (#5); the emotion-daemon handshake log names
+the real fault (#6, client side); skill surf records why it skips and no longer misses a week by seconds (#7);
+relational geometry reads its own store (#8); permanent BIS trials stay live after promotion, so inclinations can
+move again (#9); architecture.html carries #82-85, #93, #94 and today's numbers (#10).
+
+**Not done:**
+- #3 Lab faults, from Aegis (48 h): 866 "question_narrowed" + 10 "made_concrete" are edits, not faults (moved out in
+  9733de2, never deployed); 310 "no JSON object" — the planner prompt was trimmed at 60,000 characters, more than a
+  24,576-token context holds, so LM Studio dropped the instructions (now sized from the config); 47 retries of one
+  unloadable saved record (Q9NY35, now set aside). Not yet measured after deploy.
+- #6 server side: the repository daemon (`skills/emoclaw/engine/emotion_model/daemon.py`) now carries the installed
+  copy's nudge, set_state, read and live state file beside version; unknown commands no longer run inference.
+  **Not done:** installing it over `~/.vintos/workspace/emotion_model/daemon.py` (the deploy places files by
+  basename and "daemon.py" is not safe to add) and restarting `vintos-emoclaw.service` (the guard named a unit that never existed; fixed); she installed the file 18 October, restart pending.
+- `inclination_engine.py` is not in the deploy manifest; the host copy may differ.
+- Her Anthropic spend (~$30 in two days): no Anthropic call is in the paid-call ledger. The shim sends every request
+  over 120 tokens to Anthropic first (Haiku 5.5 for a non-Claude name), so scripts that ask for "grok" run on
+  Claude and reserve nothing. The usage log now records which organ (`sys_head`). Logged spend for 16-18 October:
+  ~$8.40 (Opus 4.8 $3.56, Sonnet 5 $3.48, Fable 5.1 $1.15, Haiku $0.17). The rest is in callers that write no usage
+  (study_fix/forge Fable calls, code review, browser agent, robot core, music share...) or outside Aegis; not traced.
+
 ## 18 October — the read-only audit of his 54 subconscious systems (Chat, 03:40 UTC)
 
 Fixed in source (not yet deployed): Narrative Identity's naive/Z time mix (every fragment read as 365 days old) and

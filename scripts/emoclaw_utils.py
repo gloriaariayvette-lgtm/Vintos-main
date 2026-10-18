@@ -100,9 +100,15 @@ def check_daemon_protocol(force=False):
     got = resp.get("protocol_version")
     if got != EXPECTED_PROTOCOL_VERSION:
         import sys as _sys
-        print("[EmoClaw] protocol version mismatch: daemon at %s reports %r, client expects %r (source: %s) — continuing"
-              % (SOCK_PATH, got, EXPECTED_PROTOCOL_VERSION, resp.get("source", "unknown")),
-              file=_sys.stderr)
+        if got is None:
+            # the installed daemon (the one that takes nudge) predates the handshake: "version" falls through to
+            # inference and answers with an error, not a version (audit, 18 October)
+            print("[EmoClaw] protocol version mismatch: daemon at %s does not answer version (reply %s), client expects %r — continuing"
+                  % (SOCK_PATH, json.dumps(resp)[:120], EXPECTED_PROTOCOL_VERSION), file=_sys.stderr)
+        else:
+            print("[EmoClaw] protocol version mismatch: daemon at %s reports %r, client expects %r (source: %s) — continuing"
+                  % (SOCK_PATH, got, EXPECTED_PROTOCOL_VERSION, resp.get("source", "unknown")),
+                  file=_sys.stderr)
     return resp
 
 

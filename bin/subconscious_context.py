@@ -112,12 +112,19 @@ def get_subconscious_context(include=None):
             if s: parts.append(s)
         except: pass
 
-    # Relational geometry
+    # Relational geometry: the regions store the delivered turns write (relational_geometry.record_interaction).
+    # discourse_direction.get_geometry_hint is a lifetime count of expand/refine/hold, a different organ that
+    # shares the name; it stays, under its own name (audit, 18 October).
     if all_systems or "geometry" in include:
         try:
-            from discourse_direction import get_geometry_hint
+            from relational_geometry import get_geometry_hint
             s = get_geometry_hint()
             if s: parts.append(f"RELATIONAL GEOMETRY: {s}")
+        except: pass
+        try:
+            from discourse_direction import get_geometry_hint as _dd_hint
+            s = _dd_hint()
+            if s: parts.append(f"DISCOURSE MODES: {s}")
         except: pass
 
     # Gravity wells

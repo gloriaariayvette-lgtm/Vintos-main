@@ -108,7 +108,7 @@ def gather_week():
     for form in ["poetry", "music-prompts"]:
         art_dir = os.path.join(MEMORY, "art", form)
         try:
-            files = sorted(glob.glob(os.path.join(art_dir, "*.md")), key=os.path.getmtime, reverse=True)
+            files = sorted((f for f in glob.glob(os.path.join(art_dir, "*.md")) if not f.endswith(".sonnet-draft.md")), key=os.path.getmtime, reverse=True)
             if files:
                 with open(files[0]) as f:
                     material.append(f"CREATIVE ({form}): {f.read()[:200]}")

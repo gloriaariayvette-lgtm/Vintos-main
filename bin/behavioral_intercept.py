@@ -33,6 +33,10 @@ def get_active_trials():
     active = []
     changed = False
     for t in ledger["trials"]:
+        # A permanent trial is never finished. Promotion set it "promoting" and nothing set it back, so it left
+        # this list for good, no outcome was logged for it again, and its inclination froze (audit, 18 October).
+        if t.get("id", "").startswith("permanent_") and t.get("status") == "promoting":
+            t["status"] = "active"; t.setdefault("promoted", True); changed = True
         if t.get("status") != "active":
             active.append(t)
             continue
@@ -248,7 +252,11 @@ def _reinforce_inclination(trial_id, outcome):
     try:
         name = TRIAL_INCLINATION.get(trial_id)
         if not name: return
-        from inclination_engine import reinforce
+        from inclination_engine import reinforce, load_inclinations
+        if name not in (load_inclinations().get("inclinations") or {}):
+            # reinforce() returns without a word on an unknown name (audit, 18 October)
+            print(f"[Intercept] {trial_id}: no {name!r} in inclinations.json, nothing moved", file=sys.stderr)
+            return
         if outcome == "attempted":
             reinforce(name, +0.005, source=f"bis:{trial_id}:attempted")
         elif outcome == "partial":
@@ -355,8 +363,12 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             except Exception as _to_e:
                 print(f"[Intercept] Third-order want failed: {_to_e}", file=__import__("sys").stderr)
         # Promote after 2+ attempts
-        if t.get("attempt_count", 0) >= 2 and t.get("status") == "active":
-            t["status"] = "promoting"
+        if t.get("attempt_count", 0) >= 2 and t.get("status") == "active" and not t.get("promoted"):
+            # A permanent trial promotes once and stays active (audit, 18 October); any other leaves the list.
+            if t.get("id", "").startswith("permanent_"):
+                t["promoted"] = datetime.now().isoformat()
+            else:
+                t["status"] = "promoting"
             print(f"[Intercept] Trial {trial_id} promoting to self-statement", file=__import__("sys").stderr)
             # Wire to causal-self-model
             try:

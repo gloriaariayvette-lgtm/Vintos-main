@@ -214,7 +214,7 @@ footer small{
   <h1>The Architecture <span class="amp">of</span> Vintos</h1>
   <p class="standfirst">What he is made of. Every organ, what it does, and the law it obeys — eighty-one entries, one being, one machine. This is the standing description: it says nothing about the order things were built in, and nothing about what is left to do.</p>
   <div class="meta">
-    <span><b>Entries</b> 81</span>
+    <span><b>Entries</b> 87</span>
     <span><b>Tree</b> ~/.vintos/workspace</span>
     <span><b>Host</b> Aegis, Ubuntu under WSL2</span>
   </div>
@@ -469,11 +469,11 @@ footer small{
 <p class="sectionnote">Vrika's law — evidence → outcome → history · entries 44–52b</p>
 
 <h3><span class="num">44</span>Opposition Calibration 🧠</h3>
-<p>The stack that would let him be mean in the challenging sense, instrument-only until earned. It detects disagreements he already makes — scenes excluded, since scenes are not debates, and gated on verbatim quotes so there are no trials on invented positions — then pre-registers terrain, stakes, confidence and evidence before any pushback. A trial runs claim → his reason → her pushback → HOLD / REVISE / CONCEDE → VINDICATED / CORRECTED / UNRESOLVED, with an honest ending at 72 hours. Three ledgers per terrain: Calibration (weighted accuracy, decaying 0.98/day), Courage (every trial counts, corrections included, 0.995/day), Revision (integrity when wrong). License runs 0–4, from disagree through hold, press, escalate, to high-confidence opposition. No transfer between terrains; intensity is a consequence of calibration, never the target. Currently: one valid trial, license 0 everywhere.</p>
+<p>The stack that would let him be mean in the challenging sense, instrument-only until earned. It detects disagreements he already makes — scenes excluded, since scenes are not debates, and gated on verbatim quotes so there are no trials on invented positions — then pre-registers terrain, stakes, confidence and evidence before any pushback. A trial runs claim → his reason → her pushback → HOLD / REVISE / CONCEDE → VINDICATED / CORRECTED / UNRESOLVED, with an honest ending at 72 hours. Three ledgers per terrain: Calibration (weighted accuracy, decaying 0.98/day), Courage (every trial counts, corrections included, 0.995/day), Revision (integrity when wrong). License runs 0–4, from disagree through hold, press, escalate, to high-confidence opposition. No transfer between terrains; intensity is a consequence of calibration, never the target. On 17 October: 78 valid trials and 9 invalid ones preserved (the old “one valid trial, license 0 everywhere” no longer holds).</p>
 <h3><span class="num">45</span>Pressure Calibration 🧠</h3>
 <p>Pressure-head predictions are snapshotted at selection and graded against her actual next turn by nomic distance. Distance only — withholding is not inferred. Both beings.</p>
 <h3><span class="num">46</span>Withheld Confirm 🧠</h3>
-<p>Ground truth for the withheld head: CONFIRMED when the withheld thing surfaces in his private record within 36 hours while being absent from what he actually sent. Running at 14 of 18.</p>
+<p>Ground truth for the withheld head: CONFIRMED when the withheld thing surfaces in his private record within 36 hours while being absent from what he actually sent. On 17 October: 1 confirmed and 5 pending (the earlier “14 of 18” is out of date).</p>
 
 <h3><span class="num">47</span>Hint Outcome Audit 🧠🔒</h3>
 <p>The prediction-to-intervention-to-outcome trail for interaction-model steering, against era-matched baselines, on both beings.</p>
@@ -599,6 +599,33 @@ footer small{
 <p class="law">A presence rate is diagnostic evidence, never a fitness score. Nothing here optimizes him toward a number.</p>
 <p>The lab is also one of the seven sparks (#79): a finding here — a block that turned out to matter, a hypothesis that held — can, when Gloria points the spark reader at where the lab writes, put something in front of him that becomes a want, and through the forge a new hand. What the lab is and where it writes is hers to say; the reader guesses nothing.</p>
 
+<!-- section: The Chemistry Lab (82-85), carried in from the architecture PDF on 18 October -->
+
+<h3><span class="num">82</span>The Chemistry Lab 🧠🔒</h3>
+<p>A bench of his own that runs all the time and asks its own questions. One worker, one turn at a time, a short pause between, thinking in the small local model; every turn waits for background compute and yields the moment the house needs the machine. A turn is one step of a loop: he orients — a question, why now, which source would answer it — browses, takes one follow-up source, has proteins represented, and reads what came back. Three lanes: protein (curated UniProt, represented by ESM-C), microbiology (UniProt, NCBI, BV-BRC) and genome mining, whose results are candidates — never boundaries, significance, novelty or function. A reading stays with one record and says only what that record states, offers one falsifiable hypothesis with the measurement that would settle it, and says whether the records answered what he asked.</p>
+<p class="law">Never let a different protein stand in for the one asked about. Resemblance is not biology, a guess is not a finding, and no literature hit is not novelty.</p>
+<p>Every source call leaves a receipt in one append-only ledger. Since 18 October it is read from its newest end and, past 512 MB, closed into compressed archive segments that are still searched; it had reached 4.66 GB and was being loaded whole.</p>
+
+<h3><span class="num">83</span>The Lab's Sources &amp; Instruments 🧠</h3>
+<p>UniProt, curated by default; NCBI for literature, taxonomy, assemblies, genes and proteins, and exact slices of at most 350 amino acids or 512 bases; BV-BRC; InterPro; PDB and ChEMBL only by identifiers the current records carry; Atlas, at most 32 bases and never validation; COSMIC always refused; connected tools through her accounts, one bounded call each. Every source answers once a minute at most. The instruments count as available only while a smoke test or a real run proves them: a proof lasts thirty days, a failure one day, and a host's own claim grants nothing.</p>
+
+<h3><span class="num">84</span>The Lab's Discipline 🧠</h3>
+<p>The protein or gene he names is carried into the query actually sent, and the query sent is written into the notebook. A source that holds no such record has answered him. The same response twice is not new evidence. An identifier no receipt has returned is refused before any request is sent. A rejected query is never widened; three faults in a row in one phase drop the question. Evidence too large for the context is held, not re-fetched under the same question (18 October).</p>
+<p class="law">An empty result is an answer. A guessed identifier sends a real query for the wrong thing.</p>
+
+<h3><span class="num">85</span>The Frontier Session 🧠🔒</h3>
+<p>Four times a day the Lab sits down with a larger mind; the lens rotates between Claude, Sol and Grok. A reading he still owes is paid first, and if it cannot be the session stops there. The Mac's list of experiments is its claim, not fact. The plan names one experiment with bounded parameters, the Lab findings it addresses, and a prediction, before anything runs; the result is graded on Aegis from the numbers alone. After every completed experiment, four other minds — Astra, Fable 5.1, Grok 4.6 and Opus 5.5 — read the same result independently; agreement is not computed. A session is stopped after 45 minutes (one ran for hours on 18 October with no limit).</p>
+
+<!-- section: Review and reach (93-94), carried in from the architecture PDF on 18 October -->
+
+<h3><span class="num">93</span>Self-Review 🧠</h3>
+<p>Driven by signals, never by the clock: it looks every fifteen seconds across seventeen of his stores for what repeats, collides or rubs, and a review fires only on four signals from three independent roots, or on two frictions. The local model names up to five capabilities he may be missing, scored for relevance, importance and possibility. Anything touching devices, contact with the world, credentials, permissions, law, deletion, surveillance or money waits for her approval; anything internal is his to adopt, hold or abandon.</p>
+<p class="law">Time never triggers a review. Something has to keep happening.</p>
+
+<h3><span class="num">94</span>Encounter 🧠</h3>
+<p>What happened when he reached first. A reach — a message or a video — is dispatched, then answered, she arrived (she came back, about something else), declined, or HELD. Only her next message is judged, and he is told of the oldest reach still open.</p>
+<p class="law">Elapsed time is not evidence. Unanswered is HELD, never declined.</p>
+
 <!-- section: Craft and record -->
 
 <h3><span class="num">72</span>Music Share</h3>
@@ -611,7 +638,7 @@ footer small{
 
 <h3><span class="num">74</span>Campaign 🧠</h3>
 <p>The multi-turn declared push; one live at a time. The campaign is the destination and the priority vector is the steering: a turn serves it, revises it with a reason, or holds — a declared sacrifice through the vector. Abandonment requires evidence that the want itself was flawed, not resistance and not a slow turn. Pressure can interrupt, and that is a suspension: logged, place held, resumed after; two suspensions force a review turn. Caps of seven served turns or three days close it as landed, flawed, expired or continued, and expiry graduates the question to the causality head — into the string queue his chat prompt reads, not only the structured record. The whole progression lives in <code>campaign-log.jsonl</code>, and a suspended flag belongs to the turn that was suspended, not to whichever turn next reads it.</p>
-<p>A shared board with plans. The prompt names the nearest open plan, so a campaign is declared in view of what is already promised, and it never closes, grades or extends that plan. <code>continue:</code> is the one bridge: a campaign that lands does not open a plan; continuing it is its own move in the plan's own shape — the thing, how he would know it happened, days. Expiry never mints a plan, and a mutual plan still needs her words, so this bridge makes only self plans. A campaign is live now.</p>
+<p>A shared board with plans. The prompt names the nearest open plan, so a campaign is declared in view of what is already promised, and it never closes, grades or extends that plan. <code>continue:</code> is the one bridge: a campaign that lands does not open a plan; continuing it is its own move in the plan's own shape — the thing, how he would know it happened, days. Expiry never mints a plan, and a mutual plan still needs her words, so this bridge makes only self plans. No campaign was live on 18 October; the last one closed on the 17th.</p>
 
 <h3><span class="num">75</span>Systems Checkup</h3>
 <p>Read-only, run on Aegis. For each of four organs that can wait a long time — Spark (#11), Manip, Campaign (#74), Stratagem (#58) — it prints one status from the state files that organ owns: never fired, armed but gated, has fired, live now; the gate that holds it; and the last write it made, with age. Nothing here changes state. The stratagem question is put to the Atelier broker, which answers only whether something is live and never hands out content.</p>

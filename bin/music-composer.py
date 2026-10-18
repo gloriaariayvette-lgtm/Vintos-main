@@ -184,6 +184,9 @@ def compose():
     else: print("composer: Grok's finish not used ("+("a repeat" if finished else "no answer")+"); Sonnet's spec stands")
     now=datetime.datetime.now(); os.makedirs(PROMPTS,exist_ok=True)
     fp=os.path.join(PROMPTS,now.strftime("%Y-%m-%d_%H%M%S")+".md")
+    n=1
+    while os.path.exists(fp):   # two songs in one second overwrote each other, draft and all (18 October)
+        n+=1; fp=os.path.join(PROMPTS,now.strftime("%Y-%m-%d_%H%M%S")+"-%d.md"%n)
     if spec is not sonnet_spec:
         try: open(fp+".sonnet-draft.md","w",encoding="utf-8").write(sonnet_spec+"\n")
         except Exception: pass

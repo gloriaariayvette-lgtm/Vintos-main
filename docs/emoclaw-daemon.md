@@ -7,12 +7,13 @@
   version and is the one this repo's clients are written against.
 - **Installed copy on the host:** `~/.vintos/workspace/emotion_model/daemon.py`,
   launched by `bin/emoclaw-daemon-guard.sh` (`cd $DAEMON_DIR && PYTHONPATH=.. .venv/bin/python3 daemon.py`).
-  It may be older or patched (it accepts `nudge`, which the bundled copy does not).
-  The handshake below exists so a client can tell which one it is talking to.
+  Until 18 October it was a separate, older copy (with `nudge`, `set_state`, `read`, without `version`); the bundled
+  copy now carries all of them and was installed over it that day. The handshake below lets a client check.
 
 ## Unit
 
-`vintos-emotion.service` (user unit: `systemctl --user start vintos-emotion.service`).
+`vintos-emoclaw.service` (user unit: `systemctl --user restart vintos-emoclaw.service`). The guard named
+`vintos-emotion.service`, which never existed on Aegis, until 18 October.
 The guard's `ensure` action uses the unit when `systemctl --user list-unit-files`
 reports it installed; otherwise it launches `daemon.py` directly the way the unit would.
 

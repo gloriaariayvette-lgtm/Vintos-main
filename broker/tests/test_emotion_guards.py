@@ -147,7 +147,7 @@ calls = os.path.join(tmp, "systemctl.calls")
 with open(os.path.join(fake_bin, "systemctl"), "w") as f:
     f.write('''#!/bin/bash
 echo "$*" >> "%(calls)s"
-if [ "$2" = "list-unit-files" ]; then echo "vintos-emotion.service enabled"; exit 0; fi
+if [ "$2" = "list-unit-files" ]; then echo "vintos-emoclaw.service enabled"; exit 0; fi
 if [ "$2" = "start" ]; then
   # behave like the unit: bring up a process that owns the pid file
   sleep 30 & echo $! > "%(pid)s"; exit 0
@@ -166,7 +166,7 @@ def run(*args):
 r = run("status")
 check("status alone does not start anything", r.returncode == 1 and not os.path.exists(calls), r.stdout.strip())
 r = run()
-started = [l for l in open(calls).read().splitlines() if l.startswith("--user start vintos-emotion.service")] if os.path.exists(calls) else []
+started = [l for l in open(calls).read().splitlines() if l.startswith("--user start vintos-emoclaw.service")] if os.path.exists(calls) else []
 check("default action requests systemctl --user start <unit> when down", r.returncode == 0 and len(started) == 1,
       (r.stdout + r.stderr).strip())
 check("daemon considered up afterwards", run("status").returncode == 0)
@@ -182,7 +182,7 @@ try:
 except Exception: pass
 # a unit that never brings the daemon up: bounded retry then give up
 with open(os.path.join(fake_bin, "systemctl"), "w") as f:
-    f.write('#!/bin/bash\necho "$*" >> "%s"\n[ "$2" = list-unit-files ] && echo "vintos-emotion.service enabled"\nexit 0\n' % calls)
+    f.write('#!/bin/bash\necho "$*" >> "%s"\n[ "$2" = list-unit-files ] && echo "vintos-emoclaw.service enabled"\nexit 0\n' % calls)
 os.remove(pid_file); open(calls, "w").close()
 env["EMOCLAW_ENSURE_RETRIES"] = "2"
 r = run("ensure")
@@ -194,7 +194,7 @@ with open(os.path.join(fake_bin, "systemctl"), "w") as f: f.write("#!/bin/bash\n
 open(calls, "w").close()
 r = run("ensure")
 check("without the unit, guard tries the direct launch path and logs it",
-      r.returncode == 1 and "unit vintos-emotion.service not installed" in open(log_path).read(), r.stdout.strip()[-100:])
+      r.returncode == 1 and "unit vintos-emoclaw.service not installed" in open(log_path).read(), r.stdout.strip()[-100:])
 check("nothing written under ~/.vintos by the guard test", outside_home(tmp))
 shutil.rmtree(tmp)
 
@@ -247,7 +247,7 @@ check("bundled daemon declares the version the client expects",
       ("PROTOCOL_VERSION = %d" % EU.EXPECTED_PROTOCOL_VERSION) in dsrc and '"version"' in dsrc)
 check("docs/emoclaw-daemon.md names daemon, unit, socket, version",
       all(k in open(os.path.join(ROOT, "docs", "emoclaw-daemon.md")).read()
-          for k in ("emotion_model/daemon.py", "vintos-emotion.service", "/tmp/Vintos-emotion.sock", "PROTOCOL_VERSION")))
+          for k in ("emotion_model/daemon.py", "vintos-emoclaw.service", "/tmp/Vintos-emotion.sock", "PROTOCOL_VERSION")))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

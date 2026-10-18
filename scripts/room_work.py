@@ -486,7 +486,8 @@ def settle(state, topic, said, by, now, days=SETTLE_DAYS):
     keep = [e for e in b.get("settled", []) if e.get("words") != words]
     entry = {"topic": str(topic)[:300], "words": words, "said": str(said)[:300], "by": by, "at": float(now),
              "until": float(now) + float(days) * 86400}
-    b["settled"] = (keep + [entry])[-24:]
+    # Expiry ends an entry; the count no longer does. At 24 the oldest still-standing closure fell off early (18 October).
+    b["settled"] = [e for e in keep + [entry] if float(e.get("until", 0)) > float(now)][-200:]
     return entry
 
 
@@ -777,9 +778,21 @@ def asking_again(state, draft, now):
     for who in addressed(draft):
         for w in _tracked(state):
             for ask in reversed(w.get("asks", [])):
+                same = _like(draft, ask.get("what", "")) >= SAME_ASK
                 if ask.get("to") != who:
-                    continue
-                if not (_like(draft, ask.get("what", "")) >= SAME_ASK or (status and not ask.get("answered"))):
+                    # The same question to another agent, after one already answered it. It is not closed: the answer
+                    # goes in front of him to weigh, and it may change the want or the fix itself (Gloria, 18 October:
+                    # dot parked it, so he asked Muse or Grok Bot the same thing, and the answer was never used).
+                    if not (same and ask.get("answered")) or NEW.search(str(draft or "")):
+                        continue
+                    got = next((r for r in w.get("returns", []) if r.get("ts") == ask["answered"]), {})
+                    name, asking = AGENTS.get(ask.get("to"), ask.get("to")), AGENTS[who]
+                    return ("%s already answered this (%s), when you asked: “%s”. Its answer: “%s”. Weigh it before "
+                            "asking %s: does it change the want or the fix itself? Reshape it with what %s said, or "
+                            "ask %s with what is different on a NEW: line." % (
+                                name, _ago(float(ask["answered"]), now), str(ask.get("what", ""))[:240],
+                                str(got.get("text", ""))[:600], asking, name, asking))
+                if not (same or (status and not ask.get("answered"))):
                     continue
                 name = AGENTS[who]
                 if ask.get("answered"):
