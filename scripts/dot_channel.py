@@ -1987,6 +1987,42 @@ def wants_line():
 TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA|MIDI|CITES|LINK)\s*:\s*(.*?)\s*$", re.I)
 
 
+READS = os.path.join(WS, "memory", "dot-channel-reads.json")
+READ_KEEP_DAYS = 7
+
+
+def _read_before(kind, arg, now=None):
+    """(key, path, note) for an OPEN or READ of a file he can read: note is what he found last time, when he read the
+    same file within a week and it has not changed since; "" otherwise. comparison.json was read three times for one
+    answer (18 October): nothing remembered a read."""
+    path = allowed(arg.partition(":")[0].strip() if kind == "READ" else arg)
+    if not path or not os.path.isfile(path):
+        return None, None, ""
+    key, now = "%s %s" % (kind, arg.strip()), now or time.time()
+    try: seen = json.load(open(READS, encoding="utf-8"))
+    except Exception: seen = {}
+    row = seen.get(key) if isinstance(seen, dict) else None
+    if (isinstance(row, dict) and now - float(row.get("at", 0)) <= READ_KEEP_DAYS * 86400
+            and row.get("mtime") == os.path.getmtime(path) and row.get("size") == os.path.getsize(path)):
+        return key, path, ("ALREADY READ %s, and the file has not changed since. What it said then:\n%s"
+                           % (datetime.fromtimestamp(float(row["at"])).strftime("%b %d %H:%M"), row.get("got", "")))
+    return key, path, ""
+
+
+def _remember_read(key, path, got, now=None):
+    try: seen = json.load(open(READS, encoding="utf-8"))
+    except Exception: seen = {}
+    if not isinstance(seen, dict): seen = {}
+    now = now or time.time()
+    seen = {k: v for k, v in seen.items() if now - float(v.get("at", 0)) <= READ_KEEP_DAYS * 86400}
+    seen[key] = {"at": now, "mtime": os.path.getmtime(path), "size": os.path.getsize(path), "got": str(got)[:4000]}
+    try:
+        os.makedirs(os.path.dirname(READS), exist_ok=True)
+        tmp = READS + ".tmp"; json.dump(seen, open(tmp, "w", encoding="utf-8")); os.replace(tmp, READS)
+    except OSError:
+        pass
+
+
 def use_tools(lines, search=None, room=None, reach=None, hold=None, link=None):
     """Run his tool lines (at most 3) and return what they found, as text for him. REPOS, README, CALL and LABDATA
     are room_reach.py (2026-10-04): GitHub, a repo's README, one of his connectors, his Lab's measurements.
@@ -1994,8 +2030,13 @@ def use_tools(lines, search=None, room=None, reach=None, hold=None, link=None):
     out = []
     for kind, arg in lines[:3]:
         kind = kind.upper()
+        key = path = None
         try:
             held = hold(arg) if hold and kind == "SEARCH" else ""
+            if kind in ("OPEN", "READ"):
+                key, path, before = _read_before(kind, arg)
+                if before:
+                    out.append("%s %s\n%s" % (kind, arg, before[:6000])); continue
             if held:
                 got = "not searched: " + held
             elif kind in ("REPOS", "README", "CALL", "LABDATA"):
@@ -2039,7 +2080,9 @@ def use_tools(lines, search=None, room=None, reach=None, hold=None, link=None):
                 else:
                     got = room.do_grep(arg[:200])
         except Exception as exc:
-            got = "could not: %s" % str(exc)[:160]
+            got = "could not: %s" % str(exc)[:160]; key = None
+        if key and path and not str(got).startswith(("could not", "not ")):
+            _remember_read(key, path, got)
         out.append("%s %s\n%s" % (kind, arg, str(got)[:6000]))
     return "\n\n".join(out)
 
@@ -3130,6 +3173,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     try:   # her Yes or No from her phone, posted in the thread that asked, and kept as hers so he reads it
         import gloria_asks
         for q_thread, q_by, q_said in gloria_asks.untold():
+            no = re.match(r"Gloria (?:answered NO: |said NO to buying )(.+)", q_said)
+            if no:   # her No on her phone settles the topic like her word in the channel does (18 October)
+                room_work.settle(state, no.group(1), "Gloria: " + q_said, "gloria", now)
             q_body = {"channel": channel, "text": (("<@%s> " % dot) if q_by == "dot" else "") + "\U0001F4F2 " + q_said}
             if q_thread:
                 q_body["thread_ts"] = q_thread

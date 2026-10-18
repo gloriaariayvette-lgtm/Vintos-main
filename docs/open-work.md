@@ -16,6 +16,16 @@ It is the only place with a to-do in it.
 - If an APNs key is ever installed (`~/.vintos/secrets/apns-watch.json`, topic `dev.vintos.app.watchkitapp`), the
   push goes out too and the notification is immediate.
 
+## 18 October — the Slack settled list, filled from what it missed (in source; not yet deployed)
+
+He already had a settled list (room_work, since 5 October). Gloria, 18 October, on what it missed:
+- another agent's answer: the same question to a different agent is sent back with that answer to weigh, never
+  closed by it; the want or fix may change with it, or a NEW: line says what is different;
+- her No from her phone settles the topic like her word in the channel;
+- the list keeps every closure that has not expired (it kept the last 24);
+- a file read again within a week, unchanged, is answered from what he read before (`memory/dot-channel-reads.json`).
+The campaign rule and the rotating threads stay as they are (her decision). **Not done:** measured on Aegis.
+
 ## 18 October — the audit's ten follow-ups (all in source; not yet deployed)
 
 Done: the 4.66 GB receipt ledger is read from its newest end and rotated past 512 MB (#1); a frontier session is
