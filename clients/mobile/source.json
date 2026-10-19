@@ -2,9 +2,9 @@
   "repository": "vintos-app",
   "commit": "495d67c",
   "sha256": {
-    "index.html": "30529a26298b45c795b20927cbf36436fbc0443ed07ed6a6b850eea77429a28d",
+    "index.html": "19505cdd40888468b06cda5a3435649dbead2daa4c20dca717c0639c292dd85c",
     "client_lifecycle.js": "8d26e2b4ca644eb966d96d474ec87ef22a8d461cc4b6014044ce3b52812b1742",
     "avatar-bundle.js": "9869b6a3db5f4df5fff24d4fe3213461b645dfa978cd6bc07e301909f29ffc7c"
   },
-  "note": "index.html is edited in this repository, not mirrored byte-for-byte from vintos-app: its Chemistry Lab surface differs. The avatar media lifecycle in this release is ported from the named app commit."
+  "note": "index.html is edited in this repository, not mirrored byte-for-byte from vintos-app: its Chemistry Lab surface differs, and on 19 October its avatar toggle (Argon in Sol's place; an error never repaints Opus 4.8). The avatar media lifecycle in this release is ported from the named app commit."
 }
