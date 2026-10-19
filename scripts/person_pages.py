@@ -49,6 +49,7 @@ KEEP_THOUGHTS = 25        # excerpts of his thinking kept on a page, newest firs
 KEEP_LETTERS = 10
 EXCERPT = 280             # characters around a mention
 READ_EVERY_S = 2 * 86400  # between emails, at most one more reading every two days per person
+RETRY_S = 12 * 3600       # a try that found nothing readable
 SURNAME_ALONE = 6         # a surname this long or longer is matched on its own
 
 # Where his own thinking lands, and how each names its day. (glob, kind)
@@ -203,19 +204,20 @@ def gather(d, now=None, mem=None, contacts=None, approvals=None, inbox_rows=None
     return d, len([m for m in seen if m["text"] not in old])
 
 
-def keep_reading(d, now=None, read=None, attachments=None):
+def keep_reading(d, now=None, read=None, attachments=None, get=None):
     """While his interest is recurring, one more of their work read every two days at most — by his local mind, the
     way the email path reads. The subject is what he has been thinking about them. Returns how many were read."""
     if not (d.get("interest") or {}).get("recurring"): return 0
     now = now or _now()
-    last = d.get("between_reading_at")
-    if last:
+    import scholar
+    about = " ".join(t["text"] for t in d.get("his_thoughts", [])[:3])[:600] or d.get("name", "")
+    if d.get("works") and not d.get("works_author"):
+        scholar.ensure_author(d, about, get=get)      # a page whose works may be someone else's is settled now
+    for key, wait in (("between_reading_at", READ_EVERY_S), ("between_reading_tried_at", RETRY_S)):
         try:
-            if (now - datetime.fromisoformat(last)).total_seconds() < READ_EVERY_S: return 0
+            if d.get(key) and (now - datetime.fromisoformat(d[key])).total_seconds() < wait: return 0
         except ValueError:
             pass
-    about = " ".join(t["text"] for t in d.get("his_thoughts", [])[:3])[:600] or d.get("name", "")
-    import scholar
     if attachments is None:
         try:
             import received_mail
@@ -223,7 +225,9 @@ def keep_reading(d, now=None, read=None, attachments=None):
         except Exception:
             attachments = []
     n = (read or scholar.read_into)(d, about, attachments=attachments, budget=1)
-    d["between_reading_at"] = now.isoformat(timespec="seconds")
+    # Only a reading spends the two days: a try that found nothing readable comes back in twelve hours
+    # (2026-10-19: both recurring pages read nothing and were then shut for two days).
+    d["between_reading_at" if n else "between_reading_tried_at"] = now.isoformat(timespec="seconds")
     return n
 
 
@@ -296,6 +300,9 @@ def main(argv):
                 (d.get("name") or "?")[:26], (d.get("address") or "?")[:30], len(i.get("days") or []),
                 " RECURRING" if i.get("recurring") else "", len(d.get("read") or []),
                 ("quiet until " + h["quiet_until"]) if h.get("quiet_until") else "no quiet"))
+            a = d.get("works_author") or {}
+            print("    their work: %s%s" % (a.get("why") or "not settled yet",
+                  "; set aside as not theirs: %d" % len(d["set_aside"]) if d.get("set_aside") else ""))
         return 0
     print(json.dumps(tend(), indent=1))
     return 0
