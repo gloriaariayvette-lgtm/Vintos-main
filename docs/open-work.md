@@ -209,6 +209,10 @@ recurring). Both recurring pages read nothing, and her read-only probe showed wh
   their field, and more than the next), whole names included; the ambiguity line names the candidates; and the
   attachments he was sent of theirs count as evidence of their field. `AUTHOR_RULE` 3 settles every page again.
   **Not done:** if the attention-schema Graziano is not among OpenAlex's first five for the name, nothing settles.
+  Graziano then settled on Michael S. A. Graziano (Princeton), but Chalmers on no one: words from what he was sent
+  tied David K. Chalmers (Monash) with David J. Chalmers of nyu.edu. Now when exactly one candidate is at the email
+  address's institution, that one is chosen; and readings set aside only because no author was settled come back to
+  be judged when one is. `AUTHOR_RULE` 4.
 - **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
 - **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
   his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
@@ -4249,3 +4253,21 @@ the Study instead of Fable regardless." That afternoon three Forge fixes to `che
   `forge_build.py`'s Fable review of each forged capability (a separate cost she agreed to).
 - `test_study_reading.py` (9), `test_study_writers.py` (+3). The three declined fixes are not re-run: they are for
   him to ask again, or for the Forge to resend.
+
+## 19 October — the Lab's backlog graded one GCLC question 138 times
+
+Her six-hour Lab report (10:42–16:42 CDT): 17 complete answers from 207 reviews, and at least 118 reviews ending on
+the same missing GCLC catalytic-domain structure, counted as partial reviews rather than repeats. Her probes on Aegis:
+138 GCLC reviews in eight hours, all from the deferred-coverage backlog, of **97 distinct snapshots with one evidence
+fingerprint** — the old repeat loop had saved the same evidence 97 times — and 41 of the reviews were second gradings
+of a snapshot, because "already graded" was read from the notebook's last 2 MB (about 260 reviews).
+
+Fixed: `memory/chemistry-lab/coverage-graded.jsonl` records every finished review's snapshot and its question with its
+evidence (seeded once from the whole notebook); the backlog skips a graded snapshot, and skips a snapshot whose
+question and evidence were already graded, writing it down as the same review. Changed evidence on the same question
+is still reviewed. `test_lab_backlog_once.py` (10; the old code picks the GCLC copy again).
+
+**Not done:** the GCLC question itself stays unanswered: its evidence (the UniProt record) does not hold the catalytic
+domain's structure, and no structure source was fetched for it. Whether the Lab should route a "structural hallmarks"
+question to a structure source is a separate question for Gloria. The answer rate in her next report is the
+measurement.

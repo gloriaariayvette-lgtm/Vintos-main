@@ -2204,12 +2204,65 @@ def _coverage_snapshot(path):
     return payload, digest
 
 
+GRADED = os.path.join(ROOT, 'coverage-graded.jsonl')
+
+
+def _question_key(inquiry):
+    return ' '.join(str((inquiry or {}).get('question') or '').casefold().split())
+
+
+def _note_graded(note):
+    """What a finished review graded, kept where it does not scroll away: the backlog snapshot it came from, and its
+    question with its evidence. The notebook's last 2 MB held about 260 reviews, so a snapshot graded earlier in the
+    day was graded again (19 October: 41 of 138 GCLC reviews were second gradings)."""
+    if note.get('kind') != 'reflection' or note.get('coverage_deferred'): return
+    row = {'snapshot': note.get('coverage_retry_sha256'), 'question': _question_key(note.get('inquiry')),
+           'evidence': note.get('evidence_sha256')}
+    if row['snapshot'] or (row['question'] and row['evidence']):
+        _append(GRADED, row)
+
+
+def _graded():
+    """(snapshots graded, (question, evidence) pairs graded). Seeded once from the whole notebook."""
+    if not os.path.exists(GRADED):
+        rows = []
+        try:
+            with open(NOTEBOOK, encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    if '"reflection"' not in line: continue
+                    try: note = json.loads(line)
+                    except ValueError: continue
+                    if note.get('kind') == 'reflection' and not note.get('coverage_deferred'):
+                        rows.append({'snapshot': note.get('coverage_retry_sha256'),
+                                     'question': _question_key(note.get('inquiry')), 'evidence': note.get('evidence_sha256')})
+        except OSError:
+            pass
+        _ensure()
+        tmp = GRADED + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            for row in rows: f.write(json.dumps(row, sort_keys=True) + '\n')
+        os.replace(tmp, GRADED)
+    snapshots, pairs = set(), set()
+    for row in _jsonl(GRADED):
+        if not isinstance(row, dict): continue
+        if row.get('snapshot'): snapshots.add(row['snapshot'])
+        if row.get('question') and row.get('evidence'): pairs.add((row['question'], row['evidence']))
+    return snapshots, pairs
+
+
+def _snapshot_evidence(observations):
+    """The evidence a snapshot would be reviewed on, as review_evidence names it once it is resumed."""
+    state = {'records': observations.get('records') or [],
+             'material': {'records': observations.get('LITERATURE') or []}}
+    if isinstance(observations.get('additional_source'), dict): state['additional_source'] = observations['additional_source']
+    if isinstance(observations.get('atlas_analysis'), dict): state['atlas_analysis'] = observations['atlas_analysis']
+    return review_evidence(state)[0]
+
+
 def _next_fitting_deferred_coverage():
     """Resume preserved evidence when a larger verified context makes it fit."""
     directory = os.path.join(ROOT, 'coverage-deferred')
-    completed = {row.get('coverage_retry_sha256') for row in _tail_jsonl(NOTEBOOK, nbytes=2*1024*1024)
-                 if row.get('kind') == 'reflection' and row.get('coverage_retry_sha256')
-                 and not row.get('coverage_deferred')}
+    completed, graded_pairs = _graded()
     try:
         paths = [os.path.join(directory, name) for name in os.listdir(directory) if name.endswith('.json')]
         paths.sort(key=lambda path:os.stat(path).st_mtime_ns, reverse=True)
@@ -2219,6 +2272,12 @@ def _next_fitting_deferred_coverage():
         payload, digest = _coverage_snapshot(path)
         if digest in completed: continue
         inquiry, observations = payload['inquiry'], payload['observations']
+        # The same question on the same evidence is one review, however many snapshots of it the old repeat loop
+        # left: 97 GCLC snapshots with one evidence fingerprint were graded 138 times, each "no" (19 October).
+        pair = (_question_key(inquiry), _snapshot_evidence(observations))
+        if pair[1] and pair in graded_pairs:
+            _append(GRADED, {'snapshot': digest, 'question': pair[0], 'evidence': pair[1], 'same_as_graded': True})
+            continue
         prepared = _coverage_request(inquiry, observations)
         if _coverage_deferral(inquiry, observations, prepared) is not None: continue
         resumed = dict(inquiry)
@@ -5327,6 +5386,10 @@ def tick():
                 except Exception as exc:
                     _fault("lab_lines_miss", exc)
             _append(NOTEBOOK, note)
+            try:
+                _note_graded(note)
+            except Exception as exc:
+                _fault("coverage_graded", exc)
             if note["kind"] == "reflection":
                 # Which sourced proteins he actually wrote about. Late import, same reason.
                 try:

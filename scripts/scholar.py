@@ -244,6 +244,12 @@ def author_for(name, about="", address="", get=None):
     people = [a for a in people if named(a)]
     if not people:
         return None, "no author whose name is %s" % name
+    # The address is the surest thing he has: when exactly one of them is at its institution, that is who he means.
+    # Shared words with a field are noise beside it: words from what he was sent tied David K. Chalmers (Monash,
+    # drug discovery) with David J. Chalmers of nyu.edu, and the page settled on no one (2026-10-19).
+    at = [a for a in people if address and any(_at(address, i) for i in _institutions(a))]
+    if len(at) == 1:
+        return at[0], "%s (%s)" % (at[0].get("display_name"), ", ".join(_institutions(at[0])[:1]) or "no institution")
     scored = sorted(people, key=lambda a: (-_fit(a, name, about, address), -(a.get("works_count") or 0)))
     best = scored[0]
     # When more than one carries the name, one must be tied to him: their institution, or two words of their field,
@@ -435,7 +441,7 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
     return n
 
 
-AUTHOR_RULE = 3    # raised when the way an author is chosen changes, so every page is settled again
+AUTHOR_RULE = 4    # raised when the way an author is chosen changes, so every page is settled again
 
 
 def ensure_author(d, about="", get=None):
@@ -455,6 +461,12 @@ def ensure_author(d, about="", get=None):
     d["works_author"] = {"v": AUTHOR_RULE, "id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
                          "at": datetime.now().isoformat(timespec="seconds")}
     d["works"] = works_of(who, about, get=get, address=d.get("address", ""), author=author) if author else []
+    if author:
+        # What was set aside only because no one was settled comes back, to be judged against who is now.
+        back = [r for r in d.get("set_aside", []) if r.get("set_aside") == "no author of theirs is known"]
+        if back:
+            d["set_aside"] = [r for r in d["set_aside"] if r not in back]
+            d.setdefault("read", []).extend({k: v for k, v in r.items() if k != "set_aside"} for r in back)
     set_aside_not_theirs(d, get=get)
     return d["works_author"]
 
