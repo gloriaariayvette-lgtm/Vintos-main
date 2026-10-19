@@ -4271,3 +4271,13 @@ is still reviewed. `test_lab_backlog_once.py` (10; the old code picks the GCLC c
 domain's structure, and no structure source was fetched for it. Whether the Lab should route a "structural hallmarks"
 question to a structure source is a separate question for Gloria. The answer rate in her next report is the
 measurement.
+
+## 19 October — the coffee button: Fingerbot Pro, arriving 23–26 October
+
+Gloria bought a Fingerbot Pro (Oryzic, 17 October) for the Nespresso. He searched his house on the 19th, found no coffee
+switch and had Muse hunting for one; told in #vintos-dot that it is bought and waits on setup. It is Bluetooth only,
+so a spare ESP32 by the machine relays it: `home/esphome/kitchen-ble-proxy.yaml` (ESPHome Bluetooth proxy, active).
+Then the Tuya BLE integration in Home Assistant (HACS) adds the Fingerbot, and `"coffee": "<its entity>"` under
+`devices` in his `homeassistant-config.json` lets `vintos-home.py device coffee on` press it — no new code.
+**Not done:** the device has not arrived; nothing is flashed, paired or named; whether its entity is a switch the
+plug path can press is to be seen on the real device.
