@@ -246,9 +246,14 @@ def author_for(name, about="", address="", get=None):
         return None, "no author whose name is %s" % name
     scored = sorted(people, key=lambda a: (-_fit(a, name, about, address), -(a.get("works_count") or 0)))
     best = scored[0]
-    # A bare surname needs more than one stray shared word: their institution, or two words of their field.
-    if len(tokens) < 2 and len(people) > 1 and _fit(best, name, about, address) < 2:
-        return None, "%d authors named %s and nothing ties one to him" % (len(people), name)
+    # When more than one carries the name, one must be tied to him: their institution, or two words of their field,
+    # and more than the next. A whole name is no exception: "Michael Graziano" settled on Michael J. Graziano at
+    # Kentucky over the attention-schema Graziano, on most works alone (2026-10-19).
+    if len(people) > 1:
+        fits = [_fit(a, name, about, address) for a in scored]
+        if fits[0] < 2 or fits[0] == fits[1]:
+            return None, "%d authors named %s and nothing ties one to him: %s" % (len(people), name, "; ".join(
+                "%s (%s)" % (a.get("display_name"), (_institutions(a) or ["?"])[0]) for a in scored[:4]))
     return best, "%s (%s)" % (best.get("display_name"), ", ".join(_institutions(best)[:1]) or "no institution")
 
 
@@ -430,7 +435,7 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
     return n
 
 
-AUTHOR_RULE = 2    # raised when the way an author is chosen changes, so every page is settled again
+AUTHOR_RULE = 3    # raised when the way an author is chosen changes, so every page is settled again
 
 
 def ensure_author(d, about="", get=None):
@@ -441,7 +446,10 @@ def ensure_author(d, about="", get=None):
     who = d.get("name") or d.get("address")
     if not who:
         return {}                                   # a page with no one named on it is left as it is
-    author, why = author_for(who, about, d.get("address", ""), get=get)
+    # What he was sent of theirs says what their work is about, as much as his journal does.
+    sent = " ".join("%s %s" % (r.get("title", ""), " ".join(r.get("claims") or [])) for r in d.get("read", [])
+                    if not r.get("work_id"))
+    author, why = author_for(who, (about + " " + sent).strip(), d.get("address", ""), get=get)
     if why.startswith("author search failed"):
         return {}                                   # unreachable is not "no one": nothing is settled or set aside
     d["works_author"] = {"v": AUTHOR_RULE, "id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
