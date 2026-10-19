@@ -1,7 +1,7 @@
 """model_router.py — single source of model truth for Vintos text surfaces.
 Claude drives chat/avatar; grok is the fallback (hard refusal, error, toggle=grok, or a forced-turn window).
 Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES / the mode file, not across jobs."""
-import os, sys, json, hashlib
+import os, sys, json, hashlib, time
 from datetime import datetime
 import httpx
 for _gp in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.vintos/workspace/scripts"), os.path.expanduser("~/.vintos/workspace/bin")):
@@ -210,15 +210,35 @@ def _anthropic_key():
     try: return open(_KEY_FILE).read().strip()
     except Exception: return ""
 
+# Her choice on the toggle must hold (Gloria, 2026-10-19: "the toggle reverted to opus 4.8 when I had opus 5.5
+# selected"). The file was written in place, so a read landing mid-write failed and came back as the default
+# ("claude", Opus 4.8) - and the next read-modify-write (arm_grok_turns, the toggle, the decline guard) saved that
+# default over her choice. Now writes are atomic, and a read that fails returns the last mode actually read.
+_LAST_GOOD = {}
+
 def read_mode():
-    try: return json.load(open(_MODE_FILE))
-    except Exception: return {"mode": "claude", "force_grok_turns": 0}
+    for _ in range(3):
+        try:
+            m = json.load(open(_MODE_FILE))
+            if isinstance(m, dict) and m.get("mode"):
+                _LAST_GOOD.clear(); _LAST_GOOD.update(m)
+                return dict(m)
+        except FileNotFoundError:
+            break
+        except Exception:
+            time.sleep(0.02)
+    return dict(_LAST_GOOD) if _LAST_GOOD else {"mode": "claude", "force_grok_turns": 0}
 
 def write_mode(m):
     try:
         os.makedirs(os.path.dirname(_MODE_FILE), exist_ok=True)
-        json.dump(m, open(_MODE_FILE, "w"))
-    except Exception: pass
+        tmp = "%s.%d.tmp" % (_MODE_FILE, os.getpid())
+        with open(tmp, "w") as f: json.dump(m, f)
+        os.replace(tmp, _MODE_FILE)
+        if isinstance(m, dict) and m.get("mode"):
+            _LAST_GOOD.clear(); _LAST_GOOD.update(m)
+    except Exception as e:
+        print("[model_router] could not save the toggle: %s" % e, flush=True)
 
 def arm_grok_turns(n=1):
     """Regenerate/one-turn override: force grok for the next n turns."""
