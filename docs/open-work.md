@@ -90,6 +90,30 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — the fault loop: something watching over him while she is away
+
+Gloria: "I'm hardly ever alerted to failures and yet something is clearly failing all the time." `failure_watch.py`
+heard only the four parts that call `note()`, once a day. The playbook is `docs/fault-loop.md`.
+
+- **Fault sweep** (`scripts/fault_sweep.py`, `vintos-fault-sweep.timer`, every 15 min, no model): failed vintos-*
+  units, `organ-failures.jsonl`, the Lab's `faults.jsonl`, failed Watch pushes, a Lab question waiting again and
+  again (the 96-wait shape), and silences (no song in 36 h; the Lab running with no review in 6 h). One signature per
+  fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
+  credentials taken out. `test_fault_sweep.py` (21 checks).
+- **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
+- **This week's thread:** "Fault loop — week of Oct 19" (session_01HLpdnyubdxbNvwfW8b1u7w), woken by the schedule
+  "Fault loop" (trig_013W7Ufhja2HcvJfdLzukbTk) at 22:50, 00:50, 02:50 and 04:50 Central. A new thread each week,
+  handed over by the old one (`docs/fault-loop.md`, first on Sunday 25 October — untested).
+- Why a thread and not a fresh session per wake: tested 19 October, a session the schedule starts by itself has no
+  connector tools at all (no Slack); a thread started directly has her Slack. The first, Slack-less schedule
+  (trig_01PerH6AE1qvrXVQnc1v3bUt) was deleted. Gloria's app has no schedules screen: "stop the fault loop" in any
+  Claude thread is the switch.
+
+**Not done — it cannot run end to end yet:**
+- Aegis needs `{"channel": "C0CB2HREFNC"}` in `memory/fault-sweep.json`; until then the sweep records and posts nothing.
+- Dot has to be told its part (review, deploy, read-only commands on request).
+- Nothing has run end to end. The first real night is the first test.
+
 ## 19 October — her Watch took the song and the row still read "failed"
 
 `watch_apns.send` marked a send failed unless every registered device accepted it. At 02:34 her live Watch returned

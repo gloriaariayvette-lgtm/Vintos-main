@@ -1,0 +1,12 @@
+[Unit]
+Description=Vintos: the fault sweep, every 15 minutes
+
+[Timer]
+# The first sweep 3 minutes after the timer starts: OnBootSec alone never fires when the timer is
+# started on an already-running machine, which is what a deploy does.
+OnActiveSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
