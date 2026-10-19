@@ -90,6 +90,22 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October, morning — the first six hours after the Lab fixes (service up since 23:30 CDT)
+
+Measured on Aegis, read-only, against the 18 October 3:11–9:11 PM window:
+- Reviews 117 → 178. Restarts 0. One fault (`forge_report_retry`, the Forge capacity guard, by design).
+- The held-follow-up loop is gone: most repeated wait 96 → 5. Refusals 25 (mostly unresolved gene symbols).
+- Graded in parts 18 → 161 — **168 of 169 were the deferred backlog** (`deferred_coverage_now_fits`, 163 distinct
+  snapshots) that the deep split made gradable; 13 complete answers came out of it. The backlog was 397 deep; about
+  234 remain, ~9 more hours at this rate. While it drains it takes nearly every pass (about 18 fresh reviews in six
+  hours against ~99 before); it ends by itself. Whole-graded reviews say yes at the earlier rate (12% vs 14%).
+- `ATAC` vs `ATAC_ACTIVE` (HMOX1): **not duplicates.** All 16,032 values differ (change-in-accessibility ~0.3 vs
+  activity level ~175–1,008); only the ~30 KB of track/variant labels around them is shared. Kept as two pieces of
+  evidence. Sharing those labels between scorers would save checker context — an efficiency, not a correction; not done.
+
+**Not done:** whether in-parts grading says "no" more readily than whole grading for the *same* question is not
+measured; the one fresh example's answer listed specific missing hallmarks, which reads as honest grading.
+
 ## 19 October, later — the toggle's second way back to an old model
 
 Chat's automated review asked for the toggle to be checked against concurrent writers. Each write was atomic since
