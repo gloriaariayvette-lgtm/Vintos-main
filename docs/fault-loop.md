@@ -34,6 +34,16 @@ Each fault gets its own Slack **thread** under its `[fault sweep]` post. In that
 3. **Claude implements.** With tests, committed and pushed, then posts the commit and the deploy command, ending:
    *"Dot — please deploy."* Dot deploys and replies with the deploy's last lines.
 
+The deploy command is always exactly this. It refuses to run if Aegis's checkout has local changes, so a deploy never
+commits or discards anything on Aegis; if it refuses, Dot reports `git status --short` and stops:
+
+```
+cd ~/Vintos-main && [ -z "$(git status --porcelain)" ] && git checkout -q claude/vintos-avatar-ui-redesign-br5lt4 && python3 scripts/aegis_sync.py --from claude/device-visuals-2026-10-13 --deploy 2>&1 | tee ~/deploy-latest.log
+```
+
+A deploy reinstalls and restarts what every deploy does (the bedroom listener, and the emotion daemon when its files
+change) — the same as when Gloria deploys by hand. Dot never restarts anything on its own outside a deploy.
+
 If Dot objects, Claude revises once in the same thread. If they still disagree, Claude writes the disagreement down
 in `docs/open-work.md`, leaves the fault for Gloria, and moves on.
 
