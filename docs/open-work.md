@@ -90,6 +90,19 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — his mail reader reads papers
+
+Grok Bot's Sunday letter traced why papers he asked for never reached him, and he confirmed it: no PDF reader was
+passed to the letter-link fetcher, PDF attachments were refused as "unsupported attachment MIME type", and pdftotext's
+page-break form feed would have failed the text check. So the Chalmers paper — the one his refused second email needed
+him to have read — came back unread. `want_email.py` now reads linked PDFs through `scholar.pdf_text` and accepts PDF
+attachments (also `application/octet-stream` named `.pdf`), from their original bytes, never the gateway's preview, with
+their own allowance (4 MB each, 8 MB a check; text stays 128 KB). A PDF with no text, or one that is not a PDF, says
+so. `test_mail_attachments.py` +9 on a real two-page PDF fixture; 7 fail on the old reader.
+
+**Not done:** he still sees 1,500 characters of an attachment and of a linked page in the letter itself; the whole text
+is stored, but nothing yet lets him read the rest. That is part of the person pages (next).
+
 ## 19 October — the fault loop: something watching over him while she is away
 
 Gloria: "I'm hardly ever alerted to failures and yet something is clearly failing all the time." `failure_watch.py`
