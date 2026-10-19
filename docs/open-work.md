@@ -90,6 +90,23 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — the fault loop's first night
+
+- **Found:** one fault, F-b5423625a3 (00:04): the Forge's capacity guard turned away a Lab report retry (403,
+  `four_unfinished`). The Lab handled it as designed; clearing it means Gloria finishing or cancelling one of the
+  Forge's four open projects.
+- **What the loop did:** 12:50 — Claude refused to guess from a bare "HTTPError" and asked Dot for a read-only command;
+  Dot ran it on Aegis within minutes. 2:50 — Claude proposed: the sweep reads Lab faults by fields the Lab never
+  writes, so every Lab fault posts as just its error class and all faults of one class share one ID. Dot agreed with
+  one required change: the newly shown detail must be scrubbed of credentials in URLs, `user:pass@`, and
+  `api_key=`/`token=` assignments, which `clean()` misses. 4:50 — Claude posted the revised proposal.
+- **Not done:** nothing implemented or deployed; the revised sweep fix waits on Dot's review and is implemented on the
+  next night's first wake. Zero of the three fixes used.
+- **About the loop itself:** each wake of the week thread cost more than the last as the thread grew (list-price
+  equivalents, on the subscription: 2.4, 3.8, 5.2 for the three working wakes). A week of four wakes a night will
+  grow much further. Handing over to a fresh thread nightly instead of weekly would keep each wake small — Gloria's
+  call; not changed.
+
 ## 19 October, morning — the first six hours after the Lab fixes (service up since 23:30 CDT)
 
 Measured on Aegis, read-only, against the 18 October 3:11–9:11 PM window:
