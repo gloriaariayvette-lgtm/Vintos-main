@@ -232,24 +232,46 @@ def read_mode():
 def write_mode(m):
     try:
         os.makedirs(os.path.dirname(_MODE_FILE), exist_ok=True)
-        tmp = "%s.%d.tmp" % (_MODE_FILE, os.getpid())
-        with open(tmp, "w") as f: json.dump(m, f)
+        import tempfile
+        fd, tmp = tempfile.mkstemp(prefix=".model-mode.", suffix=".tmp", dir=os.path.dirname(_MODE_FILE))
+        with os.fdopen(fd, "w") as f: json.dump(m, f)
         os.replace(tmp, _MODE_FILE)
         if isinstance(m, dict) and m.get("mode"):
             _LAST_GOOD.clear(); _LAST_GOOD.update(m)
     except Exception as e:
         print("[model_router] could not save the toggle: %s" % e, flush=True)
 
+def update_mode(change):
+    """Read, change and write the mode file as one step no other writer can interleave with. Each write was already
+    atomic, but four places read, change and write (her toggle, the forced-Grok count, the turn that spends it, the
+    decline guard): two processes doing that at once lost one update - a turn spending its forced Grok turn could
+    write the old model back over her toggle a moment earlier. `change(m)` edits m in place; its result is returned."""
+    import fcntl
+    os.makedirs(os.path.dirname(_MODE_FILE), exist_ok=True)
+    with open(_MODE_FILE + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            m = read_mode()
+            before = json.dumps(m, sort_keys=True)
+            result = change(m)
+            if json.dumps(m, sort_keys=True) != before:   # every turn asks; only a real change is written
+                write_mode(m)
+            return result
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
 def arm_grok_turns(n=1):
     """Regenerate/one-turn override: force grok for the next n turns."""
-    m = read_mode(); m["force_grok_turns"] = max(int(m.get("force_grok_turns", 0) or 0), int(n)); write_mode(m)
+    def arm(m): m["force_grok_turns"] = max(int(m.get("force_grok_turns", 0) or 0), int(n))
+    update_mode(arm)
 
 def _consume_forced():
-    m = read_mode()
-    n = int(m.get("force_grok_turns", 0) or 0)
-    if n > 0:
-        m["force_grok_turns"] = n - 1; write_mode(m); return True
-    return False
+    def spend(m):
+        n = int(m.get("force_grok_turns", 0) or 0)
+        if n > 0:
+            m["force_grok_turns"] = n - 1; return True
+        return False
+    return update_mode(spend)
 
 async def _grok_result(convo, params, endpoint, headers, model, system_text):
     """grok stage -> GR result (never raises on a bad body; transport errors propagate to route_reply)."""

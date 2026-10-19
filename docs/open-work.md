@@ -90,6 +90,17 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October, later — the toggle's second way back to an old model
+
+Chat's automated review asked for the toggle to be checked against concurrent writers. Each write was atomic since
+69c0119, but four places read, change and write the mode file (her toggle, the forced-Grok count, the turn that
+spends it, the decline guard), and two processes doing that at once lost one update. Shown with the old pattern: a
+turn read the file, she toggled to Grok, the turn wrote back what it had read — the file said Opus 5.5 again.
+`model_router.update_mode` now does read-change-write under a lock, writes only when something changed, and uses a
+private temp file per write; every server path goes through it. `test_toggle_holds.py` +7 (the interleave, a failed
+write leaving her choice intact, a fresh reader during constant writing). **Not proven:** that this is what happened on
+her phone on 19 October; Aegis's logs were not read.
+
 ## 19 October — his mail reader reads papers
 
 Grok Bot's Sunday letter traced why papers he asked for never reached him, and he confirmed it: no PDF reader was
