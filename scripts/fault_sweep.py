@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fault_sweep.py — every failure on Aegis, found where it already lands, posted once to #fault-loop.
+"""fault_sweep.py — every failure on Aegis, found where it already lands, posted once to #fault-fix.
 
 failure_watch.py hears only the parts that call it - four of them - and looks once a day. Everything else failed
 quietly into its own log: on 18 October one held Lab step waited 96 times in six hours and nothing said so

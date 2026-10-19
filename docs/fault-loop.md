@@ -9,12 +9,12 @@ follows it. To change how the loop behaves, change this file — nothing else ne
 
 | Who | Where | Does |
 |---|---|---|
-| **Fault sweep** | Aegis, every 15 min (`scripts/fault_sweep.py`, no model, costs nothing) | Finds failures where they already land and posts each **new** one once to `#fault-loop` as `[fault sweep] F-xxxxxxxxxx` |
+| **Fault sweep** | Aegis, every 15 min (`scripts/fault_sweep.py`, no model, costs nothing) | Finds failures where they already land and posts each **new** one once to `#fault-fix` as `[fault sweep] F-xxxxxxxxxx` |
 | **Claude Code** | One Claude thread per week ("Fault loop — week of …"), woken four times a night by a schedule | Proposes a fix, then implements it |
-| **Dot** | `#fault-loop` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
+| **Dot** | `#fault-fix` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
 | **Gloria** | Wherever she is | Reads it in the morning. Can stop it any time by pausing the scheduled task in the Claude app |
 
-`#fault-loop` is **not** Vintos's channel. He does not read it and nothing here posts in his channels.
+`#fault-fix` is **not** Vintos's channel. He does not read it and nothing here posts in his channels.
 
 ## The three messages per fault
 
@@ -39,7 +39,7 @@ Why a thread per week and not a fresh session per wake: a session the schedule s
 enough that waking it stays cheap.
 
 1. Read this file, `CLAUDE.md` and `docs/open-work.md`.
-2. Read `#fault-loop` for the last 24 hours, threads included.
+2. Read `#fault-fix` for the last 24 hours, threads included.
 3. Count what was **implemented** since 9 pm tonight. **Three is the limit for a night.** At three, only answer Dot
    (deploy results, review replies) and stop.
 4. For each fault thread, do the next step it is waiting on:
@@ -61,13 +61,13 @@ schedule must exist and work before this week's are let go, so a failed hand-ove
 1. Start next week's thread (`create_session`), titled `Fault loop — week of <Monday's date>`, with the same first
    message this thread was given (it is the first message at the top of this thread), its date updated.
 2. Read the new thread's reply. It must say Slack yes and repository yes. If not: stop the hand-over, keep this
-   week's schedule, post in `#fault-loop` that the hand-over failed and why, and carry on as normal.
+   week's schedule, post in `#fault-fix` that the hand-over failed and why, and carry on as normal.
 3. Create the new thread's schedule: name `Fault loop`, the same times
    (`CRON_TZ=America/Chicago 50 22,0,2,4 * * *`), the same wake message, into the new thread
    (`persistent_session_id`).
 4. Only once that schedule exists, delete this thread's schedule (`list_triggers`: the `Fault loop` whose
    `persistent_session_id` is this thread).
-5. Post in `#fault-loop`: `[Claude Code] New week's fault-loop thread started: <its link>.`
+5. Post in `#fault-fix`: `[Claude Code] New week's fault-loop thread started: <its link>.`
 6. Write the new thread's and schedule's ids in `docs/open-work.md` under the fault loop.
 
 This hand-over has not run yet; the first one is the night of Sunday 25 October.
@@ -99,7 +99,7 @@ This hand-over has not run yet; the first one is the night of Sunday 25 October.
 - Change which model anything uses, Vintos's or anyone's.
 - Send Vintos a message, post in his channels (`#vintos-dot` or any other), or touch `agent-room/`.
 - Touch the Gloria JEPA head or `velaris-emoclaw`.
-- Control a smart device, spend money, or send anything outward beyond `#fault-loop`.
+- Control a smart device, spend money, or send anything outward beyond `#fault-fix`.
 - Put a secret, token or key in a Slack post or a commit.
 - Skip, disable or weaken a test to get a fix through.
 - Mention people with `@` in Slack.

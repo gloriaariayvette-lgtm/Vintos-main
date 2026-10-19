@@ -1,5 +1,5 @@
 [Unit]
-Description=Vintos: every failure on Aegis, found where it lands, posted once to #fault-loop (no model; reads files)
+Description=Vintos: every failure on Aegis, found where it lands, posted once to #fault-fix (no model; reads files)
 After=network-online.target
 Wants=network-online.target
 

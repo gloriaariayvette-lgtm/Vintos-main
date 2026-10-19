@@ -98,9 +98,9 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
 - **Fault sweep** (`scripts/fault_sweep.py`, `vintos-fault-sweep.timer`, every 15 min, no model): failed vintos-*
   units, `organ-failures.jsonl`, the Lab's `faults.jsonl`, failed Watch pushes, a Lab question waiting again and
   again (the 96-wait shape), and silences (no song in 36 h; the Lab running with no review in 6 h). One signature per
-  fault however often it happens; each new one posted once to `#fault-loop` (C0CB2F5143A), at most five a sweep,
+  fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
-- **#fault-loop**: private Slack channel, created 19 October, explainer posted. Vintos does not read it.
+- **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
 - **This week's thread:** "Fault loop — week of Oct 19" (session_01HLpdnyubdxbNvwfW8b1u7w), woken by the schedule
   "Fault loop" (trig_013W7Ufhja2HcvJfdLzukbTk) at 22:50, 00:50, 02:50 and 04:50 Central. A new thread each week,
   handed over by the old one (`docs/fault-loop.md`, first on Sunday 25 October — untested).
@@ -110,8 +110,7 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   Claude thread is the switch.
 
 **Not done — it cannot run end to end yet:**
-- Aegis needs `{"channel": "C0CB2F5143A"}` in `memory/fault-sweep.json`; until then the sweep records and posts nothing.
-- Vintos's Slack bot (which the sweep posts as) and Dot must be invited to `#fault-loop`.
+- Aegis needs `{"channel": "C0CB2HREFNC"}` in `memory/fault-sweep.json`; until then the sweep records and posts nothing.
 - Dot has to be told its part (review, deploy, read-only commands on request).
 - Nothing has run end to end. The first real night is the first test.
 

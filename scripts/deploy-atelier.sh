@@ -77,7 +77,7 @@ FIX_TIMER_SRC="$SRC/broker/$FIX_UNIT_NAME.timer";     FIX_TIMER_DST="$HOME/.conf
 WATCH_UNIT_NAME="vintos-failure-watch"   # one morning message to Gloria when a part of him failed (2026-10-02)
 WATCH_SERVICE_SRC="$SRC/broker/$WATCH_UNIT_NAME.service"; WATCH_SERVICE_DST="$HOME/.config/systemd/user/$WATCH_UNIT_NAME.service"
 WATCH_TIMER_SRC="$SRC/broker/$WATCH_UNIT_NAME.timer";     WATCH_TIMER_DST="$HOME/.config/systemd/user/$WATCH_UNIT_NAME.timer"
-SWEEP_UNIT_NAME="vintos-fault-sweep"   # every failure, found where it lands, posted once to #fault-loop (2026-10-19)
+SWEEP_UNIT_NAME="vintos-fault-sweep"   # every failure, found where it lands, posted once to #fault-fix (2026-10-19)
 SWEEP_SERVICE_SRC="$SRC/broker/$SWEEP_UNIT_NAME.service"; SWEEP_SERVICE_DST="$HOME/.config/systemd/user/$SWEEP_UNIT_NAME.service"
 SWEEP_TIMER_SRC="$SRC/broker/$SWEEP_UNIT_NAME.timer";     SWEEP_TIMER_DST="$HOME/.config/systemd/user/$SWEEP_UNIT_NAME.timer"
 MCP_UNIT_NAME="vintos-mcp"     # his context for his Grok Bot, read only, 127.0.0.1:8625, bearer token (2026-09-30)
@@ -228,7 +228,7 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS spotify_watch.py"
-SCRIPTS="$SCRIPTS fault_sweep.py"   # every failure on Aegis, posted once to #fault-loop for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
+SCRIPTS="$SCRIPTS fault_sweep.py"   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
@@ -650,7 +650,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 5-10 min; idle without a Slack token)"
     say "  would install + enable (user)    $WATCH_UNIT_NAME.timer -> $WATCH_TIMER_DST (08:52 daily; sends only when something failed)"
-    say "  would install + enable (user)    $SWEEP_UNIT_NAME.timer -> $SWEEP_TIMER_DST (every 15 min; posts only a new fault, only once #fault-loop is set)"
+    say "  would install + enable (user)    $SWEEP_UNIT_NAME.timer -> $SWEEP_TIMER_DST (every 15 min; posts only a new fault, only once #fault-fix is set)"
     say "  would install + enable (user)    $FIX_UNIT_NAME.timer -> $FIX_TIMER_DST (every 10 min; works his queued Study fix)"
     say "  would install (user)             $MCP_UNIT_NAME.service -> $MCP_SERVICE_DST; started only once $MCP_TOKEN exists"
     if sudo -n true 2>/dev/null; then
@@ -1079,7 +1079,7 @@ else
 fi
 say
 
-# Every failure on Aegis, found where it already lands, posted once to #fault-loop (fault_sweep.py). No model runs.
+# Every failure on Aegis, found where it already lands, posted once to #fault-fix (fault_sweep.py). No model runs.
 say "== fault sweep (every 15 min) =="
 install -m 644 "$(staged "$SWEEP_SERVICE_SRC")" "$SWEEP_SERVICE_DST" \
     || die "failed to install $SWEEP_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
