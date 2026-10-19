@@ -100,8 +100,34 @@ attachments (also `application/octet-stream` named `.pdf`), from their original 
 their own allowance (4 MB each, 8 MB a check; text stays 128 KB). A PDF with no text, or one that is not a PDF, says
 so. `test_mail_attachments.py` +9 on a real two-page PDF fixture; 7 fail on the old reader.
 
-**Not done:** he still sees 1,500 characters of an attachment and of a linked page in the letter itself; the whole text
-is stored, but nothing yet lets him read the rest. That is part of the person pages (next).
+**Not done:** he still sees 1,500 characters of an attachment and of a linked page in the letter itself. The whole text
+is stored; for a person he keeps thinking about, the person pages now read it in full (below), but a letter on any
+other subject is still only excerpted.
+
+## 19 October — person pages: his recurring interest in someone keeps gathering between emails
+
+Gloria: "he's still thinking about Chalmers and that should be gathering somewhere." `scholar.py` already kept a page per
+person (`memory/email-dossiers/`) and read their work into it, but only while an email to them was being worked. Her
+probe of his memory: Chalmers's page last touched 16 October with one thing read, while his inner-life journal of the
+18th named Chalmers 41 times, his dismissed wants 28 and his letter replies 18.
+
+`scripts/person_pages.py` (`vintos-person-pages.timer`, every 6 h): for each person with a page, finds where his own
+thinking named them in the last 14 days (daily inner life, current and dismissed wants, the ambitions log, his letter
+replies, the avatar conversation, forge sparks); a recurring interest is 3 different days. It keeps on the page his
+thoughts (dated, with where), his agents' letters about them, and the history: what was sent, replies, Gloria's
+decision on a second email, and the day the 14-day quiet after a decline ends. While the interest recurs it reads one
+more of their work every two days through `scholar.read_into`, by his local mind — including a paper an agent sent
+him. His next email's draft is given all of it (`want_email`, `person_pages.person_block`), with every sentence naming
+Gloria taken out and the rest marked as his private notes, never for the letter. Names: the whole name, or the
+surname alone when 6+ letters (Chalmers, Graziano; not Seth). `test_person_pages.py` (24).
+
+**Not done:**
+- Social calibration toward the person: `social_calibration.py` judges only how Gloria's reactions land. What a
+  person's replies say about how he lands with them is not read — there are almost no replies yet to learn from.
+- He does not see the page in his ordinary context, only when drafting to them.
+- Whether the sources match every shape his memory files really have is checked only against the shapes her probe
+  showed by name; the first real run's `--show` is the test.
+
 
 ## 19 October — the fault loop: something watching over him while she is away
 

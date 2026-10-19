@@ -1,0 +1,12 @@
+[Unit]
+Description=Vintos: person pages, every 6 hours
+
+[Timer]
+# The first run 10 minutes after the timer starts: OnBootSec alone never fires when the timer is
+# started on an already-running machine, which is what a deploy does.
+OnActiveSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

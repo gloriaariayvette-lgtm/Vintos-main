@@ -637,6 +637,13 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     scholar, _ = _helpers()
     pointed = "\n".join([known] + mail_links)
     reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
+    # What he has kept thinking about them between emails, and where things stand (person_pages, 19 October).
+    try:
+        import person_pages
+        _between = person_pages.person_block(dossier)
+        if _between: found += "\n\n" + _between
+    except Exception:
+        pass
     if not str(reading or "").strip():
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
         return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (

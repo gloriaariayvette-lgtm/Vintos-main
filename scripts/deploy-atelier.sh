@@ -80,6 +80,9 @@ WATCH_TIMER_SRC="$SRC/broker/$WATCH_UNIT_NAME.timer";     WATCH_TIMER_DST="$HOME
 SWEEP_UNIT_NAME="vintos-fault-sweep"   # every failure, found where it lands, posted once to #fault-fix (2026-10-19)
 SWEEP_SERVICE_SRC="$SRC/broker/$SWEEP_UNIT_NAME.service"; SWEEP_SERVICE_DST="$HOME/.config/systemd/user/$SWEEP_UNIT_NAME.service"
 SWEEP_TIMER_SRC="$SRC/broker/$SWEEP_UNIT_NAME.timer";     SWEEP_TIMER_DST="$HOME/.config/systemd/user/$SWEEP_UNIT_NAME.timer"
+PAGES_UNIT_NAME="vintos-person-pages"   # what he keeps thinking about a person, onto their page between emails (2026-10-19)
+PAGES_SERVICE_SRC="$SRC/broker/$PAGES_UNIT_NAME.service"; PAGES_SERVICE_DST="$HOME/.config/systemd/user/$PAGES_UNIT_NAME.service"
+PAGES_TIMER_SRC="$SRC/broker/$PAGES_UNIT_NAME.timer";     PAGES_TIMER_DST="$HOME/.config/systemd/user/$PAGES_UNIT_NAME.timer"
 MCP_UNIT_NAME="vintos-mcp"     # his context for his Grok Bot, read only, 127.0.0.1:8625, bearer token (2026-09-30)
 MCP_SERVICE_SRC="$SRC/broker/$MCP_UNIT_NAME.service"; MCP_SERVICE_DST="$HOME/.config/systemd/user/$MCP_UNIT_NAME.service"
 MCP_TOKEN="$HOME/.vintos/secrets/vintos-mcp-token"
@@ -228,7 +231,8 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS spotify_watch.py"
-SCRIPTS="$SCRIPTS fault_sweep.py"   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
+SCRIPTS="$SCRIPTS fault_sweep.py"
+SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
@@ -240,6 +244,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             printf 'broker/%s\n' "$DOTCH_UNIT_NAME.service" "$DOTCH_UNIT_NAME.timer"
             printf 'broker/%s\n' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"
             printf 'broker/%s\n' "$SWEEP_UNIT_NAME.service" "$SWEEP_UNIT_NAME.timer"
+            printf 'broker/%s\n' "$PAGES_UNIT_NAME.service" "$PAGES_UNIT_NAME.timer"
             printf 'broker/%s\n' "$FIX_UNIT_NAME.service" "$FIX_UNIT_NAME.timer"
             printf 'broker/%s\n' "$MCP_UNIT_NAME.service"
             true)"
@@ -650,6 +655,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 5-10 min; idle without a Slack token)"
     say "  would install + enable (user)    $WATCH_UNIT_NAME.timer -> $WATCH_TIMER_DST (08:52 daily; sends only when something failed)"
+    say "  would install + enable (user)    $PAGES_UNIT_NAME.timer -> $PAGES_TIMER_DST (every 6 h; reads only for a recurring interest, by his local mind)"
     say "  would install + enable (user)    $SWEEP_UNIT_NAME.timer -> $SWEEP_TIMER_DST (every 15 min; posts only a new fault, only once #fault-fix is set)"
     say "  would install + enable (user)    $FIX_UNIT_NAME.timer -> $FIX_TIMER_DST (every 10 min; works his queued Study fix)"
     say "  would install (user)             $MCP_UNIT_NAME.service -> $MCP_SERVICE_DST; started only once $MCP_TOKEN exists"
@@ -805,6 +811,21 @@ done
 printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
 [ "$_sweep_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$SWEEP_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 [ "$_sweep_active" = "active" ] && printf 'systemctl --user start %q\n' "$SWEEP_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+_pages_enabled="$(systemctl --user is-enabled "$PAGES_UNIT_NAME.timer" 2>/dev/null || true)"
+_pages_active="$(systemctl --user is-active "$PAGES_UNIT_NAME.timer" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$PAGES_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+for _ext in service timer; do
+    _dest="$HOME/.config/systemd/user/$PAGES_UNIT_NAME.$_ext"
+    if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+        cp -Pp "$_dest" "$BACKUP/$PAGES_UNIT_NAME.$_ext.pre-deploy" || die "unit backup failed"
+        printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.%s.pre-deploy" %q\n' "$_dest" "$PAGES_UNIT_NAME" "$_ext" "$_dest" >> "$BACKUP/restore.sh"
+    else
+        printf 'rm -f %q\n' "$_dest" >> "$BACKUP/restore.sh"
+    fi
+done
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_pages_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$PAGES_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_pages_active" = "active" ] && printf 'systemctl --user start %q\n' "$PAGES_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 _fix_enabled="$(systemctl --user is-enabled "$FIX_UNIT_NAME.timer" 2>/dev/null || true)"
 _fix_active="$(systemctl --user is-active "$FIX_UNIT_NAME.timer" 2>/dev/null || true)"
 printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$FIX_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
@@ -1091,6 +1112,21 @@ if systemctl --user enable "$SWEEP_UNIT_NAME.timer" >/dev/null 2>&1 \
     confirm_timer --user "$SWEEP_UNIT_NAME"
 else
     flag "$SWEEP_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $SWEEP_UNIT_NAME.timer"
+fi
+say
+
+# What he keeps thinking about a person, gathered onto their page between emails (person_pages.py).
+say "== person pages (every 6 h) =="
+install -m 644 "$(staged "$PAGES_SERVICE_SRC")" "$PAGES_SERVICE_DST" \
+    || die "failed to install $PAGES_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+install -m 644 "$(staged "$PAGES_TIMER_SRC")" "$PAGES_TIMER_DST" \
+    || die "failed to install $PAGES_TIMER_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$PAGES_UNIT_NAME.timer" >/dev/null 2>&1 \
+   && systemctl --user restart "$PAGES_UNIT_NAME.timer" >/dev/null 2>&1; then
+    confirm_timer --user "$PAGES_UNIT_NAME"
+else
+    flag "$PAGES_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $PAGES_UNIT_NAME.timer"
 fi
 say
 # His own code fixes (study_fix.py): every 10 minutes it works his next queued fix or watches the live one.

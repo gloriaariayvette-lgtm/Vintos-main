@@ -1,0 +1,15 @@
+[Unit]
+Description=Vintos: what he keeps thinking about a person, gathered onto that person's page between emails
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/person_pages.py
+TimeoutStartSec=20min
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
