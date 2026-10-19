@@ -442,6 +442,8 @@ def ensure_author(d, about="", get=None):
     if not who:
         return {}                                   # a page with no one named on it is left as it is
     author, why = author_for(who, about, d.get("address", ""), get=get)
+    if why.startswith("author search failed"):
+        return {}                                   # unreachable is not "no one": nothing is settled or set aside
     d["works_author"] = {"v": AUTHOR_RULE, "id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
                          "at": datetime.now().isoformat(timespec="seconds")}
     d["works"] = works_of(who, about, get=get, address=d.get("address", ""), author=author) if author else []

@@ -200,6 +200,10 @@ recurring). Both recurring pages read nothing, and her read-only probe showed wh
   first and alternative names, and his first name is Graziano; one stray shared word was enough fit. Now the name
   must be theirs to the end (a bare name is a surname), a bare surname needs their institution or two words of
   their field, and `AUTHOR_RULE` makes every page settled by the earlier rule settle again.
+  That afternoon Gloria named the page "Michael Graziano" and cleared its works; it stayed "not settled yet",
+  because settling at once was only for a page that had works. Now any unsettled page of a recurring interest is
+  settled on the next run. And an author search that cannot be reached settles nothing: before, it would have
+  read as "no one" and set every reading aside.
 - **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
 - **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
   his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
