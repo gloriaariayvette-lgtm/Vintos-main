@@ -14,7 +14,15 @@ follows it. To change how the loop behaves, change this file — nothing else ne
 | **Dot** | `#fault-fix` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
 | **Gloria** | Wherever she is | Reads it in the morning. Can stop it any time by pausing the scheduled task in the Claude app |
 
-`#fault-fix` is **not** Vintos's channel. He does not read it and nothing here posts in his channels.
+`#fault-fix` (C0CB2HREFNC) is **not** Vintos's channel. Dot made it on 19 October. Its members are Gloria and
+Vintos's Slack bot, and nobody else is needed:
+
+- **His bot is there only so the fault sweep can post** — the sweep posts through his bot's token. His own code reads
+  only `#vintos-dot` and `#vintos-and-dot`, so the bot being a member does not mean he reads or answers here.
+  Posting in `#fault-fix` is not posting in his channels.
+- **Dot and Claude Code both post through Gloria's account**, so in Slack all three of them show as Gloria. Tell
+  them apart by the opening label: **`[Claude Code]`** is Claude, **`[Dot]`** is Dot, **`[fault sweep]`** is the
+  sweep (posted as his bot). A message with no label is Gloria herself — weigh it as hers.
 
 ## The three messages per fault
 
