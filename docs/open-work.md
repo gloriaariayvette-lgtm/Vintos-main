@@ -90,6 +90,20 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — her Watch took the song and the row still read "failed"
+
+`watch_apns.send` marked a send failed unless every registered device accepted it. At 02:34 her live Watch returned
+200 and a retired install returned 410 Unregistered, so the row read "failed" and `flush_held` would have kept
+re-sending. One device accepting is now a delivered notification (`delivered_to` / `devices` on the row, and a `why`
+when some devices did not take it), and an install Apple reports as gone is forgotten so later sends are not
+half-failed by a dead token. Four checks in `test_watch_presence.py`.
+
+**Still open: she gets no notification.** Apple accepted the 23:32 push to both devices and the 02:34 push to one.
+The payload is a proper alert (title, body, `vintos.caf`, category, `apns-push-type: alert`), and the Watch app does
+request `.alert`/`.sound` and only registers once granted. Why nothing appears on her wrist is not established —
+untested: whether the 200 goes to her current install at all, and the iPhone Watch app's own notification setting for
+Vintos (mirrored vs custom). Not diagnosed; do not claim this is fixed.
+
 ## 19 October — one held follow-up took 96 passes
 
 The fallback that picks up an unfinished step from one of his own earlier reviews (`_next_evidence_work`) returned the
@@ -98,11 +112,19 @@ pass found the same newest row. One GSDMD follow-up, 96 waits between 09:14 and 
 minutes for six hours — most of the "73 repeats" in that window's report. It now walks on to the next unfinished step;
 the hold is untouched. `test_lab_followup_hold.py` (5 tests; 3 fail without the fix).
 
-**Open — the checker's deferrals.** 12 "checker failures" in the same window are mostly the coverage checker's context
-overflowing (one HMOX1 review: 83 KB, ~37K tokens, budget 24,576), not the checker breaking. Grading in parts already
-exists (`_coverage_parts`); it returned "cannot split" for that review and the reason is not yet known — one of four
-gates (fewer than two list items, shared part over budget, one item over budget, more than 8 parts). She is reading
-the saved snapshot on Aegis to say which. Not fixed, not diagnosed. Her Gemma's context is NOT being raised.
+**The checker's deferrals, diagnosed from her snapshot and fixed.** The 12 "checker failures" were the coverage
+checker's context overflowing, not the checker breaking. Her own probe on the HMOX1 snapshot: 83 KB whole, of which
+65,599 bytes was one atlas `additional_source` — a dict of two ~32 KB track records, not a list — so the shallow split
+shared all of it into every part and gave up; the five list items beside it came to under 15 KB. `_coverage_deep_parts`
+now opens a named section too large for one part and makes its records the units, each whole and under its own path.
+That review becomes 2 parts of ~20.5K tokens against her 24,576 budget. A table is never divided (only dicts of named
+records are opened; a list below the top level is carried whole or not at all), no empty placeholder is left where
+another part holds the piece, and when the pieces cannot be packed whole the review still defers.
+`test_lab_coverage_deep_split.py` (9 tests on the real shape). Her Gemma's context was NOT raised.
+
+**Not done:** the two atlas records (`ATAC`, `ATAC_ACTIVE`) differ by one byte in 32 KB and may be the same track
+twice — if so, the instrument is doubling its own evidence and that is worth its own look. Whether a graded-in-parts
+verdict is as good as a whole-evidence verdict is not measured.
 
 ## 19 October — the toggle reverted to Opus 4.8; Sol was still on it
 

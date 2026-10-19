@@ -90,6 +90,31 @@ check("APNs is stubbed and a song carries its primary-action category",
       sent["state"]=="sent" and len(sends)==1 and sends[0][1]["aps"]["category"]=="VINTOS_SONG",sent)
 check("the stub proves no provider client escaped", sends[0][0].startswith("https://api.sandbox.push.apple.com/"))
 check("no secret or bearer appears in the payload", "throwaway-token" not in json.dumps(sends[0][1]))
+# A retired install must not swallow her live Watch's notification (19 October: her Watch accepted the song at
+# 02:34 and the row still read "failed"), and Apple saying that install is gone must retire its token.
+W._atomic(W.DEVICES, [{"device_token":"ab"*32,"environment":"development"},
+                      {"device_token":"cd"*32,"environment":"development"}])
+def one_dead(url,body,headers,timeout):
+    sends.append((url,json.loads(body),dict(headers)))
+    return (410,b'{"reason":"Unregistered"}') if "ab"*32 in url else (200,b"{}")
+sends.clear()
+mixed=A.send("New song","For when you came in",kind="song",transport=one_dead)
+left=[r["device_token"] for r in json.load(open(W.DEVICES))]
+check("one live Watch taking it is a delivered notification, not a failure",
+      mixed["state"]=="sent" and mixed["delivered_to"]==1 and mixed["devices"]==2
+      and "1 of 2" in mixed.get("why",""),mixed)
+check("the install Apple says is gone is forgotten, the live one kept",
+      left==["cd"*32] and mixed["forgot_unregistered"]==1,left)
+sends.clear()
+again=A.send("Another","Line",kind="song",transport=one_dead)
+check("the next send goes only to the Watch that is still there",
+      len(sends)==1 and "cd"*32 in sends[0][0] and again["state"]=="sent" and "why" not in again,again)
+def all_dead(url,body,headers,timeout): return 410,b'{"reason":"Unregistered"}'
+gone=A.send("Nobody","Home",kind="song",transport=all_dead)
+check("every install gone is a failure, and none is left registered",
+      gone["state"]=="failed" and json.load(open(W.DEVICES))==[],gone)
+W._atomic(W.DEVICES, [{"device_token":"ab"*32,"environment":"development"}])
+
 check("all files written by the suite stayed in scratch", not any(p.startswith(os.path.expanduser("~/.vintos")) for p in (W.LATEST,W.HISTORY,W.REPLIES,W.MOMENTS,W.DEVICES,W.HELD,A.RECEIPTS)))
 temporal=open(os.path.join(ROOT,"scripts","temporal-context.sh")).read()
 check("temporal context prefers Watch and uses ring only as fallback",
