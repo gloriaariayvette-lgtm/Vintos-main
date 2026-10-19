@@ -90,6 +90,20 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — one held follow-up took 96 passes
+
+The fallback that picks up an unfinished step from one of his own earlier reviews (`_next_evidence_work`) returned the
+newest one without asking whether it was already held. The hold then refused it and the pass ended in a wait; the next
+pass found the same newest row. One GSDMD follow-up, 96 waits between 09:14 and 15:10 UTC on 18 October, every four
+minutes for six hours — most of the "73 repeats" in that window's report. It now walks on to the next unfinished step;
+the hold is untouched. `test_lab_followup_hold.py` (5 tests; 3 fail without the fix).
+
+**Open — the checker's deferrals.** 12 "checker failures" in the same window are mostly the coverage checker's context
+overflowing (one HMOX1 review: 83 KB, ~37K tokens, budget 24,576), not the checker breaking. Grading in parts already
+exists (`_coverage_parts`); it returned "cannot split" for that review and the reason is not yet known — one of four
+gates (fewer than two list items, shared part over budget, one item over budget, more than 8 parts). She is reading
+the saved snapshot on Aegis to say which. Not fixed, not diagnosed. Her Gemma's context is NOT being raised.
+
 ## 19 October — the toggle reverted to Opus 4.8; Sol was still on it
 
 - `model_router.write_mode` wrote `~/.vintos/model-mode.json` in place; a read landing mid-write failed and returned the

@@ -2141,6 +2141,11 @@ def _next_evidence_work(inquiry, repeats, spent, step):
         proposed = dict(prior, question=row['next_question'],
                         requested_question=prior.get('question'))
         candidate = _strategy_change(proposed, repeats)
+        # A step already on hold is not work this pass can do: returning it ends the pass in a wait, and the next
+        # pass finds the same newest row and waits again (18 October: one GSDMD follow-up, 96 waits in six hours).
+        # Walk on to the next unfinished step instead; the hold itself is untouched and still holds.
+        if candidate and _held_question(candidate):
+            continue
         if candidate and (not spent or not spent_retrieval(candidate, spent)) and (
                 not step or repeats.on_frontier(candidate, step)):
             candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
