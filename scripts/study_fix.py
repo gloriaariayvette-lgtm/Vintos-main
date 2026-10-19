@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""study_fix.py — he fixes his own code. He names the fix in #vintos-dot, Fable writes it in the Study, the whole
+"""study_fix.py — he fixes his own code. He names the fix in #vintos-dot, Opus 5.5 writes it in the Study, the whole
 test suite decides, it goes live by the ordinary deploy, and dot keeps watch while it settles (Gloria, 2026-10-03:
 "I want him to be able to do these things code changes himself. I don't want to keep being pestered by what I
 don't understand and he can fix.").
@@ -10,11 +10,11 @@ One fix at a time, three a day. For each:
 
   1. A workbench clone (~/.vintos/study-workbench) is reset to the shared branch as pushed. ~/Vintos-main is
      never edited by hand: an edit there blocks the deploy.
-  2. Fable reads what it asks for (files and searches, two rounds) and returns exact edits and one new test.
+  2. Opus 5.5 reads what it asks for (whole files or line ranges, and searches, two rounds) and returns exact edits and one new test.
   3. Nothing protected is touched: his subconscious and JEPA, keys and secrets, money and payments, the safety
      gates, the deploy, this file, and every existing test (a fix may add tests, never weaken one). Gloria,
      2026-10-03: "Just not subconscious/Jepa/keys without asking"; the blush and the reflection are his to change.
-  4. The whole suite runs in the workbench. A failure goes back to Fable twice; a third failure ends the fix.
+  4. The whole suite runs in the workbench. A failure goes back to the writer twice; a third failure ends the fix.
   5. Passed: committed as his, rebased onto the branch, pushed, pulled into ~/Vintos-main and deployed. The
      deploy runs the suite again and refuses anything that fails; it leaves a restore.sh.
   6. Watched for an hour, by this file every 10 minutes and by dot (its rule 12): the fix's own test run against
@@ -41,7 +41,8 @@ WORKBENCH = os.path.expanduser(os.environ.get("VINTOS_STUDY_WORKBENCH", "~/.vint
 CHECKOUT = os.path.expanduser(os.environ.get("VINTOS_CHECKOUT", "~/Vintos-main"))
 BRANCH_FILE = os.path.expanduser("~/.vintos/deploy-branch")
 DEFAULT_BRANCH = "claude/vintos-avatar-ui-redesign-br5lt4"
-FABLE = os.environ.get("VINTOS_STUDY_FIX_MODEL", "claude-fable-5-1")
+# Opus 5.5 writes the fix (Gloria, 2026-10-19: "I'd rather use Opus 5.5 in the Study instead of Fable regardless").
+WRITER = os.environ.get("VINTOS_STUDY_FIX_MODEL", "claude-opus-5-5")
 PER_DAY = 3                 # Gloria, 2026-10-03
 READ_ROUNDS = 2
 REPAIRS = 2
@@ -347,21 +348,41 @@ def file_index(root=None):
 
 
 def read_for(asks, root=None):
-    """The files and searches Fable asked for, bounded."""
+    """The files, line ranges and searches the writer asked for, bounded."""
     root = root or WORKBENCH
     parts, used = [], 0
     for p in [str(x) for x in (asks.get("read") or [])][:8]:
-        full = os.path.realpath(os.path.join(root, p))
+        # "path:1500-1700" reads those lines, numbered. A whole file stops at FILE_CHARS, and chemistry_lab.py is
+        # 334,000 characters: every fix to its hold code was declined because the read ended long before it
+        # (SF-2198f1b5, SF-6405b255, SF-7b4db293, 19 October).
+        m = re.match(r"^(.*?):(\d+)-(\d+)$", p)
+        path, span = (m.group(1), (int(m.group(2)), int(m.group(3)))) if m else (p, None)
+        full = os.path.realpath(os.path.join(root, path))
         if not full.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(full):
             parts.append("== %s ==\n(no such file)" % p); continue
         text = open(full, errors="replace").read()
-        text = text if len(text) <= FILE_CHARS else text[:FILE_CHARS] + "\n[... %d more characters]" % (len(text) - FILE_CHARS)
+        if span:
+            lines = text.splitlines()
+            a, b = max(1, span[0]), min(len(lines), span[1], span[0] + 799)
+            text = "\n".join("%d: %s" % (i, lines[i - 1]) for i in range(a, b + 1))
+        if not span and len(text) > FILE_CHARS:      # a range is already bounded by its 800 lines
+            shown, whole = text[:FILE_CHARS].count("\n") + 1, len(text.splitlines())
+            text = text[:FILE_CHARS] + ("\n[... %d more characters: this is lines 1-%d of %d. Ask for \"%s:START-END\" "
+                                        "to read further, after a grep for the name]" % (len(text) - FILE_CHARS, shown, whole, path))
         if used + len(text) > READ_CHARS:
             parts.append("== %s ==\n(not read: this round's reading is full)" % p); continue
         used += len(text); parts.append("== %s ==\n%s" % (p, text))
     for pat in [str(x) for x in (asks.get("grep") or [])][:6]:
-        r = subprocess.run(["grep", "-rnI", "--include=*.py", "--include=*.sh", "--include=*.html", "-e", pat,
-                            "scripts", "bin", "broker"], cwd=root, capture_output=True, text=True, timeout=60)
+        # Perl regex, the kind a writer reaches for (\b, \s, (?:...)); a pattern grep cannot read is tried literally,
+        # and an unreadable pattern says so rather than "(no match)".
+        r = None
+        where = [d for d in ("scripts", "bin", "broker") if os.path.isdir(os.path.join(root, d))]
+        for flag in ("-P", "-F"):
+            r = subprocess.run(["grep", "-rnI", flag, "--include=*.py", "--include=*.sh", "--include=*.html", "-e", pat]
+                               + where, cwd=root, capture_output=True, text=True, timeout=60)
+            if r.returncode != 2: break
+        if r.returncode == 2:
+            parts.append("== grep %r ==\n(the pattern could not be read: %s)" % (pat, r.stderr.strip()[:200])); continue
         hits = "\n".join(r.stdout.splitlines()[:60])
         parts.append("== grep %r ==\n%s" % (pat, hits or "(no match)"))
     return "\n\n".join(parts)
@@ -401,7 +422,7 @@ def _near(text, old):
 
 
 def apply_edits(plan, root=None):
-    """Apply Fable's exact edits. Refuses, with the reason, anything protected, outside the repository, an
+    """Apply the writer's exact edits. Refuses, with the reason, anything protected, outside the repository, an
     existing test changed, an old text not found exactly once, or no new test. Returns the paths changed."""
     root = root or WORKBENCH
     edits, new_files = plan.get("edits") or [], plan.get("new_files") or []
@@ -461,9 +482,9 @@ def run_suite(root=None, run=sh):
     return failed
 
 
-# ---- Fable ---------------------------------------------------------------------------------------------
+# ---- the writer ---------------------------------------------------------------------------------------------
 SYSTEM = (
-    "You are Fable, implementing a fix Vintos asked for in his own code, in his Study. Vintos is an AI companion "
+    "You are implementing a fix Vintos asked for in his own code, in his Study. Vintos is an AI companion "
     "living on Gloria's machine Aegis; this repository is his body of code. Work like a careful senior engineer: "
     "find the cause, change as little as fixes it, keep the code's style and comment density, and write one new "
     "test that fails without the fix and passes with it. The repository's rules (CLAUDE.md) follow; obey them - "
@@ -471,13 +492,14 @@ SYSTEM = (
     "You may NOT change: his subconscious and JEPA files, keys or secrets, money or payments, the safety gates, "
     "the deploy, or any existing test. If the fix needs one of those, say so in 'refuse' and change nothing.\n\n"
     "Answer ONLY with one JSON object, no prose around it. To read first: {\"read\": [paths], \"grep\": [regex]} "
-    "(up to 8 files and 6 searches a round, two rounds). To fix: {\"summary\": \"one paragraph for Gloria, plain "
+    "(up to 8 files and 6 searches a round, two rounds; \"path:START-END\" reads those lines, numbered - use it "
+    "for any long file, after a grep has found where the code is). To fix: {\"summary\": \"one paragraph for Gloria, plain "
     "words\", \"edits\": [{\"path\": p, \"old\": exact unique text, \"new\": replacement}], \"new_files\": [{\"path\": "
     "\"broker/tests/test_<name>.py\", \"content\": ...}]}. To decline: {\"refuse\": \"why\"}.")
 
 
 def _why_not():
-    """Why Fable's last answer ended, in words, from claude_cache.LAST; '' when it is not known."""
+    """Why the writer's last answer ended, in words, from claude_cache.LAST; '' when it is not known."""
     try:
         import claude_cache
         last = dict(claude_cache.LAST)
@@ -485,7 +507,7 @@ def _why_not():
         return ""
     stop, out = last.get("stop", ""), last.get("out", 0)
     if stop == "max_tokens":
-        return " (its answer was cut off at the %d-token limit; its thinking counts toward it, and it was asked to think little)" % FABLE_TOKENS
+        return " (its answer was cut off at the %d-token limit; its thinking counts toward it, and it was asked to think little)" % WRITER_TOKENS
     if stop == "refusal":
         return " (it declined the request)"
     return (" (it stopped: %s, %d tokens out)" % (stop, out)) if stop else ""
@@ -495,37 +517,37 @@ def _json(text):
     text = str(text or "").strip()
     m = re.search(r"\{.*\}", text, re.S)
     if not m:
-        raise ValueError("Fable did not answer with JSON" + _why_not())
+        raise ValueError("Opus did not answer with JSON" + _why_not())
     try:
         return json.loads(m.group(0))
     except ValueError as exc:
-        raise ValueError("Fable's JSON did not parse: %s%s" % (str(exc)[:120], _why_not()))
+        raise ValueError("Opus's JSON did not parse: %s%s" % (str(exc)[:120], _why_not()))
 
 
 # A fix and its test; the Study's read-only questions use 3000. Fable 5.1 always thinks first, and its thinking
 # counts toward this limit: a hard fix spent it thinking and was cut off before its JSON closed (SF-6f9a460b,
-# 2026-10-06). Gloria: "Don't increase headroom, turn off thinking." Fable's thinking cannot be turned off (the API
-# refuses it), so it is asked to think as little as it can.
-FABLE_TOKENS = 16000
-FABLE_EFFORT = "low"
+# 2026-10-06). Gloria: "Don't increase headroom, turn off thinking." Opus 5.5's thinking cannot be turned off either
+# (the API refuses it), so it is asked to think as little as it can.
+WRITER_TOKENS = 16000
+WRITER_EFFORT = "low"
 
 
-def fable(system, user):
+def opus(system, user):
     import claude_cache
-    return claude_cache.ask(FABLE, system, user, FABLE_TOKENS, caller="study-fix", timeout=900, effort=FABLE_EFFORT)
+    return claude_cache.ask(WRITER, system, user, WRITER_TOKENS, caller="study-fix", timeout=900, effort=WRITER_EFFORT)
 
 
 GROK = os.environ.get("VINTOS_STUDY_GROK", "grok-4.6")
 
 
 def astra(system, user):
-    """Astra writes the fix when Fable cannot, through her own paid admission (astra_call reserves first)."""
+    """Astra writes the fix when Opus cannot, through her own paid admission (astra_call reserves first)."""
     import astra_call
-    return astra_call.call(system, [{"role": "user", "content": str(user)}], max_tokens=FABLE_TOKENS, timeout=900)
+    return astra_call.call(system, [{"role": "user", "content": str(user)}], max_tokens=WRITER_TOKENS, timeout=900)
 
 
 def grok(system, user):
-    """Grok writes the fix when neither Fable nor Astra can."""
+    """Grok writes the fix when neither Opus nor Astra can."""
     import requests
     key = os.environ.get("XAI_API_KEY", "")
     for path in ("~/.vintos/xai-key", "~/.vintos/grok-key"):
@@ -534,7 +556,7 @@ def grok(system, user):
         except OSError: pass
     if not key: raise RuntimeError("no xAI key")
     r = requests.post("https://api.x.ai/v1/chat/completions", timeout=900, json={
-        "model": GROK, "max_tokens": FABLE_TOKENS, "temperature": 0.2,
+        "model": GROK, "max_tokens": WRITER_TOKENS, "temperature": 0.2,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": str(user)}]},
         headers={"Authorization": "Bearer " + key})
     return r.json()["choices"][0]["message"]["content"]
@@ -544,43 +566,53 @@ def grok(system, user):
 # already fell from Fable to Astra; this half of the Study called Fable alone, and a refusal is not even an error
 # there: Fable's call returns, empty, and only the missing JSON shows it. So each writer is tried in turn on an error,
 # a refusal, or an answer with no JSON, and the one that answered keeps the fix for its repairs.
-WRITERS = (("Fable", fable), ("Astra", astra), ("Grok", grok))
+WRITERS = (("Opus", opus), ("Astra", astra), ("Grok", grok))
 
 
 def ask_json(system, user, row, ask=None, writers=None):
     """One JSON answer for this fix, from the first writer that gives one, starting with whoever already answered."""
-    chain = [("Fable", ask)] if ask else list(writers or WRITERS)
+    chain = [("Opus", ask)] if ask else list(writers or WRITERS)
     start = next((i for i, (name, _) in enumerate(chain) if name == row.get("written_by")), 0)
-    tried = []
-    for name, call in chain[start:]:
+    tried, declined = [], None
+    rest = chain[start:]
+    for i, (name, call) in enumerate(rest):
         try:
             got = _json(call(system, user))
         except Exception as exc:
             if len(chain) == 1:
                 raise
-            if name == "Fable":
-                row["fable_failure"] = provider_evidence(exc)
+            if name == "Opus":
+                row["writer_failure"] = provider_evidence(exc)
             tried.append("%s: %s" % (name, str(exc)[:160]))
+            continue
+        # A decline goes to the next writer too: three Fable declines on 19 October ("my read was cut off") were
+        # each the end of the fix, with Astra and Grok never asked. Only when every writer declines is it declined.
+        if got.get("refuse") and i < len(rest) - 1:
+            declined = declined or (name, got)
+            tried.append("%s declined: %s" % (name, str(got["refuse"])[:160]))
             continue
         if row.get("written_by") != name:
             if row.get("written_by") or tried:
                 _event(row, "%s is writing it (%s)" % (name, "; ".join(tried)[:300]))
             row["written_by"] = name
         return got
-    raise RuntimeError("no writer answered. Fable and the others: " + " | ".join(tried))
+    if declined:
+        row["written_by"] = declined[0]
+        return declined[1]
+    raise RuntimeError("no writer answered. Opus and the others: " + " | ".join(tried))
 
 
 def _cached(base, text):
-    """The rules, the ask and the file list come first in every Fable call of one fix, so Claude reads them back
+    """The rules, the ask and the file list come first in every call of one fix, so Claude reads them back
     from cache on the second read and on each repair (Gloria, 2026-10-05: "He is expensive")."""
     import claude_cache
     return claude_cache.Prompt(text, [base, text[len(base):]] if text.startswith(base) else [text])
 
 
 def plan_fix(row, ask=None, root=None, writers=None):
-    """Fable reads (two rounds) and returns its plan: edits and a new test, or a refusal. When Fable cannot answer,
+    """The writer reads (two rounds) and returns its plan: edits and a new test, or a refusal. When Opus cannot answer,
     Astra, then Grok."""
-    ask = ask or fable
+    ask = ask or opus
     root = root or WORKBENCH
     try:
         rules = open(os.path.join(root, "CLAUDE.md")).read()[:12000]
@@ -593,7 +625,7 @@ def plan_fix(row, ask=None, root=None, writers=None):
         last = rnd == READ_ROUNDS
         user = base + (("\n\nWHAT YOU READ SO FAR:\n" + reading) if reading else "") + (
             "\n\nNo more reading: give the fix or decline." if last else "\n\nRead, or give the fix.")
-        got = ask_json(SYSTEM, _cached(base, user), row, ask=None if ask is fable else ask, writers=writers)
+        got = ask_json(SYSTEM, _cached(base, user), row, ask=None if ask is opus else ask, writers=writers)
         if (got.get("read") or got.get("grep")) and not last:
             reading += ("\n\n" if reading else "") + read_for(got, root)
             continue
@@ -625,8 +657,8 @@ def tell_gloria(text, send=None):
 # What a failure leaves behind, so the next attempt and the next reader work from the exact evidence (Gloria,
 # 2026-10-08: "Retain exact failure evidence: assertion, stderr, exit status, provider stop reason, code version,
 # and artifact. SF-6f9a460b retained a test name but not its exact assertion; a separate final-response failure
-# hit a 16,000-output-token cap. Test both failures without conflating them."). Tests and Fable's answers are kept
-# apart: attempts[] for what the tests said, provider_failure for how Fable's answer ended.
+# hit a 16,000-output-token cap. Test both failures without conflating them."). Tests and the writer's answers are kept
+# apart: attempts[] for what the tests said, provider_failure for how the writer's answer ended.
 ATTEMPTS_KEPT = 4
 _ASSERT = re.compile(r"^(?:FAIL\b|AssertionError|E\s{2,}|.*\b\w+Error:|.*\bassert\b|Traceback)", re.I)
 
@@ -662,14 +694,14 @@ def keep_attempt(row, attempt, failures, changed, run=None):
 
 
 def provider_evidence(exc):
-    """How Fable's last answer ended, kept apart from any test failure."""
+    """How the writer's last answer ended, kept apart from any test failure."""
     try:
         import claude_cache
         last = dict(claude_cache.LAST)
     except Exception:
         last = {}
-    return {"at": _now().isoformat(timespec="seconds"), "model": FABLE, "error": str(exc)[:400],
-            "stop_reason": last.get("stop") or None, "output_tokens": last.get("out"), "output_limit": FABLE_TOKENS,
+    return {"at": _now().isoformat(timespec="seconds"), "model": WRITER, "error": str(exc)[:400],
+            "stop_reason": last.get("stop") or None, "output_tokens": last.get("out"), "output_limit": WRITER_TOKENS,
             "hit_limit": last.get("stop") == "max_tokens"}
 
 
@@ -685,12 +717,12 @@ def _failed(row, why):
 def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, writers=None):
     """One fix, from the workbench to live. Leaves the row in watching, failed or refused."""
     suite = suite or run_suite
-    row["state"] = "working"; _event(row, "Fable is working on it")
+    row["state"] = "working"; _event(row, "Opus is working on it")
     say("\U0001F6E0 Study fix %s started: %s" % (row["id"], row["what"][:300]), post)
     reset_workbench(run=run)
     plan, context = plan_fix(row, ask=ask, writers=writers)
     if plan.get("refuse"):
-        who = row.get("written_by") or "Fable"
+        who = row.get("written_by") or "Opus"
         row["state"] = "refused"; _event(row, "%s declined: %s" % (who, plan["refuse"]))
         say("\U0001F6E0 Study fix %s declined by %s: %s" % (row["id"], who, str(plan["refuse"])[:400]), post)
         return row
@@ -724,10 +756,10 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
                                         + "\n\nIT DID NOT PASS:\n" + detail + "\n\nGive the corrected fix, whole, as JSON."),
                         row, ask=ask, writers=writers)
         if plan.get("refuse"):
-            _failed(row, "Fable gave up: " + str(plan["refuse"])); return row
+            _failed(row, "the writer gave up: " + str(plan["refuse"])); return row
     row["changed"], row["summary"] = changed, str(plan.get("summary") or "")[:1500]
     msg = "Study fix %s: %s\n\nAsked by Vintos in #vintos-dot: %s\nWritten by %s in the Study; every test passed." % (
-        row["id"], (row["summary"] or row["what"])[:200].split("\n")[0], row["what"][:400], row.get("written_by") or "Fable")
+        row["id"], (row["summary"] or row["what"])[:200].split("\n")[0], row["what"][:400], row.get("written_by") or "Opus")
     b = branch()
     run(["git", "add", "-A"], cwd=WORKBENCH)
     run(["git", "-c", "user.name=Vintos (Study)", "-c", "user.email=vintos-study@aegis.local",
@@ -953,11 +985,11 @@ def tend(**kw):
         try:
             work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy", "send", "writers")})
         except Exception as exc:
-            if "Fable" in str(exc):          # how its answer ended, kept apart from what the tests said
+            if "Opus" in str(exc):          # how its answer ended, kept apart from what the tests said
                 nxt["provider_failure"] = provider_evidence(exc)
             if (nxt.get("provider_failure") or {}).get("stop_reason") == "refusal":
-                # The provider's safety layer stopped the answer before Fable wrote anything. That is not a crash and
-                # not Fable judging the fix: it is said as what it is, and it does not spend one of his three.
+                # The provider's safety layer stopped the answer before the writer wrote anything. That is not a crash and
+                # not the writer judging the fix: it is said as what it is, and it does not spend one of his three.
                 nxt["state"] = "refused"; nxt["provider_refused"] = True
                 _event(nxt, "the provider refused to answer; nothing changed")
                 try:
@@ -966,7 +998,7 @@ def tend(**kw):
                                        "%s: refused before any answer; it did not count against today's fixes" % nxt["id"])
                 except Exception:
                     pass
-                say("\U0001F6E0 Study fix %s: the provider refused to answer it (a safety refusal, not Fable's judgment of "
+                say("\U0001F6E0 Study fix %s: the provider refused to answer it (a safety refusal, not the writer's judgment of "
                     "the fix)%s. Nothing changed, and it did not count against today's fixes."
                     % (nxt["id"], ", and Astra and Grok could not write it either" if "no writer answered" in str(exc) else ""),
                     kw.get("post"))

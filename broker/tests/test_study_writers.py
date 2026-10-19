@@ -21,12 +21,12 @@ def check(n, ok, d=""):
 ROOT = os.path.join(HOME, "workbench"); os.makedirs(os.path.join(ROOT, "scripts"))
 open(os.path.join(ROOT, "CLAUDE.md"), "w").write("rules\n"); open(os.path.join(ROOT, "scripts", "a.py"), "w").write("X=1\n")
 check("the workbench is scratch", S.WORKBENCH.startswith(HOME))
-check("the order is Fable, then Astra, then Grok", [n for n, _ in S.WRITERS] == ["Fable", "Astra", "Grok"])
+check("the order is Opus 5.5, then Astra, then Grok", [n for n, _ in S.WRITERS] == ["Opus", "Astra", "Grok"])
 
 CALLS = []
 FIX = json.dumps({"summary": "s", "edits": [], "new_files": []})
-def refusing_fable(system, user):
-    CALLS.append("Fable"); claude_cache.LAST.clear(); claude_cache.LAST.update(stop="refusal", out=0); return ""
+def refusing_opus(system, user):
+    CALLS.append("Opus"); claude_cache.LAST.clear(); claude_cache.LAST.update(stop="refusal", out=0); return ""
 def erroring(name):
     def call(system, user): CALLS.append(name); raise RuntimeError(name + " unavailable")
     return call
@@ -35,36 +35,48 @@ def answering(name):
     return call
 
 row = {"id": "SF-00000001", "what": "a named retrieval route fallback for a held question", "events": []}
-plan, _ = S.plan_fix(row, root=ROOT, writers=[("Fable", refusing_fable), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
-check("Fable refusing, Astra writes the fix", plan.get("summary") == "s" and row.get("written_by") == "Astra"
-      and CALLS == ["Fable", "Astra"], (CALLS, row.get("written_by")))
-check("Fable's refusal is kept as what it was", (row.get("fable_failure") or {}).get("stop_reason") == "refusal", row.get("fable_failure"))
+plan, _ = S.plan_fix(row, root=ROOT, writers=[("Opus", refusing_opus), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
+check("Opus refusing, Astra writes the fix", plan.get("summary") == "s" and row.get("written_by") == "Astra"
+      and CALLS == ["Opus", "Astra"], (CALLS, row.get("written_by")))
+check("Opus's refusal is kept as what it was", (row.get("writer_failure") or {}).get("stop_reason") == "refusal", row.get("writer_failure"))
 check("and the fix's record says who took it over", "Astra is writing it" in json.dumps(row), json.dumps(row)[:300])
 
 CALLS.clear()
-S.ask_json("sys", "repair", row, writers=[("Fable", refusing_fable), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
-check("a repair goes to whoever wrote the fix, without asking Fable again", CALLS == ["Astra"], CALLS)
+S.ask_json("sys", "repair", row, writers=[("Opus", refusing_opus), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
+check("a repair goes to whoever wrote the fix, without asking Opus again", CALLS == ["Astra"], CALLS)
 
 CALLS.clear(); row2 = {"id": "SF-00000002", "what": "x" * 20}
-S.ask_json("sys", "u", row2, writers=[("Fable", erroring("Fable")), ("Astra", erroring("Astra")), ("Grok", answering("Grok"))])
-check("Fable and Astra both down, Grok writes it", row2.get("written_by") == "Grok" and CALLS == ["Fable", "Astra", "Grok"], CALLS)
+S.ask_json("sys", "u", row2, writers=[("Opus", erroring("Opus")), ("Astra", erroring("Astra")), ("Grok", answering("Grok"))])
+check("Opus and Astra both down, Grok writes it", row2.get("written_by") == "Grok" and CALLS == ["Opus", "Astra", "Grok"], CALLS)
 
 CALLS.clear(); row3 = {"id": "SF-00000003", "what": "x" * 20}
 try:
-    S.ask_json("sys", "u", row3, writers=[("Fable", refusing_fable), ("Astra", erroring("Astra")), ("Grok", erroring("Grok"))])
+    S.ask_json("sys", "u", row3, writers=[("Opus", refusing_opus), ("Astra", erroring("Astra")), ("Grok", erroring("Grok"))])
     raised = ""
 except Exception as exc:
     raised = str(exc)
-check("when none can, it says so and names each", "no writer answered" in raised and "Fable" in raised
+check("when none can, it says so and names each", "no writer answered" in raised and "Opus" in raised
       and "Astra unavailable" in raised and "Grok unavailable" in raised, raised)
 
 CALLS.clear(); row4 = {"id": "SF-00000004", "what": "x" * 20}
-def bad(system, user): CALLS.append("Fable"); return "I would rather explain in prose."
-S.ask_json("sys", "u", row4, writers=[("Fable", bad), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
+def bad(system, user): CALLS.append("Opus"); return "I would rather explain in prose."
+S.ask_json("sys", "u", row4, writers=[("Opus", bad), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
 check("an answer with no JSON falls through too", row4.get("written_by") == "Astra", row4)
 
 src = open(os.path.join(REPO, "scripts", "study_fix.py")).read()
-check("the commit names who wrote the fix", 'row["what"][:400], row.get("written_by") or "Fable")' in src)
+check("Opus 5.5 writes, not Fable (Gloria, 19 October)", S.WRITER == "claude-opus-5-5" and S.WRITERS[0][1] is S.opus)
+CALLS.clear(); row5 = {"id": "SF-00000005", "what": "x" * 20}
+def declining(name):
+    def call(system, user): CALLS.append(name); return json.dumps({"refuse": "%s: my read was cut off" % name})
+    return call
+got = S.ask_json("sys", "u", row5, writers=[("Opus", declining("Opus")), ("Astra", answering("Astra")), ("Grok", answering("Grok"))])
+check("a writer that declines passes it on: the next one writes it (three Fable declines, 19 October)",
+      got.get("summary") == "s" and row5.get("written_by") == "Astra" and CALLS == ["Opus", "Astra"]
+      and "Opus declined" in json.dumps(row5), (CALLS, row5))
+CALLS.clear(); row6 = {"id": "SF-00000006", "what": "x" * 20}
+got = S.ask_json("sys", "u", row6, writers=[("Opus", declining("Opus")), ("Astra", declining("Astra")), ("Grok", declining("Grok"))])
+check("only when every writer declines is it declined", got.get("refuse") and CALLS == ["Opus", "Astra", "Grok"], (CALLS, got))
+check("the commit names who wrote the fix", 'row["what"][:400], row.get("written_by") or "Opus")' in src)
 try:
     S.ask_json("sys", "u", {"id": "SF-5", "what": "x" * 20}, ask=lambda s, u: "")
     one = False

@@ -34,7 +34,7 @@ class Tests(unittest.TestCase):
             p = patch(target, value); p.start(); self.addCleanup(p.stop)
         self.network = patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden"))
         self.network.start(); self.addCleanup(self.network.stop)
-        for name in ("say", "tell_gloria", "fable", "_deploy"):
+        for name in ("say", "tell_gloria", "opus", "_deploy"):
             p = patch.object(S, name, side_effect=AssertionError("effect forbidden"))
             p.start(); self.addCleanup(p.stop)
         self.assertTrue(Path(S.QUEUE).is_relative_to(self.root))

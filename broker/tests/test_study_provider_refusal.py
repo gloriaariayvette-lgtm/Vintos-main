@@ -30,7 +30,7 @@ check("the queue is scratch, the sender and the watch are stubs",
 def fail_with(stop):
     def work(row, **k):
         claude_cache.LAST.clear(); claude_cache.LAST.update(stop=stop, out=0)
-        raise ValueError("Fable did not answer with JSON" + S._why_not())
+        raise ValueError("Opus did not answer with JSON" + S._why_not())
     return work
 
 row, why = S.request("the named retrieval route fallback holds a saved question; give it a route")
