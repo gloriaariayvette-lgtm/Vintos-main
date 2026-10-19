@@ -211,8 +211,8 @@ def keep_reading(d, now=None, read=None, attachments=None, get=None):
     now = now or _now()
     import scholar
     about = " ".join(t["text"] for t in d.get("his_thoughts", [])[:3])[:600] or d.get("name", "")
-    if d.get("works") and (d.get("works_author") or {}).get("v") != scholar.AUTHOR_RULE:
-        scholar.ensure_author(d, about, get=get)      # a page whose works may be someone else's is settled now
+    if (d.get("works_author") or {}).get("v") != scholar.AUTHOR_RULE:
+        scholar.ensure_author(d, about, get=get)      # who the page is about is settled now, not after the wait
     for key, wait in (("between_reading_at", READ_EVERY_S), ("between_reading_tried_at", RETRY_S)):
         try:
             if d.get(key) and (now - datetime.fromisoformat(d[key])).total_seconds() < wait: return 0

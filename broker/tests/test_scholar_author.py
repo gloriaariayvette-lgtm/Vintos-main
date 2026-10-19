@@ -118,6 +118,16 @@ P.keep_reading(d3, now=t0 + timedelta(hours=6), read=lambda *a, **k: calls.appen
 check("it is not retried within twelve hours", not calls)
 P.keep_reading(d3, now=t0 + timedelta(hours=12, minutes=1), read=lambda *a, **k: calls.append(1) or 1, attachments=[])
 check("it is after them, and a reading then spends the two days", calls == [1] and d3.get("between_reading_at"))
+d5 = {"address": "m@x.org", "name": "Michael Graziano", "read": [dict(OWN)], "works": [],
+      "interest": {"recurring": True}, "his_thoughts": [{"text": ABOUT}], "between_reading_at": now.isoformat()}
+P.keep_reading(d5, now=now, read=lambda *a, **k: 0, attachments=[], get=openalex([ATLAS, MIND], works, {"W-ast": [MIND["id"]]}))
+check("a renamed page with no works is settled at once, not after the two days",
+      d5.get("works_author", {}).get("id") == MIND["id"] and d5["works"], d5.get("works_author"))
+def down(url, want="text", timeout=30): raise OSError("network down")
+d6 = {"address": "m@x.org", "name": "Graziano", "read": [dict(OWN)], "works": [{"id": "W-x"}], "his_thoughts": []}
+S.ensure_author(d6, ABOUT, get=down)
+check("when the search cannot be reached, nothing is settled and no reading is set aside",
+      "works_author" not in d6 and d6["read"] == [OWN] and not d6.get("set_aside"), d6)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
