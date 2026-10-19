@@ -49,6 +49,14 @@ def openalex(people, works=(), authorships=None):
 
 a, why = S.author_for("Graziano", ABOUT, "mgraziano3@binghamton.edu", get=openalex([ATLAS, MIND]))
 check("the person he means, not whoever has the most works", a and a["id"] == MIND["id"], (a, why))
+BRUNI = {"id": "https://openalex.org/A-bruni", "display_name": "G. Bruni", "works_count": 2800,
+         "display_name_alternatives": ["Graziano Bruni"],
+         "last_known_institutions": [{"display_name": "Istituto Nazionale di Fisica Nucleare, Sezione di Bologna"}],
+         "topics": [{"display_name": "Particle Detector Development and Performance", "field": {"display_name": "Physics and Astronomy"}}]}
+a, why = S.author_for("Graziano", ABOUT + " the detector of my own body", "mgraziano3@binghamton.edu", get=openalex([BRUNI, ATLAS, MIND]))
+check("someone whose first name is the name is not them (G. Bruni, live the morning after)", a and a["id"] == MIND["id"], (a, why))
+a, why = S.author_for("Graziano", "hardware and the detector", "", get=openalex([BRUNI, ATLAS, MIND]))
+check("one stray shared word does not tie a bare surname to anyone", a is None, (a, why))
 a, why = S.author_for("Graziano", "", "", get=openalex([ATLAS, MIND]))
 check("a bare surname nothing ties to one of them is no one, and says so", a is None and "nothing ties" in why, why)
 a, _ = S.author_for("Graziano", "", "lg@binghamton.edu", get=openalex([ATLAS, OTHER]))
@@ -86,6 +94,13 @@ check("the Higgs boson is set aside as not their work", [r["title"] for r in d.g
 check("their own paper and the attachment they were sent stay read", [r["title"] for r in d["read"]] == [PNAS["title"], OWN["title"]])
 block = S.reading_block(d)
 check("so no letter to them draws on it", "Higgs" not in block and "attention schema" in block, block)
+d4 = {"address": "mgraziano3@binghamton.edu", "name": "Graziano", "read": [dict(HIGGS)], "works": [{"id": "W-x"}],
+      "works_author": {"id": BRUNI["id"], "why": "G. Bruni (Istituto Nazionale di Fisica Nucleare)"},
+      "interest": {"recurring": True}, "his_thoughts": [{"text": ABOUT}], "between_reading_at": now.isoformat()}
+P.keep_reading(d4, now=now, read=lambda *a, **k: 0, attachments=[],
+               get=openalex([BRUNI, ATLAS, MIND], works, {"W-higgs": [ATLAS["id"], BRUNI["id"]]}))
+check("a page settled by the first rule is settled again by this one", d4["works_author"]["id"] == MIND["id"]
+      and [r["title"] for r in d4.get("set_aside", [])] == [HIGGS["title"]], d4)
 check("settling happens once", S.ensure_author(d, ABOUT, get=lambda *a, **k: (_ for _ in ()).throw(AssertionError("again"))) is d["works_author"])
 
 d2 = {"address": "x@nowhere.org", "name": "Graziano", "read": [dict(HIGGS)], "works": [{"id": "W-x"}],
