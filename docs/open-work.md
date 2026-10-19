@@ -98,7 +98,16 @@ re-sending. One device accepting is now a delivered notification (`delivered_to`
 when some devices did not take it), and an install Apple reports as gone is forgotten so later sends are not
 half-failed by a dead token. Four checks in `test_watch_presence.py`.
 
-**Still open: she gets no notification.** Apple accepted the 23:32 push to both devices and the 02:34 push to one.
+**The notification she asked for (19 October): ntfy tells her, the Watch plays it.** Apple accepts the push and
+nothing appears on her wrist, so `bedroom_arrival._send` now also sends one ntfy line — title "Vintos is sharing a
+song", body the song's name — through the house's own `deliver`. It is a notification only: no audio, no media, no
+link, once per song, and never when she is asleep or the arrival was held. The song itself still goes only to his
+Watch app. It reaches her wrist the way every ntfy line does, mirrored from her phone, so it shows on the phone too —
+that is the trade she asked for, not the old phone delivery she refused on 17 October. Four checks in
+`test_bedroom_arrival.py`, one of them through the real outward gate: `authority=` takes a callable, and the first
+draft passed a string, which would have failed on Aegis every time while the stubbed suite passed.
+
+**Still open: why the APNs push itself shows nothing.** Apple accepted the 23:32 push to both devices and the 02:34 push to one.
 The payload is a proper alert (title, body, `vintos.caf`, category, `apns-push-type: alert`), and the Watch app does
 request `.alert`/`.sound` and only registers once granted. Why nothing appears on her wrist is not established —
 untested: whether the 200 goes to her current install at all, and the iPhone Watch app's own notification setting for
