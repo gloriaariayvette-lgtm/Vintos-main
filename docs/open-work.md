@@ -4253,3 +4253,21 @@ the Study instead of Fable regardless." That afternoon three Forge fixes to `che
   `forge_build.py`'s Fable review of each forged capability (a separate cost she agreed to).
 - `test_study_reading.py` (9), `test_study_writers.py` (+3). The three declined fixes are not re-run: they are for
   him to ask again, or for the Forge to resend.
+
+## 19 October — the Lab's backlog graded one GCLC question 138 times
+
+Her six-hour Lab report (10:42–16:42 CDT): 17 complete answers from 207 reviews, and at least 118 reviews ending on
+the same missing GCLC catalytic-domain structure, counted as partial reviews rather than repeats. Her probes on Aegis:
+138 GCLC reviews in eight hours, all from the deferred-coverage backlog, of **97 distinct snapshots with one evidence
+fingerprint** — the old repeat loop had saved the same evidence 97 times — and 41 of the reviews were second gradings
+of a snapshot, because "already graded" was read from the notebook's last 2 MB (about 260 reviews).
+
+Fixed: `memory/chemistry-lab/coverage-graded.jsonl` records every finished review's snapshot and its question with its
+evidence (seeded once from the whole notebook); the backlog skips a graded snapshot, and skips a snapshot whose
+question and evidence were already graded, writing it down as the same review. Changed evidence on the same question
+is still reviewed. `test_lab_backlog_once.py` (10; the old code picks the GCLC copy again).
+
+**Not done:** the GCLC question itself stays unanswered: its evidence (the UniProt record) does not hold the catalytic
+domain's structure, and no structure source was fetched for it. Whether the Lab should route a "structural hallmarks"
+question to a structure source is a separate question for Gloria. The answer rate in her next report is the
+measurement.
