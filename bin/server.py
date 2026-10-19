@@ -10787,11 +10787,11 @@ async def avatar_get_brain(request: Request):
         import model_router as _mr
         return {"mode": _mr.current_mode()}
     except Exception as e:
-        return {"mode": "claude", "error": str(e)}
+        return {"mode": "", "error": str(e)}   # unknown, not Opus 4.8: the app keeps the label it has
 
 @app.post("/api/avatar/brain")
 async def avatar_set_brain(request: Request):
-    """Toggle avatar chat brain between claude, grok and sol (persists to model-mode.json)."""
+    """Set the avatar chat brain (persists to model-mode.json). Sol left the toggle for Argon on 14 October."""
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -10802,9 +10802,9 @@ async def avatar_set_brain(request: Request):
         want = _mr.LEGACY_MODES.get(want, want)
         mode = want if want in ("grok", "sol", "argon", "opus55", "fable", "local") else "claude"
         m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
-        return {"mode": mode}
+        return {"mode": _mr.current_mode()}   # what was actually saved, not what was asked
     except Exception as e:
-        return {"mode": "claude", "error": str(e)}
+        return {"mode": "", "error": str(e)}
 
 @app.post("/api/avatar/speak")
 async def avatar_speak(request: Request):

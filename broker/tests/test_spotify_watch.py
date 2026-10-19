@@ -57,7 +57,14 @@ check("the login asks only to see and start playback, with PKCE and no client se
       q["scope"] == [S.SCOPES] and q["code_challenge_method"] == ["S256"] and q["redirect_uri"] == ["http://127.0.0.1:8765/callback"]
       and "client_secret" not in url)
 check("an address from another login is refused", "not from this login" in S.finish(S.REDIRECT + "?code=x&state=wrong"))
-check("her Agree finishes the login", S.finish(S.REDIRECT + "?code=C0DE&state=" + q["state"][0]) == "OK" and S.ready())
+check("her Agree finishes the login, pasted as it really was: no http://, an unclosed quote, extra fields",
+      S.finish("'127.0.0.1:8765/callback?code=C0DE&state=" + q["state"][0] + "&ubi=CAIQ%3D%3D") == "OK" and S.ready()
+      and any(c[1] == S.TOKEN and b"code=C0DE" in c[2] for c in CALLS))
+with patch("builtins.input", side_effect=KeyboardInterrupt):
+    check("login asks for the pasted address instead of waiting silently", S.main(["x", "login", "CID123"]) == 1)
+os.remove(S.SECRETS)
+with patch("builtins.input", side_effect=lambda *_: "127.0.0.1:8765/callback?code=C0DE&state=" + json.load(open(S.PENDING))["state"]):
+    check("pasting at the login prompt finishes it", S.main(["x", "login", "CID123"]) == 0 and S.ready())
 check("the token is kept private (0600) and the pending login is gone",
       oct(os.stat(S.SECRETS).st_mode & 0o777) == "0o600" and not os.path.exists(S.PENDING))
 check("he is told he can, and how, once she is logged in", "[SPOTIFY: Title - Artist]" in S.context_line()

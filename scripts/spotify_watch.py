@@ -9,8 +9,8 @@ Asleep, nothing plays.
 Setup, once (Gloria, on Aegis):
     1. developer.spotify.com/dashboard -> Create app; Redirect URI  http://127.0.0.1:8765/callback ; tick Web API.
     2. python3 ~/.vintos/workspace/scripts/spotify_watch.py login <Client ID>
-       open the link it prints, press Agree. If the page then says it can't connect, copy that page's whole address
-       and run:  python3 ~/.vintos/workspace/scripts/spotify_watch.py finish '<the address>'
+       open the link it prints (on any device), press Agree; the page then says it can't connect - copy its whole
+       address and paste it at the prompt. (Or later: spotify_watch.py finish '<the address>')
 
     python3 spotify_watch.py devices          # what Spotify can play on right now
     python3 spotify_watch.py play "Title - Artist"
@@ -78,7 +78,8 @@ def _post_form(url, fields):
 def finish(redirected_url):
     """The address Spotify sent her browser back to, holding the one-time code."""
     pend = _load(PENDING, {})
-    q = urllib.parse.parse_qs(urllib.parse.urlparse(redirected_url.strip()).query)
+    raw = redirected_url.strip().strip("'\"")
+    q = urllib.parse.parse_qs(raw.split("?", 1)[1] if "?" in raw else raw)   # with or without http://, quotes or not
     if q.get("error"): return "Spotify said: %s" % q["error"][0]
     if not pend or q.get("state", [""])[0] != pend.get("state"): return "that address is not from this login - run login again"
     got = _post_form(TOKEN, {"grant_type": "authorization_code", "code": q.get("code", [""])[0], "redirect_uri": REDIRECT,
@@ -89,25 +90,6 @@ def finish(redirected_url):
     try: os.remove(PENDING)
     except OSError: pass
     return "OK"
-
-
-def _listen_once(timeout=600):
-    """Catch the redirect on 127.0.0.1:8765 if her browser can reach it; None if it never came."""
-    import http.server
-    got = {}
-    class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            got["url"] = "http://127.0.0.1:8765" + self.path
-            self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers()
-            self.wfile.write("Done - you can close this. Vintos has Spotify for your Watch.".encode())
-        def log_message(self, *a): pass
-    try:
-        srv = http.server.HTTPServer(("127.0.0.1", 8765), H)
-    except OSError:
-        return None
-    srv.timeout = timeout
-    srv.handle_request(); srv.server_close()
-    return got.get("url")
 
 
 def _token():
@@ -240,11 +222,12 @@ def context_line():
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "status"
     if cmd == "login" and len(argv) > 2:
-        print("Open this, and press Agree:\n\n" + login_url(argv[2].strip()) + "\n\nWaiting up to 10 minutes...", flush=True)
-        url = _listen_once()
-        if not url:
-            print("Nothing came back here. Copy the address the page landed on and run:\n"
-                  "  python3 %s finish '<the address>'" % os.path.abspath(__file__)); return 1
+        # Pasting is the whole path: her browser is usually on her phone, where 127.0.0.1 is not Aegis, and waiting on a
+        # listener left her at a silent prompt (19 October).
+        print("Open this, and press Agree:\n\n" + login_url(argv[2].strip()) + "\n\nThe page will then say it can't "
+              "connect - that's expected. Copy that page's whole address, paste it here, and press Enter:", flush=True)
+        try: url = input("> ")
+        except (EOFError, KeyboardInterrupt): print("\nStopped."); return 1
         print(finish(url)); return 0
     if cmd == "finish" and len(argv) > 2:
         print(finish(argv[2])); return 0

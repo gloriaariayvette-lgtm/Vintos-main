@@ -16,7 +16,10 @@ socket.socket.connect = _no
 PUSHES = []; PHONE = []
 def apns_send(title, body, kind="message", media_url="", message_id="", force=False, **k):
     PUSHES.append((title, kind, media_url, message_id, force)); return {"state": "sent"}
-def phone(*a, **k): PHONE.append(a); raise AssertionError("the bedroom song must never go to her phone")
+def phone(artifact_id, channel, message, title="Vintos", **k):
+    """The stubbed ntfy sender: one line telling her a song is waiting, and never the song itself."""
+    PHONE.append({"artifact_id": artifact_id, "channel": channel, "message": message, "title": title, **k})
+    return {"state": "sent", "channel": channel}
 sys.modules["watch_apns"] = types.SimpleNamespace(send=apns_send, CONFIG=os.path.join(HOME, "no-such-apns.json"))
 sys.modules["deliver"] = types.SimpleNamespace(deliver=phone)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
@@ -54,9 +57,10 @@ NOW = _t.time()
 DAY = ["2026-10-18"]; B._today = lambda now: DAY[0]   # the day is the test's, not the clock's
 row = B.observe("gloria-phone", 1.2, now=NOW)
 song = W.pending_song()
-check("she comes in: the song is offered to the Watch app, nothing goes to her phone",
+check("she comes in: the song is offered to the Watch app, and she is told in words",
       row and row["sent"] and row["channel"] == "watch" and song and song["title"] == "Porch Light"
-      and song["media_url"] == "https://cdn.test/a.mp3" and not PHONE, (row, song))
+      and song["media_url"] == "https://cdn.test/a.mp3" and row["ntfy"] == "sent"
+      and PHONE[-1]["title"] == "Vintos is sharing a song", (row, song, PHONE[-1:]))
 check("with no APNs key on Aegis, no push is attempted", not PUSHES and "push" not in row, row)
 check("still in the room a minute later: nothing more", B.observe("gloria-phone", 1.0, now=NOW + 60) is None)
 
@@ -131,7 +135,22 @@ check("a new day: yesterday's choice is gone, the stand-ins begin again with the
       and row["song"] == "Hum" and row["picked_by"] == "stand-in", row)
 check("every arrival is written down", len(open(B.ARRIVALS).read().splitlines()) == 9)
 check("her config is unchanged", open(B.CONFIG, "rb").read() == config_before)
-check("nothing ever went to her phone", not PHONE)
+check("she is told a song is waiting, in words, once per song",
+      [p["title"] for p in PHONE] == ["Vintos is sharing a song"] * len(PHONE) and len(PHONE) == 4
+      and len({p["artifact_id"] for p in PHONE}) == 4, [p["artifact_id"] for p in PHONE])
+check("that line carries no audio, no media and no link - the song stays on her Watch",
+      all("http" not in json.dumps({k: v for k, v in p.items() if k != "authority"})
+          and not p.get("attach") and not p.get("click") and p["channel"] == "ntfy" for p in PHONE),
+      [{k: v for k, v in p.items() if k != "authority"} for p in PHONE])
+check("the song she comes in to is named in it", any("Porch Light" in p["message"] for p in PHONE),
+      [p["message"] for p in PHONE])
+# The real outward gate calls what it is given. A name instead of a callable raised inside it, and the line failed
+# on Aegis while this suite's stub passed (19 October).
+import effect_authority as EA
+check("the line passes the real outward gate, not a stub of it",
+      EA.dispatch("outward", authority=PHONE[-1]["authority"])[0] is True, PHONE[-1]["authority"])
+check("asleep or held back, she is not told either", len(PHONE) == len([r for r in
+      (json.loads(l) for l in open(B.ARRIVALS)) if r.get("sent")]), len(PHONE))
 cl = B.context_line()
 check("he is told the sensor is his and works, and what it last sent", cl.startswith("[BEDROOM SENSOR - yours, and working")
       and "Hum" in cl, cl)

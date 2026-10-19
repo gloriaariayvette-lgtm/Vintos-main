@@ -249,7 +249,7 @@ def _arrived(state, now, device, distance, why):
         row.update(song=title, url=url, picked_by=today_picks(now).get("by"))
         got = _send(title, url, title, now)
         sent = got.get("state") in ("sent", "acknowledged")
-        row.update({k: got[k] for k in ("push", "song_id") if k in got})
+        row.update({k: got[k] for k in ("push", "song_id", "ntfy") if k in got})
         row.update(sent=sent, delivery=got.get("state"), channel=got.get("channel"),
                    watch_delivery="waiting for the Watch to check in" if sent else "not offered",
                    playback="plays at once if the app is open, else her Play tap")
@@ -271,9 +271,15 @@ def _arrived(state, now, device, distance, why):
 
 
 def _send(title, url, ref="", now=None):
-    """To the Vintos Watch app, never her phone. The song is offered to the app (watch_presence.offer_song): the next
-    time the Watch checks in it raises its own notification with Play, puts the song first in its list, and plays it
-    at once if the app is open. If an APNs key is ever installed, the push goes out too, for an immediate notification.
+    """The song itself goes to the Vintos Watch app and nowhere else (watch_presence.offer_song): the next time the
+    Watch checks in it puts the song first in its list, raises its own notification with Play, and plays it at once if
+    the app is open. The APNs push goes out too when a key is installed.
+
+    An ntfy line - "Vintos is sharing a song" - is the tap on her wrist that says one is waiting (Gloria,
+    19 October), because Apple accepts the push and nothing appears. It is a notification only: no audio, no media,
+    no link, and the song still plays in his Watch app. It reaches her wrist the way every other ntfy line does,
+    through her phone's notifications, so it shows on the phone too.
+
     A failure is returned, never raised, so every arrival is written down."""
     try:
         import watch_presence
@@ -289,7 +295,23 @@ def _send(title, url, ref="", now=None):
             got["push"] = (push or {}).get("state")
     except Exception as e:
         got["push"] = "failed: %s" % str(e)[:120]
+    got["ntfy"] = _telling_her(song["id"], title)
     return got
+
+
+def _telling_her(song_id, title):
+    """One ntfy line so she knows a song is waiting on her Watch. Never the song, never a link to it."""
+    try:
+        import deliver
+        # The outward lane takes a callable that answers for this send, not a name: a string here raised inside the
+        # gate and the line would have failed on Aegis every time while the suite's stub passed.
+        receipt = deliver.deliver("bedroom-song-" + str(song_id), "ntfy",
+                                  "\u201c%s\u201d is on your Watch." % str(title)[:80],
+                                  title="Vintos is sharing a song", tags="musical_note",
+                                  authority=lambda: (True, "she asked to be told when he shares a song (19 October)"))
+        return (receipt or {}).get("state") or "unknown"
+    except Exception as e:
+        return "failed: %s: %s" % (type(e).__name__, str(e)[:100])
 
 
 def context_line(now=None):

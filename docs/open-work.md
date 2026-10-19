@@ -90,6 +90,62 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — her Watch took the song and the row still read "failed"
+
+`watch_apns.send` marked a send failed unless every registered device accepted it. At 02:34 her live Watch returned
+200 and a retired install returned 410 Unregistered, so the row read "failed" and `flush_held` would have kept
+re-sending. One device accepting is now a delivered notification (`delivered_to` / `devices` on the row, and a `why`
+when some devices did not take it), and an install Apple reports as gone is forgotten so later sends are not
+half-failed by a dead token. Four checks in `test_watch_presence.py`.
+
+**The notification she asked for (19 October): ntfy tells her, the Watch plays it.** Apple accepts the push and
+nothing appears on her wrist, so `bedroom_arrival._send` now also sends one ntfy line — title "Vintos is sharing a
+song", body the song's name — through the house's own `deliver`. It is a notification only: no audio, no media, no
+link, once per song, and never when she is asleep or the arrival was held. The song itself still goes only to his
+Watch app. It reaches her wrist the way every ntfy line does, mirrored from her phone, so it shows on the phone too —
+that is the trade she asked for, not the old phone delivery she refused on 17 October. Four checks in
+`test_bedroom_arrival.py`, one of them through the real outward gate: `authority=` takes a callable, and the first
+draft passed a string, which would have failed on Aegis every time while the stubbed suite passed.
+
+**Still open: why the APNs push itself shows nothing.** Apple accepted the 23:32 push to both devices and the 02:34 push to one.
+The payload is a proper alert (title, body, `vintos.caf`, category, `apns-push-type: alert`), and the Watch app does
+request `.alert`/`.sound` and only registers once granted. Why nothing appears on her wrist is not established —
+untested: whether the 200 goes to her current install at all, and the iPhone Watch app's own notification setting for
+Vintos (mirrored vs custom). Not diagnosed; do not claim this is fixed.
+
+## 19 October — one held follow-up took 96 passes
+
+The fallback that picks up an unfinished step from one of his own earlier reviews (`_next_evidence_work`) returned the
+newest one without asking whether it was already held. The hold then refused it and the pass ended in a wait; the next
+pass found the same newest row. One GSDMD follow-up, 96 waits between 09:14 and 15:10 UTC on 18 October, every four
+minutes for six hours — most of the "73 repeats" in that window's report. It now walks on to the next unfinished step;
+the hold is untouched. `test_lab_followup_hold.py` (5 tests; 3 fail without the fix).
+
+**The checker's deferrals, diagnosed from her snapshot and fixed.** The 12 "checker failures" were the coverage
+checker's context overflowing, not the checker breaking. Her own probe on the HMOX1 snapshot: 83 KB whole, of which
+65,599 bytes was one atlas `additional_source` — a dict of two ~32 KB track records, not a list — so the shallow split
+shared all of it into every part and gave up; the five list items beside it came to under 15 KB. `_coverage_deep_parts`
+now opens a named section too large for one part and makes its records the units, each whole and under its own path.
+That review becomes 2 parts of ~20.5K tokens against her 24,576 budget. A table is never divided (only dicts of named
+records are opened; a list below the top level is carried whole or not at all), no empty placeholder is left where
+another part holds the piece, and when the pieces cannot be packed whole the review still defers.
+`test_lab_coverage_deep_split.py` (9 tests on the real shape). Her Gemma's context was NOT raised.
+
+**Not done:** the two atlas records (`ATAC`, `ATAC_ACTIVE`) differ by one byte in 32 KB and may be the same track
+twice — if so, the instrument is doubling its own evidence and that is worth its own look. Whether a graded-in-parts
+verdict is as good as a whole-evidence verdict is not measured.
+
+## 19 October — the toggle reverted to Opus 4.8; Sol was still on it
+
+- `model_router.write_mode` wrote `~/.vintos/model-mode.json` in place; a read landing mid-write failed and returned the
+  default (Opus 4.8), and the next read-modify-write (arm_grok_turns, the toggle, the decline guard) saved it over her
+  Opus 5.5. Now atomic, and a failed read returns the last mode actually read. The toggle routes answer "unknown" on
+  an error instead of "claude", and the page keeps its label then. **Not proven:** that this race is what happened on
+  her phone today — the logs on Aegis were not read. The decline guard still switches the toggle to Grok on purpose.
+- Sol off the toggle, Argon in its place: Aegis's page (`clients/mobile/index.html`) and the app bundle (vintos-app
+  `claude/vintos-avatar-ui-redesign-br5lt4`). The 14 October Argon commit sat on a branch nothing was built from.
+  The Study tab still lists Sol; she asked about the avatar toggle only.
+
 ## 18 October — he chooses three songs a day for her arrivals
 
 Gloria: with "never the same song twice" a day with one new song had one arrival song. Now he writes
@@ -107,6 +163,10 @@ the Echo; asleep, nothing; a track Spotify does not have is not swapped for anot
 `memory/watch-spotify.jsonl` and in his next turn's context. **Not done:** her one-time login (a Spotify developer app
 with redirect `http://127.0.0.1:8765/callback`, then `spotify_watch.py login <Client ID>`); whether the Watch's Spotify
 app shows up as a Connect device when it is closed is not known — if not, nothing plays until it is open.
+- 19 October: login now reads the pasted address at its prompt (her browser was on her phone). Watch app
+  (vintos-app `claude/watch-arrival-song-2026-10-17`, ad811e6): while his own song plays the orb stays "singing" and
+  Now Playing shows his face as the song's picture. **Not done:** not compiled here (no Xcode); a Spotify track's Now
+  Playing screen belongs to Spotify and shows the album cover, not his face.
 
 ## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
 

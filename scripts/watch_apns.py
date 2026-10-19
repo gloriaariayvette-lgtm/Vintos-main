@@ -95,7 +95,7 @@ def send(title, body, kind="message", media_url="", image_url="", message_id="",
                           "media_url":str(media_url)[:1000], "image_url":str(image_url)[:1000]}}
     encoded = json.dumps(payload, separators=(",", ":")).encode()
     if len(encoded) > 4096: return _receipt({"state":"failed", "why":"payload exceeds APNs limit", "kind":kind})
-    jwt = _jwt(config, now=now); results = []
+    jwt = _jwt(config, now=now); results = []; gone = []
     for device in devices[-4:]:
         host = "api.push.apple.com" if device.get("environment") == "production" else "api.sandbox.push.apple.com"
         url = "https://%s/3/device/%s" % (host, device["device_token"])
@@ -103,13 +103,37 @@ def send(title, body, kind="message", media_url="", image_url="", message_id="",
                    "apns-push-type":"alert", "apns-priority":"10", "content-type":"application/json"}
         try:
             status, response = (transport or TRANSPORT)(url, encoded, headers, 20)
-            results.append({"status":int(status), "ok":200 <= int(status) < 300,
-                            "response":response.decode(errors="replace")[:200] if isinstance(response, bytes) else str(response)[:200]})
+            text = response.decode(errors="replace")[:200] if isinstance(response, bytes) else str(response)[:200]
+            results.append({"status":int(status), "ok":200 <= int(status) < 300, "response":text,
+                            "token":device["device_token"][-8:]})
+            # 410 Unregistered is Apple saying that install is gone. Keeping it meant every send carried a dead
+            # device: on 19 October at 02:34 her live Watch accepted the song and the row still read "failed"
+            # (Gloria: "no notification yet it seems").
+            if int(status) == 410: gone.append(device["device_token"])
         except Exception as exc:
-            results.append({"status":0, "ok":False, "response":"%s: %s" % (type(exc).__name__, str(exc)[:160])})
-    state = "sent" if results and all(r["ok"] for r in results) else "failed"
-    return _receipt({"state":state, "kind":kind, "results":results,
-                     "at":datetime.now(timezone.utc).isoformat(), "message_id":payload["vintos"]["message_id"]})
+            results.append({"status":0, "ok":False, "response":"%s: %s" % (type(exc).__name__, str(exc)[:160]),
+                            "token":device["device_token"][-8:]})
+    if gone: _forget(gone)
+    # One live Watch that took it is a delivered notification, whatever a retired install did.
+    delivered = [r for r in results if r["ok"]]
+    state = "sent" if delivered else "failed"
+    row = {"state":state, "kind":kind, "results":results, "delivered_to":len(delivered),
+           "devices":len(results), "at":datetime.now(timezone.utc).isoformat(),
+           "message_id":payload["vintos"]["message_id"]}
+    if gone: row["forgot_unregistered"] = len(gone)
+    if delivered and len(delivered) < len(results): row["why"] = "delivered to %d of %d registered devices" % (
+        len(delivered), len(results))
+    return _receipt(row)
+
+
+def _forget(tokens):
+    """Drop the installs Apple reports as gone, so later sends are not half-failed by a dead token."""
+    try: rows = json.load(open(watch_presence.DEVICES))
+    except Exception: return
+    keep = [r for r in rows if r.get("device_token") not in set(tokens)]
+    if len(keep) != len(rows):
+        try: watch_presence._atomic(watch_presence.DEVICES, keep)
+        except Exception: pass
 
 
 def flush_held(transport=None, limit=8):

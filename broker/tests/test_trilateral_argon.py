@@ -59,7 +59,7 @@ check("chat: the final no longer speaks of exactly two passes", "Let both passes
 router = open(os.path.join(REPO, "bin", "model_router.py")).read()
 check("the router answers on the argon toggle", 'read_mode().get("mode") == "argon"' in router)
 app = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
-check("the app's toggle has Argon", "argon:'\\u25C7 ARGON'" in app and "'sol','argon','local'" in app)
+check("the app's toggle has Argon, in Sol's place", "argon:'\\u25C7 ARGON'" in app and "'grok','argon','local'" in app)
 
 intro = open(os.path.join(REPO, "bin", "introspection.sh")).read()
 check("introspection: Argon writes the second draft", "_ib1 = _argon_sync(system, prompt)" in intro)

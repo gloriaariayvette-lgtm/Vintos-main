@@ -16,6 +16,7 @@ that a scientific tool can run on its actual host.
 from __future__ import annotations
 
 import contextlib
+import copy
 from collections import Counter
 import fcntl
 import hashlib
@@ -2175,6 +2176,11 @@ def _next_evidence_work(inquiry, repeats, spent, step):
         proposed = dict(prior, question=row['next_question'],
                         requested_question=prior.get('question'))
         candidate = _strategy_change(proposed, repeats)
+        # A step already on hold is not work this pass can do: returning it ends the pass in a wait, and the next
+        # pass finds the same newest row and waits again (18 October: one GSDMD follow-up, 96 waits in six hours).
+        # Walk on to the next unfinished step instead; the hold itself is untouched and still holds.
+        if candidate and _held_question(candidate):
+            continue
         if candidate and (not spent or not spent_retrieval(candidate, spent)) and (
                 not step or repeats.on_frontier(candidate, step)):
             candidate['strategy_resolution']['reason']='continued_another_self_authored_unresolved_step'
@@ -3834,6 +3840,16 @@ COVERAGE_SPLIT_MAX_PARTS = 8
 
 
 def _coverage_parts(prepared):
+    """The evidence in parts that each fit the budget, or None when it cannot be split that way.
+
+    The shallow split (every top-level list item its own unit, everything else shared) is tried first and is what
+    the existing suites pin. When it cannot divide the weight - an instrument result is a dict, not a list - the
+    deeper split takes its place (_coverage_deep_parts)."""
+    shallow = _coverage_shallow_parts(prepared)
+    return shallow if shallow is not None else _coverage_deep_parts(prepared)
+
+
+def _coverage_shallow_parts(prepared):
     """The coverage evidence in parts that each fit the budget, or None when it cannot be split that way.
 
     Every list item (record, article, receipt row) goes into exactly one part, whole and with its own exact
@@ -3864,6 +3880,86 @@ def _coverage_parts(prepared):
     if current: parts.append(dict(common, **current))
     if len(parts) < 2 or len(parts) > COVERAGE_SPLIT_MAX_PARTS: return None
     return [request(part) for part in parts]
+
+
+def _coverage_deep_parts(prepared):
+    """The same split, one or more levels in, for evidence whose weight sits in a value that is not a list.
+
+    An instrument result is a dict of records, not a list, so the shallow split copied all of it into every part and
+    gave up (19 October: one HMOX1 review, 83 KB whole, of which 65.6 KB was one atlas `additional_source` holding
+    two 32 KB track records; the five list items beside it came to under 15 KB). Here a named section too large for
+    one part is opened and its records become the units, each whole and under its own original path, so every
+    address still resolves exactly where the checker is told it is.
+
+    Two things are deliberately not done. A table is never divided: only dicts of named records are opened, and a
+    list deeper than the top level is carried whole or not at all, so no part is handed half a table. And nothing
+    is dropped or shortened: when the pieces cannot be packed whole, this returns None and the review defers."""
+    if not prepared: return None
+    _evidence, _strings, _addresses, (system, prompt, out) = prepared
+    head, marker, body = prompt.partition('\nEVIDENCE:\n')
+    if not marker: return None
+    try: addressed = json.loads(body)
+    except ValueError: return None
+    if not isinstance(addressed, dict): return None
+
+    def request(part):
+        return (system, head + '\nEVIDENCE:\n' + json.dumps(part, ensure_ascii=False, separators=(',', ':')), out)
+    def fits(part): return _coverage_budget(request(part))['fits']
+    def size(value): return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode())
+
+    # What one part may hold in all, in bytes: the largest payload that still fits the same conservative budget the
+    # review uses. Measured, not guessed - halving from the whole size threw away half the room it had.
+    low, high = 0, size(addressed)
+    if fits({'_': 'x' * high}): return None            # it all fits; this is not a split
+    while low + 64 < high:
+        middle = (low + high) // 2
+        if fits({'_': 'x' * middle}): low = middle
+        else: high = middle
+    room = low
+    if room <= 1024: return None
+
+    # The shared skeleton is carried by every part, so when the units cannot be packed beside it, less is shared and
+    # more becomes a unit. Reducing the room instead would shrink the parts, which is the wrong direction.
+    for share in (room // 4, room // 8, room // 16, room // 32, 256):
+        share = max(256, share)
+        shared, found = {}, []
+
+        def keep(path, value):
+            node = shared
+            for step in path[:-1]: node = node.setdefault(step, {})
+            node[path[-1]] = value
+
+        def divide(value, path, depth=0):
+            """Units a part can carry alone; everything small enough is kept shared in every part instead."""
+            if size(value) <= share:
+                keep(path, value); return []
+            if isinstance(value, list) and len(value) >= 2 and depth == 0:
+                keep(path, []); return [(path, item, True) for item in value]
+            if isinstance(value, dict) and len(value) >= 2 and not isinstance(value, list):
+                return [u for key in value for u in divide(value[key], path + (key,), depth + 1)]
+            return [(path, value, False)]
+
+        for key in addressed:
+            found += divide(addressed[key], (key,))
+
+        # No empty placeholder is left where another part carries the piece: the checker is told an empty or absent
+        # source field is missing evidence, and "data": null would read as an empty field rather than as elsewhere.
+        empty = copy.deepcopy(shared)
+        spare = room - size(empty)
+        if len(found) >= 2 and spare > 0 and fits(empty) and all(size(i) <= spare for _p, i, _l in found):
+            parts, current, carried = [], copy.deepcopy(empty), 0
+            for path, item, listed in found:
+                if carried and carried + size(item) > spare:
+                    parts.append(current); current, carried = copy.deepcopy(empty), 0
+                node = current
+                for step in path[:-1]: node = node.setdefault(step, {})
+                if listed: node.setdefault(path[-1], []).append(item)
+                else: node[path[-1]] = item
+                carried += size(item)
+            parts.append(current)
+            if 2 <= len(parts) <= COVERAGE_SPLIT_MAX_PARTS and all(fits(part) for part in parts):
+                return [request(part) for part in parts]
+    return None
 
 
 def _coverage_deferral(inquiry, observations, prepared):
