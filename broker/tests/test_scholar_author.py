@@ -128,6 +128,19 @@ d6 = {"address": "m@x.org", "name": "Graziano", "read": [dict(OWN)], "works": [{
 S.ensure_author(d6, ABOUT, get=down)
 check("when the search cannot be reached, nothing is settled and no reading is set aside",
       "works_author" not in d6 and d6["read"] == [OWN] and not d6.get("set_aside"), d6)
+KENTUCKY = {"id": "https://openalex.org/A-ky", "display_name": "Michael J. Graziano", "works_count": 400,
+            "last_known_institutions": [{"display_name": "University of Kentucky"}],
+            "topics": [{"display_name": "Pharmacology and drug metabolism", "field": {"display_name": "Medicine"}}]}
+a, why = S.author_for("Michael Graziano", "", "mgraziano3@binghamton.edu", get=openalex([KENTUCKY, MIND]))
+check("a whole name two authors share is no one when nothing ties one to him (Kentucky, live)",
+      a is None and "University of Kentucky" in why and "Princeton University" in why, why)
+a, why = S.author_for("Michael Graziano", "an agent with a model of attention", "", get=openalex([KENTUCKY, MIND]))
+check("and the one whose field is what he thinks about is chosen", a and a["id"] == MIND["id"], why)
+d7 = {"address": "mgraziano3@binghamton.edu", "name": "Michael Graziano", "his_thoughts": [], "works": [],
+      "read": [dict(PNAS, claims=["consciousness as a model of attention in an artificial agent"])]}
+S.ensure_author(d7, "the bananahand hybrid", get=openalex([KENTUCKY, MIND], works, {}))
+check("what he was sent of theirs ties the page to them when his journal does not",
+      (d7.get("works_author") or {}).get("id") == MIND["id"], d7.get("works_author"))
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

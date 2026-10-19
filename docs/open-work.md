@@ -204,6 +204,11 @@ recurring). Both recurring pages read nothing, and her read-only probe showed wh
   because settling at once was only for a page that had works. Now any unsettled page of a recurring interest is
   settled on the next run. And an author search that cannot be reached settles nothing: before, it would have
   read as "no one" and set every reading aside.
+  Then "Michael Graziano" settled on Michael J. Graziano (University of Kentucky) on most works alone, and he read
+  one of that man's papers. Now any name more than one author carries needs a real tie (institution, or two words of
+  their field, and more than the next), whole names included; the ambiguity line names the candidates; and the
+  attachments he was sent of theirs count as evidence of their field. `AUTHOR_RULE` 3 settles every page again.
+  **Not done:** if the attention-schema Graziano is not among OpenAlex's first five for the name, nothing settles.
 - **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
 - **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
   his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
