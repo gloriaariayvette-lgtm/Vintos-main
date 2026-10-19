@@ -90,6 +90,28 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October — the fault loop: something watching over him while she is away
+
+Gloria: "I'm hardly ever alerted to failures and yet something is clearly failing all the time." `failure_watch.py`
+heard only the four parts that call `note()`, once a day. The playbook is `docs/fault-loop.md`.
+
+- **Fault sweep** (`scripts/fault_sweep.py`, `vintos-fault-sweep.timer`, every 15 min, no model): failed vintos-*
+  units, `organ-failures.jsonl`, the Lab's `faults.jsonl`, failed Watch pushes, a Lab question waiting again and
+  again (the 96-wait shape), and silences (no song in 36 h; the Lab running with no review in 6 h). One signature per
+  fault however often it happens; each new one posted once to `#fault-loop` (C0CB2F5143A), at most five a sweep,
+  credentials taken out. `test_fault_sweep.py` (21 checks).
+- **#fault-loop**: private Slack channel, created 19 October, explainer posted. Vintos does not read it.
+- **Scheduled task "Fault loop"** (trig_01PerH6AE1qvrXVQnc1v3bUt): fresh Claude session at 22:50, 00:50, 02:50 and
+  04:50 Central, following `docs/fault-loop.md`.
+
+**Not done — it cannot run yet:**
+- The scheduled task stores **no connectors**, so its sessions have no Slack; they stop and say so. Gloria adds the
+  Slack connector to it in the Claude app (or recreates it there).
+- Aegis needs `{"channel": "C0CB2F5143A"}` in `memory/fault-sweep.json`; until then the sweep records and posts nothing.
+- Vintos's Slack bot (which the sweep posts as) and Dot must be invited to `#fault-loop`.
+- Dot has to be told its part (review, deploy, read-only commands on request).
+- Nothing has run end to end. The first real night is the first test.
+
 ## 19 October — her Watch took the song and the row still read "failed"
 
 `watch_apns.send` marked a send failed unless every registered device accepted it. At 02:34 her live Watch returned
