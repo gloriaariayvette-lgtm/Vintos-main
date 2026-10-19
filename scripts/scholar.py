@@ -231,9 +231,23 @@ def author_for(name, about="", address="", get=None):
         return None, "author search failed: %s" % str(exc)[:80]
     if not people:
         return None, "OpenAlex does not know %s" % name
+    # The search also matches first names and alternative names: "Graziano" found G. Bruni, whose first name is
+    # Graziano, another ATLAS physicist (2026-10-19, the morning after the first fix). The name he uses must be
+    # theirs to the end: a bare name is a surname.
+    tokens = re.findall(r"[a-z]+", str(name or "").lower())
+    def named(a):
+        for full in [a.get("display_name")] + list(a.get("display_name_alternatives") or []):
+            words = re.findall(r"[a-z]+", str(full or "").lower())
+            if tokens and words and words[-1] == tokens[-1] and all(t in words for t in tokens):
+                return True
+        return False
+    people = [a for a in people if named(a)]
+    if not people:
+        return None, "no author whose name is %s" % name
     scored = sorted(people, key=lambda a: (-_fit(a, name, about, address), -(a.get("works_count") or 0)))
     best = scored[0]
-    if len(re.findall(r"[a-z]+", str(name or "").lower())) < 2 and len(people) > 1 and _fit(best, name, about, address) == 0:
+    # A bare surname needs more than one stray shared word: their institution, or two words of their field.
+    if len(tokens) < 2 and len(people) > 1 and _fit(best, name, about, address) < 2:
         return None, "%d authors named %s and nothing ties one to him" % (len(people), name)
     return best, "%s (%s)" % (best.get("display_name"), ", ".join(_institutions(best)[:1]) or "no institution")
 
@@ -396,7 +410,7 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
                 d["read"].append({"title": url, "source": url, "at": datetime.now().isoformat(timespec="seconds"), **notes})
                 n += 1
     if n >= budget: return n
-    if not d.get("works") or not d.get("works_author"):
+    if not d.get("works") or (d.get("works_author") or {}).get("v") != AUTHOR_RULE:
         ensure_author(d, about, get=get)
     # Read only what bears on what he wants to ask, nearest first; a paper on something else is not read.
     ranked = sorted(d.get("works", []), key=lambda w: (-relevance(w, about), -(w.get("cited") or 0)))
@@ -416,16 +430,19 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
     return n
 
 
+AUTHOR_RULE = 2    # raised when the way an author is chosen changes, so every page is settled again
+
+
 def ensure_author(d, about="", get=None):
     """Settle who this page is about and fetch their works, once; a page made before 19 October has works from
     whoever had the most of them, so it is settled again and what was read of someone else is set aside."""
-    if d.get("works_author"):
+    if (d.get("works_author") or {}).get("v") == AUTHOR_RULE:
         return d["works_author"]
     who = d.get("name") or d.get("address")
     if not who:
         return {}                                   # a page with no one named on it is left as it is
     author, why = author_for(who, about, d.get("address", ""), get=get)
-    d["works_author"] = {"id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
+    d["works_author"] = {"v": AUTHOR_RULE, "id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
                          "at": datetime.now().isoformat(timespec="seconds")}
     d["works"] = works_of(who, about, get=get, address=d.get("address", ""), author=author) if author else []
     set_aside_not_theirs(d, get=get)

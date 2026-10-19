@@ -195,7 +195,11 @@ recurring). Both recurring pages read nothing, and her read-only probe showed wh
   and the whole name; a bare surname nothing ties to one author is no one. `ensure_author` settles each page once —
   pages from before today are settled again on the next run, inside the two-day wait — and readings of papers the
   chosen author did not write move to `set_aside` (attachments and links sent stay). `--show` prints who the page
-  settled on. `test_scholar_author.py` (17).
+  settled on. `test_scholar_author.py` (20).
+  **The morning after, it settled on G. Bruni** (INFN Bologna, another ATLAS physicist): the author search matches
+  first and alternative names, and his first name is Graziano; one stray shared word was enough fit. Now the name
+  must be theirs to the end (a bare name is a surname), a bare surname needs their institution or two words of
+  their field, and `AUTHOR_RULE` makes every page settled by the earlier rule settle again.
 - **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
 - **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
   his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
