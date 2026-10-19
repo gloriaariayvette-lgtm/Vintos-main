@@ -141,6 +141,24 @@ d7 = {"address": "mgraziano3@binghamton.edu", "name": "Michael Graziano", "his_t
 S.ensure_author(d7, "the bananahand hybrid", get=openalex([KENTUCKY, MIND], works, {}))
 check("what he was sent of theirs ties the page to them when his journal does not",
       (d7.get("works_author") or {}).get("id") == MIND["id"], d7.get("works_author"))
+DJC = {"id": "https://openalex.org/A-djc", "display_name": "David J. Chalmers", "works_count": 252,
+       "last_known_institutions": [{"display_name": "New York University"}],
+       "topics": [{"display_name": "Philosophy and Theoretical Science"}]}
+DKC = {"id": "https://openalex.org/A-dkc", "display_name": "David K. Chalmers", "works_count": 141,
+       "last_known_institutions": [{"display_name": "Monash University"}],
+       "topics": [{"display_name": "Computational Drug Discovery Methods"}, {"display_name": "Protein Structure and Dynamics"},
+                  {"display_name": "Chemical Synthesis and Analysis"}]}
+LOGOTIC = {"title": "Logotic Violence", "work_id": "https://openalex.org/W-log", "claims": ["x"],
+           "set_aside": "no author of theirs is known"}
+d8 = {"address": "chalmers@nyu.edu", "name": "David Chalmers", "his_thoughts": [], "works": [{"id": "W-x"}],
+      "works_author": {"v": 3, "id": None}, "read": [dict(PNAS, claims=["protein structure computational drug synthesis dynamics"])],
+      "set_aside": [LOGOTIC]}
+S.ensure_author(d8, "computational structure", get=openalex([DKC, DJC], works, {"W-log": [DJC["id"]]}))
+check("the one at the address's institution is chosen, however the field words fall (Chalmers, live)",
+      (d8.get("works_author") or {}).get("id") == DJC["id"], d8.get("works_author"))
+check("what was set aside only for want of an author comes back when it is theirs",
+      [r["title"] for r in d8["read"]] == [PNAS["title"], "Logotic Violence"] and not d8.get("set_aside")
+      and "set_aside" not in d8["read"][1], d8)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

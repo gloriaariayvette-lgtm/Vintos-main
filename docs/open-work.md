@@ -209,6 +209,10 @@ recurring). Both recurring pages read nothing, and her read-only probe showed wh
   their field, and more than the next), whole names included; the ambiguity line names the candidates; and the
   attachments he was sent of theirs count as evidence of their field. `AUTHOR_RULE` 3 settles every page again.
   **Not done:** if the attention-schema Graziano is not among OpenAlex's first five for the name, nothing settles.
+  Graziano then settled on Michael S. A. Graziano (Princeton), but Chalmers on no one: words from what he was sent
+  tied David K. Chalmers (Monash) with David J. Chalmers of nyu.edu. Now when exactly one candidate is at the email
+  address's institution, that one is chosen; and readings set aside only because no author was settled come back to
+  be judged when one is. `AUTHOR_RULE` 4.
 - **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
 - **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
   his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
