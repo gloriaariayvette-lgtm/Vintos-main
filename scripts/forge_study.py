@@ -3,7 +3,7 @@
 
 A want for computer use reached the Forge as an ability he lacks, when he already has desktop-control code
 that fails. The Forge would have built a second hand and hidden the fault. So every Forge request first goes
-to the Study, the room where he reads his own code: Fable orchestrates (Astra if Fable is unavailable),
+to the Study, the room where he reads his own code: Opus 5.5 orchestrates (Astra if Opus is unavailable),
 Grok is the subagent that searches and reads, and the Study's own permission boundary decides what may be
 read. The question is always the same two things: does he already have this, and if so, where does it fail?
 
@@ -26,7 +26,8 @@ MEMORY = os.path.join(WS, "memory")
 STUDIES = os.path.join(MEMORY, "forge-study")
 LEDGER = os.path.join(STUDIES, "ledger.json")
 NTFY = os.environ.get("VINTOS_NTFY_URL", "https://ntfy.sh/vintos-gloria-9kx")
-FABLE = os.environ.get("VINTOS_STUDY_FABLE", "claude-fable-5-1")
+# Gloria, 2026-10-19: "I'd rather use Opus 5.5 in the Study instead of Fable regardless."
+STUDY_MODEL = os.environ.get("VINTOS_STUDY_MODEL", "claude-opus-5-5")
 GROK = os.environ.get("VINTOS_STUDY_GROK", "grok-4.6")
 STUDIES_PER_DAY = 4
 ROUNDS = 3
@@ -71,13 +72,13 @@ def _key(env, *files):
     return k
 
 
-def _fable(system, user):
+def _opus(system, user):
     """Through claude_cache, so the cache points _round_prompt set are sent and every call's cache use is
     written to memory/anthropic-usage.jsonl (caller forge-study). Fable was called here with no caching at
     all: each round re-sent the same instructions, brief and earlier reports at full price (2026-10-13)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import claude_cache
-    return claude_cache.ask(FABLE, system, user, 3000, caller="forge-study")
+    return claude_cache.ask(STUDY_MODEL, system, user, 3000, caller="forge-study")
 
 
 def _round_prompt(brief, reports, header, tail=""):
@@ -99,15 +100,15 @@ def _astra(system, user):
 
 
 def orchestrate(system, user):
-    """Fable, and Astra when Fable cannot answer."""
+    """Opus 5.5, and Astra when Opus cannot answer."""
     try:
-        return _fable(system, user), "fable"
+        return _opus(system, user), "opus"
     except Exception as exc:
         first = exc
     try:
         return _astra(system, user), "astra"
     except Exception as exc:
-        raise RuntimeError("no orchestrator: fable %s; astra %s" % (str(first)[:120], str(exc)[:120]))
+        raise RuntimeError("no orchestrator: opus %s; astra %s" % (str(first)[:120], str(exc)[:120]))
 
 
 def subagent(system, user):

@@ -4222,3 +4222,21 @@ Evidence, raw-data hashes, supported query specifications, offline reproducibili
 idempotent data-import commands are in `docs/research-evidence/2026-10-17-tas1r3-9utc/README.md`.
 Production-module hashes before and after the handoff match. No software installation is needed; the supplied
 helper can be run from a temporary directory to repeat only the data attachment.
+
+## 19 October — the Study writes with Opus 5.5, can read the whole Lab, and passes a decline on
+
+Gloria: "Fable always fails in the Study… it was supposed to fallback to the other models. I'd rather use Opus 5.5 in
+the Study instead of Fable regardless." That afternoon three Forge fixes to `chemistry_lab.py`'s hold code
+(SF-2198f1b5, SF-6405b255, SF-7b4db293) were each declined: "my read was cut off".
+
+- **Why it failed:** a whole file stops at 60,000 characters and `chemistry_lab.py` is 334,000; the hold code is near
+  line 1,500. Any writer would have failed. Now `"path:START-END"` reads those lines, numbered (800 at most), and a
+  cut-off whole file says how many lines it showed and how to read on. Searches use Perl regex, fall back to a
+  literal search, and an unreadable pattern says so instead of "(no match)".
+- **Why there was no fallback:** a decline is a valid answer, so only an error or no JSON passed to Astra and Grok.
+  Now a decline passes on too; it is declined only when every writer declines.
+- **The model:** `study_fix.py` writes with Opus 5.5 (`WRITER`, then Astra, then Grok); `forge_study.py`
+  orchestrates with Opus 5.5 (`STUDY_MODEL`, then Astra). Not changed: the Study chat's own toggle, and
+  `forge_build.py`'s Fable review of each forged capability (a separate cost she agreed to).
+- `test_study_reading.py` (9), `test_study_writers.py` (+3). The three declined fixes are not re-run: they are for
+  him to ask again, or for the Forge to resend.

@@ -196,7 +196,7 @@ rows = S._load(); rows[:] = [r for r in rows if r["state"] != "queued"]; S._save
 row4, _ = S.request("change how the JEPA heads predict her mood")
 row4 = next(r for r in S._load() if r["id"] == row4["id"])
 S.work(row4, ask=fable_seq({"refuse": "that is his subconscious; it needs Gloria"}), post=POSTS.append, suite=suite_seq(), deploy=deploy)
-check("a fix Fable declines is said, and nothing changes", row4["state"] == "refused" and "declined by Fable" in POSTS[-1] and origin_log() == before)
+check("a fix the writer declines is said, and nothing changes", row4["state"] == "refused" and "declined by Opus" in POSTS[-1] and origin_log() == before)
 
 # --- a deploy that refuses it: reverted, said in Slack, and Gloria is told -------------------------------
 rr = S._load()
@@ -228,7 +228,7 @@ check("the deploy installs it and its timer", "study_fix.py" in dep and 'confirm
       and "OnUnitInactiveSec=10min" in open(os.path.join(REPO, "broker", "vintos-study-fix.timer")).read())
 # Fable's answer cut off at the limit says so (SF-6f9a460b, 2026-10-06: "Fable did not answer with JSON" and no why)
 import claude_cache
-claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.FABLE_TOKENS)
+claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.WRITER_TOKENS)
 try: S._json('{"summary": "half a fix", "edits": [{"path": "scripts/greet.py", "old": "helo'); _e = ""
 except ValueError as e: _e = str(e)
 check("an answer cut off at the limit is named as cut off", "did not answer with JSON" in _e and "cut off" in _e, _e)
@@ -240,7 +240,7 @@ claude_cache.LAST.clear(); claude_cache.LAST.update(stop="end_turn", out=900)
 try: S._json('{"edits": [}'); _e = ""
 except ValueError as e: _e = str(e)
 check("JSON that does not parse is a ValueError that says so", "did not parse" in _e and "end_turn" in _e, _e)
-check("the limit is not raised (Gloria: don't increase headroom)", S.FABLE_TOKENS == 16000, S.FABLE_TOKENS)
+check("the limit is not raised (Gloria: don't increase headroom)", S.WRITER_TOKENS == 16000, S.WRITER_TOKENS)
 _sent = []
 class _Rec:
     def json(self): return {"type": "message", "stop_reason": "end_turn", "usage": {}, "content": [{"type": "text", "text": "{}"}]}
@@ -248,7 +248,7 @@ claude_cache.note = lambda *a, **k: None
 _real_ask = claude_cache.ask
 claude_cache.ask = lambda *a, **k: _real_ask(*a, post=lambda url, **kw: (_sent.append(kw["json"]), _Rec())[1], key="test-key",
                                              **{x: y for x, y in k.items() if x not in ("post", "key")})
-S.fable("s", "u")
+S.opus("s", "u")
 claude_cache.ask = _real_ask
 check("Fable is asked to think as little as it can", _sent and _sent[0].get("output_config") == {"effort": "low"}
       and "thinking" not in _sent[0], _sent and {k: v for k, v in _sent[0].items() if k != "messages"})
@@ -278,7 +278,7 @@ def cut_off_third():
         if seq:
             claude_cache.LAST.clear(); claude_cache.LAST.update(stop="end_turn", out=1200)
             return json.dumps(seq.pop(0))
-        claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.FABLE_TOKENS)
+        claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.WRITER_TOKENS)
         return '{"summary": "split the capture", "edits": [{"path": "scripts/chemistry_lab.py", "old": "raw = str(te'
     return ask
 S.tend(ask=cut_off_third(), suite=suite_seq([("test_lab_raw_evidence.py", FAILING)]), deploy=deploy, post=POSTS.append)
@@ -296,7 +296,7 @@ check("the second attempt's failure is the edit that did not apply, kept as its 
 pf = row7.get("provider_failure") or {}
 check("Fable's cut-off answer is kept as a provider failure: stop reason, tokens against the limit, model",
       pf.get("stop_reason") == "max_tokens" and pf.get("output_tokens") == 16000 and pf.get("output_limit") == 16000
-      and pf.get("hit_limit") is True and pf.get("model") == S.FABLE, pf)
+      and pf.get("hit_limit") is True and pf.get("model") == S.WRITER, pf)
 check("the two are not conflated: the provider failure names no test, the attempts name no stop reason",
       "test" not in pf and all("stop_reason" not in x for x in a) and row7["state"] == "failed", (pf, row7["state"]))
 check("the log line names the assertion too", any("AssertionError: the log line held" in e["what"] for e in row7.get("log", [])),

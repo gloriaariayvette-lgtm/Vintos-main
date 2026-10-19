@@ -24,12 +24,12 @@ class Reconcile(unittest.TestCase):
                             'LOCK': self.mem / 'worker.lock', 'RESET': self.mem / 'reset.json',
                             'CHECKOUT': self.repo, 'WORKBENCH': self.root / 'workbench'}.items():
             p = patch.object(sf, name, str(value)); p.start(); self.addCleanup(p.stop)
-        for name in ['fable', 'say', 'tell_gloria', 'work', 'watch']:
+        for name in ['opus', 'say', 'tell_gloria', 'work', 'watch']:
             p = patch.object(sf, name, Mock(side_effect=AssertionError('no execution or sends')))
             p.start(); self.addCleanup(p.stop)
         p = patch('socket.socket.connect', side_effect=AssertionError('no network')); p.start(); self.addCleanup(p.stop)
         p = patch.object(sf, '_today', return_value='2026-10-07'); p.start(); self.addCleanup(p.stop)
-        self.assertTrue(Path(sf.QUEUE).is_relative_to(self.root)); self.assertIsInstance(sf.fable, Mock)
+        self.assertTrue(Path(sf.QUEUE).is_relative_to(self.root)); self.assertIsInstance(sf.opus, Mock)
         self.target = self.ws / 'scripts/home_presence.py'; self.target.write_text('# fixture source\n')
         (self.repo / 'scripts/home_presence.py').write_bytes(self.target.read_bytes())
         self.git('init', '-q'); self.git('add', 'scripts/home_presence.py')
@@ -72,7 +72,7 @@ class Reconcile(unittest.TestCase):
 
     def test_worker_never_selects_external_record_or_duplicates_request(self):
         self.run_reconcile()
-        self.assertEqual(sf.tend(), 'nothing queued'); sf.work.assert_not_called(); sf.fable.assert_not_called()
+        self.assertEqual(sf.tend(), 'nothing queued'); sf.work.assert_not_called(); sf.opus.assert_not_called()
         row, why = sf.request(self.row['what'])
         self.assertIsNone(row); self.assertTrue(why); self.assertEqual(len(self.rows()), 1)
 

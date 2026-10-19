@@ -69,7 +69,7 @@ if len(calls) >= 3:
 
 rows = [json.loads(l) for l in open(claude_cache.USAGE)]
 check("every Fable call is written to the usage log as forge-study",
-      len(rows) == len(calls) and all(r["caller"] == "forge-study" and r["model"] == FS.FABLE for r in rows), rows)
+      len(rows) == len(calls) and all(r["caller"] == "forge-study" and r["model"] == FS.STUDY_MODEL for r in rows), rows)
 check("the log carries the cache reads", sum(r["cache_read"] for r in rows) > 0)
 
 print("\n%d/%d passed" % (sum(R), len(R)))
