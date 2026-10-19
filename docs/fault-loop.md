@@ -71,8 +71,14 @@ schedule must exist and work before this week's are let go, so a failed hand-ove
 2. Read the new thread's reply. It must say Slack yes and repository yes. If not: stop the hand-over, keep this
    week's schedule, post in `#fault-fix` that the hand-over failed and why, and carry on as normal.
 3. Create the new thread's schedule: name `Fault loop`, the same times
-   (`CRON_TZ=America/Chicago 50 22,0,2,4 * * *`), the same wake message, into the new thread
-   (`persistent_session_id`).
+   (`CRON_TZ=America/Chicago 50 22,0,2,4 * * *`), into the new thread (`persistent_session_id`), with **this** wake
+   message — copy it from here, not from the old schedule, whose text may be stale (the first week's still names the
+   unused `#fault-loop`):
+
+   > Fault-loop wake. Pull claude/device-visuals-2026-10-13, re-read docs/fault-loop.md (it may have changed since
+   > your last wake), then read #fault-fix (C0CB2HREFNC) and do this wake's work exactly as that file says —
+   > including its weekly hand-over if this is the first wake after Sunday 9 pm Central. If nothing needs you, end
+   > without posting.
 4. Only once that schedule exists, delete this thread's schedule (`list_triggers`: the `Fault loop` whose
    `persistent_session_id` is this thread).
 5. Post in `#fault-fix`: `[Claude Code] New week's fault-loop thread started: <its link>.`
