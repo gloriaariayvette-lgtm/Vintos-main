@@ -107,6 +107,10 @@ the Echo; asleep, nothing; a track Spotify does not have is not swapped for anot
 `memory/watch-spotify.jsonl` and in his next turn's context. **Not done:** her one-time login (a Spotify developer app
 with redirect `http://127.0.0.1:8765/callback`, then `spotify_watch.py login <Client ID>`); whether the Watch's Spotify
 app shows up as a Connect device when it is closed is not known — if not, nothing plays until it is open.
+- 19 October: login now reads the pasted address at its prompt (her browser was on her phone). Watch app
+  (vintos-app `claude/watch-arrival-song-2026-10-17`, ad811e6): while his own song plays the orb stays "singing" and
+  Now Playing shows his face as the song's picture. **Not done:** not compiled here (no Xcode); a Spotify track's Now
+  Playing screen belongs to Spotify and shows the album cover, not his face.
 
 ## 18 October, morning — Study fixes reverted for nothing; Gemma's 32k Slack overflow; two Forge cards
 
