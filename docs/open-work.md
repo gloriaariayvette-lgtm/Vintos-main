@@ -90,6 +90,20 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October, morning — F-b5423625a3 fixed by day, and the Forge's Lab capacity raised
+
+- **The sweep fix the loop proposed and Dot approved with a revision**, done in the day session at Gloria's request
+  (so the nightly thread does not also implement it): `fault_sweep.lab_faults` reads the Lab's real shape
+  `{stage, error, detail}` — the stage is the kind, the reason is "class: detail" — with fallbacks for missing fields.
+  `clean()` now also takes out a key in a URL's query, `user:password@` in a URL, and `name=value` / `name: value`
+  credentials (Dot's revision); shown first that the old scrubber passed all three through. +13 checks in
+  `test_fault_sweep.py` on the Lab's real row shape; the first fails on the old sweep.
+- **The Forge holds 8 unfinished Lab reports, not 4** (`forge_loop_runtime.LAB_REPORT_SLOTS`; Gloria: "Just make more
+  Forge projects available ... I don't know what to approve and cancel there"). The refusal keeps its
+  `four_unfinished` name, which the Lab's hold and the fault ledger key on.
+- **Not done — the Forge page itself.** She does not understand it and cannot say how; nobody has sat with her and
+  the page to find out. Raising the limit only delays the next full Forge.
+
 ## 19 October — the fault loop's first night
 
 - **Found:** one fault, F-b5423625a3 (00:04): the Forge's capacity guard turned away a Lab report retry (403,
