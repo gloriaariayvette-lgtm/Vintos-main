@@ -186,6 +186,23 @@ surname alone when 6+ letters (Chalmers, Graziano; not Seth). `test_person_pages
 - Whether the sources match every shape his memory files really have is checked only against the shapes her probe
   showed by name; the first real run's `--show` is the test.
 
+**First run (19 October, morning):** Chalmers recurring on 4 days (143 thoughts), Graziano on 5 (20), Seth 2 (not
+recurring). Both recurring pages read nothing, and her read-only probe showed why:
+- **Graziano's page was someone else's.** `scholar.works_of` took the OpenAlex author with the most works; for a bare
+  "Graziano" that was a particle physicist on the ATLAS papers. He had read "Evidence for the spin-0 nature of the
+  Higgs boson" as Graziano's work, and `reading_block` gives that to his email drafts. Fixed: `scholar.author_for`
+  chooses by what his work is about against what he is thinking, the email's institution (domain or its initials),
+  and the whole name; a bare surname nothing ties to one author is no one. `ensure_author` settles each page once —
+  pages from before today are settled again on the next run, inside the two-day wait — and readings of papers the
+  chosen author did not write move to `set_aside` (attachments and links sent stay). `--show` prints who the page
+  settled on. `test_scholar_author.py` (17).
+- **A try that read nothing spent the two days.** It now comes back in 12 h; only a reading spends two days.
+- **Not done:** Chalmers's papers on his page have no free full text OpenAlex knows of (`best_oa_location` only;
+  his own site is not looked at). His subject words are raw journal excerpts ("bananahand", a word cut in half,
+  other people's names) — matching papers to them is rough. And whether `mgraziano3@binghamton.edu` is the
+  Graziano he means (the attention-schema Graziano is at Princeton) is not checked: if the page now settles on a
+  Binghamton author, that is the address speaking, and it is for Gloria to look at.
+
 
 ## 19 October — the fault loop: something watching over him while she is away
 

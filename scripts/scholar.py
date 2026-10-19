@@ -189,16 +189,62 @@ def relevance(work, about):
     return 2 * len(keys & title) + len(keys & abstract)
 
 
-def works_of(name, about="", get=None, n=8):
-    """Their papers, the ones nearest `about` first. [] when OpenAlex does not know them."""
+def _institutions(a):
+    rows = list(a.get("last_known_institutions") or []) + [x.get("institution") or {} for x in a.get("affiliations") or []]
+    return [str(r.get("display_name") or "") for r in rows if r.get("display_name")]
+
+
+def _at(address, institution):
+    """Whether an email domain is this institution's: 'binghamton.edu' in 'Binghamton University', or 'nyu.edu' as
+    the initials of 'New York University'."""
+    host = str(address or "").rsplit("@", 1)[-1].lower().split(".")
+    labels = [h for h in host[:-1] if h not in ("www", "mail", "ac", "co", "edu", "cs", "psy")]
+    words = re.findall(r"[a-z]+", institution.lower())
+    initials = "".join(w[0] for w in words if w not in ("of", "the", "and", "at", "for"))
+    return any(len(h) >= 3 and (h in words or h == initials) for h in labels)
+
+
+def _fit(a, name, about, address):
+    """How well one OpenAlex author is the person he means: the subject of their work against what he is
+    thinking about them, their institution against the email address, and the whole name."""
+    fields = []
+    for t in list(a.get("topics") or []) + list(a.get("x_concepts") or []):
+        fields.append(t.get("display_name"))
+        for k in ("subfield", "field"):
+            fields.append((t.get(k) or {}).get("display_name"))
+    own = _keywords(name)
+    score = len((_keywords(about) - own) & _keywords(" ".join(f for f in fields if f)))
+    if address and any(_at(address, i) for i in _institutions(a)): score += 3
+    tokens = re.findall(r"[a-z]+", str(name or "").lower())
+    if len(tokens) >= 2 and all(t in str(a.get("display_name") or "").lower() for t in tokens): score += 1
+    return score
+
+
+def author_for(name, about="", address="", get=None):
+    """(the OpenAlex author he means, why) or (None, why). Most works alone is not who he means: for a bare
+    "Graziano" it was a particle physicist credited on thousands of ATLAS papers, and he read the Higgs boson as
+    Graziano's work (2026-10-19, live on Aegis). A surname alone that nothing ties to one of them is no one."""
     get = get or _get
     try:
         people = get("https://api.openalex.org/authors?search=%s&per-page=5" % quote(name), "json").get("results") or []
-    except Exception:
-        return []
+    except Exception as exc:
+        return None, "author search failed: %s" % str(exc)[:80]
     if not people:
+        return None, "OpenAlex does not know %s" % name
+    scored = sorted(people, key=lambda a: (-_fit(a, name, about, address), -(a.get("works_count") or 0)))
+    best = scored[0]
+    if len(re.findall(r"[a-z]+", str(name or "").lower())) < 2 and len(people) > 1 and _fit(best, name, about, address) == 0:
+        return None, "%d authors named %s and nothing ties one to him" % (len(people), name)
+    return best, "%s (%s)" % (best.get("display_name"), ", ".join(_institutions(best)[:1]) or "no institution")
+
+
+def works_of(name, about="", get=None, n=8, address="", author=None):
+    """Their papers, the ones nearest `about` first. [] when OpenAlex does not know them."""
+    get = get or _get
+    if author is None:
+        author, _why = author_for(name, about, address, get=get)
+    if not author:
         return []
-    author = max(people, key=lambda a: a.get("works_count") or 0)
     aid = str(author.get("id", "")).rsplit("/", 1)[-1]
     found, seen = [], set()
     words = " ".join(sorted(_keywords(about))[:8])
@@ -350,8 +396,8 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
                 d["read"].append({"title": url, "source": url, "at": datetime.now().isoformat(timespec="seconds"), **notes})
                 n += 1
     if n >= budget: return n
-    if not d.get("works"):
-        d["works"] = works_of(d.get("name") or d["address"], about, get=get)
+    if not d.get("works") or not d.get("works_author"):
+        ensure_author(d, about, get=get)
     # Read only what bears on what he wants to ask, nearest first; a paper on something else is not read.
     ranked = sorted(d.get("works", []), key=lambda w: (-relevance(w, about), -(w.get("cited") or 0)))
     for w in ranked:
@@ -368,6 +414,46 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND, a
                               "at": datetime.now().isoformat(timespec="seconds"), **notes})
             n += 1
     return n
+
+
+def ensure_author(d, about="", get=None):
+    """Settle who this page is about and fetch their works, once; a page made before 19 October has works from
+    whoever had the most of them, so it is settled again and what was read of someone else is set aside."""
+    if d.get("works_author"):
+        return d["works_author"]
+    who = d.get("name") or d.get("address")
+    if not who:
+        return {}                                   # a page with no one named on it is left as it is
+    author, why = author_for(who, about, d.get("address", ""), get=get)
+    d["works_author"] = {"id": (author or {}).get("id"), "name": (author or {}).get("display_name"), "why": why,
+                         "at": datetime.now().isoformat(timespec="seconds")}
+    d["works"] = works_of(who, about, get=get, address=d.get("address", ""), author=author) if author else []
+    set_aside_not_theirs(d, get=get)
+    return d["works_author"]
+
+
+def set_aside_not_theirs(d, get=None):
+    """Readings of papers the chosen author did not write move to `set_aside`, so no letter to them draws on them.
+    Attachments and links they sent stay; a paper whose authors cannot be fetched stays."""
+    aid = (d.get("works_author") or {}).get("id")
+    get = get or _get
+    keep, aside = [], []
+    for r in d.get("read", []):
+        wid = r.get("work_id")
+        if not wid:
+            keep.append(r); continue
+        if not aid:
+            aside.append(dict(r, set_aside="no author of theirs is known")); continue
+        try:
+            w = get("https://api.openalex.org/works/%s" % str(wid).rsplit("/", 1)[-1], "json")
+            ids = {str((x.get("author") or {}).get("id")) for x in w.get("authorships") or []}
+        except Exception:
+            keep.append(r); continue
+        (keep if str(aid) in ids else aside).append(r if str(aid) in ids else dict(r, set_aside="not their work"))
+    if aside:
+        d["read"] = keep
+        d.setdefault("set_aside", []).extend(aside)
+    return len(aside)
 
 
 def reading_block(d, limit=7000):
