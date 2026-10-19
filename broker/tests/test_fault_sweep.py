@@ -127,6 +127,65 @@ check("one unreadable source is itself a fault and the sweep goes on",
 check("an old fault unseen for a week is forgotten, so its return is posted again",
       F.merge([], {"faults": {"x": {"last": NOW - 8 * 86400}}}, NOW) == [] )
 
+# --- the Lab's real fault shape (F-b5423625a3, 19 October): {at, stage, error, detail}, error only the class ---
+LAB_REAL = os.path.join(HOME, "lab-real-faults.jsonl")
+F.LAB_FAULTS = LAB_REAL
+T0 = NOW + 10000
+def lab_row(stage, error, detail, dt=0, **extra):
+    row = {"at": iso(T0 + dt), "error": error, "detail": detail, **extra}
+    if stage is not None: row["stage"] = stage
+    append(LAB_REAL, row)
+lab_row("forge_report_retry", "HTTPError", "HTTP Error 403: Forbidden (Forge guard: four_unfinished)")
+lab_row("material", "HTTPError", "HTTP Error 429: Too Many Requests for P09601")
+lab_row("material", "HTTPError", "HTTP Error 429: Too Many Requests for Q9NY35", dt=60)
+got = F.lab_faults(T0 - 1)
+sigs = {f["kind"]: F.signature(f) for f in got}
+check("a fault in the Lab's real shape is named by its stage", sorted(sigs) == ["forge_report_retry", "material"], got)
+check("two stages failing with the same error class are two faults, not one",
+      sigs["forge_report_retry"] != sigs["material"])
+check("its post says the class and the reason",
+      any("HTTPError: HTTP Error 403: Forbidden (Forge guard: four_unfinished)" == f["why"] for f in got), got)
+check("the same stage differing only in the protein and the time is one fault",
+      len({F.signature(f) for f in got if f["kind"] == "material"}) == 1)
+
+open(LAB_REAL, "w").close()
+lab_row(None, "HTTPError", "", kind="legacy_kind")
+lab_row("parser_evidence", "ValueError", None)
+lab_row("detail_only", "", "the reason, with no class")
+lab_row("", "", "", why="only a why")
+lab_row(None, None, None)
+got = F.lab_faults(T0 - 1)
+check("missing stage falls back to kind, then to 'fault'", [f["kind"] for f in got] ==
+      ["legacy_kind", "parser_evidence", "detail_only", "fault", "fault"], [f["kind"] for f in got])
+check("a missing detail keeps the class; a missing class keeps the detail; neither keeps the why or the kind",
+      [f["why"] for f in got] == ["HTTPError", "ValueError", "the reason, with no class", "only a why", "fault"],
+      [f["why"] for f in got])
+
+# Credentials Dot's review found the scrubber missed - checked in what is stored and in what is posted.
+open(LAB_REAL, "w").close()
+lab_row("material", "HTTPError", "GET https://api.example.org/v1/search?api_key=SYNTH_KEY_1&q=GSDMD 401")
+lab_row("source_fetch", "URLError", "https://alice:SYNTH_PW_2@mirror.example.org/x unreachable")
+lab_row("planner", "RuntimeError", "refused: token=SYNTH_TOK_3; password: \"SYNTH PW 4\"")
+os.remove(F.STATE)
+POSTS.clear()
+F.tend(now=T0 + 100, run=systemctl, sender=slack, lab_active=False)
+F.tend(now=T0 + 1000, run=systemctl, sender=slack, lab_active=False)
+stored = open(F.STATE).read(); posted = json.dumps(POSTS)
+check("no credential reaches the stored record", not any(x in stored for x in ("SYNTH_KEY_1", "SYNTH_PW_2", "SYNTH_TOK_3", "SYNTH PW 4")))
+check("and none reaches the channel", POSTS and not any(x in posted for x in ("SYNTH_KEY_1", "SYNTH_PW_2", "SYNTH_TOK_3", "SYNTH PW 4")))
+check("what is not a credential is still there to read", "api.example.org" in posted and "unreachable" in posted)
+check("ordinary errors are left whole", F.clean("HTTP Error 403: Forbidden (Forge guard: four_unfinished)")
+      == "HTTP Error 403: Forbidden (Forge guard: four_unfinished)")
+
+# Dot's correction: rows already swept are not read again, so old faults are not posted twice; a new one is.
+n = len(POSTS)
+F.tend(now=T0 + 2000, run=systemctl, sender=slack, lab_active=False)
+check("rows already swept are not posted again", len(POSTS) == n)
+lab_row("forge_report_retry", "HTTPError", "HTTP Error 403: Forbidden (Forge guard: four_unfinished)", dt=2500)
+F.tend(now=T0 + 3000, run=systemctl, sender=slack, lab_active=False)
+check("a new occurrence after the sweep posts once, under its stage", len(POSTS) == n + 1
+      and "forge_report_retry" in POSTS[-1][1] and "four_unfinished" in POSTS[-1][1], POSTS[-1:])
+
 srv = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the sweep and its timer are in the deploy", " fault_sweep.py" in srv and 'SWEEP_UNIT_NAME="vintos-fault-sweep"' in srv
       and "== fault sweep (every 15 min) ==" in srv)

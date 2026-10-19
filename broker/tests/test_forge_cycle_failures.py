@@ -305,13 +305,14 @@ class Tests(unittest.TestCase):
                 self.assertEqual(len(self.c.artifacts(self.c.owner_token,p["id"])),1)
                 self.assertIsNotNone(self.status(p)["diagnostic"])
     def test_uncertain_requests_still_occupy_capacity_without_replay(self):
+        from forge_loop_runtime import LAB_REPORT_SLOTS   # 8 since 19 October (Gloria raised it from 4)
         with patch("forge_loop.software_quota.limit",return_value=20):
-            for index in range(4):
+            for index in range(LAB_REPORT_SLOTS):
                 p=self.r.intake("i"*40,self.intake_payload(index))
                 self.r.builder=Mock(side_effect=TimeoutError("unknown"))
                 with self.assertRaises(TimeoutError):self.r.step(p["id"])
                 self.assertTrue(self.status(p)["intake_slot"])
-            with self.assertRaises(Refused):self.r.intake("i"*40,self.intake_payload(4))
+            with self.assertRaises(Refused):self.r.intake("i"*40,self.intake_payload(LAB_REPORT_SLOTS))
     def test_species_omission_and_fuzzy_result_names_cannot_fulfill(self):
         from forge_genomic_result import validate_request,verified_result
         q=query();q["arguments"]={"gene":"TP53"}

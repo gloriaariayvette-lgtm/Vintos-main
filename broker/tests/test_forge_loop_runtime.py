@@ -318,7 +318,9 @@ class Tests(unittest.TestCase):
         self.assertEqual((status,raw,head.get('X-Forge-Refusal')),(403,generic,'packet'))
         tampered=json.loads(json.dumps(record));tampered['records'][0]['exptl'][0]['method']='tampered'
         self.assertEqual(call(body(tampered),'i'*40)[2].get('X-Forge-Refusal'),'receipt_hash')
-        for n in range(4):
+        from forge_loop_runtime import LAB_REPORT_SLOTS
+        self.assertEqual(LAB_REPORT_SLOTS, 8, 'Gloria raised it from 4 on 19 October')
+        for n in range(LAB_REPORT_SLOTS):
             r=receipt('pdb',{'entry_id':'X%d'%n},[{'n':n}]);self.assertEqual(call(body(r),'i'*40)[0],200)
         status,raw,head=call(body(record),'i'*40)
         self.assertEqual((status,raw,head.get('X-Forge-Refusal')),(403,generic,'four_unfinished'))

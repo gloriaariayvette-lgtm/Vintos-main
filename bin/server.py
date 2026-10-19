@@ -10310,7 +10310,7 @@ Your current self-model (excerpt):
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                             "grok-4.20-0309-non-reasoning", reason=_reason)
                         try:
-                            _gm = _mr.read_mode(); _gm["mode"] = "grok"; _mr.write_mode(_gm)
+                            _mr.update_mode(lambda _gm: _gm.update(mode="grok"))
                         except Exception: pass
                         try:
                             import json as _se_j
@@ -10801,7 +10801,7 @@ async def avatar_set_brain(request: Request):
         import model_router as _mr
         want = _mr.LEGACY_MODES.get(want, want)
         mode = want if want in ("grok", "sol", "argon", "opus55", "fable", "local") else "claude"
-        m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
+        _mr.update_mode(lambda m: m.update(mode=mode))
         return {"mode": _mr.current_mode()}   # what was actually saved, not what was asked
     except Exception as e:
         return {"mode": "", "error": str(e)}

@@ -19,6 +19,8 @@ from forge_loop_ntfy import NtfyPublisher
 
 from forge_cycle_failure import CURRENT, Trace, ValidationFailure, checkpoint, evidence
 
+LAB_REPORT_SLOTS = 8   # unfinished Lab reports the Forge holds at once (was 4 until 19 October)
+
 MAX_BODY = 1024 * 1024
 
 
@@ -417,7 +419,11 @@ class Runtime:
             if prior: return {'id': prior[0], 'replayed': True}
             active = [p for p in self.c.projects(self.c.owner_token) if p['intake_slot']
                       and self.c.context(self.c.worker_token, p['id'])['capabilities'][0] in ('research_report', 'capability_request')]
-            if len(active) >= 4: raise Refused('four unfinished reports; retain Lab receipts until capacity returns')
+            # How many Lab reports may wait unfinished at once. Raised from 4 to 8 (Gloria, 19 October: "Just make more
+            # Forge projects available"): the Lab sat held all night behind four she had not had a way to sort.
+            # The refusal keeps its 'four unfinished' wording: the Lab and the fault ledger name the guard by it.
+            if len(active) >= LAB_REPORT_SLOTS:
+                raise Refused('four unfinished reports; retain Lab receipts until capacity returns (%d open)' % len(active))
             # Not private (Gloria, 2026-09-24): only the Atelier is private; the Forge is hers to see.
             created = self.create(self.c.owner_token, {'intent': str(data.get('intent', 'Source dossier'))[:2000],
                                   'source_packet': packet, 'origin': {'source': 'lab'},

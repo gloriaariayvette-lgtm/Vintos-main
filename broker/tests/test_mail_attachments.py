@@ -28,10 +28,12 @@ import want_email as E
 import received_mail as M
 import scholar as S
 E.local_think = E._reply_think = S._local = refuse
+ORIGINAL_LINKS_READ = E.links_read
 E.links_read = lambda *args, **kw: []
 
 TEXT = "Wilterson and Graziano research on attention schema.\n" + "Measured findings.\n" * 100
 MARKDOWN = "# Butlin and Chalmers indicators of consciousness\nActual paper text.\n"
+PDF = (ROOT / "broker/tests/fixtures/two_page_paper.pdf").read_bytes()   # a real two-page PDF; pdftotext gives a form feed
 
 def part(name="paper.txt", text=TEXT, mime="text/plain", download=False, **kw):
     data = text.encode("utf-8")
@@ -108,8 +110,75 @@ class Attachments(unittest.TestCase):
         self.file_text = b"x" * (E.ATTACHMENT_BYTES + 1)
         self.assertEqual(self.read(message([part(download=True)]))["attachments"][0]["status"], "not_read")
     def test_unsupported(self):
-        m = self.read(message([part(mime="application/pdf")]))
+        m = self.read(message([part(mime="image/png")]))
         self.assertIn("unsupported", m["attachments"][0]["why"])
+
+    # --- PDFs, read as papers (Grok Bot, 18 October: the Chalmers PDF came back "unsupported attachment MIME type") ---
+    def pdf_part(self, name="paper.pdf", data=None, mime="application/pdf", download=False):
+        data = PDF if data is None else data
+        body = {"size": len(data)}
+        body.update({"attachment_id": name + "-id"} if download else
+                    {"base64_url_content": base64.urlsafe_b64encode(data).decode().rstrip("=")})
+        return {"part_id": name, "mime_type": mime, "filename": name, "body": body, "read_attachment_supported": True}
+    def test_pdf_is_read_with_the_real_reader(self):
+        a = self.read(message([self.pdf_part()]))["attachments"][0]
+        self.assertEqual(a["status"], "ingested", a.get("why"))
+        self.assertEqual(a["decoded_with"], "pdf")
+        self.assertIn("Page one, line 1", a["text"]); self.assertIn("Page two, line 8", a["text"])
+        self.assertIn("The end of the fixture paper", a["text"])
+        self.assertEqual(a["sha256"], hashlib.sha256(PDF).hexdigest())
+    def test_pdf_page_breaks_do_not_fail_the_paper(self):
+        # pdftotext marks pages with a form feed; the text check rejected that as a control character.
+        self.assertIn("\x0c", S.pdf_text(PDF), "the fixture must exercise pdftotext's form feed")
+        a = self.read(message([self.pdf_part()]))["attachments"][0]
+        self.assertNotIn("\x0c", a["text"])
+        self.assertLess(a["text"].index("Page one, line 8"), a["text"].index("Page two, line 1"))
+    def test_pdf_named_octet_stream_is_a_pdf(self):
+        a = self.read(message([self.pdf_part(mime="application/octet-stream")]))["attachments"][0]
+        self.assertEqual(a["status"], "ingested", a.get("why"))
+    def test_pdf_preview_is_never_taken_for_the_paper(self):
+        self.file_text = PDF
+        a = self.read(message([self.pdf_part(download=True)]))["attachments"][0]
+        self.assertEqual(a["status"], "ingested", a.get("why"))
+        self.assertNotIn("INCOMPLETE PREVIEW", a["text"])
+        self.assertEqual(len(self.files), 1)
+    def test_pdf_that_is_not_a_pdf_says_so(self):
+        a = self.read(message([self.pdf_part(data=b"just text pretending")]))["attachments"][0]
+        self.assertEqual(a["status"], "not_read"); self.assertIn("not one", a["why"])
+    def test_pdf_with_no_text_says_so(self):
+        orig = E._pdf_reader
+        E._pdf_reader = lambda: (lambda data: "")
+        try:
+            a = self.read(message([self.pdf_part()]))["attachments"][0]
+        finally:
+            E._pdf_reader = orig
+        self.assertEqual(a["status"], "not_read"); self.assertIn("no readable text", a["why"])
+    def test_pdf_has_its_own_size_allowance(self):
+        self.assertGreater(E.ATTACHMENT_PDF_BYTES, E.ATTACHMENT_BYTES)
+        big = PDF + b"%" + b"x" * (E.ATTACHMENT_BYTES + 10)   # past the text limit, inside the PDF one
+        a = self.read(message([self.pdf_part(data=big)]))["attachments"][0]
+        self.assertEqual(a["status"], "ingested", a.get("why"))
+        huge = self.pdf_part(download=True); huge["body"]["size"] = E.ATTACHMENT_PDF_BYTES + 1
+        self.assertEqual(self.read(message([huge]))["attachments"][0]["status"], "not_read")
+    def test_linked_pdf_reaches_the_reader(self):
+        # Every PDF link came back "a PDF, and no PDF reader was given": only the Scholar passed a reader in.
+        got = []
+        fake = types.SimpleNamespace(
+            links_in=lambda body: [{"original": "https://consc.net/papers/llmtalk.pdf", "url": "https://consc.net/papers/llmtalk.pdf"}],
+            fetch=lambda url, **kw: got.append(kw) or {"fetched": True, "kind": "pdf", "text": "Chalmers, in full",
+                                                      "final_url": url})
+        orig_lf, orig_lr = E._link_fetch, E.links_read
+        E._link_fetch = lambda: fake
+        E.links_read = ORIGINAL_LINKS_READ
+        try:
+            pages = E.links_read("see https://consc.net/papers/llmtalk.pdf")
+        finally:
+            E._link_fetch, E.links_read = orig_lf, orig_lr
+        self.assertIs(got[0].get("pdf"), S.pdf_text)
+        self.assertEqual(pages[0]["text"], "Chalmers, in full")
+    def test_pdf_from_a_stranger_is_still_not_read(self):
+        m = self.read(message([self.pdf_part()], sender="Someone <stranger@example.org>"))
+        self.assertEqual(m["attachments"][0]["status"], "not_read")
     def test_gateway_failure(self):
         def failed(tool, *args):
             if tool == "gmail.get_profile": return {"email_address": "vintos@example.org"}

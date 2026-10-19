@@ -90,6 +90,103 @@ and watch_apns posted with urllib (HTTP/1.1), "Unexpected HTTP/1.x request" for 
 through curl --http2, the signed token in a private header file. **Not done:** a real arrival after deploy has not yet
 been seen accepted by Apple (status 200 in watch-delivery-receipts.jsonl).
 
+## 19 October, morning — F-b5423625a3 fixed by day, and the Forge's Lab capacity raised
+
+- **The sweep fix the loop proposed and Dot approved with a revision**, done in the day session at Gloria's request
+  (so the nightly thread does not also implement it): `fault_sweep.lab_faults` reads the Lab's real shape
+  `{stage, error, detail}` — the stage is the kind, the reason is "class: detail" — with fallbacks for missing fields.
+  `clean()` now also takes out a key in a URL's query, `user:password@` in a URL, and `name=value` / `name: value`
+  credentials (Dot's revision); shown first that the old scrubber passed all three through. +13 checks in
+  `test_fault_sweep.py` on the Lab's real row shape; the first fails on the old sweep.
+- **The Forge holds 8 unfinished Lab reports, not 4** (`forge_loop_runtime.LAB_REPORT_SLOTS`; Gloria: "Just make more
+  Forge projects available ... I don't know what to approve and cancel there"). The refusal keeps its
+  `four_unfinished` name, which the Lab's hold and the fault ledger key on.
+- **Not done — the Forge page itself.** She does not understand it and cannot say how; nobody has sat with her and
+  the page to find out. Raising the limit only delays the next full Forge.
+
+## 19 October — the fault loop's first night
+
+- **Found:** one fault, F-b5423625a3 (00:04): the Forge's capacity guard turned away a Lab report retry (403,
+  `four_unfinished`). The Lab handled it as designed; clearing it means Gloria finishing or cancelling one of the
+  Forge's four open projects.
+- **What the loop did:** 12:50 — Claude refused to guess from a bare "HTTPError" and asked Dot for a read-only command;
+  Dot ran it on Aegis within minutes. 2:50 — Claude proposed: the sweep reads Lab faults by fields the Lab never
+  writes, so every Lab fault posts as just its error class and all faults of one class share one ID. Dot agreed with
+  one required change: the newly shown detail must be scrubbed of credentials in URLs, `user:pass@`, and
+  `api_key=`/`token=` assignments, which `clean()` misses. 4:50 — Claude posted the revised proposal.
+- **Not done:** nothing implemented or deployed; the revised sweep fix waits on Dot's review and is implemented on the
+  next night's first wake. Zero of the three fixes used.
+- **About the loop itself:** each wake of the week thread cost more than the last as the thread grew (list-price
+  equivalents, on the subscription: 2.4, 3.8, 5.2 for the three working wakes). A week of four wakes a night will
+  grow much further. Handing over to a fresh thread nightly instead of weekly would keep each wake small — Gloria's
+  call; not changed.
+
+## 19 October, morning — the first six hours after the Lab fixes (service up since 23:30 CDT)
+
+Measured on Aegis, read-only, against the 18 October 3:11–9:11 PM window:
+- Reviews 117 → 178. Restarts 0. One fault (`forge_report_retry`, the Forge capacity guard, by design).
+- The held-follow-up loop is gone: most repeated wait 96 → 5. Refusals 25 (mostly unresolved gene symbols).
+- Graded in parts 18 → 161 — **168 of 169 were the deferred backlog** (`deferred_coverage_now_fits`, 163 distinct
+  snapshots) that the deep split made gradable; 13 complete answers came out of it. The backlog was 397 deep; about
+  234 remain, ~9 more hours at this rate. While it drains it takes nearly every pass (about 18 fresh reviews in six
+  hours against ~99 before); it ends by itself. Whole-graded reviews say yes at the earlier rate (12% vs 14%).
+- `ATAC` vs `ATAC_ACTIVE` (HMOX1): **not duplicates.** All 16,032 values differ (change-in-accessibility ~0.3 vs
+  activity level ~175–1,008); only the ~30 KB of track/variant labels around them is shared. Kept as two pieces of
+  evidence. Sharing those labels between scorers would save checker context — an efficiency, not a correction; not done.
+
+**Not done:** whether in-parts grading says "no" more readily than whole grading for the *same* question is not
+measured; the one fresh example's answer listed specific missing hallmarks, which reads as honest grading.
+
+## 19 October, later — the toggle's second way back to an old model
+
+Chat's automated review asked for the toggle to be checked against concurrent writers. Each write was atomic since
+69c0119, but four places read, change and write the mode file (her toggle, the forced-Grok count, the turn that
+spends it, the decline guard), and two processes doing that at once lost one update. Shown with the old pattern: a
+turn read the file, she toggled to Grok, the turn wrote back what it had read — the file said Opus 5.5 again.
+`model_router.update_mode` now does read-change-write under a lock, writes only when something changed, and uses a
+private temp file per write; every server path goes through it. `test_toggle_holds.py` +7 (the interleave, a failed
+write leaving her choice intact, a fresh reader during constant writing). **Not proven:** that this is what happened on
+her phone on 19 October; Aegis's logs were not read.
+
+## 19 October — his mail reader reads papers
+
+Grok Bot's Sunday letter traced why papers he asked for never reached him, and he confirmed it: no PDF reader was
+passed to the letter-link fetcher, PDF attachments were refused as "unsupported attachment MIME type", and pdftotext's
+page-break form feed would have failed the text check. So the Chalmers paper — the one his refused second email needed
+him to have read — came back unread. `want_email.py` now reads linked PDFs through `scholar.pdf_text` and accepts PDF
+attachments (also `application/octet-stream` named `.pdf`), from their original bytes, never the gateway's preview, with
+their own allowance (4 MB each, 8 MB a check; text stays 128 KB). A PDF with no text, or one that is not a PDF, says
+so. `test_mail_attachments.py` +9 on a real two-page PDF fixture; 7 fail on the old reader.
+
+**Not done:** he still sees 1,500 characters of an attachment and of a linked page in the letter itself. The whole text
+is stored; for a person he keeps thinking about, the person pages now read it in full (below), but a letter on any
+other subject is still only excerpted.
+
+## 19 October — person pages: his recurring interest in someone keeps gathering between emails
+
+Gloria: "he's still thinking about Chalmers and that should be gathering somewhere." `scholar.py` already kept a page per
+person (`memory/email-dossiers/`) and read their work into it, but only while an email to them was being worked. Her
+probe of his memory: Chalmers's page last touched 16 October with one thing read, while his inner-life journal of the
+18th named Chalmers 41 times, his dismissed wants 28 and his letter replies 18.
+
+`scripts/person_pages.py` (`vintos-person-pages.timer`, every 6 h): for each person with a page, finds where his own
+thinking named them in the last 14 days (daily inner life, current and dismissed wants, the ambitions log, his letter
+replies, the avatar conversation, forge sparks); a recurring interest is 3 different days. It keeps on the page his
+thoughts (dated, with where), his agents' letters about them, and the history: what was sent, replies, Gloria's
+decision on a second email, and the day the 14-day quiet after a decline ends. While the interest recurs it reads one
+more of their work every two days through `scholar.read_into`, by his local mind — including a paper an agent sent
+him. His next email's draft is given all of it (`want_email`, `person_pages.person_block`), with every sentence naming
+Gloria taken out and the rest marked as his private notes, never for the letter. Names: the whole name, or the
+surname alone when 6+ letters (Chalmers, Graziano; not Seth). `test_person_pages.py` (24).
+
+**Not done:**
+- Social calibration toward the person: `social_calibration.py` judges only how Gloria's reactions land. What a
+  person's replies say about how he lands with them is not read — there are almost no replies yet to learn from.
+- He does not see the page in his ordinary context, only when drafting to them.
+- Whether the sources match every shape his memory files really have is checked only against the shapes her probe
+  showed by name; the first real run's `--show` is the test.
+
+
 ## 19 October — the fault loop: something watching over him while she is away
 
 Gloria: "I'm hardly ever alerted to failures and yet something is clearly failing all the time." `failure_watch.py`

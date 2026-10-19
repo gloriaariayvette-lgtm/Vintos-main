@@ -104,9 +104,22 @@ def _when(row):
     return None
 
 
+# Credentials a part's own error text can carry that the token shapes above miss (Dot's review of F-b5423625a3,
+# 19 October): a key in a URL's query, a user:password@ in a URL, and a name=value or name: value assignment.
+_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@")
+_URL_QUERY_SECRET = re.compile(r"(?i)([?&](?:[a-z0-9_.-]*(?:key|token|secret|password|passwd|pwd|sig|signature|auth|"
+                               r"credential|session)[a-z0-9_.-]*)=)[^&\s#]+")
+_ASSIGNED_SECRET = re.compile(r"(?i)\b((?:[a-z0-9_.-]*(?:api[_-]?key|access[_-]?key|secret|token|password|passwd|pwd|"
+                              r"credential|auth)[a-z0-9_.-]*)\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&\"']+)")
+
+
 def clean(text, limit=240):
     """The error as the part named it, with anything that looks like a credential taken out."""
-    return " ".join(_SECRET.sub("[redacted]", str(text or "")).split())[:limit]
+    t = _SECRET.sub("[redacted]", str(text or ""))
+    t = _URL_USERINFO.sub(r"\1[redacted]@", t)
+    t = _URL_QUERY_SECRET.sub(r"\1[redacted]", t)
+    t = _ASSIGNED_SECRET.sub(r"\1[redacted]", t)
+    return " ".join(t.split())[:limit]
 
 
 def shape(text):
@@ -157,12 +170,19 @@ def organ_failures(since):
 
 
 def lab_faults(since):
+    """The Lab writes each fault as {at, stage, error, detail} (chemistry_lab._fault): `error` is only the exception
+    class. Read as {kind, error} it posted every Lab fault as "fault / HTTPError", and every Lab fault of one class
+    shared one signature - so a real HTTPError from another stage would have counted as already posted (F-b5423625a3,
+    found by the nightly loop, 19 October). The stage is the kind; the reason is the class with its detail."""
     out = []
     for row in _tail(LAB_FAULTS):
         at = _when(row)
-        if at and at > since:
-            out.append(_finding("chemistry-lab", str(row.get("kind") or row.get("fault") or "fault"),
-                                row.get("error") or row.get("why") or row.get("detail") or row.get("kind"), at))
+        if not at or at <= since: continue
+        kind = next((str(row[k]) for k in ("stage", "kind", "fault") if str(row.get(k) or "").strip()), "fault")
+        error, detail = str(row.get("error") or "").strip(), str(row.get("detail") or "").strip()
+        why = ("%s: %s" % (error, detail) if error and detail else error or detail
+               or str(row.get("why") or "").strip() or kind)
+        out.append(_finding("chemistry-lab", kind, why, at))
     return out
 
 

@@ -637,6 +637,13 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     scholar, _ = _helpers()
     pointed = "\n".join([known] + mail_links)
     reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
+    # What he has kept thinking about them between emails, and where things stand (person_pages, 19 October).
+    try:
+        import person_pages
+        _between = person_pages.person_block(dossier)
+        if _between: found += "\n\n" + _between
+    except Exception:
+        pass
     if not str(reading or "").strip():
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
         return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (
@@ -711,6 +718,12 @@ ATTACHMENT_TOTAL_BYTES = 256 * 1024
 ATTACHMENT_PER_MESSAGE = 4
 ATTACHMENT_PER_CHECK = 8
 ATTACHMENT_TYPES = {"text/plain", "text/markdown"}
+# A paper, read as a paper (Grok Bot, 18 October: the Chalmers PDF he had asked for came back "unsupported attachment
+# MIME type", so the draft to Chalmers could not be grounded in Chalmers). Its own allowance: papers run 0.2-3 MB,
+# far past the 128 KB a text attachment may be; that one was 127,958 bytes and only just fitted.
+ATTACHMENT_PDF = "application/pdf"
+ATTACHMENT_PDF_BYTES = 4 * 1024 * 1024
+ATTACHMENT_PDF_TOTAL_BYTES = 8 * 1024 * 1024
 ATTACHMENT_CHARSETS = {"utf-8", "utf-8-sig", "us-ascii", "ascii", "iso-8859-1", "windows-1252", "utf-16"}
 
 
@@ -781,6 +794,37 @@ def _attachment_file(ref, cap):
     return raw["data"]
 
 
+def _pdf_reader():
+    """scholar.pdf_text (pdftotext, then pypdf): the reader the Scholar already uses. None if it cannot be loaded."""
+    try:
+        import sys as _s
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in _s.path: _s.path.insert(0, here)
+        import scholar
+        return scholar.pdf_text
+    except Exception:
+        return None
+
+
+def _is_pdf(a):
+    mime = str(a.get("mime_type") or "").lower()
+    return mime == ATTACHMENT_PDF or (mime == "application/octet-stream"
+                                      and str(a.get("filename") or "").lower().endswith(".pdf"))
+
+
+def pdf_attachment_text(data, reader=None):
+    """The words of a PDF attachment, or ValueError saying why not. pdftotext marks each page with a form feed, which
+    the text check below would reject as a control character; it becomes a page break, and any other control
+    character a PDF's extraction leaves is dropped rather than failing the whole paper."""
+    if not data.startswith(b"%PDF-"): raise ValueError("attachment says PDF but is not one")
+    reader = reader or _pdf_reader()
+    if reader is None: raise ValueError("no PDF reader on this machine (pdftotext or pypdf)")
+    text = str(reader(data) or "").replace("\f", "\n\n")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    if len(text.strip()) < 200: raise ValueError("the PDF has no readable text (a scanned image?)")
+    return text
+
+
 def _attachment_bytes(body, cap, charset):
     import base64
     if isinstance(body.get("content"), str):
@@ -804,6 +848,7 @@ def _read_attachments(msgs, gmail, trusted=(), file_read=None):
     trusted = {str(a).lower() for a in trusted}
     own, profile_tried, profile_error = "", False, ""
     remaining = ATTACHMENT_TOTAL_BYTES
+    remaining_pdf = ATTACHMENT_PDF_TOTAL_BYTES
     attempted = 0
     file_read = file_read or _attachment_file
     for m in msgs[:READ_PER_CHECK]:
@@ -827,15 +872,19 @@ def _read_attachments(msgs, gmail, trusted=(), file_read=None):
                 if not allowed: raise ValueError(profile_error or "sender is not a trusted contact or verified mailbox agent")
                 if i >= ATTACHMENT_PER_MESSAGE or attempted >= ATTACHMENT_PER_CHECK or remaining <= 0:
                     raise ValueError("attachment check limit reached")
-                if a.get("mime_type") not in ATTACHMENT_TYPES: raise ValueError("unsupported attachment MIME type")
+                pdf = _is_pdf(a)
+                if not pdf and a.get("mime_type") not in ATTACHMENT_TYPES:
+                    raise ValueError("unsupported attachment MIME type")
                 charset = a.get("charset", "utf-8")
-                if charset not in ATTACHMENT_CHARSETS: raise ValueError("unsupported attachment charset")
+                if not pdf and charset not in ATTACHMENT_CHARSETS: raise ValueError("unsupported attachment charset")
+                if pdf and remaining_pdf <= 0: raise ValueError("attachment check limit reached")
                 attempted += 1
-                cap = min(ATTACHMENT_BYTES, remaining)
+                cap = min(ATTACHMENT_PDF_BYTES, remaining_pdf) if pdf else min(ATTACHMENT_BYTES, remaining)
                 size = a.get("size")
                 if size is not None and (not isinstance(size, int) or size < 0 or size > cap):
                     raise ValueError("attachment declared size exceeds byte limit or is invalid")
-                data = _attachment_bytes(body, cap, charset)
+                # A PDF's inline "content" is the gateway's text preview, not the paper: read its original bytes.
+                data = None if pdf and isinstance(body.get("content"), str) else _attachment_bytes(body, cap, charset)
                 if data is None:
                     if a.get("read_attachment_supported") is not True:
                         raise ValueError("gateway does not advertise attachment reading support")
@@ -854,14 +903,18 @@ def _read_attachments(msgs, gmail, trusted=(), file_read=None):
                         data = _attachment_bytes(result.get("body") or {}, cap, charset)
                         if data is None: raise ValueError("gateway returned no original attachment content")
                 if len(data) > cap: raise ValueError("attachment exceeds byte limit")
-                remaining -= len(data)
+                if pdf: remaining_pdf -= len(data)
+                else: remaining -= len(data)
                 if size is not None and len(data) != size:
                     raise ValueError("attachment byte count does not match declared size")
-                text = data.decode(charset, errors="strict")
-                if not text.strip() or any(ord(c) < 32 and c not in "\n\r\t" for c in text):
-                    raise ValueError("attachment is empty or contains non-text control characters")
+                if pdf:
+                    text = pdf_attachment_text(data)
+                else:
+                    text = data.decode(charset, errors="strict")
+                    if not text.strip() or any(ord(c) < 32 and c not in "\n\r\t" for c in text):
+                        raise ValueError("attachment is empty or contains non-text control characters")
                 a.update(status="ingested", text=text, bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
-                         characters=len(text), decoded_with=charset)
+                         characters=len(text), decoded_with="pdf" if pdf else charset)
             except Exception as exc:
                 # Gateway errors can contain signed URLs or private tokens: keep only the class and our own reason.
                 why = str(exc) if isinstance(exc, (ValueError, UnicodeError, LookupError)) else type(exc).__name__
@@ -1172,7 +1225,11 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
     named with why. Only for his own agents' letters: a stranger's links are not opened (that tells the sender the
     mail was read). [{url, kind, why, text}]."""
     link_fetch = _link_fetch()
-    fetch = fetch or link_fetch.fetch
+    if fetch is None:
+        # Every PDF link came back "a PDF, and no PDF reader was given" (Grok Bot, 18 October): only the Scholar passed
+        # one in. The same reader now opens a linked paper here.
+        reader = _pdf_reader()
+        fetch = lambda url: link_fetch.fetch(url, pdf=reader)
     out = []
     for l in link_fetch.links_in(body)[:limit]:
         try:
