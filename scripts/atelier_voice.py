@@ -26,7 +26,7 @@ def ask(system, user, max_tokens=2000, images=None):
     # silently made Astra the room's permanent voice and spent two provider
     # attempts per decision. Follow the same explicit Claude mode as Vintos's
     # other authored surfaces; Astra remains a real failure path.
-    primary = model_router.current_claude_model()
+    primary = model_router.location_model("atelier")   # its own place, not the chat toggle (2026-10-20)
     try:
         text, _ = asyncio.run(model_router.claude_draft(
             system, convo, max_tokens=max(128, int(max_tokens)), model=primary))

@@ -96,7 +96,7 @@ class GapScan(unittest.TestCase):
         src = open(os.path.join(ROOT, "scripts", "gap_review.py")).read()
         self.assertIn('location_model("gap_review")', src)
         router = open(os.path.join(ROOT, "bin", "model_router.py")).read()
-        self.assertIn('"gap_review": "claude-opus-4-8"', router)
+        self.assertIn('"gap_review": "claude-opus-5-5"', router)
 
 
 if __name__ == "__main__":

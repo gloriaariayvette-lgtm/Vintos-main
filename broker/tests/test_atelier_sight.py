@@ -66,7 +66,7 @@ check("the visit's first message carries it, and every visit starts with none",
 SEEN = []
 async def claude_draft(system, convo, max_tokens=1500, model=None):
     SEEN.append(convo); return "I see it.", {}
-sys.modules["model_router"] = types.SimpleNamespace(current_claude_model=lambda: "claude-opus-4-8", claude_draft=claude_draft)
+sys.modules["model_router"] = types.SimpleNamespace(current_claude_model=lambda: "claude-opus-4-8", location_model=lambda place: "claude-opus-5-5", claude_draft=claude_draft)
 import atelier_voice
 said = atelier_voice.ask("S", "look", images=[("image/png", "QUJD")])
 check("his voice puts the picture beside his words", said == "I see it." and SEEN[-1][0]["content"] ==

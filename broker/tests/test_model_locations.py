@@ -31,8 +31,9 @@ class ModelLocations(unittest.TestCase):
     def test_chat_toggle_moves_only_the_chat(self):
         for mode in ("claude", "opus55", "sonnet", "fable", "grok"):
             self.toggle(mode)
-            for place in ("atelier", "self_review", "humor", "lab"):
-                self.assertEqual(self.mr.location_model(place), "claude-opus-4-8", (mode, place))
+            for place in ("atelier", "self_review", "humor", "lab", "gap_review", "pleasure"):
+                # every place but the chat is Opus 5.5 (Gloria, 2026-10-20), whatever the chat toggle says
+                self.assertEqual(self.mr.location_model(place), "claude-opus-5-5", (mode, place))
         self.toggle("opus55"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-5-5")
         self.toggle("fable"); self.assertEqual(self.mr.current_claude_model(), "claude-fable-5-1")
         self.toggle("claude"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-4-8")
@@ -44,7 +45,7 @@ class ModelLocations(unittest.TestCase):
     def test_one_place_can_be_set_without_moving_another(self):
         json.dump({"atelier": "claude-fable-5-1"}, open(self.mr._LOCATIONS_FILE, "w"))
         self.assertEqual(self.mr.location_model("atelier"), "claude-fable-5-1")
-        self.assertEqual(self.mr.location_model("lab"), "claude-opus-4-8")
+        self.assertEqual(self.mr.location_model("lab"), "claude-opus-5-5")
 
     def test_non_chat_places_ask_for_their_location(self):
         for rel, place in (("scripts/atelier-visit.py", "atelier"), ("scripts/atelier-gate.py", "atelier"),

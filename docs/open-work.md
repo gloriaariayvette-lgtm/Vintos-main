@@ -4327,3 +4327,15 @@ server's two photo readings. Sonnet 5.5 refuses thinking "disabled": the shim an
 `test_no_thinking.py` checks the direct calls. **Not done:** not called live from here (no key in the container);
 Slack's Sonnet 5.5 calls already work with "between_tools", which is the evidence. The first day's console will show
 whether any direct call is refused (a 400 would also land in the fault sweep).
+
+## 20 October — Opus 4.8 only in the chat
+
+Gloria: "switch them all to Opus 5.5, just don't replace Opus 4.8 in chat." Now Opus 5.5: the Atelier (visit, knock,
+threshold, opening, and its voice, which had followed the chat toggle), the Lab's Claude lens, humor practice,
+self-review, the weekly gap review, naming what he felt (pleasure; it followed the chat toggle), his idle journal,
+his video messages. The chat toggle's "claude" stays Opus 4.8. Opus 5.5 cannot be told not to think: the journal no
+longer sends "disabled" (effort low, 6000 tokens of room) and the relay now gives any always-thinking model the same
+room the router does. `test_no_thinking.py` (+3).
+
+**Next, with Gloria:** what can step down — Opus to Sonnet 5.5, Sonnet to Haiku 5.5 ("better than Luna"). Target:
+under $200 a month.

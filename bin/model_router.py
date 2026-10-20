@@ -74,11 +74,14 @@ def current_claude_model():
     return CLAUDE_MODELS.get(current_mode(), CLAUDE_MODEL)
 # Each place he acts has its own model (Gloria, 2026-09-24). Flipping the chat toggle used to change
 # his model everywhere at once; now it changes only the chat. A place not listed follows the chat toggle.
-LOCATION_MODELS = {"atelier": "claude-opus-4-8",       # visit, knock, threshold, opening
-                   "self_review": "claude-opus-4-8",
-                   "humor": "claude-opus-4-8",
-                   "lab": "claude-opus-4-8",           # the Lab's Claude planning/reading lens
-                   "gap_review": "claude-opus-4-8"}    # the weekly review of where he hits walls
+# Every place but the chat is Opus 5.5 (Gloria, 2026-10-20: "switch them all to Opus 5.5, just don't replace Opus 4.8
+# in chat"). The chat toggle keeps its own choice.
+LOCATION_MODELS = {"atelier": "claude-opus-5-5",       # visit, knock, threshold, opening, and the Atelier's voice
+                   "self_review": "claude-opus-5-5",
+                   "humor": "claude-opus-5-5",
+                   "lab": "claude-opus-5-5",           # the Lab's Claude planning/reading lens
+                   "gap_review": "claude-opus-5-5",    # the weekly review of where he hits walls
+                   "pleasure": "claude-opus-5-5"}      # naming what he felt; it followed the chat toggle until now
 _LOCATIONS_FILE = os.path.join(_HOME, ".vintos", "model-locations.json")
 def location_model(location):
     """This place's model: an override in ~/.vintos/model-locations.json, else its default, else the chat toggle."""

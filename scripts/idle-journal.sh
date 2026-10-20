@@ -676,10 +676,12 @@ What I haven't said yet matters more than what I've already named. I go there.""
             try: _k = open(_o.path.expanduser("~/.vintos/anthropic-key")).read().strip()
             except Exception: _k = ''
         if not _k: return None, ''
-        _body = {"model": "claude-opus-4-8", "max_tokens": max_tokens,
+        # Opus 5.5 (2026-10-20) cannot be told not to think: asked for the least, with room so it never eats the entry
+        _body = {"model": "claude-opus-5-5", "max_tokens": max_tokens + 6000,
                  "system": [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
-                 "messages": [{"role": "user", "content": user_text}],
-                 "thinking": ({"type": "adaptive", "display": "summarized"} if reasoning else {"type": "disabled"})}
+                 "messages": [{"role": "user", "content": user_text}]}
+        if reasoning: _body["thinking"] = {"type": "adaptive", "display": "summarized"}
+        else: _body["output_config"] = {"effort": "low"}
         _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                          headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
         try: _d = _j.loads(_u.urlopen(_rq, timeout=180).read())

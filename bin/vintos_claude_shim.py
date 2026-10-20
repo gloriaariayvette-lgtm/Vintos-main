@@ -199,7 +199,9 @@ def claude_complete(j, call=None, model=None):
     # mechanical calls (verdicts, judges, tiny reflections) ride Haiku - same answers, ~5x cheaper
     if _mt <= 120:
         _mdl = "claude-haiku-5-5"
-    body = {"model": _mdl, "max_tokens": _mt, "messages": conv}
+    # A model that cannot be told not to think (Opus 5.5) is given room for it on top, as the router does, so its
+    # thinking never eats the answer (his video messages moved to Opus 5.5, 2026-10-20). Only tokens used are billed.
+    body = {"model": _mdl, "max_tokens": _mt + (0 if GR.thinking_off(_mdl) else 6000), "messages": conv}
     GR.least_thinking(body)
     # tools / stop pass-through. NOT temperature or top_p: Anthropic's current
     # models reject them ("temperature is deprecated for this model") — review 42
