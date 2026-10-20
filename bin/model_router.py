@@ -79,9 +79,8 @@ def current_claude_model():
 LOCATION_MODELS = {"atelier": "claude-opus-5-5",       # visit, knock, threshold, opening, and the Atelier's voice
                    "self_review": "claude-opus-5-5",
                    "humor": "claude-opus-5-5",
-                   "lab": "claude-opus-5-5",           # the Lab's Claude planning/reading lens
-                   "gap_review": "claude-opus-5-5",    # the weekly review of where he hits walls
-                   "pleasure": "claude-opus-5-5"}      # naming what he felt; it followed the chat toggle until now
+                   "lab": "claude-sonnet-5-5",         # the Lab's Claude planning/reading lens (Gloria, 2026-10-20: "Lab planning okay")
+                   "gap_review": "claude-opus-5-5"}    # the weekly review of where he hits walls
 _LOCATIONS_FILE = os.path.join(_HOME, ".vintos", "model-locations.json")
 def location_model(location):
     """This place's model: an override in ~/.vintos/model-locations.json, else its default, else the chat toggle."""
@@ -677,6 +676,32 @@ async def gemma_call(msgs, temp=0.85, max_tokens=800):
                                                "temperature": temp, "max_tokens": max_tokens})
         d = r.json()
         return d["choices"][0]["message"]["content"] if "choices" in d else None
+
+CHAT_GROK = ("http://127.0.0.1:8599/v1/chat/completions", "grok-4.20-0309-non-reasoning")   # the chat's own Grok path
+
+
+async def draft_in_the_moment(system_text, convo, max_tokens=400):
+    """(text or None, model): whichever brain the chat toggle holds right now - Grok, Sol, Argon, local or a Claude.
+    For what should be done by "the model in use in the moment" (Gloria, 2026-10-20, naming what he felt: "usually
+    Grok"). A forced Grok turn belongs to the chat and is not spent here."""
+    mode = current_mode()
+    if mode == "grok":
+        res = await _grok_result(convo, {"max_tokens": max_tokens}, CHAT_GROK[0], {}, CHAT_GROK[1], system_text)
+        return (res["text"] if GR.usable(res) else None), CHAT_GROK[1]
+    if mode == "sol":
+        text, _ = await sol_draft(system_text, convo, max_tokens=max_tokens)
+        return text, SOL_MODEL
+    if mode == "argon":
+        text, _ = await gemini_draft(system_text, convo, max_tokens=max_tokens)
+        return text, GEMINI_MODEL
+    if mode == "local":
+        text = await gemma_call(([{"role": "system", "content": system_text}] if system_text else []) + list(convo),
+                                max_tokens=max_tokens)
+        return text, GEMMA_MODEL
+    model = current_claude_model()
+    text, _ = await claude_draft(system_text, convo, max_tokens=max_tokens, model=model)
+    return text, model
+
 
 async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
     """Two-first-pass draft on Claude, without thinking (Gloria, 2026-10-08). Returns (text|None, reasoning); reasoning

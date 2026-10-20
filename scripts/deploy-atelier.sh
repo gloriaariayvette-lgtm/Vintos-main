@@ -648,6 +648,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     [ -f "$BEDROOM_UNIT_SRC" ] && say "  would install + restart (user)   $BEDROOM_UNIT_NAME -> $BEDROOM_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    say "  would restart (user)             vintos-claude-shim (the relay), then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
     say "  would install + restart (user)   $PLUGIN_GATEWAY_UNIT_NAME -> $PLUGIN_GATEWAY_UNIT_DST, loopback only"
     say "  would install + enable (user)    $CHEM_SESSION_NAME.timer -> $CHEM_SESSION_TIMER_DST"
@@ -999,6 +1000,22 @@ if systemctl --user enable "$REVIEW_UNIT_NAME" >/dev/null 2>&1 \
     confirm_unit --user "$REVIEW_UNIT_NAME"
 else
     flag "$REVIEW_UNIT_NAME installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
+fi
+say
+
+# The relay (vintos_claude_shim.py, port 8599) is a long-running process: the deploy copied its file and never
+# restarted it, so its fixes never ran. On 20 October it still lacked the 18 October line that names who each call
+# billed. It is restarted here, only if its unit exists, and confirmed like every other unit.
+say "== the relay (vintos-claude-shim) =="
+if systemctl --user cat vintos-claude-shim.service >/dev/null 2>&1; then
+    if systemctl --user restart vintos-claude-shim.service >/dev/null 2>&1; then
+        sleep 1
+        confirm_unit --user vintos-claude-shim
+    else
+        flag "vintos-claude-shim did not restart — run: systemctl --user restart vintos-claude-shim"
+    fi
+else
+    say "  no vintos-claude-shim unit here; nothing to restart"
 fi
 say
 

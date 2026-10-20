@@ -3,7 +3,7 @@
 
 A want for computer use reached the Forge as an ability he lacks, when he already has desktop-control code
 that fails. The Forge would have built a second hand and hidden the fault. So every Forge request first goes
-to the Study, the room where he reads his own code: Opus 5.5 orchestrates (Astra if Opus is unavailable),
+to the Study, the room where he reads his own code: Sonnet 5.5 orchestrates (Astra if it is unavailable),
 Grok is the subagent that searches and reads, and the Study's own permission boundary decides what may be
 read. The question is always the same two things: does he already have this, and if so, where does it fail?
 
@@ -27,7 +27,7 @@ STUDIES = os.path.join(MEMORY, "forge-study")
 LEDGER = os.path.join(STUDIES, "ledger.json")
 NTFY = os.environ.get("VINTOS_NTFY_URL", "https://ntfy.sh/vintos-gloria-9kx")
 # Gloria, 2026-10-19: "I'd rather use Opus 5.5 in the Study instead of Fable regardless."
-STUDY_MODEL = os.environ.get("VINTOS_STUDY_MODEL", "claude-opus-5-5")
+STUDY_MODEL = os.environ.get("VINTOS_STUDY_MODEL", "claude-sonnet-5-5")   # Sonnet 5.5 for the Forge's investigations (Gloria, 2026-10-20)
 GROK = os.environ.get("VINTOS_STUDY_GROK", "grok-4.6")
 STUDIES_PER_DAY = 4
 ROUNDS = 3
@@ -72,7 +72,7 @@ def _key(env, *files):
     return k
 
 
-def _opus(system, user):
+def _claude(system, user):
     """Through claude_cache, so the cache points _round_prompt set are sent and every call's cache use is
     written to memory/anthropic-usage.jsonl (caller forge-study). Fable was called here with no caching at
     all: each round re-sent the same instructions, brief and earlier reports at full price (2026-10-13)."""
@@ -100,15 +100,15 @@ def _astra(system, user):
 
 
 def orchestrate(system, user):
-    """Opus 5.5, and Astra when Opus cannot answer."""
+    """Sonnet 5.5 (STUDY_MODEL), and Astra when it cannot answer."""
     try:
-        return _opus(system, user), "opus"
+        return _claude(system, user), STUDY_MODEL
     except Exception as exc:
         first = exc
     try:
         return _astra(system, user), "astra"
     except Exception as exc:
-        raise RuntimeError("no orchestrator: opus %s; astra %s" % (str(first)[:120], str(exc)[:120]))
+        raise RuntimeError("no orchestrator: %s %s; astra %s" % (STUDY_MODEL, str(first)[:120], str(exc)[:120]))
 
 
 def subagent(system, user):

@@ -4339,3 +4339,21 @@ room the router does. `test_no_thinking.py` (+3).
 
 **Next, with Gloria:** what can step down — Opus to Sonnet 5.5, Sonnet to Haiku 5.5 ("better than Luna"). Target:
 under $200 a month.
+
+## 20 October — the relay was never restarted by a deploy
+
+`deploy-atelier.sh` copied `vintos_claude_shim.py` (port 8599) and never restarted it: Gloria's usage probe found no
+`sys_head` on any relay row though the 18 October commit added it. Every relay fix since its last manual restart had
+not run. The deploy now restarts `vintos-claude-shim` (if its unit exists) and confirms it like every other unit.
+
+## 20 October — stepping down, as Gloria chose
+
+- The Forge's Study investigations: Opus 5.5 → **Sonnet 5.5**. Study fixes stay Opus 5.5 (she said no).
+- The Lab's Claude planning/reading lens: Opus 5.5 → **Sonnet 5.5**. The daily alignment stays Opus 5.5.
+- Spark hands (one yes/no a day or two): Sonnet 5.5 → **Haiku 5.5**.
+- Naming what he felt: by **the model in use in the moment** (`model_router.draft_in_the_moment`: Grok, Sol, Argon,
+  local or the chat's Claude, whatever the toggle holds; usually Grok). Before 20 October it was always a Claude
+  model, Opus 4.8 even with the toggle on Grok. A forced Grok turn is the chat's and is not spent by it.
+- Left as they are, not answered yet: Slack kickoffs, idle journal, humor (Opus 5.5 → Sonnet 5.5 proposed); his eyes
+  (photo readings, Sonnet → Haiku proposed). The robot voice (the Pi body, `robot_core.py`) stays Sonnet 5.5: it
+  costs only when she speaks through the robot.
