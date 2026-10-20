@@ -82,7 +82,8 @@ def _is_chokepoint(path):
 EXPLICIT_DOCS = re.compile(r"\.md$", re.I)
 TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
 TAG_RE = re.compile(r"\[[A-Z_]+(?::[^\]]*)?\]")
-MODELS = ("claude", "fable", "grok", "sol")
+MODELS = ("claude", "opus55", "grok", "sol")
+LEGACY = {"fable": "opus55"}     # Gloria, 2026-10-20: "No Fable, Opus 5.5." A saved "fable" reads as Opus 5.5.
 
 READ_RE = re.compile(r"^\s*READ:\s*(\S+?)(?::(\d+))?\s*$", re.M)   # READ: scripts/x.py  or  READ: scripts/x.py:400 (continue from line 400)
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
@@ -705,10 +706,11 @@ def system_prompt():
 # ── model, with the room's OWN toggle ────────────────────────────────────────
 def read_study_mode():
     try:
-        m = json.load(open(MODE_FILE)).get("mode", "fable")
+        m = json.load(open(MODE_FILE)).get("mode", "opus55")
     except Exception:
-        m = "fable"
-    return m if m in MODELS else "fable"
+        m = "opus55"
+    m = LEGACY.get(m, m)
+    return m if m in MODELS else "opus55"
 
 
 def write_study_mode(mode):
@@ -730,7 +732,7 @@ async def ask(system, convo, endpoint, headers, grok_model):
         except Exception as e:
             return "(sol unavailable: %s)" % str(e)[:120], "sol"
     model = {"claude": _mr.CLAUDE_MODELS.get("claude", "claude-opus-4-8"),
-             "fable": "claude-fable-5-1"}.get(mode, "claude-fable-5-1")
+             "opus55": "claude-opus-5-5"}.get(mode, "claude-opus-5-5")
     key = _mr._anthropic_key()
     if not key:
         return "(no anthropic key)", mode
@@ -806,6 +808,7 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
         _auth(request)
         body = await request.json()
         want = str(body.get("mode", "")).lower()
+        want = LEGACY.get(want, want)
         if want not in MODELS:
             raise HTTPException(status_code=400, detail="mode must be one of %s" % ", ".join(MODELS))
         write_study_mode(want)

@@ -53,7 +53,7 @@ def _astra():
     return astra_call.call
 
 
-FABLE_MODEL = "claude-fable-5-1"    # Gloria, 11 September: Fable 5.1 reviews the forged skill
+FABLE_MODEL = "claude-opus-5-5"     # the review of a forged skill; Fable 5.1 until Gloria, 2026-10-20: "No Fable, Opus 5.5."
 
 
 def _anthropic_key():
@@ -68,14 +68,16 @@ def _anthropic_key():
 
 
 def _fable(system, messages, max_tokens=1500, timeout=120):
-    """Fable 5.1 (claude-fable-5-1) through his Anthropic key. Returns text or raises.
-    Not Sonnet: she named Fable as the reviewer, so this calls Fable and nothing else."""
+    """The reviewer (FABLE_MODEL, Opus 5.5 since 20 October) through his Anthropic key. Returns text or raises.
+    Not Sonnet: she named the reviewer, so this calls that model and nothing else."""
     import urllib.request
     key = _anthropic_key()
     if not key:
         raise RuntimeError("no Anthropic key for Fable (ANTHROPIC_API_KEY or auth-profiles.json)")
     body = json.dumps({"model": FABLE_MODEL, "max_tokens": int(max_tokens),
                        "system": str(system or ""),
+                       # Opus 5.5 always thinks and cannot be told not to; asked for the least, as claude_cache does
+                       "output_config": {"effort": "low"},
                        "messages": [dict(m) for m in (messages or [])]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
                                  headers={"x-api-key": key, "anthropic-version": "2023-06-01",

@@ -4518,7 +4518,7 @@ function _avDrawerInit(){
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _avDrawerInit);
 else _avDrawerInit();
 // ── STUDY tab: he reads and edits his own code, with Gloria's y/n. Own toggle, own log. ──
-const STUDY_MODES=['claude','fable','grok','sol'];
+const STUDY_MODES=['claude','opus55','grok','sol'];
 function studyFit(){
   const f=document.getElementById('study-frame'); if(!f) return;
   const top=f.getBoundingClientRect().top; f.style.height=Math.max(260, window.innerHeight-top-8)+'px';
@@ -4531,7 +4531,7 @@ async function studyLoad(){
     const d=await r.json(); const el=document.getElementById('study-log'); el.innerHTML='';
     document.getElementById('study-status').textContent='';
     (d.log||[]).forEach(e=>studyAppend(e.role,e.content)); el.scrollTop=el.scrollHeight;
-    document.getElementById('study-brain').textContent=d.mode||'fable';
+    document.getElementById('study-brain').textContent=d.mode||'opus55';
   }catch(e){}
 }
 function studyAppend(role,text){

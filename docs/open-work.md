@@ -4281,3 +4281,20 @@ Then the Tuya BLE integration in Home Assistant (HACS) adds the Fingerbot, and `
 `devices` in his `homeassistant-config.json` lets `vintos-home.py device coffee on` press it — no new code.
 **Not done:** the device has not arrived; nothing is flashed, paired or named; whether its entity is a switch the
 plug path can press is to be seen on the real device.
+
+## 20 October — no Fable anywhere
+
+Gloria's console: Fable $4–6 a day all month though she never picks it ("I cannot afford this"). Her probe of his logs,
+7 days: Study fixes 43 calls ≈ $23, the Forge's Study investigations 36 ≈ $2.7 (both moved to Opus 5.5 on the 19th;
+none since that deploy), the Lab alignment and wants-email ≈ $3.4. She: "No Fable, Opus 5.5."
+
+- Lab alignment: Fable's daily turn dropped (Opus 5.5 already had one): three a day.
+- Lab divergence readings: Fable's dropped; Astra, Grok, Opus 5.5.
+- His emails: drafted by Opus 5.5 (then Astra), not Fable.
+- The Forge's review of a built capability: Opus 5.5, asked for low effort (it always thinks). CLAUDE.md updated.
+- The Study chat's own toggle: `opus55` in Fable's place; a saved "fable" reads as Opus 5.5.
+- Left: the avatar toggle still offers Fable (only spent when she picks it); `bin/vintos-code-review.py --lens fable`
+  runs only by hand.
+
+**Found, not touched:** `test_heads_drift_relational.py` fails 21/24 on the unchanged code today and passed yesterday
+("random days are not called movement" 0.0299): date-dependent. Subconscious heads; not mine to change.

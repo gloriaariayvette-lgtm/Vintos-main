@@ -29,8 +29,8 @@ LOG = os.path.join(lab.ROOT, "alignment.jsonl")
 SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 # Each frontier model once a day, in this order. The same four models she approved for four paid calls.
-MODELS = (("astra", "openai", "gpt-6-astra"), ("fable", "anthropic", "claude-fable-5-1"),
-          ("grok", "xai", "grok-4.6"), ("opus", "anthropic", "claude-opus-5-5"))
+# Fable's turn is gone (Gloria, 2026-10-20: "No Fable, Opus 5.5."); Opus 5.5 already has one, so three a day.
+MODELS = (("astra", "openai", "gpt-6-astra"), ("grok", "xai", "grok-4.6"), ("opus", "anthropic", "claude-opus-5-5"))
 PER_DAY = len(MODELS)
 REVIEW_ENTRIES = 8
 LOG_ENTRIES = 8
@@ -246,7 +246,7 @@ def run(call=None, now=None):
     pick = _next_model(rows, today)
     aid = "ALIGN-" + uuid.uuid4().hex[:10]
     if pick is None:
-        return {"alignment_id": aid, "state": "held_all_four_done_today"}
+        return {"alignment_id": aid, "state": "held_all_done_today"}
     lens, provider, model = pick
     last = next((r for r in reversed(rows) if r.get("state") == "completed"), None)
     work = gemma_since((last or {}).get("at"))
