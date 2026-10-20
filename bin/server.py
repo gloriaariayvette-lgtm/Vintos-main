@@ -8142,7 +8142,15 @@ async def agents_status():
         p = json.load(open(_agents_pause_file()))
     except Exception:
         p = None
-    return {"on": not p, "paused_since": (p or {}).get("since"), "by": (p or {}).get("by")}
+    try:
+        st = json.load(open(_agents_pause_file().replace("paused.json", "resumed.json")))
+    except Exception:
+        st = {}
+    timer = {}
+    if not p and st.get("until") and float(st["until"]) > time.time():   # the day's timer, while it runs (2026-10-20)
+        timer = {"until": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(float(st["until"]))), "for": st.get("for"),
+                 "continue": bool(st.get("continue"))}
+    return {"on": not p, "paused_since": (p or {}).get("since"), "by": (p or {}).get("by"), **({"timer": timer} if timer else {})}
 
 
 # {"on": true|false} sets the day exactly as she chose (2026-10-03: a flip could land on a state the app had drawn

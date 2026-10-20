@@ -54,6 +54,8 @@ check("his first message after a continue takes his last task's next step, not a
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the app's day switch takes the same timer and continue", '_start.update(until=_start["at"] + 60 * _min' in srv
       and '_start["continue"] = True' in srv)
+check("the app's status says the timer while it runs", '"until": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(float(st["until"])))' in srv
+      and '**({"timer": timer} if timer else {})' in srv)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
