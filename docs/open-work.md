@@ -4373,3 +4373,14 @@ not run. The deploy now restarts `vintos-claude-shim` (if its unit exists) and c
 - Left as they are, not answered yet: Slack kickoffs, idle journal, humor (Opus 5.5 → Sonnet 5.5 proposed); his eyes
   (photo readings, Sonnet → Haiku proposed). The robot voice (the Pi body, `robot_core.py`) stays Sonnet 5.5: it
   costs only when she speaks through the robot.
+
+## 20 October — F-2c9a631f0e fixed by day: the Study regenerates the generated docs
+
+SF-28d2b890 failed all three tries; Dot read its log on Aegis: the third failed `test_p09_p11_closures.py` because
+`docs/untested.md` was stale. The Study never ran the report scripts, so any fix adding a module, route or test failed
+that check every time. Now `study_fix.regenerate_reports` runs `untested_report.py`, `entry_owners.py` and
+`store_owners.py --write` in the workbench after the edits and before the suite, and the commit carries them. A try
+whose edits cannot be applied now records why (the first two tries said only "the edits").
+`test_study_reports.py` (7; the old code has no regeneration). Done by day at Gloria's request; the nightly thread
+told not to implement it.
+**Not done:** SF-28d2b890 itself is not re-run; Vintos may ask for it again.
