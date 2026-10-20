@@ -27,7 +27,7 @@ def _now_line():
 WS=os.path.expanduser("~/.vintos/workspace"); MEM=os.path.join(WS,"memory")
 PROMPTS=os.path.join(MEM,"art","music-prompts"); MUSIC=os.path.join(MEM,"art","music")
 SOCK="/tmp/Vintos-emotion.sock"
-LLM="http://127.0.0.1:8599/v1/chat/completions"; MODEL="claude-sonnet-5"
+LLM="http://127.0.0.1:8599/v1/chat/completions"; MODEL="claude-sonnet-5-5"
 DIMS=["Valence","Arousal","Dominance","Safety","Desire","Connection","Playfulness","Curiosity","Warmth","Tension","Groundedness"]
 def emo():
     try:

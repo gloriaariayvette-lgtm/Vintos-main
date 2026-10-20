@@ -129,7 +129,7 @@ class MusicReferenceFailure(unittest.TestCase):
         self.assertIn("without named artists", song_draft.FINISH)
         composer = (REPO / "bin/music-composer.py").read_text()
         self.assertIn("no named artists", composer)
-        self.assertEqual(song_draft.SONNET, "claude-sonnet-5")
+        self.assertEqual(song_draft.SONNET, "claude-sonnet-5-5")
         self.assertEqual(song_draft.GROK, "grok-4.20-0309-non-reasoning")
 
 

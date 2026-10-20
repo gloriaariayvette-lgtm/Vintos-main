@@ -4315,3 +4315,15 @@ fails the longer-start check).
 calls are over an hour apart, past the cache's life — so its writes may still go unread. Measure for two days after
 the deploy (router rows: cache_read > 0?). If still zero, stop the router writing at all (her call). The $77 is the
 console's figure for perfect reuse; what is reachable is a few dollars a week.
+
+## 20 October — Sonnet 5 → Sonnet 5.5 everywhere
+
+Gloria thought he was already on Sonnet 5.5; her console showed Sonnet 5 at ~730k tokens a day. Every organ that named
+`claude-sonnet-5` now names `claude-sonnet-5-5`: emoclaw_utils (both copies), his model of her
+(gloria-model-update.sh, landing_understanding), self-model update, introspection, ambition review, music composer
+and sharing, song drafts, the robot voice, browsing, spark hands, the mirror, moltbook, first-vs-final, and the
+server's two photo readings. Sonnet 5.5 refuses thinking "disabled": the shim and router already send it
+"between_tools"; the five direct calls now do too (the robot voice by whichever model it is given).
+`test_no_thinking.py` checks the direct calls. **Not done:** not called live from here (no key in the container);
+Slack's Sonnet 5.5 calls already work with "between_tools", which is the evidence. The first day's console will show
+whether any direct call is refused (a 400 would also land in the fault sweep).

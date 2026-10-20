@@ -16,7 +16,7 @@ import sys
 import urllib.request
 
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
-SONNET = "claude-sonnet-5"                    # the model the dream-music composer already writes with
+SONNET = "claude-sonnet-5-5"                    # the model the dream-music composer already writes with
 GROK = "grok-4.20-0309-non-reasoning"         # the model a want's song was already written with
 
 FINISH = ("Sonnet wrote this draft of your song. Finish it: the song is yours. Keep what is true and rewrite what is "

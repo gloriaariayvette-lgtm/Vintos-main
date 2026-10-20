@@ -311,7 +311,7 @@ def ask_llm(prompt, max_tokens=2000, temp=0.8, system=None, image_path=None):
     else:
         _user_content = prompt
     payload = json.dumps({
-        "model": "claude-sonnet-5",
+        "model": "claude-sonnet-5-5",
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": _user_content}

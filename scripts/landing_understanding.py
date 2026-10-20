@@ -17,7 +17,7 @@ Her rules, kept here:
     rating, quotes her, or repeats six words in a row from her note is refused and kept, with why, beside her notes.
   - What landed weighs as much as what missed.
 
-The author is the model that already writes his model of her (gloria-model-update.sh: the shim, claude-sonnet-5),
+The author is the model that already writes his model of her (gloria-model-update.sh: the shim, claude-sonnet-5-5),
 so this adds no new voice to GLORIA-MODEL.md. The weekly run is gloria-model-update.sh's, after its cooldown.
 """
 import json, os, re, sys, time, uuid
@@ -32,7 +32,7 @@ MODEL_FILE = os.path.join(WORKSPACE, "GLORIA-MODEL.md")
 PROPOSALS = os.path.join(landings.LANDINGS_DIR, "understanding-proposals.json")
 APPROVED = os.path.join(landings.LANDINGS_DIR, "understanding.json")
 LM_URL = os.environ.get("VINTOS_GLORIA_MODEL_URL", "http://127.0.0.1:8599/v1/chat/completions")
-MODEL = "claude-sonnet-5"          # the author of GLORIA-MODEL.md already (gloria-model-update.sh)
+MODEL = "claude-sonnet-5-5"          # the author of GLORIA-MODEL.md already (gloria-model-update.sh)
 START, END = "<!-- LANDINGS-START -->", "<!-- LANDINGS-END -->"
 RATING_WORDS = re.compile(r"\b(?:landed|partly|missed|miss(?:es)?|rat(?:ed|ing|ings)|score[sd]?|graded?)\b", re.I)
 RUN = 6                            # this many of her words in a row is her words
