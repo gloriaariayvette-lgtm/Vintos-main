@@ -465,6 +465,25 @@ def apply_edits(plan, root=None):
     return changed
 
 
+# The reports the repository keeps beside its code, regenerated as every contributor does before a commit
+# (docs/fault-loop.md). test_p09_p11_closures.py checks docs/untested.md against a fresh report, and the Study never
+# regenerated it: a fix that added a module, a route or a test failed that check on every try, whatever it did
+# (SF-28d2b890, 20 October, three tries; Dot read the third in its log).
+REPORTS = ("untested_report.py", "entry_owners.py", "store_owners.py")
+
+
+def regenerate_reports(root=None, run=sh):
+    """Rewrite the generated docs in the workbench after the edits, so the suite judges the fix and not stale docs,
+    and the commit carries them. A report that is missing or fails is left as it was; the suite then says so."""
+    root = root or WORKBENCH
+    done = []
+    for name in REPORTS:
+        if os.path.exists(os.path.join(root, "scripts", name)):
+            r = run([sys.executable, os.path.join(root, "scripts", name), "--write"], cwd=root, timeout=300, check=False)
+            if getattr(r, "returncode", 1) == 0: done.append(name)
+    return done
+
+
 def run_suite(root=None, run=sh):
     """The whole suite, each test isolated, as the deploy runs it. [(test, last lines)] for each failure."""
     root = root or WORKBENCH
@@ -734,6 +753,7 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
             failures = [("the edits", str(exc))]
             changed = []
         if changed:
+            regenerate_reports(WORKBENCH, run=run)
             failures = suite(WORKBENCH)
         if not failures:
             break
@@ -741,6 +761,8 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
         keep_attempt(row, attempt, failures, changed, run=run)
         first = next((f for f in row["attempts"][-1]["failures"] if f["assertion"]), None)
         said = next((l for l in reversed(first["assertion"]) if "Error" in l), first["assertion"][-1]) if first else ""
+        if not said and failures and failures[0][0] == "the edits":
+            said = str(failures[0][1])     # why the edits could not be applied; the log said only "the edits"
         _event(row, "attempt %d failed: %s%s" % (attempt, "; ".join(t for t, _ in failures)[:300],
                                                   (" — " + said.strip()[:200]) if said else ""))
         if attempt > REPAIRS:

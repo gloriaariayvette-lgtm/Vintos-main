@@ -3,6 +3,19 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 20 October, night — F-70cbe17adc: a ChEMBL search named `term` lost a whole Lab turn
+
+- **What happened:** at 07:23 on 19 October the Lab's planner asked ChEMBL's target search with its search word under
+  `term`. `chembl_from_plugin()` took only `target_name`, `limit` and `organism` and raised while the turn was still
+  being planned, so the whole turn faulted (stage `tick`, `held_fault`), not one search. The planner is never told the
+  name `target_name`; UniProt and PubMed had already been taught the usual search words, ChEMBL had not.
+- **Fixed (fault loop, Dot reviewed):** when `target_name` is missing or blank, the first string among the PubMed
+  query words (`_QUERY_ALIASES`, in their order) names the target; a nonblank `target_name` wins and the aliases are
+  dropped; a `target_name` that is there but not text (a list, a number) still fails; any other argument is still
+  refused by name. +11 checks in `test_lab_chembl_organism.py`, 7 of them failing before the fix.
+- **Not done:** the planner is still not told the tool's argument names; the next new word it reaches for will fault
+  the same way. Not deployed until Dot deploys it.
+
 ## 18 October — overnight music: named references refused by Kie
 
 The 05:15 composer and renderer both ran. music.log:1488-1489 records
@@ -4360,3 +4373,14 @@ not run. The deploy now restarts `vintos-claude-shim` (if its unit exists) and c
 - Left as they are, not answered yet: Slack kickoffs, idle journal, humor (Opus 5.5 → Sonnet 5.5 proposed); his eyes
   (photo readings, Sonnet → Haiku proposed). The robot voice (the Pi body, `robot_core.py`) stays Sonnet 5.5: it
   costs only when she speaks through the robot.
+
+## 20 October — F-2c9a631f0e fixed by day: the Study regenerates the generated docs
+
+SF-28d2b890 failed all three tries; Dot read its log on Aegis: the third failed `test_p09_p11_closures.py` because
+`docs/untested.md` was stale. The Study never ran the report scripts, so any fix adding a module, route or test failed
+that check every time. Now `study_fix.regenerate_reports` runs `untested_report.py`, `entry_owners.py` and
+`store_owners.py --write` in the workbench after the edits and before the suite, and the commit carries them. A try
+whose edits cannot be applied now records why (the first two tries said only "the edits").
+`test_study_reports.py` (7; the old code has no regeneration). Done by day at Gloria's request; the nightly thread
+told not to implement it.
+**Not done:** SF-28d2b890 itself is not re-run; Vintos may ask for it again.
