@@ -67,7 +67,10 @@ print("--- drift_head: today's partial day is not a day ---")
 today = date.today()
 for i in range(10, 0, -1):
     day = (today - timedelta(days=i)).isoformat()
-    open(os.path.join(MEM, "daily-inner-life-%s.md" % day), "w").write(("day %s " % day) * 200)
+    # The content is the same noise whatever today is: written from the date, it was new noise every day, and on
+    # 20 October that day's noise fell in the 5% a stationary series is (correctly) called moving, p 0.0299. The
+    # file names stay real dates: the head leaves out today's partial file by the real date.
+    open(os.path.join(MEM, "daily-inner-life-%s.md" % day), "w").write(("day number %d " % i) * 200)
 open(os.path.join(MEM, "daily-inner-life-%s.md" % today.isoformat()), "w").write("# Daily inner life\n(started)")
 open(os.path.join(MEM, "daily-inner-life-%s-short.md" % (today - timedelta(days=11)).isoformat()), "w").write("tiny")
 series, source = DH.build_self_series()
@@ -100,7 +103,7 @@ photo = ("[Gloria sent you a photo. What your eyes saw:]\nA kitchen counter, a r
 rows = []
 for i in range(12):
     day = (today - timedelta(days=12 - i)).isoformat()
-    rows.append({"timestamp": day + "T10:00:00", "gloria": photo if i == 5 else "hello on %s" % day, "vintos": "reply %d" % i})
+    rows.append({"timestamp": day + "T10:00:00", "gloria": photo if i == 5 else "hello on day %d" % i, "vintos": "reply %d" % i})
 json.dump(rows, open(RH.LEDGER, "w"))
 SEEN.clear()
 RH.main()
