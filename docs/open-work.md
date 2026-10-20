@@ -4296,8 +4296,11 @@ none since that deploy), the Lab alignment and wants-email ≈ $3.4. She: "No Fa
 - Left: the avatar toggle still offers Fable (only spent when she picks it); `bin/vintos-code-review.py --lens fable`
   runs only by hand.
 
-**Found, not touched:** `test_heads_drift_relational.py` fails 21/24 on the unchanged code today and passed yesterday
-("random days are not called movement" 0.0299): date-dependent. Subconscious heads; not mine to change.
+**Found, then fixed in the test only:** `test_heads_drift_relational.py` failed 21/24 on the 20th and stopped her
+deploy. Its fake days were written from their dates, so the "random" series was new noise each day, and that day's
+noise fell in the 5% a stationary series is correctly called moving (p 0.0299). The fake content no longer depends on
+the date (file names still do: the head leaves out today's partial file by the real date). The heads' code is
+untouched. Checked on 60 consecutive "todays": none fails.
 
 ## 20 October — prompt caching, measured
 
