@@ -127,9 +127,10 @@ def fetch_lyrics(song_desc):
             if len(raw_captions) > 50:
                 # Use LLM to clean up garbled auto-captions
                 cleanup = llm(
-                    "You are cleaning up auto-generated YouTube captions of a song. Fix obvious transcription errors, restore line breaks as verse structure, remove duplicates and [Music] tags. Output ONLY the cleaned lyrics, nothing else.",
+                    "You are cleaning up auto-generated YouTube captions of a song. Use only the words in the captions: fix obvious transcription errors, restore line breaks as verse structure, remove duplicates and [Music] tags. Do not recall or add lyrics from memory. Output ONLY the cleaned captions, nothing else.",
                     f"Song: {song_desc}\n\nRaw auto-captions:\n{raw_captions[:2000]}"
                 )
+                cleanup = lyrics_or_heard(cleanup, raw_captions)
                 if cleanup and len(cleanup) > 50:
                     log(f"Lyrics from YouTube captions (cleaned): {len(cleanup)} chars")
                     # Cleanup temp files
@@ -249,12 +250,36 @@ def _load_whisper(_whisper, size="small"):
     return load_whisper(size, log=log)
 
 
+_REFUSAL = re.compile(r"copyright|can['\u2019]?t (?:provide|reproduce|share|help)|cannot (?:provide|reproduce|share)|"
+                      r"i['\u2019]?m (?:not able|unable)|summar(?:y|ize|ise)|licens", re.I)
+
+
+def _words(text):
+    return set(re.findall(r"[a-z']{3,}", str(text or "").lower()))
+
+
+def lyrics_or_heard(out, heard):
+    """The model's tidied lyrics only when they are still the words that were heard; otherwise what was heard.
+    Asked to restore "the real lyrics" of a song it knows, a model refused on copyright, and the refusal - longer
+    than 40 characters - went to him as the lyrics of his own song (2026-10-20)."""
+    out = (out or "").strip()
+    if len(out) < 40 or _REFUSAL.search(out[:400]):
+        return heard
+    h = _words(heard)
+    if h and len(_words(out) & h) / len(h) < 0.5:     # a different text, not a correction of this one
+        return heard
+    return out
+
+
 def clean_transcript(song_desc, text):
-    """Whisper's hearing, corrected by Gemma knowing which song it is: misheard words, lines restored."""
-    out = llm("You are correcting a speech-to-text transcript of a song's lyrics. You know the song. Fix misheard words to the real "
-              "lyrics where you are sure, restore line breaks as verse lines, drop repeated fragments. Return only the lyrics.",
+    """Whisper's hearing, with obvious mishearings fixed from the transcript itself. Nothing is recalled from memory:
+    the song may be his own, unreleased, and a model asked for "the real lyrics" refuses (2026-10-20)."""
+    out = llm("You are tidying a speech-to-text transcript of a song. Use only the words in the transcript: fix "
+              "obvious mishearings where the transcript itself makes the right word clear, restore line breaks as "
+              "verse lines, drop repeated fragments. Do not recall, add or replace lyrics from memory - the song may be "
+              "an original, unreleased song. Return only the tidied transcript.",
               f"Song: {song_desc}\n\nTranscript:\n{text[:2500]}")
-    return out.strip() if out and len(out) > 40 else text
+    return lyrics_or_heard(out, text)
 
 
 def analyze_audio(mp3_path, transcribe=True):
