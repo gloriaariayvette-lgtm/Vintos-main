@@ -24,7 +24,7 @@ LEDGER = os.path.join(MEMORY, "spark-hands.json")
 WANTS = os.path.join(MEMORY, "current-wants.json")
 DAILY = 2
 LM = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "claude-sonnet-5-5"
+MODEL = "claude-haiku-5-5"      # a yes/no on one spark (Gloria, 2026-10-20: "spark okay")
 CAP = re.compile(r"[a-z][a-z0-9_]{2,59}")
 RELATIONAL = {"gloria", "you"}
 

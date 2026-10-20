@@ -31,12 +31,36 @@ class ModelLocations(unittest.TestCase):
     def test_chat_toggle_moves_only_the_chat(self):
         for mode in ("claude", "opus55", "sonnet", "fable", "grok"):
             self.toggle(mode)
-            for place in ("atelier", "self_review", "humor", "lab", "gap_review", "pleasure"):
+            for place in ("atelier", "self_review", "humor", "gap_review"):
                 # every place but the chat is Opus 5.5 (Gloria, 2026-10-20), whatever the chat toggle says
                 self.assertEqual(self.mr.location_model(place), "claude-opus-5-5", (mode, place))
+            self.assertEqual(self.mr.location_model("lab"), "claude-sonnet-5-5", mode)   # Lab planning stepped down
         self.toggle("opus55"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-5-5")
         self.toggle("fable"); self.assertEqual(self.mr.current_claude_model(), "claude-fable-5-1")
         self.toggle("claude"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-4-8")
+
+    def test_in_the_moment_is_whatever_the_chat_holds(self):
+        # Naming what he felt is done by "the model in use in the moment" (Gloria, 2026-10-20), usually Grok.
+        import asyncio
+        seen = []
+        async def grok(convo, params, endpoint, headers, model, system_text):
+            seen.append(("grok", model, endpoint)); return {"provider": "xai", "status": "valid", "text": "warm", "model": model}
+        async def claude(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
+            seen.append(("claude", model, None)); return "steady", ""
+        self.mr._grok_result, self.mr.claude_draft = grok, claude
+        self.mr.GR.usable = lambda r: r.get("status") == "valid"
+        json.dump({"mode": "grok", "force_grok_turns": 1}, open(self.mr._MODE_FILE, "w"))
+        text, model = asyncio.run(self.mr.draft_in_the_moment("s", [{"role": "user", "content": "x"}], 320))
+        self.assertEqual((text, seen[-1][0], seen[-1][2]), ("warm", "grok", "http://127.0.0.1:8599/v1/chat/completions"))
+        self.assertEqual(json.load(open(self.mr._MODE_FILE)).get("force_grok_turns"), 1)   # the chat's forced turn is not spent
+        self.toggle("opus55")
+        text, model = asyncio.run(self.mr.draft_in_the_moment("s", [{"role": "user", "content": "x"}], 320))
+        self.assertEqual((text, model, seen[-1][0]), ("steady", "claude-opus-5-5", "claude"))
+        self.toggle("claude")
+        self.assertEqual(asyncio.run(self.mr.draft_in_the_moment("s", [], 320))[1], "claude-opus-4-8")
+        for p in ("scripts", "bin"):
+            src = open(os.path.join(ROOT, p, "pleasure_substrate.py")).read()
+            self.assertIn("_mr.draft_in_the_moment(system", src, p)
 
     def test_fable_and_opus_4_8_remain_in_the_toggle(self):
         self.assertEqual(self.mr.CLAUDE_MODELS["claude"], "claude-opus-4-8")
@@ -45,7 +69,7 @@ class ModelLocations(unittest.TestCase):
     def test_one_place_can_be_set_without_moving_another(self):
         json.dump({"atelier": "claude-fable-5-1"}, open(self.mr._LOCATIONS_FILE, "w"))
         self.assertEqual(self.mr.location_model("atelier"), "claude-fable-5-1")
-        self.assertEqual(self.mr.location_model("lab"), "claude-opus-5-5")
+        self.assertEqual(self.mr.location_model("lab"), "claude-sonnet-5-5")
 
     def test_non_chat_places_ask_for_their_location(self):
         for rel, place in (("scripts/atelier-visit.py", "atelier"), ("scripts/atelier-gate.py", "atelier"),

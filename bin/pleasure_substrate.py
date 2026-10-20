@@ -138,8 +138,8 @@ def _llm(prompt, system, max_tokens=320):
         if _mp:
             _sp = _mu.spec_from_file_location("vintos_model_router", _mp)
             _mr = _mu.module_from_spec(_sp); _sp.loader.exec_module(_mr)
-            _namer = _mr.location_model("pleasure")   # its own place, not the chat toggle (2026-10-20)
-            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": prompt}], max_tokens=max_tokens, model=_namer))
+            # named by the model in use in the moment, usually Grok (Gloria, 2026-10-20)
+            _text, _namer = _aio.run(_mr.draft_in_the_moment(system, [{"role": "user", "content": prompt}], max_tokens=max_tokens))
             if _text and str(_text).strip():
                 LAST_NAMER = str(_namer or "claude")
                 return str(_text).strip()
