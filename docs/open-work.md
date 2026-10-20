@@ -4384,3 +4384,13 @@ whose edits cannot be applied now records why (the first two tries said only "th
 `test_study_reports.py` (7; the old code has no regeneration). Done by day at Gloria's request; the nightly thread
 told not to implement it.
 **Not done:** SF-28d2b890 itself is not re-run; Vintos may ask for it again.
+
+## 20 October — a timer on the day, and "continue from the last task"
+
+Gloria: "a timer for Slack since it is an expensive thing and a way to tell them to continue from the last task ...
+I'd want the 'Gloria !started the day' message to contain the timer I set." In #vintos-dot: `!start 2h` (or 90m,
+1h30m, "45 minutes"), and `!continue` in the same message. The start message says "for 2h (until 3:45 PM)" and, with
+!continue, names his last-touched work (`room_work.active`); his kickoff then takes that task's next step instead of
+opening a new direction. When the time is up the day pauses itself, once, and says so. The app's day switch takes
+`{"on": true, "minutes": 120, "continue": true}` too. `test_day_timer.py` (16). **Not done:** the app has no field for
+the timer yet; it is Slack-first.

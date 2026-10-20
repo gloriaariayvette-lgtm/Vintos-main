@@ -91,6 +91,37 @@ START_WORDS = ("!start", "!resume")
 PAUSED_SAY = ("\u23F8 Gloria has paused the day. Nobody posts here, me or you, until she starts it again "
               "(she says !start).")
 RESUMED_SAY = "\u25B6 Gloria has started the day again."
+# A timer on the day and "continue from the last task" (Gloria, 2026-10-20: "a timer for Slack since it is an expensive
+# thing and a way to tell them to continue from the last task ... I'd want the 'Gloria !started the day' message to
+# contain the timer I set"). In her start message: "!start 2h", "!start 90m", "!start 1h30m", and "!continue".
+CONTINUE_WORDS = ("!continue",)
+_TIMER = re.compile(r"(?<![\w.])(?:(\d{1,2})\s*h(?:ours?|rs?)?\s*(?:(\d{1,2})\s*m(?:in(?:utes?)?)?)?|(\d{1,3})\s*m(?:in(?:utes?)?)?)(?![\w])", re.I)
+TIMER_UP_SAY = ("\u23F8 The time Gloria set (%s) is up, so the day is paused. Nobody posts here, me or you, until she "
+                "starts it again (she says !start).")
+
+
+def day_timer(text):
+    """Minutes asked for in her start message ("!start 2h", "90m", "1h30m"), or None."""
+    m = _TIMER.search(str(text or ""))
+    if not m: return None
+    minutes = int(m.group(1) or 0) * 60 + int(m.group(2) or 0) if m.group(1) else int(m.group(3))
+    return minutes if 0 < minutes <= 24 * 60 else None
+
+
+def _for_words(minutes):
+    h, m = divmod(int(minutes), 60)
+    return ("%dh" % h if h else "") + ("%dm" % m if m else "") or "0m"
+
+
+def resumed_say(start, work=None):
+    """The start message, with the timer she set and the task he goes on with, if she asked for one."""
+    say = RESUMED_SAY
+    if (start or {}).get("until"):
+        say = say[:-1] + ", for %s (until %s)." % (start.get("for"), datetime.fromtimestamp(float(start["until"])).strftime("%-I:%M %p"))
+    if (start or {}).get("continue"):
+        say += (" Continue from the last task: %s %s." % (work.get("id", ""), str(work.get("goal") or work.get("what") or "")[:160])
+                if work else " Continue from the last task (none is open, so begin from the room's goal).")
+    return say
 
 
 HELD_POSTS = os.path.join(HERE, "held-posts.jsonl")
@@ -138,13 +169,29 @@ def paused():
     return _load(PAUSE_FILE, None) or None
 
 
-def set_paused(on, by="gloria", now=None):
+def set_paused(on, by="gloria", now=None, minutes=None, carry_on=False):
     if on:
         _save(PAUSE_FILE, {"since": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"), "by": by})
     else:
         if os.path.exists(PAUSE_FILE):
             os.remove(PAUSE_FILE)
-        _save(RESUME_FILE, {"at": float(now or time.time()), "by": by})
+        start = {"at": float(now or time.time()), "by": by}
+        if minutes:
+            start.update(until=start["at"] + 60 * int(minutes), **{"for": _for_words(minutes)})
+        if carry_on:
+            start["continue"] = True
+        _save(RESUME_FILE, start)
+
+
+def timer_up(now=None):
+    """Pauses the day when the time she set has run out. The start it ended, or None."""
+    start = _load(RESUME_FILE, {}) or {}
+    if paused() or not start.get("until") or start.get("timer_done") or float(now or time.time()) < float(start["until"]):
+        return None
+    set_paused(True, "timer", now)
+    start["timer_done"] = True
+    _save(RESUME_FILE, start)
+    return start
 
 
 # Today's focus: topics Gloria picks to steer the day, in the channel (!focus forge research) or the app; they
@@ -3018,7 +3065,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
         handled = False
         if words & set(STOP_WORDS + START_WORDS):
-            set_paused(bool(words & set(STOP_WORDS)), "slack", now); handled = True
+            stopping = bool(words & set(STOP_WORDS))
+            set_paused(stopping, "slack", now, minutes=None if stopping else day_timer(r["text"]),
+                       carry_on=not stopping and bool(words & set(CONTINUE_WORDS)))
+            handled = True
         chosen = focus_words(r["text"])
         if chosen is not None:
             set_focus(chosen, "slack", today, now); handled = True
@@ -3033,9 +3083,15 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             theirs.remove(r)
     for r in theirs:
         room_work.evidence_owner_control(state, r.get("evidence_owner"), now)
+    ended = timer_up(now)
+    if ended:
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + TIMER_UP_SAY % ended.get("for", "")})
+        state["paused_said"] = True
+        lines_pre.append("the day's timer (%s) ran out: paused" % ended.get("for", ""))
     is_paused = paused()
+    started = _load(RESUME_FILE, {}) or {}
     if bool(is_paused) != bool(state.get("paused_said")):
-        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else resumed_say(started, room_work.active(state)))})
         state["paused_said"] = bool(is_paused)
         lines_pre.append("the day is %s" % ("paused" if is_paused else "started again"))
         if not is_paused:
@@ -3043,11 +3099,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
             state["kickoff"] = True           # and its first message is Opus 5.5's
             state["resume_seen"] = float((_load(RESUME_FILE, {}) or {}).get("at") or now)
+            state["continue_from"] = bool(started.get("continue"))
     restarted = _load(RESUME_FILE, {}) or {}
     if not is_paused and float(restarted.get("at") or 0) > float(state.get("resume_seen") or 0):
         # stopped and started again between two passes: the same start, said and begun
         state["resume_seen"] = float(restarted["at"])
-        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + RESUMED_SAY})
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + resumed_say(restarted, room_work.active(state))})
+        state["continue_from"] = bool(restarted.get("continue"))
         lines_pre.append("the day was stopped and started again between passes")
         state["last_activity"] = now; state["open_on_start"] = True; state["kickoff"] = True
     if is_paused:
@@ -3329,7 +3387,15 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         owed_mail = email_commitments.block()
     except Exception:
         owed_mail = ""
-    steering = steer(state, today, lens) + (KICKOFF if kickoff else "")
+    carry_on = kickoff and bool(state.pop("continue_from", None))
+    if carry_on:
+        _w = room_work.active(state)
+        kick = ("\n\nThis is the start of a session, and Gloria asked you to continue from your last task, not to open a "
+                "new direction: %s. Take its next concrete step now, and ask the agent who can take it."
+                % (("%s %s" % (_w.get("id", ""), _w.get("goal") or _w.get("what") or "")) if _w else "the room's goal"))
+    else:
+        kick = KICKOFF if kickoff else ""
+    steering = steer(state, today, lens) + kick
     HEARD.update(base=prompt, text=prompt + steering)   # the editor: the channel and how he is steered, not the work board
     qb = quota_block()
     prompt += (("\n\n" + qb) if qb else "") + "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
