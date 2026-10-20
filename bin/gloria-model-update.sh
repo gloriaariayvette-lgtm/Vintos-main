@@ -4,7 +4,7 @@ WORKSPACE="$HOME/.vintos/workspace"
 MODEL_FILE="$WORKSPACE/GLORIA-MODEL.md"
 MEMORY="$WORKSPACE/memory"
 LM_URL="http://127.0.0.1:8599/v1/chat/completions"
-MODEL="claude-sonnet-5"   # his model of her deserves a real author (via shim)
+MODEL="claude-sonnet-5-5"   # his model of her deserves a real author (via shim)
 COOLDOWN_FILE="$MEMORY/.last-gloria-model"
 
 if [ -f "$COOLDOWN_FILE" ]; then

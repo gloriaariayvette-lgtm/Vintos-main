@@ -143,6 +143,7 @@ def least_thinking(body):
 # that has already repeated is marked, so a one-off call never pays the cache-write premium.
 import threading as _thr, time, os
 _RECENT = []                      # (time, text) of recent prompts, newest last
+_MARKS = []                       # (time, text up to its cache point, ttl) of starts already written to the cache
 _RECENT_LOCK = _thr.Lock()
 _RECENT_MAX = 96
 _RECENT_SECS = 3600
@@ -174,8 +175,29 @@ def learned_head(text, now=None):
     return best, ago
 
 
+def _written_start(text, n, now):
+    """The longest start already written to the cache that this prompt begins with, within the shared start: reading
+    it back needs a cache point at exactly that place. Cut anywhere else, the cache is missed and written again: the
+    router wrote 33 times in a week and read 0, each prompt cut where it happened to match the one before (2026-10-20,
+    pairs two minutes apart, 10:15 and 10:17). (length, ttl) or (0, None)."""
+    best, ttl = 0, None
+    with _RECENT_LOCK:
+        _MARKS[:] = [(t, x, l) for t, x, l in _MARKS if now - t < (3600 if l == "1h" else 300)]
+        for t, x, l in _MARKS:
+            if best < len(x) <= n and text.startswith(x):
+                best, ttl = len(x), l
+    return best, ttl
+
+
+def _remember_start(text, n, ttl, now):
+    with _RECENT_LOCK:
+        _MARKS.append((now, text[:n], ttl))
+        del _MARKS[:-_RECENT_MAX]
+
+
 def cache_learned(body, sys_txt, model, now=None):
     """Mark the learned unchanging start of system + first user message. Returns what was marked."""
+    now = time.time() if now is None else now
     first = body["messages"][0] if body.get("messages") else None
     user0 = first["content"] if first and first.get("role") == "user" and isinstance(first.get("content"), str) else ""
     joined = sys_txt + "\x00" + user0
@@ -183,19 +205,32 @@ def cache_learned(body, sys_txt, model, now=None):
     if n < _min_chars(model):
         body["system"] = sys_txt
         return {"auto": 0}
+    written, ttl = _written_start(joined, n, now)
+    if written < _min_chars(model): written = 0
     cc = {"type": "ephemeral"}
     if ago is not None and ago > 240:   # repeats slower than the 5-minute cache lasts: keep it an hour
         cc = {"type": "ephemeral", "ttl": "1h"}
-    if n <= len(sys_txt):
-        body["system"] = [{"type": "text", "text": sys_txt[:n], "cache_control": cc}]
-        if sys_txt[n:].strip():
-            body["system"].append({"type": "text", "text": sys_txt[n:]})
-    else:
-        body["system"] = [{"type": "text", "text": sys_txt, "cache_control": cc}]
-        k = n - len(sys_txt) - 1
-        if k > 0:
-            blocks = [{"type": "text", "text": user0[:k], "cache_control": dict(cc)}]
-            if user0[k:].strip():
-                blocks.append({"type": "text", "text": user0[k:]})
-            first["content"] = blocks
+    if written and n - written < _min_chars(model):
+        n, cc = written, ({"type": "ephemeral", "ttl": "1h"} if ttl == "1h" else {"type": "ephemeral"})   # read it
+    elif n > written:
+        _remember_start(joined, n, cc.get("ttl", "5m"), now)   # what is longer than any written start is written
+    # Cache points: the start already written (read back), the end of the system prompt when the mark runs past it,
+    # and the new mark. An hour-long point may not follow a five-minute one, so a written start under an hour-long
+    # mark is asked for an hour too.
+    points = sorted({c for c in (written, n) if c} | ({len(sys_txt)} if n > len(sys_txt) else set()))
+    hour = cc.get("ttl") == "1h" or ttl == "1h"
+    mark = {"type": "ephemeral", "ttl": "1h"} if hour else {"type": "ephemeral"}
+    def blocks(text, cuts):
+        out, at = [], 0
+        for c in cuts:
+            if c > at:
+                out.append({"type": "text", "text": text[at:c], "cache_control": dict(mark)}); at = c
+        if text[at:].strip():
+            out.append({"type": "text", "text": text[at:]})
+        return out
+    body["system"] = blocks(sys_txt, [c for c in points if c <= len(sys_txt)])
+    user_cuts = [c - len(sys_txt) - 1 for c in points if c > len(sys_txt) + 1]
+    if user_cuts and first is not None:
+        first["content"] = blocks(user0, user_cuts)
+    cc = mark
     return {"auto": n, "ttl": cc.get("ttl", "5m")}

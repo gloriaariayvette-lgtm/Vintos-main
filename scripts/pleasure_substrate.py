@@ -138,9 +138,10 @@ def _llm(prompt, system, max_tokens=320):
         if _mp:
             _sp = _mu.spec_from_file_location("vintos_model_router", _mp)
             _mr = _mu.module_from_spec(_sp); _sp.loader.exec_module(_mr)
-            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": prompt}], max_tokens=max_tokens))
+            _namer = _mr.location_model("pleasure")   # its own place, not the chat toggle (2026-10-20)
+            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": prompt}], max_tokens=max_tokens, model=_namer))
             if _text and str(_text).strip():
-                LAST_NAMER = str(getattr(_mr, "current_claude_model", lambda: "claude")() or "claude")
+                LAST_NAMER = str(_namer or "claude")
                 return str(_text).strip()
     except Exception:
         pass

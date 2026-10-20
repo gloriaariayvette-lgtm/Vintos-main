@@ -990,7 +990,7 @@ def generate_third_order_want(trigger_want=None, trial=None):
 
     try:
         r = _to_r.post(LM, json={
-            "model": "claude-sonnet-5",
+            "model": "claude-sonnet-5-5",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 80
         }, timeout=30)
@@ -1216,7 +1216,7 @@ def spawn_echo_want(parent_want):
 
     try:
         r = _ew_r.post(LM, json={
-            "model": "claude-sonnet-5",
+            "model": "claude-sonnet-5-5",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 80
         }, timeout=60)
@@ -1588,7 +1588,7 @@ def generate_structural_want(seed=None):
     )
     try:
         r = _sw_r.post(LM, json={
-            "model": "claude-sonnet-5",
+            "model": "claude-sonnet-5-5",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 80
         }, timeout=60)
@@ -1747,7 +1747,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
     )
     try:
         r = _gwr.post(LM, json={
-            "model": "claude-sonnet-5",
+            "model": "claude-sonnet-5-5",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
@@ -2344,7 +2344,7 @@ def enrich_want(want_text, source_context="", source="unknown"):
     )
     try:
         r = _er.post(LM, json={
-            "model": "claude-sonnet-5",
+            "model": "claude-sonnet-5-5",
             "max_tokens": 600,
             "messages": [
                 {"role": "system", "content": system},

@@ -41,8 +41,8 @@ SESSION_LOCK = os.path.join(lab.ROOT, ".session.lock")
 LAB_GROK_TEMPERATURE = 0.2
 LENSES = ("claude", "sol", "grok")          # who plans (and now reads) the day's experiment, in rotation
 # Who reads the day's result afterwards, each blind to the others (Gloria, 2026-09-24).
+# Fable's reading is gone (Gloria, 2026-10-20: "No Fable, Opus 5.5."); Opus 5.5 reads already.
 DIVERGENCE_MODELS = {"astra": ("openai", "gpt-6-astra"),
-                     "fable": ("anthropic", "claude-fable-5-1"),
                      "grok": ("xai", "grok-4.6"),
                      "opus": ("anthropic", "claude-opus-5-5")}
 DIVERGENCE_LENSES = tuple(DIVERGENCE_MODELS)

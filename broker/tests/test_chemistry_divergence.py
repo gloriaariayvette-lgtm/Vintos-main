@@ -55,11 +55,10 @@ session = load("chemistry_session", os.path.join(REPO, "scripts", "chemistry_ses
 REAL_LENS_CALL, REAL_READING = session._lens_call, session._reading
 session._divergence_specs = lambda: {
     "astra": ("openai", "astra-test"),
-    "fable": ("anthropic", "fable-test"),
     "grok": ("xai", "grok-test"),
     "opus": ("anthropic", "opus-test"),
 }
-PROVIDER = {"astra": "openai", "fable": "anthropic", "grok": "xai", "opus": "anthropic"}
+PROVIDER = {"astra": "openai", "grok": "xai", "opus": "anthropic"}
 lab.set_enabled(True)
 
 R = []
@@ -85,8 +84,8 @@ check("a config saved before her yes is switched on once", lab.config()["diverge
 cfg = lab.config(); cfg["divergence_enabled"] = False; lab._atomic(lab.CONFIG, cfg)
 check("after that, turning it off stays off", lab.config()["divergence_enabled"] is False)
 cfg["divergence_enabled"] = True; lab._atomic(lab.CONFIG, cfg)
-check("the four lenses are Astra, Fable 5.1, Grok 4.6 and Opus 5.5",
-      session.DIVERGENCE_MODELS == {"astra": ("openai", "gpt-6-astra"), "fable": ("anthropic", "claude-fable-5-1"),
+check("the three lenses are Astra, Grok 4.6 and Opus 5.5; no Fable (Gloria, 20 October)",
+      session.DIVERGENCE_MODELS == {"astra": ("openai", "gpt-6-astra"),
                                     "grok": ("xai", "grok-4.6"), "opus": ("anthropic", "claude-opus-5-5")})
 
 # --- the same artifact and the same context to each lens -----------------------------------------
@@ -119,7 +118,7 @@ check("it reads the preserved artifact and runs nothing",
 
 # --- three questions, no verdict ------------------------------------------------------------------
 check("the readings are kept side by side",
-      len(row["readings"]) == 4 and {r["question"] for r in row["readings"]} ==
+      len(row["readings"]) == 3 and {r["question"] for r in row["readings"]} ==
       {"what would %s ask?" % lens for lens in session.DIVERGENCE_LENSES}, row["readings"])
 check("agreement is not computed", row["agreement"] == "not_computed"
       and "no_consensus_claim" in row["truth_status"])
@@ -133,7 +132,7 @@ check("no agreement is computed anywhere in the code",
       "majority" not in source and "consensus" not in source.replace("no_consensus_claim", ""))
 note = [n for n in lab._jsonl(lab.NOTEBOOK) if n.get("kind") == "divergence"][-1]
 check("the notebook keeps each question as its own question",
-      len(note["questions"]) == 4 and note["agreement"] == "not_computed", note)
+      len(note["questions"]) == 3 and note["agreement"] == "not_computed", note)
 
 # --- a lens that fails is held, never replaced --------------------------------------------------------
 async def _one_fails(lens, system, user, paid_reservation=None):
@@ -141,10 +140,10 @@ async def _one_fails(lens, system, user, paid_reservation=None):
     return _frontier(lens, system, user, paid_reservation)
 session._lens_call = _one_fails
 held = session._run_divergence("CHEM-D2", {}, context, receipt)
-check("a failed lens is held", held["lenses_held"] == ["grok"] and held["lenses_read"] == ["astra", "fable", "opus"], held)
+check("a failed lens is held", held["lenses_held"] == ["grok"] and held["lenses_read"] == ["astra", "opus"], held)
 check("a partial read is not recorded as completed", held["state"] == "completed_with_held_lenses", held)
 check("no other provider quietly fills in",
-      len(held["readings"]) == 4 and [r["lens"] for r in held["readings"]] == list(session.DIVERGENCE_LENSES))
+      len(held["readings"]) == 3 and [r["lens"] for r in held["readings"]] == list(session.DIVERGENCE_LENSES))
 check("it is still not a two-lens finding", held["agreement"] == "not_computed")
 
 # --- every lens reserved before the first is spent -------------------------------------------------------
@@ -156,8 +155,8 @@ check("a refused reservation stops the whole thing",
       capped["state"] == "held_paid_cap" and "grok" in capped["detail"], capped)
 check("no lens was called at all", seen == [], seen)
 check("the reservations use and release the real provider buckets",
-      [p for p, _ in reserved] == ["openai", "anthropic", "xai"]
-      and [p for p, _ in released] == ["openai", "anthropic"], (reserved, released))
+      [p for p, _ in reserved] == ["openai", "xai"]
+      and [p for p, _ in released] == ["openai"], (reserved, released))
 check("the row says why nothing was spent", "no_lens_was_spent" in capped["truth_status"])
 _refuse.clear()
 

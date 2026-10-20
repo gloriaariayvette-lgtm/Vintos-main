@@ -48,12 +48,25 @@ check("nothing asks for thinking", not asks, asks)
 check("router, Study chat and relay all go through least_thinking",
       src["bin/model_router.py"].count("GR.least_thinking(body)") == 2 and "least_thinking(body)" in src["bin/study_chat.py"]
       and "GR.least_thinking(body)" in src["bin/vintos_claude_shim.py"])
-sonnet = re.findall(r'"model": (?:"claude-sonnet-5"|SONNET_MODEL), "max_tokens": [^,]+, "thinking": \{"type": "disabled"\}',
-                    "".join(src[p] for p in ("bin/server.py", "bin/music-share.py", "scripts/browser_agent.py", "scripts/robot_core.py")))
-check("the five direct Sonnet 5 calls tell it not to think", len(sonnet) == 5, len(sonnet))
+direct = "".join(src[p] for p in ("bin/server.py", "bin/music-share.py", "scripts/browser_agent.py", "scripts/robot_core.py"))
+sonnet = re.findall(r'"model": "claude-sonnet-5-5", "max_tokens": [^,]+, "thinking": \{"type": "between_tools"\}', direct)
+check("the four direct Sonnet 5.5 calls tell it not to think the way it accepts (Gloria, 20 October: Sonnet 5.5)",
+      len(sonnet) == 4, len(sonnet))
+check("and the robot voice's call does so for whichever model it is given",
+      '{"type": "between_tools"} if SONNET_MODEL.startswith("claude-sonnet-5-5") else {"type": "disabled"}' in src["scripts/robot_core.py"])
+check("no direct call sends Sonnet 5.5 the \"disabled\" it refuses",
+      not re.search(r'"claude-sonnet-5-5", "max_tokens": [^,]+, "thinking": \{"type": "disabled"\}', direct))
 check("his models are unchanged: the Opus 5.5 slot, the Slack opener, the chat default",
       '"opus55": "claude-opus-5-5"' in src["bin/model_router.py"] and 'CLAUDE_MODELS = {"claude": "claude-opus-4-8"' in src["bin/model_router.py"]
       and 'KICKOFF_MODEL = "claude-opus-5-5"' in src["scripts/dot_channel.py"])
+journal = open(os.path.join(REPO, "scripts", "idle-journal.sh")).read()
+check("his idle journal is Opus 5.5 and never sends it the \"disabled\" it refuses, with room to think (2026-10-20)",
+      '"model": "claude-opus-5-5", "max_tokens": max_tokens + 6000' in journal and '{"type": "disabled"}' not in journal
+      and '_body["output_config"] = {"effort": "low"}' in journal)
+check("the relay gives a model that always thinks room on top of the answer, as the router does",
+      '"max_tokens": _mt + (0 if GR.thinking_off(_mdl) else 6000)' in open(os.path.join(REPO, "bin", "vintos_claude_shim.py")).read())
+check("the chat toggle keeps Opus 4.8 (Gloria: \"just don't replace Opus 4.8 in chat\")",
+      'CLAUDE_MODELS = {"claude": "claude-opus-4-8"' in src["bin/model_router.py"])
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -82,18 +82,19 @@ second = align.run(call=frontier)
 check("each call writes a summary of its segment",
       first["summary"] == "SUMMARY-astra" and "summary (what she worked on in this segment" in prompts[0]["user"])
 check("the next alignment is another model's, and reads the last one's summary and guidance",
-      second["lens"] == "fable" and prompts[1]["model"] == "claude-fable-5-1"
+      second["lens"] == "grok" and prompts[1]["model"] == "grok-4.6"
       and "SUMMARY-astra" in prompts[1]["user"] and "GUIDANCE-astra" in prompts[1]["user"], second)
 check("it reviews only what Gemma did since the last alignment",
       "CLAIM-2" in prompts[1]["user"] and "CLAIM-1" not in prompts[1]["user"].split("GEMMA'S LAB WORK")[1])
 
-for n in (3, 4):
+for n in (3,):
     gemma_turn(n); align.run(call=frontier)
-check("each of the four models aligns once a day",
-      [p["lens"] for p in prompts] == ["astra", "fable", "grok", "opus"], [p["lens"] for p in prompts])
+check("each of the three models aligns once a day, and Fable is not one (Gloria, 20 October: no Fable)",
+      [p["lens"] for p in prompts] == ["astra", "grok", "opus"]
+      and not any("fable" in p["model"] for p in prompts), [p["lens"] for p in prompts])
 gemma_turn(5)
-check("a fifth call the same day is not made", align.run(call=frontier)["state"] == "held_all_four_done_today"
-      and len(prompts) == 4)
+check("a fourth call the same day is not made", align.run(call=frontier)["state"] == "held_all_done_today"
+      and len(prompts) == 3)
 check("the next day begins again with the first model",
       align.run(call=frontier, now=time.time() + 86400)["lens"] == "astra")
 
@@ -106,7 +107,7 @@ check("but not the frontier log itself",
 
 refuse.append(1); gemma_turn(6)
 capped = align.run(call=frontier, now=time.time() + 2 * 86400)
-check("a refused paid reservation holds without calling", capped["state"] == "held_paid_cap" and len(prompts) == 5, capped)
+check("a refused paid reservation holds without calling", capped["state"] == "held_paid_cap" and len(prompts) == 4, capped)
 refuse.clear()
 
 timer = open(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")).read()

@@ -53,7 +53,7 @@ def get_value_map():
 AMBITIONS_FILE = os.path.join(MEMORY, "ambitions.json")
 AMBITION_LOG = os.path.join(MEMORY, "ambition-reflections.md")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "claude-sonnet-5"
+MODEL = "claude-sonnet-5-5"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 

@@ -95,7 +95,7 @@ def _model():
         import model_router
         return model_router.location_model("atelier")   # the Atelier's own model; the chat toggle moves only the chat (2026-09-24)
     except Exception:
-        return "claude-opus-4-8"
+        return "claude-opus-5-5"
 
 
 def _self_model():

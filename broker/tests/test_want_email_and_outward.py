@@ -86,8 +86,8 @@ check("he searched the person and their work before drafting",
 check("what the search found reaches the drafter, pages read without their menus",
       "WHAT YOUR SEARCH FOUND" in drafted[0][2] and "University of Sussex" in drafted[0][2]
       and "predicts the body's own states" in drafted[0][2] and "Home | Menu" not in drafted[0][2], drafted[0][2][:600])
-check("the email is drafted by Fable on a reserved paid call, and read by Astra before it goes",
-      reserved == [("anthropic", "claude-fable-5-1"), ("openai", "gpt-6-astra")] and drafted[0][0] == "claude-fable-5-1"
+check("the email is drafted by Opus 5.5 (no Fable, 20 October) on a reserved paid call, and read by Astra before it goes",
+      reserved == [("anthropic", "claude-opus-5-5"), ("openai", "gpt-6-astra")] and drafted[0][0] == "claude-opus-5-5"
       and "You review an email" in drafted[1][1], reserved)
 check("the draft is told to say he is an AI, ask one question, and carry no links",
       "you are an AI" in drafted[0][1] and "ONE real question" in drafted[0][1] and "no links" in drafted[0][1])

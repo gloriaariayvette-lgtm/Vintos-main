@@ -368,7 +368,7 @@ try:
     system = open("/tmp/.sm_system.txt").read()
     user = open("/tmp/.sm_user.txt").read()
     r = requests.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-        "model": "claude-sonnet-5",
+        "model": "claude-sonnet-5-5",
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": 0.8, "max_tokens": 2000
     }, timeout=300)

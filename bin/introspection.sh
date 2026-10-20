@@ -405,11 +405,11 @@ def _claude_sync(system_text, user_text, reasoning=False, max_tokens=1500):
         try: _k = open(_o.path.expanduser("~/.vintos/anthropic-key")).read().strip()
         except Exception: _k = ''
     if not _k: return None, ''
-    _body = {"model": "claude-sonnet-5", "max_tokens": max_tokens,
+    _body = {"model": "claude-sonnet-5-5", "max_tokens": max_tokens,
              "system": [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
              "messages": [{"role": "user", "content": [{"type": "text", "text": user_text,
                             "cache_control": {"type": "ephemeral"}}]}],
-             "thinking": ({"type": "adaptive", "display": "summarized"} if reasoning else {"type": "disabled"})}
+             "thinking": ({"type": "adaptive", "display": "summarized"} if reasoning else {"type": "between_tools"})}   # Sonnet 5.5 refuses "disabled"
     _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                      headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
     try: _d = _j.loads(_u.urlopen(_rq, timeout=180).read())

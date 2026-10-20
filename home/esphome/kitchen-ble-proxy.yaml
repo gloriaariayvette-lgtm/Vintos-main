@@ -1,0 +1,31 @@
+# The kitchen ESP32: a Bluetooth proxy, so Home Assistant can reach the Fingerbot Pro on the Nespresso
+# (bought 17 October; Bluetooth only). Flash it once from Home Assistant's ESPHome add-on; plug it in by the machine.
+# Wi-Fi and the API key come from the ESPHome add-on's own secrets.yaml, never from this file.
+esphome:
+  name: kitchen-ble-proxy
+  friendly_name: Kitchen BLE proxy
+
+esp32:
+  board: esp32dev          # most plain ESP32 dev boards; for an ESP32-S3 or -C3 board pick that board instead
+  framework:
+    type: esp-idf          # the Bluetooth proxy wants ESP-IDF, not Arduino
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret kitchen_proxy_api_key
+
+ota:
+  - platform: esphome
+
+logger:
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+bluetooth_proxy:
+  active: true             # active: Home Assistant can connect through it and press, not only listen

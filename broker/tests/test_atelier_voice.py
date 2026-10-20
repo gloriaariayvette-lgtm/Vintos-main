@@ -12,7 +12,7 @@ class VoiceTests(unittest.TestCase):
         calls = []
         async def claude(*a, **k): calls.append(("claude", k)); return "entered", ""
         async def sol(*a, **k): calls.append(("sol", k)); return "fallback", ""
-        router = types.SimpleNamespace(current_claude_model=lambda: "opus-id", claude_draft=claude, sol_draft=sol)
+        router = types.SimpleNamespace(current_claude_model=lambda: "chat-id", location_model=lambda place: "opus-id" if place == "atelier" else "?", claude_draft=claude, sol_draft=sol)
         old = sys.modules.get("model_router"); sys.modules["model_router"] = router
         try: self.assertEqual(VOICE.ask("room", "door", 5), "entered")
         finally:
@@ -24,7 +24,7 @@ class VoiceTests(unittest.TestCase):
         calls = []
         async def claude(*a, **k): calls.append(("claude", k.get("model"))); return None, ""
         async def sol(*a, **k): calls.append(("sol", k.get("model"))); return "Astra kept the room", ""
-        router = types.SimpleNamespace(current_claude_model=lambda: "opus-id", claude_draft=claude, sol_draft=sol)
+        router = types.SimpleNamespace(current_claude_model=lambda: "chat-id", location_model=lambda place: "opus-id" if place == "atelier" else "?", claude_draft=claude, sol_draft=sol)
         old = sys.modules.get("model_router"); sys.modules["model_router"] = router
         try: self.assertEqual(VOICE.ask("sealed", "work", 900), "Astra kept the room")
         finally:

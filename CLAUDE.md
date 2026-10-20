@@ -16,10 +16,11 @@ Do not override it. If a task genuinely needs a different model, say so and let
 Gloria decide — do not pass `model:` to the Agent tool, and do not edit the setting
 out of the way to get a run through.
 
-**This is not the forge.** `scripts/forge_build.py` calls Fable 5.1 deliberately: one
-review call per approved build, reviewing a capability Astra wrote before it may be
-installed. That is a named, bounded, per-build cost she agreed to. It has nothing to
-do with subagent defaults and the two must not be conflated when either is changed.
+**This is not the forge.** `scripts/forge_build.py` makes one review call per approved
+build, reviewing a capability Astra wrote before it may be installed. That is a named,
+bounded, per-build cost she agreed to. Since 20 October it is Opus 5.5, not Fable
+("No Fable, Opus 5.5": nothing of his calls Fable now). It has nothing to do with
+subagent defaults and the two must not be conflated when either is changed.
 
 ## A test never reaches the world
 

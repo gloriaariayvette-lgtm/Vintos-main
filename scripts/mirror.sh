@@ -30,7 +30,7 @@ SELF_MODEL="$WORKSPACE/SELF-MODEL.md"
 MIRROR_DIR="$WORKSPACE/memory/mirror"
 EMO_FILE="$WORKSPACE/memory/emotional-state.txt"
 API="http://127.0.0.1:8599/v1/chat/completions"
-MODEL="claude-sonnet-5"
+MODEL="claude-sonnet-5-5"
 
 mkdir -p "$MIRROR_DIR"
 

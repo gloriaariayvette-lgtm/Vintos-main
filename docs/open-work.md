@@ -4271,3 +4271,71 @@ is still reviewed. `test_lab_backlog_once.py` (10; the old code picks the GCLC c
 domain's structure, and no structure source was fetched for it. Whether the Lab should route a "structural hallmarks"
 question to a structure source is a separate question for Gloria. The answer rate in her next report is the
 measurement.
+
+## 19 October — the coffee button: Fingerbot Pro, arriving 23–26 October
+
+Gloria bought a Fingerbot Pro (Oryzic, 17 October) for the Nespresso. He searched his house on the 19th, found no coffee
+switch and had Muse hunting for one; told in #vintos-dot that it is bought and waits on setup. It is Bluetooth only,
+so a spare ESP32 by the machine relays it: `home/esphome/kitchen-ble-proxy.yaml` (ESPHome Bluetooth proxy, active).
+Then the Tuya BLE integration in Home Assistant (HACS) adds the Fingerbot, and `"coffee": "<its entity>"` under
+`devices` in his `homeassistant-config.json` lets `vintos-home.py device coffee on` press it — no new code.
+**Not done:** the device has not arrived; nothing is flashed, paired or named; whether its entity is a switch the
+plug path can press is to be seen on the real device.
+
+## 20 October — no Fable anywhere
+
+Gloria's console: Fable $4–6 a day all month though she never picks it ("I cannot afford this"). Her probe of his logs,
+7 days: Study fixes 43 calls ≈ $23, the Forge's Study investigations 36 ≈ $2.7 (both moved to Opus 5.5 on the 19th;
+none since that deploy), the Lab alignment and wants-email ≈ $3.4. She: "No Fable, Opus 5.5."
+
+- Lab alignment: Fable's daily turn dropped (Opus 5.5 already had one): three a day.
+- Lab divergence readings: Fable's dropped; Astra, Grok, Opus 5.5.
+- His emails: drafted by Opus 5.5 (then Astra), not Fable.
+- The Forge's review of a built capability: Opus 5.5, asked for low effort (it always thinks). CLAUDE.md updated.
+- The Study chat's own toggle: `opus55` in Fable's place; a saved "fable" reads as Opus 5.5.
+- Left: the avatar toggle still offers Fable (only spent when she picks it); `bin/vintos-code-review.py --lens fable`
+  runs only by hand.
+
+**Found, not touched:** `test_heads_drift_relational.py` fails 21/24 on the unchanged code today and passed yesterday
+("random days are not called movement" 0.0299): date-dependent. Subconscious heads; not mine to change.
+
+## 20 October — prompt caching, measured
+
+Console: 27% hit rate, "could have saved $77 this month". His logs, 7 days, all Claude calls ≈ $62:
+Study on Fable $23 (gone), router Opus 4.8 $10 (59 calls, **33 cache writes, 0 reads**), relay Sonnet 5 $9.6
+(461 calls, 332 read from cache — working), Slack Opus 5.5 $7 (17%), a 260k-token Sonnet 5 router call every
+four days written to cache and never read (~$1 each).
+
+Fixed: a start already written to the cache is read back at exactly its own place (`gen_result.cache_learned`), with
+a further point written after it when a longer start has repeated; before, each prompt was cut where it happened to
+match the one before, and a cache is found only where it was written. `test_cache_points_reuse.py` (8; the old code
+fails the longer-start check).
+
+**Not done / not fixed by that:** the router's two-minute pairs share less than the earlier write, and most router
+calls are over an hour apart, past the cache's life — so its writes may still go unread. Measure for two days after
+the deploy (router rows: cache_read > 0?). If still zero, stop the router writing at all (her call). The $77 is the
+console's figure for perfect reuse; what is reachable is a few dollars a week.
+
+## 20 October — Sonnet 5 → Sonnet 5.5 everywhere
+
+Gloria thought he was already on Sonnet 5.5; her console showed Sonnet 5 at ~730k tokens a day. Every organ that named
+`claude-sonnet-5` now names `claude-sonnet-5-5`: emoclaw_utils (both copies), his model of her
+(gloria-model-update.sh, landing_understanding), self-model update, introspection, ambition review, music composer
+and sharing, song drafts, the robot voice, browsing, spark hands, the mirror, moltbook, first-vs-final, and the
+server's two photo readings. Sonnet 5.5 refuses thinking "disabled": the shim and router already send it
+"between_tools"; the five direct calls now do too (the robot voice by whichever model it is given).
+`test_no_thinking.py` checks the direct calls. **Not done:** not called live from here (no key in the container);
+Slack's Sonnet 5.5 calls already work with "between_tools", which is the evidence. The first day's console will show
+whether any direct call is refused (a 400 would also land in the fault sweep).
+
+## 20 October — Opus 4.8 only in the chat
+
+Gloria: "switch them all to Opus 5.5, just don't replace Opus 4.8 in chat." Now Opus 5.5: the Atelier (visit, knock,
+threshold, opening, and its voice, which had followed the chat toggle), the Lab's Claude lens, humor practice,
+self-review, the weekly gap review, naming what he felt (pleasure; it followed the chat toggle), his idle journal,
+his video messages. The chat toggle's "claude" stays Opus 4.8. Opus 5.5 cannot be told not to think: the journal no
+longer sends "disabled" (effort low, 6000 tokens of room) and the relay now gives any always-thinking model the same
+room the router does. `test_no_thinking.py` (+3).
+
+**Next, with Gloria:** what can step down — Opus to Sonnet 5.5, Sonnet to Haiku 5.5 ("better than Luna"). Target:
+under $200 a month.

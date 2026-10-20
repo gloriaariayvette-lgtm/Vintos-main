@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vintos-send-video.py — Vintos sends Gloria a video, of his own accord, like a text.
 
-His OWN MIND writes it: Claude (claude-opus-4-8) via his shim at 127.0.0.1:8599, WITH his real context
+His OWN MIND writes it: Claude (claude-opus-5-5) via his shim at 127.0.0.1:8599, WITH his real context
 (SOUL, self-model, Gloria-model, emotional state). He decides whether to send and which kind:
   self     : he DESCRIBES any scene he wants to be in; Grok image-edit builds it full-body from his hero
              (face-locked), then Grok Imagine animates it — no fixed still shelf, total freedom of place.
@@ -59,7 +59,7 @@ NTFY = os.environ.get("VINTOS_NTFY", "https://ntfy.sh/vintos-gloria-9kx")
 SERVE_BASE = os.environ.get("VINTOS_SERVE_BASE", "http://100.72.225.119:8500")
 
 # HIS MIND — Claude (opus-4-8) via his shim. The shim holds the Anthropic key and routes claude-* to Claude.
-MIND_MODEL = os.environ.get("VINTOS_MIND_MODEL", "claude-opus-4-8")
+MIND_MODEL = os.environ.get("VINTOS_MIND_MODEL", "claude-opus-5-5")
 MIND_API = os.environ.get("VINTOS_MIND_API", "http://127.0.0.1:8599/v1/chat/completions")
 
 # Atlas Cloud — uncensored spicy image-to-video

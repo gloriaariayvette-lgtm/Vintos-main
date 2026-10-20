@@ -19,7 +19,7 @@ def _model():
         import model_router
         return model_router.location_model("atelier")
     except Exception:
-        return "claude-opus-4-8"
+        return "claude-opus-5-5"
 
 def _head(p, n):
     try: return open(p, errors="replace").read()[:n]

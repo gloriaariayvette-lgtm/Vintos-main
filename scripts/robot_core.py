@@ -39,7 +39,7 @@ ARCHIVE_SENSE_EVERY = 30.0                                            # one sens
 
 GEMMA_URL = os.environ.get("VINTOS_GEMMA_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
-SONNET_MODEL = os.environ.get("VINTOS_ROBOT_VOICE_MODEL", "claude-sonnet-5")
+SONNET_MODEL = os.environ.get("VINTOS_ROBOT_VOICE_MODEL", "claude-sonnet-5-5")
 FRAME_MAX_AGE = float(os.environ.get("VINTOS_ROBOT_FRAME_MAX_AGE", "6"))
 MIN_MS, MAX_MS = 100, 1500
 SONAR_STOP_CM = 25.0
@@ -361,7 +361,7 @@ def _sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
     if image_b64 and msgs and msgs[-1]["role"] == "user":
         msgs[-1] = {"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
                                                  {"type": "text", "text": str(msgs[-1]["content"])}]}
-    body = json.dumps({"model": SONNET_MODEL, "max_tokens": max_tokens, "thinking": {"type": "disabled"}, "system": system, "messages": msgs}).encode()
+    body = json.dumps({"model": SONNET_MODEL, "max_tokens": max_tokens, "thinking": ({"type": "between_tools"} if SONNET_MODEL.startswith("claude-sonnet-5-5") else {"type": "disabled"}), "system": system, "messages": msgs}).encode()
     from compute_admission import reserve_paid
     allowed,why=reserve_paid("robot/reelroom", "anthropic",SONNET_MODEL)
     if not allowed: raise RuntimeError(why)

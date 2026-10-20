@@ -30,7 +30,7 @@ def _name_shape(dropped, final):
             "thing in under 12 words, no quotes.>")
     usr = "CUT:\n" + dropped[:1200] + "\n\nSENT:\n" + final[:1600]
     try:
-        body = json.dumps({"model": "claude-sonnet-5", "temperature": 0.0, "max_tokens": 120,
+        body = json.dumps({"model": "claude-sonnet-5-5", "temperature": 0.0, "max_tokens": 120,
             "messages": [{"role": "system", "content": sysp},
                          {"role": "user", "content": usr}]}).encode()
         req = urllib.request.Request(SHIM, data=body, headers={"Content-Type": "application/json"})
