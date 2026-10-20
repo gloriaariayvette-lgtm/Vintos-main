@@ -77,7 +77,7 @@ ask(short + "a", "x", model="claude-haiku-4-5"); b5, _ = ask(short + "b", "y", m
 check("a start below the model's minimum is not marked", marks(b5) == [], marks(b5))
 
 # a job repeating more slowly than five minutes keeps its cache for an hour
-S._RECENT.clear()
+S._RECENT.clear(); S.GR._MARKS.clear()
 now = S.time.time()
 S._learned_head(S.FLOOR + JOB + "x", now - 1200)   # the shim puts its FLOOR first
 b6, h6 = ask(JOB + "y", "z")

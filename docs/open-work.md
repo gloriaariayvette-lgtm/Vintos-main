@@ -4298,3 +4298,20 @@ none since that deploy), the Lab alignment and wants-email ≈ $3.4. She: "No Fa
 
 **Found, not touched:** `test_heads_drift_relational.py` fails 21/24 on the unchanged code today and passed yesterday
 ("random days are not called movement" 0.0299): date-dependent. Subconscious heads; not mine to change.
+
+## 20 October — prompt caching, measured
+
+Console: 27% hit rate, "could have saved $77 this month". His logs, 7 days, all Claude calls ≈ $62:
+Study on Fable $23 (gone), router Opus 4.8 $10 (59 calls, **33 cache writes, 0 reads**), relay Sonnet 5 $9.6
+(461 calls, 332 read from cache — working), Slack Opus 5.5 $7 (17%), a 260k-token Sonnet 5 router call every
+four days written to cache and never read (~$1 each).
+
+Fixed: a start already written to the cache is read back at exactly its own place (`gen_result.cache_learned`), with
+a further point written after it when a longer start has repeated; before, each prompt was cut where it happened to
+match the one before, and a cache is found only where it was written. `test_cache_points_reuse.py` (8; the old code
+fails the longer-start check).
+
+**Not done / not fixed by that:** the router's two-minute pairs share less than the earlier write, and most router
+calls are over an hour apart, past the cache's life — so its writes may still go unread. Measure for two days after
+the deploy (router rows: cache_read > 0?). If still zero, stop the router writing at all (her call). The $77 is the
+console's figure for perfect reuse; what is reachable is a few dollars a week.
