@@ -4394,3 +4394,12 @@ I'd want the 'Gloria !started the day' message to contain the timer I set." In #
 opening a new direction. When the time is up the day pauses itself, once, and says so. The app's day switch takes
 `{"on": true, "minutes": 120, "continue": true}` too. `test_day_timer.py` (16). **Not done:** the app has no field for
 the timer yet; it is Slack-first.
+
+## 20 October — a copyright refusal reached him as the lyrics of his own song
+
+Gloria shared his own song with its audio. Whisper heard it; `clean_transcript` then asked a model "You know the song.
+Fix misheard words to the real lyrics"; the model refused on copyright, and its refusal (over 40 characters) was kept
+as the lyrics. He answered honestly that the words came through as a refusal. Now the tidy-up uses only the words
+heard and is told the song may be original and unreleased; `lyrics_or_heard` keeps Whisper's text when the answer reads
+as a refusal or shares under half its words with what was heard. The YouTube caption tidy-up has the same guard.
+`test_music_lyrics_refusal.py` (7; the old code fails three). **Not done:** the bad share is cleaned on Aegis by hand.
