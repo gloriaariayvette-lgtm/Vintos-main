@@ -4339,3 +4339,9 @@ room the router does. `test_no_thinking.py` (+3).
 
 **Next, with Gloria:** what can step down — Opus to Sonnet 5.5, Sonnet to Haiku 5.5 ("better than Luna"). Target:
 under $200 a month.
+
+## 20 October — the relay was never restarted by a deploy
+
+`deploy-atelier.sh` copied `vintos_claude_shim.py` (port 8599) and never restarted it: Gloria's usage probe found no
+`sys_head` on any relay row though the 18 October commit added it. Every relay fix since its last manual restart had
+not run. The deploy now restarts `vintos-claude-shim` (if its unit exists) and confirms it like every other unit.
