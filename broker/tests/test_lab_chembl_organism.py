@@ -27,4 +27,45 @@ class Organism(unittest.TestCase):
         self.assertIn('organism__icontains=Homo+sapiens',urls[0])
         self.assertIn('CHEMBL4051',json.dumps(got))
 
+def plan(**args):
+    return C.chembl_from_plugin({'plugin':'chembl','tool':'chembl_search_targets','arguments':args})
+
+class QueryWords(unittest.TestCase):
+    """The planner named the search word `term` (19 October, F-70cbe17adc): the whole Lab turn faulted, because only
+    target_name was taken. The words PubMed and UniProt already take stand in for a missing target_name."""
+    def test_the_usual_search_words_name_the_target(self):
+        for key in ('term','query','q'):
+            self.assertEqual(plan(**{key:'CFTR'})['term'],'CFTR',key)
+    def test_a_target_name_wins_over_an_alias(self):
+        self.assertEqual(plan(target_name='CFTR',term='KCNQ1')['term'],'CFTR')
+    def test_aliases_go_in_their_existing_order(self):
+        self.assertEqual(plan(term='KCNQ1',query='CFTR')['term'],'CFTR')   # query comes before term
+    def test_a_blank_or_missing_target_name_falls_back(self):
+        self.assertEqual(plan(target_name='  ',term='CFTR')['term'],'CFTR')
+        self.assertEqual(plan(target_name=None,term='CFTR')['term'],'CFTR')
+    def test_a_non_string_alias_is_passed_over_for_a_string_one(self):
+        self.assertEqual(plan(query=['CFTR'],term='KCNQ1')['term'],'KCNQ1')
+    def test_a_malformed_target_name_still_fails(self):
+        for bad in (['CFTR'],7,True):
+            with self.assertRaises(ValueError):plan(target_name=bad,term='KCNQ1')
+    def test_no_name_at_all_still_fails(self):
+        with self.assertRaises(ValueError):plan(term='')
+        with self.assertRaises(ValueError):plan(limit=2)
+    def test_an_unrelated_argument_is_still_named(self):
+        with self.assertRaisesRegex(ValueError,'unsupported ChEMBL target-search arguments: species'):
+            plan(term='CFTR',species='x')
+    def test_limit_and_organism_are_still_checked(self):
+        spec=plan(term='CFTR',organism='Homo sapiens',limit=2)
+        self.assertEqual((spec['organism'],spec['limit']),('Homo sapiens',2))
+        with self.assertRaises(ValueError):plan(term='CFTR',limit=99)
+    def test_the_request_is_not_changed(self):
+        args={'term':'CFTR','limit':2}
+        C.chembl_from_plugin({'plugin':'chembl','tool':'chembl_search_targets','arguments':args})
+        self.assertEqual(args,{'term':'CFTR','limit':2})
+
+class Isolation(unittest.TestCase):
+    def test_throwaway_home_and_no_network(self):
+        self.assertTrue(C.WS.startswith(scratch.name))
+        with self.assertRaises(AssertionError):C.urllib.request.urlopen('https://www.ebi.ac.uk/')
+
 if __name__=='__main__':unittest.main()
