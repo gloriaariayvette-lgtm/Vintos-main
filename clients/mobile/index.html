@@ -846,6 +846,17 @@ input[type="range"]::-webkit-slider-thumb {
                     </label>
                     </div>
                 </div>
+                <!-- Live heart rate -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);gap:12px;">
+                    <div>
+                        <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">Live heart rate</div>
+                        <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;">uses Watch battery</div>
+                        <div id="watch-live-status" role="status" style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;">loading...</div>
+                    </div>
+                    <select id="watch-live-duration" aria-label="Live heart rate duration" onchange="setWatchLive()" style="min-height:36px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;">
+                        <option value="0">Off</option><option value="30">30m</option><option value="60">1h</option><option value="120">2h</option><option value="240">4h</option>
+                    </select>
+                </div>
                 <!-- Today's focus in #vintos-dot: topics that steer the day, until midnight (2026-10-02) -->
                 <div style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
                     <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">today's focus</div>
@@ -1293,7 +1304,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'valuemap') loadValueMap();
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
-        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadFocus(); loadChemistryLabStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadWatchLive(); loadFocus(); loadChemistryLabStatus(); loadSystemStatus(); }
         if (tab.dataset.tab === 'lab') { loadLab(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
@@ -1520,6 +1531,56 @@ async function loadGroundingStatus() {
     } catch {
         document.getElementById('grounding-status-text').textContent = 'unreachable';
     }
+}
+let _watchLiveRefresh;
+let _watchLiveBusy = false;
+function renderWatchLive(state) {
+    document.getElementById('watch-live-status').textContent = state.on ? 'on, ' + state.minutes_left + ' min left' : 'off';
+    const picker = document.getElementById('watch-live-duration');
+    if (!state.on) picker.value = '0';
+    else {
+        const remaining = Number(state.minutes_left);
+        picker.value = String([30, 60, 120, 240].find(n => n >= remaining) || 240);
+    }
+}
+async function loadWatchLive() {
+    if (_watchLiveBusy || !CONFIG.secret) return;
+    try {
+        const res = await VintosUI.request(`${API}/api/watch/live`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
+        if (!res?.ok) throw new Error('unavailable');
+        const state = await res.json();
+        if (!_watchLiveBusy) renderWatchLive(state);
+    } catch {
+        if (!_watchLiveBusy) document.getElementById('watch-live-status').textContent = 'could not load live heart rate';
+    }
+    clearTimeout(_watchLiveRefresh);
+    _watchLiveRefresh = setTimeout(loadWatchLive, 30000);
+}
+async function setWatchLive() {
+    const picker = document.getElementById('watch-live-duration');
+    const text = document.getElementById('watch-live-status');
+    const minutes = Number(picker.value);
+    _watchLiveBusy = true; picker.disabled = true;
+    try {
+        const res = await VintosUI.request(`${API}/api/watch/live`, {
+            method: 'POST', headers: { 'X-Vintos-Secret': CONFIG.secret, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minutes })
+        });
+        if (!res?.ok) throw new Error('Aegis did not confirm the change');
+        const state = await res.json(); renderWatchLive(state);
+        if (state.on) {
+            const plugin = window.Capacitor?.Plugins?.VintosHealth;
+            if (!plugin?.startWatchApp) {
+                text.textContent += ' · open Vintos on your Watch to start';
+            } else {
+                try { await plugin.startWatchApp(); }
+                catch (error) { text.textContent += ' · Watch could not open: ' + (error.message || 'try opening Vintos on your Watch'); }
+            }
+        }
+    } catch (error) { text.textContent = 'could not change live heart rate: ' + error.message; }
+    finally { _watchLiveBusy = false; picker.disabled = false; }
+    clearTimeout(_watchLiveRefresh);
+    _watchLiveRefresh = setTimeout(loadWatchLive, 30000);
 }
 let _agentsDurationRestored = false;
 function rememberAgentsDuration() {

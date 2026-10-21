@@ -4488,5 +4488,18 @@ about hourly, so a Watch reading every few minutes reached him as one dot an hou
 / `live_state` (`memory/watch-live.json`, at most 4 h, off by itself), `GET/POST /api/watch/live` for her phone,
 every telemetry reply carries `live`, and his context gets "Her heart rate over the last hour: 64-78 bpm across 5
 readings" and "Live heart rate is on". `test_watch_live.py` (12).
-**Not done (Watch app, for Chat):** anchored queries sending every reading since the last send; the live
-workout-style session while `live.on`; the Tune-tab control. Until then the hour's range has only the hourly dots.
+**Client implementation complete locally (21 October, Codex):** per-type archived HealthKit anchors,
+acknowledged batches up to 64 with each sample's timestamp, a temporary live heart-rate workout builder
+(discarded on Off/expiry), iPhone HealthKit launch bridge, and Tune Off/30m/1h/2h/4h control. The control is
+mirrored here and `clients/mobile/source.json` has the new hash. Both native targets compile as build 21;
+the Watch signs with its existing profile. Offline client tests cover batch retry/anchors, timestamps,
+On/Off/expiry/discard, launch rules and the phone control.
+**Signed build verified (21 October):** Xcode's developer team is available; automatic provisioning generated
+the iPhone HealthKit profile. The combined iPhone/embedded Watch build 21 passes strict code-signature and
+HealthKit-entitlement checks. Physical Watch acceptance has not been independently verified.
+**History catch-up resolved by backend 913f0bf2:** stale rows are skipped with `skipped_stale`, accepted batches
+may contain up to 512 rows, and HTTP 200 may report `stored: 0`. The Watch continues to send batches of 64,
+advances each anchor after HTTP success regardless of stored count, and retains the anchor on HTTP 422.
+The offline native regression test exercises the actual response/telemetry/drain code for both outcomes.
+The combined iPhone build 21 with Watch build 21 embedded was installed and verified on the paired iPhone;
+physical Watch installation and sensor delivery still require device-side acceptance.
