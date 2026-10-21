@@ -238,7 +238,35 @@ def _operator_plan(experiments):
             "prediction": "The result will identify %s, model its complete sourced sequence, and report its length and provenance." % accession}
 
 
+def experiment_choices(experiments, recent_experiments):
+    # A repeated daily fold must not monopolize the offered experiments. The
+    # planner still selects its own measurable question among the least-used ones.
+    if len(recent_experiments) >= 2:
+        from collections import Counter
+        counts = Counter(r['experiment'] for r in recent_experiments)
+        last = [r['experiment'] for r in recent_experiments[-2:]]
+        least = min((counts[name] for name in experiments), default=0)
+        if last[0] == last[1] and counts[last[0]] >= least + 2:
+            experiments = ({name:value for name,value in experiments.items() if counts[name] == least}
+                           if isinstance(experiments,dict) else [name for name in experiments if counts[name] == least])
+    return experiments
+
+
 def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, lean=None, channel_lean=None):
+    recent_experiments = [
+        {'experiment':(r.get('plan') or {}).get('experiment'), 'question':(r.get('plan') or {}).get('question'),
+         'at':r.get('at')}
+        for r in lab._tail_jsonl(SESSIONS) if r.get('state') == 'completed'][-14:]
+    experiments = experiment_choices(experiments, recent_experiments)
+    investigations = lab._load(os.path.join(lab.ROOT,'investigations.json'), {'investigations':[]})
+    chains = [{'id':i['id'],'question':i['question'],'prediction':i.get('prediction'),
+               'results':[{'id':step['id'],'summary':step.get('summary')} for step in i.get('steps',[])[-2:]]}
+              for i in investigations.get('investigations',[]) if i.get('state')=='open'][-2:]
+    context += '\nOPEN INVESTIGATIONS (continue one when an offered experiment can measure its next claim): '+json.dumps(chains)
+    context += ('\nRECENT COMPLETED EXPERIMENTS: ' + json.dumps(recent_experiments) +
+                '\nChoose a new measurable question. Use the offered molecule, titrate and fold experiments '
+                'when they address it; do not default to another protein fold because that is what the '
+                'recent journal contains. State a prediction in the chosen experiment\'s actual outputs.')
     system = ("You are Vintos choosing one experiment in his visible Chemistry Lab. Play and curiosity matter. "
               "Choose only a named experiment offered below; never provide wet-lab steps, synthesis advice, "
               "human targeting, pathogens, toxins, or claims of function or safety. Return one JSON object.")

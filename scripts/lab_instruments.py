@@ -145,7 +145,9 @@ def validate(req):
     if not isinstance(req, dict):
         raise ValueError("instrument_query must be an object")
     skill, op = req.get("skill"), req.get("operation")
-    if skill not in OFFERED or op not in OFFERED[skill]:
+    from lab_native_instruments import OPERATIONS
+    native = op == OPERATIONS.get(skill) and skill in OPERATIONS
+    if not native and (skill not in OFFERED or op not in OFFERED[skill]):
         raise ValueError("instrument or operation not offered in the Lab")
     files = [str(f) for f in (req.get("files") or []) if isinstance(f, str)][:4]
     allowed = set(artifacts("structure", 50) + artifacts("sequence", 50))
@@ -167,6 +169,10 @@ def run(req, runner=None):
     today = _runs_today()
     if len(today["runs"]) >= DAILY_RUNS:
         raise PermissionError("instrument runs used up for today")
+    from lab_native_instruments import OPERATIONS
+    if runner is None and skill in OPERATIONS:
+        from lab_native_instruments import run as native_run
+        runner = lambda *a, **k: native_run(req)
     if runner is None and skill in LOCAL:
         runner = _compare_runner(req)
     if runner is None:
@@ -179,6 +185,7 @@ def run(req, runner=None):
         json.dump(today, f)
     os.replace(tmp, LEDGER)
     out = runner("lab", skill, question, operation=op, input_files=[str(LAB / f) for f in files])
+    if skill in OPERATIONS: return out
     receipt = out.get("receipt") or {}
     return {"receipt": {"receipt_id": receipt.get("receipt_id"), "source": "instrument:" + skill,
                         "records": [{"skill": skill, "operation": op, "inputs": files,

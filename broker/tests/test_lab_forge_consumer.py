@@ -1,4 +1,8 @@
 """Offline handback consumption, real Lab locks, durable ownership and no false fulfillment."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))

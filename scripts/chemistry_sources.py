@@ -22,6 +22,12 @@ def configured_sources():
 def query_plugin(plugin, tool, arguments, purpose):
     """Run one Lab-approved connected source and enter its result into Lab provenance."""
     request = {'plugin': plugin, 'tool': tool, 'arguments': arguments}
+    from lab_tool_calls import normalize_plugin
+    normalized_source, normalized_plugin = normalize_plugin(request, purpose)
+    if normalized_source:
+        return query(normalized_source, question=purpose)
+    request = normalized_plugin
+    plugin, tool, arguments = request['plugin'], request['tool'], request.get('arguments') or {}
     direct = (lab.uniprot_from_plugin(request, purpose) or lab.pubmed_from_plugin(request)
               or lab.chembl_from_plugin(request))
     if direct:
@@ -41,7 +47,7 @@ def query_plugin(plugin, tool, arguments, purpose):
                      'coverage':'tool_defined', 'evidence':'connected_tool_output'})
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))
-    return {'plugin_receipt': outcome['receipt'], 'source_receipt': result}
+    return {'plugin_receipt': outcome['receipt'], 'source_receipt': result, 'receipt': result}
 
 
 def query_protein_design_mcp(spec):

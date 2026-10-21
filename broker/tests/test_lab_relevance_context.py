@@ -1,4 +1,8 @@
 """Offline full-question coverage and explicit entity constraints; no live calls."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import hashlib, contextlib, json, os, pathlib, socket, sys, tempfile, types, unittest
 from unittest.mock import patch
 scratch=tempfile.TemporaryDirectory(prefix='lab-relevance-v2-')

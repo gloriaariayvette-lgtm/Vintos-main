@@ -359,6 +359,31 @@ def _grade_fold(run_id, experiment, mac_result, plan):
     return row
 
 
+def _grade_lattice(run_id, experiment, mac_result, plan, result):
+    """Read the toy bench's actual curve/energy schema, with its own units."""
+    curve=result.get('curve')
+    pairs=([(point.get('energy'),point.get('exact_energy'),point.get('value')) for point in curve if isinstance(point,dict)]
+           if isinstance(curve,list) else [((result.get('likeliest_fold') or {}).get('energy'),
+                                          (result.get('best_fold') or {}).get('energy'),None)])
+    points=[]
+    for measured,reference,dial in pairs:
+        measured,reference=_number(measured),_number(reference)
+        if measured is None or reference is None:continue
+        gap=measured-reference
+        points.append({'dial_value':dial,'measured_energy':measured,'reference_energy':reference,'gap':gap,
+                       'accuracy_outcome':'MATCHED_LATTICE_REFERENCE' if abs(gap)<=1e-6 else 'ABOVE_LATTICE_REFERENCE' if gap>0 else 'BELOW_LATTICE_REFERENCE',
+                       'counts_as':'accuracy','quantity':'curve_minimum' if isinstance(curve,list) else 'modal_state_vs_enumerated_minimum'})
+    row={'grade_id':'CG-'+uuid.uuid4().hex[:10],'at':lab.now_iso(),'run_id':run_id,'experiment':experiment,
+         'grader_version':GRADER_VERSION,'modality':'toy_lattice','energy_units':'bench_model_units_not_hartree',
+         'execution_state':_execution_state(mac_result,points,0), 'graded_points':len(points),'total_points':len(points),
+         'unreadable_points':0,'points_path':'run.result.curve' if isinstance(curve,list) else 'run.result.likeliest_fold',
+         'aggregate_accuracy':('MATCHED_LATTICE_REFERENCE' if points and all(abs(p['gap'])<=1e-6 for p in points)
+                               else 'LATTICE_REFERENCE_GAP' if points else 'NO_GRADEABLE_POINTS'),
+         'points':points,'plan':plan,'truth_status':'computed_comparison_of_host_reported_toy_model_energies',
+         'evidence_standing':'toy_lattice_measurement_not_atomistic_or_biological_validation'}
+    row.update(_isolation(mac_result));lab._append(GRADES,row);return row
+
+
 def grade(run_id, experiment, mac_result, plan=None):
     """Grade one Mac run.  Returns the appended row, or a refusal when already graded."""
     run_id = str(run_id or "")[:64]
@@ -370,6 +395,9 @@ def grade(run_id, experiment, mac_result, plan=None):
         return _grade_sequence_mismatch(run_id, experiment, mac_result, plan, mismatch)
     if _is_fold(experiment, mac_result):
         return _grade_fold(run_id, experiment, mac_result, plan)
+    result=(mac_result.get('run') or {}).get('result') or mac_result.get('result') or {}
+    if isinstance(result,dict) and (isinstance(result.get('curve'),list) or isinstance(result.get('best_fold'),dict)):
+        return _grade_lattice(run_id,experiment,mac_result,plan,result)
     tol = _tolerance()
     points, points_path = _points(mac_result)
     rows, unreadable, field_map = [], 0, {}

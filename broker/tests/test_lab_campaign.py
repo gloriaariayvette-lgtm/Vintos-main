@@ -162,14 +162,14 @@ check("calls to NCBI are spaced to its three a second", len(slept) == 2 and all(
 import chemistry_lab as C
 check("the Lab's own stores are scratch too", C.ROOT.startswith(HOME))
 C._append(C.NOTEBOOK, {"at": "2026-10-24T09:01:00+00:00", "kind": "inquiry_refused", "why": "repeat: spent subject"})
-check("after a pass that ended without a source call, the next turn is a campaign", C._campaign_due({"turns": 7}, {}))
+check("an empty pass does not reserve a campaign turn", not C._campaign_due({"turns": 7}, {}))
 C._append(C.NOTEBOOK, {"at": "2026-10-24T09:02:00+00:00", "kind": "reflection", "answers_question": "no"})
-check("otherwise every other turn", C._campaign_due({"turns": 8}, {}) and not C._campaign_due({"turns": 7}, {}))
+check("no fixed campaign share on either parity", not C._campaign_due({"turns": 8}, {}) and not C._campaign_due({"turns": 7}, {}))
 check("and it can be turned off", not C._campaign_due({"turns": 8}, {"campaigns": False}))
 check("a campaign finding ends a dead-end run, as an answered review does",
       C.dead_ends([{"kind": "inquiry", "inquiry": {"uniprot_query": "gene:KAIC"}}] * 3 + [{"kind": "campaign_finding"}])["count"] == 0)
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
-check("tick asks for a campaign before the ordinary orient", src.index("_campaign_due(state, cfg)") < src.index("inquiry = _orient(context, lean)"))
+check("the turn advances an investigation before legacy orientation", src.index("lab_investigations.turn(context)") < src.index("inquiry = _orient(context, lean)"))
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

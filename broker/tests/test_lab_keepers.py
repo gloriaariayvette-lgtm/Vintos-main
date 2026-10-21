@@ -4,6 +4,10 @@ dot in Slack when he asks for one (Gloria, 2026-10-03).
 
 Scratch workspace; every socket refused; the frontier model, Slack and his local mind are stubs.
 """
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, json, os, socket, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))

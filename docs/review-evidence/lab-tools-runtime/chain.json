@@ -1,0 +1,5600 @@
+{
+  "deployed_revision": "fca8b7f360cdc7fa5452088762b88a95a19a3b46",
+  "manifest_files_matched": 555,
+  "boundary": "read-only root filesystem, only review scratch writable; no live sends, hosted jobs or model reloads",
+  "investigation": {
+    "id": "I-scratch-validation",
+    "last_step_at": "2026-10-21T19:27:10.379939+00:00",
+    "line_id": null,
+    "opened_at": "2026-10-21T19:26:29.711610+00:00",
+    "origin": "operator_scratch_validation",
+    "plan": [
+      "Retrieve the InterPro globin-domain intervals for the human hemoglobin alpha protein.",
+      "Map both sets of coordinates onto the local sequence representation to check for overlap and coverage."
+    ],
+    "prediction": "The two sources will overlap on most of the globin interval, and the computed representation will cover the complete retrieved chain; coordinate disagreement or unrepresented residues would refute this.",
+    "question": "For human hemoglobin alpha (P69905), do UniProt and independent InterPro globin-domain intervals agree when mapped onto the complete chain represented by the local sequence model?",
+    "state": "open"
+  },
+  "steps": [
+    {
+      "step": {
+        "at": "2026-10-21T19:26:33.744412+00:00",
+        "executed_request": {
+          "query": "accession:P69905",
+          "source": "uniprot"
+        },
+        "execution_receipt_id": "11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896",
+        "id": "S-382d7c706bcd",
+        "input_refs": [],
+        "origin": "autonomous_lab",
+        "output_file": "investigation-outputs/S-382d7c706bcd.json",
+        "output_index": [
+          {
+            "keys": [
+              "receipt",
+              "candidate",
+              "normalized_records",
+              "sequence_files"
+            ],
+            "path": []
+          },
+          {
+            "length": 1,
+            "path": [
+              "normalized_records"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "id",
+              "protein_name",
+              "organism",
+              "taxon_id",
+              "organism_lineage",
+              "genes",
+              "protein_aliases",
+              "organism_aliases",
+              "length",
+              "function",
+              "domains",
+              "topology",
+              "features_named",
+              "pdb_ids",
+              "chembl_ids",
+              "sequence",
+              "topology_summary"
+            ],
+            "path": [
+              "normalized_records",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "normalized_records",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 9,
+            "path": [
+              "normalized_records",
+              0,
+              "id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 24,
+            "path": [
+              "normalized_records",
+              0,
+              "protein_name"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 12,
+            "path": [
+              "normalized_records",
+              0,
+              "organism"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "normalized_records",
+              0,
+              "taxon_id"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 14,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_lineage"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 9,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_lineage",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 7,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_lineage",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_lineage",
+              2
+            ],
+            "type": "str"
+          },
+          {
+            "length": 2,
+            "path": [
+              "normalized_records",
+              0,
+              "genes"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "geneName"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              0
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              0,
+              "geneName"
+            ]
+          },
+          {
+            "length": 4,
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              0,
+              "geneName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "geneName"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              1
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              1,
+              "geneName"
+            ]
+          },
+          {
+            "length": 4,
+            "path": [
+              "normalized_records",
+              0,
+              "genes",
+              1,
+              "geneName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 2,
+            "path": [
+              "normalized_records",
+              0,
+              "protein_aliases"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 12,
+            "path": [
+              "normalized_records",
+              0,
+              "protein_aliases",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 22,
+            "path": [
+              "normalized_records",
+              0,
+              "protein_aliases",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_aliases"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 5,
+            "path": [
+              "normalized_records",
+              0,
+              "organism_aliases",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "normalized_records",
+              0,
+              "length"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 278,
+            "path": [
+              "normalized_records",
+              0,
+              "function"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "normalized_records",
+              0,
+              "domains"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "type",
+              "description",
+              "location",
+              "evidences"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "type"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "description"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "start",
+              "end"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location"
+            ]
+          },
+          {
+            "keys": [
+              "value",
+              "modifier"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "start"
+            ]
+          },
+          {
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "start",
+              "value"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 5,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "start",
+              "modifier"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "value",
+              "modifier"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "end"
+            ]
+          },
+          {
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "end",
+              "value"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 5,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "location",
+              "end",
+              "modifier"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "evidences"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "evidenceCode",
+              "source",
+              "id"
+            ],
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "evidences",
+              0
+            ]
+          },
+          {
+            "length": 11,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "evidences",
+              0,
+              "evidenceCode"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 15,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "evidences",
+              0,
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "normalized_records",
+              0,
+              "domains",
+              0,
+              "evidences",
+              0,
+              "id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "normalized_records",
+              0,
+              "topology"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 1,
+            "path": [
+              "normalized_records",
+              0,
+              "features_named"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 14,
+            "path": [
+              "normalized_records",
+              0,
+              "features_named",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "normalized_records",
+              0,
+              "pdb_ids"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 0,
+            "path": [
+              "normalized_records",
+              0,
+              "chembl_ids"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 142,
+            "path": [
+              "normalized_records",
+              0,
+              "sequence"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "normalized_records",
+              0,
+              "topology_summary"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "source",
+              "query",
+              "records",
+              "retrieved_at",
+              "response_sha256",
+              "metadata",
+              "truth_status",
+              "literature_coverage",
+              "novelty",
+              "receipt_id"
+            ],
+            "path": [
+              "receipt"
+            ]
+          },
+          {
+            "length": 7,
+            "path": [
+              "receipt",
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "source",
+              "query"
+            ],
+            "path": [
+              "receipt",
+              "query"
+            ]
+          },
+          {
+            "length": 7,
+            "path": [
+              "receipt",
+              "query",
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 16,
+            "path": [
+              "receipt",
+              "query",
+              "query"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "entryType",
+              "primaryAccession",
+              "uniProtkbId",
+              "organism",
+              "proteinDescription",
+              "genes",
+              "comments",
+              "features",
+              "sequence",
+              "extraAttributes"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0
+            ]
+          },
+          {
+            "length": 31,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "entryType"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "primaryAccession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 9,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "uniProtkbId"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "scientificName",
+              "commonName",
+              "taxonId",
+              "lineage"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism"
+            ]
+          },
+          {
+            "length": 12,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "scientificName"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 5,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "commonName"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "taxonId"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 14,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "lineage"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 9,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "lineage",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 7,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "lineage",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "organism",
+              "lineage",
+              2
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "recommendedName",
+              "alternativeNames",
+              "contains"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription"
+            ]
+          },
+          {
+            "keys": [
+              "fullName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "recommendedName"
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "recommendedName",
+              "fullName"
+            ]
+          },
+          {
+            "length": 24,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "recommendedName",
+              "fullName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 2,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "fullName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              0
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              0,
+              "fullName"
+            ]
+          },
+          {
+            "length": 12,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              0,
+              "fullName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "fullName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              1
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              1,
+              "fullName"
+            ]
+          },
+          {
+            "length": 22,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "alternativeNames",
+              1,
+              "fullName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "recommendedName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0
+            ]
+          },
+          {
+            "keys": [
+              "fullName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName"
+            ]
+          },
+          {
+            "keys": [
+              "evidences",
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName"
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "evidences"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "evidenceCode",
+              "source",
+              "id"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "evidences",
+              0
+            ]
+          },
+          {
+            "length": 11,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "evidences",
+              0,
+              "evidenceCode"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "evidences",
+              0,
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "evidences",
+              0,
+              "id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 11,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteinDescription",
+              "contains",
+              0,
+              "recommendedName",
+              "fullName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 2,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "geneName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              0
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              0,
+              "geneName"
+            ]
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              0,
+              "geneName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "geneName"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              1
+            ]
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              1,
+              "geneName"
+            ]
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "genes",
+              1,
+              "geneName",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 2,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "texts",
+              "commentType"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              0
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              0,
+              "texts"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              0,
+              "texts",
+              0
+            ]
+          },
+          {
+            "length": 76,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              0,
+              "texts",
+              0,
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              0,
+              "commentType"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "texts",
+              "commentType",
+              "molecule"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "evidences",
+              "value"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "evidences"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "evidenceCode",
+              "source",
+              "id"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "evidences",
+              0
+            ]
+          },
+          {
+            "length": 11,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "evidences",
+              0,
+              "evidenceCode"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "evidences",
+              0,
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "evidences",
+              0,
+              "id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 201,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "texts",
+              0,
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "commentType"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 11,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "comments",
+              1,
+              "molecule"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "type",
+              "location",
+              "description",
+              "evidences"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "type"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "start",
+              "end"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location"
+            ]
+          },
+          {
+            "keys": [
+              "value",
+              "modifier"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "start"
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "start",
+              "value"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 5,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "start",
+              "modifier"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "value",
+              "modifier"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "end"
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "end",
+              "value"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 5,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "location",
+              "end",
+              "modifier"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "description"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "evidences"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "evidenceCode",
+              "source",
+              "id"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "evidences",
+              0
+            ]
+          },
+          {
+            "length": 11,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "evidences",
+              0,
+              "evidenceCode"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 15,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "evidences",
+              0,
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "features",
+              0,
+              "evidences",
+              0,
+              "id"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "value",
+              "length",
+              "molWeight",
+              "crc64",
+              "md5"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence"
+            ]
+          },
+          {
+            "length": 142,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence",
+              "value"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence",
+              "length"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence",
+              "molWeight"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 16,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence",
+              "crc64"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 32,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "sequence",
+              "md5"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "uniParcId"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "extraAttributes"
+            ]
+          },
+          {
+            "length": 13,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "extraAttributes",
+              "uniParcId"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 32,
+            "path": [
+              "receipt",
+              "retrieved_at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "receipt",
+              "response_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "release",
+              "coverage"
+            ],
+            "path": [
+              "receipt",
+              "metadata"
+            ]
+          },
+          {
+            "length": 7,
+            "path": [
+              "receipt",
+              "metadata",
+              "release"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 18,
+            "path": [
+              "receipt",
+              "metadata",
+              "coverage"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 33,
+            "path": [
+              "receipt",
+              "truth_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 12,
+            "path": [
+              "receipt",
+              "literature_coverage"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 15,
+            "path": [
+              "receipt",
+              "novelty"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "receipt",
+              "receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "receipt_id",
+              "question",
+              "assessment",
+              "followups"
+            ],
+            "path": [
+              "candidate"
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "question"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "entry_id",
+              "at",
+              "finding",
+              "reflection",
+              "next_question",
+              "question",
+              "source_accessions",
+              "interest_score",
+              "reason_for_score",
+              "score_components",
+              "flagged_for_next_lab_session",
+              "source_query_succeeded",
+              "collision_id",
+              "question_sha256",
+              "evidence_sha256",
+              "truth_status",
+              "score_version"
+            ],
+            "path": [
+              "candidate",
+              "assessment"
+            ]
+          },
+          {
+            "length": 20,
+            "path": [
+              "candidate",
+              "assessment",
+              "entry_id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 32,
+            "path": [
+              "candidate",
+              "assessment",
+              "at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1000,
+            "path": [
+              "candidate",
+              "assessment",
+              "finding"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 49,
+            "path": [
+              "candidate",
+              "assessment",
+              "reflection"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "assessment",
+              "next_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "assessment",
+              "question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "candidate",
+              "assessment",
+              "source_accessions"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 32,
+            "path": [
+              "candidate",
+              "assessment",
+              "source_accessions",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "interest_score"
+            ],
+            "type": "float"
+          },
+          {
+            "length": 4,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 14,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score",
+              0
+            ],
+            "type": "str"
+          }
+        ],
+        "output_sha256": "f84d68b914d3fba7c23bec8c6f9b2cf384befd3d85de7f65731709e41a8072c2",
+        "question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+        "reference_origin": null,
+        "request": {
+          "query": "accession:P69905",
+          "source": "uniprot"
+        },
+        "request_sha256": "0d0194f2680bb8f48777069719a688fd503851ff836a55abae2b9f3b36e4470f",
+        "route": "source",
+        "run_id": null,
+        "state": "completed",
+        "summary": "{\"receipt\": {\"source\": \"uniprot\", \"query\": {\"source\": \"uniprot\", \"query\": \"accession:P69905\"}, \"records\": [{\"entryType\": \"UniProtKB reviewed (Swiss-Prot)\", \"primaryAccession\": \"P69905\", \"uniProtkbId\": \"HBA_HUMAN\", \"organism\": {\"scientificName\": \"Homo sapiens\", \"commonName\": \"Human\", \"taxonId\": 9606, \"lineage\": [\"Eukaryota\", \"Metazoa\", \"Chordata\", \"Craniata\", \"...[10 more items not shown]\"]}, \"proteinDescription\": {\"recommendedName\": {\"fullName\": {\"value\": \"Hemoglobin subunit alpha\"}}, \"alternativeNames\": [{\"fullName\": {\"value\": \"Alpha-globin\"}}, {\"fullName\": {\"value\": \"Hemoglobin alpha chain\"}}], \"contains\": [{\"recommendedName\": {\"fullName\": {\"evidences\": [{\"evidenceCode\": \"ECO:0000303\", \"source\": \"PubMed\", \"id\": \"18077343\"}], \"value\": \"Hemopressin\"}}}]}, \"genes\": [{\"geneName\": {\"value\": \"HBA1\"}}, {\"geneName\": {\"value\": \"HBA2\"}}], \"comments\": [{\"texts\": [{\"value\": \"Involved in oxygen transport from the lung to the various peripheral tissues\"}], \"commentType\": \"FUNCTION\"}, {\"texts\": [{\"evidences\": [{\"evidenceCode\": \"ECO:0000269\", \"source\": \"PubMed\", \"id\": \"18077343\"}], \"value\": \"Hemopressin acts as an antagonist peptide of the cannabinoid receptor CNR1 (PubMed:18077343). Hemopressin-binding effici...[shortened]\"}], \"commentType\": \"FUNCTION\", \"molecule\": \"Hemopressin\"}], \"features\": [{\"type\": \"Domain\", \"location\": {\"start\": {\"value\": 2, \"modifier\": \"EXACT\"}, \"end\": {\"value\": 142, \"modifier\": \"EXACT\"}}, \"description\": \"Globin\", \"evidences\": [{\"evidenceCode\": \"ECO:0000255\", \"source\": \"PROSITE-ProRule\", \"id\": \"PRU00238\"}]}], \"sequence\": {\"value\": \"[142-residue sequence; whole in the receipt]\", \"length\": 142, \"molWeight\": 15258, \"crc64\": \"15E13666573BBBAE\", \"md5\": \"6077C452D1DC6151040B2B179E2294C7\"}, \"extraAttributes\": {\"uniParcId\": \"UPI0000000239\"}}], \"retrieved_at\": \"2026-1 ...[EXCERPT ENDS HERE: 3368 more characters of these observations were not shown to you. The records themselves are complete; do not report them as truncated.]",
+        "tool": "source:uniprot",
+        "why": "This provides the primary sequence and the UniProt-annotated features (including domains) required for the first part of the comparison."
+      },
+      "result": {
+        "candidate": {
+          "assessment": {
+            "at": "2026-10-21T19:26:34.303265+00:00",
+            "collision_id": null,
+            "entry_id": "SRC-11ee480b04ffc806",
+            "evidence_sha256": "1e865d2b49ecfad5854d495d3e068b941ddee633a10434c85bb97ed5daf50f08",
+            "finding": "{\"source\": \"uniprot\", \"query\": {\"source\": \"uniprot\", \"query\": \"accession:P69905\"}, \"receipt\": \"11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896\", \"observations\": [{\"entryType\": \"UniProtKB reviewed (Swiss-Prot)\", \"primaryAccession\": \"P69905\", \"uniProtkbId\": \"HBA_HUMAN\", \"organism\": {\"scientificName\": \"Homo sapiens\", \"commonName\": \"Human\", \"taxonId\": 9606, \"lineage\": [\"Eukaryota\", \"Metazoa\", \"Chordata\", \"Craniata\", \"Vertebrata\", \"Euteleostomi\", \"Mammalia\", \"Eutheria\", \"Euarchontoglires\", \"Primates\", \"Haplorrhini\", \"Catarrhini\", \"Hominidae\", \"Homo\"]}, \"proteinDescription\": {\"recommendedName\": {\"fullName\": {\"value\": \"Hemoglobin subunit alpha\"}}, \"alternativeNames\": [{\"fullName\": {\"value\": \"Alpha-globin\"}}, {\"fullName\": {\"value\": \"Hemoglobin alpha chain\"}}], \"contains\": [{\"recommendedName\": {\"fullName\": {\"evidences\": [{\"evidenceCode\": \"ECO:0000303\", \"source\": \"PubMed\", \"id\": \"18077343\"}], \"value\": \"Hemopressin\"}}}]}, \"genes\": [{\"geneName\": {\"value\": \"HBA1\"}}, {\"geneName\": {\"",
+            "flagged_for_next_lab_session": true,
+            "interest_score": 0.75,
+            "next_question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+            "question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+            "question_sha256": "d98ae1b28aa6bbe3179678e9f57d8ecae64998297a154e89b8f1be95cfbfa0af",
+            "reason_for_score": [
+              "sourced_record",
+              "source_query_succeeded",
+              "new_source_accessions",
+              "new_territory"
+            ],
+            "reflection": "Prediction or source observation; not validation.",
+            "score_components": {
+              "advances_open_line": 0.0,
+              "new_source_accessions": 0.2,
+              "new_territory": 0.3,
+              "repetition_penalty": 0.0,
+              "source_query_succeeded": 0.15,
+              "sourced_record": 0.1
+            },
+            "score_version": 2,
+            "source_accessions": [
+              "11ee480b04ffc8063b372513e32deb5a"
+            ],
+            "source_query_succeeded": true,
+            "truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance"
+          },
+          "followups": {
+            "chemiq": "requires_defined_molecule_and_supported_experiment",
+            "esmc_esmfold": "requires_sourced_gene_to_protein_mapping_and_sequence; regulatory_effect_is_not_sequence_change",
+            "evo2": "requires_exact_sourced_reference_sequence_and_bounded_comparison; no phenotype_claim",
+            "hypothesis_status": "unvalidated",
+            "novelty": "requires_documented_literature_search; no_hit_is_not_proof",
+            "source_receipt": "11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896"
+          },
+          "question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+          "receipt_id": "11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896"
+        },
+        "normalized_records": [
+          {
+            "accession": "P69905",
+            "chembl_ids": [],
+            "domains": [
+              {
+                "description": "Globin",
+                "evidences": [
+                  {
+                    "evidenceCode": "ECO:0000255",
+                    "id": "PRU00238",
+                    "source": "PROSITE-ProRule"
+                  }
+                ],
+                "location": {
+                  "end": {
+                    "modifier": "EXACT",
+                    "value": 142
+                  },
+                  "start": {
+                    "modifier": "EXACT",
+                    "value": 2
+                  }
+                },
+                "type": "Domain"
+              }
+            ],
+            "features_named": [
+              "Domain: Globin"
+            ],
+            "function": "Involved in oxygen transport from the lung to the various peripheral tissues Hemopressin acts as an antagonist peptide of the cannabinoid receptor CNR1 (PubMed:18077343). Hemopressin-binding efficiently blocks cannabinoid receptor CNR1 and subsequent signaling (PubMed:18077343)",
+            "genes": [
+              {
+                "geneName": {
+                  "value": "HBA1"
+                }
+              },
+              {
+                "geneName": {
+                  "value": "HBA2"
+                }
+              }
+            ],
+            "id": "HBA_HUMAN",
+            "length": 142,
+            "organism": "Homo sapiens",
+            "organism_aliases": [
+              "Human"
+            ],
+            "organism_lineage": [
+              "Eukaryota",
+              "Metazoa",
+              "Chordata",
+              "Craniata",
+              "Vertebrata",
+              "Euteleostomi",
+              "Mammalia",
+              "Eutheria",
+              "Euarchontoglires",
+              "Primates",
+              "Haplorrhini",
+              "Catarrhini",
+              "Hominidae",
+              "Homo"
+            ],
+            "pdb_ids": [],
+            "protein_aliases": [
+              "Alpha-globin",
+              "Hemoglobin alpha chain"
+            ],
+            "protein_name": "Hemoglobin subunit alpha",
+            "sequence": "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR",
+            "taxon_id": 9606,
+            "topology": [],
+            "topology_summary": ""
+          }
+        ],
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "coverage": "bounded_first_page",
+            "release": "2026_03"
+          },
+          "novelty": "not_established",
+          "query": {
+            "query": "accession:P69905",
+            "source": "uniprot"
+          },
+          "receipt_id": "11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896",
+          "records": [
+            {
+              "comments": [
+                {
+                  "commentType": "FUNCTION",
+                  "texts": [
+                    {
+                      "value": "Involved in oxygen transport from the lung to the various peripheral tissues"
+                    }
+                  ]
+                },
+                {
+                  "commentType": "FUNCTION",
+                  "molecule": "Hemopressin",
+                  "texts": [
+                    {
+                      "evidences": [
+                        {
+                          "evidenceCode": "ECO:0000269",
+                          "id": "18077343",
+                          "source": "PubMed"
+                        }
+                      ],
+                      "value": "Hemopressin acts as an antagonist peptide of the cannabinoid receptor CNR1 (PubMed:18077343). Hemopressin-binding efficiently blocks cannabinoid receptor CNR1 and subsequent signaling (PubMed:18077343)"
+                    }
+                  ]
+                }
+              ],
+              "entryType": "UniProtKB reviewed (Swiss-Prot)",
+              "extraAttributes": {
+                "uniParcId": "UPI0000000239"
+              },
+              "features": [
+                {
+                  "description": "Globin",
+                  "evidences": [
+                    {
+                      "evidenceCode": "ECO:0000255",
+                      "id": "PRU00238",
+                      "source": "PROSITE-ProRule"
+                    }
+                  ],
+                  "location": {
+                    "end": {
+                      "modifier": "EXACT",
+                      "value": 142
+                    },
+                    "start": {
+                      "modifier": "EXACT",
+                      "value": 2
+                    }
+                  },
+                  "type": "Domain"
+                }
+              ],
+              "genes": [
+                {
+                  "geneName": {
+                    "value": "HBA1"
+                  }
+                },
+                {
+                  "geneName": {
+                    "value": "HBA2"
+                  }
+                }
+              ],
+              "organism": {
+                "commonName": "Human",
+                "lineage": [
+                  "Eukaryota",
+                  "Metazoa",
+                  "Chordata",
+                  "Craniata",
+                  "Vertebrata",
+                  "Euteleostomi",
+                  "Mammalia",
+                  "Eutheria",
+                  "Euarchontoglires",
+                  "Primates",
+                  "Haplorrhini",
+                  "Catarrhini",
+                  "Hominidae",
+                  "Homo"
+                ],
+                "scientificName": "Homo sapiens",
+                "taxonId": 9606
+              },
+              "primaryAccession": "P69905",
+              "proteinDescription": {
+                "alternativeNames": [
+                  {
+                    "fullName": {
+                      "value": "Alpha-globin"
+                    }
+                  },
+                  {
+                    "fullName": {
+                      "value": "Hemoglobin alpha chain"
+                    }
+                  }
+                ],
+                "contains": [
+                  {
+                    "recommendedName": {
+                      "fullName": {
+                        "evidences": [
+                          {
+                            "evidenceCode": "ECO:0000303",
+                            "id": "18077343",
+                            "source": "PubMed"
+                          }
+                        ],
+                        "value": "Hemopressin"
+                      }
+                    }
+                  }
+                ],
+                "recommendedName": {
+                  "fullName": {
+                    "value": "Hemoglobin subunit alpha"
+                  }
+                }
+              },
+              "sequence": {
+                "crc64": "15E13666573BBBAE",
+                "length": 142,
+                "md5": "6077C452D1DC6151040B2B179E2294C7",
+                "molWeight": 15258,
+                "value": "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR"
+              },
+              "uniProtkbId": "HBA_HUMAN"
+            }
+          ],
+          "response_sha256": "d3035dc7c139be458b394d17bf8c8215b284af79efa78a7b6628436e2b7edc50",
+          "retrieved_at": "2026-10-21T19:26:34.303265+00:00",
+          "source": "uniprot",
+          "truth_status": "source_observation_not_validation"
+        },
+        "sequence_files": [
+          "artifacts/sequences/P69905.fasta"
+        ]
+      },
+      "artifact_file_sha256": "bf19a8e4042e91bd6c5ac8a727ccbd6b584b80727c6c33c9c27a92f06e82b220"
+    },
+    {
+      "step": {
+        "at": "2026-10-21T19:26:38.800640+00:00",
+        "execution_receipt_id": null,
+        "id": "S-a30e88aca7f1",
+        "input_refs": [
+          {
+            "path": [
+              "normalized_records"
+            ],
+            "step": "S-382d7c706bcd"
+          }
+        ],
+        "origin": "autonomous_phase",
+        "output_file": "investigation-outputs/S-a30e88aca7f1.json",
+        "output_index": [
+          {
+            "keys": [
+              "at",
+              "kind",
+              "model",
+              "device",
+              "embeddings",
+              "collision_adapter_records",
+              "truth_status"
+            ],
+            "path": []
+          },
+          {
+            "length": 32,
+            "path": [
+              "at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 22,
+            "path": [
+              "kind"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 9,
+            "path": [
+              "model"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "device"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "embeddings"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "artifact",
+              "coverage",
+              "dimension",
+              "embedded_residues",
+              "embedding_sha256",
+              "input_length",
+              "l2_norm",
+              "sequence_length",
+              "truncated",
+              "windows"
+            ],
+            "path": [
+              "embeddings",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "embeddings",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 59,
+            "path": [
+              "embeddings",
+              0,
+              "artifact"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 11,
+            "path": [
+              "embeddings",
+              0,
+              "coverage"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "dimension"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 2,
+            "path": [
+              "embeddings",
+              0,
+              "embedded_residues"
+            ],
+            "type": "list"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "embedded_residues",
+              0
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "embedded_residues",
+              1
+            ],
+            "type": "int"
+          },
+          {
+            "length": 64,
+            "path": [
+              "embeddings",
+              0,
+              "embedding_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "input_length"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "l2_norm"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "sequence_length"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "truncated"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 1,
+            "path": [
+              "embeddings",
+              0,
+              "windows"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 2,
+            "path": [
+              "embeddings",
+              0,
+              "windows",
+              0
+            ],
+            "type": "list"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "windows",
+              0,
+              0
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "embeddings",
+              0,
+              "windows",
+              0,
+              1
+            ],
+            "type": "int"
+          },
+          {
+            "length": 1,
+            "path": [
+              "collision_adapter_records"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 24,
+            "path": [
+              "collision_adapter_records",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 51,
+            "path": [
+              "truth_status"
+            ],
+            "type": "str"
+          }
+        ],
+        "output_sha256": "f604e97043e46314676f2d6ae8038cac57f15e3028f4d7997cb0e157f82a9c8c",
+        "question": "For human hemoglobin alpha (P69905), do UniProt and independent InterPro globin-domain intervals agree when mapped onto the complete chain represented by the local sequence model?",
+        "request": {
+          "records": {
+            "path": [
+              "normalized_records"
+            ],
+            "step": "S-382d7c706bcd"
+          }
+        },
+        "request_sha256": "230579660c93a4ee07d40cfba435f734c7eff66e38740f294d894ef56ca34e8c",
+        "route": "representation",
+        "run_id": null,
+        "state": "completed",
+        "summary": "{\"at\": \"2026-10-21T19:26:38.800358+00:00\", \"kind\": \"protein_representation\", \"model\": \"esmc_600m\", \"device\": \"cuda\", \"embeddings\": [{\"accession\": \"P69905\", \"artifact\": \"memory/chemistry-lab/artifacts/esmc/P69905-0157cd10e01f.npy\", \"coverage\": \"whole_chain\", \"dimension\": 1152, \"embedded_residues\": [1, 142], \"embedding_sha256\": \"0157cd10e01f688c2c5c59027e40a7cfbde534496c40d4b43a6643bc0b322c77\", \"input_length\": 142, \"l2_norm\": 0.956556, \"sequence_length\": 142, \"truncated\": false, \"windows\": [[1, 142]]}], \"collision_adapter_records\": [\"ca1a8a2de1696fe8bebd3471\"], \"truth_status\": \"model_derived_representation_not_biological_finding\"}",
+        "tool": "representation",
+        "why": "Existing Lab phase consuming the retained sourced result."
+      },
+      "result": {
+        "at": "2026-10-21T19:26:38.800358+00:00",
+        "collision_adapter_records": [
+          "ca1a8a2de1696fe8bebd3471"
+        ],
+        "device": "cuda",
+        "embeddings": [
+          {
+            "accession": "P69905",
+            "artifact": "memory/chemistry-lab/artifacts/esmc/P69905-0157cd10e01f.npy",
+            "coverage": "whole_chain",
+            "dimension": 1152,
+            "embedded_residues": [
+              1,
+              142
+            ],
+            "embedding_sha256": "0157cd10e01f688c2c5c59027e40a7cfbde534496c40d4b43a6643bc0b322c77",
+            "input_length": 142,
+            "l2_norm": 0.956556,
+            "sequence_length": 142,
+            "truncated": false,
+            "windows": [
+              [
+                1,
+                142
+              ]
+            ]
+          }
+        ],
+        "kind": "protein_representation",
+        "model": "esmc_600m",
+        "truth_status": "model_derived_representation_not_biological_finding"
+      },
+      "artifact_file_sha256": "1709e7e1fbf9f085757c29be88bdc1c4db7680bfa75ba0f7a7575c11859a4876"
+    },
+    {
+      "step": {
+        "at": "2026-10-21T19:27:00.768602+00:00",
+        "execution_receipt_id": null,
+        "id": "S-a93d15f30d9c",
+        "input_refs": [
+          {
+            "path": [],
+            "step": "S-a30e88aca7f1"
+          }
+        ],
+        "origin": "autonomous_phase",
+        "output_file": "investigation-outputs/S-a93d15f30d9c.json",
+        "output_index": [
+          {
+            "keys": [
+              "at",
+              "kind",
+              "inquiry",
+              "source_query_succeeded",
+              "followup_receipt_id",
+              "followup_lineage",
+              "source_accessions",
+              "material_receipt_id",
+              "evidence_sha256",
+              "literature",
+              "attention",
+              "factual_observation",
+              "next_question",
+              "instrument_gap",
+              "line_status",
+              "answers_question",
+              "reader_answers_question",
+              "missing_evidence",
+              "speculative_reading",
+              "coverage_check",
+              "entity_context_check",
+              "evidence_status",
+              "reader_factual_observation",
+              "review_outcome",
+              "review_outcome_why",
+              "claim_evidence",
+              "truth_status",
+              "entry_id",
+              "interest_score",
+              "reason_for_score",
+              "flagged_for_next_lab_session",
+              "surfaced_to_frontier",
+              "interest_truth_status"
+            ],
+            "path": []
+          },
+          {
+            "length": 32,
+            "path": [
+              "at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 10,
+            "path": [
+              "kind"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "browse_lane",
+              "question",
+              "source_query"
+            ],
+            "path": [
+              "inquiry"
+            ]
+          },
+          {
+            "length": 7,
+            "path": [
+              "inquiry",
+              "browse_lane"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "inquiry",
+              "question"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "query",
+              "source"
+            ],
+            "path": [
+              "inquiry",
+              "source_query"
+            ]
+          },
+          {
+            "length": 16,
+            "path": [
+              "inquiry",
+              "source_query",
+              "query"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 7,
+            "path": [
+              "inquiry",
+              "source_query",
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "source_query_succeeded"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 64,
+            "path": [
+              "followup_receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "followup_lineage"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "length": 6,
+            "path": [
+              "source_accessions"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 6,
+            "path": [
+              "source_accessions",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 41,
+            "path": [
+              "source_accessions",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 13,
+            "path": [
+              "source_accessions",
+              2
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "material_receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "evidence_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "literature"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "pmid",
+              "title",
+              "year"
+            ],
+            "path": [
+              "literature",
+              0
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "literature",
+              0,
+              "pmid"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 53,
+            "path": [
+              "literature",
+              0,
+              "title"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "literature",
+              0,
+              "year"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "pmid",
+              "title",
+              "year"
+            ],
+            "path": [
+              "literature",
+              1
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "literature",
+              1,
+              "pmid"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 118,
+            "path": [
+              "literature",
+              1,
+              "title"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "literature",
+              1,
+              "year"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "pmid",
+              "title",
+              "year"
+            ],
+            "path": [
+              "literature",
+              2
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "literature",
+              2,
+              "pmid"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 89,
+            "path": [
+              "literature",
+              2,
+              "title"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "literature",
+              2,
+              "year"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 108,
+            "path": [
+              "attention"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 95,
+            "path": [
+              "factual_observation"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 171,
+            "path": [
+              "next_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "instrument_gap"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "line_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 67,
+            "path": [
+              "answers_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 3,
+            "path": [
+              "reader_answers_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "missing_evidence"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "speculative_reading"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "answered",
+              "missing",
+              "original_question",
+              "supports",
+              "discarded_supports",
+              "evidence_sha256",
+              "independent_sufficiency",
+              "method"
+            ],
+            "path": [
+              "coverage_check"
+            ]
+          },
+          {
+            "path": [
+              "coverage_check",
+              "answered"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 0,
+            "path": [
+              "coverage_check",
+              "missing"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 64,
+            "path": [
+              "coverage_check",
+              "original_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 3,
+            "path": [
+              "coverage_check",
+              "supports"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "requirement",
+              "address",
+              "quote",
+              "path",
+              "source_citation"
+            ],
+            "path": [
+              "coverage_check",
+              "supports",
+              0
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "coverage_check",
+              "supports",
+              0,
+              "requirement"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 24,
+            "path": [
+              "coverage_check",
+              "supports",
+              0,
+              "address"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "coverage_check",
+              "supports",
+              0,
+              "quote"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 28,
+            "path": [
+              "coverage_check",
+              "supports",
+              0,
+              "path"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 14,
+            "path": [
+              "coverage_check",
+              "supports",
+              0,
+              "source_citation"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "requirement",
+              "address",
+              "quote",
+              "path",
+              "source_citation"
+            ],
+            "path": [
+              "coverage_check",
+              "supports",
+              1
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "coverage_check",
+              "supports",
+              1,
+              "requirement"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 27,
+            "path": [
+              "coverage_check",
+              "supports",
+              1,
+              "address"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 24,
+            "path": [
+              "coverage_check",
+              "supports",
+              1,
+              "quote"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 31,
+            "path": [
+              "coverage_check",
+              "supports",
+              1,
+              "path"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 14,
+            "path": [
+              "coverage_check",
+              "supports",
+              1,
+              "source_citation"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "requirement",
+              "address",
+              "quote",
+              "path",
+              "source_citation"
+            ],
+            "path": [
+              "coverage_check",
+              "supports",
+              2
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "coverage_check",
+              "supports",
+              2,
+              "requirement"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 23,
+            "path": [
+              "coverage_check",
+              "supports",
+              2,
+              "address"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 12,
+            "path": [
+              "coverage_check",
+              "supports",
+              2,
+              "quote"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 27,
+            "path": [
+              "coverage_check",
+              "supports",
+              2,
+              "path"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 14,
+            "path": [
+              "coverage_check",
+              "supports",
+              2,
+              "source_citation"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "coverage_check",
+              "discarded_supports"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 64,
+            "path": [
+              "coverage_check",
+              "evidence_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "sufficient",
+              "missing",
+              "rationale"
+            ],
+            "path": [
+              "coverage_check",
+              "independent_sufficiency"
+            ]
+          },
+          {
+            "path": [
+              "coverage_check",
+              "independent_sufficiency",
+              "sufficient"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 0,
+            "path": [
+              "coverage_check",
+              "independent_sufficiency",
+              "missing"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 313,
+            "path": [
+              "coverage_check",
+              "independent_sufficiency",
+              "rationale"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 77,
+            "path": [
+              "coverage_check",
+              "method"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "status",
+              "issues",
+              "accessions",
+              "symbols",
+              "taxa",
+              "isoforms",
+              "context_current",
+              "selected_accessions",
+              "question_species",
+              "scope"
+            ],
+            "path": [
+              "entity_context_check"
+            ]
+          },
+          {
+            "length": 10,
+            "path": [
+              "entity_context_check",
+              "status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "entity_context_check",
+              "issues"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 1,
+            "path": [
+              "entity_context_check",
+              "accessions"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 6,
+            "path": [
+              "entity_context_check",
+              "accessions",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "entity_context_check",
+              "symbols"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 1,
+            "path": [
+              "entity_context_check",
+              "taxa"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 4,
+            "path": [
+              "entity_context_check",
+              "taxa",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "entity_context_check",
+              "isoforms"
+            ],
+            "type": "list"
+          },
+          {
+            "path": [
+              "entity_context_check",
+              "context_current"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 1,
+            "path": [
+              "entity_context_check",
+              "selected_accessions"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 6,
+            "path": [
+              "entity_context_check",
+              "selected_accessions",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 0,
+            "path": [
+              "entity_context_check",
+              "question_species"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 113,
+            "path": [
+              "entity_context_check",
+              "scope"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "evidence_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 275,
+            "path": [
+              "reader_factual_observation"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "review_outcome"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 45,
+            "path": [
+              "review_outcome_why"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "outcome",
+              "why",
+              "supported",
+              "gaps",
+              "searched",
+              "new_searches",
+              "reused_searches",
+              "fulltext_passages"
+            ],
+            "path": [
+              "claim_evidence"
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "claim_evidence",
+              "outcome"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 45,
+            "path": [
+              "claim_evidence",
+              "why"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "claim_evidence",
+              "supported"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 0,
+            "path": [
+              "claim_evidence",
+              "gaps"
+            ],
+            "type": "list"
+          },
+          {
+            "path": [
+              "claim_evidence",
+              "searched"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "claim_evidence",
+              "new_searches"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "claim_evidence",
+              "reused_searches"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "claim_evidence",
+              "fulltext_passages"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 47,
+            "path": [
+              "truth_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 20,
+            "path": [
+              "entry_id"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "interest_score"
+            ],
+            "type": "float"
+          },
+          {
+            "length": 3,
+            "path": [
+              "reason_for_score"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 14,
+            "path": [
+              "reason_for_score",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 22,
+            "path": [
+              "reason_for_score",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 21,
+            "path": [
+              "reason_for_score",
+              2
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "flagged_for_next_lab_session"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "surfaced_to_frontier"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 66,
+            "path": [
+              "interest_truth_status"
+            ],
+            "type": "str"
+          }
+        ],
+        "output_sha256": "581aae31b29fe4c9ed009ca4fcbe29b7f0dc87cfc6a70230595949bb6ec06e05",
+        "question": "For human hemoglobin alpha (P69905), do UniProt and independent InterPro globin-domain intervals agree when mapped onto the complete chain represented by the local sequence model?",
+        "request": {},
+        "route": "reflect",
+        "run_id": null,
+        "state": "completed",
+        "summary": "{\"at\": \"2026-10-21T19:27:00.766464+00:00\", \"kind\": \"reflection\", \"inquiry\": {\"browse_lane\": \"protein\", \"question\": \"Retrieve the UniProt record for human hemoglobin alpha (P69905).\", \"source_query\": {\"query\": \"accession:P69905\", \"source\": \"uniprot\"}}, \"source_query_succeeded\": true, \"followup_receipt_id\": \"11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896\", \"followup_lineage\": null, \"source_accessions\": [\"P69905\", \"RESPONSE-d3035dc7c139be458b394d17bf8c8215\", \"PMID-39860253\", \"PMID-28232898\", \"...[2 more items not shown]\"], \"material_receipt_id\": \"938a846b56ade05c3c120b8dfe34390d8cda59294aa733dca3e13bec20f14274\", \"evidence_sha256\": \"29a05603a2e21116b2b06ab9ae4fe703e270ddd1b388e7344f22b4a70527e934\", \"literature\": [{\"pmid\": \"39860253\", \"title\": \"Hemoglobin Variants as Targets for Stabilizing Drugs.\", \"year\": \"2025\"}, {\"pmid\": \"28232898\", \"title\": \"Understanding the roles of intrinsic disorder in subunits of hemoglobin and the disease process of sickle cell anemia.\", \"year\": \"2016\"}, {\"pmid\": \"39201423\", \"title\": \"Different Proteomic Profiles Regarding Antihypertensive Therapy in Preeclampsia Pregnant.\", \"year\": \"2024\"}, {\"pmid\": \"40673030\", \"title\": \"Pathophysiological mechanisms in severe preeclampsia: role of upregulated proteins in blood pressure, extracellular matr...[shortened]\", \"year\": \"2025\"}], \"attention\": \"The UniProt record for P69905 (Hemoglobin subunit alpha) and its associated sequence and domain annotations.\", \"factual_observation\": \"P69905 [UniProt P69905]\\nHemoglobin subunit alpha [UniProt P69905]\\nHomo sapiens [UniProt P69905]\", \"next_question\": \"What are the specific residue coordinates for the heme-binding site and the proximal/distal histidine residues within th...[shortened]\", \"instrument_gap\": \"\", \"line_status\": \"\", \"answers_question\": ...[EXCERPT ENDS HERE: 2658 more characters of these observations were not shown to you. The records themselves are complete; do not report them as truncated.]",
+        "tool": "reflect",
+        "why": "Existing Lab phase consuming the retained sourced result."
+      },
+      "result": {
+        "answers_question": "yes: both source-coverage assessments support the original question",
+        "at": "2026-10-21T19:27:00.766464+00:00",
+        "attention": "The UniProt record for P69905 (Hemoglobin subunit alpha) and its associated sequence and domain annotations.",
+        "claim_evidence": {
+          "fulltext_passages": 0,
+          "gaps": [],
+          "new_searches": 0,
+          "outcome": "answered",
+          "reused_searches": 0,
+          "searched": 0,
+          "supported": 3,
+          "why": "every requirement supported by quoted sources"
+        },
+        "coverage_check": {
+          "answered": true,
+          "discarded_supports": [],
+          "evidence_sha256": "c90f110932c00bdf2d13c90e082c4f1a3ac4a73d1c8743c720908d927b18e75c",
+          "independent_sufficiency": {
+            "missing": [],
+            "rationale": "The UniProt record for human hemoglobin alpha (P69905) was successfully retrieved. The evidence includes the primary accession (P69905), the protein name (Hemoglobin subunit alpha), the organism (Homo sapiens), the sequence, and other relevant metadata such as gene names (HBA1, HBA2) and functional descriptions.",
+            "sufficient": true
+          },
+          "method": "source_quote_integrity_and_independent_model_sufficiency_not_scientific_proof",
+          "missing": [],
+          "original_question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+          "supports": [
+            {
+              "address": "UniProt:P69905/accession",
+              "path": "evidence.records.0.accession",
+              "quote": "P69905",
+              "requirement": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+              "source_citation": "UniProt P69905"
+            },
+            {
+              "address": "UniProt:P69905/protein_name",
+              "path": "evidence.records.0.protein_name",
+              "quote": "Hemoglobin subunit alpha",
+              "requirement": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+              "source_citation": "UniProt P69905"
+            },
+            {
+              "address": "UniProt:P69905/organism",
+              "path": "evidence.records.0.organism",
+              "quote": "Homo sapiens",
+              "requirement": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+              "source_citation": "UniProt P69905"
+            }
+          ]
+        },
+        "entity_context_check": {
+          "accessions": [
+            "P69905"
+          ],
+          "context_current": false,
+          "isoforms": [],
+          "issues": [],
+          "question_species": [],
+          "scope": "explicit query constraints and recognized question symbols/species; full prose scope needs independent assessment",
+          "selected_accessions": [
+            "P69905"
+          ],
+          "status": "consistent",
+          "symbols": [],
+          "taxa": [
+            "9606"
+          ]
+        },
+        "entry_id": "CLF-8c4030bf5e584374",
+        "evidence_sha256": "29a05603a2e21116b2b06ab9ae4fe703e270ddd1b388e7344f22b4a70527e934",
+        "evidence_status": "answered",
+        "factual_observation": "P69905 [UniProt P69905]\nHemoglobin subunit alpha [UniProt P69905]\nHomo sapiens [UniProt P69905]",
+        "flagged_for_next_lab_session": true,
+        "followup_lineage": null,
+        "followup_receipt_id": "11ee480b04ffc8063b372513e32deb5a700801d1cf5c0563d338bd415b9c0896",
+        "inquiry": {
+          "browse_lane": "protein",
+          "question": "Retrieve the UniProt record for human hemoglobin alpha (P69905).",
+          "source_query": {
+            "query": "accession:P69905",
+            "source": "uniprot"
+          }
+        },
+        "instrument_gap": "",
+        "interest_score": 0.45,
+        "interest_truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance",
+        "kind": "reflection",
+        "line_status": "",
+        "literature": [
+          {
+            "pmid": "39860253",
+            "title": "Hemoglobin Variants as Targets for Stabilizing Drugs.",
+            "year": "2025"
+          },
+          {
+            "pmid": "28232898",
+            "title": "Understanding the roles of intrinsic disorder in subunits of hemoglobin and the disease process of sickle cell anemia.",
+            "year": "2016"
+          },
+          {
+            "pmid": "39201423",
+            "title": "Different Proteomic Profiles Regarding Antihypertensive Therapy in Preeclampsia Pregnant.",
+            "year": "2024"
+          },
+          {
+            "pmid": "40673030",
+            "title": "Pathophysiological mechanisms in severe preeclampsia: role of upregulated proteins in blood pressure, extracellular matrix and immunity.",
+            "year": "2025"
+          }
+        ],
+        "material_receipt_id": "938a846b56ade05c3c120b8dfe34390d8cda59294aa733dca3e13bec20f14274",
+        "missing_evidence": "",
+        "next_question": "What are the specific residue coordinates for the heme-binding site and the proximal/distal histidine residues within the Globin domain of human hemoglobin alpha (P69905)?",
+        "reader_answers_question": "yes",
+        "reader_factual_observation": "The UniProt record for P69905 (Hemoglobin subunit alpha) lists a sequence length of 142 residues. The source-defined 'Globin' domain is annotated as residing at residues 2-142. The embedding coverage for P69905 is explicitly stated as covering the whole chain (142 residues).",
+        "reason_for_score": [
+          "sourced_record",
+          "source_query_succeeded",
+          "new_source_accessions"
+        ],
+        "review_outcome": "answered",
+        "review_outcome_why": "every requirement supported by quoted sources",
+        "source_accessions": [
+          "P69905",
+          "RESPONSE-d3035dc7c139be458b394d17bf8c8215",
+          "PMID-39860253",
+          "PMID-28232898",
+          "PMID-39201423",
+          "PMID-40673030"
+        ],
+        "source_query_succeeded": true,
+        "speculative_reading": "",
+        "surfaced_to_frontier": false,
+        "truth_status": "mixed_sourced_observation_and_named_speculation"
+      },
+      "artifact_file_sha256": "3633d4857e831f88b65cf6e25757befba9d7785da6d6d9f49aa0024426b78d6a"
+    },
+    {
+      "step": {
+        "at": "2026-10-21T19:27:09.567420+00:00",
+        "executed_request": {
+          "accession": {
+            "path": [
+              "embeddings",
+              0,
+              "accession"
+            ],
+            "step": "S-a30e88aca7f1"
+          },
+          "query": "P69905",
+          "source": "interpro"
+        },
+        "execution_receipt_id": "f98274b8cebd70e9fb518d9bc2b136f62300372ff519e85496f07d978f28e786",
+        "id": "S-77472565e8df",
+        "input_refs": [
+          {
+            "path": [
+              "embeddings",
+              0,
+              "accession"
+            ],
+            "step": "S-a30e88aca7f1"
+          }
+        ],
+        "origin": "autonomous_lab",
+        "output_file": "investigation-outputs/S-77472565e8df.json",
+        "output_index": [
+          {
+            "keys": [
+              "receipt",
+              "candidate"
+            ],
+            "path": []
+          },
+          {
+            "keys": [
+              "source",
+              "query",
+              "records",
+              "retrieved_at",
+              "response_sha256",
+              "metadata",
+              "truth_status",
+              "literature_coverage",
+              "novelty",
+              "receipt_id"
+            ],
+            "path": [
+              "receipt"
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "source",
+              "accession"
+            ],
+            "path": [
+              "receipt",
+              "query"
+            ]
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "query",
+              "source"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "query",
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "name",
+              "type",
+              "source_database",
+              "proteins"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0
+            ]
+          },
+          {
+            "length": 9,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "name"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "type"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "protein_length",
+              "source_database",
+              "organism",
+              "in_alphafold",
+              "entry_protein_locations"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "protein_length"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "organism"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "in_alphafold"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "fragments",
+              "representative",
+              "model",
+              "score"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "start",
+              "end",
+              "dc-status"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "start"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "end"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 10,
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "dc-status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "representative"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "model"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              0,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "score"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "keys": [
+              "accession",
+              "name",
+              "type",
+              "source_database",
+              "proteins"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              1
+            ]
+          },
+          {
+            "length": 9,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 22,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "name"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "type"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "protein_length",
+              "source_database",
+              "organism",
+              "in_alphafold",
+              "entry_protein_locations"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "protein_length"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "organism"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "in_alphafold"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "fragments",
+              "representative",
+              "model",
+              "score"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "start",
+              "end",
+              "dc-status"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "start"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "end"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 10,
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "dc-status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "representative"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "model"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              1,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "score"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "keys": [
+              "accession",
+              "name",
+              "type",
+              "source_database",
+              "proteins"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2
+            ]
+          },
+          {
+            "length": 9,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 14,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "name"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "type"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "accession",
+              "protein_length",
+              "source_database",
+              "organism",
+              "in_alphafold",
+              "entry_protein_locations"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0
+            ]
+          },
+          {
+            "length": 6,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "accession"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "protein_length"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 8,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "source_database"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "organism"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "in_alphafold"
+            ],
+            "type": "bool"
+          },
+          {
+            "length": 4,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "fragments",
+              "representative",
+              "model",
+              "score"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "start",
+              "end",
+              "dc-status"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "start"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "end"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 10,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "fragments",
+              0,
+              "dc-status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "representative"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "model"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              0,
+              "score"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "keys": [
+              "fragments",
+              "representative",
+              "model",
+              "score"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "fragments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "start",
+              "end",
+              "dc-status"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "fragments",
+              0
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "fragments",
+              0,
+              "start"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "fragments",
+              0,
+              "end"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 10,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "fragments",
+              0,
+              "dc-status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "representative"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "model"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              1,
+              "score"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "keys": [
+              "fragments",
+              "representative",
+              "model",
+              "score"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2
+            ]
+          },
+          {
+            "length": 1,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "fragments"
+            ],
+            "type": "list"
+          },
+          {
+            "keys": [
+              "start",
+              "end",
+              "dc-status"
+            ],
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "fragments",
+              0
+            ]
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "fragments",
+              0,
+              "start"
+            ],
+            "type": "int"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "fragments",
+              0,
+              "end"
+            ],
+            "type": "int"
+          },
+          {
+            "length": 10,
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "fragments",
+              0,
+              "dc-status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "representative"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "model"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "path": [
+              "receipt",
+              "records",
+              2,
+              "proteins",
+              0,
+              "entry_protein_locations",
+              2,
+              "score"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "length": 32,
+            "path": [
+              "receipt",
+              "retrieved_at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "receipt",
+              "response_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "service",
+              "coverage",
+              "interpretation"
+            ],
+            "path": [
+              "receipt",
+              "metadata"
+            ]
+          },
+          {
+            "length": 13,
+            "path": [
+              "receipt",
+              "metadata",
+              "service"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 27,
+            "path": [
+              "receipt",
+              "metadata",
+              "coverage"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 47,
+            "path": [
+              "receipt",
+              "metadata",
+              "interpretation"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 33,
+            "path": [
+              "receipt",
+              "truth_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 12,
+            "path": [
+              "receipt",
+              "literature_coverage"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 15,
+            "path": [
+              "receipt",
+              "novelty"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "receipt",
+              "receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "receipt_id",
+              "question",
+              "assessment",
+              "followups"
+            ],
+            "path": [
+              "candidate"
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "receipt_id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 82,
+            "path": [
+              "candidate",
+              "question"
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "entry_id",
+              "at",
+              "finding",
+              "reflection",
+              "next_question",
+              "question",
+              "source_accessions",
+              "interest_score",
+              "reason_for_score",
+              "score_components",
+              "flagged_for_next_lab_session",
+              "source_query_succeeded",
+              "collision_id",
+              "question_sha256",
+              "evidence_sha256",
+              "truth_status",
+              "score_version"
+            ],
+            "path": [
+              "candidate",
+              "assessment"
+            ]
+          },
+          {
+            "length": 20,
+            "path": [
+              "candidate",
+              "assessment",
+              "entry_id"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 32,
+            "path": [
+              "candidate",
+              "assessment",
+              "at"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1000,
+            "path": [
+              "candidate",
+              "assessment",
+              "finding"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 49,
+            "path": [
+              "candidate",
+              "assessment",
+              "reflection"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 82,
+            "path": [
+              "candidate",
+              "assessment",
+              "next_question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 82,
+            "path": [
+              "candidate",
+              "assessment",
+              "question"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 1,
+            "path": [
+              "candidate",
+              "assessment",
+              "source_accessions"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 32,
+            "path": [
+              "candidate",
+              "assessment",
+              "source_accessions",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "interest_score"
+            ],
+            "type": "float"
+          },
+          {
+            "length": 4,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score"
+            ],
+            "type": "list"
+          },
+          {
+            "length": 14,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score",
+              0
+            ],
+            "type": "str"
+          },
+          {
+            "length": 22,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score",
+              1
+            ],
+            "type": "str"
+          },
+          {
+            "length": 21,
+            "path": [
+              "candidate",
+              "assessment",
+              "reason_for_score",
+              2
+            ],
+            "type": "str"
+          },
+          {
+            "keys": [
+              "sourced_record",
+              "source_query_succeeded",
+              "new_source_accessions",
+              "advances_open_line",
+              "new_territory",
+              "repetition_penalty"
+            ],
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components"
+            ]
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "sourced_record"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "source_query_succeeded"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "new_source_accessions"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "advances_open_line"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "new_territory"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_components",
+              "repetition_penalty"
+            ],
+            "type": "float"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "flagged_for_next_lab_session"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "source_query_succeeded"
+            ],
+            "type": "bool"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "collision_id"
+            ],
+            "type": "NoneType"
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "assessment",
+              "question_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "assessment",
+              "evidence_sha256"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 66,
+            "path": [
+              "candidate",
+              "assessment",
+              "truth_status"
+            ],
+            "type": "str"
+          },
+          {
+            "path": [
+              "candidate",
+              "assessment",
+              "score_version"
+            ],
+            "type": "int"
+          },
+          {
+            "keys": [
+              "source_receipt",
+              "hypothesis_status",
+              "esmc_esmfold",
+              "chemiq",
+              "novelty",
+              "evo2"
+            ],
+            "path": [
+              "candidate",
+              "followups"
+            ]
+          },
+          {
+            "length": 64,
+            "path": [
+              "candidate",
+              "followups",
+              "source_receipt"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 11,
+            "path": [
+              "candidate",
+              "followups",
+              "hypothesis_status"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 95,
+            "path": [
+              "candidate",
+              "followups",
+              "esmc_esmfold"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 50,
+            "path": [
+              "candidate",
+              "followups",
+              "chemiq"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 58,
+            "path": [
+              "candidate",
+              "followups",
+              "novelty"
+            ],
+            "type": "str"
+          },
+          {
+            "length": 84,
+            "path": [
+              "candidate",
+              "followups",
+              "evo2"
+            ],
+            "type": "str"
+          }
+        ],
+        "output_sha256": "05a96c9f664fc1ad78922169b61e7dc99be938d38c751aadcdd688351e0282e0",
+        "question": "Retrieve the InterPro globin-domain intervals for human hemoglobin alpha (P69905).",
+        "reference_origin": "explicit_or_exact_equal_returned_value",
+        "request": {
+          "query": "P69905",
+          "source": "interpro"
+        },
+        "request_sha256": "bdaeab4952d19b9579e30dbcf7613ad5669a39ccdbc02464c65f44e9d7155719",
+        "route": "source",
+        "run_id": null,
+        "state": "completed",
+        "summary": "{\"receipt\": {\"source\": \"interpro\", \"query\": {\"source\": \"interpro\", \"accession\": \"P69905\"}, \"records\": [{\"accession\": \"IPR000971\", \"name\": \"Globin\", \"type\": \"domain\", \"source_database\": \"interpro\", \"proteins\": [{\"accession\": \"p69905\", \"protein_length\": 142, \"source_database\": \"reviewed\", \"organism\": \"9606\", \"in_alphafold\": true, \"entry_protein_locations\": [{\"fragments\": [{\"start\": 2, \"end\": 142, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}]}]}, {\"accession\": \"IPR002338\", \"name\": \"Hemoglobin, alpha-type\", \"type\": \"family\", \"source_database\": \"interpro\", \"proteins\": [{\"accession\": \"p69905\", \"protein_length\": 142, \"source_database\": \"reviewed\", \"organism\": \"9606\", \"in_alphafold\": true, \"entry_protein_locations\": [{\"fragments\": [{\"start\": 3, \"end\": 142, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}]}]}, {\"accession\": \"IPR002339\", \"name\": \"Hemoglobin, pi\", \"type\": \"family\", \"source_database\": \"interpro\", \"proteins\": [{\"accession\": \"p69905\", \"protein_length\": 142, \"source_database\": \"reviewed\", \"organism\": \"9606\", \"in_alphafold\": true, \"entry_protein_locations\": [{\"fragments\": [{\"start\": 4, \"end\": 29, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}, {\"fragments\": [{\"start\": 49, \"end\": 58, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}, {\"fragments\": [{\"start\": 73, \"end\": 83, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}, {\"fragments\": [{\"start\": 105, \"end\": 116, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}]}]}, {\"accession\": \"IPR009050\", \"name\": \"Globin-like superfamily\", \"type\": \"homologous_superfamily\", \"source_database\": \"interpro\", \"proteins\": [{\"acc ...[EXCERPT ENDS HERE: 2756 more characters of these observations were not shown to you. The records themselves are complete; do not report them as truncated.]",
+        "tool": "source:interpro",
+        "why": "I need the specific domain coordinates from InterPro to compare them against the UniProt features and the local sequence model's coverage."
+      },
+      "result": {
+        "candidate": {
+          "assessment": {
+            "at": "2026-10-21T19:27:10.371848+00:00",
+            "collision_id": null,
+            "entry_id": "SRC-f98274b8cebd70e9",
+            "evidence_sha256": "d6b78de25e66dbbd4681639c2701000a0b67267ea7c0306d95e03253418b0b08",
+            "finding": "{\"source\": \"interpro\", \"query\": {\"source\": \"interpro\", \"accession\": \"P69905\"}, \"receipt\": \"f98274b8cebd70e9fb518d9bc2b136f62300372ff519e85496f07d978f28e786\", \"observations\": [{\"accession\": \"IPR000971\", \"name\": \"Globin\", \"type\": \"domain\", \"source_database\": \"interpro\", \"proteins\": [{\"accession\": \"p69905\", \"protein_length\": 142, \"source_database\": \"reviewed\", \"organism\": \"9606\", \"in_alphafold\": true, \"entry_protein_locations\": [{\"fragments\": [{\"start\": 2, \"end\": 142, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}]}]}, {\"accession\": \"IPR002338\", \"name\": \"Hemoglobin, alpha-type\", \"type\": \"family\", \"source_database\": \"interpro\", \"proteins\": [{\"accession\": \"p69905\", \"protein_length\": 142, \"source_database\": \"reviewed\", \"organism\": \"9606\", \"in_alphafold\": true, \"entry_protein_locations\": [{\"fragments\": [{\"start\": 3, \"end\": 142, \"dc-status\": \"CONTINUOUS\"}], \"representative\": false, \"model\": null, \"score\": null}]}]}, {\"accession\": \"IPR002339\", \"name\": \"Hemog",
+            "flagged_for_next_lab_session": true,
+            "interest_score": 0.63,
+            "next_question": "Retrieve the InterPro globin-domain intervals for human hemoglobin alpha (P69905).",
+            "question": "Retrieve the InterPro globin-domain intervals for human hemoglobin alpha (P69905).",
+            "question_sha256": "c35794f034d829f61b1b98dbbf7d33b8fe816e455e95861e43bde6808b5b66b1",
+            "reason_for_score": [
+              "sourced_record",
+              "source_query_succeeded",
+              "new_source_accessions",
+              "new_territory"
+            ],
+            "reflection": "Prediction or source observation; not validation.",
+            "score_components": {
+              "advances_open_line": 0.0,
+              "new_source_accessions": 0.2,
+              "new_territory": 0.18,
+              "repetition_penalty": 0.0,
+              "source_query_succeeded": 0.15,
+              "sourced_record": 0.1
+            },
+            "score_version": 2,
+            "source_accessions": [
+              "f98274b8cebd70e9fb518d9bc2b136f6"
+            ],
+            "source_query_succeeded": true,
+            "truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance"
+          },
+          "followups": {
+            "chemiq": "requires_defined_molecule_and_supported_experiment",
+            "esmc_esmfold": "requires_sourced_gene_to_protein_mapping_and_sequence; regulatory_effect_is_not_sequence_change",
+            "evo2": "requires_exact_sourced_reference_sequence_and_bounded_comparison; no phenotype_claim",
+            "hypothesis_status": "unvalidated",
+            "novelty": "requires_documented_literature_search; no_hit_is_not_proof",
+            "source_receipt": "f98274b8cebd70e9fb518d9bc2b136f62300372ff519e85496f07d978f28e786"
+          },
+          "question": "Retrieve the InterPro globin-domain intervals for human hemoglobin alpha (P69905).",
+          "receipt_id": "f98274b8cebd70e9fb518d9bc2b136f62300372ff519e85496f07d978f28e786"
+        },
+        "receipt": {
+          "literature_coverage": "not_assessed",
+          "metadata": {
+            "coverage": "bounded_first_eight_entries",
+            "interpretation": "known_family_and_domain_annotations_not_novelty",
+            "service": "InterPro_REST"
+          },
+          "novelty": "not_established",
+          "query": {
+            "accession": "P69905",
+            "source": "interpro"
+          },
+          "receipt_id": "f98274b8cebd70e9fb518d9bc2b136f62300372ff519e85496f07d978f28e786",
+          "records": [
+            {
+              "accession": "IPR000971",
+              "name": "Globin",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 142,
+                          "start": 2
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "domain"
+            },
+            {
+              "accession": "IPR002338",
+              "name": "Hemoglobin, alpha-type",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 142,
+                          "start": 3
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "family"
+            },
+            {
+              "accession": "IPR002339",
+              "name": "Hemoglobin, pi",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 29,
+                          "start": 4
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    },
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 58,
+                          "start": 49
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    },
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 83,
+                          "start": 73
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    },
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 116,
+                          "start": 105
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "family"
+            },
+            {
+              "accession": "IPR009050",
+              "name": "Globin-like superfamily",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 142,
+                          "start": 1
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "homologous_superfamily"
+            },
+            {
+              "accession": "IPR012292",
+              "name": "Globin/Protoglobin",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 142,
+                          "start": 2
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "homologous_superfamily"
+            },
+            {
+              "accession": "IPR050056",
+              "name": "Hemoglobin and related oxygen transporters",
+              "proteins": [
+                {
+                  "accession": "p69905",
+                  "entry_protein_locations": [
+                    {
+                      "fragments": [
+                        {
+                          "dc-status": "CONTINUOUS",
+                          "end": 142,
+                          "start": 1
+                        }
+                      ],
+                      "model": null,
+                      "representative": false,
+                      "score": null
+                    }
+                  ],
+                  "in_alphafold": true,
+                  "organism": "9606",
+                  "protein_length": 142,
+                  "source_database": "reviewed"
+                }
+              ],
+              "source_database": "interpro",
+              "type": "family"
+            }
+          ],
+          "response_sha256": "4de7978046b517584f9e9009a7a764fada9875fe4212c89f0ec7198a2b09bc74",
+          "retrieved_at": "2026-10-21T19:27:10.371848+00:00",
+          "source": "interpro",
+          "truth_status": "source_observation_not_validation"
+        }
+      },
+      "artifact_file_sha256": "87ed74c0528cfbeb3f5309cb97fccd9cfedd07031402b1becea80f87e56efe64"
+    }
+  ]
+}

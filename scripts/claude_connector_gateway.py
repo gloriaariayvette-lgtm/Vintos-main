@@ -37,6 +37,14 @@ def owns(plugin):
     return plugin in claude_connector_catalog.PLUGINS
 
 
+def tool_schemas(plugin, *, surface='lab', transport=None):
+    """Discover through this account, never through the other account's relay."""
+    entry = claude_connector_catalog.PLUGINS.get(plugin) or {}
+    if surface not in entry.get('surfaces', ()) or entry.get('enabled') is False:
+        raise PermissionError('connector unavailable on this surface')
+    return _send({'action':'schema', 'plugin':plugin, 'surface':surface}, transport=transport)
+
+
 def _validate(result):
     """Turn a relay response into either a usable result or a raised hold/failure — for BOTH the
     subprocess and the test transport, so the seam can never skip the fail-closed check."""

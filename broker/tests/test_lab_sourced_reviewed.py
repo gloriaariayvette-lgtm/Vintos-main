@@ -2,6 +2,10 @@
 """A saved sourced record already reviewed (or gone) when its turn runs is a refusal, not a fault (F-f102059463,
 20 October: Q67BT3 was reviewed at 07:18 UTC and a later orient pass handed it on at 07:21, faulting the whole turn).
 Scratch HOME, set before the Lab is imported; no model, no network, nothing sent."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib
 import importlib.util
 import json

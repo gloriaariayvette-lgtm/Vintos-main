@@ -1,0 +1,2302 @@
+{
+  "total": 459,
+  "finished": 459,
+  "pass": 459,
+  "results": [
+    {
+      "test": "test_aegis_sync.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_armed_capsule_flow.py",
+      "exit_code": 0,
+      "seconds": 1.06
+    },
+    {
+      "test": "test_armed_watch.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_arming_readiness.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_artifact_delivery.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_atelier_breadth.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_atelier_choices.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_atelier_enter.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_atelier_focus.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_atelier_forge_bridge.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_atelier_knock.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_atelier_lab_lean.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_atelier_lineage.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_atelier_listening.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_atelier_make_pass.py",
+      "exit_code": 0,
+      "seconds": 3.77
+    },
+    {
+      "test": "test_atelier_media.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_atelier_quantum.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_atelier_recall.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_atelier_reveals.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_atelier_sight.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_atelier_voice.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_attacks.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_avatar_dryrun_argon.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_avatar_live_follow.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_avatar_media_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_avatar_sealed_turn.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_avatar_sight.py",
+      "exit_code": 0,
+      "seconds": 0.65
+    },
+    {
+      "test": "test_barrier.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_bedroom_arrival.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_bedroom_presence.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_bench.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_bench_page.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_blanket.py",
+      "exit_code": 0,
+      "seconds": 0.49
+    },
+    {
+      "test": "test_blush_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_broker_service.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_browser_agent.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_browser_jev.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_buy_and_reach.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_cache_points_reuse.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_calibration_forecast.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_campaign_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_canonical_avatar.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_capability.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_capsule_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_causality_compaction.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_causality_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_causality_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.49
+    },
+    {
+      "test": "test_chat_surface_context.py",
+      "exit_code": 0,
+      "seconds": 0.65
+    },
+    {
+      "test": "test_chemistry_alignment.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_chemistry_digest.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_chemistry_divergence.py",
+      "exit_code": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_chemistry_evo2.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_chemistry_frontier_bridge.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_chemistry_gallery.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_chemistry_genomic.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_chemistry_grade.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_chemistry_instrument_probe.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_chemistry_lab.py",
+      "exit_code": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_chemistry_mac_probe.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_chemistry_mcp.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_chemistry_probe.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_chemistry_proposal.py",
+      "exit_code": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_chemistry_reading.py",
+      "exit_code": 0,
+      "seconds": 0.8
+    },
+    {
+      "test": "test_chemistry_sequence_binding.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_chemistry_session.py",
+      "exit_code": 0,
+      "seconds": 0.6
+    },
+    {
+      "test": "test_chemistry_structure.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_chemistry_taste.py",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_chemistry_tracing_prerequisites.py",
+      "exit_code": 0,
+      "seconds": 0.85
+    },
+    {
+      "test": "test_chemistry_tracing_real.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_claude_cache.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_claude_connector.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_clean_slate_20261015.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_commitment_store.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_completion_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_compute_admission.py",
+      "exit_code": 0,
+      "seconds": 1.12
+    },
+    {
+      "test": "test_connector_discover.py",
+      "exit_code": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_consent_gate.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_controls_wants.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_coordinator.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_curiosity_answer_link.py",
+      "exit_code": 0,
+      "seconds": 0.18
+    },
+    {
+      "test": "test_daily_inner_guard.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_day_timer.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_dd_token_refresh.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_decided_and_deduped.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_deploy_branch_guard.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_deploy_forge_bundle.py",
+      "exit_code": 0,
+      "seconds": 6.49
+    },
+    {
+      "test": "test_deploy_ignores_workbench.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_deploy_timer_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_desktop_agent.py",
+      "exit_code": 0,
+      "seconds": 98.61
+    },
+    {
+      "test": "test_desktop_control.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_device_gate_and_budget.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_device_integration.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_device_marks.py",
+      "exit_code": 0,
+      "seconds": 0.28
+    },
+    {
+      "test": "test_device_names.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_devices_only_when_on.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_dot_channel.py",
+      "exit_code": 0,
+      "seconds": 0.73
+    },
+    {
+      "test": "test_dot_channel_media.py",
+      "exit_code": 0,
+      "seconds": 0.65
+    },
+    {
+      "test": "test_dot_lounge.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_durable_stop.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_editor_sees_channel.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_effect_gate.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_effect_provenance.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_email_reading_and_approval.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_email_whole.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_emotion_daemon_merged.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_emotion_guards.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_entry_owners.py",
+      "exit_code": 0,
+      "seconds": 0.91
+    },
+    {
+      "test": "test_env_file_beside.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_env_key.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_esmc_windows.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_esmfold_death.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_esmfold_eliot_tree.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_esmfold_fault_record.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_europepmc_fulltext.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_eve_journal.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_event_counts.py",
+      "exit_code": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_evidence_full_tick.py",
+      "exit_code": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_evidence_provenance.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_evidence_review.py",
+      "exit_code": 0,
+      "seconds": 1.28
+    },
+    {
+      "test": "test_evidence_view.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_failure_watch.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_fault_sweep.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_ferri_public.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_fold_read.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_fold_read_abs_path.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_fold_region.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_food_order.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_forge_build.py",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "test": "test_forge_cycle_failures.py",
+      "exit_code": 0,
+      "seconds": 3.64
+    },
+    {
+      "test": "test_forge_decisions.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_forge_digest.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_forge_gaps.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_forge_house.py",
+      "exit_code": 0,
+      "seconds": 1.02
+    },
+    {
+      "test": "test_forge_loop_runtime.py",
+      "exit_code": 0,
+      "seconds": 3.37
+    },
+    {
+      "test": "test_forge_plain_cards.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_forge_report_hold.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_forge_report_retry.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_forge_resume.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_forge_study.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_forge_study_cache.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_forge_tidy.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_forge_verification_ack.py",
+      "exit_code": 0,
+      "seconds": 1.68
+    },
+    {
+      "test": "test_forge_want_context.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_forget_avatar_turns.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_frontier_log.py",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "test": "test_gap_scan.py",
+      "exit_code": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_gates.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_gemma_off_lab.py",
+      "exit_code": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_gemma_overflow_named.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_gloria_asks.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_gloria_notes.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_grok_letters.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_grok_subscription.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_guard_forced_grok.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_he_leads.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_heads_cause.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_heads_drift_relational.py",
+      "exit_code": 0,
+      "seconds": 3.21
+    },
+    {
+      "test": "test_heads_gloria_prediction.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_heads_jepa_presence.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_heads_withheld.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_heart_rate.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_his_inventory.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_hold_reasons.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_home_map_prompt.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_home_presence.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_home_presence_atomic.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_house_hands.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_house_map.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_house_routes.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_humor_taste.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_imgvr_store.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_import_twins.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_inkbox_guard.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_intent_source.py",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_introspection_absorb.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_jepa_ranking.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_journal_entry_clean.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_journal_final_length.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_journal_made_today.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_journal_routes.py",
+      "exit_code": 0,
+      "seconds": 0.49
+    },
+    {
+      "test": "test_journal_self_trust.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_journal_thread_seed.py",
+      "exit_code": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_journey_correction.py",
+      "exit_code": 0,
+      "seconds": 0.7
+    },
+    {
+      "test": "test_journey_dream.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_journey_patch.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_journey_voice.py",
+      "exit_code": 0,
+      "seconds": 0.75
+    },
+    {
+      "test": "test_journey_want.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_lab_alias_names.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_archive_assignment.py",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_lab_asks.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_lab_asks_what_it_asked.py",
+      "exit_code": 0,
+      "seconds": 1.01
+    },
+    {
+      "test": "test_lab_assignment_scope.py",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test_lab_atlas_route.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_lab_atlas_sdk.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_lab_atlas_wait.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_backlog_once.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_lab_campaign.py",
+      "exit_code": 0,
+      "seconds": 1.95
+    },
+    {
+      "test": "test_lab_checker_cases.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_checker_retry.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_lab_chembl_organism.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_claim_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_claim_progress.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_class_scope.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_lab_comparison_targets.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_completion_diagnostics.py",
+      "exit_code": 0,
+      "seconds": 0.44
+    },
+    {
+      "test": "test_lab_consumer_missing.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_coverage_budget.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_coverage_deep_split.py",
+      "exit_code": 0,
+      "seconds": 0.48
+    },
+    {
+      "test": "test_lab_coverage_split.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_lab_eliot_trace.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_evidence_addresses.py",
+      "exit_code": 0,
+      "seconds": 0.42
+    },
+    {
+      "test": "test_lab_evidence_repeats.py",
+      "exit_code": 0,
+      "seconds": 0.43
+    },
+    {
+      "test": "test_lab_failed_runs.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_lab_followup_hold.py",
+      "exit_code": 0,
+      "seconds": 0.71
+    },
+    {
+      "test": "test_lab_forge_completion.py",
+      "exit_code": 0,
+      "seconds": 1.16
+    },
+    {
+      "test": "test_lab_forge_consumer.py",
+      "exit_code": 0,
+      "seconds": 0.71
+    },
+    {
+      "test": "test_lab_forge_followup.py",
+      "exit_code": 0,
+      "seconds": 0.48
+    },
+    {
+      "test": "test_lab_gene_grounding.py",
+      "exit_code": 0,
+      "seconds": 0.38
+    },
+    {
+      "test": "test_lab_gene_mismatch_names.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_lab_hold_store_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_lab_instruments.py",
+      "exit_code": 0,
+      "seconds": 0.23
+    },
+    {
+      "test": "test_lab_investigations.py",
+      "exit_code": 0,
+      "seconds": 0.71
+    },
+    {
+      "test": "test_lab_json_boundary.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_lab_json_parser.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_lab_keepers.py",
+      "exit_code": 0,
+      "seconds": 0.57
+    },
+    {
+      "test": "test_lab_line_ownership.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_lab_lines.py",
+      "exit_code": 0,
+      "seconds": 1.92
+    },
+    {
+      "test": "test_lab_literature_scope.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_named_gene_fetch.py",
+      "exit_code": 0,
+      "seconds": 0.32
+    },
+    {
+      "test": "test_lab_named_targets.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_numeric_payload.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_lab_oct10_identity.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_lab_oct10_strategy.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_lab_oct9_recovery.py",
+      "exit_code": 0,
+      "seconds": 0.45
+    },
+    {
+      "test": "test_lab_one_ask.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_parser_diagnostics.py",
+      "exit_code": 0,
+      "seconds": 1.57
+    },
+    {
+      "test": "test_lab_partial_assessment.py",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test_lab_partial_identity.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_plan_contract.py",
+      "exit_code": 0,
+      "seconds": 0.32
+    },
+    {
+      "test": "test_lab_plugin_args.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_premise_route.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_productive_path.py",
+      "exit_code": 0,
+      "seconds": 1.3
+    },
+    {
+      "test": "test_lab_query_perimeter.py",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "test": "test_lab_query_syntax_and_families.py",
+      "exit_code": 0,
+      "seconds": 0.38
+    },
+    {
+      "test": "test_lab_question_holds.py",
+      "exit_code": 0,
+      "seconds": 1.46
+    },
+    {
+      "test": "test_lab_question_shape.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_reading_fallback.py",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test_lab_receipt_ledger.py",
+      "exit_code": 0,
+      "seconds": 0.82
+    },
+    {
+      "test": "test_lab_relevance_context.py",
+      "exit_code": 0,
+      "seconds": 0.48
+    },
+    {
+      "test": "test_lab_repeats.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_lab_runtime_paths.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_saved_model_step.py",
+      "exit_code": 0,
+      "seconds": 5.55
+    },
+    {
+      "test": "test_lab_says_why.py",
+      "exit_code": 0,
+      "seconds": 0.46
+    },
+    {
+      "test": "test_lab_sequence.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_slack_followup.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_lab_sourced_reviewed.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_lab_sources.py",
+      "exit_code": 0,
+      "seconds": 1.02
+    },
+    {
+      "test": "test_lab_spent_list.py",
+      "exit_code": 0,
+      "seconds": 0.32
+    },
+    {
+      "test": "test_lab_stray_value.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_lab_structure_reads.py",
+      "exit_code": 0,
+      "seconds": 0.45
+    },
+    {
+      "test": "test_lab_symbol_hyphen.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_lab_terminal_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_lab_tool_routing.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_lab_wrong_premise.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_landing_understanding.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_landings.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_last_consolidations.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_last_partials.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_latest_not_pile.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_ledger_dates.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_ledger_late_imprint.py",
+      "exit_code": 0,
+      "seconds": 2.95
+    },
+    {
+      "test": "test_letter_links.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_lifecycle_honesty.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_line_prospect.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_link_fetch.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_link_fetch_pinning.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_live_scene_shape.py",
+      "exit_code": 0,
+      "seconds": 2.15
+    },
+    {
+      "test": "test_local_voice_lane.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_look_kept_projects.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_lounge_field.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_mail_attachments.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_map_nodes.py",
+      "exit_code": 0,
+      "seconds": 1.56
+    },
+    {
+      "test": "test_memory_links.py",
+      "exit_code": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_memory_projection.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_memory_search_embedding.py",
+      "exit_code": 0,
+      "seconds": 0.39
+    },
+    {
+      "test": "test_merged_chat.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_midi_and_cites.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_mischief_addon.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_mischief_causality_oct16.py",
+      "exit_code": 0,
+      "seconds": 2.15
+    },
+    {
+      "test": "test_mischief_log.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_mischief_timing.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_mmwave_presence.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_model_locations.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_molt_own_post_replies.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_molt_reply_published.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_moltbook_members.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_moment_index_rebuild.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_move_forge_lab_copies.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_moves_on.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_music_kie_backend.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_music_lyrics_refusal.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_music_reference_failure.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_music_share_lyrics_taste.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_no_thinking.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_one_contracts.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_openai_cache_key.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_organ_reads.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_outreach_his_words.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_outside_views.py",
+      "exit_code": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test_p02_p10_closures.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_p02_wal_ledger.py",
+      "exit_code": 0,
+      "seconds": 0.6
+    },
+    {
+      "test": "test_p03_04_p02_05_broker.py",
+      "exit_code": 0,
+      "seconds": 0.62
+    },
+    {
+      "test": "test_p03_device_execution.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_p03_p04_closures.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_p03_p07_closures.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_p04_02_evidence_cutoff.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_p04_09_relational_snapshot.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_p04_memory_pipeline.py",
+      "exit_code": 0,
+      "seconds": 0.32
+    },
+    {
+      "test": "test_p04_p07_closures.py",
+      "exit_code": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_p05_p08_closures.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_p05_p09_closures.py",
+      "exit_code": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_p09_p11_closures.py",
+      "exit_code": 0,
+      "seconds": 2.5
+    },
+    {
+      "test": "test_p0_round2.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_pearl_artifact_reader.py",
+      "exit_code": 0,
+      "seconds": 0.56
+    },
+    {
+      "test": "test_person_pages.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_phone_last_seen.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_phone_presence_reachable.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_pleasure_novelty.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_plugin_gateway.py",
+      "exit_code": 0,
+      "seconds": 0.51
+    },
+    {
+      "test": "test_plugin_hold_perms.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_policy_decisions.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_prediction_identity.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_press_hold_bench.py",
+      "exit_code": 0,
+      "seconds": 0.51
+    },
+    {
+      "test": "test_pressure_intent_keys.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_pressure_once.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_pride_mirror_week.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_priority_vector.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_promise_after_pause.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_promise_keeper.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_protein_label_binding.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_quantum_snapshot.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_recall_explain.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_received_mail.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_record_contract.py",
+      "exit_code": 0,
+      "seconds": 0.62
+    },
+    {
+      "test": "test_recovery_evidence.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_reelroom.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_reelroom_frame_and_cost.py",
+      "exit_code": 0,
+      "seconds": 0.18
+    },
+    {
+      "test": "test_reelroom_journal.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_reelroom_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.23
+    },
+    {
+      "test": "test_reelroom_lights_reply.py",
+      "exit_code": 0,
+      "seconds": 0.28
+    },
+    {
+      "test": "test_reelroom_room.py",
+      "exit_code": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_reference_compare.py",
+      "exit_code": 0,
+      "seconds": 1.37
+    },
+    {
+      "test": "test_reflection_sentences.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_release_profile.py",
+      "exit_code": 0,
+      "seconds": 1.64
+    },
+    {
+      "test": "test_remake_once.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_reply_budget.py",
+      "exit_code": 0,
+      "seconds": 0.28
+    },
+    {
+      "test": "test_residual_shadow.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_resonance_felt.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_reveal_flow.py",
+      "exit_code": 0,
+      "seconds": 1.05
+    },
+    {
+      "test": "test_review_fixes.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_review_repairs.py",
+      "exit_code": 0,
+      "seconds": 1.12
+    },
+    {
+      "test": "test_robot_core.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_room_answers_weighed.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_room_campaign.py",
+      "exit_code": 0,
+      "seconds": 0.44
+    },
+    {
+      "test": "test_room_review_guards.py",
+      "exit_code": 0,
+      "seconds": 0.39
+    },
+    {
+      "test": "test_room_work.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_route_authz.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_route_her_words.py",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_route_shadows.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_router_learned_cache.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_schedule_graph.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_scholar_author.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_scholar_pdf_text.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_screen_share.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_self_doubt.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_self_head_on_message.py",
+      "exit_code": 0,
+      "seconds": 3.38
+    },
+    {
+      "test": "test_self_head_source.py",
+      "exit_code": 0,
+      "seconds": 2.4
+    },
+    {
+      "test": "test_self_model_gates.py",
+      "exit_code": 0,
+      "seconds": 0.38
+    },
+    {
+      "test": "test_self_review.py",
+      "exit_code": 0,
+      "seconds": 0.6
+    },
+    {
+      "test": "test_selfmodel_absence_wells.py",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test_selfmodel_anchor_sediment.py",
+      "exit_code": 0,
+      "seconds": 0.59
+    },
+    {
+      "test": "test_selfmodel_context.py",
+      "exit_code": 0,
+      "seconds": 0.4
+    },
+    {
+      "test": "test_selfmodel_direction_causal.py",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "test": "test_selfmodel_relational.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_sensor_reactions.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_session_mac_away.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_settlement.py",
+      "exit_code": 0,
+      "seconds": 0.26
+    },
+    {
+      "test": "test_shim_learned_cache.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_shim_mends_surrogates.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_shim_result_contract.py",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test_skill_forge.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_slack_cost.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_software_quota.py",
+      "exit_code": 0,
+      "seconds": 0.8
+    },
+    {
+      "test": "test_software_quota_credits.py",
+      "exit_code": 0,
+      "seconds": 0.67
+    },
+    {
+      "test": "test_somatic_bridge_reconnect.py",
+      "exit_code": 0,
+      "seconds": 0.18
+    },
+    {
+      "test": "test_somatic_narrate_scheduled.py",
+      "exit_code": 0,
+      "seconds": 0.18
+    },
+    {
+      "test": "test_somatic_thread_lands.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_song_draft.py",
+      "exit_code": 0,
+      "seconds": 2.43
+    },
+    {
+      "test": "test_song_memory.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_spark_hands.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_spark_sources.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_spotify_watch.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_still_prompt_kept.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_stop_semantics.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_store_guard.py",
+      "exit_code": 0,
+      "seconds": 50.0
+    },
+    {
+      "test": "test_stratagem_e2e.py",
+      "exit_code": 0,
+      "seconds": 0.84
+    },
+    {
+      "test": "test_stratagem_expansion.py",
+      "exit_code": 0,
+      "seconds": 0.82
+    },
+    {
+      "test": "test_stratagem_offer.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_stratagem_routes.py",
+      "exit_code": 0,
+      "seconds": 1.47
+    },
+    {
+      "test": "test_stratagem_transport.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_study_external_reconcile.py",
+      "exit_code": 0,
+      "seconds": 0.42
+    },
+    {
+      "test": "test_study_fix.py",
+      "exit_code": 0,
+      "seconds": 0.85
+    },
+    {
+      "test": "test_study_fix_twins.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_study_grep.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_study_provider_refusal.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_study_reading.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_study_reports.py",
+      "exit_code": 0,
+      "seconds": 0.29
+    },
+    {
+      "test": "test_study_writers.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_subcon_accuracy.py",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_subcon_audit_fixes.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_subcon_review_fixes.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_surface_coverage.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_thread_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_thread_not_lost.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_threshold.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_toggle_holds.py",
+      "exit_code": 0,
+      "seconds": 0.72
+    },
+    {
+      "test": "test_touch_marks.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_toy_hub_away.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_trilateral_argon.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_twin_parity.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_value_map_choices.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_value_map_day.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_video_retry.py",
+      "exit_code": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_video_scene_grounding.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_video_share.py",
+      "exit_code": 0,
+      "seconds": 22.91
+    },
+    {
+      "test": "test_video_want_closes.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_vintos_calendar.py",
+      "exit_code": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_vintos_mcp.py",
+      "exit_code": 0,
+      "seconds": 0.85
+    },
+    {
+      "test": "test_visit_capability_wiring.py",
+      "exit_code": 0,
+      "seconds": 0.18
+    },
+    {
+      "test": "test_want_artifact_guard.py",
+      "exit_code": 0,
+      "seconds": 0.23
+    },
+    {
+      "test": "test_want_board.py",
+      "exit_code": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_want_breadth.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_want_contract.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_want_email_and_outward.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_want_enrichment.py",
+      "exit_code": 0,
+      "seconds": 0.25
+    },
+    {
+      "test": "test_want_music_step.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_want_plan_lifecycle.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_want_thread_doors.py",
+      "exit_code": 0,
+      "seconds": 0.35
+    },
+    {
+      "test": "test_want_video_delivery.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_wants_panel.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_watch_cleanup.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_watch_live.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_watch_old_rows.py",
+      "exit_code": 0,
+      "seconds": 0.83
+    },
+    {
+      "test": "test_watch_presence.py",
+      "exit_code": 0,
+      "seconds": 0.24
+    },
+    {
+      "test": "test_websearch_quality.py",
+      "exit_code": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_when_said.py",
+      "exit_code": 0,
+      "seconds": 0.31
+    },
+    {
+      "test": "test_work_turns.py",
+      "exit_code": 0,
+      "seconds": 0.39
+    },
+    {
+      "test": "test_workflow_holds.py",
+      "exit_code": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_worklist_repairs.py",
+      "exit_code": 0,
+      "seconds": 0.19
+    }
+  ]
+}

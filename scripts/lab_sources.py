@@ -83,9 +83,8 @@ def _genome_id(value):
 def normalize_source_spec(spec):
     """Canonical source names at planning and execution, including saved requests."""
     if not isinstance(spec, dict): raise ValueError('source spec must be an object')
-    if spec.get('source') == 'ncbi_rt_locus_screen':
-        return dict(spec, source='rt_locus_screen')
-    return dict(spec)
+    from lab_tool_calls import normalize_source
+    return normalize_source(spec)
 
 
 def _ncbi_accession(value):

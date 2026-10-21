@@ -9,6 +9,10 @@ document the question.
 
 Scratch HOME; the source client and both model calls are stubs; nothing here reaches the network.
 """
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import re, contextlib, importlib.util, json, os, sys, tempfile, time, types
 os.environ["VINTOS_LAB_CAMPAIGNS"] = "0"   # this suite tests the ordinary loop; test_lab_campaign tests campaigns
 

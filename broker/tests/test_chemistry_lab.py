@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Chemistry Lab control plane and loop. Scratch HOME only; no model or network."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib
 import importlib.util
 import json
