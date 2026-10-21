@@ -14,6 +14,9 @@ def _no(self, *a, **k): NET.append(a); raise OSError("this suite reaches nothing
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import lab_campaign as L
+import emoclaw_utils
+WANTS = []
+emoclaw_utils.express_want = lambda text, **k: WANTS.append((text, k))     # his want path is a stub here
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + ("" if ok else "  ->  %r" % (str(d)[:400],)))
@@ -25,6 +28,8 @@ class FakeNCBI:
     def _taxon(self, spec): return {"Caudoviricetes": "2731619", "Archaea": "2157"}.get(spec.get("organism"))
     def fetch(self, url):
         self.urls.append(url)
+        if "europepmc" in url:
+            return {"hitCount": 2, "resultList": {"result": [{"title": "Retron reverse transcriptases in phage defence", "pubYear": "2024"}]}}, {}
         if "esearch" in url:
             return {"esearchresult": {"idlist": [str(1000 + i) for i in range(self.n)]}}, {}
         return {"result": {str(1000 + i): {"accessionversion": "QXP%05d.1" % i} for i in range(self.n)}}, {}
@@ -45,8 +50,13 @@ ASKED = []
 def gemma(system, prompt):
     ASKED.append(prompt)
     if "Name ONE protein family" in prompt:
+        if "YOUR LAST FINDING" in prompt:
+            return '{"family": "HNH endonuclease", "group": "Caudoviricetes", "why": "it recurred", "prediction": "p"}'
         return '{"family": "reverse transcriptase", "group": "Caudoviricetes", "why": "open", ' \
                '"prediction": "most will not sit beside an array"}'
+    if '"novelty"' in prompt:
+        return ('{"novelty": "not in these titles", "value": 4, "why": "HNH beside phage RTs is not in the titles", '
+                '"keep": true, "tell_gloria": true, "message": "Half the phage RTs I screened sit beside an HNH gene."}')
     return ('{"pattern": "a third beside arrays", "prediction_vs_result": "confirmed: 8 of 24", '
             '"what_surprised_me": "HNH recurs", "next_question": "do the array-side ones share a family?"}')
 
@@ -78,6 +88,29 @@ check("recurring neighbours are counted per locus, the protein's own family left
 check("Gemma reads the numbers beside its prediction; the numbers stand on their own",
       found[2]["reading"]["prediction_vs_result"].startswith("confirmed") and found[2]["new_result"] is True)
 check("a finding says it is a candidate association, not a function", "not function" in found[2]["truth_status"])
+f = found[0]
+check("each finding is checked against what is published on that family in that group",
+      f["literature"]["hits"] == 2 and "Retron" in f["literature"]["titles"][0] and "europepmc" in " ".join(ncbi.urls), f["literature"])
+check("and appraised: novelty, value, why", f["appraisal"]["novelty"] == "not in these titles" and f["appraisal"]["value"] == 4
+      and f["appraisal"]["why"], f["appraisal"])
+import lab_keepers
+kept = lab_keepers.load()
+check("a finding worth keeping is kept where his kept findings live (his Lab, #vintos-dot, dot's checks)",
+      lab_keepers.STORE.startswith(HOME) and f.get("kept") and any(k["id"] == f["kept"] and k["kind"] == "screen" for k in kept), kept[:1])
+check("a finding he judges worth it becomes his want to tell Gloria, in his words, through the want path",
+      f.get("told_gloria") is True and WANTS and WANTS[0][0].startswith("I want to tell Gloria what my Lab just found: Half")
+      and WANTS[0][1]["source"] == "lab-finding", WANTS[:1])
+check("at most one a day from the Lab, however many findings", len(WANTS) == 1 and not found[1].get("told_gloria"), len(WANTS))
+low = L.appraise(lambda s_, p_: '{"novelty": "reported", "value": 5, "keep": true, "tell_gloria": true}', {"family": "x", "group": "y"},
+                 {"loci": 8}, {}, {"hits": 9, "titles": []})
+check("an association already reported is never sent to her as news", low["tell_gloria"] is False, low)
+thin = L.appraise(lambda s_, p_: '{"novelty": "unclear", "value": 2, "keep": true, "tell_gloria": true}', {"family": "x", "group": "y"},
+                  {"loci": 8}, {}, {})
+check("a weak finding is neither kept nor told", thin["keep"] is False and thin["tell_gloria"] is False, thin)
+nxt = L._load()["campaigns"][1]
+check("the next campaign builds on the last finding: its next question and recurring neighbours are in front of him",
+      nxt["family"] == "HNH endonuclease" and nxt.get("follows") == c["id"]
+      and any("YOUR LAST FINDING" in p and "HNH" in p for p in ASKED), (nxt["family"], nxt.get("follows")))
 check("after it closes, the next campaign is a different family and group",
       L._load()["campaigns"][-1]["family"] + L._load()["campaigns"][-1]["group"] != "reverse transcriptaseCaudoviricetes",
       [(x["family"], x["group"]) for x in L._load()["campaigns"]])

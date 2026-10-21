@@ -173,9 +173,35 @@ def _done_pairs(data):
     return {(c["family"].lower(), c["group"].lower()) for c in data["campaigns"]}
 
 
+def last_finding():
+    rows = []
+    try:
+        with open(FINDINGS, encoding="utf-8") as f:
+            for line in f:
+                try: rows.append(json.loads(line))
+                except ValueError: continue
+    except OSError:
+        pass
+    return rows[-1] if rows else None
+
+
 def propose(ask, data):
-    """Gemma names the next campaign; a fixed open corner when it cannot. Returns a dict, never raises."""
+    """Gemma names the next campaign, building on his last finding when there is one; a fixed open corner when it
+    cannot. Returns a dict, never raises."""
     done = sorted("%s in %s" % p for p in _done_pairs(data))
+    last = last_finding()
+    follow = ""
+    if last:
+        t = last.get("result") or {}
+        follow = ("\nYOUR LAST FINDING (%s in %s, %d loci): %s Recurring neighbours: %s. Its next question: %s\n"
+                  "Build on it: the next campaign should test that next question - a recurring neighbour family as the "
+                  "new family, or the same family in a related group to see if the pattern holds - unless it was "
+                  "judged a dead end (%s)."
+                  % (last.get("family"), last.get("group"), t.get("loci", 0),
+                     (last.get("reading") or {}).get("pattern", ""),
+                     ", ".join("%s (%d)" % tuple(x) for x in (t.get("recurring_neighbours") or [])[:5]) or "none",
+                     (last.get("reading") or {}).get("next_question", ""),
+                     (last.get("appraisal") or {}).get("why", "not appraised")))
     system = ("You run genome-neighbourhood screens in a computational lab. For a protein family in an organism "
               "group, each gene's 12 kb neighbourhood is read: CRISPR arrays, and the Pfam families of every gene "
               "beside it. Counting across loci finds associations nobody has written down - array-associated "
@@ -184,9 +210,9 @@ def propose(ask, data):
               "question worth screening, and predict, before anything is read, what the screen will show. Use a "
               "plain family name NCBI protein records use (e.g. 'reverse transcriptase', 'Cas1', 'integrase', "
               "'toxin', 'recombinase') and a group name NCBI Taxonomy knows (e.g. 'Caudoviricetes', 'Archaea', "
-              "'Bacteroidota').\nAlready screened (do not repeat): %s\n"
+              "'Bacteroidota').%s\nAlready screened (do not repeat): %s\n"
               'ONLY JSON: {"family": "...", "group": "...", "why": "one sentence: why this is open", '
-              '"prediction": "one sentence, something the counts can confirm or refute"}' % (", ".join(done) or "none"))
+              '"prediction": "one sentence, something the counts can confirm or refute"}' % (follow, ", ".join(done) or "none"))
     try:
         raw = str(ask(system, prompt))
         body = raw[raw.find("{"):raw.rfind("}") + 1]
@@ -194,7 +220,8 @@ def propose(ask, data):
         family, group = _plain(d.get("family")), _plain(d.get("group"))
         if family and group and (family.lower(), group.lower()) not in _done_pairs(data):
             return {"family": family, "group": group, "why": str(d.get("why") or "")[:300],
-                    "prediction": str(d.get("prediction") or "")[:400], "by": "gemma"}
+                    "prediction": str(d.get("prediction") or "")[:400], "by": "gemma",
+                    "follows": last.get("campaign") if last else None}
     except Exception:
         pass
     for seed in SEEDS:
@@ -276,22 +303,115 @@ def read_finding(ask, c, table):
         return {"unread": str(exc)[:160]}
 
 
-def finding(ask, c, now=None):
+EUROPEPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?"
+TELL_PER_DAY = 1         # at most one finding a day becomes his want to tell Gloria; the want path's cap applies too
+
+
+def literature(sources, c):
+    """What is already published on this family in this group: one Europe PMC search, its count and first titles.
+    A small count is not novelty; it is what the appraisal is shown, so it can say what it could and could not see."""
+    query = '"%s" AND "%s"' % (c["family"], c["group"])
+    try:
+        found, _ = sources.fetch(EUROPEPMC + urlencode({"query": query, "format": "json", "pageSize": 6,
+                                                        "resultType": "lite"}))
+        hits = int(found.get("hitCount") or 0)
+        titles = ["%s (%s)" % (str(r.get("title") or "")[:160], r.get("pubYear") or "?")
+                  for r in ((found.get("resultList") or {}).get("result") or [])[:6]]
+        return {"query": query, "hits": hits, "titles": titles}
+    except Exception as exc:
+        return {"query": query, "unavailable": str(exc)[:160]}
+
+
+def appraise(ask, c, table, reading, lit):
+    """His judgement of the finding: is it already reported, how much does it matter, is it worth keeping, and is it
+    worth telling Gloria. Only what the counts and the titles show; never raises."""
+    system = ("You judge a finding from your own genome-neighbourhood screen. Be honest and hard to impress: small "
+              "samples and well-known pairings are not discoveries. A recurring neighbour is a candidate association.")
+    prompt = ("Campaign: %s in %s. Counts: %s\nYour reading: %s\nPublished on this family in this group (Europe PMC, "
+              "first titles of %s hits): %s\nIs the association you found already reported in these titles, and how "
+              "much does it matter?\nONLY JSON: {\"novelty\": \"reported\" or \"not in these titles\" or \"unclear\", "
+              "\"value\": 1-5 (5 = a pattern worth a scientist's attention; 1 = expected or too few loci), "
+              "\"why\": \"one sentence\", \"keep\": true/false, \"tell_gloria\": true/false, "
+              "\"message\": \"if telling her: one or two plain sentences, in your own voice, with the numbers\"}"
+              % (c["family"], c["group"], json.dumps(table), json.dumps(reading),
+                 lit.get("hits", "?"), json.dumps(lit.get("titles") or lit.get("unavailable") or [])))
+    try:
+        raw = str(ask(system, prompt))
+        d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+        value = int(d.get("value") or 0)
+        novelty = str(d.get("novelty") or "unclear")[:40]
+        return {"novelty": novelty, "value": max(0, min(5, value)), "why": str(d.get("why") or "")[:400],
+                "keep": bool(d.get("keep")) and value >= 3,
+                "tell_gloria": bool(d.get("tell_gloria")) and value >= 4 and not novelty.startswith("reported")
+                               and table["loci"] >= FINDING_EVERY,
+                "message": str(d.get("message") or "")[:500]}
+    except Exception as exc:
+        return {"unread": str(exc)[:160], "value": 0, "keep": False, "tell_gloria": False}
+
+
+def keep(c, row):
+    """A finding worth returning to goes where his kept findings live: his Lab, #vintos-dot, and dot's checks."""
+    try:
+        import lab_keepers
+        a, t = row["appraisal"], row["result"]
+        return lab_keepers._add({"id": "K-" + uuid.uuid4().hex[:6], "at": row["at"], "kept_by": "campaign appraisal",
+                                 "source_id": "%s#%d" % (c["id"], t["loci"]), "kind": "screen",
+                                 "question": row["question"][:500],
+                                 "finding": json.dumps({k: t[k] for k in ("loci", "beside_crispr_array", "beside_cas_gene",
+                                                                         "recurring_neighbours", "cas_families")})[:1500],
+                                 "reading": str((row.get("reading") or {}).get("pattern") or "")[:600],
+                                 "evidence": row["screened"][:12], "receipts": [], "line_id": None,
+                                 "why": ("%s (value %d, %s)" % (a.get("why"), a.get("value"), a.get("novelty")))[:600],
+                                 "state": "kept", "checks": []})
+    except Exception:
+        return None
+
+
+def tell(data, row, now=None, express=None):
+    """His want to tell Gloria, in his words, through the path every want to tell her takes (wants-router
+    tell_gloria: her daily cap and consent decide). At most TELL_PER_DAY a day from the Lab."""
+    day = (now or _now())[:10]
+    told = data.setdefault("told", {})
+    if int(told.get(day, 0)) >= TELL_PER_DAY:
+        return False
+    a = row["appraisal"]
+    text = "I want to tell Gloria what my Lab just found: " + (a.get("message") or (row.get("reading") or {}).get("pattern") or "")
+    try:
+        if express is None:
+            from emoclaw_utils import express_want as express
+        express(text[:500], source="lab-finding", intensity=4,
+                reasoning="my own screen found it (%s); I judged it %d of 5 and %s" % (row["campaign"], a.get("value", 0), a.get("novelty")))
+        told[day] = int(told.get(day, 0)) + 1
+        return True
+    except Exception:
+        return False
+
+
+def finding(ask, c, now=None, sources=None, data=None, express=None):
     table = tabulate(c)
     reading = read_finding(ask, c, table)
+    lit = literature(sources, c) if sources is not None else {"unavailable": "no sources"}
     row = {"at": now or _now(), "kind": "campaign_finding", "campaign": c["id"],
            "family": c["family"], "group": c["group"], "taxon_id": c.get("taxon_id"),
+           "follows": c.get("follows"),
            "question": question(c, table["loci"]), "prediction": c.get("prediction"),
            "result": table, "reading": reading, "screened": [r["protein"] for r in c["screened"]],
+           "literature": lit,
            "answers_question": "yes: computed by the Lab's own screen across %d loci" % table["loci"],
            "new_result": True, "truth_status": TRUTH}
+    row["appraisal"] = appraise(ask, c, table, reading, lit)
+    if row["appraisal"].get("keep"):
+        kept = keep(c, row)
+        row["kept"] = kept.get("id") if kept else None
+    if row["appraisal"].get("tell_gloria") and data is not None:
+        row["told_gloria"] = tell(data, row, now, express)
     _append(FINDINGS, row)
     _append(NOTEBOOK, row)
     c["findings"] = int(c.get("findings", 0)) + 1
     return row
 
 
-def step(sources, ask, now=None, screen=None):
+def step(sources, ask, now=None, screen=None, express=None):
     """One campaign turn: open a campaign if none is open, screen its next locus, tabulate a finding when due.
     Returns a summary dict; a turn that could do nothing says why."""
     import lab_phage
@@ -343,10 +463,10 @@ def step(sources, ask, now=None, screen=None):
         break
     n = len(c["screened"])
     if n and n % FINDING_EVERY == 0 and n // FINDING_EVERY > int(c.get("findings", 0)):
-        out["finding"] = finding(ask, c, now)["result"]
+        out["finding"] = finding(ask, c, now, sources, data, express)["result"]
     if n >= MAX_LOCI or c["cursor"] >= len(c["accessions"]) or len(c["skipped"]) >= SKIP_LIMIT:
         if n and n % FINDING_EVERY and n // FINDING_EVERY >= int(c.get("findings", 0)):
-            out["finding"] = finding(ask, c, now)["result"]      # the last, partial batch is reported too
+            out["finding"] = finding(ask, c, now, sources, data, express)["result"]   # the last, partial batch too
         c["state"], c["closed_at"] = "closed", now
         out["closed"] = True
     _save(data)
