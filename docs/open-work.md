@@ -16,6 +16,19 @@ patterns; they now go through the formation door (40c036b). Not done: Moltbook p
 questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
 11 August); it is left as it is until she says otherwise.
 
+## 21 October, night — F-55bab2e222: Gemma's overflow now says which call was too large
+
+- **What happened:** his Gemma turns overflowed LM Studio's 32,000-token window 27 times by 19 October (requests of
+  32.5k–34.2k tokens). Grok wrote those turns instead, so he was slowed, not stopped. Nothing said which of
+  compose()'s writing calls overflowed: the first draft, the redraft with what he looked up, or the final call.
+- **Done (fault loop, Dot reviewed, a diagnostic, not the fix):** each of the three calls fails with
+  `stage=draft|lookup|final system=… user=… looked=… chars;` and an allowlisted diagnosis (the overflow's two numbers,
+  else an HTTP status, else the exception's class), never the exception's own text, so nothing of his prompt or the
+  provider's reply is copied. `what` is unchanged and the sweep normalizes the sizes, so one stage is one fault.
+  `test_gemma_overflow_named.py` (25 checks); `test_failure_watch.py`'s source check updated to the new call form.
+- **Not done — the overflow itself.** The next overflow will say which call and how large; then trim that call (his
+  context for Gemma, or the lookups). A larger LM Studio context window would also end it: Gloria's setting.
+
 ## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
 
 - **What happened:** on 20 October two free passes were handed saved UniProt records that were no longer readable
