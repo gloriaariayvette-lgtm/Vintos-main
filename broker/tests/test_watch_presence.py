@@ -55,7 +55,9 @@ check("snapshot carries source, age and estimate wording",
       state["latest"]["heart_rate"]["age_seconds"] == 0 and "estimate" in state["latest"]["heart_rate"])
 check("fresh non-charging signals imply probably worn", state["wearing"] == "probably")
 check("implausible pulse is refused", not W.record({"samples":[{"kind":"heart_rate","value":500,"observed_at":iso}]},now=now)[0])
-check("stale/future observations are refused", not W.record({"samples":[{"kind":"motion","value":"walking","observed_at":"2020-01-01T00:00:00Z"}]},now=now)[0])
+_stale = W.record({"samples":[{"kind":"motion","value":"walking","observed_at":"2020-01-01T00:00:00Z"}]},now=now)
+check("stale/future observations are not stored (passed over, not a reason to refuse new rows beside them)",
+      _stale[1].get("stored") == 0 and _stale[1].get("skipped_stale") == 1, _stale)
 
 charging={"samples":[{"kind":"battery","value":{"level":.8,"state":"charging"},"observed_at":iso}],"asleep":True}
 W.record(charging,now=now)

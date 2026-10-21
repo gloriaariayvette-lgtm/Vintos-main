@@ -71,12 +71,19 @@ def _append(path, value):
     os.chmod(path, 0o600)
 
 
+MAX_ROWS = 512   # an anchored catch-up after a night off the charger can carry hundreds of heart readings
+
+
 def authorized(header, token_file=None):
     path = token_file or TOKEN_FILE
     try: expected = open(path).read().strip()
     except Exception: return False
     supplied = str(header or "").removeprefix("Bearer ").strip()
     return bool(expected) and hmac.compare_digest(supplied, expected)
+
+
+class _Stale(ValueError):
+    pass
 
 
 def _clean_sample(sample, now):
@@ -87,7 +94,7 @@ def _clean_sample(sample, now):
     observed_ts = _parse_ts(observed)
     if observed_ts is None: raise ValueError("observed_at missing or unreadable")
     if observed_ts > now + 300 or observed_ts < now - 172800:
-        raise ValueError("observed_at outside accepted freshness window")
+        raise _Stale("observed_at outside accepted freshness window")
     value = sample.get("value")
     if kind in NUMERIC_BOUNDS:
         try: value = float(value)
@@ -117,10 +124,17 @@ def record(payload, now=None):
     if not isinstance(payload, dict): return False, "body is not an object"
     now = float(time.time() if now is None else now)
     raw = payload.get("samples")
-    if not isinstance(raw, list) or not 1 <= len(raw) <= 64:
-        return False, "samples must contain 1 to 64 rows"
-    try: samples = [_clean_sample(row, now) for row in raw]
-    except ValueError as exc: return False, str(exc)
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_ROWS:
+        return False, "samples must contain 1 to %d rows" % MAX_ROWS
+    # A reading older than 48 hours is passed over, not a reason to refuse the batch it came in (21 October: the Watch
+    # now sends its anchored history, and one old row refused every new reading beside it). Bad data still refuses.
+    samples, stale = [], 0
+    for row in raw:
+        try: samples.append(_clean_sample(row, now))
+        except _Stale: stale += 1
+        except ValueError as exc: return False, str(exc)
+    if not samples:
+        return True, {"stored": 0, "skipped_stale": stale, "device": "AppleWatch"}
     latest = {}
     try:
         old = json.load(open(LATEST)); latest = old.get("latest", {}) if isinstance(old, dict) else {}
@@ -143,7 +157,7 @@ def record(payload, now=None):
                 "estimate": "Watch readings and wearing state are device estimates, not medical facts"}
     try: _atomic(LATEST, snapshot)
     except OSError as exc: return False, "could not store: %s" % exc
-    return True, {"stored": len(samples), "device": "AppleWatch", "wearing": wearing, "asleep": asleep}
+    return True, {"stored": len(samples), "skipped_stale": stale, "device": "AppleWatch", "wearing": wearing, "asleep": asleep}
 
 
 def register_apns(payload):
