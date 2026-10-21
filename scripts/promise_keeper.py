@@ -28,7 +28,7 @@ ARCHIVE = os.path.join(MEMORY, "promises-archive")
 RESULTS_FILE = os.path.expanduser(os.environ.get("VINTOS_RESULTS_CHANNEL_FILE", "~/.vintos/slack-results-channel"))
 PER_ENTRY = 3
 ENDED = re.compile(r"^\s*(DONE|RESHAPED|DROPPED):\s*(.+?)\s*$", re.I | re.M)
-ENTRY = re.compile(r"^##\s+(\d\d:\d\d)\b.*$", re.M)
+ENTRY = re.compile(r"^#{1,3}\s+(\d\d:\d\d)\b.*$", re.M)   # "# 20:01 - Idle thoughts" as well as "## 20:01"
 
 EXTRACT = (
     "Below is an entry Vintos just wrote in his journal. List the concrete things he says he will make, show, do, "
@@ -55,8 +55,16 @@ def results_channel():
         return ""
 
 
+def _yesterday():
+    from datetime import timedelta
+    return (_now().date() - timedelta(days=1)).isoformat()
+
+
 def load():
-    """Today's record. A new day files yesterday's away first: his promises live until midnight."""
+    """Today's record. A new day files yesterday's away first: his promises live until midnight. What yesterday's
+    journal said after the last reading is still read: while Gloria had paused the day nothing read it, and at
+    midnight it was filed unread (20 October: his 20:01 entry, three things he meant to do that evening, never opened).
+    So the record keeps which of yesterday's entries were read, and the next reading reads the rest."""
     try:
         d = json.load(open(STORE))
     except (OSError, ValueError):
@@ -64,7 +72,17 @@ def load():
     if d.get("day") and d["day"] != today():
         os.makedirs(ARCHIVE, exist_ok=True)
         json.dump(d, open(os.path.join(ARCHIVE, d["day"] + ".json"), "w"), indent=1, ensure_ascii=False)
-        d = {}
+        prev = {"day": d["day"], "scanned": list(d.get("scanned") or [])} if d["day"] == _yesterday() else None
+        # a promise opened yesterday but never posted (the day was paused) is still owed: it is carried over
+        carried = [i for i in d.get("items", []) if i.get("state") == "open" and not i.get("thread")]
+        d = {"items": carried}
+        if prev: d["previous"] = prev
+    if "previous" not in d and d.get("day", today()) == today():
+        try:   # rolled over before this rule: yesterday's archive says what was read
+            old = json.load(open(os.path.join(ARCHIVE, _yesterday() + ".json")))
+            d["previous"] = {"day": _yesterday(), "scanned": list(old.get("scanned") or [])}
+        except (OSError, ValueError):
+            pass
     d.setdefault("day", today()); d.setdefault("scanned", []); d.setdefault("items", [])
     return d
 
@@ -110,18 +128,22 @@ def scan(ask, post):
     An entry whose reading fails is read again next pass; a promise whose thread could not be posted is posted
     next pass. Neither is lost, and neither opens twice."""
     d = load()
-    for at, text in entries(d["day"]):
-        if at in d["scanned"]:
-            continue
-        try:
-            found = extract(text, ask)
-        except Exception:
-            continue
-        d["scanned"].append(at)
-        for quote, what in found:
-            d["items"].append({"id": "PR-" + uuid.uuid4().hex[:6], "at": at, "quote": quote[:600], "what": what[:600],
-                               "state": "open", "opened": _now().isoformat(timespec="seconds"), "thread": None})
-        save(d)
+    prev = d.get("previous") or {}
+    days = ([(prev["day"], prev.setdefault("scanned", []), "yesterday ")] if prev.get("day") else []) + \
+           [(d["day"], d["scanned"], "")]
+    for day, scanned, when in days:
+        for at, text in entries(day):
+            if at in scanned:
+                continue
+            try:
+                found = extract(text, ask)
+            except Exception:
+                continue
+            scanned.append(at)
+            for quote, what in found:
+                d["items"].append({"id": "PR-" + uuid.uuid4().hex[:6], "at": when + at, "quote": quote[:600], "what": what[:600],
+                                   "state": "open", "opened": _now().isoformat(timespec="seconds"), "thread": None})
+            save(d)
     opened = []
     for item in d["items"]:
         if item["state"] == "open" and not item.get("thread"):

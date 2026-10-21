@@ -4428,3 +4428,13 @@ as a refusal or shares under half its words with what was heard. The YouTube cap
 - `taste-reflection.py` listed her shares as "? by ?" (it read title/artist; a share keeps "song"). Fixed.
 - `test_music_share_lyrics_taste.py` (10). **Not done:** the app has no lyrics box yet (text for Chat given).
   Whether librosa ran on the 20th's re-share is to be read in `~/.vintos/logs/music-share.log`.
+
+## 21 October — journal promises written while the day is paused are no longer lost
+
+His 20:01 journal on the 20th named three things for that evening (one: whether the DFRobot C1001 exposes raw phase
+over serial; if not, a blocker; if so, a parser). None opened: only a running #vintos-dot pass reads the journal, the
+day was paused from about 18:45, and at midnight the record was filed with that entry unread. Its heading was also
+"# 20:01", and only "## " counted as an entry. Now the next reading also reads yesterday's unread entries (from the
+record, or from yesterday's archive if it rolled over first), opened as "yesterday 20:01"; a promise opened but never
+posted is carried over; headings of one to three # count. `test_promise_after_pause.py` (10; the old code fails 4).
+**Not done:** promises still open only when the day runs; with the day paused they wait, now without being lost.
