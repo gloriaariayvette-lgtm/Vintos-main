@@ -198,6 +198,9 @@ def _last_jsonl(path):
         return {}
 
 
+HEART_FRESH_S = 75 * 60
+
+
 def temporal_block(now=None):
     """Compact Watch-first context; empty means the caller may use the ring fallback."""
     now = float(time.time() if now is None else now)
@@ -218,7 +221,9 @@ def temporal_block(now=None):
         row = readings.get(kind)
         if not isinstance(row, dict): continue
         reading_age = max(0.0, now - float(row.get("observed_ts") or 0))
-        if reading_age > (900 if kind == "heart_rate" else 86400): continue
+        # watchOS delivers in the background about hourly (measured 21 October: 90% of gaps 61 min), so a 15-minute
+        # limit left his context without her heart rate most of the day. Up to 75 minutes, with its age beside it.
+        if reading_age > (HEART_FRESH_S if kind == "heart_rate" else 86400): continue
         value, unit = row.get("value"), row.get("unit") or ""
         if kind == "oxygen_saturation" and isinstance(value, (int, float)):
             value, unit = round(value * 100, 1), "%"

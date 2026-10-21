@@ -4460,3 +4460,10 @@ temporal context." `bedroom_arrival.observe` now keeps the distance and when thi
 or "was last in the bedroom 30 minutes ago", or nothing after two hours. `temporal-context.sh` adds it beside the
 Watch block. Arrivals and songs are unchanged. `test_bedroom_presence.py` (9).
 The Watch's update rate is watchOS's (HealthKit background delivery), not the APNs key's; measure it before changing.
+
+## 21 October — the Watch's heart rate in his context, at the rate it actually arrives
+
+Her probe of a day's Watch history: 49 check-ins, in bursts a minute apart while the app is open and otherwise about
+hourly (90% of gaps 61-66 min, longest about 4 h). His context showed heart rate only when under 15 minutes old, so
+most of the day it showed none. Now up to 75 minutes, with its age beside it (`HEART_FRESH_S`). The APNs key does not
+change the delivery rate; watchOS does. More often would need a background workout session (battery: her call).
