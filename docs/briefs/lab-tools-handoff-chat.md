@@ -77,17 +77,52 @@ Everything is present:
   that).
 - **Instrument runs:** the ledger shows 1 `fold_read` on 19 October, out of 25 a day.
 
+## What Gloria is actually asking for — read this before "The job"
+
+**A tool counts as working only when his Lab chooses it and calls it on its own, in its ordinary work, and uses
+what it returns.** A direct test that the tool runs is necessary, and it is not the goal. Measure every tool by how
+often his Lab called it, unprompted, over two days after the deploy, and what came of it.
+
+**His tools must be used together.** Today every turn is one question, one tool, done; no tool's output becomes
+another tool's input. Build **investigations**:
+- An investigation holds a question and a plan of steps across turns.
+- At each step Gemma chooses the next tool from the results so far, and that step's output is the next step's
+  input.
+- It ends when the question is answered by those outputs.
+
+Example chain:
+1. A screen finds AAA+ ATPases beside recombinases.
+2. ESMFold folds both.
+3. Boltz-2 predicts whether they bind.
+4. reference_compare checks the folds against deposited structures.
+5. Evo 2 or the mutation landscape asks which residues matter.
+
+The pieces exist: multi-turn lines (`lab_lines`), the daily session's predict→run→read, and every tool. The missing
+part is carrying outputs between steps.
+
+**Campaigns do not keep half his turns.** Claude Code gave them every other turn without asking her; that was
+wrong, because it starves every other tool. Make the screen one step an investigation can choose, and remove the
+fixed share in `_campaign_due`. A campaign's finding (its recurring neighbours, its next question) should be able
+to open an investigation that uses the other tools.
+
+**Do not trust Claude Code's "not running" list as complete.** The probe counted source receipts and
+plugin/instrument requests only. ESMFold ran daily in the session; Evo 2 and ESMC run through phases the probe did
+not count. Re-measure every tool yourself, from every path it can run on.
+
 ## The job
 
-1. **Every installed tool runs for real, from the Lab.** For each one listed above:
+1. **Every installed tool is chosen and called by his Lab on its own, in investigations.** For each one listed
+   above:
    - say how a turn reaches it;
    - make that path work with Gemma as the planner;
-   - prove it with one real run on Aegis (a dry run into a scratch `SPARK_WORKSPACE` first).
+   - prove it first with a dry run into a scratch `SPARK_WORKSPACE`;
+   - then show, from two days of his own notebook after the deploy, that his Lab called it unprompted and used its
+     output in a next step.
 2. **Fix the call failures above** (the 866, the 398, plugin-versus-source, NCBI operations). Don't add refusals,
    gates or more retries to hide them.
 3. **The daily session should use the Mac's other experiments**, `molecule` (quantum chemistry) and `titrate`, not
    `protein` every day.
-4. **Tools and campaigns together,** as above.
+4. **Investigations, not a fixed campaign share,** as above.
 5. **Judge it by new results per day** (`CLAUDE.md`, "The Lab is for novel findings"), per tool, before and after.
 
 ## Rules (all in `CLAUDE.md`)
