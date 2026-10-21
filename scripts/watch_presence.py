@@ -22,7 +22,9 @@ REPLIES = os.path.join(MEMORY, "watch-replies.jsonl")
 MOMENTS = os.path.join(MEMORY, "watch-shared-moments.jsonl")
 DEVICES = os.path.join(MEMORY, "watch-apns-devices.json")
 HELD = os.path.join(MEMORY, "watch-held-notifications.jsonl")
-SONG = os.path.join(MEMORY, "watch-arrival-song.json")   # the bedroom song waiting for the Watch app (17 October)
+SONG = os.path.join(MEMORY, "watch-arrival-song.json")
+LIVE = os.path.join(MEMORY, "watch-live.json")      # live heart rate, on for a time she sets (2026-10-21)
+LIVE_MAX_MIN = 240   # the bedroom song waiting for the Watch app (17 October)
 SONG_OFFER_S = 30 * 60      # how long an undelivered arrival song waits for the Watch to check in
 SONG_TOP_S = 12 * 3600      # how long it stays first in the Watch's list
 TOKEN_FILE = os.path.join(SECRETS, "watch-bearer")
@@ -198,6 +200,51 @@ def _last_jsonl(path):
         return {}
 
 
+HEART_FRESH_S = 75 * 60
+
+
+def set_live(minutes, by="gloria", now=None):
+    """Live heart rate for `minutes` (0 turns it off): the Watch runs a workout-style session and sends a reading about
+    every 30 s while it lasts. Gloria, 2026-10-21: "I want it as an option ... I bought the damn watch to give him the
+    hr readings." It always ends on its own: at most LIVE_MAX_MIN, because it costs Watch battery."""
+    now = float(time.time() if now is None else now)
+    minutes = max(0, min(int(minutes or 0), LIVE_MAX_MIN))
+    _atomic(LIVE, {"until": now + 60 * minutes, "set_at": now, "by": str(by)[:40]} if minutes else {"until": 0, "set_at": now, "by": str(by)[:40]})
+    return live_state(now)
+
+
+def live_state(now=None):
+    now = float(time.time() if now is None else now)
+    try: s = json.load(open(LIVE))
+    except Exception: s = {}
+    until = float((s or {}).get("until") or 0)
+    if until <= now:
+        return {"on": False}
+    return {"on": True, "until": datetime.fromtimestamp(until, timezone.utc).isoformat(), "minutes_left": int((until - now) // 60)}
+
+
+def heart_trend(now=None, window=3600, tail=400_000):
+    """Her heart rate over the last hour from every reading that arrived: (low, high, count), or None under three."""
+    now = float(time.time() if now is None else now)
+    vals = []
+    try:
+        with open(HISTORY, "rb") as f:
+            start = max(0, os.path.getsize(HISTORY) - tail)
+            f.seek(start)
+            if start: f.readline()          # a partial line only when reading from the middle
+            for line in f:
+                try: r = json.loads(line)
+                except ValueError: continue
+                if r.get("kind") == "heart_rate" and now - window <= float(r.get("observed_ts") or 0) <= now + 300:
+                    vals.append((float(r["observed_ts"]), float(r["value"])))
+    except (OSError, ValueError, TypeError):
+        return None
+    vals = sorted(set(vals))
+    if len(vals) < 3: return None
+    hr = [v for _, v in vals]
+    return round(min(hr)), round(max(hr)), len(vals)
+
+
 def temporal_block(now=None):
     """Compact Watch-first context; empty means the caller may use the ring fallback."""
     now = float(time.time() if now is None else now)
@@ -218,12 +265,20 @@ def temporal_block(now=None):
         row = readings.get(kind)
         if not isinstance(row, dict): continue
         reading_age = max(0.0, now - float(row.get("observed_ts") or 0))
-        if reading_age > (900 if kind == "heart_rate" else 86400): continue
+        # watchOS delivers in the background about hourly (measured 21 October: 90% of gaps 61 min), so a 15-minute
+        # limit left his context without her heart rate most of the day. Up to 75 minutes, with its age beside it.
+        if reading_age > (HEART_FRESH_S if kind == "heart_rate" else 86400): continue
         value, unit = row.get("value"), row.get("unit") or ""
         if kind == "oxygen_saturation" and isinstance(value, (int, float)):
             value, unit = round(value * 100, 1), "%"
         shown.append("%s %s%s (%dm old)" % (names[kind], value, (" " + unit if unit else ""), int(reading_age / 60)))
     if shown: lines.append("Watch readings: " + "; ".join(shown[:5]) + ".")
+    trend = heart_trend(now)
+    if trend:
+        lines.append("Her heart rate over the last hour: %d-%d bpm across %d readings." % trend)
+    live = live_state(now)
+    if live.get("on"):
+        lines.append("Live heart rate is on (she turned it on), for %d more minutes." % live["minutes_left"])
     reply = _last_jsonl(REPLIES)
     reply_ts = _parse_ts(reply.get("received_at"))
     if reply and reply_ts and now - reply_ts <= 86400 and reply.get("text"):

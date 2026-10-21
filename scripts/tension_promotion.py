@@ -346,7 +346,7 @@ def _main():
         if t["status"] == "HYPOTHESIS" and ((len(sup) >= 2 and chans(sup) >= 2) or len(sup) >= 3) and days(sup) >= 3:
             t["status"] = "SUPPORTED"; t["eligible_for_visibility"] = True
             if BEING == "vintos":
-                seeds.append("A tension of mine has earned support from lived evidence: " + t["canonical"][:200])
+                seeds.append(t["canonical"][:300])
             t["history"].append({"at": now, "event": "SUPPORTED (eligibility, not truth; no window opened - eligibility is not influence)",
                                  "evidence": [e["evidence_id"] for e in sup]})
             log("%s -> SUPPORTED (visibility-eligible; window opens only on actual serving)" % t["tension_id"])
@@ -376,10 +376,13 @@ def _main():
                       kind="correction", subject=repair["subject"])
         except Exception as exc:
             log("repair case not opened: %s" % exc)
+    # A supported tension is a tension: it goes through the formation door, which keeps tensions in the unfinished pool,
+    # not straight to latent, whose gate refuses an inner pattern as "too vague" by design (21 October: every supported
+    # tension was refused there, and the template's preamble was the first thing its judge read).
     for seed in seeds:
         try:
-            from latent_threads import seed_thread
-            seed_thread(seed)
+            from emoclaw_utils import seed_thread
+            seed_thread("tension-promotion", seed, reasoning="a tension of mine has earned support from lived evidence")
         except Exception as exc:
             log("supported tension thread not seeded: %s" % exc)
     counts = {}

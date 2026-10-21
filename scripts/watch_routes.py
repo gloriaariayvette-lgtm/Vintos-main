@@ -39,7 +39,8 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
             background_tasks.add_task(watch_apns.flush_held)
             song = watch_presence.pending_song()
             if song: result = dict(result, song=song)   # the Watch raises its own notification and plays it
-        return result
+        # whether to run (or stop) the live heart-rate session; the Watch learns it at every check-in
+        return dict(result, live=watch_presence.live_state())
 
     @routes.get("/api/watch/song")
     async def arrival_song(request: Request):
@@ -92,6 +93,22 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         ok, receipt = watch_presence.record_moment(await request.json())
         if not ok: raise HTTPException(status_code=422, detail=receipt)
         return receipt
+
+    def phone(request):
+        if not app_secret or request.headers.get("X-Vintos-Secret") != app_secret:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    @routes.get("/api/watch/live")
+    async def live_get(request: Request):
+        phone(request); return watch_presence.live_state()
+
+    @routes.post("/api/watch/live")
+    async def live_set(request: Request):
+        """{"minutes": 60} from her phone; 0 turns it off. At most four hours: it costs Watch battery."""
+        phone(request)
+        try: body = await request.json()
+        except Exception: raise HTTPException(status_code=400, detail="invalid json")
+        return watch_presence.set_live(body.get("minutes") or 0, by="app")
 
     @routes.get("/api/watch/latest")
     async def latest(request: Request):

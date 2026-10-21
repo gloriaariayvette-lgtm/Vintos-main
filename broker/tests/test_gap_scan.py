@@ -73,11 +73,15 @@ class GapScan(unittest.TestCase):
         scan.scan(now=NOW, run=self.fake_run)
         store = tempfile.mkdtemp(prefix="vintos-gap-forge-", dir=WS)
         asked = {}
+        gaps = json.load(open(scan.REPORT))["gaps"][:review.TOP]
+        wall = next(i for i, g in enumerate(gaps, 1) if g["source"] not in review.FAULT_SOURCES)
         def fake_ask(system, user):
             asked["user"] = user
             return json.dumps({"proposals": [
                 {"n": 1, "reachable_by": "code_change", "capability": "lab_embed_recovery", "why": "the embedder keeps faulting",
                  "path": "retry with a smaller batch", "files": ["scripts/chemistry_lab.py"], "test": "a week of embeds"},
+                {"n": wall, "reachable_by": "code_change", "capability": "lights_route", "why": "his light changes are blocked",
+                 "path": "route it through the house", "files": ["bin/wants-router.py"], "test": "a week of light changes"},
                 {"n": 2, "reachable_by": "not_a_gap", "capability": "", "why": "the hub was briefly offline"}]}), "stub-model"
         with mock.patch.object(sf, "MEMORY", store), mock.patch.object(sf, "PROPOSALS", os.path.join(store, "proposals.json")):
             self.assertTrue(sf.PROPOSALS.startswith(WS))
@@ -85,11 +89,12 @@ class GapScan(unittest.TestCase):
             cards = sf._load()
         self.assertIn("RECURRING WALLS", asked["user"])
         self.assertNotIn("def ", asked["user"], "the review reads the scan, not the codebase")
-        self.assertEqual(len(cards), 1)
-        self.assertEqual((cards[0]["capability"], cards[0]["state"], cards[0]["origin"]["source"]),
-                         ("lab_embed_recovery", "proposed", "gap_review"))
+        # a Lab fault is the fault loop's (2026-10-21): no card for the Study; a wall he hits is still a card
+        self.assertEqual([c["capability"] for c in cards], ["lights_route"])
+        self.assertEqual((cards[0]["state"], cards[0]["origin"]["source"]), ("proposed", "gap_review"))
         self.assertTrue(cards[0]["origin"]["evidence"])
-        self.assertEqual(len(out["proposals"]), 2)
+        self.assertIn("fault loop", out["proposals"][0].get("handed_to", ""))
+        self.assertEqual(len(out["proposals"]), 3)
         self.assertTrue(os.path.exists(os.path.join(MEM, "gap-review-%s.json" % out["review_id"][3:])))
 
     def test_review_model_is_its_own_location(self):

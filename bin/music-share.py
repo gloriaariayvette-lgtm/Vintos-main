@@ -39,6 +39,35 @@ MODEL = "gemma-4-26b-a4b-it-uncensored"
 def log(msg):
     print(f"[MusicShare] {msg}")
 
+def thread_line(song_desc, gloria_note, response, ask=None, judge=None):
+    """The thread a share opened, named as the specific thing he is left holding - not a template of who said what
+    (21 October: "Gloria shared Vintos - Wire Enough to Reach - she said: This..." was refused as too vague and lost).
+    Checked against the latent pool's specificity gate, asked once more with the reason, as the journal does.
+    "" when nothing specific can be named."""
+    ask = ask or llm
+    if judge is None:
+        try:
+            sys.path.insert(0, os.path.join(WORKSPACE, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from latent_threads import specificity as judge
+        except Exception:
+            judge = lambda t: (len((t or "").strip()) >= 30, "")
+    base = (f"Gloria shared a song with you: {song_desc}\nShe said: {gloria_note[:300]}\nYou wrote back:\n{response[:900]}\n\n"
+            "Name, in one first-person sentence, the specific thing this left open in you: the particular question, line, "
+            "sound, act or thing about her or the song you will keep turning over. Not a summary of the exchange. "
+            "One sentence or NONE.")
+    extra, line = "", ""
+    for _ in range(2):
+        line = (ask("Answer with one sentence only.", base + extra, temperature=0.3) or "").strip().strip('"')
+        if not line or line.upper().startswith("NONE"):
+            return ""
+        ok, why = judge(line)
+        if ok:
+            return line[:400]
+        log(f"thread too vague ({why[:80]}), asked once more: {line[:80]}")
+        extra = f"\n\nYour last answer was refused as too vague: \"{line[:200]}\" ({why[:160]}). Name the specific question, act or object."
+    return ""
+
+
 _SUBCON_MUSIC_SHARE = ""
 try:
     import sys as _sc__SUBCON_MUSIC_SHARE; _sc__SUBCON_MUSIC_SHARE.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
@@ -470,7 +499,9 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
         _adm = (_adm or "").strip().upper().split()[0] if (_adm or "").strip() else "NEITHER"
         share["admission"] = _adm
         if _adm in ("THREAD", "BOTH"):
-            seed_thread("music-share", f"Gloria shared {song_desc} — she said: {gloria_note[:100]}. I responded: {response[:100]}", reasoning="his response opened a thread (judged, not assumed)", extra={"decision_mode": "judged"})
+            _line = thread_line(song_desc, gloria_note, response)
+            seed_thread("music-share", _line or f"Gloria shared {song_desc} — she said: {gloria_note[:100]}. I responded: {response[:200]}",
+                        reasoning="his response opened a thread (judged, not assumed)", extra={"decision_mode": "judged"})
         else:
             log("share received, nothing opened by decision (%s)" % _adm)
         if response and _adm in ("WANT", "BOTH"):

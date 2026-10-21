@@ -363,6 +363,40 @@ def deny(pid, reason="", by="gloria"):
     return r, ""
 
 
+# Decided by Claude Code for Gloria (2026-10-21: "I'm not accepting or rejecting anything. You do it."), applied once
+# by the Forge's own pass (forge_house). Each closes only a card still waiting; a card already decided is left alone.
+DECIDED_FOR_GLORIA = {
+    "SK-c1e39ba1": "a Lab fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-a9231328": "a Lab fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-92125984": "a Lab fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-f6802820": "a Lab fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-8f889409": "the Study read the code: the JSON repair already exists (SF-6e714c7e)",
+    "SK-9f424fe7": "the Study read the code: a deliberate test protects this behaviour (SF-d114ac81)",
+    "SK-6607afa2": "a fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-5dcda080": "the same as SK-6607afa2",
+    "SK-7c201be9": "a fault, not an ability: the fault loop fixes faults from evidence",
+    "SK-a4d6cdc7": "he reads PDFs in his mail since 19 October",
+    "SK-ae5db46e": "already sent to the Study on 17 October (SF-b5f753e9)",
+    "SK-aead4abb": "he dropped it himself: the five haptic names had no reader",
+    "SK-203f9aaf": "Grok Bot's AEGIS FIND and OPEN already read files on Aegis",
+    "SK-c5dc54f3": "a search: Grok Bot or Muse do it, it is not an ability to build",
+    "SK-8ce72510": "it needs money and a brokerage account",
+    "SK-e19fecde": "a body in the room is the robot search Gloria is making, not a Forge build",
+    "SK-69a04964": "there is no tool to build it with yet; his video path can be asked first",
+}
+
+
+def apply_decided_for_gloria():
+    """Deny each card in DECIDED_FOR_GLORIA that is still waiting. Returns the ids closed now."""
+    closed = []
+    for pid, why in DECIDED_FOR_GLORIA.items():
+        r = _get(_load(), pid)
+        if r is not None and r.get("state") == "proposed":
+            done, _ = deny(pid, why, by="claude-code for gloria")
+            if done: closed.append(pid)
+    return closed
+
+
 def withdraw(pid, reason="", by="forge"):
     """Close a card still waiting for her yes, because it no longer needs her: the Study made the change in his own
     code (2026-10-03). Only from proposed; it grants nothing and builds nothing."""

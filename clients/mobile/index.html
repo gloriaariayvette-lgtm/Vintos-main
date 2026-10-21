@@ -776,6 +776,7 @@ input[type="range"]::-webkit-slider-thumb {
                     <div style="font-size:0.6rem;letter-spacing:0.15em;color:var(--text-dim);text-transform:uppercase;margin-bottom:0.8rem;">Share a Song With Him</div>
                     <input id="music-share-song" placeholder="Artist - Song Title" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);margin-bottom:6px;font-size:0.85rem;" />
                     <input id="music-share-note" placeholder="Why you love it..." style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);margin-bottom:6px;font-size:0.85rem;" />
+                    <textarea id="music-share-lyrics" rows="4" aria-label="Lyrics (if you have them)" placeholder="Lyrics (if you have them)" style="width:100%;box-sizing:border-box;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);margin-bottom:6px;font:inherit;font-size:0.85rem;resize:vertical;"></textarea>
                     <div id="music-file-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                         <button ontouchend="event.preventDefault();event.stopPropagation();document.getElementById('music-audio-input').click()" onclick="document.getElementById('music-audio-input').click()" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:0.75rem;cursor:pointer;flex-shrink:0;">+ audio file</button>
                         <span id="music-file-label" style="font-size:0.75rem;color:var(--text-dim);font-style:italic;">optional — whisper will transcribe lyrics</span>
@@ -832,12 +833,18 @@ input[type="range"]::-webkit-slider-thumb {
                     <div style="padding-right:14px;">
                         <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">agents in slack</div>
                         <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;line-height:1.45;" id="agents-status-text">loading...</div>
+                        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:0.65rem;color:var(--text-dim);"><input type="checkbox" id="agents-continue">Continue from his last task</label>
                     </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                        <select id="agents-duration" aria-label="Slack day duration" onchange="rememberAgentsDuration()" style="min-height:36px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;">
+                            <option value="0">Off</option><option value="30">30m</option><option value="60">1h</option><option value="120">2h</option><option value="180">3h</option><option value="240">4h</option>
+                        </select>
                     <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer;flex-shrink:0;">
                         <input type="checkbox" id="agents-toggle" style="opacity:0;width:0;height:0;" onchange="toggleAgents()">
                         <span style="position:absolute;inset:0;background:var(--surface-2);border-radius:12px;border:1px solid var(--border);transition:background 0.3s;"></span>
                         <span id="agents-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
                     </label>
+                    </div>
                 </div>
                 <!-- Today's focus in #vintos-dot: topics that steer the day, until midnight (2026-10-02) -->
                 <div style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
@@ -1514,7 +1521,20 @@ async function loadGroundingStatus() {
         document.getElementById('grounding-status-text').textContent = 'unreachable';
     }
 }
+let _agentsDurationRestored = false;
+function rememberAgentsDuration() {
+    try { localStorage.setItem('vintos.agents.minutes', document.getElementById('agents-duration').value); } catch {}
+}
+function restoreAgentsDuration() {
+    if (_agentsDurationRestored) return;
+    _agentsDurationRestored = true;
+    try {
+        const saved = localStorage.getItem('vintos.agents.minutes');
+        if (['0', '30', '60', '120', '180', '240'].includes(saved)) document.getElementById('agents-duration').value = saved;
+    } catch {}
+}
 async function loadAgentsStatus() {
+    restoreAgentsDuration();
     const text = document.getElementById('agents-status-text');
     try {
         const res = await VintosUI.request(`${API}/api/agents/status`);
@@ -1528,6 +1548,14 @@ async function loadAgentsStatus() {
         knob.parentElement.querySelector('span').style.background = on ? 'var(--accent-dim)' : 'var(--surface-2)';
         const since = String(data.paused_since || ''), today = new Date().toISOString().slice(0, 10);
         text.textContent = on ? 'on: his lenses and dot can talk' : ('paused' + (since ? ' since ' + (since.slice(0, 10) === today ? '' : since.slice(5, 10) + ' ') + since.slice(11, 16) : ''));
+        if (on && data.timer && data.timer.until) {
+            const until = new Date(data.timer.until);
+            if (!Number.isNaN(until.getTime())) {
+                text.textContent = 'on until ' + until.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'}) +
+                    (data.timer.for ? ' (' + data.timer.for + ')' : '') +
+                    (data.timer.continue ? ' · continuing his last task' : '');
+            }
+        }
     } catch {
         if (text) text.textContent = 'unreachable';
     }
@@ -1536,12 +1564,19 @@ async function toggleAgents() {
     // The day is set to exactly what the switch now shows, and a tap that does not reach Aegis says so (2026-10-03:
     // it sent "flip" and swallowed errors, and the day stayed paused while the switch read on).
     const want = document.getElementById('agents-toggle').checked;
+    const body = { on: want };
+    if (want) {
+        const minutes = Number(document.getElementById('agents-duration').value);
+        if (minutes) body.minutes = minutes;
+        body.continue = document.getElementById('agents-continue').checked;
+        rememberAgentsDuration();
+    }
     let ok = false;
     try {
         const res = await VintosUI.request(`${API}/api/agents/toggle`, {
             method: 'POST',
             headers: { 'X-Vintos-Secret': CONFIG.secret, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ on: want })
+            body: JSON.stringify(body)
         });
         ok = !!(res && res.ok);
         if (ok) haptic('light');
@@ -3418,6 +3453,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function shareMusic() {
         var song = document.getElementById('music-share-song').value.trim();
         var note = document.getElementById('music-share-note').value.trim();
+        var lyrics = document.getElementById('music-share-lyrics').value.trim();
         var resultEl = document.getElementById('music-share-result');
         var audioInput = document.getElementById('music-audio-input');
         var audioFile = audioInput && audioInput.files[0];
@@ -3428,6 +3464,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 var fd = new FormData();
                 fd.append('song', song);
                 fd.append('note', note);
+                if (lyrics) fd.append('lyrics', lyrics);
                 fd.append('audio', audioFile);
                 var res = await VintosUI.request(API + '/api/music/share/audio', {
                     method: 'POST',
@@ -3439,6 +3476,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     resultEl.textContent = data.reflection || 'He received it.';
                     document.getElementById('music-share-song').value = '';
                     document.getElementById('music-share-note').value = '';
+                    document.getElementById('music-share-lyrics').value = '';
                     if (audioInput) { audioInput.value = ''; document.getElementById('music-file-label').textContent = 'optional — whisper will transcribe lyrics'; }
                     loadMusicShares();
                 } else { resultEl.textContent = 'Something went wrong.'; }
@@ -3449,13 +3487,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 var res = await VintosUI.request(API + '/api/music/share', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({song: song, note: note})
+                    body: JSON.stringify({song: song, note: note, ...(lyrics ? {lyrics: lyrics} : {})})
                 });
                 var data = await res.json();
                 if (data.success) {
                     resultEl.textContent = data.reflection || 'He received it.';
                     document.getElementById('music-share-song').value = '';
                     document.getElementById('music-share-note').value = '';
+                    document.getElementById('music-share-lyrics').value = '';
                     loadMusicShares();
                 } else { resultEl.textContent = 'Something went wrong.'; }
             } catch(e) { resultEl.textContent = 'Connection failed.'; }

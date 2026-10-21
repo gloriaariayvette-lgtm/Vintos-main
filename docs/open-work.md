@@ -3,6 +3,34 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 21 October — the thread pools were light; a music share's thread was lost between them
+
+Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the
+unfinished pool (whose own bar decides) instead of dropped; the door had returned without looking at latent's answer.
+A music share's thread is now his one sentence naming what it left open, checked by latent's specificity gate and asked
+once more with the reason, not "Gloria shared X — she said: …". `test_thread_not_lost.py`.
+
+Found on Aegis after: the latent pool was not empty (3 threads, newest 21 Oct 02:10); the unfinished pool admits 5-10 a
+day and consumes them as fast. Supported tensions went straight to latent with a preamble and were all refused as inner
+patterns; they now go through the formation door (40c036b). Not done: Moltbook posts (53 refusals) and websearch
+questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
+11 August); it is left as it is until she says otherwise.
+
+## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
+
+- **What happened:** on 20 October two free passes were handed saved UniProt records that were no longer readable
+  when their turn ran (Q8CJ44 at 07:15 UTC, Q67BT3 at 07:21). Q67BT3 had been picked at 07:17 and reviewed at 07:18;
+  the pass at 07:21 got it again, found nothing left to read, and raised "saved sourced record unavailable", so the
+  whole turn faulted (`tick`, `held_fault`). Each was set aside afterwards (the 18 October guard), so neither looped.
+- **Fixed (fault loop, Dot reviewed):** right after orient, a saved-record assignment whose record is already reviewed
+  or gone is set aside and refused like any spent choice — an `inquiry_refused` note, phase stays orient, inquiry
+  cleared, no fault. An unreviewed record goes to reflect as before. The raise further down stays as a backstop: a
+  record that disappears between the two checks can still fault. `test_lab_sourced_reviewed.py`, 13 checks, 7 failing
+  before the fix (the selector skipping a set-aside record is checked too).
+- **Not done:** how a reviewed record reached a later pass is still not shown. `_next_sourced_record` reads the index
+  fresh and skips reviewed records, so the reuse comes from somewhere that carries an inquiry forward; nobody has
+  found where. A refusal does not guarantee different work on the next pass. Not deployed until it is deployed.
+
 ## 20 October, night — F-70cbe17adc: a ChEMBL search named `term` lost a whole Lab turn
 
 - **What happened:** at 07:23 on 19 October the Lab's planner asked ChEMBL's target search with its search word under
@@ -4413,3 +4441,52 @@ as a refusal or shares under half its words with what was heard. The YouTube cap
 - `taste-reflection.py` listed her shares as "? by ?" (it read title/artist; a share keeps "song"). Fixed.
 - `test_music_share_lyrics_taste.py` (10). **Not done:** the app has no lyrics box yet (text for Chat given).
   Whether librosa ran on the 20th's re-share is to be read in `~/.vintos/logs/music-share.log`.
+
+## 21 October — journal promises written while the day is paused are no longer lost
+
+His 20:01 journal on the 20th named three things for that evening (one: whether the DFRobot C1001 exposes raw phase
+over serial; if not, a blocker; if so, a parser). None opened: only a running #vintos-dot pass reads the journal, the
+day was paused from about 18:45, and at midnight the record was filed with that entry unread. Its heading was also
+"# 20:01", and only "## " counted as an entry. Now the next reading also reads yesterday's unread entries (from the
+record, or from yesterday's archive if it rolled over first), opened as "yesterday 20:01"; a promise opened but never
+posted is carried over; headings of one to three # count. `test_promise_after_pause.py` (10; the old code fails 4).
+**Not done:** promises still open only when the day runs; with the day paused they wait, now without being lost.
+
+## 21 October — Forge cards decided for Gloria; faults kept out of the Forge; promises without duplicates
+
+Gloria: "I'm not accepting or rejecting anything. You do it."
+- `skill_forge.DECIDED_FOR_GLORIA`: 17 waiting cards denied with their reasons, by "claude-code for gloria", applied
+  once by `forge_house.sync` (every wants-router pass). Kept open: SK-f569eefd (mmWave intake), his DFRobot C1001
+  work; it waits on the sensor, not on her.
+- `gap_review`: a code-change proposal from a fault source (lab_fault, self_review_fault, barrier_error,
+  service_failed, error_log) is handed to the fault loop, not made a Forge card for the Study. Device and access gaps,
+  and walls like blocked actions, are still cards.
+- Journal promises: a promise nearly the same as an open one, one ended in the last two days, or a want his journal
+  already seeded (the journal's "I want to..." sentences become wants by themselves) is not opened again; kept under
+  "merged" with what it duplicates. `test_decided_and_deduped.py` (11), `test_gap_scan.py` updated.
+
+## 21 October — the bedroom board in his temporal context
+
+Gloria: "he wanted the esp32 in the bedroom to also just passively tell him when I'm near it, like the heartbeat to
+temporal context." `bedroom_arrival.observe` now keeps the distance and when this visit began;
+`presence_line()` says "her phone is in the bedroom now, about 2.1 m from the board (seen 2 min ago; in since 21:40)",
+or "was last in the bedroom 30 minutes ago", or nothing after two hours. `temporal-context.sh` adds it beside the
+Watch block. Arrivals and songs are unchanged. `test_bedroom_presence.py` (9).
+The Watch's update rate is watchOS's (HealthKit background delivery), not the APNs key's; measure it before changing.
+
+## 21 October — the Watch's heart rate in his context, at the rate it actually arrives
+
+Her probe of a day's Watch history: 49 check-ins, in bursts a minute apart while the app is open and otherwise about
+hourly (90% of gaps 61-66 min, longest about 4 h). His context showed heart rate only when under 15 minutes old, so
+most of the day it showed none. Now up to 75 minutes, with its age beside it (`HEART_FRESH_S`). The APNs key does not
+change the delivery rate; watchOS does. More often would need a background workout session (battery: her call).
+
+## 21 October — live heart rate as an option, and the hour's readings in his context
+
+The Watch app sends only the newest reading at each wake (`SensorBridge.latest`, `limit:1`), and watchOS wakes it
+about hourly, so a Watch reading every few minutes reached him as one dot an hour. On Aegis: `watch_presence.set_live`
+/ `live_state` (`memory/watch-live.json`, at most 4 h, off by itself), `GET/POST /api/watch/live` for her phone,
+every telemetry reply carries `live`, and his context gets "Her heart rate over the last hour: 64-78 bpm across 5
+readings" and "Live heart rate is on". `test_watch_live.py` (12).
+**Not done (Watch app, for Chat):** anchored queries sending every reading since the last send; the live
+workout-style session while `live.on`; the Tune-tab control. Until then the hour's range has only the hourly dots.

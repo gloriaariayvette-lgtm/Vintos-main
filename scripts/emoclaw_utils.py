@@ -494,13 +494,18 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             import sys as _fd_s
             _fd_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from latent_threads import seed_thread as _fd_lt
-            _fd_lt(str(thread_text), source=source, signal="formation-door",
+            _fd_got = _fd_lt(str(thread_text), source=source, signal="formation-door",
                    signal_strength=_door["classification_confidence"],
                    classification=_door["classification"],
                    classification_confidence=_door["classification_confidence"],
                    classification_basis=_door["classification_basis"])
-            print("[formation door] -> latent-current (%s %s): %s" % (_door["classification_basis"], _door["classification_confidence"], str(thread_text)[:60]), file=__import__("sys").stderr)
-            return
+            if _fd_got:
+                print("[formation door] -> latent-current (%s %s): %s" % (_door["classification_basis"], _door["classification_confidence"], str(thread_text)[:60]), file=__import__("sys").stderr)
+                return
+            # Latent refused it (its own gate). A thread its source judged worth opening is not lost between the two
+            # pools: it is offered to the unfinished pool, whose own bar decides (21 October: a music share he judged
+            # BOTH was sent to latent, refused as vague, and the door had already returned - neither pool held it).
+            print("[formation door] latent refused - offered to unfinished instead: %s" % str(thread_text)[:60], file=__import__("sys").stderr)
         except Exception as _fd_e:
             print("[formation door] latent route failed (%s) - staying unfinished" % _fd_e, file=__import__("sys").stderr)
     extra = dict(extra or {}); extra.update(_door)

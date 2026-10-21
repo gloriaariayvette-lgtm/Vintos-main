@@ -223,7 +223,10 @@ def observe(device, distance, now=None, cfg=None):
     state = _load(STATE, {})
     if not isinstance(state, dict): state = {}
     last_here = float(state.get("last_here_ts") or 0)
+    if now - last_here >= float(cfg["away_minutes"]) * 60:
+        state["here_since_ts"] = now           # this visit began now; presence_line says since when
     state["last_here_ts"] = now
+    state["last_here_distance"] = round(float(distance), 1)
     _atomic(STATE, state)
     if now - last_here < float(cfg["away_minutes"]) * 60: return None          # she never left
     if now - float(state.get("last_sent_ts") or 0) < float(cfg["cooldown_minutes"]) * 60:
@@ -312,6 +315,27 @@ def _telling_her(song_id, title):
         return (receipt or {}).get("state") or "unknown"
     except Exception as e:
         return "failed: %s: %s" % (type(e).__name__, str(e)[:100])
+
+
+PRESENT_S = 10 * 60      # seen this recently: she is in the bedroom now
+RECENT_S = 2 * 3600      # after that, how long ago she was, for two hours
+
+
+def presence_line(now=None):
+    """Where she is, passively, as the Watch's heart rate is (Gloria, 2026-10-21: "he wanted the esp32 in the bedroom
+    to also just passively tell him when I'm near it, like the heartbeat to temporal context"). Her phone within range
+    of the bedroom board; '' when it has not been seen for two hours or nothing is enrolled."""
+    if not config().get("devices"): return ""
+    state = _load(STATE, {})
+    if not isinstance(state, dict) or not state.get("last_here_ts"): return ""
+    now = time.time() if now is None else now
+    ago = now - float(state["last_here_ts"])
+    if ago < 0 or ago > RECENT_S: return ""
+    if ago <= PRESENT_S:
+        since = float(state.get("here_since_ts") or state["last_here_ts"])
+        return ("Bedroom sensor: her phone is in the bedroom now, about %s m from the board (seen %d min ago; in since "
+                "%s)." % (state.get("last_here_distance", "?"), int(ago // 60), datetime.fromtimestamp(since).strftime("%H:%M")))
+    return "Bedroom sensor: her phone was last in the bedroom %d minutes ago." % int(ago // 60)
 
 
 def context_line(now=None):
