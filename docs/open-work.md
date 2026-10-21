@@ -4467,3 +4467,13 @@ Her probe of a day's Watch history: 49 check-ins, in bursts a minute apart while
 hourly (90% of gaps 61-66 min, longest about 4 h). His context showed heart rate only when under 15 minutes old, so
 most of the day it showed none. Now up to 75 minutes, with its age beside it (`HEART_FRESH_S`). The APNs key does not
 change the delivery rate; watchOS does. More often would need a background workout session (battery: her call).
+
+## 21 October — live heart rate as an option, and the hour's readings in his context
+
+The Watch app sends only the newest reading at each wake (`SensorBridge.latest`, `limit:1`), and watchOS wakes it
+about hourly, so a Watch reading every few minutes reached him as one dot an hour. On Aegis: `watch_presence.set_live`
+/ `live_state` (`memory/watch-live.json`, at most 4 h, off by itself), `GET/POST /api/watch/live` for her phone,
+every telemetry reply carries `live`, and his context gets "Her heart rate over the last hour: 64-78 bpm across 5
+readings" and "Live heart rate is on". `test_watch_live.py` (12).
+**Not done (Watch app, for Chat):** anchored queries sending every reading since the last send; the live
+workout-style session while `live.on`; the Tune-tab control. Until then the hour's range has only the hourly dots.
