@@ -3,6 +3,23 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 22 October — screening campaigns: the Lab poses a question and its own screen answers it
+
+Gloria: "It can't be that difficult to produce a lab that poses novel questions and answers them. Look at how
+Anthropic got Claude to find array-associated reverse transcriptase." Baseline (her probe, 21 Oct): 0 of 14 "yes"
+reviews rested on an instrument; 1 instrument run of 25; ~550 passes a day ended without a source call.
+
+**Done (not yet live):** `scripts/lab_campaign.py`. Gemma names a protein family and an organism group, with a
+prediction; NCBI returns the proteins; each turn screens one locus (`lab_phage.screen`: 12 kb neighbourhood, CRISPR
+arrays, Pfam families of every neighbour); every 8 loci the counts are tabulated as a finding and Gemma reads them
+against the prediction. Campaigns take every other minute-loop turn and any turn after an empty pass, up to 120
+screens a day. A finding ends a dead-end run. Off switch: config `"campaigns": false`. Planner stays on Gemma;
+no gate changed; no paid call. `test_lab_campaign.py` 23/23.
+
+**Not verified live.** Judge by: campaign findings per day (`campaign-findings.jsonl`), and whether their recurring
+neighbours are ones the literature does not already list. The ordinary loop still asks lookups on the other turns;
+that is untouched and is the next thing to change if campaigns work.
+
 ## 21 October — the thread pools were light; a music share's thread was lost between them
 
 Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the

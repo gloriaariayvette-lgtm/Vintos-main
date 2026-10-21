@@ -5,6 +5,7 @@ The Lab used to replace selected subjects with the wandering browse. These tests
 workspace and verify that ordinary syntax shaping neither removes the subject nor marks the inquiry refused."""
 from pathlib import Path
 import contextlib, json, os, shutil, socket, subprocess, sys, tempfile, types, unittest
+os.environ["VINTOS_LAB_CAMPAIGNS"] = "0"   # this suite tests the ordinary loop; test_lab_campaign tests campaigns
 from unittest.mock import patch
 scratch = tempfile.TemporaryDirectory(prefix='lab-perimeter-')
 os.environ.update(HOME=scratch.name, SPARK_WORKSPACE=scratch.name + '/workspace', VINTOS_SECRETS=scratch.name + '/secrets')

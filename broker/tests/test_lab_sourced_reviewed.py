@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import json
 import os
+os.environ["VINTOS_LAB_CAMPAIGNS"] = "0"   # this suite tests the ordinary loop; test_lab_campaign tests campaigns
 import socket
 import subprocess
 import sys
