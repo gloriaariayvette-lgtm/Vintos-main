@@ -3,6 +3,21 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 21 October — independent Lab refusal review (Codex branch; not deployed)
+
+- Reproduced three planner calls for one terminal spent refusal, fresh planning without a spent list,
+  question-wide spent matching, and a narrow fallback broadened to structure/function/relationship during
+  sourced record binding. Report: `docs/lab-refusals-review-2026-10-21.md`.
+- Updated brief `d62737f` makes new instrument findings/day the outcome. The code steers free recovery toward
+  curated-record reviews, admits same-subject lookups as frontier measurement continuations, and routes ordinary
+  instrument choices through browse first. Seventeen isolated offline tests pass; no production patch proposed.
+- **Not done:** attribution of Aegis's 317 spent refusals and 303 reviews. Gloria can run
+  `scripts/probe_lab_refusals_readonly.py` against installed source/state; it emits the lookup/measurement/mixed/
+  unclear split, review verdicts and logged source operations per kind. New findings/day is still unmeasured.
+  Actual historical prompt membership
+  and attempt origin are not recorded in the specified ledgers; the probe marks them unknown.
+  Claude Code review and any deployment remain separate; no claim that the Lab is fixed.
+
 ## 21 October — the thread pools were light; a music share's thread was lost between them
 
 Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the
