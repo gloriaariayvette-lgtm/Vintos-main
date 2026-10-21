@@ -16,6 +16,16 @@ patterns; they now go through the formation door (40c036b). Not done: Moltbook p
 questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
 11 August); it is left as it is until she says otherwise.
 
+## 21 October, night — a gene-identity refusal costs three Lab turns (F-d71d7af615), proposed, not fixed
+
+- **Seen:** `source_gene_mismatch` raised in the browse phase is not caught, so the same request is retried until
+  `FAULT_LIMIT` (3) drops it: MCR on 17 October, TDP-43 on 18 October, MHC1/MHC2 on 20 October, three faults and a
+  `fault_redirect` each time. Proposed in #fault-fix: an identity mismatch ends the inquiry on its first occurrence as
+  a refusal. Waiting on Dot's review; nothing changed yet.
+- **Not looked into — a likely false refusal:** the TDP-43 request was refused although the records named `TDP43` and
+  `TARDBP` (18 October, notebook 122261). `verify_uniprot_identity` seems not to treat `TDP-43` and `TDP43` as the
+  same symbol. Unconfirmed; needs its own evidence and fix.
+
 ## 21 October, night — F-55bab2e222: Gemma's overflow now says which call was too large
 
 - **What happened:** his Gemma turns overflowed LM Studio's 32,000-token window 27 times by 19 October (requests of
