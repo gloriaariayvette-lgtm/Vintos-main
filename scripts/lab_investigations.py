@@ -313,6 +313,7 @@ def _plan(investigation, context, ask):
     task = {
         'question': investigation.get('question'), 'prediction': investigation.get('prediction'),
         'line_context': investigation.get('line_context'),
+        'build_on': __import__('lab_findings').for_planner(3),
         'plan': investigation.get('plan'), 'context': context[-2500:],
         'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs')}
                            for s in visible],
@@ -338,7 +339,9 @@ def _plan(investigation, context, ask):
                                     'Boltz start operations remain ask-only; hosted inference keeps its six-job cap. '
                                     'Screening has no reserved share. Choose it only when it advances this question. '
                                     'Use all available experiment types when they address the question, including '
-                                    'molecule and titrate. A repeat is not new evidence.'),
+                                    'molecule and titrate. A repeat is not new evidence. build_on holds your latest '
+                                    'findings: when opening an investigation, prefer testing one of their next '
+                                    'questions with a different tool over starting somewhere unrelated.'),
     }
     # Smaller, complete output contract rather than the legacy journal/menu plus
     # several contradictory question contracts. No added parser/model retry.
@@ -555,7 +558,13 @@ def turn(context, *, ask=None, execute=None):
         reflection = lab._reflect(context, original, _observations(investigation['steps']))
         row = {'at':lab.now_iso(), 'kind':'investigation_review', 'investigation':investigation['id'],
                'inquiry':original, **reflection}
-        if lab.review_answered(reflection): investigation['state'] = 'answered'
+        if lab.review_answered(reflection):
+            investigation['state'] = 'answered'
+            import lab_findings, chemistry_sources, lab_campaign
+            found = lab_findings.record(investigation, reflection, lambda s_, p_: ask(s_, p_, max_tokens=400, temperature=0.3),
+                                        sources=lab_campaign._Paced(chemistry_sources.configured_sources()))
+            investigation['finding'] = {k: found.get(k) for k in ('kind', 'kept', 'told_gloria')}
+            investigation['finding']['appraisal'] = found.get('appraisal')
         else:
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
             # never close an investigation the planner keeps trying to finish. Three unanswered reviews close it.

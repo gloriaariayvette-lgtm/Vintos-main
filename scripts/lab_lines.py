@@ -497,6 +497,16 @@ def tests_block(limit=10, budget=1400, notebook=True):
     except Exception:
         pass
     try:
+        import lab_findings
+        inv = lab_findings.recent(3)
+        if inv:
+            text += "\n[YOUR INVESTIGATION FINDINGS - your tools' results, judged by you; build on their next questions]\n" + \
+                    "\n".join("- %s: %s (%s, %s/5) next: %s" % (str(r.get("question"))[:120], str(r.get("result"))[:200],
+                              (r.get("appraisal") or {}).get("novelty"), (r.get("appraisal") or {}).get("value"),
+                              str(r.get("next_question"))[:150]) for r in inv)
+    except Exception:
+        pass
+    try:
         import lab_campaign
         found = lab_campaign.findings_block(4)
         if found:

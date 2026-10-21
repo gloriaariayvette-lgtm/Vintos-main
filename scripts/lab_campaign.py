@@ -372,7 +372,8 @@ def tell(data, row, now=None, express=None):
     tell_gloria: her daily cap and consent decide). At most TELL_PER_DAY a day from the Lab."""
     day = (now or _now())[:10]
     told = data.setdefault("told", {})
-    if int(told.get(day, 0)) >= TELL_PER_DAY:
+    import lab_findings                  # one a day for the whole Lab, investigations included
+    if int(told.get(day, 0)) >= TELL_PER_DAY or lab_findings.told_today(now) >= lab_findings.TELL_PER_DAY:
         return False
     a = row["appraisal"]
     text = "I want to tell Gloria what my Lab just found: " + (a.get("message") or (row.get("reading") or {}).get("pattern") or "")
@@ -382,6 +383,7 @@ def tell(data, row, now=None, express=None):
         express(text[:500], source="lab-finding", intensity=4,
                 reasoning="my own screen found it (%s); I judged it %d of 5 and %s" % (row["campaign"], a.get("value", 0), a.get("novelty")))
         told[day] = int(told.get(day, 0)) + 1
+        lab_findings.mark_told(now)
         return True
     except Exception:
         return False

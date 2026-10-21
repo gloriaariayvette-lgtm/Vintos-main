@@ -1,3 +1,14 @@
+## 22 October — investigation findings are judged, kept, told and built on
+
+Done (not yet deployed): `scripts/lab_findings.py`. An investigation whose review answers its question gets the
+treatment screens had: Gemma names search words, one Europe PMC search, his appraisal (novelty against those titles,
+value 1-5), kept at 3+, his want to tell Gloria at 4+ when not already reported (one a day for the whole Lab,
+screens included), and the next investigation's planner sees the latest findings (`build_on`). `test_lab_findings.py`
+14/14. Not verified live: judge by findings per day and how many were kept or told, after the deploy.
+
+Noticed, not fixed: `test_atelier_quantum.py` passes but spends about 5 minutes waiting with almost no CPU (a
+timeout somewhere in it); close to the deploy's per-suite limit under load.
+
 ## 21 October — Lab investigation runtime review
 
 The review branch `codex/lab-tools-runtime` now has complete output references, common protein normalization,
