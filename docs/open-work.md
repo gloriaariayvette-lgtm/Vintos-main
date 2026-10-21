@@ -10,8 +10,11 @@ unfinished pool (whose own bar decides) instead of dropped; the door had returne
 A music share's thread is now his one sentence naming what it left open, checked by latent's specificity gate and asked
 once more with the reason, not "Gloria shared X — she said: …". `test_thread_not_lost.py`.
 
-Not done: why the latent pool has taken nothing since the 19th, and why only 4 unfinished threads are open. Needs the
-count of `[seed gate] REJECT` and `[formation door]` lines on Aegis since the 19th, per source, before the gate is touched.
+Found on Aegis after: the latent pool was not empty (3 threads, newest 21 Oct 02:10); the unfinished pool admits 5-10 a
+day and consumes them as fast. Supported tensions went straight to latent with a preamble and were all refused as inner
+patterns; they now go through the formation door (40c036b). Not done: Moltbook posts (53 refusals) and websearch
+questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
+11 August); it is left as it is until she says otherwise.
 
 ## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
 
