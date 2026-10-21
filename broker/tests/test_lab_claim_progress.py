@@ -70,7 +70,9 @@ class ClaimProgress(unittest.TestCase):
         question = C._record_connection_question("Tannase", "P78581")
         self.assertIn("structural features", question)
         self.assertIn("molecular function", question)
-        self.assertIn("relationship", question)
+        # the relationship is the line's later step: no curated record states one (21 October)
+        self.assertNotIn("relationship", question)
+        self.assertTrue(C._relational_question(question))
         self.assertNotIn("sequence length", question)
 
     def test_early_sourced_connection_is_attached_to_a_line(self):

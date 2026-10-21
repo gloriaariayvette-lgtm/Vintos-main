@@ -1908,11 +1908,14 @@ def _orient(context, lean=None):
         "{source:rhea,term:plain reaction or metabolite phrase,limit:1..8}, or "
         "{source:quickgo,term:plain function or process phrase,limit:1..8}. "
         "Choose one direct source for this question, not the whole menu. "
-        "A protein question must seek a connection, not merely inventory fields. Include three claim types: "
-        "a named structural feature or molecular property, a documented function, localization or comparison, "
-        "and the source-backed relationship between them. Organism, accession and sequence length may establish "
-        "identity but do not count as the connection. Match this cycle's retrieval to the claim still open; do not "
-        "ask one generic record query to settle a relationship it cannot contain. "
+        "A protein line seeks a connection: a named structural feature or molecular property, a documented "
+        "function, localization or comparison, and the source-backed relationship between them. It is built one "
+        "claim per question across the line, never asked whole: a record lists features and a function, but no "
+        "record states the relationship, so a first question asks only what the record lists, and the relationship "
+        "is asked later with a source that states it (a structure's contacts at that feature, a paper's finding). "
+        "Organism, accession and sequence length may establish identity but do not count as a claim. Match this "
+        "cycle's retrieval to the claim still open; do not ask one generic record query to settle a relationship it "
+        "cannot contain. "
         "Match the requested evidence product to that source: citation metadata is discovery, not a mechanism; "
         "an isolated structure cannot establish a fragment-versus-full-length comparison without both structures. "
         "If your question names two proteins to compare, ONE query must return both, or the question cannot be "
@@ -2332,10 +2335,13 @@ def _sourced_record_snapshot(accession):
 
 
 def _record_connection_question(name, accession=None):
+    """The first claims of a connection, as a record lists them. The relationship between feature and function was
+    asked here too, and no curated record states one, so the coverage checker answered no to nearly every review of
+    this template and each no spent its protein (21 October: 19 yes of 303 reviews). The relationship is the line's
+    later step, asked with a source that states it; the line still opens, since structure and function are named."""
     target = "%s (%s)" % (name, accession) if accession else str(name)
-    return ("What do curated UniProt records for %s establish about its annotated structural features, its "
-            "documented molecular function or cellular role, and any source-backed relationship between those "
-            "features and that function or role?" % target)
+    return ("What do curated UniProt records for %s list as its annotated structural features and its documented "
+            "molecular function or cellular role?" % target)
 
 
 def _next_sourced_record(repeats, spent, lean=None):
@@ -2382,8 +2388,9 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         'Choose ONE fresh protein for a new curated-record review, from an area you have not been thinking about '
         'recently. Choose freely. Do not choose a numbered gene-family variant. Use a plain '
         'protein name that UniProt can discover; do not invent an accession, gene symbol, organism ID, structure '
-        'ID, or prior result. Ask for its annotated structural features, its documented function or cellular role, '
-        'and any source-backed relationship between those features and that function or role. Return: browse_lane="protein"; a uniprot_query using '
+        'ID, or prior result. Ask what its curated record lists as its annotated structural features and its '
+        'documented function or cellular role; the relationship between them is a later question, asked with a '
+        'source that states it. Return: browse_lane="protein"; a uniprot_query using '
         'protein_name:"plain name" AND reviewed:true; question; why_now; source_query=null; plugin_query=null; '
         'material_terms=[]; line_id=null; new_line=null.')
     for attempt in range(3):
