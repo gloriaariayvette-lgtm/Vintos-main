@@ -4829,6 +4829,16 @@ def tick():
                     lean = atelier_lab_lean.today()
                 except Exception: lean = None
                 inquiry = _orient(context, lean) if lean else _orient(context)
+                sourced = (inquiry.get('assignment_resolution') or {})
+                if (not inquiry.get("refused") and sourced.get('reason') == 'exact_previously_sourced_record'
+                        and not _sourced_record_snapshot(str(sourced.get('accession') or ''))):
+                    # Already reviewed, or gone, by the time its turn runs: there is nothing left to read, so it is
+                    # refused like any other spent choice, not a fault (20 October, F-f102059463: Q67BT3 was reviewed
+                    # at 07:18 UTC and handed to a later pass at 07:21, which faulted the whole turn). Still set aside.
+                    accession = str(sourced.get('accession') or '')
+                    _set_aside_sourced(accession)
+                    inquiry = dict(inquiry, refused='saved sourced record already reviewed or no longer available: '
+                                                    + accession)
                 if inquiry.get("refused"):
                     # refused before anything ran: a repeat, or off the frontier session's plan (2026-10-07)
                     next_phase = "orient"; state.pop("inquiry", None)

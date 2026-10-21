@@ -3,6 +3,21 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
+
+- **What happened:** on 20 October two free passes were handed saved UniProt records that were no longer readable
+  when their turn ran (Q8CJ44 at 07:15 UTC, Q67BT3 at 07:21). Q67BT3 had been picked at 07:17 and reviewed at 07:18;
+  the pass at 07:21 got it again, found nothing left to read, and raised "saved sourced record unavailable", so the
+  whole turn faulted (`tick`, `held_fault`). Each was set aside afterwards (the 18 October guard), so neither looped.
+- **Fixed (fault loop, Dot reviewed):** right after orient, a saved-record assignment whose record is already reviewed
+  or gone is set aside and refused like any spent choice — an `inquiry_refused` note, phase stays orient, inquiry
+  cleared, no fault. An unreviewed record goes to reflect as before. The raise further down stays as a backstop: a
+  record that disappears between the two checks can still fault. `test_lab_sourced_reviewed.py`, 13 checks, 7 failing
+  before the fix (the selector skipping a set-aside record is checked too).
+- **Not done:** how a reviewed record reached a later pass is still not shown. `_next_sourced_record` reads the index
+  fresh and skips reviewed records, so the reuse comes from somewhere that carries an inquiry forward; nobody has
+  found where. A refusal does not guarantee different work on the next pass. Not deployed until it is deployed.
+
 ## 20 October, night — F-70cbe17adc: a ChEMBL search named `term` lost a whole Lab turn
 
 - **What happened:** at 07:23 on 19 October the Lab's planner asked ChEMBL's target search with its search word under
