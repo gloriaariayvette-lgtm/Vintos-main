@@ -553,35 +553,14 @@ def search_misses(limit=6):
 DEAD_END_RUN = 3
 
 
-DEAD_END_WINDOW_H = 6   # a run is the last few hours of asking, not every hour since the last answer
-
-
-def _row_ts(row):
-    """A notebook row's time, or None when it has none."""
-    try:
-        return datetime.fromisoformat(str(row.get("at") or "").replace("Z", "+00:00")).timestamp()
-    except (TypeError, ValueError):
-        return None
-
-
-def dead_ends(rows=None, now=None):
-    """The questions of his last few hours of asking, when none of them was answered. A run of them means that
-    thread is spent: KaiC was asked for a day, each route ended empty or unchanged, and the journal's KaiC finding
-    kept pulling him back, because nothing told him the run itself had failed (Gloria, 2026-09-27).
-
-    The run is bounded in time as well as by an answered review, because the review rarely answers: 19 of 303 on
-    21 October. Unbounded, the walk back reached every question in the notebook's tail, so every gene he had
-    queried for days became a spent subject, each kept spent on a rolling day by the next pass - and a spent
-    subject cannot be retrieved for, so it could never earn the answer that would end the run. Three weeks of the
-    Lab refusing itself (Gloria, 22 October: 252 of 362 inquiries refused before a source was called). A subject
-    is spent because asking it lately found nothing, never because an answer has been a long time coming."""
+def dead_ends(rows=None):
+    """Every question he has asked since his last completed review. A run of them means the thread is
+    spent: KaiC was asked for a day, each route ended empty or unchanged, and the journal's KaiC finding
+    kept pulling him back, because nothing told him the run itself had failed (Gloria, 2026-09-27)."""
     rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
-    cutoff = (time.time() if now is None else now) - DEAD_END_WINDOW_H * 3600
     asked = []
     for row in reversed(rows):
         if row.get("kind") in ("reflection", "genome_reflection") and review_answered(row): break
-        stamp = _row_ts(row)
-        if stamp is not None and stamp < cutoff: break
         if row.get("kind") in ("inquiry", "inquiry_refused"):
             inquiry = row.get("inquiry")
             if isinstance(inquiry, dict):

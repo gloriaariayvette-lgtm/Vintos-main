@@ -3,26 +3,6 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 22 October — the Lab was refusing itself: the dead-end run had no end
-
-**Seen (Gloria's 24-hour probe):** 362 inquiries, 252 refused before a source was called, 295 passes with nothing
-eligible, 19 of 303 reviews answering. Her words: "week three now of you not fixing the Lab."
-
-**Root cause.** `dead_ends()` walked back from the newest notebook row until a review that answered. Reviews answer
-about 6% of the time, so the walk reached the whole 512 KB tail: every gene queried over days became a spent subject,
-six per pass, each re-stamped for another rolling day by the next pass. A spent subject cannot be retrieved for, so
-the run could never earn the answer that would end it. The faults fixed over the last three weeks (gene mismatch,
-stale record, ChEMBL argument) were 43 events; this was ~90% of his turns.
-
-**Done:** the run is now bounded in time as well as by an answered review (`DEAD_END_WINDOW_H = 6`). A subject is
-spent because asking it lately found nothing, never because an answer has been a long time coming. No scientific
-check was weakened: the identical-lookup gate, the family rule and the question holds are untouched.
-`test_lab_dead_end_window.py` 12/12.
-
-**Not verified live.** Expect the refusal share to fall and `spent-subjects.json` to shrink to the last few hours.
-Measure after the deploy; if refusals stay high the next suspect is `_question_holds()`, which has no time bound
-either.
-
 ## 21 October — the thread pools were light; a music share's thread was lost between them
 
 Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the
