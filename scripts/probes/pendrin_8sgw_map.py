@@ -99,32 +99,49 @@ def main():
     offset = auth_beg - db_beg
     print("author numbering = %s UniProt numbering %+d (from _struct_ref_seq %s..%s)"
           % (pig, offset, seg.get("db_align_beg"), seg.get("db_align_end")))
-    chain_a = [r for r in cif.get("_pdbx_poly_seq_scheme", []) if r.get("pdb_strand_id") == "A"]
-    unobserved = {int(r["pdb_seq_num"]) for r in chain_a if r.get("pdb_mon_id") in ("?", ".") and r.get("pdb_seq_num", "?").lstrip("-").isdigit()}
-    runs, start = [], None
-    for k in sorted(unobserved):
-        if start is None: start = prev = k
-        elif k == prev + 1: prev = k
-        else: runs.append((start, prev)); start = prev = k
-    if start is not None: runs.append((start, prev))
-    print("chain A unresolved runs (author numbering):", ", ".join("%d-%d" % r for r in runs) or "none")
+    # The structure's own residues, not a database sequence: what was in the sample, in its own numbering.
+    scheme = cif.get("_pdbx_poly_seq_scheme", [])
+    chains = sorted({r.get("pdb_strand_id") for r in scheme if r.get("entity_id") == "1"})
+    print("scheme rows: %d; entity 1 chains: %s" % (len(scheme), ",".join(chains) or "none"))
+    if not chains:
+        print("No polymer scheme for entity 1: stopping rather than guessing."); return
+    chain = chains[0]
+    rows_c = sorted((r for r in scheme if r.get("pdb_strand_id") == chain), key=lambda r: int(r["seq_id"]))
+    three = {"ALA":"A","ARG":"R","ASN":"N","ASP":"D","CYS":"C","GLN":"Q","GLU":"E","GLY":"G","HIS":"H","ILE":"I",
+             "LEU":"L","LYS":"K","MET":"M","PHE":"F","PRO":"P","SER":"S","THR":"T","TRP":"W","TYR":"Y","VAL":"V"}
+    pigseq = "".join(three.get(r.get("mon_id"), "X") for r in rows_c)
+    auth_of = {k + 1: r.get("pdb_seq_num") for k, r in enumerate(rows_c)}
+    unobserved = {k + 1 for k, r in enumerate(rows_c) if r.get("pdb_mon_id") in ("?", ".")}
+    for c in chains:
+        rc = sorted((r for r in scheme if r.get("pdb_strand_id") == c), key=lambda r: int(r["seq_id"]))
+        un = [r.get("pdb_seq_num") for r in rc if r.get("pdb_mon_id") in ("?", ".")]
+        runs, start = [], None
+        for x in [int(v) for v in un if str(v).lstrip("-").isdigit()]:
+            if start is None: start = prev = x
+            elif x == prev + 1: prev = x
+            else: runs.append((start, prev)); start = prev = x
+        if start is not None: runs.append((start, prev))
+        print("chain %s: %d residues in the sample, %d unresolved; runs (author numbering): %s"
+              % (c, len(rc), len(un), ", ".join("%d-%d" % r for r in runs) or "none"))
 
-    human, pigseq = fasta(HUMAN), fasta(pig)
+    human = fasta(HUMAN)
+    try: print("pig UniProt %s: %d aa (for reference; the alignment uses the structure's own sequence)" % (pig, len(fasta(pig))))
+    except Exception as e: print("pig UniProt %s not fetched (%s); the alignment uses the structure's own sequence" % (pig, e))
     scoring, pairs = align(human, pigseq)
     ident = sum(1 for i, j in pairs if i and j and human[i-1] == pigseq[j-1])
     aligned = sum(1 for i, j in pairs if i and j)
-    print("\nhuman %s (%d aa) vs pig %s (%d aa): %s" % (HUMAN, len(human), pig, len(pigseq), scoring))
+    print("\nhuman %s (%d aa) vs 8SGW chain %s sample sequence (%d aa): %s" % (HUMAN, len(human), chain, len(pigseq), scoring))
     print("identity over aligned positions: %d/%d (%.1f%%)" % (ident, aligned, 100.0 * ident / max(1, aligned)))
     h2p = {i: j for i, j in pairs if i}
-    print("\nhuman  aa  -> pig UniProt  aa  -> 8SGW author  in 8SGW")
-    rows = []
+    print("\nhuman  aa  -> 8SGW author  aa  in 8SGW")
+    rows, mapped = [], []
     for h in range(HUMAN_RANGE[0], HUMAN_RANGE[1] + 1):
         p = h2p.get(h)
-        auth = p + offset if p else None
-        state = "no pig counterpart" if not p else ("UNRESOLVED" if auth in unobserved else "observed")
+        auth = auth_of.get(p) if p else None
+        state = "no pig counterpart" if not p else ("UNRESOLVED" if p in unobserved else "observed")
         rows.append(state)
-        print("%5d  %s  -> %5s  %s  -> %5s  %s" % (h, human[h-1], p or "-", pigseq[p-1] if p else "-", auth or "-", state))
-    mapped = [h2p[h] + offset for h in range(HUMAN_RANGE[0], HUMAN_RANGE[1] + 1) if h2p.get(h)]
+        if auth and str(auth).lstrip("-").isdigit(): mapped.append(int(auth))
+        print("%5d  %s  -> %5s  %s  %s" % (h, human[h-1], auth or "-", pigseq[p-1] if p else "-", state))
     print("\nsummary: human %d-%d -> 8SGW author %s-%s; %d unresolved, %d observed, %d without a pig counterpart"
           % (HUMAN_RANGE[0], HUMAN_RANGE[1], min(mapped) if mapped else "-", max(mapped) if mapped else "-",
              rows.count("UNRESOLVED"), rows.count("observed"), rows.count("no pig counterpart")))
