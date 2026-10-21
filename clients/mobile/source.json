@@ -2,9 +2,9 @@
   "repository": "vintos-app",
   "commit": "495d67c",
   "sha256": {
-    "index.html": "f568da4eed62bd3c5575a1c47fa93a049e5165fbc7606e7f3f2b2e0745f1c8de",
+    "index.html": "e55a655a131d946edf53cb305f3515fee0fa9bf324a76e6427931af1e0b4d5c4",
     "client_lifecycle.js": "8d26e2b4ca644eb966d96d474ec87ef22a8d461cc4b6014044ce3b52812b1742",
     "avatar-bundle.js": "9869b6a3db5f4df5fff24d4fe3213461b645dfa978cd6bc07e301909f29ffc7c"
   },
-  "note": "index.html is edited in this repository, not mirrored byte-for-byte from vintos-app: its Chemistry Lab surface differs, and on 19 October its avatar toggle (Argon in Sol's place; an error never repaints Opus 4.8). The avatar media lifecycle in this release is ported from the named app commit; and on 20 October its Study toggle (Opus 5.5 in Fable's place)."
+  "note": "index.html is edited in this repository, not mirrored byte-for-byte from vintos-app: its Chemistry Lab surface differs, and on 19 October its avatar toggle (Argon in Sol's place; an error never repaints Opus 4.8). The avatar media lifecycle in this release is ported from the named app commit; and on 20 October its Study toggle (Opus 5.5 in Fable's place). On 20 October the Slack day duration/continue controls and optional shared lyrics are ported from vintos-app."
 }
