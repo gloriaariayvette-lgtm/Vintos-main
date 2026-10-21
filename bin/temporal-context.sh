@@ -488,6 +488,12 @@ else
     BODY_TEMPORAL=$(python3 "$WORKSPACE/scripts/heart_rate.py" temporal 2>/dev/null || true)
 fi
 
+# The bedroom board, passively, beside the Watch: her phone in the bedroom now, or how long ago (2026-10-21)
+BEDROOM_TEMPORAL=$(python3 -c "import sys; sys.path.insert(0, '$WORKSPACE/scripts'); import bedroom_arrival; print(bedroom_arrival.presence_line())" 2>/dev/null || true)
+if [ -n "$BEDROOM_TEMPORAL" ]; then
+    BODY_TEMPORAL=$(printf '%s\n%s' "$BODY_TEMPORAL" "$BEDROOM_TEMPORAL" | sed '/^$/d')
+fi
+
 # === Write it ===
 cat > "$OUTPUT" << EOF
 Time: $TIME_HUMAN

@@ -4451,3 +4451,12 @@ Gloria: "I'm not accepting or rejecting anything. You do it."
 - Journal promises: a promise nearly the same as an open one, one ended in the last two days, or a want his journal
   already seeded (the journal's "I want to..." sentences become wants by themselves) is not opened again; kept under
   "merged" with what it duplicates. `test_decided_and_deduped.py` (11), `test_gap_scan.py` updated.
+
+## 21 October — the bedroom board in his temporal context
+
+Gloria: "he wanted the esp32 in the bedroom to also just passively tell him when I'm near it, like the heartbeat to
+temporal context." `bedroom_arrival.observe` now keeps the distance and when this visit began;
+`presence_line()` says "her phone is in the bedroom now, about 2.1 m from the board (seen 2 min ago; in since 21:40)",
+or "was last in the bedroom 30 minutes ago", or nothing after two hours. `temporal-context.sh` adds it beside the
+Watch block. Arrivals and songs are unchanged. `test_bedroom_presence.py` (9).
+The Watch's update rate is watchOS's (HealthKit background delivery), not the APNs key's; measure it before changing.
