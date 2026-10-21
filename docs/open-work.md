@@ -22,9 +22,12 @@ questions are still refused by latent as abstract research questions. That may b
   `FAULT_LIMIT` (3) drops it: MCR on 17 October, TDP-43 on 18 October, MHC1/MHC2 on 20 October, three faults and a
   `fault_redirect` each time. Proposed in #fault-fix: an identity mismatch ends the inquiry on its first occurrence as
   a refusal. Waiting on Dot's review; nothing changed yet.
-- **Not looked into — a likely false refusal:** the TDP-43 request was refused although the records named `TDP43` and
-  `TARDBP` (18 October, notebook 122261). `verify_uniprot_identity` seems not to treat `TDP-43` and `TDP43` as the
-  same symbol. Unconfirmed; needs its own evidence and fix.
+- **The TDP-43 false refusal — fixed offline, not yet seen live (22 October):** reproduced with Q13148's own names
+  (TARDBP, synonym TDP43): `verify_uniprot_identity` and `question_entity_context` both refused `TDP-43`. Symbols are
+  now compared without hyphens and nothing else (`symbol_key`); underscores, case of digits and letters stay, so
+  MHC1 is still not MHC_1, HLA-A not HLA-B, TDP-43 not TDP-4. No alias table: only names the record itself carries
+  count. `test_lab_symbol_hyphen.py` 15/15. Live improvement is unverified until a TDP-43-style request runs after
+  the deploy. Separate from F-d71d7af615, which is still proposed.
 
 ## 21 October, night — F-55bab2e222: Gemma's overflow now says which call was too large
 

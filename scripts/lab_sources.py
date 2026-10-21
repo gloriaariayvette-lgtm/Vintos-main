@@ -385,7 +385,7 @@ def question_entity_context(inquiry, records, *, literature_only=False):
     if len(requested) > 1 and records and not accessions and not isoforms:
         mapping, unestablished, ambiguous = {}, [], []
         for symbol in sorted(requested):
-            holders = [r for r in matches if symbol in metadata_names(r)[0] | {x.upper() for x in metadata_names(r)[1]}
+            holders = [r for r in matches if not missing_symbols({symbol}, metadata_names(r)[0] | {x.upper() for x in metadata_names(r)[1]})
                        and (not taxa or str(r.get('taxon_id')) in taxa)
                        and (not organism_names or organism_names <= metadata_names(r)[2])]
             if not holders: unestablished.append(symbol)
@@ -417,7 +417,7 @@ def question_entity_context(inquiry, records, *, literature_only=False):
     for row in matches:
         names,proteins,organisms = metadata_names(row)
         name_symbols = symbols_inside_exact_record_name(row, proteins)
-        if ((not symbols or (symbols - name_symbols) <= (names | {p.upper() for p in proteins}))
+        if ((not symbols or not missing_symbols(symbols - name_symbols, names | {p.upper() for p in proteins}))
                 and (not taxa or str(row.get('taxon_id')) in taxa)
                 and all(protein_match(name, proteins, names) for name in protein_names)
                 and (not organism_names or organism_names <= organisms)):
@@ -429,7 +429,7 @@ def question_entity_context(inquiry, records, *, literature_only=False):
     for row in matches:
         names,proteins,organisms = metadata_names(row)
         name_symbols = symbols_inside_exact_record_name(row, proteins)
-        absent = (symbols - name_symbols - names - {p.upper() for p in proteins}) | (gene_symbols - names)
+        absent = missing_symbols(symbols - name_symbols, names | {p.upper() for p in proteins}) | missing_symbols(gene_symbols, names)
         if absent: issues.append('requested names not established by '+str(row.get('accession'))+': '+','.join(sorted(absent)))
         if not all(protein_match(name, proteins, names) for name in protein_names):
             issues.append('requested protein name is not established by the retrieved recommended name')
@@ -447,6 +447,20 @@ def question_entity_context(inquiry, records, *, literature_only=False):
             'question_species':['Escherichia coli'] if ecoli_question else [],
             'scope':'explicit query constraints and recognized question symbols/species; full prose scope needs independent assessment'}
 
+
+
+def symbol_key(symbol):
+    """A gene symbol compared without its hyphens, and nothing else: "TDP-43" is UniProt's synonym TDP43 for TARDBP
+    (21 October: the 18 October TDP-43 inquiry, notebook 122261, was refused although its record named TDP43 and
+    TARDBP). Only the hyphen goes; underscores, digits, letters and their order stay, so MHC1 is still not MHC_1 and
+    no name is matched by likeness."""
+    return str(symbol or '').upper().replace('-', '')
+
+
+def missing_symbols(requested, names):
+    """The requested symbols that none of the names establishes, compared by symbol_key."""
+    have = {symbol_key(n) for n in names}
+    return {s for s in requested if symbol_key(s) not in have}
 
 
 def verify_uniprot_identity(query, records):
@@ -483,7 +497,7 @@ def verify_uniprot_identity(query, records):
         # The names a record carries are kept before the check so a refusal can say what came back,
         # not only that it was wrong: "returned O95905" told him nothing about which gene that was.
         returned.extend(n for n in sorted(names) if n and n not in returned)
-        if names.intersection(symbols):
+        if len(missing_symbols(symbols, names)) < len(symbols):
             kept.append(row)
     if records and not kept:
         raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
