@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 21 October — the thread pools were light; a music share's thread was lost between them
+
+Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the
+unfinished pool (whose own bar decides) instead of dropped; the door had returned without looking at latent's answer.
+A music share's thread is now his one sentence naming what it left open, checked by latent's specificity gate and asked
+once more with the reason, not "Gloria shared X — she said: …". `test_thread_not_lost.py`.
+
+Not done: why the latent pool has taken nothing since the 19th, and why only 4 unfinished threads are open. Needs the
+count of `[seed gate] REJECT` and `[formation door]` lines on Aegis since the 19th, per source, before the gate is touched.
+
 ## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
 
 - **What happened:** on 20 October two free passes were handed saved UniProt records that were no longer readable

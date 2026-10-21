@@ -17,6 +17,7 @@ ADMITTED = []
 sys.modules["enjoyment"] = types.SimpleNamespace(admit=lambda *a, **k: ADMITTED.append((a, k)) or {"admitted": True})
 sys.modules["emoclaw_utils"] = types.SimpleNamespace(seed_thread=lambda *a, **k: None, express_want=lambda *a, **k: None,
                                                      enrich_want=lambda *a, **k: {}, generate_want=lambda *a, **k: None)
+sys.modules["latent_threads"] = types.SimpleNamespace(specificity=lambda t: (True, ""))   # its judge is a local model
 spec = importlib.util.spec_from_file_location("music_share_l", os.path.join(REPO, "bin", "music-share.py"))
 M = importlib.util.module_from_spec(spec); spec.loader.exec_module(M)
 R = []
