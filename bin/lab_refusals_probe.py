@@ -8,6 +8,7 @@ Standard library only; imports nothing from the Lab, calls nothing, sends nothin
     python3 -I lab_refusals_probe.py 48         # last 48 hours
 
 What each section's answer means is printed beside it, and spelled out in docs/lab-refusals-review.md.
+F and G measure what Gloria asked the Lab to be for: findings his own instruments make, not lookups.
 """
 import json, os, re, sys, time
 from collections import Counter
@@ -151,3 +152,63 @@ print("  sample never reviewed:", never_reviewed[:12])
 print("  sample on open lines:", on_lines[:12])
 print("  -> many held subjects never reviewed: refusals alone are spending subjects (dead_ends counts them).\n"
       "     many on open lines: the planner is being shown the subjects it is told not to choose.")
+
+print("\n== F. Novel findings: what his instruments produced, not what records say ==")
+MEASURED = re.compile(r"instrument|reference_compare|fold_read|esmfold|esmc|evo ?2|atlas|structure_read", re.I)
+inquiries = [r for r in rows() if r.get("kind") == "inquiry"]
+kinds = Counter()
+for r in inquiries:
+    inq = r.get("inquiry") or {}
+    kinds["instrument" if inq.get("instrument_query") else
+          "source " + str((inq.get("source_query") or {}).get("source")) if inq.get("source_query") else
+          "plugin" if inq.get("plugin_query") else "record lookup only"] += 1
+print("  inquiries by what they ran:", dict(kinds.most_common()))
+yes = [r for r in reviews if verdict(r) == "yes"]
+def measured(r):
+    sup = (r.get("coverage_check") or {}).get("supports") or []
+    return any(MEASURED.search(str(x.get("address", "")) + " " + str(x.get("source_citation", ""))) for x in sup) \
+        or bool((r.get("inquiry") or {}).get("instrument_query"))
+print("  yes reviews resting on an instrument's output: %d of %d" % (sum(1 for r in yes if measured(r)), len(yes)))
+print("  all reviews of an instrument run: %d (yes %d)" % (sum(1 for r in reviews if (r.get("inquiry") or {}).get("instrument_query")),
+      sum(1 for r in yes if (r.get("inquiry") or {}).get("instrument_query"))))
+try: runs = json.load(open(os.path.join(LAB, "instrument-runs.json"))).get("runs", [])
+except (OSError, ValueError): runs = []
+print("  instrument runs today: %d (of the day's 25)" % len(runs), Counter(r.get("skill") for r in runs).most_common())
+sessions = 0
+try:
+    with open(os.path.join(LAB, "sessions.jsonl"), encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try: row = json.loads(line)
+            except ValueError: continue
+            if row.get("state") == "completed" and when(row) >= SINCE: sessions += 1
+except OSError: pass
+print("  frontier sessions completed (prediction, then experiment):", sessions)
+print("  -> this is the baseline the change is judged by: measured yes reviews per day, not refusals.\n")
+
+print("== G. What the Lab could measure now, without a search ==")
+models = set()
+for root, _d, files in os.walk(os.path.join(LAB, "artifacts", "esmfold")):
+    for name in files:
+        m = re.fullmatch(r"([A-Z0-9]{6,10})-[a-f0-9]{12}\.pdb", name)
+        if m: models.add(m[1])
+mapped, spans = {}, set()
+try:
+    with open(os.path.join(LAB, "source-receipts.jsonl"), encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if '"pdb"' not in line: continue
+            try: row = json.loads(line)
+            except ValueError: continue
+            op = (row.get("query") or {}).get("operation")
+            for rec in row.get("records") or []:
+                if not isinstance(rec, dict): continue
+                e = str(rec.get("entry_id") or "").upper()
+                if op == "search_accession" and rec.get("mapped_accession") in models:
+                    mapped.setdefault(e, (rec["mapped_accession"], [c.get("chain") for c in rec.get("modeled_residue_coverage") or [] if isinstance(c, dict)]))
+                for c in (rec.get("geometry") or {}).get("chains") or []:
+                    if isinstance(c, dict) and int(c.get("observed_residues") or 0) >= 30: spans.add((e, c.get("chain")))
+except OSError: pass
+pairs = sorted({(a, e, ch) for e, (a, chs) in mapped.items() for ch in chs if (e, ch) in spans})
+print("  his ESMFold models: %d proteins; model + deposited structure measurable now: %d" % (len(models), len(pairs)))
+print("  sample:", pairs[:10])
+print("  -> pairs in the dozens: the change has work for every day's instrument runs. Near zero: it does nothing\n"
+      "     until he folds proteins that have structures, and the next change is there, not here.")

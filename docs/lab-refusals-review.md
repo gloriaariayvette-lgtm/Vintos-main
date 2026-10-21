@@ -1,120 +1,110 @@
-# Lab refusals: independent review (21 October 2026)
+# Lab refusals: independent review (21 October 2026, revised for the novel-findings goal)
 
-Branch `claude/lab-refusals-review`, from `claude/device-visuals-2026-10-13` at fce3103. Nothing pushed elsewhere,
-nothing deployed, no model changed.
+Branch `claude/lab-refusals-review`, on `claude/device-visuals-2026-10-13` at d62737f. Nothing deployed, no model
+changed, no gate added. The first version of this review (e51f1df) made the lookup template answerable; by the
+goal in the updated brief that is a fix that cuts refusals while leaving him running lookups, so it is withdrawn.
 
-## 1. Root cause
+## 1. Root cause, against the goal
 
-The Lab tells itself, in three places, to ask a question no instrument can answer, and then treats the
-inevitable "no" as proof the subject is exhausted. The planner prompt (fa96b0a, 11 October), the sourced-record
-template `_record_connection_question` and the fresh-protein fallback prompt all ask, in ONE question, for a
-structural feature, a documented function **and the source-backed relationship between them**. The coverage
-checker (correctly) requires a verbatim quote for every part, and a curated record lists features and a function
-but never states the link, so the review says no. `dead_ends()` counts every question since the last *yes* review,
-refusals included, so with yes at 6% the run is always three or more, and every subject the Lab touches is written
-to the 24-hour spent list. The planner's whole context (lines, journal, asked questions, held questions) is about
-those same subjects, so it proposes them, and the gate refuses. The design problem is that two subsystems disagree
-about what "no" means: the claim-line work (fa96b0a) made a partial review the normal step of a multi-step
-connection, while `dead_ends()` (27 September) reads every non-yes review as a dead end. Forty commits worked on the
-gate and the list, which are downstream; none touched the instruction that produces the unanswerable question.
+The continuous Lab is built as a lookup machine and graded as one, so it cannot produce novel findings, and its
+failures to look things up become refusals. Every turn starts with a UniProt browse (`chemistry_lab.py` browse
+phase); the only computation on the default path is an ESM-C embedding the notebook itself labels
+"model_derived_representation_not_biological_finding"; and the review asks only "is every part of the question
+supported by a verbatim quote from the sources" (`_coverage_request`). That contract can say yes only to something
+already written down. A lookup the records cover whole gets yes and finds nothing new; one they do not cover gets no,
+`dead_ends()` spends its subject (it counts every question since the last yes, refusals included), and the planner is
+pushed to the next lookup. 94% no, 317 spent-subject refusals and 230 held subjects are that loop. The instruments
+that would produce findings exist (reference_compare: his model against an experimental structure, TM-score and
+RMSD; fold_read; sequence alignment; ESM-C mutation landscape; the genome-locus screen), run locally, and are even
+exempt from the spent gate (`spent_retrieval`: "a new instrument can advance an exhausted subject"), but no question
+generator produces them except one regex-shaped saved line step. The prediction-then-experiment shape she wants
+exists only in the four-a-day frontier sessions (`chemistry_session.py`), and their next step is handed back to the
+lookup engine for six cycles (`lab_repeats.frontier_step`).
 
-## 2. Evidence
+## 2. Evidence (file:line on this branch)
 
-- The mandate: `scripts/chemistry_lab.py:1911` before this branch, "Include three claim types: ... and the
-  source-backed relationship between them". The same prompt, 50 lines earlier (2b436e6, 16 Oct), says "Ask ONE
-  thing its sources can answer whole". The planner is given both.
-- The same three-part form is written by code, not only the model: `_record_connection_question`
-  (`:2337`), used by `_next_sourced_record` (`:2356`), `_inquiry` (`:3174`, which rewrites any "curated record"
-  question into it) and `_resolve_free_record_discovery` (`:3383`); and the `_fresh_free_inquiry` prompt (`:2391`).
-  `_next_sourced_record` is what `_orient` runs after every refused or waiting pass (`:1770`, `:1806`), i.e. most
-  passes, so the refusal state routes straight into the template that guarantees the next "no".
-- The brief's recurring question ("What are the specific structural hallmarks, documented cellular roles, and
-  source-backed relationships of ...") is this mandate in the planner's words.
-- The checker demands it: "every ... domain or relationship in the question must be covered" with "verbatim quotes
-  at their exact evidence addresses" (`:4210`). That is right and stays.
-- The narrower cannot see this form. Run against the three shapes above, `second_ask()` returns `''` and `_narrow()`
-  returns each unchanged: `_SECOND_ASK` (`:1265`) looks for "and how / and what / compared to", and `_HALLMARKS`
-  (`:1270`) needs "hallmarks of X" with nothing between. Only the bare "hallmarks of X" is rewritten (c151f60).
-- The run: `dead_ends()` stops only at a *yes* review (`:563`) and counts `inquiry_refused` rows (`:564`). With 248
-  no / 35 not assessed / 19 yes, the run is nearly always past `DEAD_END_RUN = 3`, so `_orient` spends up to six
-  subjects every cycle (`:1711`). That matches 230 subjects held at once, roughly every subject asked in a day.
-- The repository's own records already pointed here: 16 Oct, "11 of 12 reviews partial, each missing a clause no
-  source could return"; 17 Oct, "hallmarks" was 41 of 102 reviews. Each was fixed at the narrower, not the source.
-
-What I could not see: Aegis. The shares above are inferred from code and the brief's totals; probe A settles it.
+- Generators, all retrieval:
+  - planner `task` (`_orient`, ~`:1860`–`:1934`): a 70-line menu of sources; the instrument menu is appended at the
+    end, and `instrument_query` is missing from "Return keys in this order" (browse_lane, uniprot_query, question,
+    why_now, source_query, plugin_query, material_terms). The three-claim instruction (`:1915`) asks for documented
+    feature, documented function and their documented relationship: a lookup by construction.
+  - `_record_connection_question`, `concrete_ask`, `_fresh_free_inquiry` (with its 40-protein list), and `_inquiry`
+    (rewrites any "curated record" question into the template): record lookups.
+  - `_next_sourced_record` strips `instrument_query` from its inquiry and sends it straight to review
+    (browse phase, "exact_previously_sourced_record"). It is the recovery after every refused or waiting pass,
+    and 547 passes in the day ended refused or waiting, so it is the path most passes take.
+  - The only measurement generator, `_next_assigned_model_step`, fires only for a line whose `next_step` matches
+    `fold_read N-M on ACC-hash` exactly.
+- Instruments are hidden: `lab_instruments.menu_block` lists 5 recent files; runs are capped at 25 a day
+  (`DAILY_RUNS`), against 362 inquiries.
+- The review cannot see novelty: nothing in `_reflect` or the coverage contract asks what this turn found that was
+  not known; the only novelty clause is a prohibition ("Do not infer novelty from missing literature coverage").
+  An instrument receipt is quotable (`source: instrument:<skill>`), so a measurement can be reviewed yes, but a quote
+  from UniProt scores the same. The brief asked whether the review asks the right question: it does not.
+- The narrower cannot catch the three-claim form (`_SECOND_ASK`, `_HALLMARKS` both return it unchanged; checked).
 
 ## 3. Why the earlier commits did not hold
 
-They act after the question exists. 849ee7f, 2faeff6, b51699a, 344774a show the planner more of the list; 40a25cb,
-396f48f, 7d43123 sharpen the gate; 763eb65, 87df5e0, 42239bb route around refusals. All assume the list is accurate
-and the planner should avoid it. But the list is made of subjects that were never exhausted, only asked in a form
-that cannot be answered, so every route around it leads back to a new subject asked the same way, which then joins
-the list. 2b436e6 (ask one thing) and c151f60 / 64f4469 (hallmarks rewritten, hard-coded fallback fixed) were the
-right idea, but left the generator in the prompt, the template and the LLM fallback prompt untouched, and the
-narrower's patterns miss the list form, so the three-part question kept being written and kept being reviewed.
+All 40 acted on the list, the gate or the wording of lookups: more names shown (849ee7f, 2faeff6, b51699a, 344774a),
+sharper gating (40a25cb, 396f48f, 7d43123), routes around refusals into other lookups (763eb65, 87df5e0, 42239bb),
+narrower lookups (2b436e6, c151f60, 64f4469). None changed what kind of question is generated, so each route around
+a refusal led to another lookup, which the records covered partly, which spent another subject.
 
 ## 4. Read-only probe for Gloria
 
-`bin/lab_refusals_probe.py`: standard library only, imports nothing from the Lab, writes nothing, sends nothing.
-On Aegis, from wherever this branch can be read:
+`bin/lab_refusals_probe.py` (standard library only; reads, never writes or sends):
 
 ```sh
 git fetch origin claude/lab-refusals-review
 git show origin/claude/lab-refusals-review:bin/lab_refusals_probe.py > /tmp/lab_probe.py
-python3 -I /tmp/lab_probe.py        # last 24 h; pass 48 for two days
+python3 -I /tmp/lab_probe.py        # last 24 h; 48 for two days
 ```
 
-What each answer means:
-
-- **A (verdicts by shape).** If `three-claim` + `structure+function` are most reviews with ~0% yes, and `one-ask`
-  is well above 6%: this diagnosis holds. **If `one-ask` is also near 6%, I am wrong** about the upstream cause and
-  the change below should not ship; read C.
-- **B (origin).** How much review volume comes from the template routes vs the planner, i.e. how much of the
-  three-part load is code, not model.
-- **C (did evidence arrive).** "no" with quoted supports and "relationship" leading the missing list: the evidence
-  reaches the checker and the question is the problem. Supports mostly empty: evidence is not reaching the review,
-  a different defect.
-- **D (spent refusals).** Matched name in the query field: the planner picked a listed subject. Only in prose: the
-  gate matches words, not subjects. This answers the brief's question 1 directly.
-- **E (the list).** Held subjects never reviewed in the window: refusals alone are spending subjects.
+- **F (the baseline that matters):** inquiries by what they ran (instrument vs source vs record lookup), yes reviews
+  resting on an instrument's output, instrument runs today of 25, frontier sessions. I expect instrument inquiries
+  near zero and measured yes reviews at most a handful a day. If instruments already run most days' 25 and most
+  yes reviews rest on them, I am wrong about the root cause.
+- **G (does the change have work):** his ESMFold models, and how many pair today with a deposited structure the
+  Lab has already saved receipts for. Dozens: the change fills the day's runs. Near zero: it does nothing until he
+  folds proteins that have structures, and the next change belongs there.
+- **A–E** (kept from the first pass): verdicts by question shape, where reviewed questions come from, whether
+  evidence reached the checker, what the spent gate matched, what the spent list is made of.
 
 ## 5. The one change
 
-Stop writing the relationship into a first question, at its three sources. Nothing else.
+`_next_held_measurement` (`chemistry_lab.py`), tried before `_next_sourced_record` in both free-pass recoveries of
+`_orient`. When the Lab holds his ESMFold model of a protein and has already saved an archive receipt mapping a PDB
+entry to that protein and a structure receipt with that chain's residue range, the pass compares them with
+`reference_compare` (local, on Aegis): "What TM-score and RMSD does his ESMFold model of X give against deposited
+structure Y chain C, residues a-b?" That is a prediction tested against a measured structure, his instrument's
+output, quotable in review.
 
-- Planner prompt (`:1911`): the connection is still the goal of a protein line, but it is built one claim per
-  question; the relationship is asked later, with a source that states it (a structure's contacts at that feature,
-  a paper's finding).
-- `_record_connection_question`: asks what the record lists as structural features and function. It still opens a
-  claim line (`_relational_question` is still true), so fa96b0a's claim tracking keeps working.
-- `_fresh_free_inquiry` prompt: the same.
+- No search to find the pair: only saved receipts and artifacts. One structure file is read by the compare itself.
+- Inside the existing 25 runs a day; an identical comparison is refused by the existing repeat gate; admission goes
+  through `_held_to_plan` unchanged. Identity checks, the checker and the spent list are untouched. No model call
+  is added; the planner and its model are unchanged.
+- Closest earlier commit: `_next_assigned_model_step` (saved fold_read steps). Difference: that only runs a step a
+  line wrote in one exact form; this finds measurable pairs in what the Lab already holds, on the path most passes
+  take. 763eb65 / 64f4469 also changed the after-refusal fallback, but to another lookup.
 
-Not touched: the checker, identity checks, the identical-lookup gate, `dead_ends`, the spent list, any model, any
-gate. Closest earlier commit is 2b436e6 / c151f60; the difference is that those filtered the question after it was
-written and their patterns miss this form, where this removes the instruction and the template that write it.
+Test: `broker/tests/test_lab_held_measurement.py` (scratch HOME; `_ask`, `urlopen` and `lab_instruments.run`
+replaced by a function that raises; `socket.connect` refused; all asserted). 17/17. Every Lab suite passes.
 
-Test: `broker/tests/test_lab_answerable_first_question.py` (scratch HOME, `_ask` and `urlopen` replaced by a function
-that raises, `socket.connect` refused, all asserted in the suite). 15/15 pass; 4 fail against the base branch.
-`test_lab_claim_progress.py` pinned the old template ("relationship" in the question) and is updated to the new
-one. Every `broker/tests/test_lab_*.py` and `test_chemistry_lab.py` passes.
+Expected effect, judged by novel findings: measured reviews from probe F's baseline (I expect ~0 to a few a day) to
+up to the day's 25 runs, bounded by probe G's pair count, with most comparisons reviewed yes because the receipt
+states the numbers asked for. Refusals fall somewhat, as a side effect: those passes run instead of waiting.
+**Wrong if** G shows pairs but F, two days after deploy, shows fewer than 5 measured yes reviews a day: then
+the comparisons are failing (compare errors, review not crediting the receipt) and that is where to look.
 
-Expected effect, 48 hours after deploy: three-claim reviews below 5% of reviews; yes rate from 6% to about the
-`one-ask` yes rate probe A reports (I expect 20% or more); spent-subject turn-ends from 317 a day to under 200; held
-subjects from 230 to under 150, because an answered review ends a `dead_ends` run. If three-claim reviews fall but
-yes stays under 10%, the cause is in the review or the evidence path, not the question, and I was wrong.
+## 6. What I am unsure of, and what comes next
 
-## 6. What I am unsure of
-
-- The shares in A–E. I reasoned from code and the brief's totals; the probe is the test.
-- The planner text in fa96b0a is committed under Gloria's name. If "include three claim types" was her own wording
-  rather than an agent's, this rewrites her design and she should say whether the line-by-line reading keeps her
-  intent.
-- With the relationship out of the template, an auto-claim line from that template closes "answered" once structure
-  and function are quoted (`lab_lines.py:390`), so the relationship is not tracked as an open claim; the planner is
-  told to ask it later, but nothing enforces it.
-- The planner may still write the three-part form from habit or journal context. If probe A after deploy shows it,
-  the next step is teaching `_narrow` the list form, not a gate.
-- Even with answerable questions, `dead_ends` counts refusals toward a run. That may still over-spend; I left it,
-  since one change is the rule and the probe (E) will show whether it matters once yes rises.
-- Default `LLM_MODEL` in the file is local Gemma; the brief says the planner is Sonnet 5.5 via her configuration.
-  I did not touch either.
+- The pair count. If he rarely folds proteins with deposited structures, this has little to work on; the next
+  change is to fold the proteins the Lab already has structure receipts for, which is a Mac cost she would choose.
+- The planner itself still generates lookups. Making `instrument_query` part of its output contract and telling it
+  what the Lab is for (measure, compare, test a prediction) is the second change; I kept to one.
+- The review still cannot say "this was new". A finding field that separates instrument output from quoted
+  documentation would let the Lab count novel findings itself instead of a probe.
+- `dead_ends()` still spends subjects on lookups that fail. With measurements exempt from the spent gate this
+  matters less; I left it.
+- 25 runs a day caps novel findings from the continuous Lab at 25. That limit is hers; I did not touch it.
+- Default `LLM_MODEL` in the file is local Gemma; the brief says the planner is Sonnet 5.5 by her configuration.

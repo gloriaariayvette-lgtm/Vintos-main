@@ -1767,6 +1767,8 @@ def _orient(context, lean=None):
     if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
         deferred = _next_fitting_deferred_coverage()
         if deferred: return _on_line(deferred, {}, None)
+        measured = _held_measurement_or_none(lab_repeats, spent, lean)
+        if measured: return _on_line(measured, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
     waiting = None
@@ -1803,6 +1805,8 @@ def _orient(context, lean=None):
         # followed by one predictable held proposal and one evidence_wait.
         deferred = _next_fitting_deferred_coverage()
         if deferred: return _on_line(deferred, {}, None)
+        measured = _held_measurement_or_none(lab_repeats, spent, lean)
+        if measured: return _on_line(measured, {}, None)
         grounded = _next_sourced_record(lab_repeats, spent, lean)
         if grounded: return _on_line(grounded, {}, None)
         # Not gated on "no hold anywhere": holds last a week, so there always is one, and on 17 October 36 of 104
@@ -1908,14 +1912,11 @@ def _orient(context, lean=None):
         "{source:rhea,term:plain reaction or metabolite phrase,limit:1..8}, or "
         "{source:quickgo,term:plain function or process phrase,limit:1..8}. "
         "Choose one direct source for this question, not the whole menu. "
-        "A protein line seeks a connection: a named structural feature or molecular property, a documented "
-        "function, localization or comparison, and the source-backed relationship between them. It is built one "
-        "claim per question across the line, never asked whole: a record lists features and a function, but no "
-        "record states the relationship, so a first question asks only what the record lists, and the relationship "
-        "is asked later with a source that states it (a structure's contacts at that feature, a paper's finding). "
-        "Organism, accession and sequence length may establish identity but do not count as a claim. Match this "
-        "cycle's retrieval to the claim still open; do not ask one generic record query to settle a relationship it "
-        "cannot contain. "
+        "A protein question must seek a connection, not merely inventory fields. Include three claim types: "
+        "a named structural feature or molecular property, a documented function, localization or comparison, "
+        "and the source-backed relationship between them. Organism, accession and sequence length may establish "
+        "identity but do not count as the connection. Match this cycle's retrieval to the claim still open; do not "
+        "ask one generic record query to settle a relationship it cannot contain. "
         "Match the requested evidence product to that source: citation metadata is discovery, not a mechanism; "
         "an isolated structure cannot establish a fragment-versus-full-length comparison without both structures. "
         "If your question names two proteins to compare, ONE query must return both, or the question cannot be "
@@ -2335,13 +2336,81 @@ def _sourced_record_snapshot(accession):
 
 
 def _record_connection_question(name, accession=None):
-    """The first claims of a connection, as a record lists them. The relationship between feature and function was
-    asked here too, and no curated record states one, so the coverage checker answered no to nearly every review of
-    this template and each no spent its protein (21 October: 19 yes of 303 reviews). The relationship is the line's
-    later step, asked with a source that states it; the line still opens, since structure and function are named."""
     target = "%s (%s)" % (name, accession) if accession else str(name)
-    return ("What do curated UniProt records for %s list as its annotated structural features and its documented "
-            "molecular function or cellular role?" % target)
+    return ("What do curated UniProt records for %s establish about its annotated structural features, its "
+            "documented molecular function or cellular role, and any source-backed relationship between those "
+            "features and that function or role?" % target)
+
+
+_MODEL_FILE = re.compile(r'artifacts/esmfold/([A-Z0-9]{6,10})-[a-f0-9]{12}\.pdb')
+MEASURE_MIN_RESIDUES = 30
+
+
+def _next_held_measurement(repeats, spent, lean=None):
+    """A free pass measures what the Lab already holds before it looks anything up again.
+
+    Gloria asked that his Lab questions produce findings his own instruments make, not retrieval of what is already
+    written down (21 October). The free passes after a refusal or a wait were record lookups (_next_sourced_record):
+    a question the records alone answer, reviewed against those records. This one compares a model he folded with a
+    deposited experimental structure of the same protein: TM-score, RMSD and where the model's helices and strands
+    differ, a prediction tested against a measured structure. Every input is already in hand: his ESMFold model, and
+    the archive and structure receipts the Lab saved. Nothing is searched to find it. It runs locally, inside the
+    day's instrument runs (lab_instruments.DAILY_RUNS), and an identical comparison is refused as any repeat is."""
+    import lab_instruments
+    if len(lab_instruments._runs_today()['runs']) >= lab_instruments.DAILY_RUNS:
+        return None
+    models = {}
+    for path in lab_instruments.artifacts('structure', 50):   # newest first
+        m = _MODEL_FILE.fullmatch(path)
+        if m: models.setdefault(m[1], path)
+    if not models:
+        return None
+    mapped, spans = {}, {}
+    for row in reversed(_tail_jsonl(SOURCE_RECEIPTS, nbytes=8 * 1024 * 1024)):
+        if not isinstance(row, dict) or row.get('source') != 'pdb': continue
+        operation = (row.get('query') or {}).get('operation')
+        for rec in row.get('records') or []:
+            if not isinstance(rec, dict): continue
+            entry = str(rec.get('entry_id') or '').upper()
+            if not re.fullmatch(r'[0-9][A-Z0-9]{3}', entry): continue
+            if operation == 'search_accession' and rec.get('mapped_accession') in models:
+                chains = [str(c.get('chain')) for c in rec.get('modeled_residue_coverage') or []
+                          if isinstance(c, dict) and c.get('chain')]
+                mapped.setdefault(entry, (rec['mapped_accession'], chains))
+            for c in (rec.get('geometry') or {}).get('chains') or []:
+                if not isinstance(c, dict) or not c.get('chain'): continue
+                try: lo, hi, seen = int(c['author_residue_min']), int(c['author_residue_max']), int(c['observed_residues'])
+                except (KeyError, TypeError, ValueError): continue
+                spans.setdefault((entry, str(c['chain'])), (lo, hi, seen))
+    for entry, (accession, chains) in mapped.items():
+        for chain in chains:
+            span = spans.get((entry, chain))
+            if not span or span[2] < MEASURE_MIN_RESIDUES or span[0] >= span[1]: continue
+            question = ("What TM-score and RMSD does his ESMFold model of %s give against deposited structure %s chain "
+                        "%s, residues %d-%d?" % (accession, entry, chain, span[0], span[1]))
+            request = {'skill': 'reference_compare', 'operation': 'structure.compare', 'files': [models[accession]],
+                       'reference': entry, 'chain': chain, 'ref_span': [span[0], span[1]], 'question': question}
+            try: lab_instruments.validate(request)
+            except ValueError: continue
+            inquiry = _inquiry({'browse_lane': 'protein', 'uniprot_query': 'accession:' + accession,
+                                'question': question, 'instrument_query': request,
+                                'why_now': 'a measurement on a model and a structure the Lab already holds'}, lean)
+            if inquiry.get('refused') or _held_question(inquiry) or repeats.repeat(inquiry): continue
+            admitted, _ = _held_to_plan('', '', inquiry, {}, lean, None, repeats, spent=spent, replan=False)
+            if admitted.get('refused'): continue
+            return dict(admitted, planning_scope={'held_measurement': '%s:%s:%s' % (accession, entry, chain)},
+                        planning_evidence=_planning_evidence(admitted),
+                        assignment_resolution={'reason': 'measurement_on_held_model_and_structure',
+                                               'accession': accession, 'entry_id': entry, 'chain': chain})
+    return None
+
+
+def _held_measurement_or_none(repeats, spent, lean=None):
+    try:
+        return _next_held_measurement(repeats, spent, lean)
+    except Exception as exc:   # a broken receipt or artifact costs this option, not the pass
+        _fault('held_measurement', exc)
+        return None
 
 
 def _next_sourced_record(repeats, spent, lean=None):
@@ -2388,9 +2457,8 @@ def _fresh_free_inquiry(repeats, spent, lean=None):
         'Choose ONE fresh protein for a new curated-record review, from an area you have not been thinking about '
         'recently. Choose freely. Do not choose a numbered gene-family variant. Use a plain '
         'protein name that UniProt can discover; do not invent an accession, gene symbol, organism ID, structure '
-        'ID, or prior result. Ask what its curated record lists as its annotated structural features and its '
-        'documented function or cellular role; the relationship between them is a later question, asked with a '
-        'source that states it. Return: browse_lane="protein"; a uniprot_query using '
+        'ID, or prior result. Ask for its annotated structural features, its documented function or cellular role, '
+        'and any source-backed relationship between those features and that function or role. Return: browse_lane="protein"; a uniprot_query using '
         'protein_name:"plain name" AND reviewed:true; question; why_now; source_query=null; plugin_query=null; '
         'material_terms=[]; line_id=null; new_line=null.')
     for attempt in range(3):
