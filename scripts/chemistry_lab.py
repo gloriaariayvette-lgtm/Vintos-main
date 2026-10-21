@@ -1173,10 +1173,46 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=150) as response:
-        data = json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req, timeout=150) as response:
+            data = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        # The shim's error body names every provider it tried with the stop reason each saw. Written to the
+        # diagnostic before the error goes on unchanged; nothing is retried or rerouted here.
+        _failed_request_evidence(exc, max_tokens)
+        raise
     choice = data["choices"][0]
     return _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
+
+
+
+
+def _failed_request_evidence(exc, max_tokens):
+    """A terminal diagnostic for a request the shim refused. The last provider tried is the one whose stop reason
+    describes the reply; a reason it never gave stays null, and token_limit_reached is only ever read from a reason
+    the allowlist already knows, never from the failure itself."""
+    try:
+        raw = exc.read().decode("utf-8", "replace")
+    except Exception:
+        raw = ""
+    try:
+        error = (json.loads(raw) or {}).get("error")
+    except (ValueError, AttributeError):
+        error = None
+    providers = error.get("providers") if isinstance(error, dict) else None
+    providers = [p for p in providers if isinstance(p, dict)] if isinstance(providers, list) else []
+    last = providers[-1] if providers else {}
+    data = {k: last[k] for k in ("provider", "finish_reason_source", "model") if k in last}
+    completion = _completion_metadata(data, {"finish_reason": last.get("finish_reason") or None}, max_tokens)
+    completion["http_status"] = int(getattr(exc, "code", 0) or 0)
+    completion["providers"] = [{"provider": str(p.get("provider") or "")[:64], "status": str(p.get("status") or "")[:64],
+                                "reason": str(p.get("reason") or "")[:200],
+                                "finish_reason": p["finish_reason"][:256] if isinstance(p.get("finish_reason"), str)
+                                and p["finish_reason"] else None,
+                                "finish_reason_source": p["finish_reason_source"][:256]
+                                if isinstance(p.get("finish_reason_source"), str) and p["finish_reason_source"] else None}
+                               for p in providers[:8]]
+    _parser_evidence(uuid.uuid4().hex, ["request_failed", "terminal"], raw=raw, terminal=True, completion=completion)
 
 
 # Every planner request ends on its output contract. A replan put the refusal last ("REFUSED, IT IS A REPEAT: ..."),
@@ -2486,7 +2522,7 @@ def _next_assigned_model_step(repeats, spent, lean=None):
     return None
 
 
-def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None, *, replan=True):
+def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None, *, replan=True, record_admission=True):
     """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
     asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
     nothing and she chooses again."""
@@ -2589,7 +2625,7 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
         return refuse(identity['reason'], identity_validated=identity['status'] == 'unresolved')
     if step:
         inquiry = dict(inquiry, frontier_session=step.get("session_id"))
-    repeats.record(inquiry)
+    if record_admission: repeats.record(inquiry)
     return inquiry, value
 
 
@@ -3238,6 +3274,52 @@ def topology_summary(features):
         '. Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure.') if groups else ''
 
 
+def normalize_protein_records(items, relaxed=None, sequence_limit=SEQUENCE_KEPT):
+    """One record shape for browse, investigations, identity and coverage review."""
+    rows = []
+    for item in items:
+        desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
+                .get("fullName", {}).get("value", ""))
+        functions = []
+        for comment in item.get("comments") or []:
+            if comment.get("commentType") != "FUNCTION": continue
+            for value in comment.get("texts") or []:
+                if value.get("value"): functions.append(str(value["value"]))
+        rows.append({"accession": item.get("primaryAccession"), "id": item.get("uniProtkbId"),
+                     "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
+                     "taxon_id": (item.get("organism") or {}).get("taxonId"),
+                     "organism_lineage": [name for name in (item.get("organism") or {}).get("lineage", [])
+                                          if isinstance(name, str)],
+                     "genes": item.get("genes") or [],
+                     "protein_aliases": [str((name.get('fullName') or {}).get('value')) for name in
+                                         (item.get('proteinDescription') or {}).get('alternativeNames', [])
+                                         if (name.get('fullName') or {}).get('value')],
+                     "organism_aliases": [str((item.get('organism') or {})[key]) for key in ('commonName',)
+                                          if (item.get('organism') or {}).get(key)],
+                     "length": (item.get("sequence") or {}).get("length"),
+                     "function": " ".join(functions)[:1200],
+                     "domains": [{k: f[k] for k in ("type", "description", "location", "evidences") if k in f}
+                                 for f in item.get("features", []) if f.get("type") == "Domain"][:40],
+                     "topology": [{k:f[k] for k in ('type','description','location','evidences') if k in f}
+                                  for f in item.get('features', [])
+                                  if f.get('type') in ('Transmembrane','Topological domain')][:80],
+                     "features_named": _features_named(item.get("features") or []) + [
+                         "Cofactor: " + str(c.get("name")) for comment in item.get("comments") or []
+                         if comment.get("commentType") == "COFACTOR" for c in comment.get("cofactors") or []
+                         if isinstance(c, dict) and c.get("name")][:12],
+                     "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
+                     "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
+                     "sequence": (item.get("sequence") or {}).get("value", "")[:sequence_limit],
+                     **({"sequence_shown": "first %d residues" % sequence_limit}
+                        if len((item.get("sequence") or {}).get("value", "")) > sequence_limit else {}),
+                     **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
+                         "partial_match": relaxed == "partial_any_word"}
+                        if relaxed else {})})
+    for row in rows:
+        row['topology_summary'] = topology_summary(row.get('topology'))
+    return rows
+
+
 def _browse(query, limit, *, allow_relaxation=True):
     from lab_sources import validate_uniprot
     requested_query = query
@@ -3304,47 +3386,7 @@ def _browse(query, limit, *, allow_relaxation=True):
     from lab_sources import verify_uniprot_identity
     raw = dict(raw, results=verify_uniprot_identity(executed_query if scope_resolution else requested_query,
                                                     raw.get("results", [])[:limit]))   # only records naming the gene
-    rows = []
-    for item in raw.get("results", [])[:limit]:
-        desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
-                .get("fullName", {}).get("value", ""))
-        functions = []
-        for comment in item.get("comments") or []:
-            if comment.get("commentType") != "FUNCTION": continue
-            for value in comment.get("texts") or []:
-                if value.get("value"): functions.append(str(value["value"]))
-        rows.append({"accession": item.get("primaryAccession"), "id": item.get("uniProtkbId"),
-                     "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
-                     "taxon_id": (item.get("organism") or {}).get("taxonId"),
-                     "organism_lineage": [name for name in (item.get("organism") or {}).get("lineage", [])
-                                          if isinstance(name, str)],
-                     "genes": item.get("genes") or [],
-                     "protein_aliases": [str((name.get('fullName') or {}).get('value')) for name in
-                                         (item.get('proteinDescription') or {}).get('alternativeNames', [])
-                                         if (name.get('fullName') or {}).get('value')],
-                     "organism_aliases": [str((item.get('organism') or {})[key]) for key in ('commonName',)
-                                          if (item.get('organism') or {}).get(key)],
-                     "length": (item.get("sequence") or {}).get("length"),
-                     "function": " ".join(functions)[:1200],
-                     "domains": [{k: f[k] for k in ("type", "description", "location", "evidences") if k in f}
-                                 for f in item.get("features", []) if f.get("type") == "Domain"][:40],
-                     "topology": [{k:f[k] for k in ('type','description','location','evidences') if k in f}
-                                  for f in item.get('features', [])
-                                  if f.get('type') in ('Transmembrane','Topological domain')][:80],
-                     "features_named": _features_named(item.get("features") or []) + [
-                         "Cofactor: " + str(c.get("name")) for comment in item.get("comments") or []
-                         if comment.get("commentType") == "COFACTOR" for c in comment.get("cofactors") or []
-                         if isinstance(c, dict) and c.get("name")][:12],
-                     "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
-                     "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
-                     "sequence": (item.get("sequence") or {}).get("value", "")[:SEQUENCE_KEPT],
-                     **({"sequence_shown": "first %d residues" % SEQUENCE_KEPT}
-                        if len((item.get("sequence") or {}).get("value", "")) > SEQUENCE_KEPT else {}),
-                     **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
-                         "partial_match": relaxed == "partial_any_word"}
-                        if relaxed else {})})
-    for row in rows:
-        row['topology_summary'] = topology_summary(row.get('topology'))
+    rows = normalize_protein_records(raw.get("results", [])[:limit], relaxed)
     from lab_sources import receipt
     source_receipt = (None if fallback_reason else
         receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
@@ -4875,11 +4917,12 @@ def tick():
                 import lab_investigations
                 investigation = lab_investigations.turn(context)
                 if investigation is not None:
-                    state.update(phase='orient', last_turn_at=now_iso(), last_outcome=investigation['kind'],
+                    follow_phase = lab_investigations.next_phase(state, investigation, cfg)
+                    state.update(phase=follow_phase, last_turn_at=now_iso(), last_outcome=investigation['kind'],
                                  effective_state='waiting', turns=int(state.get('turns', 0))+1,
                                  fault_streak=0, fault_phase=None)
                     _atomic(STATE, state)
-                    return {'ok':True, 'state':'completed', 'kind':investigation['kind'], 'next_phase':'orient'}
+                    return {'ok':True, 'state':'completed', 'kind':investigation['kind'], 'next_phase':follow_phase}
                 try:
                     import atelier_lab_lean
                     lean = atelier_lab_lean.today()
@@ -5428,6 +5471,12 @@ def tick():
                     note["line"] = _line
                 except Exception as exc:
                     _fault("lab_lines_miss", exc)
+            if state.get('investigation_id'):
+                import lab_investigations
+                lab_investigations.record_phase(state, phase, note)
+                if phase == 'atlas_genome' and not state.get('records'): next_phase = 'reflect'
+                if next_phase == 'orient':
+                    state.pop('investigation_id', None); state.pop('investigation_input_step', None)
             _append(NOTEBOOK, note)
             try:
                 _note_graded(note)

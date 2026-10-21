@@ -83,6 +83,13 @@ def normalize_source(spec):
     source = str(out.get('source') or '').lower()
     out['source'] = {'rcsb': 'pdb', 'alphagenome': 'atlas', 'entrez': 'ncbi',
                      'ncbi_rt_locus_screen': 'rt_locus_screen'}.get(source, source)
+    if out['source'] == 'uniprot':
+        query=out.get('query') or out.get('accession')
+        if isinstance(query,str) and re.fullmatch(r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})',query.upper()):
+            out['query']='accession:'+query.upper()
+    if out['source'] == 'interpro' and not out.get('accession'):
+        value=out.get('uniprot_accession') or out.get('protein_accession') or out.get('query') or out.get('id')
+        if value is not None:out['accession']=value
     if out['source'] == 'ncbi':
         op = str(out.get('operation') or out.get('database') or out.get('db') or '').lower()
         # Remove a transport prefix, not any scientific qualifier.
@@ -107,3 +114,39 @@ def is_measurement(inquiry):
             plugin == 'inductive' and tool == 'inductive.predict_properties' or
             plugin == 'genomic_intelligence' and str(tool).startswith('genomic_intelligence.predict_') or
             plugin == 'eden' and tool == 'predict_immunogenicity')
+
+
+def normalize_request(route, request):
+    """Accept explicit source/door shorthands while keeping the authored request in the step."""
+    wrappers={'source':'source_query','plugin':'plugin_query','instrument':'instrument_query'}
+    wrapper=wrappers.get(route)
+    if wrapper and set(request)=={wrapper} and isinstance(request[wrapper],dict):request=dict(request[wrapper])
+    if route=='source' and not request.get('source'):
+        request={k:v for k,v in request.items() if k!='source'}
+    if route=='source' and not request.get('source') and len(request)==1:
+        source,value=next(iter(request.items()))
+        allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
+                 'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc'}
+        if source in allowed:
+            if isinstance(value,dict):request=dict(value,source=source)
+            elif isinstance(value,str) and source=='uniprot':request={'source':'uniprot','query':value}
+            elif isinstance(value,str) and source=='pdb':request={'source':'pdb','entry_id':value}
+            elif isinstance(value,str) and source in ('interpro','ncbi_sequence','ncbi_protein_context','rt_locus_screen'):
+                request={'source':source,'accession':value}
+            elif isinstance(value,str) and source=='pubchem':request={'source':source,'name':value}
+    if route=='source':return normalize_source(request)
+    return request
+
+
+def execution_request(route, request):
+    """Normalize structural cardinality after exact references have been resolved."""
+    out=dict(request)
+    if route=='source':
+        out=normalize_source(out)
+        if out.get('source')=='interpro' and out.get('accession'):
+            out={k:v for k,v in out.items() if k not in ('query','id','uniprot_accession','protein_accession')}
+    if route=='representation' and isinstance(out.get('records'),dict):
+        record=out['records']
+        if isinstance(record.get('sequence'),str) and record.get('accession'):out['records']=[record]
+    if route in ('instrument','native') and isinstance(out.get('files'),str):out['files']=[out['files']]
+    return out

@@ -1,3 +1,14 @@
+## 21 October — Lab investigation runtime review
+
+The review branch `codex/lab-tools-runtime` now has complete output references, common protein normalization,
+owner-specific connector discovery, preserved embedding/genomic phases, truthful uncertain/failure states,
+bounded native instrument wrappers and daily experiment variety. All 459 broker suites passed in isolated
+scratch execution on Aegis. A real ordinary-loop chain used UniProt → ESMC → InterPro; all three Mac named
+non-protein experiments also ran on a copied scratch bench. See `docs/review-evidence/lab-tools-runtime/README.md`.
+**Not done:** main-thread review/merge, Gloria's deploy, real investigation commissioning of every operation,
+and the two-day post-deploy per-tool/downstream-use and scientific-results assessment. Account SDK status
+exposes tool metadata but not input schemas; discovery says so. No claim that every tool works is made.
+
 # Vintos — open work
 
 What is not finished. The architecture document says what he is; this says what is left.

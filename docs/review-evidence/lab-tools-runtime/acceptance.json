@@ -1,0 +1,17 @@
+{
+  "deployment_detected": false,
+  "start_rule": "mtime in UTC of the first release JSON containing all expected runtime hashes; verify installed files against that release",
+  "duration_hours": 48,
+  "runtime_sha256": {
+    "lab_investigations.py": "0a0cca606cfd206bed3f2a70a562fbe162a530088b0554b213dc8e31ba53ae04",
+    "lab_tool_calls.py": "f7193c3fbd30aa98d85f64ccfb1be1d12de6465ed84af25fa858567dfe67ab92",
+    "lab_native_instruments.py": "da086f26993942b405cdb4b40cce708e15eef24c0a945bef6b70be3739083d8f",
+    "lab_usage_report.py": "55f74c3bc50d59e3fa9f597d467aa1b78ab6e6180704cbde9dd957d1664b1b9f",
+    "chemistry_lab.py": "b6774335aaa1f2a5b9175eae18a4a1cbac3406f3f741ebcec5f43b16a8403ea4",
+    "chemistry_session.py": "e1761048c9f9cda1c0a35cce67b66aa716904f86e8a4c23ba5ce30d61bf2210e",
+    "chemistry_grade.py": "7776172f10d44bdc6f74bb4d769669390f91d75c9f914a2aa6e2a93c7e37f598",
+    "lab_repeats.py": "90e1db5ea65ab18d5984626b1138d755e7b90ce7698c12a954f825366c996a0a"
+  },
+  "reporter": "scripts/lab_usage_report.py",
+  "baseline_release": "fca8b7f360cdc7fa5452088762b88a95a19a3b46"
+}

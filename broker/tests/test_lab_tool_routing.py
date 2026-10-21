@@ -41,7 +41,12 @@ def guard(event, args):
         index = 1 if event in ('os.remove', 'os.rmdir') else 2
         fd = args[index] if len(args) > index else -1
         if not isinstance(path, int) and not Path(path).is_absolute() and isinstance(fd, int) and fd >= 0:
-            path = Path(os.readlink('/proc/self/fd/%d' % fd)) / path
+            if sys.platform == 'darwin':
+                import fcntl
+                base = fcntl.fcntl(fd, 50, bytes(1024)).split(b'\0')[0].decode()
+            else:
+                base = os.readlink('/proc/self/fd/%d' % fd)
+            path = Path(base) / path
         paths = [path]
     elif event == 'os.rename': paths = list(args[:2])
     for path in paths:
@@ -135,6 +140,22 @@ class Tools(unittest.TestCase):
                 self.assertNotIn('coverage_context_tokens', raw)
                 for untouched in ('enabled', 'evo2_enabled', 'atlas_evo2_enabled'):
                     if untouched != key: self.assertNotIn(untouched, raw)
+
+    def test_observed_source_shorthands_retain_exact_identifiers(self):
+        for request,expected in [({'uniprot':'P69905'},{'source':'uniprot','query':'accession:P69905'}),
+                                 ({'interpro':'P69905'},{'source':'interpro','accession':'P69905'}),
+                                 ({'source':'','pdb':'8SGW'},{'source':'pdb','entry_id':'8SGW'})]:
+            self.assertEqual(T.normalize_request('source',request),expected)
+
+    def test_same_question_may_use_distinct_instruments_but_not_repeat_one(self):
+        import lab_repeats
+        question='Measure the resulting energy against the same exact reference.'
+        first={'question':question,'instrument_query':{'skill':'house_experiment_molecule','operation':'molecule'}}
+        second={'question':question,'instrument_query':{'skill':'house_experiment_fold','operation':'fold'}}
+        with patch.object(lab_repeats,'LOOKUPS',str(SCRATCH/'distinct-instruments.jsonl')):
+            lab_repeats.record(first)
+            self.assertFalse(lab_repeats.repeat(second))
+            self.assertIn('exact lookup',lab_repeats.repeat(first))
 
     def test_guard_blocks_live_store_write(self):
         with self.assertRaisesRegex(AssertionError, 'write outside scratch'):

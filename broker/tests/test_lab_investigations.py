@@ -71,7 +71,7 @@ class Investigations(unittest.TestCase):
         self.ask.return_value = self.choice('plugin', {'plugin':'nvidia_nim','tool':'nvidia_nim.boltz2'})
         execute = Mock(side_effect=TimeoutError('unknown outcome'))
         row = I.turn('', ask=self.ask, execute=execute)
-        self.assertEqual(row['state'], 'failed')
+        self.assertEqual(row['state'], 'outcome_unknown')
         execute.assert_called_once()
         self.assertEqual(self.ask.call_count, 1)
         stored = C._load(I._path('investigations.json'), {})
@@ -88,6 +88,89 @@ class Investigations(unittest.TestCase):
         with patch.object(C, '_reflect', return_value={'answers_question':'yes: verified fixture'}):
             I.turn('', ask=self.ask)
         self.assertEqual(C._load(I._path('investigations.json'), {})['investigations'][0]['state'], 'answered')
+
+    def test_review_normalizes_real_source_shape_and_retains_full_sequence(self):
+        raw={'primaryAccession':'P12345','uniProtkbId':'TEST_HUMAN',
+             'proteinDescription':{'recommendedName':{'fullName':{'value':'Test protein'}}},
+             'organism':{'scientificName':'Homo sapiens','taxonId':9606},
+             'sequence':{'value':'M'+'A'*1200,'length':1201},'genes':[{'geneName':{'value':'TEST'}}]}
+        self.ask.return_value=self.choice('source',{'source':'uniprot','query':'accession:P12345'})
+        step=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'uniprot','records':[raw]}})
+        observations=I._observations([step])
+        record=observations['records'][0]
+        self.assertEqual(record['accession'],'P12345')
+        self.assertEqual(record['taxon_id'],9606)
+        self.assertEqual(record['sequence'],raw['sequence']['value'])
+        self.assertEqual(I.resolve({'step':step['id'],'path':['receipt','records',0,'sequence','value']},[step]),raw['sequence']['value'])
+
+    def test_account_schema_uses_account_gateway_and_local_schema_calls_nothing(self):
+        import claude_connector_gateway as account, plugin_gateway as mac
+        with patch.object(account,'tool_schemas',return_value={'tools':{'boltz_get_guidance':{}}}) as read, \
+             patch.object(mac,'tool_schemas',side_effect=AssertionError('wrong account')):
+            out=I.dispatch('schema',{'plugin':'boltz'},'Discover the connector',[])
+            read.assert_called_once_with('boltz')
+            self.assertIn('schema',out)
+        local=mac.tool_schemas('nvmolkit')
+        self.assertEqual(local['schemas']['nvmolkit.cluster']['required'],['smiles','cutoff'])
+
+    def test_returned_failure_is_retained_and_never_marked_completed(self):
+        self.ask.return_value=self.choice('plugin',{'plugin':'nvmolkit','tool':'nvmolkit.similarity'})
+        row=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'records':{'ok':False,'error':'provider refused'}}})
+        self.assertEqual(row['state'],'failed')
+        self.assertTrue(Path(I._path(row['output_file'])).is_file())
+        with self.assertRaisesRegex(ValueError,'only completed'):
+            I.resolve({'step':row['id'],'path':[]},[row])
+
+    def test_unknown_outcome_cannot_be_repeated_on_later_turn(self):
+        self.ask.return_value=self.choice('experiment',{'experiment':'molecule','parameters':{}})
+        execute=Mock(return_value={'ok':False,'state':'unknown_after_timeout','error':'timed out after send'})
+        row=I.turn('',ask=self.ask,execute=execute)
+        self.assertEqual(row['state'],'outcome_unknown')
+        second=I.turn('',ask=self.ask,execute=execute)
+        execute.assert_called_once()
+        self.assertEqual(second['state'],'failed')
+        self.assertIn('unknown outcome',second['error'])
+
+    def test_source_step_enters_existing_embedding_phase_and_records_its_output(self):
+        self.ask.return_value=self.choice('source',{'source':'uniprot','query':'accession:P12345'})
+        raw={'primaryAccession':'P12345','sequence':{'value':'MAAAA','length':5}}
+        row=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'uniprot','records':[raw]}})
+        state={}
+        self.assertEqual(I.next_phase(state,row,{}),'embed')
+        self.assertEqual(state['records'][0]['sequence'],'MAAAA')
+        I.record_phase(state,'embed',{'kind':'protein_representation','embeddings':[{'accession':'P12345','dimension':1152}]})
+        steps=C._load(I._path('investigations.json'),{})['investigations'][0]['steps']
+        self.assertEqual(steps[-1]['tool'],'representation')
+        self.assertEqual(steps[-1]['input_refs'][0]['step'],row['id'])
+
+    def test_genomic_cadence_is_preserved_for_nonprotein_investigation(self):
+        self.ask.return_value=self.choice('source',{'source':'pubchem','name':'ethanol'})
+        row=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'pubchem','records':[{'SMILES':'CCO'}]}})
+        self.assertEqual(I.next_phase({'turns':480,'last_evo_turn':0},row,{'evo2_enabled':True,'evo2_every_n_cycles':120}),'genome')
+
+    def test_output_index_and_read_output_reveal_keys_beyond_preview(self):
+        self.ask.return_value=self.choice('source',{'source':'pubchem','name':'fixture'})
+        row=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'pubchem','records':[{'long':'x'*9000,'SMILES':'CCO'}]}})
+        self.assertTrue(any('SMILES' in x.get('keys',[]) for x in row['output_index']))
+        self.assertEqual(I.dispatch('read_output',{'reference':{'step':row['id'],'path':['receipt','records',0,'SMILES']}},'', [row]),{'value':'CCO'})
+
+    def test_literal_identifier_is_bound_only_to_returned_data(self):
+        self.ask.return_value=self.choice('source',{'source':'uniprot','query':'accession:P69905'})
+        row=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'uniprot','query':{'accession':'Q12345'},
+             'records':[{'primaryAccession':'P69905','sequence':{'value':'MAAAA','length':5}}]}})
+        bound=I.bind_inputs({'source':'interpro','accession':'P69905'},[row])
+        self.assertEqual(I.resolve(bound,[row]),{'source':'interpro','accession':'P69905'})
+        self.assertEqual(bound['accession']['step'],row['id'])
+        self.assertEqual(I.bind_inputs({'accession':'Q12345'},[row]),{'accession':'Q12345'})
+
+    def test_restart_marks_started_step_unknown(self):
+        data={'investigations':[{'id':'I-old','opened_at':C.now_iso(),'state':'open','question':'Old question',
+             'steps':[{'id':'S-old','state':'started','route':'experiment','request_sha256':'old'}]}]}
+        C._atomic(I._path('investigations.json'),data)
+        self.ask.return_value=self.choice('schema',{'plugin':'nvmolkit'})
+        I.turn('',ask=self.ask,execute=lambda *a:{'schema':{}})
+        self.assertEqual(C._load(I._path('investigations.json'),{})['investigations'][0]['steps'][0]['state'],'outcome_unknown')
+
 
 
 if __name__ == '__main__': unittest.main(verbosity=2)

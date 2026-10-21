@@ -184,6 +184,8 @@ async def _run(server, tool, arguments, url):
 
 
 def connector(request):
+    if request.get('action') == 'schema':
+        return asyncio.run(discover(request))
     plugin, surface, tool = request.get("plugin"), request.get("surface"), request.get("tool")
     if request.get("probe"):                                       # discovery's one free read-only check, only
         from claude_connector_catalog import probe_policy
@@ -206,6 +208,35 @@ def connector(request):
         raise ValueError("connected tool response too large")
     return {"ok": True, "plugin": plugin, "tool": tool, "surface": surface,
             "visibility": entry["visibility"], **out}
+
+
+async def discover(request):
+    """Read the SDK's actual MCP status; do not ask a model to invent schemas."""
+    from claude_connector_catalog import PLUGINS, url_for
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+    plugin, surface = request.get('plugin'), request.get('surface')
+    entry = PLUGINS.get(plugin) or {}
+    if surface not in entry.get('surfaces', ()) or entry.get('enabled') is False:
+        raise PermissionError('connector unavailable on this surface')
+    server, url = entry.get('server') or plugin, url_for(plugin)
+    kw = {'mcp_servers':{server:{'type':'http','url':url}}} if str(url).startswith('https://') else {}
+    # Connecting and reading status starts no model turn and invokes no tool.
+    async with ClaudeSDKClient(options=ClaudeAgentOptions(allowed_tools=[], permission_mode='dontAsk', **kw)) as client:
+        status = await asyncio.wait_for(client.get_mcp_status(), 60)
+    tools, schemas = {}, {}
+    allowed = entry['read'] | entry['action']
+    for row in status.get('mcpServers', []):
+        if str(row.get('name', '')).casefold() not in (server.casefold(), ('claude_ai_'+server).casefold()):
+            continue
+        for tool in row.get('tools') or []:
+            name = tool.get('name', '').split('__')[-1]
+            if name not in allowed: continue
+            tools[name] = {'description':tool.get('description', ''), 'annotations':tool.get('annotations', {})}
+            schema = tool.get('inputSchema') or tool.get('input_schema')
+            if schema is not None: schemas[name] = schema
+    return {'ok':True, 'plugin':plugin, 'schemas':schemas, 'tools':tools,
+            'schema_state':'declared' if schemas else 'not_exposed_by_account_sdk',
+            'method':'account_mcp_status', 'calls_executed':0}
 
 
 async def _run_with_timeout(server, tool, arguments, url):

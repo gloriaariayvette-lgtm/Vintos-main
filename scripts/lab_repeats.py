@@ -170,6 +170,8 @@ def _lookup_route(key):
     if kind in ("source_query", "plugin_query", "instrument_query"):
         try:
             spec = json.loads(body)
+            if kind == 'instrument_query':
+                return (kind,spec.get('skill'),spec.get('operation'),spec.get('tool'))
             if spec.get('source') == 'pdb' and spec.get('operation') == 'search_accession':
                 return (kind, 'pdb', 'search_accession')
             return (kind, spec.get("source"), spec.get("plugin"), spec.get("tool"))

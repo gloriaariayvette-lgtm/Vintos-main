@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from plugin_catalog import policy, instructions, PLUGINS
 from plugin_send_guard import PolicyHold, outbound_findings
 
-MEMORY = os.environ.get("VINTOS_MEMORY", os.path.expanduser("~/.vintos/workspace/memory"))
+MEMORY = os.environ.get("VINTOS_MEMORY", os.path.join(os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")), "memory"))
 CONFIG = os.environ.get("VINTOS_PLUGIN_RELAY_CONFIG", os.path.expanduser("~/.vintos/plugin-relay.json"))
 REMOTE = "/Users/kevin/Documents/Codex/2026-09-10/first-please-review-everything-claude-committed/forge-loop-local/scripts/plugin_relay_remote.py"
 HOST_RE = re.compile(r"^[A-Za-z0-9_.-]+@[A-Za-z0-9_.:-]+$")
@@ -268,6 +268,27 @@ def load_receipt(receipt_id, surface):
 
 def tool_schemas(plugin, transport=None):
     """What each of a plugin's tools expects, as the connector declares it. Calls and sends nothing."""
+    if plugin == 'nvmolkit':
+        from nvmolkit_gateway import OPERATIONS
+        base = {'smiles':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':128}}
+        schemas = {}
+        for tool in OPERATIONS:
+            props = dict(base); required = ['smiles']
+            if tool.endswith('cluster'):
+                props['cutoff'] = {'type':'number','exclusiveMinimum':0,'exclusiveMaximum':1}; required.append('cutoff')
+            if tool.endswith('conformers'):
+                props.update(conformers_per_molecule={'type':'integer','minimum':1,'maximum':3}, seed={'type':'integer','minimum':1})
+                props['smiles'] = dict(base['smiles'], maxItems=16)
+            schemas[tool] = {'type':'object','properties':props,'required':required,'additionalProperties':False}
+        return {'ok':True,'plugin':plugin,'method':'house_gateway_contract','schemas':schemas}
+    if plugin == 'nvidia_nim':
+        from bionemo_gateway import FIELDS
+        # These are the house validator's fields, not a claim about provider discovery.
+        required = {'nvidia_nim.boltz2':['polymers'], 'nvidia_nim.diffdock':['protein','ligand','ligand_file_type'],
+                    'nvidia_nim.proteinmpnn':['input_pdb'], 'nvidia_nim.rfdiffusion':['input_pdb','contigs']}
+        schemas = {tool:{'type':'object','properties':{key:{} for key in fields},
+                         'required':required[tool],'additionalProperties':False} for tool,fields in FIELDS.items()}
+        return {'ok':True,'plugin':plugin,'method':'house_gateway_contract','schemas':schemas}
     from plugin_catalog import SKILLS
     if plugin not in PLUGINS and plugin not in SKILLS: raise ValueError("unknown plugin")
     return _send({"action":"schema", "plugin":plugin}, transport=transport)
