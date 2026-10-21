@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Scratch-only source contracts and handoff. No real network, model, or notification."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import urllib.parse, urllib.error, io
 import contextlib
 import json

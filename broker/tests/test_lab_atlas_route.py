@@ -2,6 +2,10 @@
 """Atlas works and is chosen: he names a human gene, the Lab finds its position and real scorer names,
 and every third question is a human-genome turn (Gloria, 2026-09-28). Scratch HOME; NCBI, Atlas and the
 model are stubs, and nothing here reaches the network."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, importlib.util, json, os, sys, tempfile, types
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

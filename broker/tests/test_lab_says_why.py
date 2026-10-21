@@ -9,6 +9,10 @@ restating an old ATAC score.
 Scratch HOME; the source client, the Atlas worker and the literature reader are stubs; nothing here
 reaches the network.
 """
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, importlib.util, os, subprocess, sys, tempfile, types
 from pathlib import Path
 
@@ -41,6 +45,18 @@ key = Path(HOME) / "atlas.key"; key.write_text("sk-SECRET-123"); key.chmod(0o600
 fake = Path(HOME) / "fake-python"
 fake.write_text("#!/bin/sh\nprintf 'ValueError: scorer RNA_SEQ unknown' > \"$(dirname \"$3\")/error.txt\"\nexit 1\n")
 fake.chmod(0o755)
+_original_worker_run = S.subprocess.run
+_original_tempdir = S.tempfile.tempdir
+S.tempfile.tempdir = HOME
+def _fake_worker_run(argv, **kwargs):
+    assert str(argv[0]).startswith(HOME)
+    assert str(argv[2]).startswith(HOME) and str(argv[3]).startswith(HOME)
+    if str(argv[0]) == str(fake):
+        (Path(argv[3]).parent / 'error.txt').write_text('ValueError: scorer RNA_SEQ unknown')
+        return types.SimpleNamespace(returncode=1, stdout='', stderr='')
+    return types.SimpleNamespace(returncode=3, stdout='', stderr='')
+S.subprocess.run = _fake_worker_run
+check('the worker boundary is a stub', S.subprocess.run is _fake_worker_run)
 try:
     S.AtlasProcess(str(key), python=str(fake))({"source": "atlas"}); why = ""
 except RuntimeError as exc:
@@ -52,6 +68,8 @@ try:
 except RuntimeError as exc:
     why = str(exc)
 check("a worker that dies before saying why is reported as that", "exited 3 before saying why" in why, why)
+S.subprocess.run = _original_worker_run
+S.tempfile.tempdir = _original_tempdir
 
 # --- the Lab keeps the reason, and does not answer a DNA question with a protein ----------------------
 spec = importlib.util.spec_from_file_location("chemistry_lab_why_test", os.path.join(REPO, "scripts", "chemistry_lab.py"))

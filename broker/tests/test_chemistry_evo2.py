@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Evo 2 Lab lane: scratch stores and faked model/LMS/network boundaries."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, importlib.util, json, os, subprocess, sys, tempfile, types
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

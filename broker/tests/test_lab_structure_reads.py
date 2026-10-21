@@ -7,6 +7,10 @@ his own records named do. The structure was opened only when he chose no other s
 
 Isolation: scratch HOME and workspace; the Lab's network door (lab_http) refuses; the PDB read is a stub that records
 what it was asked; the embedder, the reading settler, admission and the review are stubs. No model, no network."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, importlib.util, json, os, sys, tempfile, types
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.path.join(HERE, "..", ".."))

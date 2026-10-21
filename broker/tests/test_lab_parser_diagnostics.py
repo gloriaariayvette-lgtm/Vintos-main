@@ -1,4 +1,8 @@
 """Protected parser evidence and safe general faults, with no real providers or stores."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib
 import json
 import os

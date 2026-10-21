@@ -138,6 +138,7 @@ DEFAULTS = {
     # between Gemma calls. Persisted older cadence must migrate too.
     "cadence_version": 3,
     "enabled": False,
+    "campaigns": True,
     # One complete browse cycle in roughly one quiet minute. Every phase still
     # enters compute admission and yields to conversation or another house organ.
     "poll_seconds": 15,
@@ -234,7 +235,9 @@ def config():
 def set_enabled(on):
     """Set desired state. OFF preserves every note/artifact and stops after the current bounded turn."""
     with _locked():
-        value = config(); value["enabled"] = bool(on); value["changed_at"] = now_iso()
+        value = _load(CONFIG, {})
+        if not isinstance(value, dict): value = {}
+        value["enabled"] = bool(on); value["changed_at"] = now_iso()
         _atomic(CONFIG, value)
         if on:
             try: os.unlink(STOP)
@@ -656,7 +659,8 @@ def repeats_dead_end(inquiry, spent):
 def spent_retrieval(inquiry, spent):
     """Stop recycling broad searches, not a new read of sourced sequence/structure."""
     if not repeats_dead_end(inquiry, spent): return False
-    if inquiry.get("instrument_query"): return False
+    from lab_tool_calls import is_measurement
+    if is_measurement(inquiry): return False
     source = (inquiry.get("source_query") or {}).get("source")
     return source not in {"ncbi_sequence", "ncbi_protein_context", "ncbi_neighborhood",
                           "interpro", "rt_locus_screen", "pdb", "chembl"}
@@ -3140,6 +3144,8 @@ def _misses_named_genes(query, symbols):
 
 
 def _inquiry(value, lean=None):
+    from lab_tool_calls import normalize_inquiry
+    value = normalize_inquiry(value)
     question_sha256 = hashlib.sha256(str(value.get('question') or '').encode()).hexdigest()
     source_context_current = value.get('source_query_question_sha256') in (None, question_sha256)
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
@@ -4765,7 +4771,9 @@ def status():
 def set_evo2_enabled(enabled):
     """Commission or pause the fixed-source genomics lane without changing the Lab door."""
     with _locked():
-        cfg = config(); cfg["evo2_enabled"] = bool(enabled); _atomic(CONFIG, cfg)
+        cfg = _load(CONFIG, {})
+        if not isinstance(cfg, dict): cfg = {}
+        cfg["evo2_enabled"] = bool(enabled); _atomic(CONFIG, cfg)
         state = _load(STATE, {})
         if enabled:
             # Commissioning starts a fresh interval; it does not manufacture an overdue run.
@@ -4777,13 +4785,22 @@ def set_evo2_enabled(enabled):
     return status()
 
 
+def set_atlas_evo2_enabled(enabled):
+    """Record an explicit choice for the regulatory-prediction follow-up."""
+    with _locked():
+        cfg = _load(CONFIG, {})
+        if not isinstance(cfg, dict): cfg = {}
+        cfg['atlas_evo2_enabled'] = bool(enabled)
+        _atomic(CONFIG, cfg)
+        _append(NOTEBOOK, {'at': now_iso(), 'kind': 'control',
+                          'action': 'atlas_evo_on' if enabled else 'atlas_evo_off',
+                          'truth_status': 'explicit_lab_control'})
+    return status()
+
+
 def _campaign_due(state, cfg):
-    """A screening campaign takes every other turn, and any turn after a pass that ended without a source call
-    (Gloria, 22 October: a Lab that poses novel questions and answers them; lab_campaign)."""
-    if not cfg.get("campaigns", True) or os.environ.get("VINTOS_LAB_CAMPAIGNS") == "0": return False
-    last = next((r for r in reversed(_tail_jsonl(NOTEBOOK, nbytes=64 * 1024)) if r.get("kind") != "control"), {})
-    if last.get("kind") in ("inquiry_refused", "evidence_wait"): return True
-    return int(state.get("turns", 0)) % 2 == 0
+    """Screens are selected investigation steps, never a reserved turn share."""
+    return False
 
 
 def _campaign_turn(state):
@@ -4855,6 +4872,14 @@ def tick():
             _inquiry_before = dict(state.get("inquiry") or {})
             state["effective_state"] = "working"; _atomic(STATE, state)
             if phase == "orient":
+                import lab_investigations
+                investigation = lab_investigations.turn(context)
+                if investigation is not None:
+                    state.update(phase='orient', last_turn_at=now_iso(), last_outcome=investigation['kind'],
+                                 effective_state='waiting', turns=int(state.get('turns', 0))+1,
+                                 fault_streak=0, fault_phase=None)
+                    _atomic(STATE, state)
+                    return {'ok':True, 'state':'completed', 'kind':investigation['kind'], 'next_phase':'orient'}
                 try:
                     import atelier_lab_lean
                     lean = atelier_lab_lean.today()
@@ -5458,9 +5483,11 @@ if __name__ == "__main__":
     elif cmd == "off": print(json.dumps(set_enabled(False), indent=2))
     elif cmd == "evo-on": print(json.dumps(set_evo2_enabled(True), indent=2))
     elif cmd == "evo-off": print(json.dumps(set_evo2_enabled(False), indent=2))
+    elif cmd == "atlas-evo-on": print(json.dumps(set_atlas_evo2_enabled(True), indent=2))
+    elif cmd == "atlas-evo-off": print(json.dumps(set_atlas_evo2_enabled(False), indent=2))
     elif cmd in ("tick", "daemon"):
         import lab_claim_evidence
         CLAIM_FULLTEXT_FETCH = lab_claim_evidence.live_fetch()
         if cmd == "tick": print(json.dumps(tick(), indent=2))
         else: daemon()
-    else: raise SystemExit("usage: chemistry_lab.py status|on|off|evo-on|evo-off|tick|daemon")
+    else: raise SystemExit("usage: chemistry_lab.py status|on|off|evo-on|evo-off|atlas-evo-on|atlas-evo-off|tick|daemon")

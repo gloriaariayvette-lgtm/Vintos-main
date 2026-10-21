@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Replay Oct 9 SLC26A11 rereads. All stores and senders are isolated."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, copy, json, os, socket, sys, tempfile, types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

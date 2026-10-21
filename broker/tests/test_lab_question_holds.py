@@ -1,4 +1,8 @@
 """Replay the saved CFTR hold through the ordinary selector and daemon ticks, fully offline."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))

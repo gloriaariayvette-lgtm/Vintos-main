@@ -1,4 +1,8 @@
 """Saved-source, mocked-boundary replay. This does NOT measure Gemma quality."""
+
+# Legacy phase regressions; chained autonomous turns have their own isolated suite.
+import sys as _legacy_sys, types as _legacy_types
+_legacy_sys.modules["lab_investigations"] = _legacy_types.SimpleNamespace(turn=lambda *a, **k: None)
 import contextlib, copy, io, json, os, pathlib, shutil, socket, subprocess, sys, tempfile, types, unittest
 os.environ["VINTOS_LAB_CAMPAIGNS"] = "0"   # this suite tests the ordinary loop; test_lab_campaign tests campaigns
 from unittest.mock import Mock, patch

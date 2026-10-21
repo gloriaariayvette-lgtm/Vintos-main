@@ -3,6 +3,17 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 21 October — Lab tool investigations, unfinished candidate
+
+Work is saved on `codex/lab-tools-runtime`; resume instructions and exact host
+checks are in `docs/briefs/lab-tools-resume-local.md`. The task had a cloud
+execution environment, not the local Mac. Gloria has verified Mac-to-Aegis SSH.
+Local regressions were stopped at her request. No live tool runs, deployed release
+identification, deployment, or two-day autonomous-use evidence have been obtained.
+Routing/config changes and a chained-investigation loop are review candidates;
+native-tool coverage, live schemas, final evidence shapes, parser diagnosis and
+generated ownership reports still need work. Do not call this fixed or deploy it.
+
 ## 22 October — screening campaigns: the Lab poses a question and its own screen answers it
 
 Gloria: "It can't be that difficult to produce a lab that poses novel questions and answers them. Look at how
