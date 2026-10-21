@@ -99,6 +99,32 @@ camps = L._load()["campaigns"]
 check("a group NCBI has no taxon for is not screened; an open corner from the list is",
       camps[0]["state"] == "unworkable" and any(x["state"] == "open" and x["by"] == "seed" for x in camps), camps)
 
+# NCBI's rate limit is NCBI's, not the protein's
+from urllib.error import HTTPError
+os.remove(L.STORE)
+busy = {"n": 0}
+def limited(sources, spec):
+    busy["n"] += 1
+    if busy["n"] <= 2: raise HTTPError("u", 429, "Too Many Requests", {}, None)
+    return fake_screen(sources, spec)
+a1 = L.step(FakeNCBI(), gemma, now="2026-10-25T09:00:00+00:00", screen=limited)
+c = L._load()["campaigns"][-1]
+check("a 429 ends the turn and keeps the protein for later; nothing is skipped",
+      a1["kind"] == "campaign_wait" and c["skipped"] == [] and c["cursor"] == 0 and busy["n"] == 1, (a1, c["skipped"], c["cursor"]))
+L.step(FakeNCBI(), gemma, now="2026-10-25T09:01:00+00:00", screen=limited)
+a3 = L.step(FakeNCBI(), gemma, now="2026-10-25T09:02:00+00:00", screen=limited)
+check("and a later turn screens that same protein", a3.get("protein") == "QXP00000.1", a3)
+class BusyNCBI(FakeNCBI):
+    def fetch(self, url): raise HTTPError(url, 429, "Too Many Requests", {}, None)
+os.remove(L.STORE)
+w = L.step(BusyNCBI(), gemma, now="2026-10-25T10:00:00+00:00", screen=fake_screen)
+check("a 429 while opening does not mark the campaign unworkable",
+      w["kind"] == "campaign_wait" and L._load()["campaigns"] == [], (w, L._load()["campaigns"]))
+slept, t = [], [0.0]
+paced = L._Paced(FakeNCBI(), sleep=lambda s: slept.append(s) or t.__setitem__(0, t[0] + s), clock=lambda: t[0])
+for _ in range(3): paced.fetch("https://eutils/esearch")
+check("calls to NCBI are spaced to its three a second", len(slept) == 2 and all(abs(x - L.NCBI_GAP_S) < 1e-9 for x in slept), slept)
+
 # The minute loop hands a turn to a campaign
 import chemistry_lab as C
 check("the Lab's own stores are scratch too", C.ROOT.startswith(HOME))

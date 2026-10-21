@@ -67,6 +67,41 @@ SEEDS = [
 ]
 
 
+NCBI_GAP_S = 0.4         # NCBI allows three requests a second without a key
+
+
+class _Paced:
+    """The Lab's sources with NCBI's pace kept between every call a campaign makes. Without it the search, the
+    two fetches of a screen and the next screen landed inside one second, and NCBI answered 429 to a run of them
+    (22 October dry run: three proteins lost to "Too Many Requests" in a row)."""
+    def __init__(self, sources, sleep=None, clock=None):
+        import time
+        self._s, self._sleep, self._clock, self._last = sources, sleep or time.sleep, clock or time.monotonic, None
+
+    def _wait(self):
+        if self._last is not None:
+            gap = NCBI_GAP_S - (self._clock() - self._last)
+            if gap > 0: self._sleep(gap)
+        self._last = self._clock()
+
+    def fetch(self, *a, **k):
+        self._wait(); return self._s.fetch(*a, **k)
+
+    def fetch_record(self, *a, **k):
+        self._wait(); return self._s.fetch_record(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
+def transient(exc):
+    """A failure that says nothing about the protein: rate limits, server errors, the network. Retried later."""
+    from urllib.error import HTTPError, URLError
+    if isinstance(exc, HTTPError):
+        return exc.code == 429 or exc.code >= 500
+    return isinstance(exc, (URLError, TimeoutError, ConnectionError)) or "timed out" in str(exc).lower()
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -183,6 +218,7 @@ def open_campaign(sources, ask, data, now=None):
         try:
             taxon, accessions = search_proteins(sources, pick["family"], pick["group"])
         except Exception as exc:
+            if transient(exc): raise          # NCBI was busy: the pick is not unworkable, the turn just ends
             accessions, taxon = [], None
             pick["why_not"] = str(exc)[:200]
         c = dict(pick, id="C-" + uuid.uuid4().hex[:8], taxon_id=taxon, opened_at=now or _now(),
@@ -260,13 +296,19 @@ def step(sources, ask, now=None, screen=None):
     Returns a summary dict; a turn that could do nothing says why."""
     import lab_phage
     screen = screen or lab_phage.screen
+    sources = sources if isinstance(sources, _Paced) else _Paced(sources)
     data = _load()
     now = now or _now()
     if screens_today(data, now) >= DAILY_SCREENS:
         return {"kind": "campaign_rest", "why": "today's %d screens are done" % DAILY_SCREENS}
     c = active(data)
     if not c:
-        c = open_campaign(sources, ask, data, now)
+        try:
+            c = open_campaign(sources, ask, data, now)
+        except Exception as exc:
+            if not transient(exc): raise
+            _save(data)
+            return {"kind": "campaign_wait", "why": str(exc)[:160]}
         _save(data)
         if not c:
             return {"kind": "campaign_none", "why": "no workable campaign could be opened"}
@@ -282,6 +324,11 @@ def step(sources, ask, now=None, screen=None):
             receipt = screen(sources, {"source": "rt_locus_screen", "accession": accession})
             record = (receipt.get("records") or [{}])[0]
         except Exception as exc:
+            if transient(exc):
+                # NCBI or the network, not the protein: it is tried again on a later turn, and this turn ends
+                c["cursor"] -= 1
+                _save(data)
+                return {"kind": "campaign_wait", "campaign": c["id"], "why": str(exc)[:160]}
             c["skipped"].append({"protein": accession, "why": str(exc)[:160]})
             if len(c["skipped"]) >= SKIP_LIMIT:
                 break
