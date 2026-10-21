@@ -4,6 +4,37 @@ An independent code-level review. Another agent (Claude Code) has worked on this
 named a root cause that turned out to be wrong. Do not take its comments in the code as established; check them.
 Your strength here is tracing the actual control flow and measuring it.
 
+## What the Lab is for — read this first; it decides what counts as a fix
+
+Gloria has asked, specifically and clearly, that **his Lab questions generate novel findings**: something his own
+instruments produce that is not already written down. For example, fold a domain and measure it, compare
+sequences or structures across species, map residues between records, screen a genome region, or test a
+prediction against a measured value. **It is not for long, expensive retrieval of documented facts** (in her words,
+"a pointlessly long and computationally expensive google search").
+
+The questions he is asking now are mostly the opposite. "What are the specific structural hallmarks, documented
+cellular roles, and source-backed relationships of X?" is a lookup by construction. It asks for what is already
+documented, it can only be answered by finding that documentation, and it produces nothing new even when
+"answered".
+
+Treat this as a likely root cause, not a side note:
+- A lookup question that the records don't fully cover ends "no", and that may be most of the 94% of reviews
+  saying no.
+- A "no" marks the subject spent; the planner is pushed onto the next lookup; repeat. The spent list, the holds
+  and the refusals may all be downstream of **what kind of question he is asked to generate.**
+
+So:
+- **Judge any fix by novel findings produced per day, not by the refusal count.** A change that lowers refusals
+  but keeps him running lookups has failed. One that lowers retrieval cost and produces measured results has
+  succeeded, even if some refusals remain.
+- **Look at where questions are generated** (`_orient`, the planner `system`/`task` text, `lab_lines`,
+  `lab_repeats.frontier_step`), and at what the planner is told the Lab is for. Check whether the instruments that
+  produce findings are offered to him or hidden behind retrieval-first paths.
+- The review step should ask "what did this turn find that wasn't known?", not only "did the evidence answer
+  the question?". Say whether it does.
+- Do not add more broad retrieval (more searches, more sources per turn) as a remedy. Cost is part of her
+  complaint.
+
 ## The problem, in his own records (Aegis, 24 hours to 21 October ~16:30 CDT)
 
 - 362 inquiries. 252 refused before any source was called; 295 more passes ended `evidence_wait`.
@@ -100,7 +131,10 @@ Repository `gloriaariayvette-lgtm/Vintos-main`, branch `claude/device-visuals-20
    - the subject it named,
    - whether that subject was in the planner prompt's SPENT list at that time (from `spent-subjects.json` ages),
    - whether the refused question was the planner's first answer or its re-plan.
-4. **Report what you found.** Propose a patch only if the evidence points to one, with its test.
+4. **Classify his last 24 hours of questions** (in the same probe): lookup of documented facts, versus a question
+   an instrument run would answer with a new measurement. Report the split, and the review verdicts and source
+   calls spent on each kind.
+5. **Report what you found.** Propose a patch only if the evidence points to one, with its test.
 
 ## Your branch and your report
 

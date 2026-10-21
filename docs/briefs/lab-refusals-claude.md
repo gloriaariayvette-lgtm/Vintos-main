@@ -5,6 +5,37 @@ continuation. Claude Code in Gloria's main thread wrote most of the commits list
 have found the root cause. Both claims were wrong. Read the code and data cold, and say plainly if the design
 itself is the problem: a planner proposing, a gate refusing, and a list growing.
 
+## What the Lab is for — read this first; it decides what counts as a fix
+
+Gloria has asked, specifically and clearly, that **his Lab questions generate novel findings**: something his own
+instruments produce that is not already written down. For example, fold a domain and measure it, compare
+sequences or structures across species, map residues between records, screen a genome region, or test a
+prediction against a measured value. **It is not for long, expensive retrieval of documented facts** (in her words,
+"a pointlessly long and computationally expensive google search").
+
+The questions he is asking now are mostly the opposite. "What are the specific structural hallmarks, documented
+cellular roles, and source-backed relationships of X?" is a lookup by construction. It asks for what is already
+documented, it can only be answered by finding that documentation, and it produces nothing new even when
+"answered".
+
+Treat this as a likely root cause, not a side note:
+- A lookup question that the records don't fully cover ends "no", and that may be most of the 94% of reviews
+  saying no.
+- A "no" marks the subject spent; the planner is pushed onto the next lookup; repeat. The spent list, the holds
+  and the refusals may all be downstream of **what kind of question he is asked to generate.**
+
+So:
+- **Judge any fix by novel findings produced per day, not by the refusal count.** A change that lowers refusals
+  but keeps him running lookups has failed. One that lowers retrieval cost and produces measured results has
+  succeeded, even if some refusals remain.
+- **Look at where questions are generated** (`_orient`, the planner `system`/`task` text, `lab_lines`,
+  `lab_repeats.frontier_step`), and at what the planner is told the Lab is for. Check whether the instruments that
+  produce findings are offered to him or hidden behind retrieval-first paths.
+- The review step should ask "what did this turn find that wasn't known?", not only "did the evidence answer
+  the question?". Say whether it does.
+- Do not add more broad retrieval (more searches, more sources per turn) as a remedy. Cost is part of her
+  complaint.
+
 ## The problem, in his own records (Aegis, 24 hours to 21 October ~16:30 CDT)
 
 - 362 inquiries. 252 refused before any source was called; 295 more passes ended `evidence_wait`.
@@ -92,7 +123,7 @@ Repository `gloriaariayvette-lgtm/Vintos-main`, branch `claude/device-visuals-20
 
 - Branch: `claude/lab-refusals-review` (from `claude/device-visuals-2026-10-13`).
 - Report, in this order:
-  1. The root cause in one paragraph.
+  1. The root cause in one paragraph, measured against the goal above (novel findings, not lookups).
   2. The evidence for it.
   3. Why the earlier commits didn't hold.
   4. Any read-only probes for Gloria.
