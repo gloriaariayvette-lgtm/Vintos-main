@@ -65,6 +65,10 @@ check("nothing nameable is nothing, not a template",
       M.thread_line("x", "y", "z", ask=lambda *a, **k: "NONE", judge=judge) == "")
 src = open(os.path.join(REPO, "scripts", "music-share.py")).read()
 check("the share seeds that line", "_line = thread_line(song_desc, gloria_note, response)" in src)
+tp = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
+check("a supported tension goes through the formation door, with no preamble in front of what it names",
+      'seed_thread("tension-promotion", seed' in tp and "from latent_threads import seed_thread" not in tp
+      and "earned support from lived evidence: " not in tp)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
