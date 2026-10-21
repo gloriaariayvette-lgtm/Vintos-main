@@ -309,16 +309,36 @@ def analyze_audio(mp3_path, transcribe=True):
         log(f"Librosa failed: {e}")
     return result
 
-def share_song(song_desc, gloria_note, audio_path=None):
+def taste_from_share(share):
+    """A song she loves enters taste through its one door (enjoyment.admit), once per share: her love of it is her
+    reception, with her words as the evidence; his own delight is not assumed. Shares never moved taste at all before
+    (2026-10-21: "Did we fully incorporate music shares into his taste profiles?")."""
+    try:
+        sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import enjoyment
+        text = "%s. %s %s" % (share.get("song", ""), share.get("acoustic") or "", ("She loves it: " + share["gloria_said"]) if share.get("gloria_said") else "")
+        return enjoyment.admit(share["id"], text.strip()[:300], "music-share", medium="music", weight=0.3, positive=True,
+                               her_reception="she shared it because she loves it",
+                               evidence={"kind": "acknowledged", "said": str(share.get("gloria_said") or "")[:200]})
+    except Exception as e:
+        log(f"taste not moved by the share: {e}")
+        return None
+
+
+def share_song(song_desc, gloria_note, audio_path=None, lyrics=None):
     """Process a shared song — Vintos reads about it and responds."""
     
     # If audio file provided, use Whisper + librosa. Otherwise fall back to fetch_lyrics.
     # the file first, always: Whisper hears it, Gemma corrects the hearing with the title known. A lyrics site
     # only when there is no file or Whisper heard nothing (her rule, 2026-09-09).
     audio_analysis = None; lyrics_source = "none"; lyrics_text = None
+    # Her own lyrics, when she gives them, are the words: Whisper is not needed, the sound is still measured
+    # (Gloria, 2026-10-21: "It'd be nice to add the lyrics myself if I have them").
+    if str(lyrics or "").strip():
+        lyrics_text = str(lyrics).strip()[:2500]; lyrics_source = "gloria"
     if audio_path and os.path.exists(audio_path):
-        audio_analysis = analyze_audio(audio_path)
-        if audio_analysis.get("lyrics"):
+        audio_analysis = analyze_audio(audio_path, transcribe=not lyrics_text)
+        if not lyrics_text and audio_analysis.get("lyrics"):
             lyrics_text = clean_transcript(song_desc, audio_analysis["lyrics"]); lyrics_source = "whisper"
     if not lyrics_text:
         lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
@@ -404,6 +424,7 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
     shares.append(share)
     shares = shares[-50:]  # keep last 50
     save_shares(shares)
+    taste_from_share(share)
 
     log(f"Shared: {song_desc}")
     log(f"Gloria: {gloria_note}")
@@ -539,26 +560,19 @@ if __name__ == "__main__":
         sys.exit(1)
     
     song = sys.argv[1]
-    audio_path = None
-    if "--audio" in sys.argv:
-        idx = sys.argv.index("--audio")
-        audio_path = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else None
-        note = " ".join(a for a in sys.argv[2:idx] if a != "--audio")
-        if audio_path:
-            print(f"Using audio file: {audio_path}")
-    elif "--lyrics" in sys.argv:
-        idx = sys.argv.index("--lyrics")
-        lyrics_path = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else None
-        note = " ".join(sys.argv[2:idx])
-        if lyrics_path and os.path.exists(lyrics_path):
-            with open(lyrics_path) as f:
-                manual_lyrics = f.read()[:2000]
-            original_fetch = fetch_lyrics
-            fetch_lyrics = lambda x: manual_lyrics
-            print(f"Using manual lyrics from {lyrics_path}")
-    else:
-        note = " ".join(sys.argv[2:])
-    result = share_song(song, note, audio_path=audio_path)
+    flags = {"--audio": None, "--lyrics": None}
+    for f in flags:
+        if f in sys.argv and sys.argv.index(f) + 1 < len(sys.argv):
+            flags[f] = sys.argv[sys.argv.index(f) + 1]
+    first_flag = min([sys.argv.index(f) for f in flags if f in sys.argv] or [len(sys.argv)])
+    note = " ".join(sys.argv[2:first_flag])
+    audio_path, manual_lyrics = flags["--audio"], None
+    if audio_path:
+        print(f"Using audio file: {audio_path}")
+    if flags["--lyrics"] and os.path.exists(flags["--lyrics"]):     # both may be given: her words and the sound
+        manual_lyrics = open(flags["--lyrics"], errors="replace").read()[:2500]
+        print(f"Using her lyrics from {flags['--lyrics']}")
+    result = share_song(song, note, audio_path=audio_path, lyrics=manual_lyrics)
     if result:
         print(f"\n{'='*50}")
         print("Vintos's response:")
