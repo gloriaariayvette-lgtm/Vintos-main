@@ -35,8 +35,11 @@ time. Design that. Don't just switch campaigns off.
 ## What Aegis says, from `lab_tools_live.py` (run by Gloria, 21 Oct evening)
 
 Everything is present:
-- **Config:** `evo2_enabled: True`. `atlas_evo2_enabled: False` is set in config.json; ask her whether that was
-  deliberate before turning it on.
+- **Config:** `evo2_enabled: True`. `atlas_evo2_enabled: False` was **never a choice**. It shipped off on 20
+  September "until enabled during commissioning" (b14cfdd), nobody commissioned it, and no command turns it on.
+  `set_enabled`/`set_evo2_enabled` then wrote every default into config.json, so it only looks set. Gloria was
+  given a one-off command to turn it on (21 Oct). Add an `atlas-evo-on` command beside `evo-on`. Also stop the
+  config writers persisting untouched defaults, so a default never again masquerades as her choice.
 - **Keys:** the AlphaGenome key and Python, the NVIDIA NIM key, and the plugin relay config are present, each at
   mode 600.
 - **Tools:** the nvmolkit venv, Pfam and hmmscan are installed.
