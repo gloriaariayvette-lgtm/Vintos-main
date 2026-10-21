@@ -4438,3 +4438,16 @@ day was paused from about 18:45, and at midnight the record was filed with that 
 record, or from yesterday's archive if it rolled over first), opened as "yesterday 20:01"; a promise opened but never
 posted is carried over; headings of one to three # count. `test_promise_after_pause.py` (10; the old code fails 4).
 **Not done:** promises still open only when the day runs; with the day paused they wait, now without being lost.
+
+## 21 October — Forge cards decided for Gloria; faults kept out of the Forge; promises without duplicates
+
+Gloria: "I'm not accepting or rejecting anything. You do it."
+- `skill_forge.DECIDED_FOR_GLORIA`: 17 waiting cards denied with their reasons, by "claude-code for gloria", applied
+  once by `forge_house.sync` (every wants-router pass). Kept open: SK-f569eefd (mmWave intake), his DFRobot C1001
+  work; it waits on the sensor, not on her.
+- `gap_review`: a code-change proposal from a fault source (lab_fault, self_review_fault, barrier_error,
+  service_failed, error_log) is handed to the fault loop, not made a Forge card for the Study. Device and access gaps,
+  and walls like blocked actions, are still cards.
+- Journal promises: a promise nearly the same as an open one, one ended in the last two days, or a want his journal
+  already seeded (the journal's "I want to..." sentences become wants by themselves) is not opened again; kept under
+  "merged" with what it duplicates. `test_decided_and_deduped.py` (11), `test_gap_scan.py` updated.

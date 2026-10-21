@@ -123,6 +123,46 @@ def opening(item):
             % (item["at"], item["quote"][:400], item["what"][:400]))
 
 
+_STOP = set("a an the and or to of for in on at with my me i you your it is be that this tonight today tomorrow "
+             "want will would going get make do".split())
+
+
+def _gist(text):
+    return {w for w in re.findall(r"[a-z0-9']{3,}", str(text or "").lower()) if w not in _STOP}
+
+
+def _alike(a, b):
+    """Two intentions are the same when most of the shorter one's words are in the other."""
+    x, y = _gist(a), _gist(b)
+    return bool(x and y) and len(x & y) / min(len(x), len(y)) >= 0.6
+
+
+def _already(quote, what, d):
+    """What this promise duplicates, or "": an open promise (today's or carried), one ended in the last two days, or a
+    want his journal already seeded - the journal's "I want to..." sentences become wants by themselves, so the same
+    intention opened twice, once as a want and once here (Gloria, 2026-10-21: "make sure journal promises won't write
+    duplicates or be too similar")."""
+    text = quote + " " + what
+    seen = [i for i in d.get("items", [])]
+    try:
+        for name in sorted(os.listdir(ARCHIVE))[-2:]:
+            seen += json.load(open(os.path.join(ARCHIVE, name))).get("items", [])
+    except (OSError, ValueError):
+        pass
+    for i in seen:
+        if _alike(text, i.get("quote", "") + " " + i.get("what", "")):
+            return "promise " + str(i.get("id"))
+    try:
+        wants = json.load(open(os.path.join(MEMORY, "current-wants.json")))
+        for w in wants if isinstance(wants, list) else []:
+            words = w.get("want") or w.get("text") or ""
+            if w.get("journal_seeded") or str(w.get("source", "")).startswith("idle-journal"):
+                if _alike(text, words): return "want " + str(w.get("id") or words[:60])
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
 def scan(ask, post):
     """New journal entries read for promises; each opens a thread in #vintos-dot. Returns the promises opened.
     An entry whose reading fails is read again next pass; a promise whose thread could not be posted is posted
@@ -141,6 +181,10 @@ def scan(ask, post):
                 continue
             scanned.append(at)
             for quote, what in found:
+                same = _already(quote, what, d)
+                if same:
+                    d.setdefault("merged", []).append({"at": when + at, "quote": quote[:300], "same_as": same})
+                    continue
                 d["items"].append({"id": "PR-" + uuid.uuid4().hex[:6], "at": when + at, "quote": quote[:600], "what": what[:600],
                                    "state": "open", "opened": _now().isoformat(timespec="seconds"), "thread": None})
             save(d)

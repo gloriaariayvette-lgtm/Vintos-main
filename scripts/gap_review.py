@@ -19,6 +19,10 @@ for p in (HERE, os.path.join(WS, "scripts"), os.path.join(WS, "bin"), os.path.jo
 import gap_scan
 
 TOP = 8
+# Sources that are faults: the fault sweep posts them and the nightly loop fixes them from evidence. Made into Forge
+# cards, they went to the Study as "lab_fault x480" with no evidence of being current, and the Study spent Opus calls
+# declining them (19-20 October: SF-6e714c7e, SF-d114ac81). A device or access gap is still a card.
+FAULT_SOURCES = {"lab_fault", "self_review_fault", "barrier_error", "service_failed", "error_log"}
 REACH = ("code_change", "device", "access", "not_a_gap")
 # Which organ writes each source, so the review can name files without reading the codebase.
 WRITERS = {"action_blocked": ["bin/wants-router.py"], "device_refused": ["bin/device_patterns.py"],
@@ -78,6 +82,9 @@ def review(ask=_ask, now=None):
             if p["reachable_by"] == "not_a_gap": continue
             try: g = gaps[int(p.get("n", 0)) - 1]
             except (ValueError, IndexError): continue
+            if p["reachable_by"] == "code_change" and g.get("source") in FAULT_SOURCES:
+                p["handed_to"] = "the fault loop (docs/fault-loop.md), not a Forge card"
+                continue
             row, why = sf.propose_from_gap_review(
                 p.get("capability"), p.get("why"), ["%s x%d: %s" % (g["source"], g["count"], g["example"])],
                 path=p.get("path", ""), touches=p.get("files") if isinstance(p.get("files"), list) else [],

@@ -60,6 +60,10 @@ def plugin_query(plugin, tool, arguments, purpose):
 def sync(inventory=None):
     import skill_forge as sf
     from forge_build import artifact_valid
+    try:   # the cards Claude Code decided for Gloria (2026-10-21), closed on the first pass that sees them waiting
+        sf.apply_decided_for_gloria()
+    except Exception as exc:
+        print('forge decisions held: %s' % type(exc).__name__, flush=True)
     wants = json.loads((Path(sf.MEMORY)/'current-wants.json').read_text())
     if not isinstance(wants, list): raise ValueError('wants store is not a list')
     by_id = {w['id']: w for w in wants if isinstance(w, dict) and w.get('id')}
