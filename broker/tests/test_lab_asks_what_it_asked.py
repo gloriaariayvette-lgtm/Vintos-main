@@ -10,6 +10,7 @@ document the question.
 Scratch HOME; the source client and both model calls are stubs; nothing here reaches the network.
 """
 import re, contextlib, importlib.util, json, os, sys, tempfile, time, types
+os.environ["VINTOS_LAB_CAMPAIGNS"] = "0"   # this suite tests the ordinary loop; test_lab_campaign tests campaigns
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-lab-intent-")
