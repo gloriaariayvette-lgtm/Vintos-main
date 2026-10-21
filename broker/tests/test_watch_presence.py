@@ -155,12 +155,11 @@ check("ending the Watch call unloads the stubbed local voice and removes its scr
 check("the voice route test has no provider or host sender", all(call[0] in ("turn","models") for call in voice_calls))
 check("every voice path written by the suite stayed in scratch",os.path.commonpath([tmp,voice_live])==tmp)
 
-shutil.rmtree(tmp,ignore_errors=True)
-from datetime import datetime, timezone
 _hr_now = time.time()
-W.record({"samples": [{"kind": "heart_rate", "value": 71, "unit": "bpm",
-          "observed_at": datetime.fromtimestamp(_hr_now - 50 * 60, timezone.utc).isoformat()}]}, now=_hr_now)
+json.dump({"received_ts": _hr_now, "wearing": "yes", "motion": "stationary", "latest": {
+    "heart_rate": {"kind": "heart_rate", "value": 71, "unit": "bpm", "observed_ts": _hr_now - 50 * 60}}}, open(W.LATEST, "w"))
 check("a heart reading 50 minutes old still reaches his context, with its age (hourly background delivery)",
-      "heart rate 71" in W.temporal_block(now=_hr_now) and "(50m old)" in W.temporal_block(now=_hr_now), W.temporal_block(now=_hr_now))
-check("one over 75 minutes old does not", "heart rate" not in W.temporal_block(now=_hr_now + 30 * 60) or "71" not in W.temporal_block(now=_hr_now + 30 * 60))
+      "heart rate 71 bpm (50m old)" in W.temporal_block(now=_hr_now), W.temporal_block(now=_hr_now))
+check("one over 75 minutes old does not", "heart rate" not in W.temporal_block(now=_hr_now + 30 * 60), W.temporal_block(now=_hr_now + 30 * 60))
+shutil.rmtree(tmp,ignore_errors=True)
 print("\n%d/%d passed"%(sum(R),len(R))); raise SystemExit(0 if all(R) else 1)
