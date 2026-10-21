@@ -1186,7 +1186,6 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
 
 
 
-
 def _failed_request_evidence(exc, max_tokens):
     """A terminal diagnostic for a request the shim refused. The last provider tried is the one whose stop reason
     describes the reply; a reason it never gave stays null, and token_limit_reached is only ever read from a reason
