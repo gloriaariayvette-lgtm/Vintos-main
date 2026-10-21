@@ -131,7 +131,7 @@ def get_context():
         shares = json.load(open(os.path.join(MEMORY, "gloria-music-shares.json")))
         recent_shares = shares[-5:] if shares else []
         if recent_shares:
-            parts.append("MUSIC GLORIA HAS SHARED WITH ME:\n" + "\n".join(f"- {s.get('title','?')} by {s.get('artist','?')}" for s in recent_shares))
+            parts.append("MUSIC GLORIA HAS SHARED WITH ME:\n" + "\n".join(f"- {s.get('song') or '?'}" + (f": she said \"{str(s.get('gloria_said'))[:80]}\"" if s.get('gloria_said') else "") for s in recent_shares))   # a share keeps "song", not title/artist (2026-10-21)
     except: pass
     return "\n\n".join(parts)
 

@@ -4403,3 +4403,13 @@ as the lyrics. He answered honestly that the words came through as a refusal. No
 heard and is told the song may be original and unreleased; `lyrics_or_heard` keeps Whisper's text when the answer reads
 as a refusal or shares under half its words with what was heard. The YouTube caption tidy-up has the same guard.
 `test_music_lyrics_refusal.py` (7; the old code fails three). **Not done:** the bad share is cleaned on Aegis by hand.
+
+## 21 October — her own lyrics, and her shares in his taste
+
+- She can give the words: `/api/music/share` and `/api/music/share/audio` take `lyrics`; `music-share.py --lyrics`
+  now works with `--audio` too. Her words are the lyrics (source "gloria"); Whisper is skipped; librosa still measures.
+- Shares never moved his taste. Each share now enters through `enjoyment.admit` once, medium music: her love of it as
+  her reception (evidence: her words), his delight not assumed.
+- `taste-reflection.py` listed her shares as "? by ?" (it read title/artist; a share keeps "song"). Fixed.
+- `test_music_share_lyrics_taste.py` (10). **Not done:** the app has no lyrics box yet (text for Chat given).
+  Whether librosa ran on the 20th's re-share is to be read in `~/.vintos/logs/music-share.log`.

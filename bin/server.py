@@ -8266,6 +8266,15 @@ from pydantic import BaseModel as _MSBase
 class MusicShareRequest(_MSBase):
     song: str
     note: str
+    lyrics: str = ""      # her own copy of the words, when she has them (2026-10-21)
+
+
+def _lyrics_file(text):
+    """Her lyrics as a file for music-share.py --lyrics, or None."""
+    if not str(text or "").strip(): return None
+    import tempfile as _lt
+    f = _lt.NamedTemporaryFile("w", delete=False, suffix=".txt"); f.write(str(text)[:6000]); f.close()
+    return f.name
 
 def _music_share_log(song, result):
     """The share script's own lines (whisper, librosa, lyrics source) were captured and thrown away, so a failed
@@ -8284,12 +8293,14 @@ async def music_share(req: MusicShareRequest):
     """Gloria shares a song with Vintos. Returns her reflection."""
     import subprocess
     try:
+        _lf = _lyrics_file(req.lyrics)
         result = subprocess.run(
             ["python3", os.path.join(WORKSPACE, "scripts", "music-share.py"),
-             req.song, req.note],
+             req.song, req.note] + (["--lyrics", _lf] if _lf else []),
             capture_output=True, text=True, timeout=120,
         )
         _music_share_log(req.song, result)
+        if _lf: os.unlink(_lf)
         # Load the share that was just saved
         shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
         with open(shares_path) as f:
@@ -8311,7 +8322,8 @@ async def music_share_audio(
     request: Request,
     song: str = Form(...),
     note: str = Form(...),
-    audio: UploadFile = File(...)
+    audio: UploadFile = File(...),
+    lyrics: str = Form("")
 ):
     """Gloria shares a song with audio file — Whisper transcribes, librosa analyzes."""
     import subprocess, tempfile, shutil
@@ -8324,13 +8336,15 @@ async def music_share_audio(
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         shutil.copyfileobj(audio.file, tmp)
         tmp.close()
+        _lf = _lyrics_file(lyrics)
         result = subprocess.run(
             ["python3", os.path.join(WORKSPACE, "scripts", "music-share.py"),
-             song, note, "--audio", tmp.name],
+             song, note, "--audio", tmp.name] + (["--lyrics", _lf] if _lf else []),
             capture_output=True, text=True, timeout=900,   # a CPU transcription of a whole song needs minutes
         )
         _music_share_log(song, result)
         os.unlink(tmp.name)
+        if _lf: os.unlink(_lf)
         shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
         with open(shares_path) as f:
             shares = json.load(f)
