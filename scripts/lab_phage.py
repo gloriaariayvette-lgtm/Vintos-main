@@ -144,6 +144,10 @@ def screen(sources, spec, hmm=None):
         "cas_genes": cas[:8],
         "neighbors": [{k: g[k] for k in ("protein_id", "product", "start", "end", "strand")} for g in genes][:MAX_GENES],
         "domain_scan": hmm_state,
+        # every neighbour's Pfam families, not only its Cas ones: what sits beside the protein is the finding
+        "neighbor_families": {(g["protein_id"] or "%d-%d" % (g["start"], g["end"])):
+                              sorted({d["family"] for d in domains.get(g["protein_id"] or "%d-%d" % (g["start"], g["end"]), [])})
+                              for g in genes if domains.get(g["protein_id"] or "%d-%d" % (g["start"], g["end"]))},
         "array_associated": bool(arrays), "cas_associated": bool(cas),
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "truth_status": "computational_screen_not_function_acquisition_or_novelty",

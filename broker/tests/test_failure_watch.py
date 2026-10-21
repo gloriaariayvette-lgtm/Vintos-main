@@ -63,7 +63,7 @@ check("a broken log line is skipped, never the whole log", any(w == "a visit mad
 # the parts that write here
 D_src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("Slack: a lens that could not answer is kept", 'failure_watch.note("slack", "%s could not answer"' in D_src
-      and D_src.count("return None, _lens_failed(who, exc)") == 2)
+      and D_src.count("return None, _lens_failed(who, exc, ") == 2)   # with the call's stage and sizes (F-55bab2e222)
 A_src = open(os.path.join(REPO, "scripts", "atelier-visit.py")).read()
 check("Atelier: a visit that made nothing, media that did not arrive or was not kept, a song not listened to",
       all(x in A_src for x in ('_failed("a visit made nothing")', '_failed("a %s he asked for did not arrive"',

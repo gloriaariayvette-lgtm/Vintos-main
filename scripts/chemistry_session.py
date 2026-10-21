@@ -55,6 +55,9 @@ HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
 DIVERGENCE_ENABLED = "divergence_enabled"
 
 
+
+MAC_AWAY_PROTEIN = True   # with the Mac offline, the session still offers "protein" (ESMFold on Aegis)
+
 def frontier_log(limit=8):
     """The one log every frontier model shares: the four daily alignment reviews and the daily experiment
     sessions, oldest first (chemistry_alignment.shared_log). Gemma's notebook is not in it."""
@@ -625,6 +628,11 @@ def run():
         try: probe.record_host_report(remote)
         except Exception as exc: lab._fault("host_report", exc)
         experiments = remote.get("experiments") if remote.get("ok") else None
+        if not isinstance(experiments, list) or not experiments:
+            # ESMFold runs here on Aegis, not on the Mac: a sourced protein can still be folded while the Mac is away
+            # (22 October: the whole session stopped on "held_mac_unavailable", so he rarely had a model, and the
+            # instruments that read and compare models - fold_read, reference_compare - had nothing to work on).
+            experiments = ["protein"] if MAC_AWAY_PROTEIN else None
         if not isinstance(experiments, list) or not experiments:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_mac_unavailable",
                    "owed_reading": settled.get("outcome"),

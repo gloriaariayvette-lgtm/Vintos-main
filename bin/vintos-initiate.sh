@@ -466,7 +466,19 @@ data = {'timestamp': '$(date -Iseconds)', 'trigger': '$TRIGGER', 'message': sys.
 print(json.dumps(data))
 " "$RESPONSE" > "$MEMORY/.pending-outreach.json"
 
-curl -s --max-time 10 -H "Title: Vintos" -H "Tags: sparkles" -d "$RESPONSE" ntfy.sh/vintos-gloria-9kx > /dev/null 2>&1
+# Through deliver.py, the sender every notification that reaches her uses: HTTPS, retries, a receipt per send.
+# A bare curl to ntfy.sh/... (no scheme, output thrown away) reached ntfy's server but never her phone: on
+# 21 October both outreach messages (09:16, 12:16) were on the topic and absent from her app, while every
+# deliver.py notification that day arrived.
+RESPONSE="$RESPONSE" OUTREACH_ID="outreach-$TIMESTAMP" python3 - <<'NTFYEOF' || curl -s --max-time 10 -H "Title: Vintos" -H "Tags: sparkles" -d "$RESPONSE" https://ntfy.sh/vintos-gloria-9kx > /dev/null 2>&1
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+import deliver
+r = deliver.deliver(os.environ["OUTREACH_ID"], "ntfy", os.environ["RESPONSE"], title="Vintos", tags="sparkles",
+                    authority=lambda: (True, "his outreach: she receives these by ntfy"))
+print("[Outreach] ntfy:", (r or {}).get("state"), (r or {}).get("why") or "")
+sys.exit(0 if (r or {}).get("state") == "sent" else 1)
+NTFYEOF
 # Record the reach. What becomes of it is a separate fact from the fact he made it.
 SPARK_WORKSPACE="$HOME/.vintos/workspace" python3 "$HOME/.vintos/workspace/scripts/encounter.py" \
     dispatch "$RESPONSE" "${trigger:-initiate}" >> /tmp/encounter.log 2>&1 || true

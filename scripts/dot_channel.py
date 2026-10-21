@@ -2494,13 +2494,38 @@ def _conversation(rows):
                                      " (in a thread)" if r.get("thread") else "", r["text"][:1500]) for r in rows)
 
 
-def _lens_failed(who, exc):
+_OVERFLOW = re.compile(r"request \((\d{1,9}) tokens\) exceeds the available context size \((\d{1,9}) tokens\)")
+_STATUS = re.compile(r"\b(?:HTTP(?: Error)?|status|code)\D{0,3}([1-5]\d\d)\b")
+
+
+def _diagnosis(exc):
+    """What went wrong in allowlisted words only. The exception's own text can carry what a provider sent back, so
+    none of it is copied: the LM Studio overflow's two numbers, else an HTTP status, else the exception's class."""
+    text = str(exc)
+    m = _OVERFLOW.search(text)
+    if m:
+        return "context overflow: requested %d tokens, window %d tokens" % (int(m.group(1)), int(m.group(2)))
+    m = _STATUS.search(text)
+    return "%s, HTTP %s" % (type(exc).__name__, m.group(1)) if m else type(exc).__name__
+
+
+def _lens_failed(who, exc, stage=None, sizes=()):
     """A lens that could not answer, said in the pass log and kept for the daily failure check (2026-10-02: Sol
-    failed every turn for a day and nobody saw it, because Gemma answered in its place)."""
-    said = "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
+    failed every turn for a day and nobody saw it, because Gemma answered in its place).
+
+    With `stage`, which of compose's writing calls failed and how big its arguments were go first in the reason, in
+    characters (F-55bab2e222, 19 October: Gemma's 32k window overflowed 27 times and nothing said which call). The
+    failure's `what` stays the same, so the daily check and the fault sweep still group it; the numbers in the reason
+    are normalized away by the sweep, so one stage keeps one fault ID whatever the sizes."""
+    label = LABELS.get(who, who)
+    if stage is None:
+        said, why = "%s could not answer: %s" % (label, str(exc)[:120]), str(exc)[:300]
+    else:
+        why = "stage=%s %s chars; %s" % (stage, " ".join("%s=%d" % kv for kv in sizes), _diagnosis(exc))
+        said = "%s could not answer: %s" % (label, why)
     try:
         import failure_watch
-        failure_watch.note("slack", "%s could not answer" % LABELS.get(who, who), str(exc)[:300])
+        failure_watch.note("slack", "%s could not answer" % label, why)
     except Exception:
         pass
     return said
@@ -2542,17 +2567,20 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         try:
             out = (write(system, user) or "").strip()
         except Exception as exc:
-            return None, _lens_failed(who, exc)
+            return None, _lens_failed(who, exc, "lookup" if _round else "draft",
+                                      (("system", len(str(system))), ("user", len(str(user))), ("looked", len(looked))))
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
         if not asks or looked and _round:
             break
         looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room, hold=lambda q: _settled_why(state, q))
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
+        user = prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain
         try:
-            out = (write(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain) or "").strip()
+            out = (write(system, user) or "").strip()
         except Exception as exc:
-            return None, _lens_failed(who, exc)
+            return None, _lens_failed(who, exc, "final",
+                                      (("system", len(str(system))), ("user", len(str(user))), ("looked", len(looked))))
     if any(TOOL.match(l) for l in out.splitlines()):
         out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):

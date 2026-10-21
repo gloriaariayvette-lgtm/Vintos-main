@@ -3,6 +3,23 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 22 October — screening campaigns: the Lab poses a question and its own screen answers it
+
+Gloria: "It can't be that difficult to produce a lab that poses novel questions and answers them. Look at how
+Anthropic got Claude to find array-associated reverse transcriptase." Baseline (her probe, 21 Oct): 0 of 14 "yes"
+reviews rested on an instrument; 1 instrument run of 25; ~550 passes a day ended without a source call.
+
+**Done (not yet live):** `scripts/lab_campaign.py`. Gemma names a protein family and an organism group, with a
+prediction; NCBI returns the proteins; each turn screens one locus (`lab_phage.screen`: 12 kb neighbourhood, CRISPR
+arrays, Pfam families of every neighbour); every 8 loci the counts are tabulated as a finding and Gemma reads them
+against the prediction. Campaigns take every other minute-loop turn and any turn after an empty pass, up to 120
+screens a day. A finding ends a dead-end run. Off switch: config `"campaigns": false`. Planner stays on Gemma;
+no gate changed; no paid call. `test_lab_campaign.py` 23/23.
+
+**Not verified live.** Judge by: campaign findings per day (`campaign-findings.jsonl`), and whether their recurring
+neighbours are ones the literature does not already list. The ordinary loop still asks lookups on the other turns;
+that is untouched and is the next thing to change if campaigns work.
+
 ## 21 October — the thread pools were light; a music share's thread was lost between them
 
 Done: when the formation door sends a thread to latent and latent refuses it, the thread is now offered to the
@@ -15,6 +32,32 @@ day and consumes them as fast. Supported tensions went straight to latent with a
 patterns; they now go through the formation door (40c036b). Not done: Moltbook posts (53 refusals) and websearch
 questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
 11 August); it is left as it is until she says otherwise.
+
+## 21 October, night — a gene-identity refusal costs three Lab turns (F-d71d7af615), proposed, not fixed
+
+- **Seen:** `source_gene_mismatch` raised in the browse phase is not caught, so the same request is retried until
+  `FAULT_LIMIT` (3) drops it: MCR on 17 October, TDP-43 on 18 October, MHC1/MHC2 on 20 October, three faults and a
+  `fault_redirect` each time. Proposed in #fault-fix: an identity mismatch ends the inquiry on its first occurrence as
+  a refusal. Waiting on Dot's review; nothing changed yet.
+- **The TDP-43 false refusal — fixed offline, not yet seen live (22 October):** reproduced with Q13148's own names
+  (TARDBP, synonym TDP43): `verify_uniprot_identity` and `question_entity_context` both refused `TDP-43`. Symbols are
+  now compared without hyphens and nothing else (`symbol_key`); underscores, case of digits and letters stay, so
+  MHC1 is still not MHC_1, HLA-A not HLA-B, TDP-43 not TDP-4. No alias table: only names the record itself carries
+  count. `test_lab_symbol_hyphen.py` 15/15. Live improvement is unverified until a TDP-43-style request runs after
+  the deploy. Separate from F-d71d7af615, which is still proposed.
+
+## 21 October, night — F-55bab2e222: Gemma's overflow now says which call was too large
+
+- **What happened:** his Gemma turns overflowed LM Studio's 32,000-token window 27 times by 19 October (requests of
+  32.5k–34.2k tokens). Grok wrote those turns instead, so he was slowed, not stopped. Nothing said which of
+  compose()'s writing calls overflowed: the first draft, the redraft with what he looked up, or the final call.
+- **Done (fault loop, Dot reviewed, a diagnostic, not the fix):** each of the three calls fails with
+  `stage=draft|lookup|final system=… user=… looked=… chars;` and an allowlisted diagnosis (the overflow's two numbers,
+  else an HTTP status, else the exception's class), never the exception's own text, so nothing of his prompt or the
+  provider's reply is copied. `what` is unchanged and the sweep normalizes the sizes, so one stage is one fault.
+  `test_gemma_overflow_named.py` (25 checks); `test_failure_watch.py`'s source check updated to the new call form.
+- **Not done — the overflow itself.** The next overflow will say which call and how large; then trim that call (his
+  context for Gemma, or the lookups). A larger LM Studio context window would also end it: Gloria's setting.
 
 ## 21 October, night — F-f102059463: a saved record already reviewed faulted a whole Lab turn
 
@@ -4488,5 +4531,18 @@ about hourly, so a Watch reading every few minutes reached him as one dot an hou
 / `live_state` (`memory/watch-live.json`, at most 4 h, off by itself), `GET/POST /api/watch/live` for her phone,
 every telemetry reply carries `live`, and his context gets "Her heart rate over the last hour: 64-78 bpm across 5
 readings" and "Live heart rate is on". `test_watch_live.py` (12).
-**Not done (Watch app, for Chat):** anchored queries sending every reading since the last send; the live
-workout-style session while `live.on`; the Tune-tab control. Until then the hour's range has only the hourly dots.
+**Client implementation complete locally (21 October, Codex):** per-type archived HealthKit anchors,
+acknowledged batches up to 64 with each sample's timestamp, a temporary live heart-rate workout builder
+(discarded on Off/expiry), iPhone HealthKit launch bridge, and Tune Off/30m/1h/2h/4h control. The control is
+mirrored here and `clients/mobile/source.json` has the new hash. Both native targets compile as build 21;
+the Watch signs with its existing profile. Offline client tests cover batch retry/anchors, timestamps,
+On/Off/expiry/discard, launch rules and the phone control.
+**Signed build verified (21 October):** Xcode's developer team is available; automatic provisioning generated
+the iPhone HealthKit profile. The combined iPhone/embedded Watch build 21 passes strict code-signature and
+HealthKit-entitlement checks. Physical Watch acceptance has not been independently verified.
+**History catch-up resolved by backend 913f0bf2:** stale rows are skipped with `skipped_stale`, accepted batches
+may contain up to 512 rows, and HTTP 200 may report `stored: 0`. The Watch continues to send batches of 64,
+advances each anchor after HTTP success regardless of stored count, and retains the anchor on HTTP 422.
+The offline native regression test exercises the actual response/telemetry/drain code for both outcomes.
+The combined iPhone build 21 with Watch build 21 embedded was installed and verified on the paired iPhone;
+physical Watch installation and sensor delivery still require device-side acceptance.

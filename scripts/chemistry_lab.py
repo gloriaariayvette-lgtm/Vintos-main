@@ -561,6 +561,7 @@ def dead_ends(rows=None):
     asked = []
     for row in reversed(rows):
         if row.get("kind") in ("reflection", "genome_reflection") and review_answered(row): break
+        if row.get("kind") == "campaign_finding": break     # a screen's finding is an answer
         if row.get("kind") in ("inquiry", "inquiry_refused"):
             inquiry = row.get("inquiry")
             if isinstance(inquiry, dict):
@@ -1903,7 +1904,8 @@ def _orient(context, lean=None):
         "records name may not exist. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
+        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, instrument_query (null, or ONE run of an instrument listed above on a file "
+        "the Lab already holds; its output is the answer), "
         "material_terms (2 to 5 plain keywords a literature search needs: the protein or gene, the organism, the property "
         "you are asking about — the Lab fetches published abstracts on them for you to read). "
         "Wherever a source below takes taxon_id, organism:\"plain organism name\" may be written instead; the Lab looks the ID up. "
@@ -4809,6 +4811,32 @@ def set_evo2_enabled(enabled):
     return status()
 
 
+def _campaign_due(state, cfg):
+    """A screening campaign takes every other turn, and any turn after a pass that ended without a source call
+    (Gloria, 22 October: a Lab that poses novel questions and answers them; lab_campaign)."""
+    if not cfg.get("campaigns", True) or os.environ.get("VINTOS_LAB_CAMPAIGNS") == "0": return False
+    last = next((r for r in reversed(_tail_jsonl(NOTEBOOK, nbytes=64 * 1024)) if r.get("kind") != "control"), {})
+    if last.get("kind") in ("inquiry_refused", "evidence_wait"): return True
+    return int(state.get("turns", 0)) % 2 == 0
+
+
+def _campaign_turn(state):
+    """One campaign step as a whole turn; None hands the turn back to the ordinary loop."""
+    try:
+        import lab_campaign
+        from lab_sources import Sources
+        out = lab_campaign.step(Sources(), lambda system, prompt: _ask(system, prompt, max_tokens=400, temperature=0.4))
+    except Exception as exc:
+        _fault("campaign", exc)
+        return None
+    if out.get("kind") in ("campaign_rest", "campaign_none"):
+        return None
+    state.update(phase="orient", last_turn_at=now_iso(), last_outcome=out.get("kind"), effective_state="waiting",
+                 turns=int(state.get("turns", 0)) + 1, fault_streak=0, fault_phase=None)
+    _atomic(STATE, state)
+    return {"ok": True, "state": "completed", "kind": out.get("kind"), "campaign": out, "next_phase": "orient"}
+
+
 def tick():
     """Run one short, checkpointed turn. A foreground arrival prevents the next turn, never erases this one."""
     cfg = config()
@@ -4853,6 +4881,9 @@ def tick():
                                      fault_streak=0, fault_phase=None)
                         _atomic(STATE, state)
                         return {"ok":True, "state":"completed", "kind":handback["kind"], "next_phase":"orient"}
+            if state.get("phase", "orient") == "orient" and _campaign_due(state, cfg):
+                done = _campaign_turn(state)
+                if done: return done
             context, receipt = lab_context()
             phase = state.get("phase", "orient")
             _inquiry_before = dict(state.get("inquiry") or {})

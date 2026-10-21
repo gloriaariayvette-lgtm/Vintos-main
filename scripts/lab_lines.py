@@ -496,6 +496,13 @@ def tests_block(limit=10, budget=1400, notebook=True):
             text += "\n" + cov
     except Exception:
         pass
+    try:
+        import lab_campaign
+        found = lab_campaign.findings_block(4)
+        if found:
+            text += "\n" + found
+    except Exception:
+        pass
     return text[:budget] if rows else ""
 
 
