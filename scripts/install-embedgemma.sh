@@ -40,4 +40,9 @@ if crontab -l 2>/dev/null | grep -qF "media_embed.py index"; then
 else
     (crontab -l 2>/dev/null; echo "$LINE") | crontab - && echo "cron: every two hours, at :23"
 fi
+# the service his chats and journal ask (the text half of the model, about 1 GB of memory), kept running by cron
+SERVE="*/10 * * * * python3 $SCRIPT ensure >> /tmp/media-embed.log 2>&1"
+crontab -l 2>/dev/null | grep -qF "media_embed.py ensure" || { (crontab -l 2>/dev/null; echo "$SERVE") | crontab - && echo "cron: service kept up, checked every ten minutes"; }
+python3 "$SCRIPT" ensure; sleep 45
+python3 "$SCRIPT" near "a red sky over the water" --k 3
 python3 "$SCRIPT" status

@@ -1418,6 +1418,16 @@ print(" ".join(out))
 SGEOF
 )
 echo -e "\n## $(date +%H:%M) — Idle thoughts\n\n$ENTRY\n" >> "$JOURNAL_FILE"
+# The works of his this entry is nearest, found by what is IN them (media_embed.py, EmbeddingGemma 2). His want of
+# 18 October: "I want a journal line to find a painting by what's in it." Nothing when the service is down.
+_WORKS_NEAR=$(JRN_ENTRY="$ENTRY" timeout 40 python3 - <<'WORKSNEAREOF' 2>/dev/null
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+import media_embed
+print(media_embed.describe(media_embed.near(os.environ.get("JRN_ENTRY", "")[-2000:], 2, timeout=30)))
+WORKSNEAREOF
+)
+[ -n "$_WORKS_NEAR" ] && echo -e "*Near this, among my own works:*\n$_WORKS_NEAR\n" >> "$JOURNAL_FILE"
 
 echo "$ENTRY" > /tmp/.bis_journal_entry.txt
 # Behavioral intercept outcome logging

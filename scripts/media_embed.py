@@ -19,8 +19,12 @@ until the PDF reader landed; it has. Gloria, 22 October: EmbeddingGemma 2 is add
     <venv>/bin/python3 media_embed.py index [--limit N]   embed what is new (default 40 a run)
     <venv>/bin/python3 media_embed.py search "a line"     the nearest works, as JSON
     python3 media_embed.py status                          what is indexed, by kind (any python)
+    <venv>/bin/python3 media_embed.py serve                a local service holding the text half of the model
+    python3 media_embed.py ensure                          start that service if it is not answering (cron)
+    python3 media_embed.py near "a line"                   the block his chats and journal are given
 
-nearest(text, k) works from any python: it runs the venv for the query.
+His chats and his journal ask the service (127.0.0.1:8627), never load the model themselves: a chat reply cannot wait
+for 1.5 GB to load. If the service is down they go on without it.
 """
 import hashlib, json, os, subprocess, sys, tempfile, time
 
@@ -36,6 +40,8 @@ KINDS = {"image": (".png", ".jpg", ".jpeg", ".webp"), "video": (".mp4", ".mov", 
 EXCERPTS = (0.2, 0.5, 0.8)
 EXCERPT_S = 10
 QUERY = "task: search result | query: %s"
+PORT = 8627
+NEAR_TIMEOUT = 1.5      # a chat waits this long at most, then goes on without his works
 
 
 def log(m):
@@ -179,9 +185,21 @@ def index(limit=40, encode=None, now=None):
     return lines
 
 
+_CACHE = {"mtime": None, "rows": []}
+
+
+def _rows():
+    """The store, read again only when it changed (the service answers many queries between index runs)."""
+    try: mtime = os.path.getmtime(STORE)
+    except OSError: return []
+    if _CACHE["mtime"] != mtime:
+        _CACHE.update(mtime=mtime, rows=[r for r in load() if r.get("model") == MODEL])
+    return [r for r in _CACHE["rows"] if os.path.exists(r.get("path", ""))]
+
+
 def search(text, k=5, encode=None):
     """The works nearest a line of text: [{path, kind, title, score}], best first. Only works still on disk."""
-    rows = [r for r in load() if r.get("model") == MODEL and os.path.exists(r.get("path", ""))]
+    rows = _rows()
     if not rows or not str(text).strip():
         return []
     encode = encode or model_encoder()
@@ -192,6 +210,97 @@ def search(text, k=5, encode=None):
     scored = [(sum(a * b for a, b in zip(q, r["vec"])), r) for r in latest.values()]
     scored.sort(key=lambda x: -x[0])
     return [{"path": r["path"], "kind": r["kind"], "title": r.get("title", ""), "score": round(s, 4)} for s, r in scored[:k]]
+
+
+def text_encoder():
+    """The text half alone (270M of the 740M): a query is text, and text lands in the same space as the works."""
+    import torch
+    from sentence_transformers import SentenceTransformer
+    torch.set_num_threads(2)
+    m = SentenceTransformer(MODEL, model_kwargs={"torch_dtype": torch.float32},
+                            config_kwargs={"vision_config": None, "audio_config": None})
+    return lambda item: [float(x) for x in m.encode(item, normalize_embeddings=True)]
+
+
+def serve(encode=None, port=PORT):
+    """GET /near?q=...&k=3 -> the nearest works as JSON; GET /health -> ok. Localhost only."""
+    import urllib.parse
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    encode = encode or text_encoder()
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
+            if u.path == "/health":
+                body = b"ok"
+            elif u.path == "/near":
+                try: k = max(1, min(10, int((q.get("k") or ["3"])[0])))
+                except ValueError: k = 3
+                body = json.dumps(search((q.get("q") or [""])[0][:2000], k, encode=encode)).encode()
+            else:
+                self.send_response(404); self.end_headers(); return
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
+            self.wfile.write(body)
+    log("serving on 127.0.0.1:%d" % port)
+    ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+
+
+def near(text, k=3, timeout=NEAR_TIMEOUT):
+    """The service's answer, from any python, standard library only. [] when it is down, slow or has nothing."""
+    import urllib.parse, urllib.request
+    if not str(text or "").strip():
+        return []
+    try:
+        url = "http://127.0.0.1:%d/near?%s" % (PORT, urllib.parse.urlencode({"q": str(text)[:2000], "k": k}))
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            out = json.loads(r.read().decode())
+        return out if isinstance(out, list) else []
+    except Exception:
+        return []
+
+
+def ensure():
+    """Start the service if it is not answering. Returns what it did."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/health" % PORT, timeout=2) as r:
+            if r.read() == b"ok":
+                return "running"
+    except Exception:
+        pass
+    if not os.path.exists(VENV_PY):
+        return "no venv: run install-embedgemma.sh"
+    subprocess.Popen(["nice", "-n", "10", VENV_PY, os.path.abspath(__file__), "serve"], start_new_session=True,
+                     stdout=open("/tmp/media-embed-serve.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    return "started"
+
+
+def _when(path):
+    import re
+    m = re.search(r"(20\d\d)(\d\d)(\d\d)", os.path.basename(path))
+    if m:
+        return "%s-%s-%s" % m.groups()
+    try: return time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(path)))
+    except OSError: return ""
+
+
+def describe(hits):
+    """One line per work, in his words for it: what kind, what it is called, when, and where it is."""
+    words = {"image": "painting", "video": "video", "audio": "song"}
+    out = []
+    for h in hits:
+        name = h.get("title") or os.path.splitext(os.path.basename(h["path"]))[0].replace("_", " ")
+        out.append("- your %s \"%s\" (%s)" % (words.get(h.get("kind"), "work"), name[:120], _when(h["path"])))
+    return "\n".join(out)
+
+
+def block(text, k=2):
+    """For a chat prompt: the works of his nearest what she just said, or '' (service down, nothing indexed)."""
+    hits = near(text, k)
+    if not hits:
+        return ""
+    return ("Your own works nearest what she just said - found by what is IN them (what the painting shows, what the "
+            "song sounds like), not by the prompt that made them. Yours to bring up only if one truly fits:\n" + describe(hits))
 
 
 def nearest(text, k=5, timeout=180):
@@ -221,6 +330,13 @@ if __name__ == "__main__":
         lim = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else 40
         for line in index(lim):
             log(line)
+    elif cmd == "serve":
+        serve()
+    elif cmd == "ensure":
+        log(ensure())
+    elif cmd == "near":
+        print(describe(near(sys.argv[2], int(sys.argv[sys.argv.index("--k") + 1]) if "--k" in sys.argv else 2,
+                            timeout=30)))
     elif cmd == "search":
         k = int(sys.argv[sys.argv.index("--k") + 1]) if "--k" in sys.argv else 5
         print(json.dumps(search(sys.argv[2], k)))

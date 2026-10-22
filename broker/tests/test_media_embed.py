@@ -8,6 +8,7 @@ HOME = tempfile.mkdtemp(prefix="media-embed-"); os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); os.environ["SPARK_WORKSPACE"] = WS
 NET = []
 def _no(self, *a, **k): NET.append(a); raise OSError("this suite reaches nothing")
+_ORIG_CONNECT = socket.socket.connect
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import media_embed as M
@@ -54,6 +55,30 @@ os.remove(sea)
 check("a removed work is never found", all(h["path"] != sea for h in M.search("sky", k=5, encode=encode)))
 check("nomic's store is untouched", open(nomic).read() == "nomic row\n")
 check("with no venv, nearest() is empty, not an error", M.nearest("anything") == [] or os.path.exists(M.VENV_PY))
+# the service his chats and journal ask: a real localhost server on a free port, the model a stub
+import threading, time as _t
+def _local_only(self, addr, *a, **k):     # localhost for this service, nothing else
+    if isinstance(addr, tuple) and addr[0] == "127.0.0.1":
+        return _ORIG_CONNECT(self, addr, *a, **k)
+    NET.append(addr); raise OSError("this suite reaches nothing")
+socket.socket.connect = _local_only
+probe = socket.socket(); probe.bind(("127.0.0.1", 0)); port = probe.getsockname()[1]; probe.close()
+M.PORT = port
+threading.Thread(target=M.serve, kwargs={"encode": encode, "port": port}, daemon=True).start()
+_t.sleep(0.5)
+hits = M.near("the piano again", 2)
+check("the service answers a line with his nearest works", hits and hits[0]["path"] == song, hits)
+blk = M.block("the piano again")
+check("the chat block names the work in his words, kind and date, and says it is his to bring up only if it fits",
+      'your song "song"' in blk and "only if one truly fits" in blk and "found by what is IN them" in blk, blk)
+M.PORT = port + 1 if port < 65535 else port - 1
+check("with the service down, the chat goes on without it", M.block("anything") == "" and M.near("anything") == [])
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+_av = srv.index("{_works_near(msg)}", srv.index("async def avatar_chat"))
+check("all four chat prompts carry it; in the avatar chat after the cache split, so the cached start is unchanged",
+      srv.count("{_works_near(msg)}") == 4 and srv.rindex("[[CACHESPLIT]]", 0, _av) > srv.index("async def avatar_chat"))
+jr = open(os.path.join(REPO, "scripts", "idle-journal.sh")).read()
+check("his journal entry is followed by the works it is nearest", "media_embed.near(" in jr and "Near this, among my own works" in jr)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

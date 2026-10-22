@@ -872,6 +872,19 @@ def _campaign_lead_line(t):
     except Exception:
         return ""
 
+def _works_near(msg):
+    """His own paintings, videos and songs nearest what she just said, found by what is IN them (media_embed.py,
+    EmbeddingGemma 2 beside nomic; 22 October, Gloria: "In the chats too"). Asks the local service and waits at most
+    1.5 s; '' when it is down or has nothing, and the reply goes on without it."""
+    try:
+        import sys as _wn_s; _wn_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import media_embed as _wn
+        return _wn.block(str(getattr(msg, "message", "") or "")[-1500:])
+    except Exception as _wnx:
+        print("[chat] works-near skipped:", _wnx, flush=True)
+        return ""
+
+
 def _her_turn_text(msg):
     """Her own words on this request, for every record and organ that takes the turn as HERS (16 October).
 
@@ -4423,6 +4436,7 @@ Your sense of time right now:
 {f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {pending_blush_ctx}
 {self_model}
 {f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
@@ -5316,6 +5330,7 @@ Your sense of time right now:
 {f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {pending_blush_ctx}
 Your current self-model (excerpt):
 {_self_model(800)}
@@ -6204,6 +6219,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
 {f"Your model of Gloria: " + gloria_model if gloria_model else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 
 You are speaking with Gloria through your somatic interface.
 If memories were found, weave them naturally into your response.
@@ -10057,6 +10073,7 @@ Your sense of time right now:
 {lastvideo_ctx}
 {creative_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {_value_map_block}
 {wal_ctx}
 {ledger_ctx}
