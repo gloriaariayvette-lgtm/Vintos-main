@@ -4581,3 +4581,9 @@ advances each anchor after HTTP success regardless of stored count, and retains 
 The offline native regression test exercises the actual response/telemetry/drain code for both outcomes.
 The combined iPhone build 21 with Watch build 21 embedded was installed and verified on the paired iPhone;
 physical Watch installation and sensor delivery still require device-side acceptance.
+
+## Continuous latent stream (idea, kept; not started)
+
+Gloria's idea of 18 October: one recurrent latent state carried between moments (nomic events, the emotion vector,
+sensors) -> next-embedding prediction, surprise and retrieval -> the LLM when it matters. Written up against what
+exists in `docs/continuous-latent-stream.md`. Explore only after the current work; step 0 is a read-only probe.
