@@ -505,8 +505,36 @@ def _budget_spent(investigation):
     return ''
 
 
+MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the investigation is closed, not retried
+_CURRENT = {}
+
+
 def turn(context, *, ask=None, execute=None):
-    """Advance one investigation. Called once by the ordinary admitted Lab turn."""
+    """Advance one investigation. Called once by the ordinary admitted Lab turn.
+
+    A turn that fails before it makes a step (the planner's reply unreadable, a finish that cannot be reviewed) is
+    still a fault of this turn, and it counts against the investigation: three in a row close it. The step limits alone
+    never saw such turns, and on 21 October one open investigation failed 365 turns in a row, the Lab doing nothing
+    from 17:36 until she noticed."""
+    _CURRENT.clear()
+    try:
+        return _turn(context, ask=ask, execute=execute)
+    except Exception as exc:
+        iid = _CURRENT.get('id')
+        if iid:
+            data = lab._load(_path('investigations.json'), {'investigations': []})
+            inv = next((i for i in data['investigations'] if i.get('id') == iid and i.get('state') == 'open'), None)
+            if inv is not None:
+                inv['planning_failures'] = int(inv.get('planning_failures', 0)) + 1
+                inv['last_planning_error'] = ('%s: %s' % (type(exc).__name__, exc))[:300]
+                if inv['planning_failures'] >= MAX_PLANNING_FAILURES:
+                    inv.update(state='stalled', closed_reason='%d turns in a row failed before any step: %s'
+                               % (inv['planning_failures'], inv['last_planning_error'][:160]))
+                _save(data)
+        raise
+
+
+def _turn(context, *, ask=None, execute=None):
     ask = ask or lab._ask
     execute = execute or dispatch
     data = lab._load(_path('investigations.json'), {'investigations':[]})
@@ -527,6 +555,8 @@ def turn(context, *, ask=None, execute=None):
                          'prediction':'', 'plan':[], 'steps':[]}
         data['investigations'].append(investigation)
     waiting = next((s for s in investigation.get('steps',[]) if s.get('state')=='waiting_not_sent'),None)
+    _CURRENT['id'] = investigation['id']
+    _save(data)
     if waiting and waiting.get('retry_at',0)>time.time():
         return {'kind':'investigation_wait','investigation':investigation['id'],'state':'waiting_not_sent','retry_at':waiting['retry_at']}
     if waiting:
@@ -536,6 +566,7 @@ def turn(context, *, ask=None, execute=None):
         value = _plan(investigation, context, ask)
     if not isinstance(value, dict) or not str(value.get('route') or ''):
         raise ValueError('investigation planner returned no route')
+    investigation['planning_failures'] = 0
     if not investigation.get('question'):
         investigation['question'] = str(value.get('question') or '')
         investigation['prediction'] = str(value.get('prediction') or '')

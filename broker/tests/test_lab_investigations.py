@@ -209,5 +209,28 @@ class Investigations(unittest.TestCase):
         row=C._load(I._path('investigations.json'),{})['investigations'][0]
         self.assertEqual(row['state'],'stalled'); self.assertIn('step budget',row['closed_reason'])
 
+    def test_turns_that_fail_before_a_step_close_the_investigation(self):
+        # 21 October: one open investigation failed 365 turns in a row before making any step; nothing closed it
+        C._atomic(I._path('investigations.json'),{'investigations':[{'id':'I-stuck','opened_at':C.now_iso(),
+            'state':'open','question':'Q','prediction':'p','steps':[]}]})
+        self.ask.return_value='not json at all'
+        for n in range(I.MAX_PLANNING_FAILURES):
+            with self.assertRaises(Exception):
+                I.turn('',ask=self.ask,execute=Mock())
+        row=C._load(I._path('investigations.json'),{})['investigations'][0]
+        self.assertEqual(row['state'],'stalled')
+        self.assertIn('failed before any step',row['closed_reason'])
+        self.ask.return_value=self.choice('schema',{'plugin':'nvmolkit'})
+        nxt=I.turn('',ask=self.ask,execute=lambda *a:{'schema':{}})
+        self.assertNotEqual(nxt['investigation'],'I-stuck')
+
+    def test_a_good_turn_resets_the_count(self):
+        C._atomic(I._path('investigations.json'),{'investigations':[{'id':'I-ok','opened_at':C.now_iso(),
+            'state':'open','question':'Q','prediction':'p','steps':[],'planning_failures':2}]})
+        self.ask.return_value=self.choice('schema',{'plugin':'nvmolkit'})
+        I.turn('',ask=self.ask,execute=lambda *a:{'schema':{}})
+        row=C._load(I._path('investigations.json'),{})['investigations'][0]
+        self.assertEqual(row['state'],'open'); self.assertEqual(row['planning_failures'],0)
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)
