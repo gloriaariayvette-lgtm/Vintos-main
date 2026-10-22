@@ -53,6 +53,8 @@ for i in range(30):
                  'gloria':{'confidence':.5,'decode_similarity':.2,'emb':[1,0]},'self':{'confidence':.5,'decode_similarity':.2,'emb':[0,1]}})
  ledger.append({'timestamp':datetime.fromtimestamp(ts+.5).isoformat(),'gloria':'heard','vintos':'said'})
 Path(A.HIST).write_text(''.join(json.dumps(h)+'\n' for h in history));(root/'interaction-ledger.json').write_text(json.dumps(ledger))
+import jepa_ranking_audit as ranking
+ranking.realized_ledger = lambda: ledger  # admitted-outcome fixture; never read the host
 A.main();audit=json.loads(Path(A.OUT).read_text())
 check('audit excludes predictions from other weights',audit['n_joined']==9 and audit['checkpoint']==checkpoint)
 check('constant confidence is not fabricated rank correlation',audit['g']['monotonicity_conf_vs_err'] is None)

@@ -67,7 +67,7 @@ for name in ("jepa-prediction-history.jsonl", "jepa-prediction-structured-shadow
         print("  %-48s MISSING or empty" % name); continue
     isos = sorted(str(r.get("iso") or r.get("at") or r.get("ts") or "") for r in rows)
     cks = {}
-    for r in rows: cks[str(r.get("checkpoint_id"))[:12]] = cks.get(str(r.get("checkpoint_id"))[:12], 0) + 1
+    for r in rows: cks[str(r.get("checkpoint_id") or (r.get("self") or {}).get("checkpoint_id"))[:12]] = cks.get(str(r.get("checkpoint_id") or (r.get("self") or {}).get("checkpoint_id"))[:12], 0) + 1
     print("  %-48s %d rows, %s .. %s; by checkpoint %s" % (name, len(rows), isos[0][:16], isos[-1][:16], cks))
 pend = glob.glob(os.path.join(MEM, "jepa-self-pending", "*"))
 print("  %-48s %d pending on-message forecasts" % ("jepa-self-pending/", len(pend)))
@@ -91,11 +91,13 @@ try:
     import jepa_ranking_audit as A
     ck = os.path.join(MEM, "jepa-predictor.pt")
     checkpoint = hashlib.sha256(open(ck, "rb").read()).hexdigest()
-    rows = A.evaluate(jsonl(os.path.join(MEM, "jepa-prediction-history.jsonl")), led, J.encoder(),
+    admitted = A.realized_ledger()
+    print("  admitted outcome exchanges: %d (ledger plus current canonical/merged/explicit archives)" % len(admitted))
+    rows = A.evaluate(jsonl(os.path.join(MEM, "jepa-prediction-history.jsonl")), admitted, J.encoder(),
                       checkpoint=checkpoint, trained_before=os.path.getmtime(ck))
     for head in ("gloria", "self"):
         print("  %-7s %s" % (head, short(A._summary(rows, head), 1200)))
-    all_rows = A.evaluate(jsonl(os.path.join(MEM, "jepa-prediction-history.jsonl")), led, J.encoder())
+    all_rows = A.evaluate(jsonl(os.path.join(MEM, "jepa-prediction-history.jsonl")), admitted, J.encoder())
     print("  every checkpoint, every forecast (not only the current one):")
     for head in ("gloria", "self"):
         print("  %-7s %s" % (head, short(A._summary(all_rows, head), 1200)))
@@ -104,7 +106,7 @@ except Exception as e:
 
 print("\n== 5. the other latent organs ==")
 for name in ("jepa-prediction.json", "presence-forecast.json", "drift.json", "relational.json", "lam-forecast.json",
-             "latent-preparation.json", "living-trajectory.json", "reality-ebm.json", "withheld.json", "gloria-prediction.json"):
+             "latent-cache.json", "living-trajectory.json", "reality-scores.json", "withheld.json", "gloria-prediction.json"):
     p = os.path.join(MEM, name); d = load(p)
     keys = (", ".join(sorted(d.keys())[:12]) if isinstance(d, dict) else type(d).__name__) if d is not None else ""
     print("  %-28s %s  %s" % (name, age(p), keys[:150]))

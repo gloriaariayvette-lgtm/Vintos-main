@@ -20,13 +20,12 @@ of his replies and its pairs ended on her message while every forecast was made 
 Gloria's to retrain (LoRA): jepa_predictor's checkpoint, training and gloria outputs are untouched; this head
 is trained here and jepa_predictor.predict() takes the self triple (ahead mode) from it once a checkpoint exists.
 
-THE EXCHANGES (exchanges()). The interaction ledger keeps only its last 300 entries (~10 days; other readers
+THE EXCHANGES (exchanges()). The interaction ledger keeps only its last 300 entries (not a fixed time window; other readers
 depend on that cap, so it is not raised). The full history is read instead from every record of their
 exchanges the code writes on the host, each through the evidence door:
   ledger            memory/interaction-ledger.json (evidence_view.ledger_view: a withheld reply is not him)
-  ledger-snapshot   memory/interaction-ledger*.json* — ledger-scrub's pre-scrub backups, the ledger's and
-                    store_guard's corrupt quarantines, any archive written beside it; the same view, and the
-                    rows ledger-scrub removes (source video-outreach) stay removed
+  ledger-snapshot   memory/interaction-ledger.archive.json* — explicit retained archives only.
+                    Scrub, forget, erase, purge and corrupt backups are not training sources.
   canonical         memory/chat-canonical.jsonl — the server's lossless record of every chat-door exchange
                     (written before the 50-turn projection is cut, since 5 September); witness view; desktop-
                     control status lines are not replies; turns post-turn-record.jsonl marks test_mode are out
@@ -298,7 +297,9 @@ def _from_chat(rows, floor, origin, test_times=()):
 def _snapshot_paths():
     import glob
     out = []
-    for p in glob.glob(os.path.join(MEMORY, "interaction-ledger*.json*")):
+    # Only an intentional archive is a training source. Backups named before-forget,
+    # pre-erase, pre-purge, corrupt, etc. can contain explicitly removed exchanges.
+    for p in glob.glob(os.path.join(MEMORY, "interaction-ledger.archive.json*")):
         b = os.path.basename(p)
         if os.path.abspath(p) == os.path.abspath(LEDGER) or b.endswith(".lock") or ".tmp" in b:
             continue
@@ -1143,7 +1144,7 @@ def evaluate(history, exs, enc, self_ck=None, self_trained_at=0.0, prod_ck=None,
         if target is None:
             cut = [x for x in exs if x["at"] <= cut_at]
             target = next((x for x in exs if x["at"] > cut_at and x["his"]), None)
-        if target is None or target["at"] <= trained_at or not any(x["his"] for x in cut):
+        if target is None or target["at"] <= max(trained_at, fts) or not any(x["his"] for x in cut):
             continue
         tkey = (target["ts"], target["his"][:80])
         if tkey in seen[kind]:

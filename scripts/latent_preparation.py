@@ -12,8 +12,8 @@ open vs. how prepared he should be for what's coming — never a canned line to 
   high confidence + low novelty -> you can see where this goes: you may prepare concretely
 
 Gemma only *voices* that posture in his register (1-2 sentences); it does not invent the
-future. Falls back to gloria-prediction.json (also jepa-grounded) if the raw jepa file
-isn't there yet, then to a deterministic posture if Gemma is down. Writes latent-cache.json
+future. Only a current checkpoint passing ranking and calibration can prepare a posture.
+An unmeasured prose forecast is withheld. A released posture has a deterministic voicing fallback. Writes latent-cache.json
 in the SAME schema living_trajectory / _spark_block already read (content/type/timeliness),
 so nothing downstream changes. Cron: every 2h idle. Prunes >7d, caps 20. Fail-open.
 """
@@ -21,7 +21,7 @@ import os, re, json
 from datetime import datetime, timezone
 import requests
 
-WS      = os.path.expanduser("~/.vintos/workspace")
+WS      = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY  = os.path.join(WS, "memory")
 LT      = os.path.join(MEMORY, "living-trajectory.json")
 JEPA    = os.path.join(MEMORY, "jepa-prediction.json")
@@ -36,7 +36,7 @@ def load(p, d):
     except Exception: return d
 
 # signal() always returns the same 4-tuple: (confidence, novelty, hint, source).
-# source is "jepa" / "jepa-uncalibrated-neutral" / <ledger grounding> on success,
+# source is "jepa" on release, "withheld" for unvalidated forecasts,
 # "none" when there is no forecast file at all, and "unknown" when a file exists
 # but is malformed.  Callers unpack four values unconditionally.
 UNKNOWN_SIGNAL = (0.5, 0.5, "", "unknown")
@@ -52,22 +52,23 @@ def _num(v, default=0.5):
     return f
 
 def signal():
-    """Pull confidence + novelty from the shared JEPA head (or the jepa-grounded ledger)."""
+    """Pull confidence + novelty only from a currently released Gloria JEPA head."""
     j = load(JEPA, None)
     if j is not None and not isinstance(j, dict):
         return UNKNOWN_SIGNAL                      # malformed (a list, a string ...)
     j = j or {}
     if j.get("source") == "jepa":
-        if j.get("variance_qualified", j.get("confidence_calibrated")) is False:
-            return (0.5, _num(j.get("novelty")), "", "jepa-uncalibrated-neutral")
+        from calibration import forecast_allowed
+        if not forecast_allowed(j, "gloria"):
+            return (0.5, 0.5, "", "withheld")
         return (_num(j.get("confidence")), _num(j.get("novelty")),
                 str(j.get("gloria_forecast_nearest", "") or ""), "jepa")
     g = load(GPRED, None)
     if g is not None and not isinstance(g, dict):
         return UNKNOWN_SIGNAL
     if g:
-        return (_num(g.get("confidence")), _num(g.get("novelty")),
-                str(g.get("predicted", "") or ""), str(g.get("grounded_by") or "llm"))
+        # A prose model's self-reported confidence is not a substitute audit.
+        return (0.5, 0.5, "", "withheld")
     if j:
         return UNKNOWN_SIGNAL                      # a jepa file that is not a jepa forecast
     return NO_SIGNAL
@@ -135,6 +136,16 @@ def recent_plan_outcomes(hours=48, now=None):
 
 def main():
     conf, nov, hint, src = signal()
+    if src == "withheld":
+        cache = load(CACHE, [])
+        if isinstance(cache, list):
+            kept = [c for c in cache if not (isinstance(c, dict) and c.get("type") == "readiness")]
+            if kept != cache:
+                tmp = CACHE + ".tmp.%d" % os.getpid()
+                with open(tmp, "w") as f: json.dump(kept, f, indent=2)
+                os.replace(tmp, CACHE)
+        print("readiness withheld: current ranking and calibration have not released this forecast")
+        return
     if src == "none":
         print("no forecast yet — run jepa_predictor.py predict (or gloria_prediction.py) first"); return
     if src == "unknown":
@@ -154,6 +165,7 @@ def main():
         "plan_outcomes": recent_plan_outcomes(),    # review 274: held work that met/released, in the posture
         "generated_at": now.isoformat(),
         "source": "latent-preparation",
+        "forecast": load(JEPA, {}),
     }
 
     cache = load(CACHE, [])

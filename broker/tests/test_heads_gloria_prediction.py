@@ -25,6 +25,15 @@ sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=gemma)
 sys.modules["reading"] = types.SimpleNamespace(from_missed_prediction=lambda pred, her: READINGS.append((pred, her)))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import gloria_prediction as GP
+import calibration as C
+import jepa_ranking_audit as A
+open(C.MODEL, "wb").write(b"fixture")
+ck = C.checkpoint_fingerprint()
+json.dump({"n_joined": 100, "n_holdout": 31, "axis_lockstep_corr": .3,
+           "criteria_version": C.CRITERIA_VERSION, "checkpoint": ck, "holdout_protocol": "prospective-checkpoint-v1",
+           "g": {"monotonicity_conf_vs_err": -.6, "CONTROL_dsim_vs_err": -.2, "wrong_but_confident": []}}, open(C.AUDIT, "w"))
+json.dump({"checkpoint": ck, "criteria_version": A.CRITERIA_VERSION, "gloria": {"state": "EVIDENCE_OF_PREDICTION"}},
+          open(os.path.join(MEM, "jepa-ranking-audit.json"), "w"))
 
 R = []
 def check(n, ok, d=""):
@@ -63,6 +72,7 @@ json.dump([{"timestamp": local(3), "gloria": "and I am tired but happy about it"
            {"timestamp": local(-7200), "gloria": "an old line from before the prediction", "vintos": "x"}],
           open(GP.LEDGER, "w"))
 json.dump({"source": "jepa", "predicted_at": local(-60), "variance_qualified": True, "steering_allowed": True,
+           "checkpoint_id": ck, "qualification": {"gloria": "qualified"}, "gloria": {"confidence": .31},
            "confidence": 0.31, "novelty": 0.0, "gloria_forecast_nearest": "near"}, open(JEPA, "w"))
 ANSWERS[:] = ['{"grade_of_previous":0.1,"predicted":"She will rest.","confidence":0.4,"novelty":0.2}']
 GP.main()
@@ -78,15 +88,14 @@ check("each later word of hers says when she said it",
       len(re.findall(r"^- \[[^\]]+\] ", after, re.M)) == 2, after)
 h = json.load(open(GP.HIST))[-1]
 check("the grade is recorded", h["graded_previous"] == 0.1 and h["grade_outcome"] == "graded", h)
-check("a total miss opens a reading with her own words, not a photo description",
-      READINGS and READINGS[-1][1] in ("and I am tired but happy about it",
-                                       "(she sent a photo) the garden finally gave me something") and "Tomatoes" not in READINGS[-1][1], READINGS)
+check("a self-grade cannot open a steering reading without held-out validation", READINGS == [])
 
 print("--- JEPA fusion runs ---")
 out = json.load(open(GP.OUT))
 check("a fresh, qualified, steering-allowed forecast stamped naive local grounds the numbers (no NameError, no 5 h skew)",
       out.get("grounded_by") == "jepa" and out["confidence"] == 0.31, out)
 check("and JEPA's 0.0 novelty stays 0.0", out["novelty"] == 0.0, out)
+check("embedding calibration does not release the separately generated prose", out["steering_allowed"] is False)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

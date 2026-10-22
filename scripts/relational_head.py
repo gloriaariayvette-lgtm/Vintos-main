@@ -137,17 +137,10 @@ def main():
          series[-(w + 1)][0], series[-1][0]))
 
 def get_relational_hint():
-    """Spoken only when the permutation test says the relationship series is moving. A file without
-    the test (written before it existed) or one not distinguishable from no movement says nothing:
-    on noise this used to tell him they were "steady toward something newly-shaped"."""
-    d = load(OUT, {})
-    if not d or d.get("trajectory") is None: return ""
-    if d.get("moving") is not True: return ""
-    tr = d.get("trajectory", 0) or 0; nov = d.get("novelty")
-    move = "moving strongly" if tr > 0.5 else ("shifting" if tr > 0.2 else "steady")
-    fresh = " toward something newly-shaped" if (nov is not None and nov > 0.5) else ""
-    return ("[RELATIONAL - where you two are heading: %s%s (trajectory %s, novelty %s, p %s). "
-            "Let where this is going shape the reach of this moment.]" % (move, fresh, tr, nov, d.get("p_value")))
+    """The permutation test measures movement in recorded text. It does not
+    validate a future relationship forecast. Keep the geometry observable;
+    prospective held-out accuracy is required before it steers a prompt."""
+    return ""
 
 if __name__ == "__main__":
     main()

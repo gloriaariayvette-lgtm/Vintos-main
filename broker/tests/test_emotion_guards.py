@@ -77,13 +77,13 @@ def shape_ok(t):
             and isinstance(t[1], float) and isinstance(t[2], str) and isinstance(t[3], str))
 cases = {
     "cold (no files)": (None, None, "none"),
-    "jepa uncalibrated": ({"source": "jepa", "variance_qualified": False, "novelty": 0.7}, None, "jepa-uncalibrated-neutral"),
-    "jepa ok": ({"source": "jepa", "confidence": 0.8, "novelty": 0.1, "gloria_forecast_nearest": "x"}, None, "jepa"),
-    "jepa malformed numbers": ({"source": "jepa", "confidence": "lots", "novelty": None}, None, "jepa"),
+    "jepa uncalibrated": ({"source": "jepa", "variance_qualified": False, "novelty": 0.7}, None, "withheld"),
+    "jepa ok": ({"source": "jepa", "confidence": 0.8, "novelty": 0.1, "gloria_forecast_nearest": "x"}, None, "withheld"),
+    "jepa malformed numbers": ({"source": "jepa", "confidence": "lots", "novelty": None}, None, "withheld"),
     "jepa file is a list": ([1, 2], None, "unknown"),
     "jepa file is garbage json": ("{not json", None, "none"),
     "jepa file present but foreign": ({"foo": 1}, None, "unknown"),
-    "ledger only": (None, {"confidence": 0.6, "novelty": 0.2, "predicted": "p"}, "llm"),
+    "ledger only": (None, {"confidence": 0.6, "novelty": 0.2, "predicted": "p"}, "withheld"),
     "ledger malformed": (None, "string", "unknown"),
 }
 for name, (j, g, want_src) in cases.items():

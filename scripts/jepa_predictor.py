@@ -277,7 +277,7 @@ def build_pairs(turns, enc, context_schema="legacy-concat-v1"):
 def build_presence_pairs(turns, enc, context_schema="legacy-concat-v1"):
     """(context before his reply) -> that reply's audited presence composite."""
     import numpy as np
-    comp = {a.get("id"): a.get("composite") for a in load(AUDIT, [])
+    comp = {a.get("id"): a.get("composite") for a in presence_records()
             if isinstance(a, dict) and a.get("id") and a.get("composite") is not None}
     if not comp:
         return None
@@ -291,6 +291,14 @@ def build_presence_pairs(turns, enc, context_schema="legacy-concat-v1"):
         return None
     Xp = np.asarray(enc.encode(ctx_txt, show_progress_bar=False), dtype="float32")
     return Xp, np.asarray(y, dtype="float32").reshape(-1, 1)
+
+
+def presence_records():
+    """The recent display rolls; calibration labels must outlive that display."""
+    from jepa_ranking_audit import _jsonl
+    rows = _jsonl(os.path.join(os.path.dirname(AUDIT), "presence-audit-history.jsonl"))
+    rows += load(AUDIT, [])
+    return list({r["id"]: r for r in rows if isinstance(r, dict) and r.get("id")}.values())
 
 def make_net(dim, architecture="shared-v1"):
     import torch, torch.nn as nn
@@ -397,6 +405,8 @@ def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="sha
     if best_state is not None:
         net.load_state_dict(best_state)
     torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None,
+                "presence_baseline": ({"mean": float(yptr.mean()), "n": len(yptr),
+                                       "source": "actual_training_labels"} if Xptr is not None else None),
                 "training_sources": _srcs, "context_schema": context_schema,
                 "architecture": architecture, "shadow_only": model_path != MODEL,
                 "validation": ({"kind": "latest_time_slice", "n": len(Xv), "best_loss": round(best_val, 6)} if len(Xv) else None)}, model_path)
@@ -448,7 +458,7 @@ def _write_json(path, obj):
     os.replace(tmp, path)
 
 
-def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=None, out_path=None):
+def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=None, out_path=None, baseline=None):
     """The presence head's evidence, which it never had: the replies audited AFTER this checkpoint was
     trained are a holdout it cannot have seen. Its error on them is compared with the baseline that
     predicts the mean of the training-era composites. It may steer only when it beats that mean on at
@@ -459,7 +469,7 @@ def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=No
            "baseline": "mean of training-era composites", "minimum_holdout": MIN_PRESENCE_HOLDOUT}
     try:
         turns = training_turns() if turns is None else turns
-        comp = {a.get("id"): a.get("composite") for a in load(AUDIT, [])
+        comp = {a.get("id"): a.get("composite") for a in presence_records()
                 if isinstance(a, dict) and a.get("id") and a.get("composite") is not None}
         train_y, hold, seen = [], [], set()
         for i in range(CTX_TURNS, len(turns)):
@@ -475,7 +485,12 @@ def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=No
             else:
                 hold.append((format_context(turns[i - CTX_TURNS:i], schema), float(comp[rid]), str(t.get("timestamp"))))
         rec.update({"n_training_era": len(train_y), "n_holdout": len(hold)})
-        if len(train_y) < MIN_PRESENCE_PAIRS:
+        frozen = (isinstance(baseline, dict) and baseline.get("source") == "actual_training_labels"
+                  and isinstance(baseline.get("mean"), (int, float)) and np.isfinite(baseline["mean"])
+                  and 0 <= baseline["mean"] <= 1 and baseline.get("n", 0) >= MIN_PRESENCE_PAIRS)
+        if frozen:
+            rec.update(n_training_era=baseline["n"], baseline_source="checkpoint_training_labels")
+        if not frozen and len(train_y) < MIN_PRESENCE_PAIRS:
             rec.update({"state": "INSUFFICIENT", "why": "too few training-era composites for a baseline"})
         elif len(hold) < MIN_PRESENCE_HOLDOUT:
             rec.update({"state": "INSUFFICIENT",
@@ -486,7 +501,7 @@ def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=No
                 _, _, pp, plv = net(torch.tensor(X))
             pred = np.asarray(pp).reshape(-1)
             y = np.asarray([v for _, v, _ in hold], dtype="float32")
-            base = float(np.mean(train_y))
+            base = float(baseline["mean"] if frozen else np.mean(train_y))
             mae_head = float(np.mean(np.abs(pred - y)))
             mae_base = float(np.mean(np.abs(base - y)))
             err = np.abs(pred - y); lvp = np.asarray(plv)[:, 2]
@@ -589,6 +604,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     # The SELF triple comes from its own head (jepa_self_head.py: his ledger replies, forecast-time context,
     # his own recent replies) once that head has a checkpoint; until then the shared-trunk self above stands
     # exactly as it was. Nothing the gloria head reads or writes is touched here. Shadow keeps its own.
+    _legacy_s, _legacy_cs = s.copy(), _cs
     _self_fc = None
     if not shadow:
         try:
@@ -629,7 +645,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
             presence_cal = {"head": "presence", "state": "SHADOW", "why": "shadow checkpoints may never steer"}
         else:
             presence_cal = presence_holdout_audit(net, enc, _schema, os.path.getmtime(model_path), loaded_checkpoint,
-                                                  out_path=PRESENCE_CALIBRATION)
+                                                  out_path=PRESENCE_CALIBRATION, baseline=ck.get("presence_baseline"))
         _p_steer = (not shadow) and presence_cal.get("state") == "RELEASED"
         presence_forecast = {"predicted": round(p, 3), "confidence": _cp,
                              "novelty": round(min(1.0, abs(p - base)), 3),
@@ -673,6 +689,11 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
            "shadow_only": bool(shadow),
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; shadow checkpoints may never steer"}
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
+    try:
+        out["steering_by_head"] = {h: _cal.forecast_allowed(out, h) for h in ("gloria", "self")}
+    except Exception:
+        out["steering_by_head"] = {"gloria": False, "self": False}
+    out["steering_allowed"] = not shadow and all(out["steering_by_head"].values())
     try:   # _srcs was train()-local: every predict raised NameError here before the forecast was saved (review P05)
         out["training_sources"] = (ck.get("training_sources") if isinstance(ck, dict) else None) or training_sources(turns)
     except Exception as _tse:
@@ -688,7 +709,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                      "context_last_event": out["context_last_event"],
                      "context_schema": _schema,
                      "context_emb": [round(float(x), 4) for x in xe[0]],
-                     "gloria": {"confidence": gloria["confidence"], "decode_similarity": gloria["decode_similarity"],
+                     "gloria": {"confidence": gloria["confidence"], "confidence_placeholder": _cg is None,
+                                "decode_similarity": gloria["decode_similarity"],
                                 "novelty": gloria["novelty"], "emb": [round(float(x), 4) for x in g]},
                      "self": {"confidence": self_h["confidence"], "confidence_placeholder": self_h["confidence_placeholder"],
                               "decode_similarity": self_h["decode_similarity"],
@@ -696,6 +718,14 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                      "variance_qualified": (_cg is not None)}
         if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
             hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts", "mode")})
+        # Preserve a separately attributed shared-head forecast even while the
+        # independent self head supplies the visible triple. Otherwise replacing
+        # self silently stops collection for the shared checkpoint's retrain gate.
+        _legacy_near, _legacy_sim = _decode(_legacy_s, self_turns, enc)
+        hist_line["legacy_self"] = {"checkpoint_id": _ck_id, "confidence": _legacy_cs,
+                                    "confidence_placeholder": _legacy_cs is None,
+                                    "decode_similarity": _legacy_sim,
+                                    "emb": [round(float(x), 4) for x in _legacy_s]}
         _hp = history_path or os.path.join(MEMORY, "jepa-prediction-history.jsonl")
         open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:

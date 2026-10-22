@@ -108,20 +108,19 @@ def build():
         "updated": datetime.now(timezone.utc).isoformat(),
     }
 
-    # gloria_trajectory — prefer gloria_prediction.py output, else portrait/observations
-    _gp = load("gloria-prediction.json", {})
-    predicted = str(_gp.get("predicted", "")).strip()[:280] if isinstance(_gp, dict) and _gp.get("predicted") else ""
-    if not predicted:
-        portrait = gmodel.get("portrait") if isinstance(gmodel, dict) else ""
-        predicted = portrait.strip()[:280] if isinstance(portrait, str) and portrait.strip() else ""
+    # The prose predictor has no held-out release instrument. Carry the observed
+    # portrait without attributing predictive confidence to it.
+    portrait = gmodel.get("portrait") if isinstance(gmodel, dict) else ""
+    predicted = portrait.strip()[:280] if isinstance(portrait, str) else ""
     if not predicted:
         obs = gmodel.get("observations", []) if isinstance(gmodel, dict) else []
         predicted = " · ".join(deep_text(o, "observation", "text", "note", "summary")
                                 for o in obs[-2:] if deep_text(o, "observation", "text", "note", "summary"))[:280]
     gloria_traj = {
         "predicted": predicted,
-        "confidence": _gp.get("confidence") if isinstance(_gp, dict) else None,
-        "novelty": _gp.get("novelty") if isinstance(_gp, dict) else None,
+        "source": "observed_portrait",
+        "confidence": None,
+        "novelty": None,
         "updated": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -160,12 +159,24 @@ def build():
         "self_trajectory": self_traj,
         "gloria_trajectory": gloria_traj,
         "unresolved": unresolved[:20],
-        "cache": load("latent-cache.json", []),
+        "cache": [c for c in load("latent-cache.json", []) if readiness_allowed(c)],
         "relationship": relationship,
         "emotion_snapshot": snap,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "version": "3.3",
     }
+
+def readiness_allowed(entry):
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("type") != "readiness":
+        return True
+    try:
+        from calibration import forecast_allowed
+        return forecast_allowed(entry.get("forecast"), "gloria")
+    except Exception:
+        return False
+
 
 def build_and_write():
     traj = build()

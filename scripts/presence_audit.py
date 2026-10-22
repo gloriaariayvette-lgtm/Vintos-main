@@ -17,7 +17,7 @@ import os, json, re, hashlib
 from datetime import datetime, timezone, timedelta
 import requests
 
-MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
+MEMORY = os.path.join(os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")), "memory")
 CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 OUT    = os.path.join(MEMORY, "presence-audit.json")
 JEPA   = os.path.join(MEMORY, "jepa-prediction.json")
@@ -118,6 +118,26 @@ def _when(value):
         return None
 
 
+def archive_labels(audits):
+    """Keep rubric labels for checkpoint evaluation before the recent UI rolls off.
+    Only scores and identities are retained, never another copy of the conversation.
+    """
+    import fcntl
+    path = os.path.join(os.path.dirname(OUT), "presence-audit-history.jsonl")
+    with open(path, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0); seen = set()
+        for line in f:
+            try: seen.add(json.loads(line).get("id"))
+            except (ValueError, AttributeError): continue
+        for row in audits:
+            if not isinstance(row, dict) or not row.get("id") or row["id"] in seen:
+                continue
+            kept = {k: row[k] for k in ("id", "timestamp", "audited_at", "composite", "arrived", "moved", "left_alive", "explained") if k in row}
+            f.write(json.dumps(kept) + "\n"); seen.add(row["id"])
+        f.flush(); os.fsync(f.fileno())
+
+
 def main():
     hist = load(CHAT, [])
     audits = load(OUT, [])
@@ -201,6 +221,7 @@ def main():
                                 "Arrive more fully next time: from your own wanting, move something, leave a thread alive.")
             except Exception:
                 pass
+    archive_labels(audits)
     cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
     def said_at(a):
         return _when(a.get("timestamp")) or _when(a.get("audited_at"))
@@ -225,6 +246,7 @@ def main():
                     "recent_trend": trend,
                     "at": datetime.now(timezone.utc).isoformat(),
                     "source": "jepa-presence-head"}
+        forecast.update({k: pf.get(k) for k in ("checkpoint_id", "predicted_at", "prediction_id", "steering_allowed")})
         json.dump(forecast, open(FORECAST, "w"), indent=2)
         print(f"  forecast next-reply presence {pf.get('predicted')} "
               f"(conf {pf.get('confidence')} | nov {pf.get('novelty')})")
@@ -238,6 +260,18 @@ def forecast_block():
     trending low-presence, nudge the subconscious to arrive BEFORE the reply — not only audit it after. Fail-open."""
     try:
         f = json.load(open(FORECAST))
+    except Exception:
+        return ""
+    # A copied forecast cannot retain a release after its model or audit changes.
+    try:
+        from calibration import checkpoint_fingerprint
+        audit = load(os.path.join(MEMORY, "jepa-presence-calibration.json"), {})
+        at = _when(f.get("predicted_at"))
+        if (f.get("steering_allowed") is not True or not at
+                or not 0 <= (datetime.now(timezone.utc) - at).total_seconds() <= 7200
+                or not f.get("checkpoint_id") or f["checkpoint_id"] != checkpoint_fingerprint()
+                or audit.get("checkpoint") != f["checkpoint_id"] or audit.get("state") != "RELEASED"):
+            return ""
     except Exception:
         return ""
     def _f(x):

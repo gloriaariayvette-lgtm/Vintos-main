@@ -110,6 +110,19 @@ few, _ = scenario("few", start, n=40, n_before=30)
 check("INSUFFICIENT with fewer than %d held-out replies, and no steering" % JP.MIN_PRESENCE_HOLDOUT,
       few["presence_calibration"]["state"] == "INSUFFICIENT" and few["presence"] is None, few["presence_calibration"])
 
+print("--- frozen training baseline survives the recent display rolling off ---")
+rel2, _ = scenario("rolled", start, train_comp=0.5, hold_comp=0.9)
+turns = JP.training_turns()
+cutoff = (start + timedelta(minutes=19.5)).timestamp()
+labels = json.load(open(JP.AUDIT))
+json.dump([r for r in labels if datetime.fromisoformat(r["timestamp"]).timestamp() > cutoff], open(JP.AUDIT, "w"))
+audit = JP.presence_holdout_audit(Net(), Enc(), "legacy-concat-v1", cutoff, "fixture", turns=turns)
+check("old checkpoints cannot invent a missing training baseline", audit["state"] == "INSUFFICIENT" and audit["n_training_era"] == 0, audit)
+audit = JP.presence_holdout_audit(Net(), Enc(), "legacy-concat-v1", cutoff, "fixture", turns=turns,
+                                baseline={"mean": .5, "n": 7, "source": "actual_training_labels"})
+check("a checkpoint's actual training baseline supports the same held-out comparison",
+      audit["state"] == "RELEASED" and audit["baseline_mean"] == .5 and audit["n_holdout"] == 12, audit)
+
 print("--- the gloria head's fields are as they were ---")
 for o in (old, rel, wh, few):
     g = o["gloria"]

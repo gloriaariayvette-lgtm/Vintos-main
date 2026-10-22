@@ -56,7 +56,7 @@ json.dump({"source": "jepa", "self": {"novelty": 0.9, "confidence": 0.5, "confid
           open(os.path.join(MEM, "jepa-prediction.json"), "w"))
 json.dump({"self_trajectory": {"declared": ["toward making"]}}, open(os.path.join(MEM, "living-trajectory.json"), "w"))
 d = ns["_novelty_directive"]()
-check("a placeholder confidence never licenses commitment", "curiosity, not a conclusion" in d, d)
+check("a placeholder confidence never licenses commitment", d == "", d)
 json.dump({"source": "jepa", "self": {"novelty": None, "confidence": None}}, open(os.path.join(MEM, "jepa-prediction.json"), "w"))
 try:
     ns["_novelty_directive"](); ok = True

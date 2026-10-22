@@ -6705,13 +6705,15 @@ def _spark_block():
         pass
     try:
         _lt = _sj.load(open(_so.path.join(MEMORY, 'living-trajectory.json')))
-        _gt = (_lt.get('gloria_trajectory') or {}).get('predicted', '')
+        _gtraj = _lt.get('gloria_trajectory') or {}
+        _gt = _gtraj.get('predicted', '') if _gtraj.get('source') == 'observed_portrait' else ''
         _rel = (_lt.get('relationship') or {}).get('trajectory', '')
-        _cache = _lt.get('cache') or []
+        from living_trajectory import readiness_allowed as _readiness_allowed
+        _cache = [c for c in (_lt.get('cache') or []) if _readiness_allowed(c)]
         _arr = _cache[-1].get('content', '') if _cache and isinstance(_cache[-1], dict) else ''
         _react = (_lt.get('self_trajectory') or {}).get('reactivity_flag')
         _bits = []
-        if _gt: _bits.append('Gloria seems to be moving toward: ' + str(_gt)[:180])
+        if _gt: _bits.append('Gloria’s observed portrait: ' + str(_gt)[:180])
         if _rel: _bits.append('Where you two are heading: ' + str(_rel)[:180])
         if _arr: _bits.append('Something you quietly prepared for a moment like this: ' + str(_arr)[:180])
         if _react: _bits.append('You have been explaining instead of arriving - arrive, do not analyze.')

@@ -17,7 +17,7 @@ try:
 except Exception:
     def writer_event(*a, **k): return None
 
-MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
+MEMORY = os.path.join(os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")), "memory")
 CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 OUT    = os.path.join(MEMORY, "gloria-prediction.json")
 HIST   = os.path.join(MEMORY, "gloria-prediction-history.json")
@@ -229,7 +229,8 @@ def main():
         _jp_fresh = (_jp_age is not None and _jp_age < 7200 and (not jp.get("context_last_event") or jp.get("context_last_event") in _last_ids))
     except Exception:
         _jp_fresh = False
-    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True and _jp_fresh and jp.get("steering_allowed") is True:
+    from calibration import forecast_allowed
+    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True and _jp_fresh and forecast_allowed(jp, "gloria"):
         _jc, _jn = _reported(jp, "confidence"), _reported(jp, "novelty")
         out["confidence"] = _jc if _jc is not None else out["confidence"]
         out["novelty"]    = _jn if _jn is not None else out["novelty"]
@@ -248,6 +249,9 @@ def main():
                                 "stale or different context" if jp.get("variance_qualified") is True else
                                 str((jp.get("qualification") or {}).get("gloria") or "variance not qualified"))
 
+    # A calibrated embedding does not calibrate this separately generated sentence.
+    out["steering_allowed"] = False
+    out["truth_status"] = "unvalidated_prose_forecast"
     json.dump(out, open(OUT, "w"), indent=2)
 
     log = load(HIST, [])
@@ -267,24 +271,8 @@ def main():
         writer_event("gloria_prediction_outcome", "HELD", prev.get("source_provenance"),
                      "source window contained tactical output; no grading or reading")
 
-    # A prediction graded a total miss is a misread of her with the evidence still
-    # attached. It opens a reading - what he took her to mean, and what else it
-    # could have meant - so a wrong reading has somewhere to live and something
-    # she can correct, instead of quietly becoming the model.
-    if grade is not None and grade <= 0.2 and prev.get("predicted") and prev.get("may_grade", True):
-        try:
-            import sys as _rd_sys
-            _rd_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from reading import from_missed_prediction as _rd_open
-            # what she said after the prediction, in her own words - never a photo's description
-            _her = ""
-            for _a in reversed(_after):
-                if len(_a["words"]) > 15:
-                    _her = _a["turn"]; break
-            if _her:
-                _rd_open(prev["predicted"], _her)
-        except Exception as _rd_e:
-            print("[gloria-predict] reading not opened:", _rd_e)
+    # Self-grades are retained as diagnostics. They cannot open a reading that
+    # later steers him: this prose predictor has no held-out release instrument.
 
     # NOTE (2026-08-28): an earlier pass logged a "leverage" event here on any
     # grade >= 0.7. That was fabricated evidence — no tactic had occurred, the

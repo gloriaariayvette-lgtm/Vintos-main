@@ -206,31 +206,10 @@ def main():
     pv = pv / (np.linalg.norm(pv) + 1e-9)
     relationship_salience = round(max(0.0, float(S[-1] @ pv)), 3)
 
-    # residual (EVIDENCE): lived latest self vs the model's predicted self — needs the trained net
-    residual = None
-    try:
-        import torch
-        from jepa_predictor import make_net
-        ck = torch.load(MODEL)
-        net = make_net(ck["dim"]); net.load_state_dict(ck["state"]); net.eval()
-        _hist = [e for e in load(CHAT, []) if isinstance(e, dict) and e.get("content")]
-        ctx = " \n".join(str(t.get("content", ""))[:300] for t in _hist[-CTX_TURNS:])
-        xe = np.asarray(enc.encode([ctx], show_progress_bar=False), dtype="float32")
-        with torch.no_grad():
-            _, s_pred, _, _ = net(torch.tensor(xe))
-        sp = s_pred.numpy()[0]; sp = sp / (np.linalg.norm(sp) + 1e-9)
-        residual = round(1.0 - float(S[-1] @ sp), 3)    # 0 = lived matches predicted, 1 = departed
-    except Exception as e:
-        log(f"residual skipped ({e})")
-
-    # EXPECTED vs UNEXPECTED — the self head's own novelty is what it expected to move
-    jp = load(JEPA, {})
-    expected = None
-    try:
-        expected = float((jp.get("self") or {}).get("novelty"))
-    except Exception:
-        expected = None
-    unexpected = round(max(0.0, drift - (expected or 0.0)), 3)
+    # The next-reply head and the latest daily journal are different targets.
+    # A fresh prediction of a future turn cannot measure a past journal residual;
+    # neither can next-turn novelty be subtracted from geometric daily drift.
+    residual = expected = unexpected = None
 
     out = {
         "ts": datetime.now(timezone.utc).isoformat(),

@@ -22,13 +22,13 @@ memory/jepa-prediction-history.jsonl, and says yes or no.
 """
 import os, json, time
 
-WS = os.path.expanduser("~/.vintos/workspace")
+WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 AUDIT = os.path.join(MEMORY, "jepa-calibration.json")
 HISTORY = os.path.join(MEMORY, "jepa-prediction-history.jsonl")
 RELEASES = os.path.join(MEMORY, "calibration-releases.jsonl")
 
-CRITERIA_VERSION = "v1-2026-09-10"
+CRITERIA_VERSION = "v2-2026-10-22"
 CRITERIA = {
     "min_holdout": 30,             # joined predictions in the held-out slice
     "max_monotonicity": -0.20,     # confidence must fall as error rises (Spearman, want negative)
@@ -112,7 +112,7 @@ def verdict(head="gloria", criteria=None, audit=None):
     if a.get("n_holdout") is None:
         out.update(state="INSUFFICIENT", why="audit names no held-out slice; a full-sample number is not a release", n_holdout=0)
         return out
-    n_hold = int(a.get("n_holdout") or 0)
+    n_hold = int(ax.get("n_holdout", a.get("n_holdout")) or 0)
     out["n_holdout"] = n_hold
     if n_hold < c["min_holdout"]:
         out.update(state="INSUFFICIENT", why="%d predictions in the holdout; %d required" % (n_hold, c["min_holdout"]))
@@ -148,6 +148,44 @@ def verdict(head="gloria", criteria=None, audit=None):
 
 def allowed(head="gloria"):
     return verdict(head).get("state") == "RELEASED"
+
+
+def forecast_allowed(forecast, head="gloria", now=None):
+    """Consumer gate: calibration alone is not predictive skill. Recheck the current
+    checkpoint and ranking receipt at use time, including cached prompt material.
+    Separate self weights cannot borrow the shared trunk's audit.
+    """
+    import math
+    from datetime import datetime
+    if not isinstance(forecast, dict) or forecast.get("shadow_only"):
+        return False
+    try:
+        at = datetime.fromisoformat(str(forecast.get("predicted_at", "")).replace("Z", "+00:00")).timestamp()
+        age = (time.time() if now is None else now) - at
+        if not 0 <= age <= 7200:
+            return False
+        ck = checkpoint_fingerprint()
+        if not ck or forecast.get("checkpoint_id") != ck:
+            return False
+        triple = forecast.get(head) or {}
+        if head == "self" and triple.get("source"):
+            # The separate model currently has cosine eval, not a prospective
+            # ranking + confidence release. Keep recording it in shadow.
+            return False
+        if triple.get("confidence_placeholder") or (forecast.get("qualification") or {}).get(head) != "qualified":
+            return False
+        conf = triple.get("confidence")
+        if not isinstance(conf, (int, float)) or not math.isfinite(conf):
+            return False
+        if verdict(head).get("state") != "RELEASED":
+            return False
+        from jepa_ranking_audit import CRITERIA_VERSION as ranking_version
+        with open(os.path.join(MEMORY, "jepa-ranking-audit.json")) as f:
+            ranking = json.load(f)
+        return (ranking.get("checkpoint") == ck and ranking.get("criteria_version") == ranking_version
+                and (ranking.get(head) or {}).get("state") == "EVIDENCE_OF_PREDICTION")
+    except Exception:
+        return False
 
 
 def record_release(head, v=None):

@@ -1,0 +1,222 @@
+{
+  "corrected_ranking": {
+    "gloria": {
+      "n": 40,
+      "state": "NO_EVIDENCE_BEYOND_VOICE_RETRIEVAL",
+      "complete_controls": true,
+      "paired_day_block_ci95": {
+        "voice_baseline_rank": [
+          0.0,
+          0.1382
+        ],
+        "recent_turn_baseline_rank": [
+          0.0508,
+          0.1815
+        ],
+        "context_copy_baseline_rank": [
+          0.0296,
+          0.171
+        ]
+      },
+      "top1_accuracy": 0.175,
+      "mean_reciprocal_rank": 0.4242,
+      "chance_top1": 0.1783,
+      "baselines": {
+        "voice_baseline_rank": {
+          "n": 40,
+          "top1": 0.1,
+          "mrr": 0.3475
+        },
+        "recent_turn_baseline_rank": {
+          "n": 40,
+          "top1": 0.0,
+          "mrr": 0.3071
+        },
+        "context_copy_baseline_rank": {
+          "n": 40,
+          "top1": 0.05,
+          "mrr": 0.3233
+        }
+      },
+      "strongest_baseline": "voice_baseline_rank",
+      "mrr_lift_ci95": [
+        0.0,
+        0.1382
+      ],
+      "pairwise_win_rate_by_negative_tier": {
+        "later_future": 0.4103,
+        "recent_echo": 0.425,
+        "far_past": 0.4872,
+        "same_sitting": 0.6
+      }
+    },
+    "self": {
+      "n": 33,
+      "state": "NO_EVIDENCE_BEYOND_VOICE_RETRIEVAL",
+      "complete_controls": true,
+      "paired_day_block_ci95": {
+        "voice_baseline_rank": [
+          0.006,
+          0.1802
+        ],
+        "recent_turn_baseline_rank": [
+          -0.0603,
+          0.0801
+        ],
+        "context_copy_baseline_rank": [
+          -0.0939,
+          0.1305
+        ]
+      },
+      "top1_accuracy": 0.1212,
+      "mean_reciprocal_rank": 0.3823,
+      "chance_top1": 0.1763,
+      "baselines": {
+        "voice_baseline_rank": {
+          "n": 33,
+          "top1": 0.0,
+          "mrr": 0.2899
+        },
+        "recent_turn_baseline_rank": {
+          "n": 33,
+          "top1": 0.0,
+          "mrr": 0.3788
+        },
+        "context_copy_baseline_rank": {
+          "n": 33,
+          "top1": 0.0606,
+          "mrr": 0.3535
+        }
+      },
+      "strongest_baseline": "recent_turn_baseline_rank",
+      "mrr_lift_ci95": [
+        -0.0603,
+        0.0801
+      ],
+      "pairwise_win_rate_by_negative_tier": {
+        "later_future": 0.3939,
+        "recent_echo": 0.4545,
+        "far_past": 0.4375,
+        "same_sitting": 0.68
+      }
+    }
+  },
+  "self_eval": {
+    "ahead": {
+      "n": 5,
+      "baselines": [
+        "previous_reply",
+        "recent_mean"
+      ],
+      "cos_dist": {
+        "head": 0.2254,
+        "previous_reply": 0.271,
+        "recent_mean": 0.244
+      },
+      "head_wins": {
+        "vs_previous_reply": 0.8,
+        "vs_recent_mean": 0.8
+      },
+      "strongest_baseline": "recent_mean",
+      "head_minus_strongest_ci95": [
+        -0.04,
+        -0.0021
+      ],
+      "state": "INSUFFICIENT",
+      "why": "5 realized replies; 30 needed for a verdict"
+    },
+    "on_message": {
+      "n": 20,
+      "baselines": [
+        "previous_reply",
+        "recent_mean",
+        "nearest_exchange",
+        "typical_reply"
+      ],
+      "cos_dist": {
+        "head": 0.1828,
+        "previous_reply": 0.2971,
+        "recent_mean": 0.2671,
+        "nearest_exchange": 0.3475,
+        "typical_reply": 0.2514
+      },
+      "head_wins": {
+        "vs_previous_reply": 0.95,
+        "vs_recent_mean": 1.0,
+        "vs_nearest_exchange": 1.0,
+        "vs_typical_reply": 1.0
+      },
+      "strongest_baseline": "typical_reply",
+      "head_minus_strongest_ci95": [
+        -0.0859,
+        -0.0514
+      ],
+      "state": "INSUFFICIENT",
+      "why": "20 realized replies; 30 needed for a verdict"
+    },
+    "legacy_shared_trunk": {
+      "n": 33,
+      "baselines": [
+        "previous_reply",
+        "recent_mean"
+      ],
+      "cos_dist": {
+        "head": 0.5163,
+        "previous_reply": 0.2844,
+        "recent_mean": 0.233
+      },
+      "head_wins": {
+        "vs_previous_reply": 0.0,
+        "vs_recent_mean": 0.0
+      },
+      "strongest_baseline": "recent_mean",
+      "head_minus_strongest_ci95": [
+        0.2654,
+        0.3011
+      ],
+      "state": "NOT_BETTER_THAN_BASELINES",
+      "why": "does not beat recent_mean with a CI below 0"
+    }
+  },
+  "self_sources": {
+    "exchanges": 311,
+    "replies": 311,
+    "ledger_only_replies": 293,
+    "by_source": {
+      "ledger": {
+        "read": 293,
+        "added": 293,
+        "duplicate": 0
+      },
+      "canonical": {
+        "read": 24,
+        "added": 8,
+        "duplicate": 16
+      },
+      "merged": {
+        "read": 18,
+        "added": 10,
+        "duplicate": 8
+      }
+    },
+    "first": "2026-07-31T10:50:54.129254",
+    "last": "2026-10-21T23:27:09.135065"
+  },
+  "outcome_retention": {
+    "her": {
+      "distinct_next_targets": 108,
+      "absent_from_current_ledger": 2,
+      "missing_dates": [
+        "2026-10-16",
+        "2026-10-20"
+      ]
+    },
+    "his": {
+      "distinct_next_targets": 108,
+      "absent_from_current_ledger": 1,
+      "missing_dates": [
+        "2026-10-16"
+      ]
+    }
+  }
+}

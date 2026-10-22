@@ -39,7 +39,9 @@ def relational():
     except (OSError, ValueError):
         lt = {}
     if isinstance(lt, dict):
-        add("Where she seems to be heading (Living Trajectory)", (lt.get("gloria_trajectory") or {}).get("predicted"), 240)
+        gt = lt.get("gloria_trajectory") or {}
+        if gt.get("source") == "observed_portrait":
+            add("Her observed portrait (Living Trajectory)", gt.get("predicted"), 240)
         add("Where you two are heading (Living Trajectory)", (lt.get("relationship") or {}).get("trajectory"), 240)
     add("How she and you are reading each other (Mutual Simulation)", _organ("mutual_simulation", "get_interaction_hint"))
     # get_thread_context is the top latent thread, not the geometry (audit, 18 October)

@@ -26,7 +26,7 @@ OUT = os.path.join(MEM, "jepa-ranking-audit.json")
 MODEL = os.path.join(MEM, "jepa-predictor.pt")
 POOL_SIZE = max(3, min(12, int(os.environ.get("JEPA_RANK_POOL_SIZE", "6"))))
 MIN_VERDICT = 30
-CRITERIA_VERSION = "true-next-ranking-v1"
+CRITERIA_VERSION = "true-next-ranking-v2"
 
 
 def _load(path, default):
@@ -79,6 +79,14 @@ def _turns(ledger):
     return out
 
 
+def realized_ledger():
+    """Same admitted sources as self training; a capped display is not all outcomes.
+    No raw backup recovery and no write to the live interaction ledger.
+    """
+    from jepa_self_head import exchanges
+    return [{"timestamp": x["ts"], "gloria": x["her"], "vintos": x["his"]} for x in exchanges()]
+
+
 def _cos(a, b):
     a, b = [float(x) for x in a], [float(x) for x in b]
     den = math.sqrt(sum(x * x for x in a) * sum(x * x for x in b))
@@ -95,10 +103,23 @@ def _centroid(vectors):
     return [sum(row[i] for row in vectors) / len(vectors) for i in range(len(vectors[0]))]
 
 
+def _rank(scores):
+    """Conservative ties: candidate zero is the target, not the tie breaker."""
+    if not scores or not all(math.isfinite(v) for v in scores):
+        return len(scores) or 1
+    return sum(v >= scores[0] - 1e-12 for v in scores)
+
+
 def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_size=POOL_SIZE):
     """Return prospective ranking rows. One forecast is kept per realized target so a
     cron firing repeatedly before one reply cannot manufacture sample size."""
     streams = _turns(ledger)
+    cache = {}
+    def encode(texts):
+        missing = list(dict.fromkeys(t for t in texts if t not in cache))
+        if missing:
+            cache.update(zip(missing, enc.encode(missing, show_progress_bar=False)))
+        return [cache[t] for t in texts]
     rows, seen_targets = [], set()
     for forecast in sorted(history, key=lambda r: float(r.get("ts", 0) or 0)):
         fts = float(forecast.get("ts", 0) or 0)
@@ -107,7 +128,12 @@ def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_siz
         if fts <= trained_before:
             continue
         for head in ("gloria", "self"):
-            pred = (forecast.get(head) or {}).get("emb")
+            triple = forecast.get(head) or {}
+            if head == "self" and triple.get("source"):
+                triple = forecast.get("legacy_self") or {}
+                if not triple or triple.get("checkpoint_id") != forecast.get("checkpoint_id"):
+                    continue
+            pred = triple.get("emb")
             if not isinstance(pred, list) or not pred:
                 continue
             future = [t for t in streams[head] if t["ts"] > fts]
@@ -142,26 +168,22 @@ def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_siz
             seen_targets.add(target_key)
             past = past[-12:]
             texts = [t["text"] for t in candidates]
-            encoded = enc.encode(texts + [t["text"] for t in past], show_progress_bar=False)
+            encoded = encode(texts + [t["text"] for t in past])
             candidate_vecs = encoded[:len(texts)]
             head_scores = [_cos(pred, v) for v in candidate_vecs]
-            head_order = sorted(range(len(texts)), key=lambda i: head_scores[i], reverse=True)
-            head_rank = head_order.index(0) + 1
+            head_rank = _rank(head_scores)
             base_rank = None
             recent_rank = None
             if past:
                 base = _centroid(encoded[len(texts):])
                 base_scores = [_cos(base, v) for v in candidate_vecs]
-                base_order = sorted(range(len(texts)), key=lambda i: base_scores[i], reverse=True)
-                base_rank = base_order.index(0) + 1
+                base_rank = _rank(base_scores)
                 recent_scores = [_cos(encoded[-1], v) for v in candidate_vecs]
-                recent_order = sorted(range(len(texts)), key=lambda i: recent_scores[i], reverse=True)
-                recent_rank = recent_order.index(0) + 1
+                recent_rank = _rank(recent_scores)
             context_rank = None
             if isinstance(forecast.get("context_emb"), list) and forecast.get("context_emb"):
                 context_scores = [_cos(forecast["context_emb"], v) for v in candidate_vecs]
-                context_order = sorted(range(len(texts)), key=lambda i: context_scores[i], reverse=True)
-                context_rank = context_order.index(0) + 1
+                context_rank = _rank(context_scores)
             rows.append({
                 "head": head,
                 "forecast_iso": forecast.get("iso"),
@@ -200,17 +222,27 @@ def _summary(rows, head):
     strongest_top1 = max((v["top1"] for v in baselines.values()), default=None)
     strongest_mrr = max((v["mrr"] for v in baselines.values()), default=None)
     strongest_field = max(baselines, key=lambda k: baselines[k]["mrr"]) if baselines else None
-    lift_ci = None
-    if strongest_field:
-        paired = [r for r in rs if r.get(strongest_field)]
-        diffs = [1.0 / int(r["rank"]) - 1.0 / int(r[strongest_field]) for r in paired]
-        if diffs:
-            rng = random.Random(20260918); means = []
+    intervals = {}
+    # Resample whole target days; several exchanges from one sitting are not
+    # independent evidence. Every baseline is compared on its own paired rows.
+    for field in baseline_fields:
+        blocks = {}
+        for i, row in enumerate(rs):
+            if not row.get(field): continue
+            day = datetime.fromtimestamp(row["target_ts"]).date().isoformat() if row.get("target_ts") else str(i)
+            blocks.setdefault(day, []).append(1.0 / int(row["rank"]) - 1.0 / int(row[field]))
+        if blocks:
+            values = list(blocks.values()); rng = random.Random(20260918); means = []
             for _ in range(2000):
-                means.append(sum(diffs[rng.randrange(len(diffs))] for _ in diffs) / len(diffs))
-            means.sort(); lift_ci = [round(means[int(.025 * len(means))], 4), round(means[int(.975 * len(means)) - 1], 4)]
-    state = "INSUFFICIENT" if n < MIN_VERDICT else (
-        "EVIDENCE_OF_PREDICTION" if strongest_top1 is not None and top1 > strongest_top1 and mrr > strongest_mrr and lift_ci and lift_ci[0] > 0 else
+                sample = [v for _ in values for v in values[rng.randrange(len(values))]]
+                means.append(sum(sample) / len(sample))
+            means.sort()
+            intervals[field] = [round(means[50], 4), round(means[1949], 4)]
+    lift_ci = intervals.get(strongest_field)
+    complete = all(len([r for r in rs if r.get(field)]) == n for field in baseline_fields)
+    state = "INSUFFICIENT" if n < MIN_VERDICT or not complete else (
+        "EVIDENCE_OF_PREDICTION" if strongest_top1 is not None and top1 > strongest_top1 and mrr > strongest_mrr
+        and all(intervals.get(field, [0])[0] > 0 for field in baseline_fields) else
         "NO_EVIDENCE_BEYOND_VOICE_RETRIEVAL")
     tier_totals = {}
     for row in rs:
@@ -218,6 +250,7 @@ def _summary(rows, head):
             pair = tier_totals.setdefault(tier, [0, 0]); pair[0] += int(bool(won)); pair[1] += 1
     return {
         "n": n, "state": state,
+        "complete_controls": complete, "paired_day_block_ci95": intervals,
         "top1_accuracy": round(top1, 4), "mean_reciprocal_rank": round(mrr, 4),
         "chance_top1": round(chance, 4),
         "baselines": {k: {"n": v["n"], "top1": round(v["top1"], 4), "mrr": round(v["mrr"], 4)} for k, v in baselines.items()},
@@ -243,14 +276,15 @@ def main():
     history_path = os.path.join(MEM, "jepa-prediction-structured-shadow-history.jsonl") if shadow else HIST
     out_path = os.path.join(MEM, "jepa-ranking-structured-shadow.json") if shadow else OUT
     history = _jsonl(history_path)
-    ledger = _load(LEDGER, [])
+    ledger = realized_ledger()
     checkpoint = None
     try:
         checkpoint = hashlib.sha256(open(model_path, "rb").read()).hexdigest()
         trained_before = os.path.getmtime(model_path)
     except Exception:
         trained_before = 0.0
-    rows = evaluate(history, ledger, encoder(), checkpoint=checkpoint, trained_before=trained_before)
+    enc = encoder()
+    rows = evaluate(history, ledger, enc, checkpoint=checkpoint, trained_before=trained_before)
     report = {
         "criteria_version": CRITERIA_VERSION,
         "checkpoint": checkpoint,
@@ -263,6 +297,11 @@ def main():
     }
     _atomic(out_path, report)
     print("[jepa-ranking] gloria %s; self %s" % (report["gloria"], report["self"]))
+    # The installed daily ranking job is also the independent self evaluator.
+    # No second encoder, new cron entry, training, or model release.
+    if not shadow:
+        from jepa_self_head import run_eval
+        run_eval(enc=enc)
 
 
 if __name__ == "__main__":

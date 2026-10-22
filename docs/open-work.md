@@ -1,3 +1,30 @@
+## 22 October — JEPA and latent organs review (Codex; not deployed)
+
+Review work is on `codex/jepa-heads-audit-repair`, based on `54b2910`.
+See [the findings and ranked accuracy plan](jepa-heads-review-2026-10-22.md)
+and [measurement/test receipts](review-evidence/jepa-20261022/validation.json).
+The corrected current Gloria ranking has a positive point estimate but its
+paired day-block interval touches zero. Independent on-message self has useful
+cosine evidence (20 replies); it still lacks 30 outcomes and a ranking/calibration
+release. No head is newly released and no weights were trained or changed.
+
+Implemented for review: shared-versus-independent checkpoint attribution,
+per-speaker deduplication, admitted outcome sources, scheduled independent self
+evaluation through the existing daily ranking job, retained presence labels and
+training baseline, consumer release checks, and withholding of unvalidated
+prose/withheld/relational prompt hints. No pre-forget or pre-erase backups are
+recovered as training archives. The report names the invalid drift residual and
+the real latent-cache/reality-scores output paths.
+
+Still open: Claude Code review/merge; deployment by Gloria; clean-source per-mode
+self replay and ranking; baseline-anchored Gloria experiments; independent
+confidence calibration; replacement of the already-lost presence baseline through
+a newly evaluated scratch design; causal LAM inputs; reality label/split audit;
+downstream behavioral tests. LoRA integration waits for its own authored-data
+training and evaluation, not the infrastructure repairs. Full Mac sandbox run:
+467 suites, 463 passed, 4 failures reproduced on the untouched base (timezone,
+PDF utility, reserved-port fixture, GNU grep). No tests touched live stores or sent.
+
 ## 22 October — investigation findings are judged, kept, told and built on
 
 Done (not yet deployed): `scripts/lab_findings.py`. An investigation whose review answers its question gets the

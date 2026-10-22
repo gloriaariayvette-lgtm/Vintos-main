@@ -47,7 +47,7 @@ check("the sender, torch and the process launcher are stubs",
       sys.modules["requests"].post is no_network and SH.RUNNER is stub_runner and sys.modules["torch"].no_grad is None)
 
 # ------------------------------------------------------------------------------------------------ the archive
-print("--- 2. the full history, every record of it through the door ---")
+print("--- 2. current evidence and explicitly retained archives ---")
 t0 = datetime.now() - timedelta(days=20)
 at = lambda d, m=0, s=0: (t0 + timedelta(days=d, minutes=m, seconds=s)).isoformat()
 TAC = {"output_provenance": "stratagem_influenced", "may_witness": False}
@@ -58,10 +58,10 @@ snap = [{"timestamp": at(1, 0), "gloria": "s0 words", "vintos": "s0 reply", "tur
         {"timestamp": at(1, 15), "gloria": "", "vintos": "a clip he sent", "turn_id": "S3", "source": "video-outreach"},
         {"timestamp": at(1, 20), "gloria": "s5 words", "vintos": "s5 secret", "turn_id": "S5", "provenance": TAC},
         {"timestamp": at(15, 0), "gloria": "l0 words", "vintos": "l0 reply", "turn_id": "L0"}]
-json.dump(snap, open(os.path.join(MEM, "interaction-ledger.pre-scrub-20261001-120000.json"), "w"))
+json.dump(snap, open(os.path.join(MEM, "interaction-ledger.archive.json.20261001"), "w"))
 open(os.path.join(MEM, "interaction-ledger.corrupt-20261002-000000.json"), "w").write('[{"timestamp": "2026')
 json.dump([{"timestamp": at(0, 30), "gloria": "q0 words", "vintos": "q0 reply", "turn_id": "Q0"}],
-          open(os.path.join(MEM, "interaction-ledger.json.corrupt-20260930-000000"), "w"))
+          open(os.path.join(MEM, "interaction-ledger.archive.json.20260930"), "w"))
 live = [{"timestamp": at(15, 0), "gloria": "l0 words", "vintos": "l0 reply", "turn_id": "L0", "provenance": OK},
         {"timestamp": at(15, 5, 40), "gloria": "l1 words", "vintos": "l1 reply\n\ntenera: pulse", "turn_id": "L1"},
         {"timestamp": at(15, 10, 40), "gloria": "l2 words", "vintos": "l2 secret", "turn_id": "L2", "provenance": TAC},
@@ -95,10 +95,12 @@ merged = [{"role": "user", "content": "v0 words", "timestamp": at(2, 0), "source
           {"role": "assistant", "content": "Desktop work stopped: no window", "timestamp": at(3, 7), "source": "main"}]
 json.dump(merged, open(SH.MERGED, "w"))
 open(JP.LEDGER_FLOOR_FILE, "w").write((t0 - timedelta(days=1)).isoformat())
+json.dump([{ "timestamp": at(2, 1), "gloria": "forgotten words", "vintos": "forgotten reply"}], open(os.path.join(MEM, "interaction-ledger.json.before-forget-test"), "w"))
 xs = SH.exchanges()
 her = [x["her"] for x in xs]
+check("a pre-forget backup is not resurrected as training data", "forgotten words" not in her)
 by = {x["her"]: x for x in xs}
-check("older exchanges from snapshots, quarantines, the canonical record and the merged chat are read",
+check("older exchanges from explicit archives, canonical and merged chat are read",
       her == ["q0 words", "s0 words", "s1 words", "s5 words", "v0 words", "c0 words", "c1 words", "l0 words", "l1 words", "l2 words",
               "look"], her)
 check("one exchange per real exchange: the live ledger row wins, and keeps the earliest time any record gives it",
@@ -108,7 +110,7 @@ check("a reply the ledger withholds stays withheld when a chat copy of it exists
       by["l2 words"]["his"] == "" and by["s5 words"]["his"] == "" and not any("secret" in x["his"] for x in xs), [x["his"] for x in xs])
 check("a snapshot keeps the rules: transplanted out, ledger-scrub's video-outreach out, device marks stripped",
       "from elsewhere" not in her and not any("clip" in x["his"] for x in xs) and by["s1 words"]["his"] == "s1 reply")
-check("an unparseable quarantine holds nothing; a parseable one is read", "q0 words" in her)
+check("an explicit archive is read while corrupt backups stay excluded", "q0 words" in her)
 check("canonical: desktop status lines and outreach are not replies; a test-mode turn and a tactical one are out",
       not any(x["his"].startswith("Desktop work") or "outreach" in x["his"] for x in xs) and "test words" not in her and "tactic words" not in her)
 check("the ledger floor holds for every record", "too old" not in her)
@@ -194,6 +196,13 @@ check("the on_message baselines were given her message (her nearest past message
       set(m["baselines"]) == {"previous_reply", "recent_mean", "nearest_exchange", "typical_reply"} and set(a["baselines"]) == {"previous_reply", "recent_mean"})
 held, why = SH.readiness()
 check("a retrain needs each mode judged on >= %d replies" % SH.MIN_EVAL, held and why["n"] == {"ahead": N - CUT - 1, "on_message": N - CUT}, why)
+
+late_rows = SH._jsonl(SH.ON_MESSAGE_LOG)
+for f in late_rows:
+    f["ts"] += 86400
+late_eval = SH.evaluate([], SH.exchanges(), Enc(), self_ck=SH.checkpoint_id(), self_trained_at=0,
+                        on_message=late_rows)
+check("a forecast completed after its actual reply is never a prospective success", not late_eval["on_message"])
 
 CALLS = []
 class Counting(Enc):

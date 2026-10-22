@@ -16,28 +16,38 @@ OUT = os.path.join(MEM, "jepa-calibration.json")
 
 
 def joined_rows(hist, turns, enc, checkpoint, trained_before):
-    """Join forecasts to distinct realized next-turn pairs.
+    """Join each head to its distinct realized next same-speaker turn.
 
     Several timer forecasts before the same exchange are one prospective outcome,
     not several samples. This mirrors the ranking audit's target deduplication.
     """
     import numpy as np
-    rows, seen_targets = [], set()
-    for h in hist:
-        if h.get("checkpoint_id") != checkpoint or h.get("ts", 0) <= trained_before: continue
-        nxt_g = next(((t, g) for t, g, v in turns if t > h["ts"] and g), None)
-        nxt_s = next(((t, v) for t, g, v in turns if t > h["ts"] and v), None)
-        if not nxt_g or not nxt_s: continue
-        target_key = (nxt_g[0], nxt_s[0])
-        if target_key in seen_targets: continue
-        seen_targets.add(target_key)
-        eg, es = enc.encode([nxt_g[1][:400], nxt_s[1][:400]], show_progress_bar=False)
-        def err(pred, act):
-            p_, a_ = np.asarray(pred, dtype="float32"), np.asarray(act, dtype="float32")
-            return round(1.0 - float(p_ @ a_ / ((p_ @ p_) ** .5 * (a_ @ a_) ** .5 + 1e-9)), 4)
-        rows.append({"iso": h["iso"],
-                     "g_conf": h["gloria"]["confidence"], "g_dsim": h["gloria"]["decode_similarity"], "g_err": err(h["gloria"]["emb"], eg),
-                     "s_conf": (None if h["self"].get("confidence_placeholder") else h["self"].get("confidence")), "s_dsim": h["self"]["decode_similarity"], "s_err": err(h["self"]["emb"], es)})
+    rows, seen_targets = [], {"g": set(), "s": set()}
+    for h in sorted(hist, key=lambda r: float(r.get("ts", 0) or 0)):
+        if h.get("checkpoint_id") != checkpoint or h.get("ts", 0) <= trained_before:
+            continue
+        row = {"iso": h["iso"]}
+        for ax, head, index in (("g", "gloria", 1), ("s", "self", 2)):
+            row.update({ax + "_conf": None, ax + "_dsim": None, ax + "_err": None})
+            triple = h.get(head) or {}
+            if head == "self" and triple.get("source"):
+                triple = h.get("legacy_self") or {}
+                if triple.get("checkpoint_id") != checkpoint:
+                    continue
+            target = next((t for t in turns if t[0] > h["ts"] and t[index]), None)
+            if not target or not triple.get("emb"):
+                continue
+            key = (target[0], target[index])
+            if key in seen_targets[ax]:
+                continue
+            seen_targets[ax].add(key)
+            act = enc.encode([target[index][:400]], show_progress_bar=False)[0]
+            p_, a_ = np.asarray(triple["emb"], dtype="float32"), np.asarray(act, dtype="float32")
+            error = 1.0 - float(p_ @ a_ / (np.linalg.norm(p_) * np.linalg.norm(a_) + 1e-9))
+            row.update({ax + "_conf": None if triple.get("confidence_placeholder") else triple.get("confidence"),
+                        ax + "_dsim": triple.get("decode_similarity"), ax + "_err": round(error, 4)})
+        if row["g_err"] is not None or row["s_err"] is not None:
+            rows.append(row)
     return rows
 
 
@@ -49,8 +59,8 @@ def main():
         hist = [json.loads(l) for l in open(HIST)]
     except Exception:
         print("[jepa-audit] no history yet"); return
-    led = json.load(open(os.path.join(MEM, "interaction-ledger.json")))
-    led = led if isinstance(led, list) else next(v for v in led.values() if isinstance(v, list))
+    from jepa_ranking_audit import realized_ledger
+    led = realized_ledger()
     from datetime import datetime
     def ep(e):
         try: return datetime.fromisoformat(str(e.get("timestamp", ""))).timestamp()
@@ -101,12 +111,14 @@ def main():
            "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown",
            "checkpoint": _ck, "holdout_protocol": "prospective-checkpoint-v1"}
     for ax in ("g", "s"):
-        if any(r[ax + "_conf"] is None for r in hold):
+        axis_rows = [r for r in rows if r[ax + "_err"] is not None]
+        axis_hold, axis_why = _cal.holdout(axis_rows, by="time") if axis_rows else ([], "no outcomes")
+        if not axis_hold or any(r[ax + "_conf"] is None or r[ax + "_dsim"] is None for r in axis_hold):
             # a placeholder confidence measures nothing: the axis is reported unmeasured, never scored
-            res[ax] = {"unmeasured": "confidence is a placeholder or missing on held-out rows"}; continue
-        conf = [r[ax + "_conf"] for r in hold]; dsim = [r[ax + "_dsim"] for r in hold]; e = [r[ax + "_err"] for r in hold]
-        wb = [r["iso"][:16] for r in hold if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
-        res[ax] = {"monotonicity_conf_vs_err": spear(conf, e), "bins_low_mid_high_err": bins(conf, e),
+            res[ax] = {"n_holdout": len(axis_hold), "n_joined": len(axis_rows), "unmeasured": "confidence is a placeholder or missing on held-out rows"}; continue
+        conf = [r[ax + "_conf"] for r in axis_hold]; dsim = [r[ax + "_dsim"] for r in axis_hold]; e = [r[ax + "_err"] for r in axis_hold]
+        wb = [r["iso"][:16] for r in axis_hold if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
+        res[ax] = {"n_holdout": len(axis_hold), "n_joined": len(axis_rows), "holdout": axis_why, "monotonicity_conf_vs_err": spear(conf, e), "bins_low_mid_high_err": bins(conf, e),
                    "CONTROL_dsim_vs_err": spear(dsim, e), "wrong_but_confident": wb[:5]}
     _measured = [r for r in hold if r["g_conf"] is not None and r["s_conf"] is not None]
     res["axis_lockstep_corr"] = spear([r["g_conf"] for r in _measured], [r["s_conf"] for r in _measured]) if len(_measured) > 2 else None

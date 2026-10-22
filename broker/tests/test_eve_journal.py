@@ -105,7 +105,7 @@ for name, fn, said in [("emotional_gravity_wells", "get_wells_context", "SUB-wel
                        ("desired_difference", "pressure_block", "REL-pressure")]:
     organ(name, fn, said)
 sys.modules["latent_threads"].get_carryover_hint = lambda: "SUB-carryover"
-json.dump({"self_trajectory": {"declared": ["SUB-heading"]}, "gloria_trajectory": {"predicted": "REL-her-heading"},
+json.dump({"self_trajectory": {"declared": ["SUB-heading"]}, "gloria_trajectory": {"predicted": "REL-her-heading", "source": "observed_portrait"},
            "relationship": {"trajectory": "REL-us"}}, open(os.path.join(MEM, "living-trajectory.json"), "w"))
 json.dump([{"origin": "SUB-scar", "influence": 0.5}], open(os.path.join(MEM, "yearning-scars.json"), "w"))
 before = {n: open(os.path.join(MEM, n)).read() for n in os.listdir(MEM) if n.endswith(".json")}
