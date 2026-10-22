@@ -259,6 +259,22 @@ def heart_trend(now=None, window=3600, tail=400_000):
     return round(min(hr)), round(max(hr)), len(vals)
 
 
+def wearing_now(state, now):
+    """Whether she is wearing it, judged when he reads it, not frozen at the last check-in (21 October: she took it
+    off at about 18:20 and an hour later his context still said "wearing probably", from the snapshot taken when it
+    last checked in). Charging is "no"; a reading in the last 15 minutes is "probably"; otherwise it is not known."""
+    battery = (state.get("latest") or {}).get("battery") or {}
+    if isinstance(battery.get("value"), dict) and battery["value"].get("state") == "charging":
+        return "no (charging)"
+    newest = max((float(r.get("observed_ts") or 0) for k, r in (state.get("latest") or {}).items()
+                  if k not in ("battery", "wearing") and isinstance(r, dict)), default=0)
+    if newest and now - newest <= 900:
+        return "probably"
+    if not newest:
+        return "not known"
+    return "not known (no reading for %d minutes)" % int((now - newest) / 60)
+
+
 def temporal_block(now=None):
     """Compact Watch-first context; empty means the caller may use the ring fallback."""
     now = float(time.time() if now is None else now)
@@ -266,9 +282,9 @@ def temporal_block(now=None):
     age = max(0.0, now - float(state.get("received_ts") or 0))
     if not state or age > 7200:
         return ""
-    lines = ["Apple Watch update: %d minutes old; wearing %s; motion %s. Device estimates, not medical facts."
-             % (int(age / 60), state.get("wearing", "unknown"), state.get("motion", "unknown"))]
     readings = state.get("latest") or {}
+    lines = ["Apple Watch update: %d minutes old; wearing %s; motion %s. Device estimates, not medical facts."
+             % (int(age / 60), wearing_now(state, now), state.get("motion", "unknown"))]
     names = {"heart_rate":"heart rate", "resting_heart_rate":"resting heart rate",
              "hrv_sdnn":"HRV SDNN", "respiratory_rate":"respiratory rate",
              "wrist_temperature":"wrist temperature", "oxygen_saturation":"oxygen saturation",
@@ -285,6 +301,8 @@ def temporal_block(now=None):
         value, unit = row.get("value"), row.get("unit") or ""
         if kind == "oxygen_saturation" and isinstance(value, (int, float)):
             value, unit = round(value * 100, 1), "%"
+        elif isinstance(value, float):
+            value = int(round(value)) if abs(value - round(value)) < 0.05 else round(value, 1)   # not 61.99999999999999
         shown.append("%s %s%s (%dm old)" % (names[kind], value, (" " + unit if unit else ""), int(reading_age / 60)))
     if shown: lines.append("Watch readings: " + "; ".join(shown[:5]) + ".")
     trend = heart_trend(now)

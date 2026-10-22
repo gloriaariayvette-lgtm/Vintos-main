@@ -40,6 +40,17 @@ check("fewer than three readings make no range", W.heart_trend(now=T + 7200) is 
 routes = open(os.path.join(REPO, "scripts", "watch_routes.py")).read()
 check("every Watch check-in is told whether to run live", "return dict(result, live=watch_presence.live_state())" in routes)
 check("her phone sets it, with the app's secret", '@routes.post("/api/watch/live")' in routes and 'request.headers.get("X-Vintos-Secret") != app_secret' in routes)
+# 21 October: she took it off; an hour later his context still said "wearing probably" from the last check-in
+W._atomic(W.LATEST, {"received_ts": T - 6360, "wearing": "probably", "motion": "unknown", "latest": {
+    "resting_heart_rate": {"value": 61.99999999999999, "unit": "count/min", "observed_ts": T - 36000},
+    "hrv_sdnn": {"value": 31.0, "unit": "ms", "observed_ts": T - 6420}}})
+blk = W.temporal_block(T)
+check("wearing is judged when he reads it, not frozen at the last check-in", "wearing not known (no reading for 107 minutes)" in blk
+      and "wearing probably" not in blk, blk)
+check("and a fresh reading still says probably", W.wearing_now({"latest": {"heart_rate": {"observed_ts": T - 60}}}, T) == "probably")
+check("charging is no", W.wearing_now({"latest": {"battery": {"value": {"state": "charging"}}}}, T) == "no (charging)")
+check("a reading is shown as she would read it, not 61.99999999999999", "resting heart rate 62 count/min" in blk
+      and "HRV SDNN 31 ms" in blk, blk)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
