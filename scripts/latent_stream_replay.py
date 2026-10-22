@@ -34,6 +34,8 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 SOURCES = ["emotion", "inner", "thread", "creative", "her", "him"]
 EMO_DIM = 11
+EMO_AXES = ["Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity", "Warmth",
+            "Tension", "Groundedness"]
 TS_KEYS = ("timestamp", "ts", "t", "at", "time", "created_at")
 
 
@@ -75,8 +77,8 @@ def _sections(pattern, source):
                     .astimezone(timezone.utc)) if t else last + timedelta(minutes=1)
             last = max(last, when)
             text = (head + "\n" + body).strip()
-            if len(text) > 40:
-                out.append({"t": when, "source": source, "text": text[:1500]})
+            if len(text) > 40:   # t_exact: the heading carried its own time; otherwise placed after the one before it
+                out.append({"t": when, "source": source, "text": text[:1500], "t_exact": bool(t)})
     return out
 
 
@@ -89,20 +91,24 @@ def build_stream(mem=None):
         t, v = _stamp(r), r.get("v") if isinstance(r, dict) else None
         if t and isinstance(v, list) and len(v) >= EMO_DIM:
             ev.append({"t": t, "source": "emotion", "emo": [float(x) for x in v[:EMO_DIM]]})
-        elif t and isinstance(v, dict):
-            vals = list(v.values())[:EMO_DIM]
-            if len(vals) == EMO_DIM: ev.append({"t": t, "source": "emotion", "emo": [float(x) for x in vals]})
+        elif t and isinstance(v, dict):   # by axis name, never by the order the dict happens to hold
+            low = {str(k).lower(): x for k, x in v.items()}
+            if all(d.lower() in low for d in EMO_AXES):
+                ev.append({"t": t, "source": "emotion", "emo": [float(low[d.lower()]) for d in EMO_AXES]})
     ev += _sections("daily-inner-life-*.md", "inner")
     ev += _sections("daily-creative-*.md", "creative")
     for r in _json(os.path.join(MEM, "unfinished-threads.json"), []) or []:
         t = _stamp(r)
         if t and r.get("thread"): ev.append({"t": t, "source": "thread", "text": str(r["thread"])[:1500]})
-    seen = set()
+    seen = {}
     def turn(t, role, text):
+        """One turn kept in two stores (chat log and ledger) is one event: same side, same whole text, within 15
+        minutes. The same words said again on another day are a new event."""
         side = "her" if role in ("user", "gloria") else "him"
-        key = (side, " ".join(str(text).split())[:80])
-        if t and text and key not in seen:
-            seen.add(key); ev.append({"t": t, "source": side, "text": str(text)[:1500]})
+        key = (side, " ".join(str(text).split()))
+        if not (t and text): return
+        if key in seen and abs((t - seen[key]).total_seconds()) < 900: return
+        seen[key] = t; ev.append({"t": t, "source": side, "text": str(text)[:1500]})
     try:
         for line in open(os.path.join(MEM, "chat-canonical.jsonl"), errors="ignore"):
             try: r = json.loads(line)

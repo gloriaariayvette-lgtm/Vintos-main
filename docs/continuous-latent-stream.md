@@ -135,3 +135,12 @@ test days (three looks are already enough to start fitting the test). What would
 chat-canonical only begins on 16 October. Re-run the same script unchanged in late November; if text still loses,
 try the smaller target (a 64-d projection of the text space, or retrieval from his own memories) before anything
 larger.
+
+## Second design (22 October, Chat's plan): `scripts/latent_stream_linear.py`
+
+Gloria: "Waiting is stupid." Chat's plan, built as written: once-per-event training and scoring; fixed day boundaries
+with all earlier history in training and a manifest of every event's split; a linear state at three fixed timescales
+over a train-only PCA of the text; the "like the last one" score kept as a direct path with a strongly regularised,
+contrastively trained correction; a separate ridge readout for emotion; selection on validation text MRR among designs
+that beat emotion persistence; then the test days once, with the history ablation, per-source results and a paired
+day-block interval. Timestamps, emotion axes and chat deduplication were checked in the stream builder first.
