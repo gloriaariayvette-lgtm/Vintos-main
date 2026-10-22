@@ -61,7 +61,7 @@ PROTECTED = [
     (re.compile(r"secret|token|credential|password|env_file\.py|vintos\.env|\.ssh/|(^|/)\.claude/", re.I), "keys and secrets"),
     (re.compile(r"wallet|payment|purchase|billing|food[-_]order|doordash|coinbase|checkout", re.I), "money and payments"),
     (re.compile(r"effect_authority|consent|store_guard|compute_admission|skill_forge\.py|forge_build\.py|"
-                r"study_fix\.py|failure_watch\.py|deploy-atelier\.sh|run_isolated_test\.py|plugin_relay|"
+                r"study_fix\.py|study_agent\.py|failure_watch\.py|deploy-atelier\.sh|run_isolated_test\.py|plugin_relay|"
                 r"plugin_gateway\.py|broker/broker\.py|stratagem|(^|/)CLAUDE\.md$|(^|/)bench/|"
                 # the Forge runs as its own user beside his sealed Atelier and holds the spending gates (2026-10-03)
                 r"forge_loop|forge-loop-files|(^|/)broker/[^/]+\.service$", re.I), "the safety gates"),
@@ -740,7 +740,23 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
     row["state"] = "working"; _event(row, "Opus is working on it")
     say("\U0001F6E0 Study fix %s started: %s" % (row["id"], row["what"][:300]), post)
     reset_workbench(run=run)
-    plan, context = plan_fix(row, ask=ask, writers=writers)
+    # The writer works with tools (study_agent): reads, edits, runs single suites and repairs in one conversation
+    # (22 October: 13 of 36 fixes had landed; the one-shot writer never ran a test). The one-shot writer below is
+    # kept for when the agent cannot run at all, and for callers that hand in their own writer.
+    agent = None
+    if ask is None and writers is None and os.environ.get("VINTOS_STUDY_AGENT", "1") != "0":
+        try:
+            import study_agent
+            agent = study_agent.Session(row, WORKBENCH)
+            row["written_by"] = "Opus"
+            plan, context = agent.start(), None
+            row["agent"] = {"turns": agent.turns, "spent_usd": round(agent.spent, 2), "steps": agent.trace[-12:]}
+        except Exception as exc:
+            agent = None
+            _event(row, "the tool-using writer could not run (%s); the one-shot writer takes it" % str(exc)[:200])
+            reset_workbench(run=run)
+    if agent is None:
+        plan, context = plan_fix(row, ask=ask, writers=writers)
     if plan.get("refuse"):
         who = row.get("written_by") or "Opus"
         row["state"] = "refused"; _event(row, "%s declined: %s" % (who, plan["refuse"]))
@@ -748,11 +764,15 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
         return row
     failures, attempt = None, 0
     while True:
-        try:
-            changed = apply_edits(plan)
-        except ValueError as exc:
-            failures = [("the edits", str(exc))]
-            changed = []
+        if agent is not None:
+            changed = list(plan.get("changed") or [])    # already in the workbench, and its own tests already run
+            failures = [] if changed else [("the edits", "it finished without changing anything")]
+        else:
+            try:
+                changed = apply_edits(plan)
+            except ValueError as exc:
+                failures = [("the edits", str(exc))]
+                changed = []
         if changed:
             regenerate_reports(WORKBENCH, run=run)
             failures = suite(WORKBENCH)
@@ -772,6 +792,16 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
             say("\U0001F6E0 Study fix %s did not pass its tests after %d tries, so nothing changed. Failing: %s"
                 % (row["id"], attempt, ", ".join(t for t, _ in failures)[:300]), post)
             return row
+        if agent is not None:      # the same conversation repairs on the tree it built
+            try:
+                plan = agent.repair(failures)
+            except Exception as exc:
+                plan = {"refuse": "the writer could not continue: %s" % str(exc)[:200]}
+            row["agent"] = {"turns": agent.turns, "spent_usd": round(agent.spent, 2), "steps": agent.trace[-12:]}
+            if plan.get("refuse"):
+                reset_workbench(run=run)
+                _failed(row, "the writer gave up: " + str(plan["refuse"])); return row
+            continue
         reset_workbench(run=run)
         detail = "\n\n".join("== %s ==\n%s" % (t, out) for t, out in failures)[:20000]
         base = (getattr(context, "pieces", None) or [""])[0]
