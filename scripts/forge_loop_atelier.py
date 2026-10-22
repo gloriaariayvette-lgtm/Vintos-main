@@ -33,6 +33,14 @@ def lab_work(project):
     return origin == 'lab'
 
 
+def forge_paperwork(project):
+    """Forge work that never belongs in his Atelier: the Lab's, and a capability request (a brief for a tool he asked
+    for, made from his wants or his gap reviews). Gloria, 22 October: "I told you that forge shouldn't be taking up
+    atelier slots" - after the Lab copies left, the Atelier's latest work was five sealed capability briefs.
+    They stay on her Forge page, which reads the Forge's own database."""
+    return lab_work(project) or project.get('kind') == 'capability_brief' or bool((project.get('origin') or {}).get('proposal'))
+
+
 class AtelierProjection:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -45,8 +53,8 @@ class AtelierProjection:
             with controller.db() as db:
                 for row in db.execute('SELECT body FROM projects ORDER BY rowid'):
                     project = json.loads(row[0])
-                    if lab_work(project):
-                        continue          # never copied into the Atelier (2026-10-16)
+                    if forge_paperwork(project):
+                        continue          # never copied into the Atelier (Lab work 2026-10-16, capability briefs 22 October)
                     controller._expiry(db, project)
                     version = hashlib.sha256(json.dumps(project, sort_keys=True).encode()).hexdigest()
                     identity = self.root/'projects'/('forge-'+project['id'])/'.forge-owner.json'

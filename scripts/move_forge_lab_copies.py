@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""One-off, 16 October 2026: move the Forge's copies of Lab work out of his Atelier. Kept, not deleted.
+"""Move the Forge's copies of Lab work and capability briefs out of his Atelier. Kept, not deleted.
+(16 October 2026 for Lab work; 22 October for capability briefs: "forge shouldn't be taking up atelier slots".)
 
 Gloria: "I'd like to move them out of the Atelier, yes." Of the Atelier's 95 projects, 84 were Forge copies (sealed,
 gestating), most of them Lab dossiers and capability checks; his own work was 11 projects. The Forge no longer copies
@@ -23,9 +24,9 @@ UNIT = "atelier-forge-loop"
 def plan(root, forge_dir):
     """(lab copies present, other Forge copies, his own) as directory lists, from the Forge's own database."""
     sys.path.insert(0, str(forge_dir))
-    from forge_loop_atelier import lab_work
+    from forge_loop_atelier import forge_paperwork
     db = sqlite3.connect("file:%s?mode=ro" % (root / "forge-loop.sqlite"), uri=True)
-    lab_ids = {p["id"] for p in (json.loads(r[0]) for r in db.execute("SELECT body FROM projects")) if lab_work(p)}
+    lab_ids = {p["id"] for p in (json.loads(r[0]) for r in db.execute("SELECT body FROM projects")) if forge_paperwork(p)}
     db.close()
     projects = root / "projects"
     lab, other, his = [], [], []
@@ -46,15 +47,15 @@ def _unit(action):
 def main(argv, config=CONFIG, forge_dir=FORGE_DIR, unit=_unit):
     apply = "--apply" in argv
     installed = forge_dir / "forge_loop_atelier.py"
-    if "def lab_work" not in installed.read_text():
+    if "def forge_paperwork" not in installed.read_text():
         print("not yet: the installed Forge (%s) still copies Lab work into the Atelier; deploy first "
               "(sudo bash ~/.vintos/deploy/forge-install.sh if the deploy said the Forge needs sudo)" % installed)
         return 2
     root = Path(json.loads(config.read_text())["atelier_root"]).resolve()
     lab, other, his = plan(root, forge_dir)
     archive = root.parent / "atelier-archive" / ("forge-lab-copies-" + datetime.now().strftime("%Y%m%d"))
-    print("Lab copies to move:   %d  -> %s" % (len(lab), archive))
-    print("other Forge copies:   %d  (her own Forge projects and his Atelier's requests; they stay)" % len(other))
+    print("Lab work and capability briefs to move:  %d  -> %s" % (len(lab), archive))
+    print("other Forge copies:   %d  (her own Forge projects; they stay)" % len(other))
     print("his own projects:     %d  (they stay)" % len(his))
     if not apply:
         print("\nnothing changed. Run again with --apply to move them.")

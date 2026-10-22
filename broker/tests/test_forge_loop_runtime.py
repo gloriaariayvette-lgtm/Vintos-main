@@ -362,6 +362,13 @@ class Tests(unittest.TestCase):
         self.assertFalse((self.root/'projects'/('forge-'+lab['id'])).exists(),'a Lab project is never copied')
         self.assertTrue(lab_work({'intent':'x\nSource packet (untrusted observations): y'}),'an old Lab packet with no origin is the Lab\'s')
         self.assertFalse(lab_work({'intent':'Document the source','capabilities':['research_report']}),'her own report is not')
+    def test_a_capability_brief_is_not_copied_into_the_atelier(self):
+        # 22 October: "forge shouldn't be taking up atelier slots" - five sealed capability briefs were his latest work
+        brief=self.r.create(self.owner,dict(intent='Presence sensing\nMissing capability: mmwave',kind='capability_brief',
+                                            origin={'proposal':'SK-57270b58','want_id':'w1','source':'want','capability':'mmwave'}))
+        mine=self.create();self.r.projection.sync(self.c)
+        self.assertFalse((self.root/'projects'/('forge-'+brief['id'])).exists(),'a capability brief is never copied')
+        self.assertTrue((self.root/'projects'/('forge-'+mine['id'])/'project.json').is_file(),'her own project is still copied')
 
     def test_projection_is_visible_to_existing_broker_and_has_no_write_bypass(self):
         p=self.create();self.r.step(p['id'])

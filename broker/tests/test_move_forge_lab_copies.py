@@ -14,7 +14,10 @@ root = TMP / "atelier"; (root / "projects").mkdir(parents=True)
 db = sqlite3.connect(root / "forge-loop.sqlite"); db.execute("CREATE TABLE projects (id TEXT, body TEXT)")
 rows = {"a" * 32: {"intent": "Lab capability check: x", "origin": {"source": "lab"}},
         "b" * 32: {"intent": "Old dossier\nSource packet (untrusted observations): y"},
-        "c" * 32: {"intent": "Her own report", "capabilities": ["research_report"]}}
+        "c" * 32: {"intent": "Her own report", "capabilities": ["research_report"]},
+        # 22 October: "forge shouldn't be taking up atelier slots" - a capability brief is the Forge's paperwork too
+        "d" * 32: {"intent": "Presence sensing\nMissing capability: mmwave", "kind": "capability_brief",
+                   "origin": {"proposal": "SK-57270b58", "want_id": "w1", "source": "want", "capability": "mmwave"}}}
 for pid, body in rows.items():
     db.execute("INSERT INTO projects VALUES (?, ?)", (pid, json.dumps(dict(body, id=pid))))
     (root / "projects" / ("forge-" + pid) / "artifacts").mkdir(parents=True)
@@ -25,17 +28,17 @@ old_forge = TMP / "old-forge"; old_forge.mkdir(); (old_forge / "forge_loop_ateli
 UNIT = []
 check("the paths are scratch", str(root).startswith(str(TMP)))
 check("it refuses until the installed Forge stops copying Lab work",
-      M.main(["--apply"], config=config, forge_dir=old_forge, unit=UNIT.append) == 2 and len(list((root / "projects").iterdir())) == 4)
+      M.main(["--apply"], config=config, forge_dir=old_forge, unit=UNIT.append) == 2 and len(list((root / "projects").iterdir())) == 5)
 new_forge = Path(REPO) / "scripts"
 check("a dry run moves nothing", M.main([], config=config, forge_dir=new_forge, unit=UNIT.append) == 0
-      and len(list((root / "projects").iterdir())) == 4 and not UNIT)
+      and len(list((root / "projects").iterdir())) == 5 and not UNIT)
 M.main(["--apply"], config=config, forge_dir=new_forge, unit=UNIT.append)
 left = sorted(d.name for d in (root / "projects").iterdir())
 archived = list((TMP / "atelier-archive").glob("forge-lab-copies-*"))
-check("both Lab copies leave the Atelier; her own Forge project and his own work stay",
+check("both Lab copies and the capability brief leave the Atelier; her own Forge project and his own work stay",
       left == ["0123456789ab", "forge-" + "c" * 32], left)
 check("they are kept in the archive, with a list of what moved", archived and
-      sorted(json.loads((archived[0] / "MOVED.json").read_text())["moved"]) == ["forge-" + "a" * 32, "forge-" + "b" * 32]
+      sorted(json.loads((archived[0] / "MOVED.json").read_text())["moved"]) == ["forge-" + "a" * 32, "forge-" + "b" * 32, "forge-" + "d" * 32]
       and (archived[0] / ("forge-" + "a" * 32) / "artifacts").is_dir())
 check("the Forge loop is stopped while it moves, then started", UNIT == ["stop", "start"], UNIT)
 print("\n%d/%d" % (sum(R), len(R)))
