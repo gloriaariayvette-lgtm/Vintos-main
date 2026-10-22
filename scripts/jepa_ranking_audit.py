@@ -86,7 +86,10 @@ def _cos(a, b):
 
 
 def _centroid(vectors):
-    if not vectors:
+    # `not vectors` raised on the encoder's numpy array ("truth value of an array is ambiguous"): the audit died at
+    # its first forecast every day from 23 September, ranking stayed n=0, and retrain_readiness held the JEPA
+    # checkpoint at 21 September for a month (found 22 October)
+    if vectors is None or len(vectors) == 0:
         return None
     vectors = [[float(x) for x in row] for row in vectors]
     return [sum(row[i] for row in vectors) / len(vectors) for i in range(len(vectors[0]))]

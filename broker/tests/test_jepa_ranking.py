@@ -74,6 +74,15 @@ rows = RA.evaluate(history, ledger, Encoder(), checkpoint="ck", trained_before=0
 check("one cron burst cannot count the same future twice", len(rows) == 2, rows)
 check("both heads rank the actual next turn against same-speaker futures", {r["head"] for r in rows} == {"gloria", "self"} and all(r["rank"] == 1 and r["pool_size"] == 3 for r in rows), rows)
 check("ranking keeps a separate familiar-voice control", all(r["voice_baseline_rank"] != r["rank"] for r in rows), rows)
+import numpy as _np
+class NumpyEncoder(Encoder):   # the real encoder returns a numpy array (22 October: `not array` killed the audit daily)
+    def encode(self, texts, show_progress_bar=False):
+        return _np.asarray(Encoder.encode(self, texts), dtype=_np.float32)
+try:
+    np_rows = RA.evaluate(history, ledger, NumpyEncoder(), checkpoint="ck", trained_before=0, pool_size=3)
+except Exception as _npx:
+    np_rows = "raised %s: %s" % (type(_npx).__name__, _npx)
+check("the audit runs on the real encoder's numpy output, as on lists", isinstance(np_rows, list) and len(np_rows) == 2, np_rows)
 
 enough = []
 for i in range(30):
