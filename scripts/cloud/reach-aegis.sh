@@ -9,6 +9,9 @@
 set -euo pipefail
 [ -n "${TS_AUTHKEY:-}" ] && [ -n "${AEGIS_SSH_KEY_B64:-}" ] || { echo "reach-aegis: secrets not set; skipping"; exit 0; }
 TS=1.88.3
+# Cloud containers come without an SSH client
+command -v ssh >/dev/null || { apt-get install -y -qq openssh-client >/dev/null 2>&1 || \
+  { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq openssh-client >/dev/null 2>&1; }; }
 D="$HOME/.local/tailscale"; mkdir -p "$D" "$HOME/.ssh"
 if [ ! -x "$D/tailscaled" ]; then
   curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TS}_amd64.tgz" | tar -xz -C "$D" --strip-components=1
