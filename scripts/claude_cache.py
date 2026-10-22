@@ -125,7 +125,8 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
     if post is None:
         import requests
         post = requests.post
-    d = post(URL, timeout=timeout, json=body(model, system, user, max_tokens, effort),
+    import paid_http
+    d = paid_http.send(post, __file__, URL, timeout=timeout, json=body(model, system, user, max_tokens, effort),
              headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
     if d.get("type") == "error":
         raise RuntimeError(str(d.get("error"))[:200])

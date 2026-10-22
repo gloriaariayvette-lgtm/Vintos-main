@@ -25,6 +25,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
 from __future__ import annotations
+import paid_http
 import json
 import evidence_delivery
 import os
@@ -699,7 +700,7 @@ def slack(method, params, token=None):
     else:
         req = urllib.request.Request("https://slack.com/api/%s?%s" % (method, urllib.parse.urlencode(params)),
                                      headers={"Authorization": "Bearer " + token})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=30) as r:
         d = json.loads(r.read().decode())
     if not d.get("ok"):
         raise RuntimeError("slack %s: %s" % (method, d.get("error")))
@@ -729,7 +730,7 @@ def _scratch():
 
 def _download(url, dest, token):
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
-    with urllib.request.urlopen(req, timeout=180) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=180) as r:
         if "text/html" in (r.headers.get("Content-Type") or ""):
             raise RuntimeError("Slack sent a sign-in page, not the file: the app needs the files:read scope")
         with open(dest, "wb") as f:
@@ -756,7 +757,7 @@ def gemma_look(images, prompt):
     """Local Gemma's eyes: jpegs (base64) and a prompt, nothing else in the call."""
     import requests
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images]
-    r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.3, "max_tokens": 700,
+    r = paid_http.send(requests.post, __file__, LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.3, "max_tokens": 700,
                                        "messages": [{"role": "user", "content": content + [{"type": "text", "text": prompt}]}]},
                       timeout=300)
     return str(r.json()["choices"][0]["message"].get("content") or "").strip()
@@ -815,7 +816,7 @@ def _get(url, dest):
     """(path, content type) for a picture, clip or sound at url; (None, the page's own media url) for a web page."""
     import mimetypes
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=120) as r:
         ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype in ("application/octet-stream", "binary/octet-stream", "") and AUDIO_EXT.search(url):
             ctype = mimetypes.guess_type(urllib.parse.urlparse(url).path)[0] or "audio/mpeg"   # file hosts often say only "bytes"
@@ -1003,7 +1004,7 @@ def open_text(arg, cap=OPEN_MAX):
 
 def local_think(system, user, max_tokens=700):
     import requests
-    r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
+    r = paid_http.send(requests.post, __file__, LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
                                        "messages": [{"role": "system", "content": system},
                                                     {"role": "user", "content": user}]}, timeout=300)
     d = r.json()
@@ -1079,10 +1080,10 @@ def sol_think(system, user):
              "prompt_cache_key": "vintos-" + __import__("hashlib").md5(str(system)[:2000].encode()).hexdigest()[:16],
              "prompt_cache_retention": "24h"}
     _h = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
-    d = requests.post("https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
+    d = paid_http.send(requests.post, __file__, "https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
     if "prompt_cache_retention" in str(d.get("error") or ""):   # a model that refuses the option: ask again without it
         _body.pop("prompt_cache_retention", None)
-        d = requests.post("https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
+        d = paid_http.send(requests.post, __file__, "https://api.openai.com/v1/responses", timeout=300, headers=_h, json=_body).json()
     try:
         import astra_call as _ac
         _ac._openai_usage("slack-sol", sol_model(), d)
@@ -1410,7 +1411,7 @@ def songs_line():
 
 def _put(url, data):
     req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/octet-stream"})
-    with urllib.request.urlopen(req, timeout=300) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=300) as r:
         return r.status
 
 
@@ -1438,7 +1439,7 @@ def atelier_line():
     def post(route, body):
         req = urllib.request.Request(ATELIER + route, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with paid_http.send(urllib.request.urlopen, __file__, req, timeout=5) as r:
             return json.loads(r.read().decode())
     try:
         wt = post("/worktable_id", {}).get("id", "")
@@ -1458,7 +1459,7 @@ def recall_block():
     try:
         req = urllib.request.Request(ATELIER + "/recall", data=json.dumps({"as": "vintos", "for": "dot"}).encode(),
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with paid_http.send(urllib.request.urlopen, __file__, req, timeout=5) as r:
             d = json.loads(r.read().decode())
     except Exception:
         return ""

@@ -64,6 +64,8 @@ def call_llm(prompt, system, model, api, max_tokens=900, temp=0.3):
                                        {"role": "user", "content": prompt}],
                           "temperature": temp, "max_tokens": max_tokens})
     try:
+        import paid_http
+        paid_http.before(api, __file__)
         r = subprocess.run(
             ["curl", "-s", "-X", "POST", api,
              "-H", "Content-Type: application/json",

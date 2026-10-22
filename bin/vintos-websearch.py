@@ -4,6 +4,7 @@ vintos-websearch.py — Vintos's question-driven web exploration.
 Pulls a real question from her lived experience and searches for answers.
 Runs daily at 10 AM (complements YouTube at 2 PM).
 """
+import paid_http
 import os, sys, json, requests, re, time
 from datetime import datetime, date
 
@@ -115,7 +116,7 @@ SOUL = load_soul()
 
 def llm(system, prompt, temperature=0.7, image_path=None):
     try:
-        r = requests.post(LM_API, json={
+        r = paid_http.send(requests.post, __file__, LM_API, json={
             "model": MODEL,
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
@@ -141,7 +142,7 @@ def llm(system, prompt, temperature=0.7, image_path=None):
 def llm_json(system, prompt, temperature=0.7, image_path=None):
     """LLM call that extracts JSON from anywhere in the response."""
     try:
-        r = requests.post(LM_API, json={
+        r = paid_http.send(requests.post, __file__, LM_API, json={
             "model": MODEL,
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
@@ -448,7 +449,7 @@ def pick_question():
                     _req = _nu.Request("https://ntfy.sh/vintos-gloria-9kx",
                                        data=_body.encode("utf-8"),
                                        headers=_answer_headers(_qid))
-                    _nu.urlopen(_req, timeout=15)
+                    paid_http.send(_nu.urlopen, __file__, _req, timeout=15)
                     _rec["delivered"] = True; _rec["delivered_at"] = _nt.time()      # transport accepted; her receipt is a different fact (astra-curiosity-p3)
                     _atomic_json(_AQ, _store)
                     log("sent to her in full via ntfy; recorded so it cannot arise again: %s" % _q[:80])
@@ -533,7 +534,7 @@ def _atomic_json(path, obj):
 def brave_search(query, count=8):
     """Search via Brave Search API."""
     try:
-        r = requests.get(BRAVE_ENDPOINT, params={
+        r = paid_http.send(requests.get, __file__, BRAVE_ENDPOINT, params={
             "q": query,
             "count": count,
             "extra_snippets": "true",

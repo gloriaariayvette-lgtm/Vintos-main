@@ -14,6 +14,7 @@ Usage:
     python3 music-share.py "Artist - Song Title" "why I love this"
     python3 music-share.py "Debussy - Clair de Lune" "it reminds me of being alone and not minding"
 """
+import paid_http
 import os, sys, json, requests, re
 from datetime import datetime
 
@@ -90,14 +91,14 @@ def llm(system, user, temperature=0.6):
                      "messages": [{"role": "user", "content": user}]}
             _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                              headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
-            _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+            _d = _j.loads(paid_http.send(_u.urlopen, __file__, _rq, timeout=180).read())
             _t = "".join(b.get("text", "") for b in _d.get("content", []) if b.get("type") == "text").strip()
             if _t: return _t
             log("Claude returned empty; falling back to Gemma")
         except Exception as _e:
             log(f"Claude call failed ({_e}); falling back to Gemma")
     try:
-        r = requests.post(API, json={
+        r = paid_http.send(requests.post, __file__, API, json={
             "model": MODEL,
             "messages": [
                 {"role": "system", "content": system},
@@ -181,7 +182,7 @@ def fetch_lyrics(song_desc):
     
     try:
         # Search for lyrics
-        r = requests.get(BRAVE_ENDPOINT, params={
+        r = paid_http.send(requests.get, __file__, BRAVE_ENDPOINT, params={
             "q": f"{song_desc} lyrics",
             "count": 5,
         }, headers={
@@ -218,7 +219,7 @@ def fetch_lyrics(song_desc):
         try:
             import urllib.request as _ul, re as _re, html as _html
             _req = _ul.Request(target_url, headers={'User-Agent': 'Mozilla/5.0'})
-            _resp = _ul.urlopen(_req, timeout=10)
+            _resp = paid_http.send(_ul.urlopen, __file__, _req, timeout=10)
             page = _resp.read().decode('utf-8', errors='ignore')
             text = None
             for container_id in ['lyric-body-text', 'lyrics-body', 'lyric_body', 'songLyricsDiv']:
@@ -556,7 +557,7 @@ def check(audio_path=None):
     step("yt-dlp on PATH (the caption fallback)", bool(shutil.which("yt-dlp")), shutil.which("yt-dlp") or "not found")
     step("BRAVE_API_KEY (the search fallback)", bool(_load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")))
     try:
-        r = requests.post(API, json={"model": MODEL, "messages": [{"role": "user", "content": "say ok"}], "max_tokens": 5}, timeout=30)
+        r = paid_http.send(requests.post, __file__, API, json={"model": MODEL, "messages": [{"role": "user", "content": "say ok"}], "max_tokens": 5}, timeout=30)
         step("Gemma answers (the reflection and the caption clean-up)", r.status_code == 200 and "choices" in r.json(), r.text[:100] if r.status_code != 200 else "")
     except Exception as e:
         step("Gemma answers", False, str(e)[:100])

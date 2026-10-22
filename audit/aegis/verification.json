@@ -1,0 +1,420 @@
+{
+  "at": 1792654280.3798478,
+  "processes": [
+    {
+      "pid": "279",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/velaris-trill-poller.py"
+      ]
+    },
+    {
+      "pid": "402",
+      "uid": "1000",
+      "executable": "python",
+      "scripts": [
+        "/home/gloria/meari-capture/meari_notify.py"
+      ]
+    },
+    {
+      "pid": "405",
+      "uid": "1000",
+      "executable": "python",
+      "scripts": [
+        "/home/gloria/doorbell-voice/velaris_door.py"
+      ]
+    },
+    {
+      "pid": "407",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.openclaw/workspace/scripts/velaris-heartbeat.py"
+      ]
+    },
+    {
+      "pid": "408",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.openclaw/workspace/scripts/velaris-rgb.py"
+      ]
+    },
+    {
+      "pid": "409",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/velaris-robot-bridge.py"
+      ]
+    },
+    {
+      "pid": "411",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/repos/vintos/bench/server.py"
+      ]
+    },
+    {
+      "pid": "421",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/scenes_server.py"
+      ]
+    },
+    {
+      "pid": "429",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/somatic_bridge.py"
+      ]
+    },
+    {
+      "pid": "431",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/toy_keepalive.py"
+      ]
+    },
+    {
+      "pid": "875",
+      "uid": "1000",
+      "executable": "bash",
+      "scripts": [
+        "/home/gloria/doorbell-voice/doorkeeper.sh"
+      ]
+    },
+    {
+      "pid": "876",
+      "uid": "1000",
+      "executable": "python",
+      "scripts": [
+        "/home/gloria/meari-capture/meari_push_image.py"
+      ]
+    },
+    {
+      "pid": "1018584",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/robot_bridge.py"
+      ]
+    },
+    {
+      "pid": "1018625",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/bedroom_arrival.py"
+      ]
+    },
+    {
+      "pid": "1018673",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/plugin_gateway_service.py"
+      ]
+    },
+    {
+      "pid": "1018771",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/self_review.py"
+      ]
+    },
+    {
+      "pid": "1018789",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/Vintos-main/bin/vintos_claude_shim.py"
+      ]
+    },
+    {
+      "pid": "1018826",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py"
+      ]
+    },
+    {
+      "pid": "1018924",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/emotion_runtime.py"
+      ]
+    },
+    {
+      "pid": "1019296",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/.vintos/workspace/scripts/vintos_mcp.py"
+      ]
+    },
+    {
+      "pid": "1019563",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/Vintos/server.py"
+      ]
+    },
+    {
+      "pid": "1028523",
+      "uid": "1001",
+      "executable": "python3",
+      "scripts": [
+        "/home/atelier/forge-loop/forge_loop_runtime.py"
+      ]
+    },
+    {
+      "pid": "1106852",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "scripts/aegis_sync.py"
+      ]
+    },
+    {
+      "pid": "3145151",
+      "uid": "1000",
+      "executable": "python3",
+      "scripts": [
+        "/home/gloria/meari-capture/meari_push_image.js"
+      ]
+    },
+    {
+      "pid": "4045249",
+      "uid": "1001",
+      "executable": "python3",
+      "scripts": [
+        "/home/atelier/broker.py"
+      ]
+    }
+  ],
+  "installed_matches": {
+    "bin/server.py": {
+      "path": "/home/gloria/.vintos/bin/server.py",
+      "exists": false,
+      "equal": false
+    },
+    "bin/model_router.py": {
+      "path": "/home/gloria/.vintos/bin/model_router.py",
+      "exists": false,
+      "equal": false
+    },
+    "bin/vintos_claude_shim.py": {
+      "path": "/home/gloria/.vintos/bin/vintos_claude_shim.py",
+      "exists": false,
+      "equal": false
+    }
+  },
+  "listener_owners": {
+    "rc": 0,
+    "out": "LISTEN 0      4096                 127.0.0.53%lo:53    0.0.0.0:*                                              \nLISTEN 0      5                          0.0.0.0:8791  0.0.0.0:* users:((\"python3\",pid=411,fd=3))             \nLISTEN 0      511                        0.0.0.0:8788  0.0.0.0:* users:((\"node\",pid=401,fd=21))               \nLISTEN 0      5                        127.0.0.1:8599  0.0.0.0:* users:((\"python3\",pid=1018789,fd=3))         \nLISTEN 0      5                        127.0.0.1:8625  0.0.0.0:* users:((\"python3\",pid=1019296,fd=3))         \nLISTEN 0      5                        127.0.0.1:8624  0.0.0.0:* users:((\"python3\",pid=1018673,fd=3))         \nLISTEN 0      5                        127.0.0.1:8612  0.0.0.0:*                                              \nLISTEN 0      5                        127.0.0.1:8611  0.0.0.0:*                                              \nLISTEN 0      4096                100.72.225.119:443   0.0.0.0:*                                              \nLISTEN 0      2048                       0.0.0.0:8404  0.0.0.0:* users:((\"python3\",pid=1018584,fd=13))        \nLISTEN 0      2048                       0.0.0.0:8403  0.0.0.0:* users:((\"python3\",pid=409,fd=13))            \nLISTEN 0      2048                       0.0.0.0:8400  0.0.0.0:* users:((\"uvicorn\",pid=435,fd=13))            \nLISTEN 0      2048                       0.0.0.0:8500  0.0.0.0:* users:((\"python3\",pid=1019563,fd=13))        \nLISTEN 0      5                          0.0.0.0:8501  0.0.0.0:* users:((\"python3\",pid=421,fd=3))             \nLISTEN 0      5                        127.0.0.1:41507 0.0.0.0:* users:((\"qemu-system-x86\",pid=3144019,fd=40))\nLISTEN 0      511                      127.0.0.1:8787  0.0.0.0:* users:((\"node\",pid=400,fd=21))               \nLISTEN 0      2048                       0.0.0.0:8001  0.0.0.0:* users:((\"python3\",pid=395,fd=14))            \nLISTEN 0      128                        0.0.0.0:8123  0.0.0.0:*                                              \nLISTEN 0      511                      127.0.0.1:8079  0.0.0.0:* users:((\"node\",pid=399,fd=21))               \nLISTEN 0      128                      127.0.0.1:7681  0.0.0.0:* users:((\"netsimd\",pid=3144137,fd=21))        \nLISTEN 0      128                      127.0.0.1:6402  0.0.0.0:* users:((\"netsimd\",pid=3144137,fd=23))        \nLISTEN 0      511                      127.0.0.1:6390  0.0.0.0:* users:((\"redis-server\",pid=397,fd=6))        \nLISTEN 0      5                        127.0.0.1:5555  0.0.0.0:* users:((\"qemu-system-x86\",pid=3144019,fd=38))\nLISTEN 0      4                        127.0.0.1:5554  0.0.0.0:* users:((\"qemu-system-x86\",pid=3144019,fd=42))\nLISTEN 0      128                      127.0.0.1:5037  0.0.0.0:* users:((\"adb\",pid=3143941,fd=12))            \nLISTEN 0      1000                10.255.255.254:53    0.0.0.0:*                                              \nLISTEN 0      511                      127.0.0.1:18792 0.0.0.0:* users:((\"openclaw-gatewa\",pid=403,fd=29))    \nLISTEN 0      4096                     127.0.0.1:18554 0.0.0.0:*                                              \nLISTEN 0      511                        0.0.0.0:18789 0.0.0.0:* users:((\"openclaw-gatewa\",pid=403,fd=23))    \nLISTEN 0      4096                100.72.225.119:9443  0.0.0.0:*                                              \nLISTEN 0      4096                    127.0.0.54:53    0.0.0.0:*                                              \nLISTEN 0      4096                100.72.225.119:41816 0.0.0.0:*                                              \nLISTEN 0      4096                       0.0.0.0:22    0.0.0.0:*                                              \nLISTEN 0      4096                100.72.225.119:8443  0.0.0.0:*                                              \nLISTEN 0      4096                         [::1]:46701    [::]:* users:((\"netsimd\",pid=3144137,fd=19))        \nLISTEN 0      4096   [fd7a:115c:a1e0::e901:e19b]:443      [::]:*                                              \nLISTEN 0      4096            [::ffff:127.0.0.1]:46701       *:* users:((\"netsimd\",pid=3144137,fd=20))        \nLISTEN 0      5                            [::1]:41507    [::]:* users:((\"qemu-system-x86\",pid=3144019,fd=41))\nLISTEN 0      4096            [::ffff:127.0.0.1]:8554        *:* users:((\"qemu-system-x86\",pid=3144019,fd=71))\nLISTEN 0      5                            [::1]:5555     [::]:* users:((\"qemu-system-x86\",pid=3144019,fd=39))\nLISTEN 0      4                            [::1]:5554     [::]:* users:((\"qemu-system-x86\",pid=3144019,fd=43))\nLISTEN 0      128                           [::]:8123     [::]:*                                              \nLISTEN 0      4096   [fd7a:115c:a1e0::e901:e19b]:9443     [::]:*                                              \nLISTEN 0      4096   [fd7a:115c:a1e0::e901:e19b]:8443     [::]:*                                              \nLISTEN 0      4096                             *:18555       *:*                                              \nLISTEN 0      4096   [fd7a:115c:a1e0::e901:e19b]:47940    [::]:*                                              \nLISTEN 0      4096                          [::]:22       [::]:*                                              \n"
+  },
+  "unauthenticated_gets": [
+    {
+      "port": 8500,
+      "path": "/api/settings/params",
+      "status": 200,
+      "response_bytes_read": 98
+    },
+    {
+      "port": 8500,
+      "path": "/api/desktop/status",
+      "status": 403,
+      "response_bytes_read": 0
+    },
+    {
+      "port": 8500,
+      "path": "/api/robot/state?frame=0",
+      "status": 401,
+      "response_bytes_read": 0
+    },
+    {
+      "port": 8500,
+      "path": "/health",
+      "status": 404,
+      "response_bytes_read": 0
+    },
+    {
+      "port": 8404,
+      "path": "/api/robot/state?frame=0",
+      "status": 401,
+      "response_bytes_read": 0
+    },
+    {
+      "port": 8624,
+      "path": "/health",
+      "status": 200,
+      "response_bytes_read": 76
+    },
+    {
+      "port": 8611,
+      "path": "/health",
+      "status": 200,
+      "response_bytes_read": 138
+    },
+    {
+      "port": 8625,
+      "path": "/health",
+      "status": 401,
+      "response_bytes_read": 0
+    }
+  ],
+  "websocket_unauthenticated_status": "HTTP/1.1 101 Switching Protocols",
+  "python_packages": {
+    "urllib3": "2.0.7",
+    "starlette": "0.52.1",
+    "uvicorn": "0.40.0",
+    "websockets": "16.0",
+    "requests": "2.31.0",
+    "cryptography": "41.0.7",
+    "pydantic": "2.12.5",
+    "safetensors": "0.7.0",
+    "transformers": "4.47.0",
+    "fastapi": "0.131.0",
+    "aiohttp": "3.14.3",
+    "httpx": "0.28.1",
+    "torch": "2.5.1+cu124",
+    "setuptools": "68.1.2",
+    "pip": "24.0"
+  },
+  "system_packages": {
+    "rc": 1,
+    "out": "libssl3t64 3.0.13-0ubuntu3.16\nopenssh-server 1:9.6p1-3ubuntu13.20\nopenssl 3.0.13-0ubuntu3.16\npython3 3.12.3-0ubuntu2.1\n"
+  },
+  "docker_socket": {
+    "exists": true,
+    "writable": true
+  },
+  "ssh_config": {
+    "rc": 1,
+    "directives": []
+  },
+  "backups": [
+    {
+      "name": "lab-relations-278f8280-20261011-183757",
+      "mtime": 1791761877.398491,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "lab-repeat-8cedcfb2-20261011-132535.py",
+      "mtime": 1791742871.346524,
+      "mode": "0o644",
+      "restore_script": null
+    },
+    {
+      "name": "lab-shape-dc1a1441-20261011-185048",
+      "mtime": 1791762648.253514,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "lab-targets-17f51ae0-20261011-151231",
+      "mtime": 1791749551.5220544,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "lab-visible-question-20261011-162347",
+      "mtime": 1791753827.5147624,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "mail-attachments-20261017-103459",
+      "mtime": 1792251299.8265529,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "mail-attachments-20261017-103917",
+      "mtime": 1792251557.9531448,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "pearl-curation-20261016T061934Z",
+      "mtime": 1792131574.9622264,
+      "mode": "0o700",
+      "restore_script": false
+    },
+    {
+      "name": "server.py.pre-structures-20260918",
+      "mtime": 1789765909.1072533,
+      "mode": "0o644",
+      "restore_script": null
+    },
+    {
+      "name": "server.py.test-mode-20260920-013024",
+      "mtime": 1789854144.1783235,
+      "mode": "0o644",
+      "restore_script": null
+    },
+    {
+      "name": "want-gates-1c9cb200-20261011-140239",
+      "mtime": 1791745359.917626,
+      "mode": "0o775",
+      "restore_script": false
+    },
+    {
+      "name": "wants-page-20261011-065539.html",
+      "mtime": 1791719739.5685506,
+      "mode": "0o664",
+      "restore_script": null
+    }
+  ],
+  "deploy_receipt": {
+    "file": "20261022-010546-e502b38.json",
+    "at": "2026-10-22T01:05:46",
+    "git_rev": "e502b38",
+    "files": 561,
+    "failures": 0,
+    "rollback_present": true
+  },
+  "credential_boundary": {
+    "411": {
+      "present": {
+        "VINTOS_SECRET": false,
+        "ANTHROPIC_API_KEY": false,
+        "OPENAI_API_KEY": false,
+        "XAI_API_KEY": false,
+        "GOOGLE_API_KEY": false
+      },
+      "house_default_in_use": true
+    },
+    "1018789": {
+      "present": {
+        "VINTOS_SECRET": false,
+        "ANTHROPIC_API_KEY": false,
+        "OPENAI_API_KEY": false,
+        "XAI_API_KEY": true,
+        "GOOGLE_API_KEY": false
+      },
+      "house_default_in_use": true
+    },
+    "1019563": {
+      "present": {
+        "VINTOS_SECRET": false,
+        "ANTHROPIC_API_KEY": false,
+        "OPENAI_API_KEY": true,
+        "XAI_API_KEY": true,
+        "GOOGLE_API_KEY": false
+      },
+      "house_default_in_use": true
+    }
+  }
+}

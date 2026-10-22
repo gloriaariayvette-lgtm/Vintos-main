@@ -1,0 +1,2387 @@
+{
+  "runner": "scripts/run_isolated_test.py",
+  "python": "/tmp/vintos-security-suite-python/bin/python3",
+  "repo": "/Users/kevin/Documents/Codex/2026-10-22/codex-task-vintos-infrastructure-security-audit/repo",
+  "total": 467,
+  "passed": 463,
+  "failed": 4,
+  "seconds": 194.0,
+  "results": [
+    {
+      "suite": "test_aegis_sync",
+      "rc": 0,
+      "seconds": 16.85
+    },
+    {
+      "suite": "test_armed_capsule_flow",
+      "rc": 0,
+      "seconds": 2.01
+    },
+    {
+      "suite": "test_armed_watch",
+      "rc": 0,
+      "seconds": 1.18
+    },
+    {
+      "suite": "test_arming_readiness",
+      "rc": 0,
+      "seconds": 1.18
+    },
+    {
+      "suite": "test_artifact_delivery",
+      "rc": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_atelier_breadth",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_atelier_choices",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_atelier_enter",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_atelier_focus",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_atelier_forge_bridge",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_atelier_knock",
+      "rc": 0,
+      "seconds": 0.75
+    },
+    {
+      "suite": "test_atelier_lab_lean",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_atelier_lineage",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_atelier_listening",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_atelier_make_pass",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_atelier_media",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_atelier_quantum",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_atelier_recall",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_atelier_reveals",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_atelier_sight",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_atelier_voice",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_attacks",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_avatar_dryrun_argon",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_avatar_live_follow",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_avatar_media_lifecycle",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_avatar_sealed_turn",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_avatar_sight",
+      "rc": 0,
+      "seconds": 0.9
+    },
+    {
+      "suite": "test_barrier",
+      "rc": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_bedroom_arrival",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_bedroom_presence",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_bench",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_bench_page",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_blanket",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_blush_lifecycle",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_broker_service",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_browser_agent",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_browser_jev",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_buy_and_reach",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_cache_points_reuse",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_calibration_forecast",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_campaign_lifecycle",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_canonical_avatar",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_capability",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_capsule_lifecycle",
+      "rc": 0,
+      "seconds": 0.75
+    },
+    {
+      "suite": "test_causality_compaction",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_causality_lifecycle",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_causality_recovery",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_chat_surface_context",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_chemistry_alignment",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_chemistry_digest",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_chemistry_divergence",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_chemistry_evo2",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_chemistry_frontier_bridge",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_chemistry_gallery",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_chemistry_genomic",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_chemistry_grade",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_chemistry_instrument_probe",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_chemistry_lab",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_chemistry_mac_probe",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_chemistry_mcp",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_chemistry_probe",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_chemistry_proposal",
+      "rc": 0,
+      "seconds": 1.14
+    },
+    {
+      "suite": "test_chemistry_reading",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_chemistry_sequence_binding",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_chemistry_session",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_chemistry_structure",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_chemistry_taste",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_chemistry_tracing_prerequisites",
+      "rc": 0,
+      "seconds": 1.74
+    },
+    {
+      "suite": "test_chemistry_tracing_real",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_claude_cache",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_claude_connector",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_clean_slate_20261015",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_commitment_store",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_completion_evidence",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_compute_admission",
+      "rc": 0,
+      "seconds": 1.6
+    },
+    {
+      "suite": "test_connector_discover",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_consent_gate",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_controls_wants",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_coordinator",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_curiosity_answer_link",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_daily_inner_guard",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_day_timer",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_dd_token_refresh",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_decided_and_deduped",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_deploy_branch_guard",
+      "rc": 0,
+      "seconds": 8.74
+    },
+    {
+      "suite": "test_deploy_forge_bundle",
+      "rc": 0,
+      "seconds": 7.49
+    },
+    {
+      "suite": "test_deploy_ignores_workbench",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_deploy_timer_recovery",
+      "rc": 0,
+      "seconds": 2.56
+    },
+    {
+      "suite": "test_desktop_agent",
+      "rc": 0,
+      "seconds": 91.64
+    },
+    {
+      "suite": "test_desktop_control",
+      "rc": 0,
+      "seconds": 0.48
+    },
+    {
+      "suite": "test_device_gate_and_budget",
+      "rc": 0,
+      "seconds": 0.51
+    },
+    {
+      "suite": "test_device_integration",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_device_marks",
+      "rc": 0,
+      "seconds": 0.49
+    },
+    {
+      "suite": "test_device_names",
+      "rc": 0,
+      "seconds": 0.49
+    },
+    {
+      "suite": "test_devices_only_when_on",
+      "rc": 0,
+      "seconds": 0.55
+    },
+    {
+      "suite": "test_dot_channel",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_dot_channel_media",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_dot_lounge",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_durable_stop",
+      "rc": 0,
+      "seconds": 0.51
+    },
+    {
+      "suite": "test_editor_sees_channel",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_effect_gate",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_effect_provenance",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_email_reading_and_approval",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_email_whole",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_emotion_daemon_merged",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_emotion_guards",
+      "rc": 0,
+      "seconds": 1.04
+    },
+    {
+      "suite": "test_entry_owners",
+      "rc": 0,
+      "seconds": 1.23
+    },
+    {
+      "suite": "test_env_file_beside",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_env_key",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_esmc_windows",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_esmfold_death",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_esmfold_eliot_tree",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_esmfold_fault_record",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_europepmc_fulltext",
+      "rc": 0,
+      "seconds": 0.55
+    },
+    {
+      "suite": "test_eve_journal",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_event_counts",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_evidence_full_tick",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_evidence_provenance",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_evidence_review",
+      "rc": 0,
+      "seconds": 1.23
+    },
+    {
+      "suite": "test_evidence_view",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_failure_watch",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_fault_sweep",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_ferri_public",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_fold_read",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_fold_read_abs_path",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_fold_region",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_food_order",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_forge_build",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_forge_cycle_failures",
+      "rc": 0,
+      "seconds": 1.02
+    },
+    {
+      "suite": "test_forge_decisions",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_forge_digest",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_forge_gaps",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_forge_house",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_forge_loop_runtime",
+      "rc": 0,
+      "seconds": 1.15
+    },
+    {
+      "suite": "test_forge_plain_cards",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_forge_report_hold",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_forge_report_retry",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_forge_resume",
+      "rc": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_forge_study",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_forge_study_cache",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_forge_tidy",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_forge_verification_ack",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_forge_want_context",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_forget_avatar_turns",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_frontier_log",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_gap_scan",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_gates",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_gemma_off_lab",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_gemma_overflow_named",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_gloria_asks",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_gloria_notes",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_grok_letters",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_grok_subscription",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_guard_forced_grok",
+      "rc": 0,
+      "seconds": 0.75
+    },
+    {
+      "suite": "test_he_leads",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_heads_cause",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_heads_drift_relational",
+      "rc": 0,
+      "seconds": 1.85
+    },
+    {
+      "suite": "test_heads_gloria_prediction",
+      "rc": 0,
+      "seconds": 0.53
+    },
+    {
+      "suite": "test_heads_jepa_presence",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_heads_withheld",
+      "rc": 0,
+      "seconds": 0.54
+    },
+    {
+      "suite": "test_heart_rate",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_his_inventory",
+      "rc": 0,
+      "seconds": 0.5
+    },
+    {
+      "suite": "test_hold_reasons",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_home_map_prompt",
+      "rc": 0,
+      "seconds": 0.52
+    },
+    {
+      "suite": "test_home_presence",
+      "rc": 0,
+      "seconds": 0.52
+    },
+    {
+      "suite": "test_home_presence_atomic",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_house_hands",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_house_map",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_house_routes",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_humor_taste",
+      "rc": 0,
+      "seconds": 0.59
+    },
+    {
+      "suite": "test_imgvr_store",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_import_twins",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_inkbox_guard",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_intent_source",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_introspection_absorb",
+      "rc": 0,
+      "seconds": 0.54
+    },
+    {
+      "suite": "test_jepa_ranking",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_journal_entry_clean",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_journal_final_length",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_journal_made_today",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_journal_routes",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_journal_self_trust",
+      "rc": 0,
+      "seconds": 0.48
+    },
+    {
+      "suite": "test_journal_thread_seed",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_journey_correction",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_journey_dream",
+      "rc": 0,
+      "seconds": 0.5
+    },
+    {
+      "suite": "test_journey_patch",
+      "rc": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_journey_voice",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_journey_want",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_alias_names",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_lab_archive_assignment",
+      "rc": 0,
+      "seconds": 0.75
+    },
+    {
+      "suite": "test_lab_asks",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_lab_asks_what_it_asked",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_lab_assignment_scope",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_lab_atlas_route",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_lab_atlas_sdk",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_lab_atlas_wait",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_lab_backlog_once",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_lab_campaign",
+      "rc": 0,
+      "seconds": 2.31
+    },
+    {
+      "suite": "test_lab_checker_cases",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_lab_checker_retry",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_lab_chembl_organism",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_lab_claim_evidence",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_lab_claim_progress",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_lab_class_scope",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_comparison_targets",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_lab_completion_diagnostics",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_lab_consumer_missing",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_coverage_budget",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_lab_coverage_deep_split",
+      "rc": 0,
+      "seconds": 0.8
+    },
+    {
+      "suite": "test_lab_coverage_split",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_lab_eliot_trace",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_lab_error_path_completion",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_lab_evidence_addresses",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_lab_evidence_repeats",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_lab_failed_runs",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_findings",
+      "rc": 0,
+      "seconds": 0.55
+    },
+    {
+      "suite": "test_lab_followup_hold",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_lab_forge_completion",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_forge_consumer",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_lab_forge_followup",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_lab_gene_grounding",
+      "rc": 0,
+      "seconds": 0.64
+    },
+    {
+      "suite": "test_lab_gene_mismatch_names",
+      "rc": 0,
+      "seconds": 0.57
+    },
+    {
+      "suite": "test_lab_hold_store_recovery",
+      "rc": 0,
+      "seconds": 0.61
+    },
+    {
+      "suite": "test_lab_instruments",
+      "rc": 0,
+      "seconds": 0.58
+    },
+    {
+      "suite": "test_lab_investigations",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_lab_json_boundary",
+      "rc": 0,
+      "seconds": 0.56
+    },
+    {
+      "suite": "test_lab_json_parser",
+      "rc": 0,
+      "seconds": 0.65
+    },
+    {
+      "suite": "test_lab_keepers",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_lab_line_ownership",
+      "rc": 0,
+      "seconds": 0.63
+    },
+    {
+      "suite": "test_lab_lines",
+      "rc": 0,
+      "seconds": 1.71
+    },
+    {
+      "suite": "test_lab_literature_scope",
+      "rc": 0,
+      "seconds": 0.68
+    },
+    {
+      "suite": "test_lab_named_gene_fetch",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_lab_named_targets",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_lab_numeric_payload",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_lab_oct10_identity",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_lab_oct10_strategy",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_lab_oct9_recovery",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_lab_one_ask",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_lab_parser_diagnostics",
+      "rc": 0,
+      "seconds": 1.31
+    },
+    {
+      "suite": "test_lab_partial_assessment",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_lab_partial_identity",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_lab_plan_contract",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_lab_plugin_args",
+      "rc": 0,
+      "seconds": 0.97
+    },
+    {
+      "suite": "test_lab_premise_route",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_lab_productive_path",
+      "rc": 0,
+      "seconds": 1.23
+    },
+    {
+      "suite": "test_lab_query_perimeter",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_lab_query_syntax_and_families",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_lab_question_holds",
+      "rc": 0,
+      "seconds": 1.71
+    },
+    {
+      "suite": "test_lab_question_shape",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_lab_reading_fallback",
+      "rc": 0,
+      "seconds": 1.02
+    },
+    {
+      "suite": "test_lab_receipt_ledger",
+      "rc": 0,
+      "seconds": 1.47
+    },
+    {
+      "suite": "test_lab_relevance_context",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_lab_repeats",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_lab_runtime_paths",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_lab_saved_model_step",
+      "rc": 0,
+      "seconds": 5.19
+    },
+    {
+      "suite": "test_lab_says_why",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_lab_sequence",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_lab_slack_followup",
+      "rc": 0,
+      "seconds": 0.9
+    },
+    {
+      "suite": "test_lab_sourced_reviewed",
+      "rc": 0,
+      "seconds": 0.97
+    },
+    {
+      "suite": "test_lab_sources",
+      "rc": 0,
+      "seconds": 1.6
+    },
+    {
+      "suite": "test_lab_spent_list",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_lab_stray_value",
+      "rc": 0,
+      "seconds": 0.89
+    },
+    {
+      "suite": "test_lab_structure_reads",
+      "rc": 0,
+      "seconds": 0.96
+    },
+    {
+      "suite": "test_lab_symbol_hyphen",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_lab_terminal_evidence",
+      "rc": 0,
+      "seconds": 1.01
+    },
+    {
+      "suite": "test_lab_tool_routing",
+      "rc": 0,
+      "seconds": 0.99
+    },
+    {
+      "suite": "test_lab_wrong_premise",
+      "rc": 0,
+      "seconds": 0.96
+    },
+    {
+      "suite": "test_landing_understanding",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_landings",
+      "rc": 0,
+      "seconds": 1.05
+    },
+    {
+      "suite": "test_last_consolidations",
+      "rc": 0,
+      "seconds": 1.03
+    },
+    {
+      "suite": "test_last_partials",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_latent_stream_linear",
+      "rc": 1,
+      "seconds": 1.11
+    },
+    {
+      "suite": "test_latent_stream_replay",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_latest_not_pile",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_ledger_dates",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_ledger_late_imprint",
+      "rc": 0,
+      "seconds": 3.53
+    },
+    {
+      "suite": "test_letter_links",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_letter_promises",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_lifecycle_honesty",
+      "rc": 0,
+      "seconds": 0.67
+    },
+    {
+      "suite": "test_line_prospect",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_link_fetch",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_link_fetch_pinning",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_live_scene_shape",
+      "rc": 0,
+      "seconds": 3.06
+    },
+    {
+      "suite": "test_local_voice_lane",
+      "rc": 0,
+      "seconds": 0.89
+    },
+    {
+      "suite": "test_look_kept_projects",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_lounge_field",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_mail_attachments",
+      "rc": 1,
+      "seconds": 1.07
+    },
+    {
+      "suite": "test_map_nodes",
+      "rc": 0,
+      "seconds": 1.92
+    },
+    {
+      "suite": "test_media_embed",
+      "rc": 1,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_memory_links",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_memory_projection",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_memory_search_embedding",
+      "rc": 0,
+      "seconds": 0.8
+    },
+    {
+      "suite": "test_merged_chat",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_midi_and_cites",
+      "rc": 0,
+      "seconds": 1.09
+    },
+    {
+      "suite": "test_mischief_addon",
+      "rc": 0,
+      "seconds": 1.01
+    },
+    {
+      "suite": "test_mischief_causality_oct16",
+      "rc": 0,
+      "seconds": 3.19
+    },
+    {
+      "suite": "test_mischief_log",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_mischief_timing",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_mmwave_presence",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_model_locations",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_molt_own_post_replies",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_molt_reply_published",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_moltbook_members",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_moment_index_rebuild",
+      "rc": 0,
+      "seconds": 0.97
+    },
+    {
+      "suite": "test_move_forge_lab_copies",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_moves_on",
+      "rc": 0,
+      "seconds": 1.08
+    },
+    {
+      "suite": "test_music_kie_backend",
+      "rc": 0,
+      "seconds": 1.03
+    },
+    {
+      "suite": "test_music_lyrics_refusal",
+      "rc": 0,
+      "seconds": 1.03
+    },
+    {
+      "suite": "test_music_reference_failure",
+      "rc": 0,
+      "seconds": 1.02
+    },
+    {
+      "suite": "test_music_share_lyrics_taste",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_no_thinking",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_one_contracts",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_openai_cache_key",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_organ_reads",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_outreach_his_words",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_outside_views",
+      "rc": 0,
+      "seconds": 0.6
+    },
+    {
+      "suite": "test_p02_p10_closures",
+      "rc": 0,
+      "seconds": 0.66
+    },
+    {
+      "suite": "test_p02_wal_ledger",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_p03_04_p02_05_broker",
+      "rc": 0,
+      "seconds": 1.07
+    },
+    {
+      "suite": "test_p03_device_execution",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_p03_p04_closures",
+      "rc": 0,
+      "seconds": 1.18
+    },
+    {
+      "suite": "test_p03_p07_closures",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_p04_02_evidence_cutoff",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_p04_09_relational_snapshot",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_p04_memory_pipeline",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_p04_p07_closures",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_p05_p08_closures",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_p05_p09_closures",
+      "rc": 0,
+      "seconds": 0.72
+    },
+    {
+      "suite": "test_p09_p11_closures",
+      "rc": 0,
+      "seconds": 3.15
+    },
+    {
+      "suite": "test_p0_round2",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_pearl_artifact_reader",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_person_pages",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_phone_last_seen",
+      "rc": 0,
+      "seconds": 0.62
+    },
+    {
+      "suite": "test_phone_presence_reachable",
+      "rc": 0,
+      "seconds": 0.7
+    },
+    {
+      "suite": "test_pleasure_novelty",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_plugin_gateway",
+      "rc": 0,
+      "seconds": 0.97
+    },
+    {
+      "suite": "test_plugin_hold_perms",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_policy_decisions",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_prediction_identity",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_press_hold_bench",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_pressure_intent_keys",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_pressure_once",
+      "rc": 0,
+      "seconds": 0.89
+    },
+    {
+      "suite": "test_pride_mirror_week",
+      "rc": 0,
+      "seconds": 1.05
+    },
+    {
+      "suite": "test_priority_vector",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_promise_after_pause",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_promise_keeper",
+      "rc": 0,
+      "seconds": 1.03
+    },
+    {
+      "suite": "test_protein_label_binding",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_quantum_snapshot",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_recall_explain",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_received_mail",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_record_contract",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_recovery_evidence",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_reelroom",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_reelroom_frame_and_cost",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_reelroom_journal",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_reelroom_lifecycle",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_reelroom_lights_reply",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_reelroom_room",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_reference_compare",
+      "rc": 0,
+      "seconds": 1.75
+    },
+    {
+      "suite": "test_reflection_sentences",
+      "rc": 0,
+      "seconds": 0.8
+    },
+    {
+      "suite": "test_release_profile",
+      "rc": 0,
+      "seconds": 3.48
+    },
+    {
+      "suite": "test_remake_once",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_reply_budget",
+      "rc": 0,
+      "seconds": 0.8
+    },
+    {
+      "suite": "test_residual_shadow",
+      "rc": 0,
+      "seconds": 0.69
+    },
+    {
+      "suite": "test_resonance_felt",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_reveal_flow",
+      "rc": 0,
+      "seconds": 1.74
+    },
+    {
+      "suite": "test_review_fixes",
+      "rc": 0,
+      "seconds": 0.71
+    },
+    {
+      "suite": "test_review_repairs",
+      "rc": 0,
+      "seconds": 1.73
+    },
+    {
+      "suite": "test_robot_core",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_room_answers_weighed",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_room_campaign",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_room_review_guards",
+      "rc": 0,
+      "seconds": 1.19
+    },
+    {
+      "suite": "test_room_work",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_route_authz",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_route_her_words",
+      "rc": 0,
+      "seconds": 1.01
+    },
+    {
+      "suite": "test_route_shadows",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_router_learned_cache",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_schedule_graph",
+      "rc": 0,
+      "seconds": 0.76
+    },
+    {
+      "suite": "test_scholar_author",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_scholar_pdf_text",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_screen_share",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_security_alarm",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_self_doubt",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_self_head_on_message",
+      "rc": 0,
+      "seconds": 1.61
+    },
+    {
+      "suite": "test_self_head_source",
+      "rc": 0,
+      "seconds": 1.18
+    },
+    {
+      "suite": "test_self_model_gates",
+      "rc": 0,
+      "seconds": 0.73
+    },
+    {
+      "suite": "test_self_review",
+      "rc": 0,
+      "seconds": 0.99
+    },
+    {
+      "suite": "test_selfmodel_absence_wells",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_selfmodel_anchor_sediment",
+      "rc": 0,
+      "seconds": 1.17
+    },
+    {
+      "suite": "test_selfmodel_context",
+      "rc": 0,
+      "seconds": 0.99
+    },
+    {
+      "suite": "test_selfmodel_direction_causal",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_selfmodel_relational",
+      "rc": 0,
+      "seconds": 1.07
+    },
+    {
+      "suite": "test_sensor_reactions",
+      "rc": 0,
+      "seconds": 1.02
+    },
+    {
+      "suite": "test_session_mac_away",
+      "rc": 0,
+      "seconds": 1.09
+    },
+    {
+      "suite": "test_settlement",
+      "rc": 0,
+      "seconds": 1.09
+    },
+    {
+      "suite": "test_shim_learned_cache",
+      "rc": 0,
+      "seconds": 1.04
+    },
+    {
+      "suite": "test_shim_mends_surrogates",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_shim_result_contract",
+      "rc": 0,
+      "seconds": 1.32
+    },
+    {
+      "suite": "test_skill_forge",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_slack_cost",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_software_quota",
+      "rc": 0,
+      "seconds": 1.02
+    },
+    {
+      "suite": "test_software_quota_credits",
+      "rc": 0,
+      "seconds": 1.07
+    },
+    {
+      "suite": "test_somatic_bridge_reconnect",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_somatic_narrate_scheduled",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_somatic_thread_lands",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_song_draft",
+      "rc": 0,
+      "seconds": 3.18
+    },
+    {
+      "suite": "test_song_memory",
+      "rc": 0,
+      "seconds": 1.06
+    },
+    {
+      "suite": "test_spark_hands",
+      "rc": 0,
+      "seconds": 1.05
+    },
+    {
+      "suite": "test_spark_sources",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_spotify_watch",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_still_prompt_kept",
+      "rc": 0,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_stop_semantics",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_store_guard",
+      "rc": 0,
+      "seconds": 33.82
+    },
+    {
+      "suite": "test_stratagem_e2e",
+      "rc": 0,
+      "seconds": 1.58
+    },
+    {
+      "suite": "test_stratagem_expansion",
+      "rc": 0,
+      "seconds": 1.39
+    },
+    {
+      "suite": "test_stratagem_offer",
+      "rc": 0,
+      "seconds": 1.04
+    },
+    {
+      "suite": "test_stratagem_routes",
+      "rc": 0,
+      "seconds": 1.88
+    },
+    {
+      "suite": "test_stratagem_transport",
+      "rc": 0,
+      "seconds": 1.04
+    },
+    {
+      "suite": "test_study_external_reconcile",
+      "rc": 0,
+      "seconds": 1.66
+    },
+    {
+      "suite": "test_study_fix",
+      "rc": 0,
+      "seconds": 72.51
+    },
+    {
+      "suite": "test_study_fix_twins",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_study_grep",
+      "rc": 0,
+      "seconds": 0.94
+    },
+    {
+      "suite": "test_study_provider_refusal",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_study_reading",
+      "rc": 1,
+      "seconds": 0.86
+    },
+    {
+      "suite": "test_study_reports",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_study_writers",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_subcon_accuracy",
+      "rc": 0,
+      "seconds": 0.79
+    },
+    {
+      "suite": "test_subcon_audit_fixes",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_subcon_review_fixes",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_surface_coverage",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_thread_lifecycle",
+      "rc": 0,
+      "seconds": 1.38
+    },
+    {
+      "suite": "test_thread_not_lost",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_threshold",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_toggle_holds",
+      "rc": 0,
+      "seconds": 1.31
+    },
+    {
+      "suite": "test_touch_marks",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_toy_hub_away",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_trilateral_argon",
+      "rc": 0,
+      "seconds": 0.77
+    },
+    {
+      "suite": "test_twin_parity",
+      "rc": 0,
+      "seconds": 0.9
+    },
+    {
+      "suite": "test_value_map_choices",
+      "rc": 0,
+      "seconds": 0.93
+    },
+    {
+      "suite": "test_value_map_day",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_video_retry",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_video_scene_grounding",
+      "rc": 0,
+      "seconds": 0.84
+    },
+    {
+      "suite": "test_video_share",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_video_want_closes",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_vintos_calendar",
+      "rc": 0,
+      "seconds": 0.85
+    },
+    {
+      "suite": "test_vintos_mcp",
+      "rc": 0,
+      "seconds": 1.42
+    },
+    {
+      "suite": "test_visit_capability_wiring",
+      "rc": 0,
+      "seconds": 0.74
+    },
+    {
+      "suite": "test_want_artifact_guard",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_want_board",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_want_breadth",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_want_contract",
+      "rc": 0,
+      "seconds": 0.81
+    },
+    {
+      "suite": "test_want_email_and_outward",
+      "rc": 0,
+      "seconds": 0.95
+    },
+    {
+      "suite": "test_want_enrichment",
+      "rc": 0,
+      "seconds": 0.87
+    },
+    {
+      "suite": "test_want_formation_routes",
+      "rc": 0,
+      "seconds": 0.89
+    },
+    {
+      "suite": "test_want_music_step",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_want_plan_lifecycle",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_want_thread_doors",
+      "rc": 0,
+      "seconds": 0.98
+    },
+    {
+      "suite": "test_want_video_delivery",
+      "rc": 0,
+      "seconds": 0.83
+    },
+    {
+      "suite": "test_wants_panel",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_watch_cleanup",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_watch_live",
+      "rc": 0,
+      "seconds": 0.78
+    },
+    {
+      "suite": "test_watch_old_rows",
+      "rc": 0,
+      "seconds": 0.82
+    },
+    {
+      "suite": "test_watch_presence",
+      "rc": 0,
+      "seconds": 0.8
+    },
+    {
+      "suite": "test_websearch_quality",
+      "rc": 0,
+      "seconds": 0.88
+    },
+    {
+      "suite": "test_when_said",
+      "rc": 0,
+      "seconds": 0.92
+    },
+    {
+      "suite": "test_work_turns",
+      "rc": 0,
+      "seconds": 1.0
+    },
+    {
+      "suite": "test_workflow_holds",
+      "rc": 0,
+      "seconds": 0.91
+    },
+    {
+      "suite": "test_worklist_repairs",
+      "rc": 0,
+      "seconds": 0.77
+    }
+  ],
+  "source_revision": "3bdbab7eb9aea258e65e0936c8a156607aa32f9e",
+  "branch": "codex/security-alarms",
+  "baseline_revision": "0913106c",
+  "baseline_failures": {
+    "test_latent_stream_linear": {
+      "rc": 1,
+      "seconds": 1.54,
+      "reason": "Fixed-day split assertion: split_of converts to system local date while manifest timestamps retain UTC; identical failure on deploy snapshot."
+    },
+    "test_mail_attachments": {
+      "rc": 1,
+      "seconds": 1.8,
+      "reason": "pdftotext is absent locally; fallback PDF extraction lacks the form-feed required by this fixture. Identical failure on deploy snapshot."
+    },
+    "test_media_embed": {
+      "rc": 1,
+      "seconds": 1.62,
+      "reason": "macOS OS-isolation profile refuses the additional random localhost bind at test line 65. Identical failure on deploy snapshot; sandbox was not weakened."
+    },
+    "test_study_reading": {
+      "rc": 1,
+      "seconds": 0.79,
+      "reason": "macOS BSD grep does not support the PCRE expression used by the test; read_for falls back to literal search. Identical failure on deploy snapshot."
+    }
+  },
+  "branch_specific_failures": [],
+  "reported_regressions_unchanged": true,
+  "reported_regressions": [
+    "test_outreach_his_words",
+    "test_video_share",
+    "test_avatar_dryrun_argon"
+  ],
+  "external_network": "OS sandbox denied; transports/senders stubbed by suites",
+  "production_actions": "none",
+  "raw_logs": "redacted local scratch logs under /tmp/vintos-alarm-final-suite",
+  "scope": "Every broker/tests/test_*.py present at this source revision was invoked via scripts/run_isolated_test.py; scripts/ on path is supplied by that runner; no tests skipped by the driver. Individual suites may report optional backend skips.",
+  "dependencies": {
+    "python": "3.12.14 scratch venv, system-site packages",
+    "http_framework": "FastAPI 0.131.0 / Starlette 0.52.1 / HTTPX 0.28.1",
+    "additional": "requests, scipy, biopython, tmtools; native Git; no production packages installed"
+  }
+}

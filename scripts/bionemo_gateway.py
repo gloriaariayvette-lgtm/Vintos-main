@@ -191,7 +191,8 @@ def _post(url, encoded, key):
     request = Request(url, data=encoded, method="POST",
                       headers={"Content-Type":"application/json","Authorization":"Bearer "+key})
     try:
-        with open_request(request, timeout=300) as response:
+        import paid_http
+        with paid_http.send(open_request, __file__, request, timeout=300) as response:
             body = response.read(MAX_RESPONSE + 1)
     except HTTPError as exc:
         # Provider validation locations/types are useful for correcting a request; its raw body

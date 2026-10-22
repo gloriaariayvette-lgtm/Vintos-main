@@ -5,6 +5,9 @@ MEMORY="$HOME/.vintos/workspace/memory"
 [ -f "$MEMORY/briefings/$BRIEF_DATE.md" ] || { echo "[$(date)] no briefing for $BRIEF_DATE"; exit 0; }
 [ -f "$MEMORY/voice/briefing-$BRIEF_DATE.mp3" ] && { echo "[$(date)] already rendered"; exit 0; }
 python3 - <<'PY'
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import os, re, requests
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 date = os.environ["BRIEF_DATE"]
@@ -13,7 +16,7 @@ text = re.sub(r'\[[^\]]+\]', '', text)
 text = re.sub(r'^#+\s*', '', text, flags=re.M)
 text = re.sub(r'[*_`>]+', '', text)
 text = re.sub(r'\n{3,}', '\n\n', text).strip()[:14000]
-r = requests.post("https://api.x.ai/v1/tts",
+r = paid_http.send(requests.post, 'briefing-audio.sh', "https://api.x.ai/v1/tts",
     headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
     json={"text": text, "voice_id": "rex", "language": "en", "speed": 1.05}, timeout=120)
 ct = r.headers.get("Content-Type", "audio/mpeg")

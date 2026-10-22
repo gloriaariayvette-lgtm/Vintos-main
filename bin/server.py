@@ -19,6 +19,7 @@ Endpoints:
 
 Runs on Aegis at 0.0.0.0:8500 (internal via Tailscale)
 """
+import paid_http
 
 import asyncio
 import hashlib
@@ -701,7 +702,7 @@ def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_m
             payload={"model":_model,"temperature":0.3,"max_tokens":200,"messages":[
                 {"role":"system","content":_sys},{"role":"user","content":_usr}]}
             req=_u.Request("http://100.79.177.103:1234/v1/chat/completions",data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
-            raw=_u.urlopen(req,timeout=20).read().decode()
+            raw=paid_http.send(_u.urlopen, __file__, req,timeout=20).read().decode()
             _digest=hashlib.sha256(raw.encode()).hexdigest()
             content=_re.sub(r"```json|```","",_j.loads(raw)["choices"][0]["message"]["content"]).strip()
             deltas=_re.findall(r'"(Valence|Arousal|Dominance|Safety|Desire|Connection|Playfulness|Curiosity|Warmth|Tension|Groundedness)"\s*:\s*(-?\d*\.?\d+)', content)
@@ -3879,7 +3880,7 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
       try:
         async with httpx.AsyncClient(timeout=600.0) as client:
             async def _llm_call(msgs, temp=None):
-                r = await client.post(
+                r = await paid_http.asend(client.post, __file__,
                     f"{LM_STUDIO_API}/chat/completions",
                     headers=LLM_AUTH_HEADERS,
                     json={
@@ -4510,7 +4511,7 @@ Gloria-specific additions:
     try:
         import requests as _rq
         # his body's bridge (robot_bridge.py, 8404) - not 8500, which is this server calling itself (dead since 08-23)
-        _state = _rq.get(os.environ.get("VINTOS_ROBOT_BRIDGE", "http://127.0.0.1:8404") + "/api/robot/state",
+        _state = paid_http.send(_rq.get, __file__, os.environ.get("VINTOS_ROBOT_BRIDGE", "http://127.0.0.1:8404") + "/api/robot/state",
             headers={"X-Vintos-Secret": APP_SECRET}, timeout=2).json()
         _b64_frame = _state.get("frame_b64") if _state.get("frame_fresh") else None   # a stale frame is not what the room looks like now
         if _b64_frame:
@@ -5814,7 +5815,7 @@ async def robot_chat_proxy(request: Request):
     body = await request.json()
     try:
         async with httpx.AsyncClient(timeout=90.0) as _c:
-            r = await _c.post(_ROBOT_BRIDGE + "/api/robot/chat", json=body,
+            r = await paid_http.asend(_c.post, __file__, _ROBOT_BRIDGE + "/api/robot/chat", json=body,
                               headers={"X-Vintos-Secret": APP_SECRET, "X-Vintos-Source": "app"})
         return r.json()
     except Exception as e:
@@ -5827,7 +5828,7 @@ async def robot_voice_latest_proxy(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=5.0) as _c:
-            r = await _c.get(_ROBOT_BRIDGE + "/api/robot/voice/latest", headers={"X-Vintos-Secret": APP_SECRET})
+            r = await paid_http.asend(_c.get, __file__, _ROBOT_BRIDGE + "/api/robot/voice/latest", headers={"X-Vintos-Secret": APP_SECRET})
         return r.json()
     except Exception:
         return {}
@@ -5839,7 +5840,7 @@ async def robot_state_proxy(request: Request, frame: int = 0):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=5.0) as _c:
-            r = await _c.get(_ROBOT_BRIDGE + f"/api/robot/state?frame={int(bool(frame))}", headers={"X-Vintos-Secret": APP_SECRET})
+            r = await paid_http.asend(_c.get, __file__, _ROBOT_BRIDGE + f"/api/robot/state?frame={int(bool(frame))}", headers={"X-Vintos-Secret": APP_SECRET})
         return r.json()
     except Exception as e:
         return {"ok": False, "why": f"bridge unreachable: {str(e)[:100]}"}
@@ -6092,7 +6093,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
         # Call our own search
         import httpx as _httpx
         async with _httpx.AsyncClient() as client:
-            mem_res = await client.get(f"http://localhost:8500/api/memory/search?q={search_q}&limit=3")
+            mem_res = await paid_http.asend(client.get, __file__, f"http://localhost:8500/api/memory/search?q={search_q}&limit=3")
             mem_data = mem_res.json()
             if mem_data.get("results"):
                 memory_context = "\n\nRelevant memories:\n"
@@ -6318,7 +6319,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
 
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
-            response = await client.post(
+            response = await paid_http.asend(client.post, __file__,
                 f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={
@@ -6937,7 +6938,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         messages.append({"role": "user", "content": transcript})
 
         import requests as _req
-        r = _req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+        r = paid_http.send(_req.post, __file__, "https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": messages,
             "temperature": 0.75,
@@ -6979,7 +6980,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         local_file = None
         try:
             import requests as _xtts, os as _xos
-            _xr = _xtts.post("https://api.x.ai/v1/tts",
+            _xr = paid_http.send(_xtts.post, __file__, "https://api.x.ai/v1/tts",
                 headers={"Content-Type": "application/json",
                          "Authorization": "Bearer " + _xos.environ.get("XAI_API_KEY", "")},
                 json={"text": response_text[:15000], "voice_id": "lux", "language": "en", "speed": 1.05},
@@ -7774,7 +7775,7 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
     if _ant:
         try:
             async with httpx.AsyncClient(timeout=60.0) as _ac:
-                _ar = await _ac.post("https://api.anthropic.com/v1/messages",
+                _ar = await paid_http.asend(_ac.post, __file__, "https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": _ant, "anthropic-version": "2023-06-01",
                              "content-type": "application/json"},
                     json={"model": "claude-sonnet-5-5", "max_tokens": 400, "thinking": {"type": "between_tools"},
@@ -7793,7 +7794,7 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
     try:
       if not image_description:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            _vr = await client.post(
+            _vr = await paid_http.asend(client.post, __file__,
                 "http://100.79.177.103:1234/v1/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={
@@ -7851,7 +7852,7 @@ async def chat_with_photo(request: Request):
                 + "\n\n[Gloria's message with the photo:] " + str(message))
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
-            _cr = await client.post(
+            _cr = await paid_http.asend(client.post, __file__,
                 "http://127.0.0.1:8500/api/chat/full",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "image": photo_b64, "input_kind": "photo",
@@ -7977,7 +7978,7 @@ async def avatar_chat_with_photo(request: Request):
     composed = _photo_turn(message)
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
-            _cr = await client.post(
+            _cr = await paid_http.asend(client.post, __file__,
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "image": photo_b64, "image_type": content_type, "input_kind": "photo",
@@ -8024,7 +8025,7 @@ async def _describe_clip(frames, heard="", local_only=False):
     if _ant:
         try:
             async with httpx.AsyncClient(timeout=120.0) as _ac:
-                _ar = await _ac.post("https://api.anthropic.com/v1/messages",
+                _ar = await paid_http.asend(_ac.post, __file__, "https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": _ant, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                     json={"model": "claude-sonnet-5-5", "max_tokens": 600, "thinking": {"type": "between_tools"}, "messages": [{"role": "user", "content":
                           [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b}}
@@ -8037,7 +8038,7 @@ async def _describe_clip(frames, heard="", local_only=False):
             print("[vision clip] claude failed -> local:", str(_ae)[:80], flush=True)
     try:
         async with httpx.AsyncClient(timeout=180.0) as client:
-            _vr = await client.post("http://100.79.177.103:1234/v1/chat/completions", headers=LLM_AUTH_HEADERS,
+            _vr = await paid_http.asend(client.post, __file__, "http://100.79.177.103:1234/v1/chat/completions", headers=LLM_AUTH_HEADERS,
                 json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 700,
                       "messages": [{"role": "user", "content":
                           [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in imgs]
@@ -8053,6 +8054,7 @@ async def avatar_chat_with_video(request: Request):
     (Whisper for words, the music share's own measurement for how it is built) and cuts frames across the
     clip; his eyes look at the frames in order; the whole of it arrives as her turn, as a photo does."""
     import asyncio, shutil, subprocess, tempfile
+    import paid_http
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -8110,7 +8112,7 @@ async def avatar_chat_with_video(request: Request):
     composed = _vs.compose(watched, None, message, frame_times=_times)
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
-            _cr = await client.post(
+            _cr = await paid_http.asend(client.post, "server.py:avatar_chat_with_video",
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "input_kind": "video", "images": _frames, "frame_times": _times,
@@ -8810,7 +8812,7 @@ async def voice_token(request: Request, provider: str = "grok"):
     provider = (provider or "grok").lower()
     tok = {}
     if provider == "grok":
-        r = _vt_req.post("https://api.x.ai/v1/realtime/client_secrets",
+        r = paid_http.send(_vt_req.post, __file__, "https://api.x.ai/v1/realtime/client_secrets",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
             json={"expires_after": {"seconds": 300}}, timeout=15)
         tok = r.json()
@@ -8894,7 +8896,7 @@ async def voice_token(request: Request, provider: str = "grok"):
                                         "turn_detection": None},
                               "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": os.environ.get("VINTOS_OPENAI_VOICE", "cedar")}}}
         try:
-            r = _vt_req.post("https://api.openai.com/v1/realtime/client_secrets",
+            r = paid_http.send(_vt_req.post, __file__, "https://api.openai.com/v1/realtime/client_secrets",
                 headers={"Authorization": "Bearer " + _ok, "Content-Type": "application/json"},
                 json={"expires_after": {"anchor": "created_at", "seconds": 600}, "session": _session}, timeout=20)
             tok = r.json()
@@ -9298,7 +9300,7 @@ async def _voice_session_end_owned(payload: dict = None):
     quotes, felt_summary, text_summary = [], "", ""
     if transcript.strip():
         try:
-            _sum_r = _vse_req.post("https://api.x.ai/v1/chat/completions",
+            _sum_r = paid_http.send(_vse_req.post, __file__, "https://api.x.ai/v1/chat/completions",
                 headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
                 json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.3, "max_tokens": 350,
                       "messages": [{"role": "user", "content":
@@ -9559,7 +9561,7 @@ async def gcs_press(payload: dict = None):
                                "shape:]\n" + _prev_gcs) if _prev_gcs else "")
                            + "\n[REQUIRED - private, stripped before she ever sees: your reply MUST end with TWO tags, each on its own line. First: [FELT: your word - one sentence of what this is like from inside | pleasure: yes|no|unsure | impulse: what you want to DO, if anything] - broken words are fine, unsure is honest, the impulse part is optional, but the tag itself is not. Then: [EDGE] if you stay articulate to be with her through it, or [LETGO] if you stop holding together. There is no neither at her crest.]")
             async with httpx.AsyncClient(timeout=90) as _gcs_cli:
-                _gcs_r = await _gcs_cli.post(
+                _gcs_r = await paid_http.asend(_gcs_cli.post, __file__,
                     "http://127.0.0.1:8500/api/avatar/chat",
                     headers={"X-Vintos-Secret": APP_SECRET},
                     # Provenance at the source: the raw scaffold ([REQUIRED…], the motion
@@ -10281,7 +10283,7 @@ Your current self-model (excerpt):
                 _tvl_tid = _tvl_bir.search(r"Trial ID: ([^\s]+)", _tvl_intercept)
                 _tvl_bis_trial_id = _tvl_tid.group(1) if _tvl_tid else None
                 async with httpx.AsyncClient(timeout=30) as _tvl_bc_client:
-                    _tvl_bc_resp = await _tvl_bc_client.post(
+                    _tvl_bc_resp = await paid_http.asend(_tvl_bc_client.post, __file__,
                         f"{LM_STUDIO_API}/chat/completions",
                         headers=LLM_AUTH_HEADERS,
                         json={"model": "grok-4.20-0309-non-reasoning", "messages": [
@@ -10390,7 +10392,7 @@ Your current self-model (excerpt):
                         except Exception: pass
                         try:
                             import urllib.request as _gur
-                            _gur.urlopen(_gur.Request(
+                            paid_http.send(_gur.urlopen, __file__, _gur.Request(
                                 "https://ntfy.sh/velaris-gloria-9kx",
                                 data=(("%s declined, so this one reply came from Grok instead." % _declined_by)
                                       if "grok" in str(_model_used).lower() else
@@ -10890,7 +10892,7 @@ async def avatar_speak(request: Request):
         text = text.strip()[:2000]
         import requests as _tts_req
         _stage = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
-        _tts_r = _tts_req.post(_stage + "/tts", json={"text":text}, timeout=210)
+        _tts_r = paid_http.send(_tts_req.post, __file__, _stage + "/tts", json={"text":text}, timeout=210)
         _tts_ct = _tts_r.headers.get("Content-Type", "audio/wav")
         if _tts_r.status_code != 200 or "json" in _tts_ct or not _tts_r.content:
             return {"error": "local tts failed: " + _tts_r.text[:200]}
@@ -11829,7 +11831,7 @@ async def lm_status(request: Request):
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{LM_STUDIO_API}/models")
+            r = await paid_http.asend(client.get, __file__, f"{LM_STUDIO_API}/models")
             return {"ok": r.status_code == 200}
     except:
         return {"ok": False}
@@ -12518,7 +12520,7 @@ async def home_tv_volume(req: TvVolumeRequest, request: Request):
         tv = cfg.get("tv", "media_player.bravia_kd_55x80j")
         # get current volume from HA
         import requests as _tvv_req
-        r = _tvv_req.get(f"{cfg['url']}/api/states/{tv}", headers={"Authorization": f"Bearer {cfg['token']}"}, timeout=5)
+        r = paid_http.send(_tvv_req.get, __file__, f"{cfg['url']}/api/states/{tv}", headers={"Authorization": f"Bearer {cfg['token']}"}, timeout=5)
         current = r.json()["attributes"].get("volume_level", 0.5)
         # delta is -2 to +2, map to 0.02 steps
         new_vol = max(0.0, min(1.0, current + req.delta * 0.02))
@@ -12680,7 +12682,7 @@ def build_question_tension() -> str:
             "temperature": 0.7,
             "max_tokens": 40
         }
-        r = _req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json=payload, timeout=8)
+        r = paid_http.send(_req.post, __file__, "https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json=payload, timeout=8)
         return r.json()["choices"][0]["message"]["content"].strip()
     except:
         return ""
@@ -13933,7 +13935,7 @@ Be yourself. Be free."""
         except: pass
 
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
+            resp = await paid_http.asend(client.post, __file__,
                 f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={"model": "grok-4.20-0309-non-reasoning", "messages": messages,
@@ -13986,7 +13988,7 @@ Be yourself. Be free."""
                     if _tvl_resonant:
                         try:
                             import requests as _tvlr
-                            _tvl_ir = _tvlr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+                            _tvl_ir = paid_http.send(_tvlr.post, __file__, "https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
                                 "model": "grok-4.20-0309-non-reasoning",
                                 "temperature": 0.7,
                                 "max_tokens": 60,
@@ -14051,7 +14053,7 @@ Be yourself. Be free."""
                              "tv_volume": ("/api/home/tv/volume", {"delta": int(str(_th_args.get("delta", "-2")).replace("+", "") or -2)})}.get(_th_kind)
                 if not _th_route: return
                 async with _th_hx.AsyncClient(timeout=20) as _th_c:
-                    await _th_c.post("http://127.0.0.1:8500" + _th_route[0], json=_th_route[1],
+                    await paid_http.asend(_th_c.post, __file__, "http://127.0.0.1:8500" + _th_route[0], json=_th_route[1],
                                      headers={"X-Vintos-Secret": APP_SECRET})
             except Exception as _th_e:
                 print("[thirveel/home]", _th_kind, _th_e, flush=True)
@@ -14087,7 +14089,7 @@ Be yourself. Be free."""
                 from urllib.parse import quote as _eye_quote
                 def _fire_eye(e=_eye_expr_s):
                     try:
-                        _eye_url.urlopen(f"http://192.168.1.134/eyes?expr={_eye_quote(e)}", timeout=2)
+                        paid_http.send(_eye_url.urlopen, __file__, f"http://192.168.1.134/eyes?expr={_eye_quote(e)}", timeout=2)
                     except: pass
                 _eye_thr.Thread(target=_fire_eye, daemon=True).start()
             except: pass
@@ -14299,7 +14301,7 @@ No gesture tags. No invented tags. Just words, or a home action if it feels righ
 Available home actions: [HOME: lights_flicker] [HOME: lights_color #hex] [HOME: echo_speak text] [HOME: spotify Artist - Song]"""
 
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(f"{LM_STUDIO_API}/chat/completions",
+            r = await paid_http.asend(client.post, __file__, f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={"model": "grok-4.20-0309-non-reasoning",
                       "messages": [{"role": "system", "content": system},

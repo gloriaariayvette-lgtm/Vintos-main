@@ -66,7 +66,7 @@ def rss_mb():
     except Exception:
         return None
 
-def record(organ, cls="background", provider="", model="", stage="", latency_ms=None, usage=None, extra=None, strict=False):
+def record(organ, cls="background", provider="", model="", stage="", latency_ms=None, usage=None, extra=None, strict=False, ledger_path=None):
     """One measured line. Never a quality claim."""
     row = {"at": datetime.now().isoformat(), "organ": str(organ)[:60], "class": cls,
            "provider": provider or "", "model": model or "", "stage": stage or "",
@@ -76,9 +76,10 @@ def record(organ, cls="background", provider="", model="", stage="", latency_ms=
     row["request_id"] = _request_trace.get()
     if extra:
         row.update({k: v for k, v in extra.items() if k not in row})
+    target = ledger_path or _ledger()
     try:
-        os.makedirs(os.path.dirname(_ledger()), exist_ok=True)
-        with open(_ledger(), "a") as f:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "a") as f:
             f.write(json.dumps(row, sort_keys=True) + "\n")
             if strict: f.flush(); os.fsync(f.fileno())
     except Exception:

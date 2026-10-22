@@ -1,4 +1,5 @@
 """Humor, mischief, wants API, scene upload, presence - moved verbatim from server.py (Q2 Phase 3, cut 3)."""
+import paid_http
 import os, json, re
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse, JSONResponse
@@ -381,7 +382,7 @@ async def respond_to_want(want_id: str, request: Request):
                     try:
                         from causality_engine import add_hypothesis
                         import requests as _igr
-                        _classify = _igr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+                        _classify = paid_http.send(_igr.post, __file__, "https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
                             "model": "grok-4.20-0309-non-reasoning",
                             "messages": [
                                 {"role": "system", "content": "Answer with one word: GLORIA or VINTOS."},
@@ -582,14 +583,14 @@ async def describe_screen(request: Request):
         import httpx
         # Get screenshot from bridge
         async with httpx.AsyncClient(timeout=15) as client:
-            shot = await client.get("http://172.18.16.1:8402/browser/screenshot")
+            shot = await paid_http.asend(client.get, __file__, "http://172.18.16.1:8402/browser/screenshot")
             shot_data = shot.json()
         if not shot_data.get("ok"):
             return {"ok": False, "error": "No browser open or screenshot failed"}
         img_b64 = shot_data["image"]
         # Have Vintos describe what he sees
         async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.post(
+            r = await paid_http.asend(client.post, __file__,
                 LM_STUDIO_API + "/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={

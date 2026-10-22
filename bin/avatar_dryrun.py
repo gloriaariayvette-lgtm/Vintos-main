@@ -203,6 +203,7 @@ else:
 def argon(system, convo, model="gemini-4-argon"):
     """The same system prompt and conversation, to Gemini 4 Argon. Returns (text, usage). Nothing is saved."""
     import urllib.request
+    import paid_http
     sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
     try:
         import env_file
@@ -229,7 +230,7 @@ def argon(system, convo, model="gemini-4-argon"):
         "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % model,
         data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": key})
     try:
-        with urllib.request.urlopen(req, timeout=180) as r:
+        with paid_http.urllib_send(urllib.request.urlopen, "avatar_dryrun.py", req, timeout=180) as r:
             d = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         return "(Argon refused: HTTP %d %s)" % (e.code, e.read().decode(errors="replace")[:400]), {}

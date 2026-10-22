@@ -376,6 +376,9 @@ $USER_PROMPT"
 echo "$SYSTEM_PROMPT" > /tmp/vintos_intro_system.txt
 printf '%s' "$FULL_PROMPT" > /tmp/vintos_intro_prompt.txt
 CONTENT=$(python3 - <<'PYEOF'
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import json, urllib.request, threading
 
 with open('/tmp/vintos_intro_system.txt') as f:
@@ -394,7 +397,7 @@ def call_llm(messages, temperature=0.85, max_tokens=1500):
         'max_tokens': max_tokens
     }).encode()
     req = urllib.request.Request(LM_URL, data=payload, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=180) as r:
+    with paid_http.send(urllib.request.urlopen, 'introspection.sh', req, timeout=180) as r:
         data = json.loads(r.read().decode())
         return data['choices'][0]['message']['content']
 
@@ -412,7 +415,7 @@ def _claude_sync(system_text, user_text, reasoning=False, max_tokens=1500):
              "thinking": ({"type": "adaptive", "display": "summarized"} if reasoning else {"type": "between_tools"})}   # Sonnet 5.5 refuses "disabled"
     _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                      headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
-    try: _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+    try: _d = _j.loads(paid_http.send(_u.urlopen, 'introspection.sh', _rq, timeout=180).read())
     except Exception: return None, ''
     if _d.get("type") == "error" or _d.get("stop_reason") == "refusal": return None, ""
     try:
@@ -470,7 +473,7 @@ def _sol_sync(system_text, user_text, max_tokens=1500):
     _rq = _u.Request("https://api.openai.com/v1/chat/completions", data=_j.dumps(_body).encode(),
                      headers={"Content-Type": "application/json", "Authorization": "Bearer " + _k})
     try:
-        _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+        _d = _j.loads(paid_http.send(_u.urlopen, 'introspection.sh', _rq, timeout=180).read())
         try:
             _us = _d.get("usage") or {}
             import time as _sut, json as _sj
@@ -500,7 +503,7 @@ def _argon_sync(system_text, user_text, max_tokens=1500):
     _rq = _u.Request("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
                      data=_j.dumps(_body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": _k})
     try:
-        _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+        _d = _j.loads(paid_http.send(_u.urlopen, 'introspection.sh', _rq, timeout=180).read())
     except Exception:
         return None
     try:

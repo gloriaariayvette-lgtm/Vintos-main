@@ -11,6 +11,7 @@ cap, a fresh completion check every few steps, hashed audit rows. Used by deskto
 that are about the web; the pixel loop keeps everything else.
 """
 from __future__ import annotations
+import paid_http
 
 import hashlib
 import json
@@ -122,7 +123,7 @@ Fail is for a wall the PAGE shows: its visible text or a pop-up saying sign-in/l
         body = json.dumps({"model": self.model, "temperature": 0.1, "max_tokens": 320,
                            "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         req = urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"})
-        with urlrequest.urlopen(req, timeout=self.timeout) as r:
+        with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', req, timeout=self.timeout) as r:
             payload = json.loads(r.read())
         raw = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
         return parse_action(raw)
@@ -361,13 +362,13 @@ class GemmaReflector:
                 key = _srv._anthropic_key()
                 body = json.dumps({"model": "claude-sonnet-5-5", "max_tokens": 700, "thinking": {"type": "between_tools"}, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
                 req = urlrequest.Request("https://api.anthropic.com/v1/messages", data=body, headers={"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
-                with urlrequest.urlopen(req, timeout=self.timeout) as r:
+                with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', req, timeout=self.timeout) as r:
                     payload = json.loads(r.read())
                 return "".join(b.get("text", "") for b in payload.get("content", []))
             except Exception:
                 pass   # fall through to Gemma
         body = json.dumps({"model": self.model, "temperature": 0.2, "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
-        with urlrequest.urlopen(urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
+        with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
             payload = json.loads(r.read())
         return (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
 
@@ -447,7 +448,7 @@ class GemmaPageVerifier:
                   'Answer one JSON object only: {"verified": true|false, "seen": "one sentence"}')
         body = json.dumps({"model": self.model, "temperature": 0.0, "max_tokens": 120, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         try:
-            with urlrequest.urlopen(urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
+            with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
                 payload = json.loads(r.read())
             raw = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
             m = re.search(r"\{.*\}", raw, flags=re.S); d = json.loads(m.group(0)) if m else {}

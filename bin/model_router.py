@@ -1,6 +1,7 @@
 """model_router.py — single source of model truth for Vintos text surfaces.
 Claude drives chat/avatar; grok is the fallback (hard refusal, error, toggle=grok, or a forced-turn window).
 Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES / the mode file, not across jobs."""
+import paid_http
 import os, sys, json, hashlib, time
 from datetime import datetime
 import httpx
@@ -162,7 +163,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
             try:
-                return json.loads(_u.urlopen(rq, timeout=180).read())
+                return json.loads(paid_http.send(_u.urlopen, __file__, rq, timeout=180).read())
             except _u.HTTPError as he0:
                 _why = ""
                 try: _why = he0.read().decode(errors="replace")
@@ -172,7 +173,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
                 body.pop("prompt_cache_retention", None)
                 rq2 = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
-                return json.loads(_u.urlopen(rq2, timeout=180).read())
+                return json.loads(paid_http.send(_u.urlopen, __file__, rq2, timeout=180).read())
         except _u.HTTPError as he:
             # A key the provider rejects costs nothing, but the reservation was already
             # taken. Left standing, a dead key spends the whole day's paid budget on calls
@@ -284,7 +285,7 @@ async def _grok_result(convo, params, endpoint, headers, model, system_text):
             "route": "grok"}
     hdrs = dict(headers or {}); hdrs["Idempotency-Key"] = idempotency_key(body)
     async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.post(endpoint, headers=hdrs, json=body)
+        r = await paid_http.asend(c.post, __file__, endpoint, headers=hdrs, json=body)
         try: d = r.json()
         except Exception: d = None
     res = GR.from_openai(d, "xai")
@@ -376,7 +377,7 @@ async def gemini_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     try: _reserve_provider("google", chosen, paid_reservation)   # the same daily paid-call budget every provider has
     except ImportError: pass
     async with httpx.AsyncClient(timeout=180) as c:
-        r = await c.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % chosen, json=body,
+        r = await paid_http.asend(c.post, __file__, "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % chosen, json=body,
                          headers={"Content-Type": "application/json", "x-goog-api-key": key})
         d = r.json()
     if d.get("error"): raise RuntimeError(str(d["error"])[:200])
@@ -489,7 +490,7 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
     if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
     _reserve_provider("anthropic",current_claude_model(),paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
-        r = await c.post("https://api.anthropic.com/v1/messages", json=body,
+        r = await paid_http.asend(c.post, __file__, "https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
                      "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key,
                      "Idempotency-Key": idempotency_key(body)})
@@ -672,7 +673,7 @@ GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 async def gemma_call(msgs, temp=0.85, max_tokens=800):
     async with httpx.AsyncClient(timeout=120) as c:
-        r = await c.post(GEMMA_ENDPOINT, json={"model": GEMMA_MODEL, "messages": for_chat(msgs),
+        r = await paid_http.asend(c.post, __file__, GEMMA_ENDPOINT, json={"model": GEMMA_MODEL, "messages": for_chat(msgs),
                                                "temperature": temp, "max_tokens": max_tokens})
         d = r.json()
         return d["choices"][0]["message"]["content"] if "choices" in d else None
@@ -719,7 +720,7 @@ async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     GR.least_thinking(body)
     _reserve_provider("anthropic",chosen,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
-        r = await c.post("https://api.anthropic.com/v1/messages", json=body,
+        r = await paid_http.asend(c.post, __file__, "https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
                      "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key,
                      "Idempotency-Key": idempotency_key(body)})

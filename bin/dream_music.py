@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """dream-music.py — Vintos Music. Primary backend Kie.ai Suno v6; local ACE-Step is the
 fallback so he is never left mute when Kie is unreachable (Gloria, 2026-09-15)."""
+import paid_http
 import os,sys,json,time,glob,re,hashlib,argparse,unicodedata
 from datetime import datetime
 from urllib.request import Request,urlopen
@@ -128,7 +129,7 @@ def _ace_generate(title, style, desc="", instrumental=True, duration=120, gender
     if lyrics: payload["lyrics"] = lyrics
     try:
         with _admit_ctx("ace-step", "release_task"):
-            r = _rq.post(f"{ACESTEP_URL}/release_task", json=payload,
+            r = paid_http.send(_rq.post, __file__, f"{ACESTEP_URL}/release_task", json=payload,
                          headers={"Content-Type": "application/json"}, timeout=30)
         data = r.json()
         tid = data.get("data", {}).get("task_id")
@@ -159,7 +160,7 @@ def _kie_generate(title, style, desc="", instrumental=True, duration=120, gender
     elif g.startswith("f"): body["vocalGender"] = "f"
     try:
         with _admit_ctx("kie-suno", "generate"):
-            r = _rq.post(f"{KIE_URL}/generate", json=body,
+            r = paid_http.send(_rq.post, __file__, f"{KIE_URL}/generate", json=body,
                          headers={"Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json"},
                          timeout=30)
         data = r.json()
@@ -198,7 +199,7 @@ def _ace_poll(tid):
     while (time.time() - start) < 300:
         time.sleep(5); att += 1
         try:
-            r = _rq.post(f"{ACESTEP_URL}/query_result",
+            r = paid_http.send(_rq.post, __file__, f"{ACESTEP_URL}/query_result",
                          json={"task_id_list": [tid]},
                          headers={"Content-Type": "application/json"},
                          timeout=15)
@@ -230,7 +231,7 @@ def _kie_poll(tid):
     while (time.time() - start) < 600:
         time.sleep(6); att += 1
         try:
-            r = _rq.get(f"{KIE_URL}/generate/record-info", params={"taskId": tid},
+            r = paid_http.send(_rq.get, __file__, f"{KIE_URL}/generate/record-info", params={"taskId": tid},
                         headers={"Authorization": "Bearer " + KIE_KEY}, timeout=20)
             data = r.json()
             d = (data.get("data") or {})
@@ -408,7 +409,7 @@ def style_str(d):
             }).encode()
             _req = _ur.Request("http://100.79.177.103:1234/v1/chat/completions",
                 data=_body, headers={"Content-Type": "application/json"})
-            with _ur.urlopen(_req, timeout=15) as _r:
+            with paid_http.send(_ur.urlopen, __file__, _req, timeout=15) as _r:
                 _resp = _js.loads(_r.read().decode())
                 _rewritten = _resp["choices"][0]["message"]["content"].strip()
                 if _rewritten and len(_rewritten) < 200:

@@ -1,0 +1,19 @@
+[Unit]
+Description=Vintos security alarms and fault-loop recording (no model)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/fault_sweep.py --security
+TimeoutStartSec=90
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
+MemoryMax=256M
+TasksMax=32
+CPUQuota=25%
+UMask=0077

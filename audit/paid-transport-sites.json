@@ -1,0 +1,345 @@
+[
+  {
+    "file": "scripts/browser_agent.py",
+    "lines": [
+      126,
+      365,
+      371,
+      451
+    ]
+  },
+  {
+    "file": "scripts/bionemo_gateway.py",
+    "lines": [
+      195
+    ]
+  },
+  {
+    "file": "scripts/dream-art.py",
+    "lines": [
+      121,
+      150,
+      156
+    ]
+  },
+  {
+    "file": "scripts/study_fix.py",
+    "lines": [
+      578,
+      672,
+      960
+    ]
+  },
+  {
+    "file": "scripts/forge_study.py",
+    "lines": [
+      119,
+      220
+    ]
+  },
+  {
+    "file": "scripts/claude_cache.py",
+    "lines": [
+      129
+    ]
+  },
+  {
+    "file": "scripts/want_email.py",
+    "lines": [
+      182,
+      221
+    ]
+  },
+  {
+    "file": "scripts/idle-journal.sh",
+    "lines": [
+      690,
+      743,
+      776,
+      1732
+    ]
+  },
+  {
+    "file": "scripts/dot_channel.py",
+    "lines": [
+      703,
+      733,
+      760,
+      819,
+      1007,
+      1083,
+      1086,
+      1414,
+      1442,
+      1462
+    ]
+  },
+  {
+    "file": "scripts/astra_call.py",
+    "lines": [
+      71
+    ]
+  },
+  {
+    "file": "scripts/grok_subscription.py",
+    "lines": [
+      43
+    ]
+  },
+  {
+    "file": "scripts/mirror.sh",
+    "lines": [
+      402
+    ]
+  },
+  {
+    "file": "scripts/forge_build.py",
+    "lines": [
+      89
+    ]
+  },
+  {
+    "file": "scripts/atelier-visit.py",
+    "lines": [
+      194,
+      416,
+      488,
+      517,
+      612,
+      663,
+      760,
+      790,
+      1057,
+      1097,
+      1197,
+      1209,
+      1230,
+      1236,
+      1242,
+      1251,
+      1258,
+      1265,
+      1273,
+      1285,
+      1309,
+      1318,
+      1324,
+      1337
+    ]
+  },
+  {
+    "file": "scripts/robot_core.py",
+    "lines": [
+      307,
+      369
+    ]
+  },
+  {
+    "file": "scripts/dream-music.py",
+    "lines": [
+      132,
+      163,
+      202,
+      234,
+      412
+    ]
+  },
+  {
+    "file": "bin/briefing-audio.sh",
+    "lines": [
+      19
+    ]
+  },
+  {
+    "file": "bin/merged_full_route.py",
+    "lines": [
+      53,
+      788,
+      812
+    ]
+  },
+  {
+    "file": "bin/server.py",
+    "lines": [
+      706,
+      3871,
+      4501,
+      5804,
+      5817,
+      5829,
+      6082,
+      6307,
+      6924,
+      6966,
+      7761,
+      7780,
+      7838,
+      7964,
+      8011,
+      8024,
+      8097,
+      8781,
+      8865,
+      9269,
+      9530,
+      10251,
+      10360,
+      10860,
+      11799,
+      12488,
+      12650,
+      13903,
+      13956,
+      14021,
+      14057,
+      14269
+    ]
+  },
+  {
+    "file": "bin/vintos-initiate.sh",
+    "lines": [
+      409,
+      416
+    ]
+  },
+  {
+    "file": "bin/cause_reason.py",
+    "lines": [
+      68
+    ]
+  },
+  {
+    "file": "bin/gen_hero_stills.py",
+    "lines": [
+      183,
+      203,
+      215,
+      231,
+      291,
+      312,
+      322,
+      341,
+      380,
+      402,
+      412
+    ]
+  },
+  {
+    "file": "bin/vintos-code-review.py",
+    "lines": [
+      287,
+      322,
+      327,
+      342
+    ]
+  },
+  {
+    "file": "bin/introspection.sh",
+    "lines": [
+      400,
+      418,
+      476,
+      506
+    ]
+  },
+  {
+    "file": "bin/dream-art.py",
+    "lines": [
+      121,
+      150,
+      156
+    ]
+  },
+  {
+    "file": "bin/vintos-websearch.py",
+    "lines": [
+      119,
+      145,
+      452,
+      537
+    ]
+  },
+  {
+    "file": "bin/idle-journal.sh",
+    "lines": [
+      690,
+      743,
+      776,
+      1732
+    ]
+  },
+  {
+    "file": "bin/dream_music.py",
+    "lines": [
+      132,
+      163,
+      202,
+      234,
+      412
+    ]
+  },
+  {
+    "file": "bin/vintos-send-video.py",
+    "lines": [
+      151,
+      618,
+      638,
+      650,
+      686,
+      703,
+      714
+    ]
+  },
+  {
+    "file": "bin/music-share.py",
+    "lines": [
+      94,
+      101,
+      185,
+      222,
+      560
+    ]
+  },
+  {
+    "file": "bin/avatar_dryrun.py",
+    "lines": [
+      233
+    ]
+  },
+  {
+    "file": "bin/model_router.py",
+    "lines": [
+      166,
+      176,
+      288,
+      380,
+      493,
+      676,
+      723
+    ]
+  },
+  {
+    "file": "bin/vintos_claude_shim.py",
+    "lines": [
+      124,
+      346,
+      494
+    ]
+  },
+  {
+    "file": "bin/study_chat.py",
+    "lines": [
+      282,
+      541,
+      744
+    ]
+  },
+  {
+    "file": "bin/server_domains/humor_wants.py",
+    "lines": [
+      385,
+      586,
+      593
+    ]
+  }
+]

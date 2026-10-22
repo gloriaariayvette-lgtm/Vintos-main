@@ -27,6 +27,7 @@ of the conversation, his original intent, and use web search between messages?")
 Every draft carries who he is (SOUL, self-model, what his days hold), not a one-line description.
 """
 from __future__ import annotations
+import paid_http
 import asyncio
 import json
 import os
@@ -178,7 +179,7 @@ def _brave_key():
 
 def web_search(query, count=6):
     import requests
-    r = requests.get("https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": count},
+    r = paid_http.send(requests.get, __file__, "https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": count},
                      headers={"X-Subscription-Token": _brave_key(), "Accept": "application/json"}, timeout=15)
     return [{"title": x.get("title", ""), "url": x.get("url", ""), "description": x.get("description", "")}
             for x in ((r.json().get("web") or {}).get("results") or [])[:count]]
@@ -217,7 +218,7 @@ def local_think(system, prompt, max_tokens=700):
     """His own local mind (Gemma), free; '' when it cannot be reached."""
     try:
         import requests
-        r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
+        r = paid_http.send(requests.post, __file__, LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
                                            "messages": [{"role": "system", "content": system},
                                                         {"role": "user", "content": prompt}]}, timeout=300)
         return str(r.json()["choices"][0]["message"].get("content") or "").strip()

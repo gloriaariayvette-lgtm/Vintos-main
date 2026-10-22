@@ -105,7 +105,12 @@ def build_stream(mem=None):
         """One turn kept in two stores (chat log and ledger) is one event: same side, same whole text, within 15
         minutes. The same words said again on another day are a new event."""
         side = "her" if role in ("user", "gloria") else "him"
-        key = (side, " ".join(str(text).split()))
+        # the chat log carries the house's stage directions inside turns ("[she spoke with her body, not words]",
+        # "[speak TO her ...]"): they are not anyone's words. Brackets out; a turn with nothing else left is dropped.
+        text = re.sub(r"\[[^\]]*\]?", " ", str(text or ""))
+        text = " ".join(text.split())
+        if len(text.split()) < 1 or not re.search(r"\w", text): return
+        key = (side, text)
         if not (t and text): return
         if key in seen and abs((t - seen[key]).total_seconds()) < 900: return
         seen[key] = t; ev.append({"t": t, "source": side, "text": str(text)[:1500]})

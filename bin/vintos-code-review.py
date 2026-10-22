@@ -20,6 +20,7 @@ Staged in ~/.vintos/code-review/ - his memory sees NOTHING until `promote`.
   final --lens L                      he reads his own sections, writes the whole-body reflection
   list | decide <pid> <status> [note] | outcome <pid> <text> | promote <rid>
 """
+import paid_http
 import os, sys, json, re, glob, subprocess, time, hashlib
 from datetime import datetime
 import requests
@@ -283,7 +284,7 @@ def _ask_fable(head, tail, user, max_tokens):
             "messages": [{"role": "user", "content": user}]}
     hdrs = {"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key,
             "anthropic-beta": "extended-cache-ttl-2025-04-11"}
-    r = requests.post("https://api.anthropic.com/v1/messages", headers=hdrs, json=body, stream=True, timeout=(30, 1800))
+    r = paid_http.send(requests.post, __file__, "https://api.anthropic.com/v1/messages", headers=hdrs, json=body, stream=True, timeout=(30, 1800))
     if r.status_code != 200:
         raise RuntimeError(f"anthropic {r.status_code}: {r.text[:400]}")
     text, usage, stop = [], {}, None
@@ -318,12 +319,12 @@ def _ask_astra(head, tail, user, max_tokens):
             "prompt_cache_key": "vintos-review-" + hashlib.md5(head.encode()).hexdigest()[:16],
             "input": [{"role": "system", "content": head + tail}, {"role": "user", "content": user}],
             "max_output_tokens": max_tokens, "reasoning": {"effort": "high"}}
-    r = requests.post("https://api.openai.com/v1/responses", headers=H, json=body, timeout=120)
+    r = paid_http.send(requests.post, __file__, "https://api.openai.com/v1/responses", headers=H, json=body, timeout=120)
     if r.status_code >= 300: raise RuntimeError(f"openai {r.status_code}: {r.text[:400]}")
     d = r.json(); rid = d["id"]
     while d.get("status") in ("queued", "in_progress"):
         time.sleep(10)
-        d = requests.get("https://api.openai.com/v1/responses/" + rid, headers=H, timeout=60).json()
+        d = paid_http.send(requests.get, __file__, "https://api.openai.com/v1/responses/" + rid, headers=H, timeout=60).json()
     if d.get("status") != "completed":
         raise RuntimeError(f"Astra {d.get('status')}: {json.dumps(d.get('error') or d.get('incomplete_details'))[:300]}")
     u = d.get("usage") or {}
@@ -338,7 +339,7 @@ def _ask_astra(head, tail, user, max_tokens):
 def _ask_grok(head, tail, user, max_tokens):
     """Direct x.ai chat completions; x.ai caches the repeated prefix on its own."""
     key = _xai_key(); assert key, "no x.ai key (~/.vintos/xai-key)"
-    r = requests.post("https://api.x.ai/v1/chat/completions",
+    r = paid_http.send(requests.post, __file__, "https://api.x.ai/v1/chat/completions",
                       headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
                       json={"model": MODEL, "temperature": 0.6, "max_tokens": max_tokens,
                             "messages": [{"role": "system", "content": head + tail},
