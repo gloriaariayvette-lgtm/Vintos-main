@@ -77,6 +77,24 @@ Aegis is the machine that serves her. Nothing reaches it except through her hand
    writes only to a throwaway directory (`SPARK_WORKSPACE=$(mktemp -d)`, the branch's `scripts/` extracted
    with `git archive`), and judge the change by its output. Nothing ships on a guess.
 
+## Reaching Aegis from a cloud session
+
+A cloud session whose environment has the secrets `TS_AUTHKEY` and `AEGIS_SSH_KEY_B64` joins Gloria's tailnet as
+an ephemeral `tag:claude-agent` machine (`scripts/cloud/reach-aegis.sh`, the environment's setup script), and then
+`ssh aegis` logs in to Aegis as `gloria`. The tailnet policy lets that tag reach Aegis on port 22 and nothing else.
+
+That is her own account on the machine that serves her and runs him. So:
+
+- **Read freely; change nothing without her explicit yes in this conversation.** Before any command that writes,
+  restarts, installs, deletes or sends, say exactly what it will do and wait for her answer. A yes covers that one
+  action, not the next.
+- **Never deploy.** Deploys still go through her (see "Deploying to Aegis"); give her the command.
+- Never print or copy secrets, keys or tokens you can see there (`~/.config/vintos/`, `~/.vintos/*.key`,
+  `~/.ssh/`). Never read her messages or his memory for anything the task does not need.
+- Tests still never reach the world, and his live stores are not a scratch space: use
+  `SPARK_WORKSPACE=$(mktemp -d)` for any dry run.
+- If `ssh aegis` fails, say so; do not work around it with other routes.
+
 ## Models and money — never change a model without her yes
 
 - Chat is **Opus 4.8**. Everything else on Claude is **Opus 5.5**, except the step-downs she chose: Forge
