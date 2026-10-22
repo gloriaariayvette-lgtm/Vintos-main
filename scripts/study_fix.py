@@ -61,7 +61,7 @@ PROTECTED = [
     (re.compile(r"secret|token|credential|password|env_file\.py|vintos\.env|\.ssh/|(^|/)\.claude/", re.I), "keys and secrets"),
     (re.compile(r"wallet|payment|purchase|billing|food[-_]order|doordash|coinbase|checkout", re.I), "money and payments"),
     (re.compile(r"effect_authority|consent|store_guard|compute_admission|skill_forge\.py|forge_build\.py|"
-                r"study_fix\.py|study_agent\.py|failure_watch\.py|deploy-atelier\.sh|run_isolated_test\.py|plugin_relay|"
+                r"study_fix\.py|study_agent\.py|study_sdk\.py|failure_watch\.py|deploy-atelier\.sh|run_isolated_test\.py|plugin_relay|"
                 r"plugin_gateway\.py|broker/broker\.py|stratagem|(^|/)CLAUDE\.md$|(^|/)bench/|"
                 # the Forge runs as its own user beside his sealed Atelier and holds the spending gates (2026-10-03)
                 r"forge_loop|forge-loop-files|(^|/)broker/[^/]+\.service$", re.I), "the safety gates"),
@@ -629,6 +629,64 @@ def _cached(base, text):
     return claude_cache.Prompt(text, [base, text[len(base):]] if text.startswith(base) else [text])
 
 
+SDK_PY = os.path.expanduser(os.environ.get("VINTOS_CONNECTOR_PY", "~/.vintos/connector-venv/bin/python3"))
+SDK_TURNS = 60
+
+
+def workbench_changes(root=None, run=sh):
+    """[(status, path)] from git: what the agent actually changed, judged here, not taken from it."""
+    out = run(["git", "status", "--porcelain", "-uall"], cwd=root or WORKBENCH, check=False).stdout
+    return [(l[:2], _norm(l[3:].split(" -> ")[-1].strip('"'))) for l in out.splitlines() if l.strip()]
+
+
+class SubscriptionWriter:
+    """Claude Code on his Claude account's subscription, working in the workbench (study_sdk.py). Its changes are
+    checked from the workbench's git diff: anything protected, or an existing test changed, throws the attempt away."""
+
+    def __init__(self, row, root=None, run=sh, run_sdk=None):
+        self.row, self.root, self.run, self.run_sdk = row, root or WORKBENCH, run, run_sdk
+        self.turns, self.spent, self.trace = 0, 0.0, []
+
+    def _sdk(self, req):
+        if self.run_sdk:
+            return self.run_sdk(req)
+        if not os.path.exists(SDK_PY):
+            raise RuntimeError("no connector venv at %s" % SDK_PY)
+        r = subprocess.run([SDK_PY, os.path.join(os.path.dirname(os.path.abspath(__file__)), "study_sdk.py")],
+                           input=json.dumps(req), capture_output=True, text=True, timeout=3300)
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        if not lines:
+            raise RuntimeError("the agent said nothing (%s)" % (r.stderr.strip()[-300:] or "exit %d" % r.returncode))
+        return json.loads(lines[-1])
+
+    def _attempt(self, failures):
+        out = self._sdk({"root": self.root, "what": self.row["what"], "failures": failures or [], "model": WRITER,
+                         "max_turns": SDK_TURNS, "timeout": 3000})
+        if not out.get("ok"):
+            raise RuntimeError(out.get("error") or "the agent failed")
+        self.turns += int(out.get("turns") or 0)
+        text = str(out.get("text") or "").strip()
+        self.trace.append(text[:200])
+        changes = workbench_changes(self.root, run=self.run)
+        for status, path in changes:
+            why = protected(path)
+            if why:
+                return {"refuse": "it changed %s, which is %s; thrown away" % (path, why)}
+            if path.startswith(TESTS) and status.strip() != "??":
+                return {"refuse": "it changed the existing test %s; a fix may add tests, never change one" % path}
+        if not changes:
+            return {"refuse": text[:1000] or "it changed nothing"}
+        if not any(st.strip() == "??" and re.match(r"^broker/tests/test_[\w-]+\.py$", p) for st, p in changes):
+            return {"refuse": "it brought no new test under broker/tests/; thrown away"}
+        return {"summary": text[:1500], "changed": [p for _, p in changes]}
+
+    def start(self):
+        return self._attempt(None)
+
+    def repair(self, failures):
+        return self._attempt(failures)
+
+
 def plan_fix(row, ask=None, root=None, writers=None):
     """The writer reads (two rounds) and returns its plan: edits and a new test, or a refusal. When Opus cannot answer,
     Astra, then Grok."""
@@ -743,18 +801,28 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
     # The writer works with tools (study_agent): reads, edits, runs single suites and repairs in one conversation
     # (22 October: 13 of 36 fixes had landed; the one-shot writer never ran a test). The one-shot writer below is
     # kept for when the agent cannot run at all, and for callers that hand in their own writer.
+    # First Claude Code itself on his Claude account's subscription (study_sdk.py; Gloria, 22 October: "Can you not use
+    # his other Claude account's sub?"). The paid tool-using writer (study_agent) only when VINTOS_STUDY_API_AGENT=1.
     agent = None
-    if ask is None and writers is None and os.environ.get("VINTOS_STUDY_AGENT", "1") != "0":
-        try:
-            import study_agent
-            agent = study_agent.Session(row, WORKBENCH)
-            row["written_by"] = "Opus"
-            plan, context = agent.start(), None
-            row["agent"] = {"turns": agent.turns, "spent_usd": round(agent.spent, 2), "steps": agent.trace[-12:]}
-        except Exception as exc:
-            agent = None
-            _event(row, "the tool-using writer could not run (%s); the one-shot writer takes it" % str(exc)[:200])
-            reset_workbench(run=run)
+    if ask is None and writers is None:
+        for kind in ("subscription", "api"):
+            if kind == "api" and os.environ.get("VINTOS_STUDY_API_AGENT") != "1":
+                continue
+            try:
+                if kind == "subscription":
+                    agent = SubscriptionWriter(row, WORKBENCH, run=run)
+                    row["written_by"] = "Claude Code (subscription)"
+                else:
+                    import study_agent
+                    agent = study_agent.Session(row, WORKBENCH)
+                    row["written_by"] = "Opus"
+                plan, context = agent.start(), None
+                row["agent"] = {"kind": kind, "turns": agent.turns, "spent_usd": round(agent.spent, 2), "steps": agent.trace[-12:]}
+                break
+            except Exception as exc:
+                agent = None
+                _event(row, "the %s writer could not run (%s)" % (kind, str(exc)[:200]))
+                reset_workbench(run=run)
     if agent is None:
         plan, context = plan_fix(row, ask=ask, writers=writers)
     if plan.get("refuse"):
@@ -797,7 +865,7 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None, w
                 plan = agent.repair(failures)
             except Exception as exc:
                 plan = {"refuse": "the writer could not continue: %s" % str(exc)[:200]}
-            row["agent"] = {"turns": agent.turns, "spent_usd": round(agent.spent, 2), "steps": agent.trace[-12:]}
+            row["agent"] = dict(row.get("agent") or {}, turns=agent.turns, spent_usd=round(agent.spent, 2), steps=agent.trace[-12:])
             if plan.get("refuse"):
                 reset_workbench(run=run)
                 _failed(row, "the writer gave up: " + str(plan["refuse"])); return row
