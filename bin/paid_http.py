@@ -3,6 +3,8 @@
 Uses compute-ledger.jsonl, independently of reservation and completion rows.
 The pause affects listed paid-provider hosts; local inference is untouched.
 """
+import contextvars
+import threading
 import json
 import os
 from pathlib import Path
@@ -35,22 +37,60 @@ def provider(url):
     except ValueError: return None
 
 
+FAILURE_PREFIX = 'VINTOS_SECURITY_ACCOUNTING_FAILURE '
+_last_failure = {}
+
+
+def accounting_failure(name, script, error):
+    """Health evidence, never another call ledger or a reason to block transport."""
+    try:
+        now = datetime.now(timezone.utc).timestamp()
+        if now - _last_failure.get(name, -1e20) < 60: return
+        _last_failure[name] = now
+        row = {'at': now, 'organ': 'paid-http', 'what': 'provider_accounting_failed',
+               'provider': name, 'script': script, 'error': type(error).__name__,
+               'why': name + ' outbound accounting failed; calls continue; script ' + script + '; ' + type(error).__name__}
+        # Journald is the fallback when the workspace volume cannot accept writes.
+        try: print(FAILURE_PREFIX + json.dumps(row), file=sys.stderr, flush=True)
+        except Exception: pass
+        path = workspace() / 'memory/organ-failures.jsonl'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, 'w') as stream: stream.write(json.dumps(row) + '\n')
+    except Exception:
+        pass
+
+
+def check_pause(url, script):
+    name = provider(url)
+    if not name: return
+    try:
+        paused = pause_path().exists()
+    except Exception as error:
+        accounting_failure(name, script, error)
+        paused = False
+    if paused:
+        raise PermissionError('outbound paid calls paused by owner')
+
+
 def before(url, script):
     name = provider(url)
     if not name: return
-    if pause_path().exists():
-        raise PermissionError('outbound paid calls paused by owner')
-    # The installed bin and scripts directories share this accounting module.
+    script = re.sub(r'[^A-Za-z0-9_./-]', '_', str(script))[:120]
+    check_pause(url, script)
     try:
-        import compute_admission
-    except ImportError:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
-        sys.path.insert(0, str(workspace() / 'scripts'))
-        import compute_admission
-    script = re.sub(r'[^A-Za-z0-9_./-]', '_', script)[:120]
-    compute_admission.record(script, cls='outbound', provider=name, stage='attempt',
-        extra={'epoch': datetime.now(timezone.utc).timestamp(), 'script': script}, strict=True,
-        ledger_path=str(workspace() / 'memory/compute-ledger.jsonl'))
+        # Strict persistence detects loss; its failure is observational, not admission.
+        try:
+            import compute_admission
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
+            sys.path.insert(0, str(workspace() / 'scripts'))
+            import compute_admission
+        compute_admission.record(script, cls='outbound', provider=name, stage='attempt',
+            extra={'epoch': datetime.now(timezone.utc).timestamp(), 'script': script}, strict=True,
+            ledger_path=str(workspace() / 'memory/compute-ledger.jsonl'))
+    except Exception as error:
+        accounting_failure(name, script, error)
 
 
 def send(transport, script, url, *args, **kwargs):
@@ -61,6 +101,37 @@ def send(transport, script, url, *args, **kwargs):
 async def asend(transport, script, url, *args, **kwargs):
     before(url, script)
     return await transport(url, *args, **kwargs)
+
+
+_urllib_script = contextvars.ContextVar('paid_urllib_script', default=None)
+_urllib_lock = threading.Lock()
+
+
+def urllib_send(transport, script, request, *args, **kwargs):
+    """Count urllib HTTP attempts, including redirects, at its actual opener.
+
+    A preview's supplied transport can return without opening a connection; that
+    is not an outbound HTTP attempt and must not mutate the call ledger.
+    """
+    script = re.sub(r'[^A-Za-z0-9_./-]', '_', str(script))[:120]
+    check_pause(request, script)
+    try:
+        import urllib.request
+        with _urllib_lock:
+            original = urllib.request.AbstractHTTPHandler.do_open
+            if not getattr(original, '_vintos_paid_attempt', False):
+                def opening(self, http_class, req, **connection):
+                    active = _urllib_script.get()
+                    if active is not None: before(req, active)
+                    return original(self, http_class, req, **connection)
+                opening._vintos_paid_attempt = True
+                urllib.request.AbstractHTTPHandler.do_open = opening
+    except Exception as error:
+        name = provider(request)
+        if name: accounting_failure(name, script, error)
+    token = _urllib_script.set(script)
+    try: return transport(request, *args, **kwargs)
+    finally: _urllib_script.reset(token)
 
 
 def main(argv):

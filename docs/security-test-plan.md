@@ -4,11 +4,11 @@
 
 ## Completed validation
 
-`broker/tests/test_security_alarm.py`: **29 tests passed** at the recorded run. It creates scratch HOME/workspace, denies sockets, and stubs provider transport, notification transport, system state and journal input. Cases cover:
+`broker/tests/test_security_alarm.py`: **33 tests passed** at the recorded run. It creates scratch HOME/workspace, denies sockets, and stubs provider transport, notification transport, system state and journal input. Cases cover:
 
 - Failed and successful attempts counted before transport; no reservations/refunds/completions counted again.
 - Exact hostname classification, local/free traffic unaffected, original arguments preserved, no prompt/key/header values logged.
-- Sync/async transports, Request objects, concurrent appends, persistence failure holding the paid call.
+- Sync/async transports, Request objects, actual urllib opens/redirects versus no-write stub previews, concurrent appends, persistence/import/fault-sink failure allowing the paid call, with fault/journal evidence.
 - Pause/resume and every registered paid-provider host rejected while paused; curl compatibility without launching a real client.
 - Rolling-minute boundaries, old/future/invalid rows, reasonable bursts, surge thresholds, baseline poisoning ceiling.
 - Per-provider rolling-hour delivery suppression, independent providers, failed delivery retry, delayed-success hourly boundary and concurrent monitor invocation.

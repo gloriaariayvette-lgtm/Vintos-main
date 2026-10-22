@@ -283,7 +283,20 @@ except:
 RESPONSE=$(python3 << 'PYEOF'
 import sys as _paid_sys, os as _paid_os
 _paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
-import paid_http
+try:
+    import paid_http
+except ModuleNotFoundError as _missing:
+    if _missing.name != 'paid_http': raise
+    # Standalone inline execution may start beside a checkout rather than an install.
+    from pathlib import Path as _PaidPath
+    _cwd = _PaidPath.cwd()
+    _roots = [_cwd, _PaidPath(_paid_os.environ.get('VINTOS_CHECKOUT', _paid_os.path.expanduser('~/Vintos-main')))]
+    _roots += [p for p in _cwd.iterdir() if p.is_dir() and not p.name.startswith('.')]
+    _helpers = {p.resolve() / 'scripts' for p in _roots
+                if (p / 'bin/vintos-initiate.sh').is_file() and (p / 'scripts/paid_http.py').is_file()}
+    if len(_helpers) != 1: raise
+    _paid_sys.path.insert(0, str(_helpers.pop()))
+    import paid_http
 import json, os, requests, re
 
 TRIGGER = os.environ.get("TRIGGER", "")

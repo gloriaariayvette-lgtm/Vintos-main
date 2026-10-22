@@ -76,6 +76,32 @@ def provider_rates(now, ledger=None):
     return out
 
 
+def accounting_health(now, runner=None, since=None):
+    """Existing fault input plus journald fallback; no alternate request ledger."""
+    from fault_sweep import _tail
+    rows = _tail(str(paid_http.workspace() / 'memory/organ-failures.jsonl'))
+    if runner is not None:
+        lines = runner(['journalctl', '--user', '--since', '@'+str(int(since or now-120)),
+                        '-o', 'json', '--no-pager', '-n', '100', '-g', '^'+paid_http.FAILURE_PREFIX])
+        for line in lines.splitlines():
+            try:
+                message = json.loads(line).get('MESSAGE', '')
+                if message.startswith(paid_http.FAILURE_PREFIX):
+                    rows.append(json.loads(message[len(paid_http.FAILURE_PREFIX):]))
+            except (ValueError, TypeError, AttributeError): pass
+    out = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('organ')!='paid-http' or row.get('what')!='provider_accounting_failed': continue
+        at, name = row.get('at'), row.get('provider')
+        if name not in paid_http.HOSTS.values() or not isinstance(at, (float,int)) or not now-120 <= at <= now: continue
+        script = re.sub(r'[^A-Za-z0-9_./-]', '_', str(row.get('script', 'unknown')))[:120]
+        error = re.sub(r'[^A-Za-z0-9_]', '_', str(row.get('error', 'unknown')))[:60]
+        out[name] = ('provider:'+name, 'provider_accounting_failed',
+            name+' outbound rate UNKNOWN: accounting failed ('+error+'); script '+script+
+            '. Calls continue. Pause: '+PAUSE)
+    return list(out.values())
+
+
 def run(args):
     p = subprocess.run(args, capture_output=True, text=True, timeout=12)
     if p.returncode: raise RuntimeError('probe failed: ' + Path(args[0]).name)
@@ -228,6 +254,10 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
             state['ssh_seen'] = {k:v for k,v in seen.items() if now-v < 86400}
         except Exception as e:
             events.append(('ssh-unreadable','monitor_blind','SSH login journal unreadable: '+type(e).__name__))
+        try:
+            events += accounting_health(now, runner if snapshot is None else None, state.get('checked_at', now-120)-1)
+        except Exception as e:
+            events.append(('accounting-health-unreadable','monitor_blind','Accounting health evidence unreadable: '+type(e).__name__))
         if dry: return {'rates': rates, 'events': [e[1:] for e in events], 'dry': True}
         for key,kind,why in events: remember(state,key,kind,why,now)
         if current is not None and not current.get('deploying'): state['host'] = current

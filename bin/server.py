@@ -8052,6 +8052,7 @@ async def avatar_chat_with_video(request: Request):
     (Whisper for words, the music share's own measurement for how it is built) and cuts frames across the
     clip; his eyes look at the frames in order; the whole of it arrives as her turn, as a photo does."""
     import asyncio, shutil, subprocess, tempfile
+    import paid_http
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -8109,7 +8110,7 @@ async def avatar_chat_with_video(request: Request):
     composed = _vs.compose(watched, None, message, frame_times=_times)
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
-            _cr = await paid_http.asend(client.post, __file__,
+            _cr = await paid_http.asend(client.post, "server.py:avatar_chat_with_video",
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "input_kind": "video", "images": _frames, "frame_times": _times,

@@ -28,6 +28,7 @@ class SecurityTests(unittest.TestCase):
     def setUp(self):
         for p in Path(SCRATCH.name).rglob('*'):
             if p.is_file(): p.unlink()
+        P._last_failure.clear()
         self.mem=P.workspace()/'memory'; self.mem.mkdir(parents=True, exist_ok=True)
         self.ledger=self.mem/'compute-ledger.jsonl'
         self.now=2000000000
@@ -83,14 +84,72 @@ class SecurityTests(unittest.TestCase):
         P.send(self.transport,'test.py',urllib.request.Request('https://api.anthropic.com',data=b'private'))
         self.assertEqual(len(self.ledger.read_text().splitlines()),2)
 
-    def test_persistence_failure_prevents_transport(self):
+    def test_persistence_failure_is_observed_and_transport_continues(self):
         old=C.record
-        def fail(*a,**k):raise OSError('full')
+        def fail(*a,**k):raise OSError('SENSITIVE exception detail must not escape')
         C.record=fail
         try:
-            with self.assertRaises(OSError):P.send(self.transport,'t','https://api.openai.com')
-            self.assertEqual(self.calls,[])
+            self.assertEqual(P.send(self.transport,'test.py','https://api.openai.com'),'ok')
+            self.assertEqual(len(self.calls),1)
+            evidence=(self.mem/'organ-failures.jsonl').read_text()
+            self.assertNotIn('SENSITIVE',evidence)
+            self.assertEqual(json.loads(evidence)['what'],'provider_accounting_failed')
+            self.assertTrue(F.organ_failures(0))
+            self.assertEqual(self.tick(now=__import__('time').time())['sent'],1)
+            self.assertIn('rate UNKNOWN',self.sent[0][1]['message'])
         finally:C.record=old
+
+    def test_fault_sink_failure_cannot_block_sync_async_or_curl(self):
+        import contextlib, io
+        from unittest.mock import patch
+        def fail(*a,**k):raise OSError('SENSITIVE full')
+        async def send(*a,**k):return 'async-ok'
+        stderr=io.StringIO()
+        with patch.object(C,'record',fail),patch.object(P.os,'open',fail),contextlib.redirect_stderr(stderr):
+            self.assertEqual(P.send(self.transport,'test.py','https://api.openai.com'),'ok')
+            self.assertEqual(asyncio.run(P.asend(send,'test.py','https://api.x.ai')),'async-ok')
+            with patch('subprocess.call',lambda *a,**k:37):
+                self.assertEqual(P.main(['curl','test.sh','--','https://api.anthropic.com']),37)
+        self.assertIn(P.FAILURE_PREFIX,stderr.getvalue());self.assertNotIn('SENSITIVE',stderr.getvalue())
+
+    def test_compute_import_failure_does_not_block_transport(self):
+        from unittest.mock import patch
+        import builtins
+        original=builtins.__import__
+        def importing(name,*args,**kwargs):
+            if name=='compute_admission':raise ImportError('synthetic unavailable')
+            return original(name,*args,**kwargs)
+        with patch.object(builtins,'__import__',importing):
+            self.assertEqual(P.send(self.transport,'test.py','https://api.openai.com'),'ok')
+        self.assertEqual(json.loads((self.mem/'organ-failures.jsonl').read_text())['error'],'ImportError')
+
+    def test_journal_fallback_is_raised_to_deduplicated_alarm(self):
+        row={'at':self.now,'organ':'paid-http','what':'provider_accounting_failed','provider':'openai','script':'test.py','error':'OSError'}
+        events=A.accounting_health(self.now,lambda args:json.dumps({'MESSAGE':P.FAILURE_PREFIX+json.dumps(row)}))
+        self.assertEqual(len(events),1)
+        state={}
+        self.assertTrue(A.remember(state,*events[0],self.now))
+        self.assertFalse(A.remember(state,*events[0],self.now+10))
+
+    def test_urllib_counts_actual_opens_and_redirects_not_preview_stub(self):
+        from unittest.mock import patch
+        import urllib.request
+        request=urllib.request.Request('https://api.openai.com/v1')
+        self.assertEqual(P.urllib_send(lambda *a,**k:'preview', 'preview.py',request),'preview')
+        self.assertFalse(self.ledger.exists())
+        def opened(self,http_class,req,**kwargs):return 'opened'
+        with patch.object(urllib.request.AbstractHTTPHandler,'do_open',opened):
+            def transport(req):
+                handler=urllib.request.HTTPSHandler()
+                handler.do_open(object,req)
+                return handler.do_open(object,urllib.request.Request('https://api.x.ai/redirect'))
+            self.assertEqual(P.urllib_send(transport,'preview.py',request),'opened')
+            # Outside the active request context the hook is inert.
+            urllib.request.HTTPSHandler().do_open(object,request)
+        rows=[json.loads(line) for line in self.ledger.read_text().splitlines()]
+        self.assertEqual([row['provider'] for row in rows],['openai','xai'])
+        P.main(['pause'])
+        with self.assertRaises(PermissionError):P.urllib_send(lambda *a:'must not run','preview.py',request)
 
     def test_concurrent_attempts_not_lost(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
