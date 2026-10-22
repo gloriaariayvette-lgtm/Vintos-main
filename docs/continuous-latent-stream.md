@@ -92,7 +92,10 @@ stopped.
 0. **Read-only probe on Aegis** (`scripts/probes/latent_stream_probe.py`): events per day per source over the last 30 days; embedding dims actually stored;
    the crontab lines for `jepa_predictor`, `jepa_self_head`, `emotion_densifier`, `living_trajectory`, `lam`;
    whether a GPU is present. This sets the model size and confirms the table above.
-1. Offline replay + baselines (scratch workspace, no live store written).
+1. Offline replay + baselines (scratch workspace, no live store written): `scripts/latent_stream_replay.py`. Step 0's
+   numbers (22 October): about 175 events a day, mostly the emotion vector (~130) and inner-life sections (~30); chat
+   turns are few on disk (chat-canonical starts 16 October); the Lab's 3,000 machine steps a day are left out; the
+   LAM was never trained (no lam.pt, no cron line); no GPU; 24 cores, 12 GB free.
 2. Shadow daemon, its own unit, niced, a state checkpoint each hour.
 3. One consumer, behind a holdout gate like `retrain_readiness`.
 
