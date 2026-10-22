@@ -89,7 +89,7 @@ stopped.
 
 ## Steps, in order (when it is its turn)
 
-0. **Read-only probe on Aegis:** events per day per source over the last 30 days; embedding dims actually stored;
+0. **Read-only probe on Aegis** (`scripts/probes/latent_stream_probe.py`): events per day per source over the last 30 days; embedding dims actually stored;
    the crontab lines for `jepa_predictor`, `jepa_self_head`, `emotion_densifier`, `living_trajectory`, `lam`;
    whether a GPU is present. This sets the model size and confirms the table above.
 1. Offline replay + baselines (scratch workspace, no live store written).
