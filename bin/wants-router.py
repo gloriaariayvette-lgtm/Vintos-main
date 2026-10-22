@@ -2342,7 +2342,7 @@ def main():
                     import requests as _cr
                     _cr_r = _cr.get(
                         f"http://localhost:8500/api/wants/{_check_id}/discussion",
-                        headers={"X-Vintos-Secret": os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")},
+                        headers={"X-Vintos-Secret": __import__("house_auth").caller_secret()},
                         timeout=5
                     )
                     _check_msgs = _cr_r.json().get("messages", [])
@@ -2507,7 +2507,7 @@ def main():
                     import requests as _disc_req
                     _disc_r = _disc_req.get(
                         f"http://localhost:8500/api/wants/{_want_id}/discussion",
-                        headers={"X-Vintos-Secret": os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")},
+                        headers={"X-Vintos-Secret": __import__("house_auth").caller_secret()},
                         timeout=5
                     )
                     _disc_msgs = _disc_r.json().get("messages", [])
@@ -2594,7 +2594,7 @@ def main():
                     # Post reply back to discussion
                     _rr.post(
                         f"http://localhost:8500/api/wants/{_want_id}/discussion", json={"role": "vintos", "text": _reply_text},
-                        headers={"X-Vintos-Secret": os.environ.get("VINTOS_SECRET", "vintos-aegis-2026"), "Content-Type": "application/json"},
+                        headers={"X-Vintos-Secret": __import__("house_auth").caller_secret(), "Content-Type": "application/json"},
                         timeout=5
                     )
                     log(f"  → Reply posted to discussion: {_reply_text[:60]}")
@@ -2905,7 +2905,7 @@ def _open_gloria_discussion(want, text):
         import requests as _disc_post_req
         _disc_post_req.post(
             f"http://localhost:8500/api/wants/{_want_id}/discussion", json={"role": "vintos", "text": _opening},
-            headers={"X-Vintos-Secret": os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")},
+            headers={"X-Vintos-Secret": __import__("house_auth").caller_secret()},
             timeout=5
         )
         log(f"  → Posted to discussion board")

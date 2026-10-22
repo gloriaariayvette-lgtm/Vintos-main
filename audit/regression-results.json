@@ -1,5 +1,53 @@
 [
   {
+    "suite": "test_watch_live",
+    "status": "pass",
+    "rc": 0,
+    "tail": "g still says probably\nPASS charging is no\nPASS a reading is shown as she would read it, not 61.99999999999999\nPASS nothing reached the network\n\n16/16\n"
+  },
+  {
+    "suite": "test_watch_presence",
+    "status": "pass",
+    "rc": 0,
+    "tail": "nutes old; wearing not known (no reading for 80 minutes); motion stationary. Device estimates, not medical facts.\nGloria wrote from her\n\n35/35 passed\n"
+  },
+  {
+    "suite": "test_watch_old_rows",
+    "status": "pass",
+    "rc": 0,
+    "tail": " its anchor on\nPASS bad data still refuses the batch\nPASS an anchored catch-up of hundreds of readings is taken\nPASS nothing reached the network\n\n8/8\n"
+  },
+  {
+    "suite": "test_robot_core",
+    "status": "pass",
+    "rc": 0,
+    "tail": "] nothing new since last run - skipping\nPASS nothing new: the subconscious skips (no Gemma call)\nPASS pressure strings reach his prompt\n\n35/35 passed\n"
+  },
+  {
+    "suite": "test_humor_taste",
+    "status": "pass",
+    "rc": 0,
+    "tail": "---------------------------------------------------\nRan 12 tests in 0.045s\n\nOK\n[VoiceCoherence] LLM failed: 'NoneType' object has no attribute 'json'\n"
+  },
+  {
+    "suite": "test_env_file_beside",
+    "status": "pass",
+    "rc": 0,
+    "tail": "ENV_FILE wins when it is set\nPASS an agent with its own file keeps reading its own\nPASS his music script finds the key too, run by another agent\n\n6/6\n"
+  },
+  {
+    "suite": "test_wants_panel",
+    "status": "pass",
+    "rc": 0,
+    "tail": "nts/mobile/index.html click opens selected card despite discussion, survives refresh, switches cards, add-step selection and close; requests isolated\n"
+  },
+  {
+    "suite": "test_controls_wants",
+    "status": "pass",
+    "rc": 0,
+    "tail": "S scripts/graph_mae.py writes no intervention or exposure record\nPASS scripts/premonition-dreamer.py writes no intervention or exposure record\n\n40/40\n"
+  },
+  {
     "suite": "test_security_alarm",
     "status": "pass",
     "rc": 0,
@@ -9,7 +57,7 @@
     "suite": "test_house_routes",
     "status": "pass",
     "rc": 0,
-    "tail": "sions and handed out his instructions to anyone who reached it)\nPASS a default secret is warned about at startup\nPASS server still parses\n\n9/9 passed\n"
+    "tail": "AI sessions and handed out his instructions to anyone who reached it)\nPASS startup requires a provisioned secret\nPASS server still parses\n\n9/9 passed\n"
   },
   {
     "suite": "test_fault_sweep",
@@ -33,7 +81,7 @@
     "suite": "test_shim_result_contract",
     "status": "pass",
     "rc": 0,
-    "tail": "clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /var/folders/y2/w5mzyjz93592kn9slbt3t0600000gn/T/shim-4v46tinc\n\n50/50 passed\n"
+    "tail": "clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /var/folders/y2/w5mzyjz93592kn9slbt3t0600000gn/T/shim-6lp2wop1\n\n50/50 passed\n"
   },
   {
     "suite": "test_shim_learned_cache",
@@ -63,7 +111,7 @@
     "suite": "test_music_reference_failure",
     "status": "pass",
     "rc": 0,
-    "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.068s\n\nOK\n  Kie task: fixture  (model V6)\n"
+    "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.073s\n\nOK\n  Kie task: fixture  (model V6)\n"
   },
   {
     "suite": "test_music_lyrics_refusal",
@@ -117,7 +165,7 @@
     "suite": "test_deploy_branch_guard",
     "status": "pass",
     "rc": 0,
-    "tail": "tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 4 tests in 1.146s\n\nOK\n"
+    "tail": "tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 4 tests in 1.213s\n\nOK\n"
   },
   {
     "suite": "test_deploy_ignores_workbench",
