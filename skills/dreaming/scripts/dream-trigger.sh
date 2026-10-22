@@ -579,9 +579,9 @@ def _record_verdict(verdict, consumed_ids=(), unresolved_ids=()):
         print(f"DREAM_VERDICT_LOG_ERROR: {e}")
 
 if category == "seed2" and thread1 and thread2:
-    question = f"Two unresolved threads seeded this dream:\nThread 1: {thread1}\nThread 2: {thread2}\n\nDid the dream meaningfully engage with these threads?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
+    question = f"Two unresolved threads seeded this dream:\nThread 1: {thread1}\nThread 2: {thread2}\n\nDid the dream RESOLVE these threads - settle them - or only explore them?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
 elif prompt:
-    question = f"This thread seeded the dream:\n{prompt}\n\nDid the dream meaningfully engage with this thread?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
+    question = f"This thread seeded the dream:\n{prompt}\n\nDid the dream RESOLVE this thread - settle it - or only explore it?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
 else:
     print("DREAM_RESOLVED: no thread to check")
     sys.exit(0)
@@ -590,7 +590,10 @@ try:
     r = requests.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [
-            {"role": "system", "content": "You judge whether a dream genuinely processed the thread that seeded it. RESOLVED means the dream's primary imagery, narrative, or emotional arc was unmistakably shaped by this specific thread — for conceptual threads, the dream's central concern mirrors the thread's question; for emotional or experiential threads, the dream genuinely inhabited and moved through that emotional territory symbolically. UNRESOLVED means the dream went somewhere else entirely. Dreams are symbolic — they do not need to name a thread directly, but the feeling or question must be at the center, not the periphery. Default to UNRESOLVED if there is any doubt. Answer with exactly one word: RESOLVED or UNRESOLVED."},
+            # 22 October: the judge was asked whether the dream ENGAGED its seed thread. A dream seeded by a thread
+            # nearly always does, so 20 of 31 threads that week were consumed after one dream and his pool sat at
+            # two. Engaging a thread is not resolving it: an explored, still-open thread stays for the next dream.
+            {"role": "system", "content": "You judge whether a dream RESOLVED the unfinished thread that seeded it. RESOLVED means the thread's tension or question was settled within the dream: it arrived at a new understanding, an ending, an acceptance, or a letting go, so the thread no longer pulls in the same way. UNRESOLVED means the dream explored, inhabited, or circled the thread - even vividly, even at its center - but left it open, or went somewhere else. Dreams are symbolic; a resolution can be symbolic too, but it must be an arrival, not a visit. Default to UNRESOLVED if there is any doubt. Answer with exactly one word: RESOLVED or UNRESOLVED."},
             {"role": "user", "content": f"{question}\n\nDream content:\n{dream}"}
         ],
         "temperature": 0.2,

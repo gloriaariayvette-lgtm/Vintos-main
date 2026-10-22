@@ -69,6 +69,10 @@ tp = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
 check("a supported tension goes through the formation door, with no preamble in front of what it names",
       'seed_thread("tension-promotion", seed' in tp and "from latent_threads import seed_thread" not in tp
       and "earned support from lived evidence: " not in tp)
+dt = open(os.path.join(REPO, "skills", "dreaming", "scripts", "dream-trigger.sh")).read()
+check("a dream consumes its thread only when it resolved it, not when it merely engaged it (22 October: 20 of 31 "
+      "threads consumed after one dream)", "Did the dream RESOLVE this thread" in dt and "meaningfully engage" not in dt
+      and "must be an arrival, not a visit" in dt)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
