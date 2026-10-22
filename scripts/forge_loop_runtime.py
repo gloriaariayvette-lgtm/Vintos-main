@@ -137,7 +137,10 @@ class ReportBuilder:
             tool = request["tool"]
             permitted = (
                 request["plugin"] == "github" and
-                any(tool.startswith(prefix) for prefix in ("github.get_", "github.list_", "github.search_", "github.fetch", "github.compare_"))
+                # the catalog's own read tools by exact name (22 October: "github.search" failed the "github.search_"
+                # prefix, so the Forge refused his GitHub search with report_effect_scope)
+                (tool in ("github.search", "github.fetch") or
+                 any(tool.startswith(prefix) for prefix in ("github.get_", "github.list_", "github.search_", "github.fetch", "github.compare_")))
             ) or (
                 request["plugin"] == "pubmed" and receipt_tool in {
                     "search_articles", "get_article_metadata", "get_full_text_article"}

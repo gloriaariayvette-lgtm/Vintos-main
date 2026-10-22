@@ -342,6 +342,14 @@ class Tests(unittest.TestCase):
         self.assertTrue(self.r.step(p["id"]));plugin.assert_called_once()
         self.assertEqual(self.status(p)["state"],"complete")
 
+    def test_report_github_search_by_its_catalog_name(self):
+        # 22 October: the catalog names it github.search; the scope allowed only github.search_*, so it was refused
+        p=self.project();q={"plugin":"github","tool":"github.search","arguments":{"query":"RP1 humanoid"},"purpose":"Read source evidence"}
+        plugin=Mock(return_value=receipt(q,{"title":"fixture repo"}))
+        self.builder([{"plugin_query":q},draft(),critique()],plugin)
+        self.assertTrue(self.r.step(p["id"]));plugin.assert_called_once()
+        self.assertNotEqual((self.status(p).get("diagnostic") or {}).get("code"),"report_effect_scope")
+
     def test_real_lab_collector_records_owned_partial_receipt_once(self):
         import importlib.util
         import types
