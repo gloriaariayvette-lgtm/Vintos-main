@@ -36,7 +36,9 @@ man = [json.loads(l) for l in open(os.path.join(out, "manifest.jsonl"))]
 check("every event is in the manifest with its split and whether its time is its own",
       len(man) == len(ev) and {m["split"] for m in man} == {"train", "val", "test"}
       and any(m["time"] != "own" for m in man))
-check("the days are split at the fixed boundaries", all((m["split"] == "test") == (m["t"][:10] >= "2026-10-13") for m in man if m["t"][11:13] not in ("04", "05")))
+check("the days are split at the fixed boundaries, by the local date as the code splits them (22 October: compared by UTC "
+      "hour, this failed in any time zone but UTC)",
+      all((m["split"] == "test") == (datetime.fromisoformat(m["t"]).astimezone().date().isoformat() >= "2026-10-13") for m in man))
 t = rep["test"]["text"]
 check("on a stream that rewards history, it beats both text baselines on the test days",
       t["model"]["mrr"] > max(t["last_one"]["mrr"], t["mean_last_six"]["mrr"]), t)
