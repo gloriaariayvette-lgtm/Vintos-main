@@ -25,7 +25,8 @@ routes = []
 for dm in re.finditer(r'^@app\.(post|put|delete|patch)\("([^"]+)"[^\n]*\n(.*?)(?=^@app\.|\Z)', src, re.S | re.M):
     body = dm.group(3)
     head = body[:2500]
-    guarded = ("_require_secret(" in head) or ("X-Vintos-Secret" in head and "APP_SECRET" in head)
+    guarded = (("_require_secret(" in head) or ("X-Vintos-Secret" in head and "APP_SECRET" in head)
+               or "_voice_caller_ok(request)" in head)   # the secret, or the Watch's own token
     routes.append((dm.group(2), guarded))
 check("mutating routes were found", len(routes) > 20, len(routes))
 open_unlisted = [r for r, g in routes if not g and r not in public]
@@ -34,6 +35,11 @@ listed_but_guarded = [r for r, g in routes if g and r in public]
 check("PUBLIC_MUTATIONS lists only doors that are actually open", not listed_but_guarded, listed_but_guarded)
 check("the private mutations that were open are now guarded",
       all(g for r, g in routes if r in ("/api/proposals/{filename}/approve", "/api/proposals/{filename}/reject", "/api/debug/chat-message")))
+_vt = src[src.index('async def voice_token'):][:1500]
+check("the realtime-token door is closed: the secret or the Watch token, nothing else (22 October audit: it minted "
+      "xAI/OpenAI sessions and handed out his instructions to anyone who reached it)",
+      "if not _voice_caller_ok(request):" in _vt and '"/api/voice/token"' not in src[src.index("PUBLIC_MUTATIONS"):src.index("def _require_secret")]
+      and 'request.headers.get("X-Vintos-Secret") == APP_SECRET' in src[src.index("def _voice_caller_ok"):][:900])
 check("a default secret is warned about at startup", 'WARNING: VINTOS_SECRET is unset' in src)
 ast.parse(src)
 check("server still parses", True)

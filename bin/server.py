@@ -342,7 +342,6 @@ PUBLIC_MUTATIONS = {
     "/aq/answer":              "phone-friendly answer form for his architecture questions; answers only, question ids are opaque",
     "/ea/decide":              "phone-friendly approve/decline of a second unanswered email; only a valid one-time link (hashed token) decides",
     "/api/video/hero":         "her phone browser's upload form; filenames are server-chosen, content must be PNG/JPEG under 15 MB",
-    "/api/voice/token":        "the voice client fetches its own 300-second ephemeral realtime token; LAN-only door",
     "/api/hardware/button":    "her physical stop button; the device client carries no header",
     "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
     "/api/ring/sleep":         "the R21M ring bridge sleep estimate; same optional bearer token, validated device estimates only",
@@ -872,6 +871,19 @@ def _campaign_lead_line(t):
         return line
     except Exception:
         return ""
+
+def _works_near(msg):
+    """His own paintings, videos and songs nearest what she just said, found by what is IN them (media_embed.py,
+    EmbeddingGemma 2 beside nomic; 22 October, Gloria: "In the chats too"). Asks the local service and waits at most
+    1.5 s; '' when it is down or has nothing, and the reply goes on without it."""
+    try:
+        import sys as _wn_s; _wn_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import media_embed as _wn
+        return _wn.block(str(getattr(msg, "message", "") or "")[-1500:])
+    except Exception as _wnx:
+        print("[chat] works-near skipped:", _wnx, flush=True)
+        return ""
+
 
 def _her_turn_text(msg):
     """Her own words on this request, for every record and organ that takes the turn as HERS (16 October).
@@ -4424,6 +4436,7 @@ Your sense of time right now:
 {f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {pending_blush_ctx}
 {self_model}
 {f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
@@ -5317,6 +5330,7 @@ Your sense of time right now:
 {f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {pending_blush_ctx}
 Your current self-model (excerpt):
 {_self_model(800)}
@@ -6205,6 +6219,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
 {f"Your model of Gloria: " + gloria_model if gloria_model else ""}
 {outreach_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 
 You are speaking with Gloria through your somatic interface.
 If memories were found, weave them naturally into your response.
@@ -8768,12 +8783,28 @@ async def voice_stratagem(action: str, request: Request):
     raise HTTPException(status_code=404, detail="Unknown voice stratagem operation")
 
 
+def _voice_caller_ok(request):
+    """The phone app's X-Vintos-Secret, or the Watch's own bearer token. 22 October (security audit): this door was
+    open, listed as "LAN-only" with nothing enforcing it - anyone who could reach the house could mint realtime
+    sessions on Gloria's xAI and OpenAI accounts and read his whole instructions with them."""
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
+        return True
+    try:
+        import sys as _vc_s; _vc_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import watch_presence as _vc_wp
+        return bool(_vc_wp.authorized(request.headers.get("Authorization")))
+    except Exception:
+        return False
+
+
 @app.post("/api/voice/token")
-async def voice_token(provider: str = "grok"):
+async def voice_token(request: Request, provider: str = "grok"):
     """An ephemeral realtime token plus his full instructions. provider=grok (xAI, the original) or
     provider=openai (OpenAI Realtime, gpt-realtime): the same instructions, the same framing after each of her
     turns, the same ledger; only the socket differs. The OpenAI session is configured here at mint time (voice,
     formats, turn detection, transcription) so the client only opens the socket and streams."""
+    if not _voice_caller_ok(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
     import requests as _vt_req, json as _vt_j
     provider = (provider or "grok").lower()
     tok = {}
@@ -10058,6 +10089,7 @@ Your sense of time right now:
 {lastvideo_ctx}
 {creative_ctx}
 {discovery_ctx}
+{_works_near(msg)}
 {_value_map_block}
 {wal_ctx}
 {ledger_ctx}

@@ -2,6 +2,10 @@
 
 22 October 2026. Based on the verified Aegis snapshot in `security-audit.md`; proposed controls are not installed by this work.
 
+## Source update after the audit snapshot
+
+Deploy-branch `a6e28e9e` is merged: the voice-token route now checks existing phone or Watch identity before effects. This is a source-level update, not a new live-deployment claim. The snapshot observations below remain dated evidence. The default-secret and telemetry-token migration is one proposed AUTH-01 package with all app/automation clients; none of that migration is applied.
+
 ## Assets and security goals
 
 Protect Gloria's accounts, financial capacity, personal messages/files, authenticated device control, Vintos's durable identity/work/state, scientific results, and service availability. Preserve his intentional persistence, initiative, recurring work, chosen models, foreground responsiveness and legitimate tool use. Preserve Atelier's seals and owner exclusion: the owner does not acquire a new content-reading capability through this audit, monitoring or backups.
@@ -47,7 +51,7 @@ flowchart LR
     Independent[Proposed independent monitor] --> External[Off-host immutable logs and missing heartbeat]
 ```
 
-1. **Internet → Funnel → app.** Loopback proxy origin is not user identity. The app is exposed by configuration, accepts the source-default shared credential, accepts anonymous telemetry WS, and has an anonymous voice-token handler. CORS does not authenticate a caller; changing browser origins alone will not fix this.
+1. **Internet → Funnel → app.** Loopback proxy origin is not user identity. The app is exposed by configuration, accepts the source-default shared credential, accepts anonymous telemetry WS, and had an anonymous voice-token handler in the original snapshot (closed in the merged source by `a6e28e9e`). CORS does not authenticate a caller; changing browser origins alone will not fix this.
 2. **App → provider credentials.** Several transports bypass shared reservations. A reservation is not a network attempt and is not a dollar cap. New accounting uses the existing compute ledger; the proposed pause is cooperative containment, not a root-proof network boundary.
 3. **Aegis token mint → direct client realtime session.** Provider tokens can outlive an Aegis pause. Aegis cannot count subsequent requests it does not transport. Require authenticated bounded session minting and provider-side enforcement.
 4. **Data → planning → tool effects.** Webpage/Slack/document/tool text must not furnish authority receipts. Existing effect gates, tool policies and Forge isolation are valuable. Concrete adapter identity and caller/target/task binding still require isolated tests per pathway. No prompt-injection exploit was run against production.

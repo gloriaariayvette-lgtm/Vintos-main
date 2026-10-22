@@ -4600,3 +4600,17 @@ owner-approved Aegis scratch commissioning; main-thread review/merge; Gloria's d
 ordinary-usage alarm delivery/installed acceptance; credential/public-route remediation;
 root/Windows/Mac/network-account checks and clean-host backup restoration. Do not call the
 infrastructure hardened or the alarm active before these acceptance boundaries are met.
+
+## Continuous latent stream (idea, kept; not started)
+
+Gloria's idea of 18 October: one recurrent latent state carried between moments (nomic events, the emotion vector,
+sensors) -> next-embedding prediction, surprise and retrieval -> the LLM when it matters. Written up against what
+exists in `docs/continuous-latent-stream.md`. Explore only after the current work; step 0 is a read-only probe.
+
+## 22 October — security review branch synchronized for push
+
+Merged `claude/device-visuals-2026-10-13`, including the existing `a6e28e9e` voice-token guard; no duplicate route repair. Original audit snapshot evidence is retained, with F02 marked fixed in merged source and live deployment unverified.
+
+AUTH-01 remains **one proposal for Gloria, not applied**: default-secret rotation/removal plus telemetry WebSocket token admission and coordinated updates to vintos-app index.html/outreach.js, scripts/robot_bridge.py, bin/wants-router.py, bin/server_domains/humor_wants.py, clients/mobile and runtime configuration. See docs/security-hardening-plan.md for scope, validation and joint rollback. The review-branch push does not authorize this migration or deployment.
+
+Post-merge validation: 22/22 focused suites passed, including the inherited route inventory (9/9). The upstream voice caller guard is identical, precedes provider/private-context work, and the credential assignment and named client files are unchanged from the alarm candidate. Full repository tests and Aegis commissioning remain open.

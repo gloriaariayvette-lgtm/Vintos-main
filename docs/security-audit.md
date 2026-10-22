@@ -4,10 +4,16 @@ Audit date: 22 October 2026. Scope: read-only Aegis inspection from the local Ma
 
 **Production has not been hardened by this branch. The alarm is a review candidate, not installed or active.** No credential rotation, restart, firewall/Tailscale change, deployment, provider purchase, test notification or Slack post was performed. Atelier content, seals and owner-exclusion rules were not inspected or changed.
 
+## Review update after the snapshot
+
+The deploy branch's existing `a6e28e9e` fix for `/api/voice/token` is merged into this review branch. It requires the phone app's existing secret or the Watch's bearer token before provider calls, private-context assembly or driver startup. F02 below remains the original snapshot finding, **fixed in merged source; current production deployment was not rechecked**. This branch does not implement a second route fix.
+
+**AUTH-01 is one proposed change, not applied:** default-secret rotation plus telemetry WebSocket token admission, together with the coordinated client updates listed in `security-hardening-plan.md`. Gloria must approve that package before implementation/cutover. The original audit evidence is retained unchanged.
+
 ## Executive summary: five most important improvements
 
 1. Replace the **accepted source-default application credential** through a coordinated client migration, then remove the fallback. A wrong credential returned 403; the default from the installed source returned 200 on the same protected read-only route.
-2. Authenticate public app reads, WebSockets and realtime-token minting. Tailscale Funnel enables public app exposure; an unauthenticated telemetry upgrade returned 101. The installed voice-token handler can mint paid sessions and returns private instructions without authentication.
+2. Complete AUTH-01 for public telemetry and its clients, and preserve the already merged voice-token guard. The original snapshot accepted an unauthenticated telemetry upgrade (101) and found the voice-token handler open; `a6e28e9e` has since closed the latter in source.
 3. Install the reviewed provider-attempt alarm and pause control, then close the remaining cross-host/SDK coverage gaps. Add provider-owned caps immediately from a trusted device. Existing daily reservations and success-only usage files are incomplete attempt accounting.
 4. Separate network-facing and experimental workloads from Gloria's administrative identity and writable Docker socket, adding measured resource limits. Preserve background autonomy, local inference, and task-specific tool authority.
 5. Add an independent off-host security heartbeat, immutable logs and recoverable encrypted state backups. Existing fault/deploy records and rollback copies share the host and credentials they would need to survive.
@@ -54,17 +60,17 @@ Local model paths include the shim's Mac/Tailnet endpoint `100.79.177.103:1234` 
 - **Classification / severity / exposure:** confirmed vulnerability, **Critical**, publicly configured app plus host interfaces.
 - **Evidence:** `boundaries.json:default_credential_read_test`: wrong header 403, source default 200 on `/api/desktop/status`. `/home/gloria/Vintos/server.py` equals reviewed `bin/server.py`; app's `APP_SECRET` has a source default. No credential value is reproduced here.
 - **Impact:** anyone possessing the source default can impersonate the app's shared authority, reaching sensitive control/data routes. No mutation or physical action was tested.
-- **Remediation / files:** remove fallback in `bin/server.py`, align `scripts/robot_bridge.py`, app/mobile/device clients and service environment. Issue separate app/device/task credentials; maintain hardware STOP availability. Gloria must approve credential rotation and cutover.
+- **Remediation / files:** AUTH-01, proposed only: coordinate default-secret rotation/removal and telemetry token admission with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, `clients/mobile/`, and service configuration. See the single approval package in the hardening plan. Maintain hardware STOP availability; do not rotate or patch admission independently.
 - **Tradeoffs:** coordinated client migration avoids stranding legitimate automation; per-identity scopes allow continued autonomy.
 - **Validation:** isolated tests for missing/default/wrong credentials; read-only production checks show rejection and existing valid clients still work, without printing credentials.
 - **Rollback:** restore previous application release and client configuration through its rollback receipt; never restore an exposed default as a long-term recovery measure.
 
-### F02 — Unauthenticated public realtime minting and private context
+### F02 — Unauthenticated public realtime minting and private context (fixed in merged source)
 
-- **Classification / severity / exposure:** installed-source confirmed vulnerability, **Critical**, public app mapping. Exploit not executed.
+- **Classification / severity / exposure:** original snapshot: installed-source confirmed vulnerability, **Critical**, public app mapping. Exploit not executed. **Source status:** fixed by upstream `a6e28e9e`, merged here; installed acceptance after that fix is unverified.
 - **Evidence:** installed `bin/server.py:voice_token` accepts no `Request`/credential, is explicitly in `PUBLIC_MUTATIONS`, and performs paid-provider token requests, private-context assembly, and a driver spawn. The purported LAN restriction is a comment/list reason, not an enforced check. The only HTTP middleware located is request correlation.
 - **Impact:** obtaining paid realtime capabilities and personal instructions/context; repeated requests can generate sessions/process pressure. Aegis-side counting cannot observe subsequent direct phone-to-provider realtime traffic.
-- **Remediation / files:** guard `/api/voice/token` with owner/device identity before any file/provider/process work; per-identity mint budget, session duration/output ceilings and concurrent-session cap; update mobile voice clients.
+- **Remediation / files:** retain upstream `_voice_caller_ok(request)` in `bin/server.py` and its existing phone/Watch identity checks. No duplicate authentication patch is needed. Mint/session resource limits remain a separate proposed abuse-control layer; authentication migrations belong to AUTH-01.
 - **Tradeoffs:** device enrollment once; no restriction on normal speech or model choices.
 - **Validation:** offline tests prove anonymous/invalid requests cause zero provider calls, zero context reads and zero spawns. Do not exercise this production route merely to test security.
 - **Rollback:** revert route/client release together; retain provider-side financial caps throughout.
@@ -74,7 +80,7 @@ Local model paths include the shim's Mac/Tailnet endpoint `100.79.177.103:1234` 
 - **Classification / severity / exposure:** confirmed vulnerability, **High**, public app configuration.
 - **Evidence:** one credential-free `/ws/telemetry` handshake returned 101. Installed telemetry/event handlers accept connections without auth. No per-identity connection quota was found. Event source paths reference private personal state; event payload contents were not read.
 - **Impact:** private telemetry exposure; sustained clients consume connections, loop/file-watching work and bandwidth.
-- **Remediation / files:** authenticate `/ws/telemetry`, `/ws/events` and their connection manager in `bin/server.py`; support short-lived, audience-bound WS tickets for browsers; add per-device/global connection caps and bounded outbound buffering.
+- **Remediation / files:** telemetry token admission and its client handshake are part of the same proposed AUTH-01 package as F01, not an applied or separately approved fix. Review `/ws/events` identity compatibility in that package; connection quotas and bounded buffering remain proposed resource controls.
 - **Tradeoffs:** preserve normal app/device streams and reconnection bursts; avoid long-lived credentials in query strings.
 - **Validation:** isolated anonymous/wrong-audience/expired rejection, known-device reconnect, connection-cap and disconnect cleanup tests.
 - **Rollback:** restore server/mobile transport changes together through the deploy rollback.

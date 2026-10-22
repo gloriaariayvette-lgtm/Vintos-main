@@ -6,6 +6,12 @@
     "tail": " calls may finish. Local inference continues.\nPaid HTTP calls paused; in-flight calls may finish. Local inference continues.\nPaid HTTP calls resumed.\n"
   },
   {
+    "suite": "test_house_routes",
+    "status": "pass",
+    "rc": 0,
+    "tail": "sions and handed out his instructions to anyone who reached it)\nPASS a default secret is warned about at startup\nPASS server still parses\n\n9/9 passed\n"
+  },
+  {
     "suite": "test_fault_sweep",
     "status": "pass",
     "rc": 0,
@@ -27,7 +33,7 @@
     "suite": "test_shim_result_contract",
     "status": "pass",
     "rc": 0,
-    "tail": "clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /var/folders/y2/w5mzyjz93592kn9slbt3t0600000gn/T/shim-dwzqxanx\n\n50/50 passed\n"
+    "tail": "clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /var/folders/y2/w5mzyjz93592kn9slbt3t0600000gn/T/shim-4v46tinc\n\n50/50 passed\n"
   },
   {
     "suite": "test_shim_learned_cache",
@@ -57,7 +63,7 @@
     "suite": "test_music_reference_failure",
     "status": "pass",
     "rc": 0,
-    "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.067s\n\nOK\n  Kie task: fixture  (model V6)\n"
+    "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.068s\n\nOK\n  Kie task: fixture  (model V6)\n"
   },
   {
     "suite": "test_music_lyrics_refusal",
@@ -111,7 +117,7 @@
     "suite": "test_deploy_branch_guard",
     "status": "pass",
     "rc": 0,
-    "tail": "tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 4 tests in 1.172s\n\nOK\n"
+    "tail": "tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 4 tests in 1.146s\n\nOK\n"
   },
   {
     "suite": "test_deploy_ignores_workbench",

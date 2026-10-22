@@ -16,7 +16,7 @@
 - No-write/no-send dry run; unfamiliar SSH versus explicit allowlist; accepted-login parsing; authorized_keys/unit/cron changes; executable receipt mismatches; installation lock and normal deployment association; visible monitor probe failure.
 - Manifest presence and byte-identical transport helper twins.
 
-The final focused compatibility run recorded in `audit/regression-results.json` passed **21/21 suites**, including the new suite, fault sweep, cache, compute admission, three shim suites, delivery, three music suites, device gate/budget, generated ownership, study-fix/twin, browser agent/JEv, deploy timer/branch/workbench guards and websearch quality. These are **suite totals**, not 21 individual assertions. Individual logs retain each suite's own check count. The full repository suite and owner-run Aegis scratch commissioning have **not** been run for this branch.
+The initial focused compatibility run recorded in `audit/regression-results.json` passed **21/21 suites**, including the new suite, fault sweep, cache, compute admission, three shim suites, delivery, three music suites, device gate/budget, generated ownership, study-fix/twin, browser agent/JEv, deploy timer/branch/workbench guards and websearch quality. These are **suite totals**, not 21 individual assertions. After merging the updated deploy branch, the focused run passed **22/22 suites**, adding the inherited route inventory (**9/9 checks**). The current `audit/regression-results.json` records that post-merge run. Individual logs retain each suite's own check count. The full repository suite and owner-run Aegis scratch commissioning have **not** been run for this branch.
 
 Run the new suite locally:
 
@@ -46,6 +46,10 @@ Saved collectors in `audit/aegis/` inspect configuration/process metadata and sa
 4. Gloria approves an Aegis **scratch-only** commissioning action separately. Use a throwaway HOME/workspace and extracted branch scripts; use stub deliveries/provider transports, fake release receipts and journal fixtures. No live config/store/sender paths may be inherited. Verify bubblewrap/systemd behavior and resource footprint on its Linux environment without starting the production timer.
 5. Run the full repository tests through the established isolation runner. Any failure requires reading its cause; do not label it environment-only by assumption. Confirm generation/ownership report checks after final edits.
 6. After review and Gloria's deployment, inspect timer/unit state, installed hashes, real ordinary-usage ledger rows, observed rate versus provider usage and fault-loop recording. No test notification or artificial paid request. Mark delivery acceptance unverified until an ordinary genuine alarm provides a delivery receipt; never equate a sent receipt with human reception.
+
+## AUTH-01 and existing voice-token guard
+
+The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not rewritten. Rerun the route inventory offline alongside alarm regressions after merging. Source tests are not evidence of production deployment. Default-secret rotation and telemetry token admission remain one **unapplied** AUTH-01 proposal with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, and `clients/mobile/`; validate all consumers and a joint rollback before implementation/cutover approval.
 
 ## Proposed remediation tests, not implemented yet
 

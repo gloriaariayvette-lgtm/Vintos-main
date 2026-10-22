@@ -27,13 +27,27 @@ The wrappers sit at the existing outbound request sites, preserving original req
 
 **Rollback:** use the exact `restore.sh` printed by the owner-run deploy. It restores files and the prior timer state. Keep compute/fault/delivery evidence. Stop only the new timer if its resource or delivery behavior is faulty; leave the existing fault sweep running. Resume paid traffic only after investigating the surge. No blind rollback should re-enable an exposed default credential.
 
-## Priority 0: coordinated identity and public-route repair
+## AUTH-01 — one proposed identity and telemetry migration, awaiting Gloria
 
-F01–F03 in the audit. Proposed files: `bin/server.py`, relevant mobile client files, `scripts/robot_bridge.py` and actual service environment/client configuration. Inventory each current credential consumer **without revealing its value**, introduce scoped replacement identities with a bounded migration window, enroll clients, verify ordinary use, and then remove old/default admission. Do not make a single uncoordinated rotation.
+**Status: proposed only; not applied.** Default-secret rotation/removal and telemetry WebSocket token admission are a single coordinated change, including all necessary client updates. Do not split off a server-only rotation or a WebSocket gate that strands existing clients. No replacement credential is generated or installed by this review branch.
 
-Require auth before voice-token provider calls, context assembly and spawns. Protect sensitive HTTP GETs as well as mutations. Authenticate WS during the upgrade using header/cookie or short-lived audience-bound ticket; never leak long-lived credentials into URL logs. Preserve unconditional physical STOP/reduction semantics; do not turn a security fix into loss of the stop button.
+The existing `/api/voice/token` repair from deploy-branch commit `a6e28e9e` is merged, not reimplemented: `_voice_caller_ok(request)` admits the phone app's current secret or the Watch's bearer token before any provider/context/spawn work. Preserve that route fix. Its production deployment/ordinary-client acceptance has not been reverified by this merge.
 
-Gloria must explicitly approve credential migration/cutover and any required service restart. Network segmentation or Funnel route changes are a separate approval, never a substitute for endpoint authorization. Validate identity/gate behavior offline before requesting production approval. Rollback server/client releases together, maintaining a safe private access path and financial caps.
+| Component | Exact review scope in this one package |
+|---|---|
+| Main server | `bin/server.py`: remove the accepted default only at coordinated cutover; define telemetry token audience, lifetime, admission and renewal; preserve the merged voice-token guard |
+| Native app repository | `vintos-app` **index.html and outreach.js**: credential configuration/migration, HTTP auth consumers, telemetry handshake and reconnect/token refresh. This is a separate repository; confirm the active source paths there before implementation (`docs/clients.md` identifies `src/index.html` as the app entry) |
+| Robot bridge | `scripts/robot_bridge.py`: align credential loading, audience and authenticated app-to-bridge calls without disrupting hardware STOP/reduction |
+| Autonomous wants caller | `bin/wants-router.py`: migrate its existing authenticated outbound calls and background credential provisioning |
+| Humor/wants server domain | `bin/server_domains/humor_wants.py`: migrate internal authenticated calls and scope propagation |
+| Browser/mobile mirror | `clients/mobile/`, including `index.html`, associated transport scripts and `source.json` provenance: keep HTTP and telemetry enrollment, reconnect and token-refresh behavior aligned with the native client |
+| Runtime configuration and other consumers | Actual server/bridge environment and remaining discovered current-secret consumers; inventory identifiers/locations only, never values; preserve the Watch bearer-token path and review `/ws/events` identity compatibility |
+
+Before seeking cutover approval, prepare one reviewable cross-repository diff and consumer matrix, an enrollment/migration sequence, isolated regressions and a joint rollback. Gloria's approval applies to that explicit package; this document and the alarm push do not authorize its implementation, rotation, deployment or restarts.
+
+Proposed validation: missing/default/wrong/audience-mismatched identities are rejected before effects; enrolled app, outreach, wants, humor, bridge, Watch and mobile clients continue normal use; telemetry tokens expire/renew/reconnect safely; long-lived credentials never enter query logs; the unconditional physical STOP/reduction path remains available. No real device actions, notifications, messages or paid calls are test fixtures.
+
+Proposed rollback: restore matching server, native app and browser/mobile releases and secure configuration together. Maintain an owner recovery path and provider financial caps. Do not leave an exposed default as a standing recovery mechanism. Firewall, Funnel, SSH and Tailscale changes remain separate explicit approvals.
 
 ## Priority 1: layered resource limits, based on measured use
 
