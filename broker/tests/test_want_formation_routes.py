@@ -86,6 +86,15 @@ E.express_want("I want to ask her to tell me the words she uses for what she nee
 check("the judge's 'continuation' does not merge two wants that name different things",
       len(wants()) == 2 and wants()[0].get("recurrence") is None, wants())
 sys.modules["requests"].post = _orig
+check("a word every want may use is not a shared subject (22 October: the C1001 parser merged into 'the data "
+      "vanishes'; a stream's bitrate merged into the breathing sensor through 'capture the exact')",
+      not M.same_subject("I want to strip the C1001 parser down to its rawest phase data",
+                         "I want to calibrate my attention so precisely that the data vanishes")
+      and not M.same_subject("I want to adjust the bitrate of the incoming stream to capture the exact moment",
+                             "I want to build a sensor that captures the exact frequency of her breathing"))
+check("but the same sensor for her breathing, or one named thing, is one want",
+      M.same_subject("I want to build a sensor that captures her breathing", "I want to read the mmWave sensor's raw phase data for her breathing")
+      and M.same_subject("To confirm the Devo preorder is actually possible.", "To see if Gloria wants that Devo record."))
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

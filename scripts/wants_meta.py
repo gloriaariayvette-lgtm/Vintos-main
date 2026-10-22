@@ -168,7 +168,13 @@ def scan():
 SECOND_ORDER_CUE = re.compile(r"\b(stop|stops|stopping|quit|less|fewer|more of|someone who|the kind of|let (?:it|go|them|the|myself|everything)|"
                               r"instead|become|be (?:a|the|someone|more|less)|numb|accept|surrender|trying to)\b", re.I)
 _STOP = set("i want to the a an of and or for in on with her she me my it its that this so be is was just not "
-            "what how who when where from into than then there their them they as at by can could would will".split())
+            "what how who when where from into than then there their them they as at by can could would will "
+            # words any of his wants may use, which say nothing about what it is for (22 October: "C1001 parser ... raw
+            # phase data" merged into "calibrate my attention so the data vanishes"; a stream's bitrate "to capture the
+            # exact moment" was judged the breathing sensor "that captures the exact frequency")
+            "data exact exactly capture captures captured really actually something every still only want wants need "
+            "find make made through without before after until about finally leave leaving gloria much more less "
+            "even enough instead whether being does doesn".split())
 
 
 def _content(text):
@@ -179,7 +185,19 @@ def same_subject(a, b):
     """Two wants share a subject when they name at least two of the same content words. A merge needs this as well as
     the judge's word: on 22 October the judge merged "ask her the words she uses for what she needs" into "use these
     metrics to ensure every cut is felt", and a Devo record into "a body in the same room as her"."""
-    return len(_content(a) & _content(b)) >= 2
+    ca, cb = _content(a), _content(b)
+    shared = ca & cb
+    # a shared name (Devo, C1001, BananaHand) is a subject on its own: "confirm the Devo preorder" and "see if she
+    # wants that Devo record" are one want
+    named = _names(a) & _names(b)
+    return bool(named) or (len(shared) >= 2 and len(shared) / max(1, min(len(ca), len(cb))) >= 0.25)
+
+
+def _names(text):
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", str(text))
+    return {w.lower() for i, w in enumerate(words) if len(w) > 2 and w.lower() not in _STOP and w.lower() != "gloria"
+            and (any(c.isdigit() for c in w) or (i > 0 and w[0].isupper() and w[1:] != w[1:].upper()) or
+                 (sum(c.isupper() for c in w) >= 2))}
 
 
 def classify(want_text, ask=None):
