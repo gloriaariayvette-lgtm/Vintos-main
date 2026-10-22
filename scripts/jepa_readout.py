@@ -122,10 +122,19 @@ def confidence(model,pred,a):
     return np.clip(1-confidence_features(pred,a)@model['confidence_W']/2,0,1)
 
 
+def _ranks(v):
+    """Average ranks, ties shared, as scipy.stats.rankdata (scipy is not on every interpreter that runs the suite)."""
+    v=np.asarray(v,dtype=float); order=np.argsort(v,kind='mergesort'); r=np.empty(len(v)); i=0
+    while i<len(v):
+        j=i
+        while j+1<len(v) and v[order[j+1]]==v[order[i]]:j+=1
+        r[order[i:j+1]]=(i+j)/2.0; i=j+1
+    return r
+
+
 def correlation(x,y):
     if len(x)<3 or np.std(x)<1e-10 or np.std(y)<1e-10:return None
-    from scipy.stats import spearmanr
-    return float(spearmanr(x,y).statistic)
+    return float(np.corrcoef(_ranks(x),_ranks(y))[0,1])
 
 
 def train_mode(rows, cache, mode, out, old=None, steps=200):
