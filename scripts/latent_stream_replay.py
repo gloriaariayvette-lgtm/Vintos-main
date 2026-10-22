@@ -215,13 +215,13 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             if mt.any():
                 pred = nn.functional.normalize(pt[0][mt], dim=-1)
                 loss = loss + (1 - (pred * X[tt[mt], :dim]).sum(-1)).mean()
-            if me.any():
-                target = (X[te[me], dim:dim + EMO_DIM] - emo_mean) / emo_std
+            if me.any():   # the head predicts the CHANGE from the last reading: predicting none is the baseline
+                target = (X[te[me], dim:dim + EMO_DIM] - X[idx[me], dim:dim + EMO_DIM]) / emo_std
                 loss = loss + 0.5 * ((pe[0][me] - target) ** 2).mean()
             if train and loss.requires_grad:
                 opt.zero_grad(); loss.backward(); nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
             if mt.any() or me.any():
-                total += float(loss); n += 1
+                total += float(loss.detach()); n += 1
         return total / max(1, n)
 
     best, best_state = float("inf"), None
@@ -249,7 +249,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             r = int((sims >= sims[pos[t]]).sum())
             rr.append(1.0 / r); top10 += r <= 10
         return (sum(rr) / len(rr), top10 / len(rr)) if rr else (0.0, 0.0)
-    steps = [i for i in range(test_at, T) if nxt_text[i] in pos]
+    steps = [j - 1 for j in test_text if j - 1 >= test_at]   # each text event once, from the state just before it
     stepset = set(steps)
     truths = [nxt_text[i] for i in steps]
     model_pred = [pt[i] for i in steps]
@@ -269,7 +269,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
     em_steps = [i for i in range(test_at, T) if nxt_emo[i] >= test_at]
     if em_steps:
         true_e = (X[[nxt_emo[i] for i in em_steps], dim:dim + EMO_DIM] - emo_mean) / emo_std
-        model_e = pe[em_steps]
+        model_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std + pe[em_steps]
         last_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std
         res["emotion"] = {"stream_mse": round(float(((model_e - true_e) ** 2).mean()), 4),
                           "last_one_mse": round(float(((last_e - true_e) ** 2).mean()), 4)}
