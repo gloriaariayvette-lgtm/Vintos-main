@@ -4616,3 +4616,11 @@ Merged `claude/device-visuals-2026-10-13`, including the existing `a6e28e9e` voi
 AUTH-01 remains **one proposal for Gloria, not applied**: default-secret rotation/removal plus telemetry WebSocket token admission and coordinated updates to vintos-app index.html/outreach.js, scripts/robot_bridge.py, bin/wants-router.py, bin/server_domains/humor_wants.py, clients/mobile and runtime configuration. See docs/security-hardening-plan.md for scope, validation and joint rollback. The review-branch push does not authorize this migration or deployment.
 
 Post-merge validation: 22/22 focused suites passed, including the inherited route inventory (9/9). The upstream voice caller guard is identical, precedes provider/private-context work, and the credential assignment and named client files are unchanged from the alarm candidate. Full repository tests and Aegis commissioning remain open.
+
+## 22 October — review revision: split releases, fail-open accounting, full suite
+
+`codex/security-alarms` is now the standalone alarm/paid_http/pause release. The identity/private-read/stream/client cutover is on `codex/security-auth-cutover`, based on the standalone release, for a separate later approval. Deploy (a) first with the unchanged standard owner command; it needs no client enrollment or cutover environment.
+
+Ledger/import/fsync/fault-sink failures no longer refuse paid calls. Redacted fault/journal health evidence raises the accounting-loss alarm; only the owner's pause refuses a call. Existing compute-ledger remains the sole call ledger. Production inline/function import repairs preserve all three reported test files unchanged. The preview's actual urllib opens/redirects are counted; stub previews keep their no-write contract.
+
+Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full OS-isolated alarm matrix: 467 invoked, 463 passed, four failures reproduced on that deploy snapshot (latent day boundary, missing pdftotext, macOS localhost-bind profile, BSD grep PCRE). See `audit/security-alarm-full-suite.json`. Full Aegis deploy acceptance and installed alarm/ordinary-use delivery remain pending owner approval. Nothing deployed, rotated, restarted or sent by this revision.

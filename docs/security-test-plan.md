@@ -65,3 +65,9 @@ The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not 
 | Financial boundary | Review provider pages' enforced/soft semantics; confirm owner-selected limits and independent recipients | No deliberate consumption, purchases or automatic account changes |
 
 The audit's production gate checks are bounded observations, not a complete endpoint authorization matrix. Expand that matrix in isolation and commission with ordinary-use evidence after approval.
+
+## Full-suite review revision
+
+On `codex/security-alarms`, every **467** `broker/tests/test_*.py` suite was run through `scripts/run_isolated_test.py`: **463 passed, 4 failed**. No suite was excluded by the driver. The unchanged `test_outreach_his_words` (13/13), `test_video_share` (25/25, optional audio backend checks skipped by the suite) and `test_avatar_dryrun_argon` (30/30) pass. The alarm suite passes **33 tests**.
+
+All four remaining failures were reproduced using the identical runner/interpreter against deploy snapshot `0913106c`: `test_latent_stream_linear` (local-date boundary assertion), `test_mail_attachments` (local pdftotext absent), `test_media_embed` (macOS sandbox refuses another localhost bind), `test_study_reading` (BSD grep lacks PCRE). Their tests were not changed. This is **not an all-green full-suite claim**, nor proof of Aegis deployment acceptance. See `audit/security-alarm-full-suite.json` for every suite/result and baseline evidence. The source comparison found no branch-specific failure in that completed matrix.
