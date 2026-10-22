@@ -13,7 +13,7 @@ command -v ffmpeg >/dev/null || echo "note: no ffmpeg; music is embedded from th
 mkdir -p "$(dirname "$VENV")"
 [ -x "$VENV/bin/python3" ] || python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
+"$VENV/bin/pip" install -q --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio "torchcodec>=0.16"   # torchcodec: video decoding (22 October: torchvision can no longer read video)
 "$VENV/bin/pip" install -q --upgrade "transformers>=5" "sentence-transformers>=5" av soundfile librosa pillow
 echo "== proving it =="
 "$VENV/bin/python3" - "$SCRIPT" <<'PY'
