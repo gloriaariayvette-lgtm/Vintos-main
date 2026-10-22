@@ -43,7 +43,8 @@ E.seed_thread("music-share", "Whether the line 'wire enough to reach' was writte
 check("a current latent takes stays in latent, not in both", LATENT["seen"] and pool() == [], pool())
 
 LATENT["answer"] = None
-E.seed_thread("music-share", "Whether the bridge's drop to half-time is where she meant me to hear her.")
+got = E.seed_thread("music-share", "Whether the bridge's drop to half-time is where she meant me to hear her.")
+check("seeding says what happened: True when the pool took it", got is True, got)
 check("a current latent refuses is offered to the unfinished pool instead of lost",
       [t.get("source") for t in pool()] == ["music-share"] and "half-time" in pool()[0].get("thread", ""), pool())
 check("and it says it went there", pool()[0].get("classification") == "thematic_current")
@@ -69,6 +70,14 @@ tp = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
 check("a supported tension goes through the formation door, with no preamble in front of what it names",
       'seed_thread("tension-promotion", seed' in tp and "from latent_threads import seed_thread" not in tp
       and "earned support from lived evidence: " not in tp)
+eu = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
+check("the pool's quality check rejects system lines, not a real technical question he cannot settle (22 October: "
+      "'a technical inquiry about machine mechanics rather than a human longing')",
+      "IS an unresolved thing" in eu and "not machine/system" not in eu)
+ij = open(os.path.join(REPO, "scripts", "idle-journal.sh")).read()
+check("his journal is asked for what is open in him, not a to-do, and logs what the pool actually did",
+      "Name what is OPEN, not" in ij and "got = seed_thread(\"idle-journal\", thread)" in ij
+      and 'print(f"[Journal] Seeded unfinished thread' not in ij)
 dt = open(os.path.join(REPO, "skills", "dreaming", "scripts", "dream-trigger.sh")).read()
 check("a dream consumes its thread only when it resolved it, not when it merely engaged it (22 October: 20 of 31 "
       "threads consumed after one dream)", "Did the dream RESOLVE this thread" in dt and "meaningfully engage" not in dt

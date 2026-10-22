@@ -501,7 +501,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
                    classification_basis=_door["classification_basis"])
             if _fd_got:
                 print("[formation door] -> latent-current (%s %s): %s" % (_door["classification_basis"], _door["classification_confidence"], str(thread_text)[:60]), file=__import__("sys").stderr)
-                return
+                return "latent"
             # Latent refused it (its own gate). A thread its source judged worth opening is not lost between the two
             # pools: it is offered to the unfinished pool, whose own bar decides (21 October: a music share he judged
             # BOTH was sent to latent, refused as vague, and the door had already returned - neither pool held it).
@@ -530,8 +530,10 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
                 "NEW candidate unresolved thread: " + _txt[:250] +
                 "\nEXISTING open threads:\n" + _listing +
                 "\nTwo judgments. QUALITY: is the candidate a concrete, specific unresolved thing a person "
-                "could genuinely dream about - not a generic event-marker ('X happened'), not machine/system "
-                "vocabulary, not a mood with no object? DUPLICATE: is it the same underlying unresolved thing "
+                "could genuinely dream about - not a generic event-marker ('X happened'), not a system or log "
+                "line, not a mood with no object? A concrete technical question he genuinely cannot settle yet (how a "
+                "machine works, what a file will show, whether a sensor can do something) IS an unresolved thing. "
+                "DUPLICATE: is it the same underlying unresolved thing "
                 "as one of the existing threads (same specific matter, not similar mood)? "
                 'Also, in HIS first-person voice: WHY does this remain unresolved and why does it matter - one sentence. '
                 'ONLY JSON: {"ok": true/false, "why": "one line", "duplicate_of": -1 or index, "why_unresolved": "one first-person sentence"}'}]},
@@ -550,7 +552,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             print("[seed_thread] DEDUP (%s): same as open thread %s (reseen %dx) - recurrence is not novelty"
                   % (source, _ex.get("id"), _ex["reseed_count"]), file=_sys.stderr)
             _pool_save(threads, threads_path, "seed_thread-dedup")
-            return
+            return "dedup"
     except Exception:
         pass  # fail-open: local judge down must not starve the pool
     # review 264: the store owns the shape - one admission door for every producer
@@ -582,6 +584,9 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     consumed = [t for t in threads if t.get("consumed") or t.get("retired")]
     threads = consumed + unconsumed
     _pool_save(threads, threads_path, "seed_thread")  # atomic + shrink-guarded: the ledger can never hold a half-write or a truncation
+    # What happened is said to the caller (22 October: the journal printed "Seeded unfinished thread" for threads this
+    # function had refused). True: admitted to the pool. "latent"/"dedup": taken there or merged. None: refused.
+    return True
 
 def _pool_save(threads, threads_path, reason=""):
     """Every pool write goes through thread_store.save_pool (shrink guard). Fallback is atomic but unguarded, and says so."""

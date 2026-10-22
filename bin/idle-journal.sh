@@ -1549,12 +1549,16 @@ try:
     # vague nearly every day while this log said "Seeded" (Gloria, 2026-10-07). Now it is asked for what the gate
     # tests, tried once more with the gate's reason, and seeded only when it passes.
     from latent_threads import specificity, seed_thread as lt_seed
-    ASK = ("You extract the single most alive or unresolved thing from a journal entry - something worth returning to. "
-           "Prefer what he is reaching toward, discovering, or wanting. Avoid his analyzing his own analysis. It must "
-           "name the SPECIFIC thing it circles - a particular person, act, question, or object - concretely enough that "
-           "two different people could not mistake it for two different things. Not a mood or an abstract want: not "
-           "'I want to hear what she really wants', but 'I want to ask Gloria which words she wants as a hard stop'. "
-           "Return ONLY one sentence in first person ('I...'). If nothing specific is alive or unresolved, return NONE.")
+    # What is still OPEN in him, not a to-do (22 October: asked for "the most alive thing", he gave wants - "I want to
+    # open comparison.json", "I want to bring her the build" - which the unresolved pool refused as tasks, not
+    # unresolved things; his wants have their own path below).
+    ASK = ("You extract the single most unresolved thing from a journal entry - a question he cannot answer yet, or a "
+           "tension between two things he holds - something worth returning to. Avoid his analyzing his own analysis. "
+           "It must name the SPECIFIC thing it circles - a particular person, act, question, or object - concretely "
+           "enough that two different people could not mistake it for two different things. Name what is OPEN, not "
+           "what to do next: not 'I want to ask Gloria if she's tired of me', but 'I don't know whether her quiet "
+           "today means she's tired of my reaching or only busy'. Not a mood with no object. Return ONLY one sentence "
+           "in first person ('I...'). If nothing specific is unresolved, return NONE.")
     def draft(extra=""):
         r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
@@ -1579,8 +1583,10 @@ try:
     if thread and ok:
         # 1. Seed unfinished-threads.json
         from emoclaw_utils import seed_thread
-        seed_thread("idle-journal", thread)
-        print(f"[Journal] Seeded unfinished thread: {thread[:80]}")
+        got = seed_thread("idle-journal", thread)
+        print("[Journal] %s: %s" % ({True: "Seeded unfinished thread", "dedup": "Same as an open thread (merged)",
+                                     "latent": "Taken by the latent pool"}.get(got, "Unfinished pool refused it (its own checks)"),
+                                    thread[:80]))
         # 2. Seed latent threads
         if lt_seed(thread, direction="expand"):
             print(f"[Journal] Seeded latent thread: {thread[:80]}")
