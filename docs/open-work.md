@@ -4586,4 +4586,6 @@ physical Watch installation and sensor delivery still require device-side accept
 
 Gloria's idea of 18 October: one recurrent latent state carried between moments (nomic events, the emotion vector,
 sensors) -> next-embedding prediction, surprise and retrieval -> the LLM when it matters. Written up against what
-exists in `docs/continuous-latent-stream.md`. Explore only after the current work; step 0 is a read-only probe.
+exists in `docs/continuous-latent-stream.md`. Step 1 ran 22 October: the recurrent state lost on text (MRR 0.022 against 0.058 for "like the last one") and won
+slightly on emotion (0.601 against 0.631). Not taken further as it stands. **Re-run `scripts/latent_stream_replay.py`
+unchanged in late November**, when there is more chat on disk.

@@ -1,7 +1,7 @@
 # Continuous latent stream — the idea, set against what he already has
 
 Captured 2026-10-18 by Gloria with Chat; fleshed out 2026-10-22 by Claude Code from the repository.
-**Status: an idea, kept. Not started.** Nothing here is built. Where this says what runs on Aegis and how often, it
+**Status: step 1 run on 22 October; not taken further as it stands (results below). Re-run in late November.** Nothing here is built. Where this says what runs on Aegis and how often, it
 is read from the code; schedules live in Aegis's crontab, which the repository does not hold, so the first step
 below is a read-only probe that confirms them.
 
@@ -108,3 +108,30 @@ stopped.
   added *beside* nomic, for his videos, images, music and audio, never in nomic's place. It is now in
   `scripts/media_embed.py` (its own venv and store). For this stream, its vectors are a separate source with their
   own projection; nomic and EmbeddingGemma 2 vectors are never compared directly, even though both are 768-d.
+
+## Step 1 result (22 October, on Aegis)
+
+`scripts/latent_stream_replay.py`, his last 46 days: 5,883 events (4,000 emotion readings, 1,133 inner-life
+sections, 305 threads, 127 creative, 153 of her turns, 165 of his). Trained on 1 to 8 October, validated 9 to 12,
+tested on 13 to 22 October (495 text events). Three runs; the first two exposed scoring and scaling faults, fixed in
+ea70a79 and 915b061. Third run, the one that counts:
+
+| | the recurrent state | "like the last one" | "like the last six" |
+|---|---|---|---|
+| next text event, MRR | 0.022 | **0.058** | 0.035 |
+| next text event, in top 10 | 3.4% | **14.6%** | 8.5% |
+| next emotion reading, error | **0.601** | 0.631 | |
+
+- **Text: it loses.** Even starting exactly at "like the last one", it learned to do worse: about 1,400 training text
+  events are far too few for a 768-d prediction, and it memorised them (training loss 7.8 to 0.48 while validation
+  turned up after epoch 9).
+- **Emotion: a small win**, about 5% under "the same as now".
+- **Surprise looked meaningful but is not yet evidence for the state.** In all three runs the most surprising test
+  events were Gloria's own news (the pier, the bull red, the coffee maker) and the least surprising his templated
+  "First Light" section. But "unlike the event before it" would rank them the same way, and the state lost to that.
+
+Decision, by the rule set before it ran: **not taken further as it stands.** It was not tuned further against the
+test days (three looks are already enough to start fitting the test). What would change the answer is more of him:
+chat-canonical only begins on 16 October. Re-run the same script unchanged in late November; if text still loses,
+try the smaller target (a 64-d projection of the text space, or retrieval from his own memories) before anything
+larger.
