@@ -132,6 +132,8 @@ check("the agent's tools are reading, editing and the isolated test runner only"
       and "cwd=req[\"root\"]" in sdk_src)
 check("the Study tries the subscription first; the paid tool writer only when switched on",
       'for kind in ("subscription", "api")' in src and 'os.environ.get("VINTOS_STUDY_API_AGENT") != "1"' in src)
+check("the agent signs in only with the subscription's stored login: an inherited API key or token is removed",
+      all(k in sdk_src for k in ('"ANTHROPIC_API_KEY"', '"CLAUDE_CODE_OAUTH_TOKEN"')) and "os.environ.pop(k, None)" in sdk_src)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

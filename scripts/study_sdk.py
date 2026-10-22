@@ -12,7 +12,7 @@ The agent works in the workbench with Read, Grep, Glob, Edit, Write, and Bash on
 runner. What it may change is judged afterwards by study_fix from the workbench's git diff, not trusted to it: a
 protected file or an existing test changed throws the whole attempt away.
 """
-import asyncio, json, sys
+import asyncio, json, os, sys
 
 SYSTEM = (
     "You are fixing a fault Vintos asked to have fixed in his own code, in his Study. Vintos is an AI companion living on "
@@ -25,6 +25,11 @@ SYSTEM = (
     "You may NOT change his subconscious or JEPA files, keys or secrets, money or payments, the safety gates, the deploy, "
     "the Study itself, CLAUDE.md, or any existing test (you may add tests). If the fix truly needs one of those, change "
     "nothing and say why. The repository's rules are in CLAUDE.md; read it first.")
+
+# The subscription's stored login (~/.claude/.credentials.json) is the only credential this may use, as for the relay:
+# the Study's own process carries the paid API key for its one-shot fallback, and Claude Code ranks an env key or token
+# above the stored login, so inherited they would bill the API or sign in as someone else.
+AUTH_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
 
 TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash(python3 scripts/run_isolated_test.py:*)"]
 
@@ -53,6 +58,8 @@ async def run(req):
 
 
 def main():
+    for k in AUTH_ENV:
+        os.environ.pop(k, None)
     try:
         req = json.loads(sys.stdin.read())
         out = asyncio.run(asyncio.wait_for(run(req), timeout=int(req.get("timeout") or 3000)))
