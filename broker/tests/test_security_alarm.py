@@ -133,11 +133,15 @@ class SecurityTests(unittest.TestCase):
 
     def test_journal_search_with_no_match_is_clean_not_blind(self):
         from unittest.mock import patch
-        done=lambda rc,out:type('P',(),{'returncode':rc,'stdout':out})()
+        done=lambda rc,out:type('P',(),{'returncode':rc,'stdout':out,'stderr':''})()
         with patch.object(A.subprocess,'run',lambda *a,**k:done(1,'')):
             self.assertEqual(A.run(['journalctl','--user','-g','^x']),'')
             self.assertRaises(RuntimeError,A.run,['journalctl','-u','ssh.service'])
             self.assertRaises(RuntimeError,A.run,['crontab','-l'])
+        failed=lambda *a,**k:type('P',(),{'returncode':1,'stdout':'','stderr':'crontab: cannot open /tmp/x: Permission denied\n'})()
+        with patch.object(A.subprocess,'run',failed):
+            with self.assertRaises(RuntimeError) as said: A.run(['crontab','-l'])
+            self.assertIn('crontab exited 1: crontab: cannot open /tmp/x: Permission denied',str(said.exception))
         with patch.object(A.subprocess,'run',lambda *a,**k:done(2,'')):
             self.assertRaises(RuntimeError,A.run,['journalctl','--user','-g','^x'])
 

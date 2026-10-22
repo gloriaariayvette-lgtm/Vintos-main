@@ -106,7 +106,9 @@ def run(args):
     p = subprocess.run(args, capture_output=True, text=True, timeout=12)
     # journalctl --grep exits 1 when nothing matched: a clean hour, not a blind monitor (22 October)
     if p.returncode == 1 and args[0] == 'journalctl' and '-g' in args and not p.stdout.strip(): return ''
-    if p.returncode: raise RuntimeError('probe failed: ' + Path(args[0]).name)
+    if p.returncode:
+        said = re.sub(r'[^A-Za-z0-9 _.:/-]', '_', (p.stderr or '').strip().splitlines()[-1] if (p.stderr or '').strip() else '')[:120]
+        raise RuntimeError('%s exited %d%s' % (Path(args[0]).name, p.returncode, (': ' + said) if said else ''))
     return p.stdout
 
 
@@ -246,7 +248,7 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
             current = snapshot if snapshot is not None else host_snapshot(runner)
             events += host_events(state.get('host'), current)
         except Exception as e:
-            current = None; events.append(('host-unreadable','monitor_blind','Host baseline unreadable: '+type(e).__name__))
+            current = None; events.append(('host-unreadable','monitor_blind','Host baseline unreadable: '+type(e).__name__+(' ('+str(e)[:160]+')' if isinstance(e, RuntimeError) else '')))
         try:
             seen = state.setdefault('ssh_seen', {})
             for cursor, address in (logins if logins is not None else ssh_logins(state.get('checked_at', now-300)-1, runner)):
@@ -255,11 +257,11 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
                 seen[cursor] = now
             state['ssh_seen'] = {k:v for k,v in seen.items() if now-v < 86400}
         except Exception as e:
-            events.append(('ssh-unreadable','monitor_blind','SSH login journal unreadable: '+type(e).__name__))
+            events.append(('ssh-unreadable','monitor_blind','SSH login journal unreadable: '+type(e).__name__+(' ('+str(e)[:160]+')' if isinstance(e, RuntimeError) else '')))
         try:
             events += accounting_health(now, runner if snapshot is None else None, state.get('checked_at', now-120)-1)
         except Exception as e:
-            events.append(('accounting-health-unreadable','monitor_blind','Accounting health evidence unreadable: '+type(e).__name__))
+            events.append(('accounting-health-unreadable','monitor_blind','Accounting health evidence unreadable: '+type(e).__name__+(' ('+str(e)[:160]+')' if isinstance(e, RuntimeError) else '')))
         if dry: return {'rates': rates, 'events': [e[1:] for e in events], 'dry': True}
         for key,kind,why in events: remember(state,key,kind,why,now)
         if current is not None and not current.get('deploying'): state['host'] = current
