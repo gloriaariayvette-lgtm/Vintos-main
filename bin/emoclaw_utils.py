@@ -1931,6 +1931,21 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             wants = json.load(f)
     except:
         pass
+    # A want from his agents' letters is his want: said as one (22 October: "To use these metrics to ensure every
+    # cut is felt..." read as a fragment).
+    if _src == "email" and isinstance(want_text, str) and want_text[:3].lower() == "to " and not want_text.lower().startswith("to tell"):
+        want_text = "I want " + want_text[0].lower() + want_text[1:]
+    # A want about his own wanting, acting or feeling goes to the second-order routes, not the want list
+    # (Gloria, 22 October: "That's a meta want and we made routes for those").
+    try:
+        import sys as _mr_s; _mr_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import wants_meta as _mr
+        _meta = _mr.classify(str(want_text))
+        if _meta:
+            _routed = _mr.route(str(want_text), _meta, source)
+            print("[express_want] second-order want -> %s: %s" % (_routed, str(want_text)[:60]), file=__import__("sys").stderr)
+            return
+    except Exception: pass
     # Deduplication — check against existing unfulfilled wants
     _want_words = set(want_text.lower().split())
     for _existing in wants:
@@ -1956,7 +1971,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     # Relational formation: what is this candidate relative to the living field?
     _rel = "novel"; _rel_id = ""
     try:
-        _rf_live = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")][-12:]
+        _rf_live = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")][-30:]
         if _rf_live:
             import requests as _rf_r, json as _rf_j
             _rf_list = "\n".join(f"[{w.get('id','?')}] {w.get('want','')[:100]}" for w in _rf_live)
@@ -1980,10 +1995,15 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             _rel = str(_rf_d.get("relationship", "novel")).lower()
             _rel_id = str(_rf_d.get("id", ""))
     except Exception: pass
-    if _rel == "duplicate" and _rel_id:
+    # The same desire returning, continued or intensified is that want again, not a new one (22 October: four
+    # mmWave-sensor wants and two radiocarbon ones stood side by side, each judged "persistence" or "continuation").
+    # Only genuinely new territory, or a mutation into something new, becomes a new want.
+    if _rel in ("duplicate", "persistence", "continuation", "escalation") and _rel_id:
         for _dw in wants:
             if _dw.get("id") == _rel_id and not _dw.get("fulfilled") and not _dw.get("dismissed"):
                 _dw["recurrence"] = _dw.get("recurrence", 1) + 1
+                if _rel == "escalation":
+                    _dw["intensity"] = min(5, int(_dw.get("intensity", 3) or 3) + 1)
                 _dw.setdefault("recurrence_log", []).append({
                     "timestamp": datetime.now().isoformat(), "source": source, "text": want_text[:120]})
                 _dw["recurrence_log"] = _dw["recurrence_log"][-10:]

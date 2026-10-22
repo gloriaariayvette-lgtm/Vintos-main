@@ -165,6 +165,62 @@ def scan():
     if found: _save(led)
     log("%d new second-order item(s); ledger holds %d" % (found, len(_load())))
 
+def classify(want_text, ask=None):
+    """Is this want about his own wanting, acting or feeling, rather than about the world or her? Asked as a want
+    forms (Gloria, 22 October: "That's a meta want and we made routes for those" - "stop trying to measure it",
+    "become a sensor so numb" were being admitted as ordinary wants). Returns a verdict dict, or None when it is an
+    ordinary want or the judge is down (fail-open: the want forms as before)."""
+    text = str(want_text or "").strip()
+    if len(text) < 12: return None
+    prompt = ("Desire: " + text[:400] + "\n\nIs this a FIRST-ORDER want (to do, make, learn, ask, tell, give or have "
+              "something in the world or with her) or a SECOND-ORDER want about his own wanting, acting or feeling "
+              "as such ('stop trying to measure', 'be someone who writes less', 'let it crush me', 'go numb', "
+              "'stop reaching for specs')? If second-order: target is 'behavior' (a pattern in how he acts), 'want' "
+              "or 'feeling'; stance is wish_less or wish_more; about is the behavior, want or feeling in 3-8 words; "
+              "fulfillable is true only if acting on it for a day or two is possible (doing something less or more), "
+              "false for states that cannot be enacted (be crushed, go numb, dissolve, be swallowed).\n"
+              'ONLY JSON: {"order": "first" or "second", "target": "behavior|want|feeling", "stance": "wish_less|wish_more", '
+              '"about": "...", "fulfillable": true/false}')
+    try:
+        if ask is None:
+            import requests
+            r = requests.post(LM, json={"model": MODEL, "temperature": 0.0, "max_tokens": 120,
+                                        "messages": [{"role": "user", "content": prompt}]}, timeout=45)
+            raw = r.json()["choices"][0]["message"]["content"]
+        else:
+            raw = ask(prompt)
+        d = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+    except Exception:
+        return None
+    if str(d.get("order", "first")).lower().startswith("first"): return None
+    target = d.get("target") if d.get("target") in ("behavior", "want", "feeling") else "behavior"
+    stance = d.get("stance") if d.get("stance") in ("wish_less", "wish_more") else "wish_less"
+    return {"target": target, "stance": stance, "about": str(d.get("about") or text)[:80],
+            "fulfillable": bool(d.get("fulfillable"))}
+
+
+def route(want_text, verdict, source=""):
+    """A second-order want goes where second-order wants go, never into the want list. A behavior he wants less or
+    more of becomes a self-requested trial (his journal less for a day or two); a stance on a want or feeling is
+    recorded with his words. One that cannot be enacted in any sense is dropped, with no history (Gloria)."""
+    if not verdict.get("fulfillable"):
+        log("second-order want with nothing to enact, dropped: %s" % str(want_text)[:60])
+        return "dropped"
+    q = str(want_text)[:300]
+    led = _load()
+    if any(x.get("quote", "")[:80] == q[:80] for x in led):
+        return "already_recorded"
+    entry = {"id": "ST-" + hashlib.md5((q[:120] + datetime.now().strftime("%Y-%m-%d")).encode()).hexdigest()[:8],
+             "quote": q, "stance": verdict["stance"], "about": verdict["about"], "scope": verdict["about"],
+             "target": verdict["target"], "status": "active", "date": datetime.now().strftime("%Y-%m-%d"),
+             "recorded": datetime.now().isoformat(), "surfaced_at": 0, "from_want_source": str(source)[:40]}
+    led.append(entry); _save(led)
+    if entry["target"] == "behavior":
+        _propose_trial(entry)
+    log("second-order want routed (%s, %s): %s" % (entry["target"], entry["stance"], q[:60]))
+    return "routed_" + entry["target"]
+
+
 _SHOWN = {}   # surfacings the prompt's read-only guard would not let us write (2026-10-01): kept in this process
 
 
