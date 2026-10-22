@@ -1360,6 +1360,11 @@ _src_sol = _src_sol[_src_sol.index("def sol_model():"):_src_sol.index("def sol_l
 check("Sol in the channel is 6.1 by its own setting, never SOL_MODEL (Sol 5.6 elsewhere stays)",
       D.DOT_SOL_DEFAULT == "gpt-6.1-sol" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
 
+_kp = os.path.join(HOME, "passes-check.jsonl")
+check("a pass that held his draft is kept beside his state; a quiet or paused pass is not",
+      D.PASSES.startswith(HOME) and D.keep_pass(["heard 1", "held: it reopens a settled topic"], 1767700000, _kp)
+      and not D.keep_pass(["nothing new since 13:40"], 1767700060, _kp) and not D.keep_pass(["paused by Gloria since x"], 1767700120, _kp)
+      and [json.loads(l)["lines"][1] for l in open(_kp)] == ["held: it reopens a settled topic"])
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net, NET[:3])
 check("looking goes to Grok Bot and doing to dot (17 October)", "Do not send dot a read-only inspection" in D.RULES
       and "ask dot for the outcome, not the inspection" in D.RULES and "never edits the installed files on Aegis" in D.RULES

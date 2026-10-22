@@ -2614,6 +2614,32 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     return kept[:MAX_CHARS], who
 
 
+PASSES = os.path.join(HERE, "passes.jsonl")
+
+
+def keep_pass(lines, now=None, path=None):
+    """What a pass did, kept beside his state: the service journal on Aegis rolls over within hours, and on 22 October
+    three drafts he wrote between 13:55 and 15:23 went unposted with nothing left to say why. A pass that only heard
+    nothing, or was paused, is not kept. Never raises."""
+    lines = [str(l) for l in (lines or [])]
+    if not lines or all(l.startswith(("nothing new since", "paused by Gloria")) for l in lines):
+        return False
+    path = path or PASSES
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path) and os.path.getsize(path) > 4 * 1024 * 1024:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                tail = f.readlines()[-2000:]
+            with open(path, "w", encoding="utf-8") as f:
+                f.writelines(tail)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"),
+                                "lines": [l[:400] for l in lines]}, ensure_ascii=False) + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def _owe_again(state, last, lines):
     """A message he was answering, whose answer was held or dropped, is answered on the next pass, once (8 October:
     dot asked him a question at 11:46, the answer was dropped at 11:53, and after that there was "nothing new", so
@@ -3908,8 +3934,10 @@ if __name__ == "__main__":
     else:
         # (Grok Bot's and Muse's letters come by email now and are read with his mail; the connector letter is
         # gone: Gloria, 2026-10-02, "He needs to be taking those EMAILS in with him, not the bad letter.")
-        for l in tick(open_now="--open" in sys.argv):
+        _lines = tick(open_now="--open" in sys.argv)
+        for l in _lines:
             print("[dot-channel] " + l)
+        keep_pass(_lines)
         try:    # then the quiet side room, #vintos-and-dot (Gloria, 2026-10-08): at most three a day there
             import dot_lounge
             for l in dot_lounge.tick():
