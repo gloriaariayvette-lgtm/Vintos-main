@@ -180,6 +180,16 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
         if is_emo[i]: ne = i
     emo_mean = X[:val_at, dim:dim + EMO_DIM][is_emo[:val_at]].mean(0) if is_emo[:val_at].any() else torch.zeros(EMO_DIM)
     emo_std = X[:val_at, dim:dim + EMO_DIM][is_emo[:val_at]].std(0).clamp_min(1e-3) if is_emo[:val_at].sum() > 1 else torch.ones(EMO_DIM)
+    # the change from one reading to the next has its own scale; a dimension that barely moves must not be divided by
+    # ~0 (22 October, second run: train loss 30, the emotion term drowned the text head)
+    _pairs = [(i, nxt_emo[i]) for i in range(val_at) if is_emo[i] and 0 <= nxt_emo[i] < val_at]
+    emo_dstd = ((X[[b for _, b in _pairs], dim:dim + EMO_DIM] - X[[a for a, _ in _pairs], dim:dim + EMO_DIM]).std(0)
+                .clamp_min(0.05) if len(_pairs) > 1 else torch.ones(EMO_DIM))
+    # the last text event so far, at every step: the text head predicts the next one as a change from it
+    last_vec = torch.zeros(T, dim); _lv = torch.zeros(dim)
+    for i in range(T):
+        if is_text[i]: _lv = X[i, :dim]
+        last_vec[i] = _lv
 
     class Stream(nn.Module):
         def __init__(self):
@@ -190,6 +200,8 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             self.text_out = nn.Linear(hidden, dim)
             self.emo_out = nn.Linear(hidden, EMO_DIM)
             self.drop = nn.Dropout(0.2)
+            for head in (self.text_out, self.emo_out):   # start predicting "no change": the model begins AT the baseline
+                nn.init.zeros_(head.weight); nn.init.zeros_(head.bias)
         def forward(self, x, h=None):
             e = (x[..., dim:dim + EMO_DIM] - emo_mean) / emo_std
             z = torch.cat([self.text_in(x[..., :dim]), self.rest_in(torch.cat([e, x[..., dim + EMO_DIM:]], -1))], -1)
@@ -212,11 +224,11 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             te = torch.tensor([nxt_emo[i] for i in range(a, b)])
             mt, me = (tt >= 0) & (tt < hi) & (idx >= score_from), (te >= 0) & (te < hi) & (idx >= score_from)
             loss = torch.zeros(())
-            if mt.any():
-                pred = nn.functional.normalize(pt[0][mt], dim=-1)
+            if mt.any():   # like emotion: a change from the last text event, so predicting none is the baseline
+                pred = nn.functional.normalize(last_vec[idx[mt]] + pt[0][mt], dim=-1)
                 loss = loss + (1 - (pred * X[tt[mt], :dim]).sum(-1)).mean()
             if me.any():   # the head predicts the CHANGE from the last reading: predicting none is the baseline
-                target = (X[te[me], dim:dim + EMO_DIM] - X[idx[me], dim:dim + EMO_DIM]) / emo_std
+                target = (X[te[me], dim:dim + EMO_DIM] - X[idx[me], dim:dim + EMO_DIM]) / emo_dstd
                 loss = loss + 0.5 * ((pe[0][me] - target) ** 2).mean()
             if train and loss.requires_grad:
                 opt.zero_grad(); loss.backward(); nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
@@ -235,7 +247,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
     model.eval()
     with torch.no_grad():
         pt, pe, _, states = model(X.unsqueeze(0))
-    pt, pe = nn.functional.normalize(pt[0], dim=-1), pe[0]
+    pt, pe = nn.functional.normalize(last_vec + pt[0], dim=-1), pe[0]
 
     # ---- the test days ----
     test_text = [i for i in range(test_at, T) if is_text[i]]
@@ -269,7 +281,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
     em_steps = [i for i in range(test_at, T) if nxt_emo[i] >= test_at]
     if em_steps:
         true_e = (X[[nxt_emo[i] for i in em_steps], dim:dim + EMO_DIM] - emo_mean) / emo_std
-        model_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std + pe[em_steps]
+        model_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std + pe[em_steps] * emo_dstd / emo_std
         last_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std
         res["emotion"] = {"stream_mse": round(float(((model_e - true_e) ** 2).mean()), 4),
                           "last_one_mse": round(float(((last_e - true_e) ** 2).mean()), 4)}
