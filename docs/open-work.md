@@ -1,6 +1,7 @@
 ## 22 October — JEPA and latent organs review (Codex; not deployed)
 
-Review work is on `codex/jepa-heads-audit-repair`, based on `54b2910`.
+Review work is on `codex/jepa-heads-audit-repair`, originally based on `54b2910`,
+with deploy branch `777ed97` merged (including `077749e` and `64ebf84`).
 See [the findings and ranked accuracy plan](jepa-heads-review-2026-10-22.md)
 and [measurement/test receipts](review-evidence/jepa-20261022/validation.json).
 The corrected current Gloria ranking has a positive point estimate but its
@@ -22,8 +23,9 @@ confidence calibration; replacement of the already-lost presence baseline throug
 a newly evaluated scratch design; causal LAM inputs; reality label/split audit;
 downstream behavioral tests. LoRA integration waits for its own authored-data
 training and evaluation, not the infrastructure repairs. Full Mac sandbox run:
-467 suites, 463 passed, 4 failures reproduced on the untouched base (timezone,
-PDF utility, reserved-port fixture, GNU grep). No tests touched live stores or sent.
+468 suites, 465 passed, 3 failures previously reproduced on the untouched base
+(PDF utility, reserved-port fixture, GNU grep). The merged timezone fix passes.
+No tests touched live stores or sent.
 
 ## 22 October — investigation findings are judged, kept, told and built on
 

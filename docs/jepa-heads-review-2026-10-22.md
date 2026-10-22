@@ -1,7 +1,8 @@
 # JEPA heads and latent organs: 22 October review
 
 Review branch: `codex/jepa-heads-audit-repair`, based on `54b2910` of
-`claude/device-visuals-2026-10-13`. No deployment, live-store writes, model swaps,
+`claude/device-visuals-2026-10-13`; deploy commit `777ed97` was subsequently merged
+(including `077749e` and `64ebf84`). No deployment, live-store writes, model swaps,
 training runs, or paid model calls. Aegis evaluation used the installed frozen
 encoder on CPU, offline, with review code loaded into process memory. Reports
 were saved only in local scratch. Gloria explicitly authorized review of her head.
