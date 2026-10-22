@@ -2,7 +2,8 @@
 # Cloud-session setup: join Gloria's tailnet as an ephemeral, tagged machine and make `ssh aegis` work.
 # Runs as the cloud environment's setup script. Needs two environment secrets (never pasted into a chat):
 #   TS_AUTHKEY          an ephemeral, tagged (tag:claude-agent), expiring Tailscale auth key
-#   AEGIS_SSH_KEY_B64   the agent's own SSH private key, base64 on one line
+#   AEGIS_SSH_KEY_B64   the agent's own SSH private key, base64 on one line (the same key opens the Mac)
+# and, to reach the Mac as well, two plain environment variables: MAC_TAILSCALE_IP and MAC_USER.
 # The tailnet policy lets tag:claude-agent reach Aegis on port 22 and nothing else, and the key in Aegis's
 # authorized_keys only works from the tailnet. Revoke either one in its admin page and this stops working.
 set -euo pipefail
@@ -29,4 +30,15 @@ Host aegis
   StrictHostKeyChecking accept-new
   ProxyCommand $D/tailscale --socket=$D/tailscaled.sock nc %h %p
 CFG
-echo "reach-aegis: joined the tailnet; try: ssh aegis 'hostname; whoami'"
+if [ -n "${MAC_TAILSCALE_IP:-}" ] && [ -n "${MAC_USER:-}" ]; then
+  cat >> "$HOME/.ssh/config" <<CFG
+Host mac
+  HostName $MAC_TAILSCALE_IP
+  User $MAC_USER
+  IdentityFile ~/.ssh/aegis_agent
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  ProxyCommand $D/tailscale --socket=$D/tailscaled.sock nc %h %p
+CFG
+fi
+echo "reach-aegis: joined the tailnet; try: ssh aegis 'hostname; whoami'  (and ssh mac, if set)"

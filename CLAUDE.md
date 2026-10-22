@@ -81,7 +81,9 @@ Aegis is the machine that serves her. Nothing reaches it except through her hand
 
 A cloud session whose environment has the secrets `TS_AUTHKEY` and `AEGIS_SSH_KEY_B64` joins Gloria's tailnet as
 an ephemeral `tag:claude-agent` machine (`scripts/cloud/reach-aegis.sh`, the environment's setup script), and then
-`ssh aegis` logs in to Aegis as `gloria`. The tailnet policy lets that tag reach Aegis on port 22 and nothing else.
+`ssh aegis` logs in to Aegis as `gloria` (and `ssh mac` to her Mac, when `MAC_TAILSCALE_IP` and `MAC_USER` are
+set). The tailnet policy lets that tag reach those two machines on port 22 and nothing else. The same rules
+below hold on the Mac.
 
 That is her own account on the machine that serves her and runs him. So:
 
