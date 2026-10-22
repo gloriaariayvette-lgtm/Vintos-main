@@ -232,5 +232,18 @@ class Investigations(unittest.TestCase):
         row=C._load(I._path('investigations.json'),{})['investigations'][0]
         self.assertEqual(row['state'],'open'); self.assertEqual(row['planning_failures'],0)
 
+    def test_a_long_line_does_not_make_the_planner_prompt_too_large(self):
+        # 21 October: a line's whole history (about 116 KB) went into every prompt; every turn failed from 17:36
+        line={'id':'L-1','question':'Cystatin C','next_step':'x',
+              'steps':[{'question':'q'*300,'result':'r'*1500,'quotes':['v'*400]*5} for _ in range(30)]}
+        steps=[{'id':'S-%d'%n,'state':'completed','route':'source','request':{'q':'z'*3000},'summary':'s'*800} for n in range(40)]
+        sent=[]
+        def ask(system,prompt,**k): sent.append(prompt); return json.dumps({'route':'finish'})
+        I._plan({'question':'q','steps':steps,'line_context':line},'x'*3000,ask)
+        limit=C._plan_chars('x'*400,max_tokens=800)
+        self.assertTrue(sent and len(sent[0].encode())<=limit)
+        self.assertEqual(I.line_summary(line)['question'],'Cystatin C')
+        self.assertEqual(len(I.line_summary(line)['recent_steps']),3)
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

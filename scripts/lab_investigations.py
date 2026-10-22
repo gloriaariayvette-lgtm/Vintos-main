@@ -301,6 +301,22 @@ def _menu():
     }
 
 
+def line_summary(line, steps_kept=3, cap=300):
+    """What a line of inquiry tells the planner: its question, why, next step and its last few steps - not its whole
+    history (21 October: a Cystatin C line carried about 116 KB of steps and quotes into every planner prompt, which
+    then exceeded the model's context, and every turn from 17:36 failed before it began)."""
+    if not isinstance(line, dict): return line
+    out = {k: str(line.get(k))[:cap] for k in ('id', 'title', 'question', 'why', 'next_step', 'state') if line.get(k)}
+    steps = line.get('steps') or []
+    if isinstance(steps, list) and steps:
+        out['recent_steps'] = [{k: str(st.get(k))[:cap] for k in ('question', 'result', 'answered', 'next')
+                                if isinstance(st, dict) and st.get(k)} for st in steps[-steps_kept:]]
+    for key in ('open_claims', 'claims_open', 'missing_claims'):
+        if isinstance(line.get(key), list):
+            out[key] = [str(c)[:200] for c in line[key][:5]]
+    return out
+
+
 def _plan(investigation, context, ask):
     import lab_instruments
     steps = investigation.get('steps') or []
@@ -312,7 +328,7 @@ def _plan(investigation, context, ask):
               'Return one JSON object only. Do not repeat a completed operation or invent an identifier.')
     task = {
         'question': investigation.get('question'), 'prediction': investigation.get('prediction'),
-        'line_context': investigation.get('line_context'),
+        'line_context': line_summary(investigation.get('line_context')),
         'build_on': __import__('lab_findings').for_planner(3),
         'plan': investigation.get('plan'), 'context': context[-2500:],
         'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs')}
@@ -358,6 +374,15 @@ def _plan(investigation, context, ask):
     if len(prompt.encode('utf-8')) > limit:
         task['tools'] = {'routes':list(_menu()), 'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
                          'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
+        prompt = json.dumps(task, ensure_ascii=False)
+    # Still too long: shed what matters least, oldest results first, before ever refusing to plan. Every output stays
+    # stored and can be read back with read_output.
+    while len(prompt.encode('utf-8')) > limit and task['results_so_far']:
+        task['results_so_far'].pop(0)
+        prompt = json.dumps(task, ensure_ascii=False)
+    if len(prompt.encode('utf-8')) > limit:
+        task['line_context'] = {k: v for k, v in (task.get('line_context') or {}).items() if k in ('id', 'question')}
+        task['build_on'] = task['build_on'][-1:]
         prompt = json.dumps(task, ensure_ascii=False)
     if len(prompt.encode('utf-8')) > limit:
         raise ValueError('investigation plan exceeds current context; outputs remain intact')
@@ -551,7 +576,7 @@ def _turn(context, *, ask=None, execute=None):
         import lab_lines
         line = lab_lines.pick()
         investigation = {'id':'I-'+uuid.uuid4().hex[:12], 'opened_at':lab.now_iso(), 'state':'open',
-                         'line_id':(line or {}).get('id'), 'line_context':line, 'question':(line or {}).get('question',''),
+                         'line_id':(line or {}).get('id'), 'line_context':line_summary(line), 'question':(line or {}).get('question',''),
                          'prediction':'', 'plan':[], 'steps':[]}
         data['investigations'].append(investigation)
     waiting = next((s for s in investigation.get('steps',[]) if s.get('state')=='waiting_not_sent'),None)
