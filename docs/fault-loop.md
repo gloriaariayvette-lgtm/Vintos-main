@@ -86,16 +86,20 @@ From 22 October the thread runs on Gloria's Mac (Remote Control session "Fault L
 open on the Mac and the thread is idle**, it is gone if the app quits, and it **deletes itself after 7 days**. The old
 cloud thread and its claude.ai schedule were retired that night.
 
-A Mac session cannot start sessions or create claude.ai schedules, so the weekly hand-over is Gloria's, and short:
+**The thread renews itself; nobody starts a new one.** A Mac session cannot start sessions, but it can make its own
+schedule again, and that resets the 7 days. So:
 
-1. **On the first wake after Sunday 9 pm Central**, before any fault work, post once in `#fault-fix`:
-   *"[Claude Code] This week's fault-loop thread expires within a day. To start next week's: new session on Mac:
-   Documents, titled `Fault loop — week of <Monday's date>`, with the first message from docs/fault-loop.md."*
-2. Gloria starts that session with the first message below. It checks repository, Aegis and Slack and replies yes or
-   no to each, then creates its own `CronCreate` schedule with the wake message below.
-3. Write the new thread's id and its schedule id in `docs/open-work.md` under the fault loop.
+1. **On the first wake after Saturday 9 pm Central** (and on any wake where `CronList` shows the job is 5 or more
+   days old), before any fault work: `CronCreate` the same schedule with the same wake message, check with `CronList`
+   that the new job is there, then `CronDelete` the old one. Write the new id in `docs/open-work.md` under the fault
+   loop. Post nothing about it unless it failed; if it failed, post once in `#fault-fix`:
+   *"[Claude Code] The fault-loop thread could not renew its schedule: <the error>. It stops after <date>."*
+2. The thread's long history is compacted automatically, and every wake re-reads this file, so a week-old thread works
+   from the same instructions as a new one.
+3. If the thread is ever lost (the app quit, the Mac restarted), its schedule is gone with it. Gloria starts a new
+   session on Mac: Documents with the first message below, and it sets itself up again.
 
-The first message of a new week's thread:
+The first message, only if the thread has to be started again:
 
 > You are this week's fault-loop thread, running on Gloria's Mac so you can look things up on Aegis yourself. Set up,
 > then report:

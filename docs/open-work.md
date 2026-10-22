@@ -349,9 +349,11 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
-- **This week's thread:** "Fault loop — week of Oct 19" (session_01HLpdnyubdxbNvwfW8b1u7w), woken by the schedule
-  "Fault loop" (trig_013W7Ufhja2HcvJfdLzukbTk) at 22:50, 00:50, 02:50 and 04:50 Central. A new thread each week,
-  handed over by the old one (`docs/fault-loop.md`, first on Sunday 25 October — untested).
+- **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
+  woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
+  renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until
+  the first renewal, 24 October. The old cloud thread and trig_013W7Ufhja2HcvJfdLzukbTk were retired. First wake ran
+  22 October 11:00 pm Central and read Aegis itself.
 - Why a thread and not a fresh session per wake: tested 19 October, a session the schedule starts by itself has no
   connector tools at all (no Slack); a thread started directly has her Slack. The first, Slack-less schedule
   (trig_01PerH6AE1qvrXVQnc1v3bUt) was deleted. Gloria's app has no schedules screen: "stop the fault loop" in any
