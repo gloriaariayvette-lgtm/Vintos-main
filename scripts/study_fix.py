@@ -28,6 +28,7 @@ Every step is said in #vintos-dot and kept in memory/study-fixes.json; a failure
     python3 study_fix.py --status   what is queued, working, watched or done
     python3 study_fix.py --reset-today   Gloria gives him today's three again (the records stay as they are)
 """
+import paid_http
 import fcntl, hashlib, json, os, re, subprocess, sys, tempfile, time, uuid
 from datetime import datetime
 import software_quota
@@ -574,7 +575,7 @@ def grok(system, user):
         try: key = open(os.path.expanduser(path)).read().strip()
         except OSError: pass
     if not key: raise RuntimeError("no xAI key")
-    r = requests.post("https://api.x.ai/v1/chat/completions", timeout=900, json={
+    r = paid_http.send(requests.post, __file__, "https://api.x.ai/v1/chat/completions", timeout=900, json={
         "model": GROK, "max_tokens": WRITER_TOKENS, "temperature": 0.2,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": str(user)}]},
         headers={"Authorization": "Bearer " + key})
@@ -668,7 +669,7 @@ def tell_gloria(text, send=None):
         if send:
             return send(text)
         from urllib.request import Request, urlopen
-        urlopen(Request(NTFY, data=text.encode(), headers={"Title": "Vintos: a Study fix was undone"}), timeout=20).read()
+        paid_http.send(urlopen, __file__, Request(NTFY, data=text.encode(), headers={"Title": "Vintos: a Study fix was undone"}), timeout=20).read()
     except Exception as exc:
         print("study_fix: could not tell Gloria: %s" % exc)
 
@@ -956,7 +957,7 @@ def house_ok(get=None):
         if get:
             return get(HOUSE)
         from urllib.request import urlopen
-        with urlopen(HOUSE, timeout=15) as r:
+        with paid_http.send(urlopen, __file__, HOUSE, timeout=15) as r:
             return r.status < 500
     except Exception:
         return False

@@ -4,6 +4,7 @@ The doorkeeper asks HIM (content-free) whether to enter; entering opens a visit,
 he works under the budgets and the attendance law, and leaves a handoff he authors.
 Generation happens HERE, in his voice via the shim — recorded per-project as his
 disclosure sentence acknowledges. The broker only stores and enforces."""
+import paid_http
 import os, sys, json, re, requests, base64
 from datetime import datetime
 
@@ -190,7 +191,7 @@ def consume_knock(pid):
         pass
 
 def doorkeeper():
-    wt = requests.get(f"{B}/health").json()
+    wt = paid_http.send(requests.get, __file__, f"{B}/health").json()
     if not wt.get("active"):
         print("no project on the worktable"); return False
     door_line = "The door is available today."
@@ -412,7 +413,7 @@ def plugin_loop(pid, ctx, first_work, capability):
                                            wanted["arguments"], wanted["purpose"])
             stored = atelier_plugin.artifact(outcome["receipt"]["receipt_id"])
             result = {"ok": True, "receipt": outcome["receipt"], "result": stored["result"]}
-            saved = requests.post(f"{B}/make", json={"id": pid, "kind": "plugin", "ext": "json",
+            saved = paid_http.send(requests.post, __file__, f"{B}/make", json={"id": pid, "kind": "plugin", "ext": "json",
                 "content": json.dumps(result, ensure_ascii=False, indent=2),
                 "capability": capability}, timeout=20).json()
             if not saved.get("error"): artifact = saved.get("file", "")
@@ -484,7 +485,7 @@ def quantum_loop(pid, ctx, first_work, capability, limit=3):
                       "error": "quantum doorway failed: %s" % e}
         artifact = ""
         if result.get("ok"):
-            saved = requests.post(f"{B}/make", json={"id": pid, "kind": "quantum",
+            saved = paid_http.send(requests.post, __file__, f"{B}/make", json={"id": pid, "kind": "quantum",
                 "ext": "json", "content": json.dumps(result, ensure_ascii=False, indent=2),
                 "capability": capability}, timeout=20).json()
             if saved.get("error"):
@@ -513,7 +514,7 @@ def quantum_loop(pid, ctx, first_work, capability, limit=3):
         aggregate += "\n\n" + follow
         reading = re.search(r'<quantum_reading>(.*?)</quantum_reading>', follow, re.S)
         if artifact and reading and reading.group(1).strip():
-            looked = requests.post(f"{B}/inspect", json={"id": pid, "kind": "quantum",
+            looked = paid_http.send(requests.post, __file__, f"{B}/inspect", json={"id": pid, "kind": "quantum",
                 "artifact": artifact, "note": reading.group(1).strip(),
                 "capability": capability}, timeout=20).json()
             if looked.get("error"):
@@ -608,7 +609,7 @@ def _ear_model(key, get=None):
         pass
     if not m:
         try:
-            got = (get or requests.get)("https://api.openai.com/v1/models", headers={"Authorization": "Bearer " + key},
+            got = paid_http.send(get or requests.get, __file__, "https://api.openai.com/v1/models", headers={"Authorization": "Bearer " + key},
                                          timeout=20).json()
             ids = [x.get("id", "") for x in got.get("data") or []]
             ids = [i for i in ids if "audio" in i.lower() and not EAR_SKIP.search(i)]
@@ -659,7 +660,7 @@ def ear(data, asked="", post=None, get=None):
                                  {"type": "text", "text": "What he asked for: %s" % (asked or "(not given)")},
                                  {"type": "input_audio", "input_audio": {"data": base64.b64encode(mp3).decode("ascii"),
                                                                          "format": "mp3"}}]}]}
-        d = (post or requests.post)("https://api.openai.com/v1/chat/completions", json=body, timeout=180,
+        d = paid_http.send(post or requests.post, __file__, "https://api.openai.com/v1/chat/completions", json=body, timeout=180,
                                     headers={"Authorization": "Bearer " + key}).json()
         if d.get("error"):
             raise RuntimeError(str(d["error"])[:200])
@@ -756,7 +757,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
         _failed("a %s he asked for did not arrive" % wanted["kind"], str(result.get("error") or "no reason given"))
     if result.get("ok"):
         data = result.pop("bytes")
-        saved = requests.post(f"{B}/make", json={"id": pid, "kind": wanted["kind"],
+        saved = paid_http.send(requests.post, __file__, f"{B}/make", json={"id": pid, "kind": wanted["kind"],
             "ext": result.get("ext", "bin"), "content_b64": base64.b64encode(data).decode("ascii"),
             "capability": capability}, timeout=120).json()
         if saved.get("error"):
@@ -786,7 +787,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
     if artifact:
         reading = re.search(r'<media_reading>(.*?)</media_reading>', follow, re.S)
         if reading and reading.group(1).strip():
-            requests.post(f"{B}/inspect", json={"id": pid, "kind": wanted["kind"],
+            paid_http.send(requests.post, __file__, f"{B}/inspect", json={"id": pid, "kind": wanted["kind"],
                 "artifact": artifact, "note": reading.group(1).strip(), "capability": capability}, timeout=20)
     return first_work + "\n\n" + follow
 
@@ -1053,7 +1054,7 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
     if not names: return ""
     f = names[-1]
     try:
-        r = requests.post(f"{B}/artifact", json={"id": pid, "file": f, "visit_capability": cap}, timeout=20).json()
+        r = paid_http.send(requests.post, __file__, f"{B}/artifact", json={"id": pid, "file": f, "visit_capability": cap}, timeout=20).json()
     except Exception as e:
         print("last piece not fetched (%s)" % str(e)[:80]); return ""
     if "content" not in r:
@@ -1093,7 +1094,7 @@ GLORIA_SENT = ("\n\nGLORIA OPENED THE DOOR FOR YOU TODAY and sent you in herself
 
 def visit(pid, sent_by_gloria=False):
     LAST_SEEN[:] = []
-    pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
+    pk = paid_http.send(requests.post, __file__, f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
     ledger_mark(pid, "active")
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
@@ -1193,7 +1194,7 @@ def visit(pid, sent_by_gloria=False):
             else:
                 print("continues=%r is not in his manifest — making it fresh" % _cont)
         try:
-            r = requests.post(f"{B}/make", json=_mk, timeout=30).json()
+            r = paid_http.send(requests.post, __file__, f"{B}/make", json=_mk, timeout=30).json()
         except Exception:
             r = {"error":"transport unavailable; sealed for reconciliation"}
         print("made:", r)
@@ -1205,7 +1206,7 @@ def visit(pid, sent_by_gloria=False):
         else:
             made_this_visit = True
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
-            requests.post(f"{B}/inspect", json={"id": pid, "kind": piece["attrs"]["kind"],
+            paid_http.send(requests.post, __file__, f"{B}/inspect", json={"id": pid, "kind": piece["attrs"]["kind"],
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
     # He decided a piece is ready and chose to show her. The ONE act that lets
@@ -1226,19 +1227,19 @@ def visit(pid, sent_by_gloria=False):
         if not _art:
             print("reveal: no explicit artifact and nothing made this visit — an older piece is not revealed by default")
         else:
-            _prep = requests.post(f"{B}/reveal/prepare",
+            _prep = paid_http.send(requests.post, __file__, f"{B}/reveal/prepare",
                                   json={"id": pid, "artifact": _art,
                                         "title": _disc[:80], "capability": cap}).json()
             if not _prep.get("receipt"):
                 print("reveal prepare failed:", _prep)
             else:
-                _conf = requests.post(f"{B}/reveal/confirm",
+                _conf = paid_http.send(requests.post, __file__, f"{B}/reveal/confirm",
                                       json={"id": pid, "receipt": _prep["receipt"]}).json()
                 _exp = _conf.get("export_capability")
                 if not _exp:
                     print("reveal confirm failed:", _conf)
                 else:
-                    _fetch = requests.post(f"{B}/artifact",
+                    _fetch = paid_http.send(requests.post, __file__, f"{B}/artifact",
                                 json={"id": pid, "file": _art,
                                       "export_capability": _exp}).json()
                     if "content" not in _fetch:
@@ -1247,21 +1248,21 @@ def visit(pid, sent_by_gloria=False):
                                              _prep.get("manifest", {})):
                         print("reveal shelf write failed; project remains open")
                     else:
-                        _settled = requests.post(f"{B}/settle", json={"id": pid}).json()
+                        _settled = paid_http.send(requests.post, __file__, f"{B}/settle", json={"id": pid}).json()
                         if _settled.get("ok") and not _settled.get("error"):
                             ledger_mark(pid, "revealed"); print("revealed and settled:", _art)
                         else:
                             print("reveal delivered but settlement failed:", _settled)
     kp = re.search(r'<kept>(.*?)</kept>', work, re.S)
     if kp and not rv:
-        _kr = requests.post(f"{B}/state/kept", json={"id": pid, "note": kp.group(1).strip()[:600],
+        _kr = paid_http.send(requests.post, __file__, f"{B}/state/kept", json={"id": pid, "note": kp.group(1).strip()[:600],
                             "visit_capability": cap}, timeout=20).json()
         if _kr.get("ok"):
             ledger_mark(pid, "kept"); print("kept: finished and his. Worktable released; nothing revealed.")
             rp = re.search(r'<report>(.*?)</report>', work, re.S)
             if rp:
                 _msg = rp.group(1).strip()[:600]
-                requests.post(f"{B}/report", json={"id": pid, "problem": _msg})
+                paid_http.send(requests.post, __file__, f"{B}/report", json={"id": pid, "problem": _msg})
             return
         print("KEPT REFUSED:", _kr.get("error", _kr), "— continuing with the handoff")
     elif kp and rv:
@@ -1269,7 +1270,7 @@ def visit(pid, sent_by_gloria=False):
     rp = re.search(r'<report>(.*?)</report>', work, re.S)
     if rp:
         _msg = rp.group(1).strip()[:600]
-        requests.post(f"{B}/report", json={"id": pid, "problem": _msg})
+        paid_http.send(requests.post, __file__, f"{B}/report", json={"id": pid, "problem": _msg})
         requests.post("https://ntfy.sh/vintos-gloria-9kx", data=_msg.encode(),
                       headers={"Title": "Vintos, from the Atelier: something is wrong", "Priority": "high"}, timeout=15)
         print("reported outward:", _msg[:80])
@@ -1281,7 +1282,7 @@ def visit(pid, sent_by_gloria=False):
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
           ("yes" if produced_piece else "no", media_choice,
            "yes" if ho is not None else "no", nr or "tomorrow"))
-    _hr = requests.post(f"{B}/handoff", json={"id": pid,
+    _hr = paid_http.send(requests.post, __file__, f"{B}/handoff", json={"id": pid,
                   "text": ho if ho is not None else "(no handoff written)",
                   # his own words, carried verbatim to the next visit's context; empty is allowed
                   "next_move": nm or "",
@@ -1305,7 +1306,7 @@ if __name__ == "__main__":
         # It still requires a project on the worktable and his own ENTER. No argv path into the
         # sealed session without it. (grok-atelier-p3, 2026-09-04)
         pid = sys.argv[2]
-        wt = requests.get(f"{B}/health").json()
+        wt = paid_http.send(requests.get, __file__, f"{B}/health").json()
         if not wt.get("active"):
             print("force: no project on the worktable — nothing to enter"); raise SystemExit
         if doorkeeper(): visit(pid)
@@ -1314,13 +1315,13 @@ if __name__ == "__main__":
         # Gloria sends him in herself, without asking him at the door (Gloria, 2026-10-02: "Make Vintos enter").
         # By her hand only: no timer runs this. He is told in the visit that she sent him.
         pid = sys.argv[2]
-        wt = requests.get(f"{B}/health").json()
+        wt = paid_http.send(requests.get, __file__, f"{B}/health").json()
         if not wt.get("active"):
             print("enter: no project on the worktable — nothing to enter"); raise SystemExit
         print("enter: Gloria sent him in")
         visit(pid, sent_by_gloria=True)
     else:
-        wt = requests.get(f"{B}/health").json()
+        wt = paid_http.send(requests.get, __file__, f"{B}/health").json()
         _df = os.path.expanduser("~/.vintos/workspace/memory/.atelier-door")
         door = os.path.exists(_df)
         if door:
@@ -1333,7 +1334,7 @@ if __name__ == "__main__":
         if not door:
             print("door not lit today — no visit"); raise SystemExit
         if wt.get("active") and doorkeeper():
-            pid = requests.post(f"{B}/worktable_id", json={}).json().get("id")
+            pid = paid_http.send(requests.post, __file__, f"{B}/worktable_id", json={}).json().get("id")
             if pid: visit(pid)
         else:
             print("door not entered today — no event, no count, no scar")

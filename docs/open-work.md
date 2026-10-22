@@ -4582,6 +4582,25 @@ The offline native regression test exercises the actual response/telemetry/drain
 The combined iPhone build 21 with Watch build 21 embedded was installed and verified on the paired iPhone;
 physical Watch installation and sensor delivery still require device-side acceptance.
 
+## 22 October — infrastructure security audit and provider alarms
+
+Review candidate on `codex/security-alarms`; **not deployed**. Read-only Aegis evidence confirms
+accepted source-default app authentication, anonymous telemetry WS acceptance, an installed
+unauthenticated realtime mint/context handler, public Funnel app configuration, shared-UID
+Docker socket access and missing service/resource controls. Findings, evidence, threat model,
+rollback plan, tests and provider-owned billing instructions are in `docs/security-*.md`.
+
+The requested alarm is built locally: existing compute-ledger attempt rows at known transports,
+manual paid pause, provider rate detection through `deliver.py`, host-change monitoring, existing
+fault-loop input, timer/manifest/rollback integration and offline regressions. The focused run
+passes 21/21 suites (29 tests in the new alarm suite). No real provider/test delivery was sent.
+
+Not done: full cross-host/SDK/wire-level paid-call coverage reconciliation; full repository suite;
+owner-approved Aegis scratch commissioning; main-thread review/merge; Gloria's deployment;
+ordinary-usage alarm delivery/installed acceptance; credential/public-route remediation;
+root/Windows/Mac/network-account checks and clean-host backup restoration. Do not call the
+infrastructure hardened or the alarm active before these acceptance boundaries are met.
+
 ## Continuous latent stream (idea, kept; not started)
 
 Gloria's idea of 18 October: one recurrent latent state carried between moments (nomic events, the emotion vector,
@@ -4589,3 +4608,19 @@ sensors) -> next-embedding prediction, surprise and retrieval -> the LLM when it
 exists in `docs/continuous-latent-stream.md`. Step 1 ran 22 October: the recurrent state lost on text (MRR 0.022 against 0.058 for "like the last one") and won
 slightly on emotion (0.601 against 0.631). Not taken further as it stands. **Re-run `scripts/latent_stream_replay.py`
 unchanged in late November**, when there is more chat on disk.
+
+## 22 October — security review branch synchronized for push
+
+Merged `claude/device-visuals-2026-10-13`, including the existing `a6e28e9e` voice-token guard; no duplicate route repair. Original audit snapshot evidence is retained, with F02 marked fixed in merged source and live deployment unverified.
+
+AUTH-01 remains **one proposal for Gloria, not applied**: default-secret rotation/removal plus telemetry WebSocket token admission and coordinated updates to vintos-app index.html/outreach.js, scripts/robot_bridge.py, bin/wants-router.py, bin/server_domains/humor_wants.py, clients/mobile and runtime configuration. See docs/security-hardening-plan.md for scope, validation and joint rollback. The review-branch push does not authorize this migration or deployment.
+
+Post-merge validation: 22/22 focused suites passed, including the inherited route inventory (9/9). The upstream voice caller guard is identical, precedes provider/private-context work, and the credential assignment and named client files are unchanged from the alarm candidate. Full repository tests and Aegis commissioning remain open.
+
+## 22 October — review revision: split releases, fail-open accounting, full suite
+
+`codex/security-alarms` is now the standalone alarm/paid_http/pause release. The identity/private-read/stream/client cutover is on `codex/security-auth-cutover`, based on the standalone release, for a separate later approval. Deploy (a) first with the unchanged standard owner command; it needs no client enrollment or cutover environment.
+
+Ledger/import/fsync/fault-sink failures no longer refuse paid calls. Redacted fault/journal health evidence raises the accounting-loss alarm; only the owner's pause refuses a call. Existing compute-ledger remains the sole call ledger. Production inline/function import repairs preserve all three reported test files unchanged. The preview's actual urllib opens/redirects are counted; stub previews keep their no-write contract.
+
+Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full OS-isolated alarm matrix: 467 invoked, 463 passed, four failures reproduced on that deploy snapshot (latent day boundary, missing pdftotext, macOS localhost-bind profile, BSD grep PCRE). See `audit/security-alarm-full-suite.json`. Full Aegis deploy acceptance and installed alarm/ordinary-use delivery remain pending owner approval. Nothing deployed, rotated, restarted or sent by this revision.

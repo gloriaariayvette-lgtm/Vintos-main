@@ -1,0 +1,20 @@
+{
+  "review_branch": "codex/security-alarms",
+  "original_alarm_commit": "3a1a362403823a82a7021cdf50a3c9f87ac8e334",
+  "merged_deploy_revision": "13f03770",
+  "existing_voice_fix": "a6e28e9e7e5f101bf82bdb8c089a6d71500805bc",
+  "focused_suites": {
+    "pass": 22,
+    "total": 22
+  },
+  "house_route_checks": {
+    "pass": 9,
+    "total": 9
+  },
+  "upstream_voice_caller_guard_identical": true,
+  "voice_gate_precedes_effects": true,
+  "default_secret_assignment_unchanged": true,
+  "named_client_code_unchanged_from_alarm_candidate": true,
+  "auth_migration": "AUTH-01: proposed only, not applied; Gloria approval required",
+  "production_changes": false
+}

@@ -1,0 +1,134 @@
+[
+  {
+    "suite": "test_security_alarm",
+    "status": "pass",
+    "rc": 0,
+    "tail": " calls may finish. Local inference continues.\nPaid HTTP calls paused; in-flight calls may finish. Local inference continues.\nPaid HTTP calls resumed.\n"
+  },
+  {
+    "suite": "test_house_routes",
+    "status": "pass",
+    "rc": 0,
+    "tail": "sions and handed out his instructions to anyone who reached it)\nPASS a default secret is warned about at startup\nPASS server still parses\n\n9/9 passed\n"
+  },
+  {
+    "suite": "test_fault_sweep",
+    "status": "pass",
+    "rc": 0,
+    "tail": "S a new occurrence after the sweep posts once, under its stage\nPASS the sweep and its timer are in the deploy\nPASS nothing reached the network\n\n33/33\n"
+  },
+  {
+    "suite": "test_claude_cache",
+    "status": "pass",
+    "rc": 0,
+    "tail": " cache\nPASS ... and the context a repair is given keeps that same start\nPASS the deploy installs claude_cache.py\nPASS nothing left the machine\n\n21/21\n"
+  },
+  {
+    "suite": "test_compute_admission",
+    "status": "pass",
+    "rc": 0,
+    "tail": "fter its first write\nPASS an unreadable store raises, never reads as empty\nPASS the ledger and WAL readers go through the compatibility reader\n\n44/44\n"
+  },
+  {
+    "suite": "test_shim_result_contract",
+    "status": "pass",
+    "rc": 0,
+    "tail": "clients are fakes\nPASS usage log went to the tempdir, not ~/.vintos  ->  /var/folders/y2/w5mzyjz93592kn9slbt3t0600000gn/T/shim-4v46tinc\n\n50/50 passed\n"
+  },
+  {
+    "suite": "test_shim_learned_cache",
+    "status": "pass",
+    "rc": 0,
+    "tail": "eeps its own split\nPASS the usage log says how much of each prompt was cached\nPASS Grok calls of one job carry the same conversation id\n\n15/15 passed\n"
+  },
+  {
+    "suite": "test_shim_mends_surrogates",
+    "status": "pass",
+    "rc": 0,
+    "tail": "ct JSON reader\nPASS a clean request passes byte for byte\nPASS bytes that are not JSON pass untouched\nPASS every POST is mended before it is read\n\n7/7\n"
+  },
+  {
+    "suite": "test_artifact_delivery",
+    "status": "pass",
+    "rc": 0,
+    "tail": "mports artifact_manifest\nPASS scripts/dream-art.py imports artifact_manifest\nPASS dream-art twins identical\nPASS nothing sent to the real ntfy\n\n39/39\n"
+  },
+  {
+    "suite": "test_music_kie_backend",
+    "status": "pass",
+    "rc": 0,
+    "tail": "he sender is a stub, never the real requests library\nok - no call reached any host but api.kie.ai and localhost:8001\n\nall music-backend checks passed\n"
+  },
+  {
+    "suite": "test_music_reference_failure",
+    "status": "pass",
+    "rc": 0,
+    "tail": "......\n----------------------------------------------------------------------\nRan 6 tests in 0.068s\n\nOK\n  Kie task: fixture  (model V6)\n"
+  },
+  {
+    "suite": "test_music_lyrics_refusal",
+    "status": "pass",
+    "rc": 0,
+    "tail": "taken for a correction\nPASS no answer leaves what was heard\nPASS the YouTube caption tidy-up has the same guard\nPASS nothing reached the network\n\n7/7\n"
+  },
+  {
+    "suite": "test_device_gate_and_budget",
+    "status": "pass",
+    "rc": 0,
+    "tail": "\n--- it reached nothing outside its own scratch ---\nPASS every store it wrote is throwaway\nPASS no ledger was written under the real workspace\n\n55/55\n"
+  },
+  {
+    "suite": "test_entry_owners",
+    "status": "pass",
+    "rc": 0,
+    "tail": "ry-owners.md carries the current owners table\nPASS the deploy writes a release record with hashes, services, broker state, backup and rollback\n\n11/11\n"
+  },
+  {
+    "suite": "test_study_fix_twins",
+    "status": "pass",
+    "rc": 0,
+    "tail": " says where its first line is\nPASS a refused deploy names the failing suite and its assertion\nPASS output with no FAIL line still says something\n\n8/8\n"
+  },
+  {
+    "suite": "test_study_fix",
+    "status": "pass",
+    "rc": 0,
+    "tail": "'s next pass deploys it and watches it\nPASS the deploy step looks at the checkout before pulling or deploying\nPASS nothing reached the network\n\n75/75\n"
+  },
+  {
+    "suite": "test_browser_agent",
+    "status": "pass",
+    "rc": 0,
+    "tail": " run ends saying why\nPASS a fail with no such words on the page is rejected and the run goes on to finish\nPASS parse: first object wins\n\n23/23 passed\n"
+  },
+  {
+    "suite": "test_browser_jev",
+    "status": "pass",
+    "rc": 0,
+    "tail": "auto mode selects Jev when configured\nPASS executor refuses an irreversible purchase click\nPASS no provider or sender escaped the suite\n\n12/12 passed\n"
+  },
+  {
+    "suite": "test_deploy_timer_recovery",
+    "status": "pass",
+    "rc": 0,
+    "tail": "the import alias and updates its target\nPASS discovery keeps the live lexical symlink\nPASS the importable causal model is explicitly manifested\n21/21\n"
+  },
+  {
+    "suite": "test_deploy_branch_guard",
+    "status": "pass",
+    "rc": 0,
+    "tail": "tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 4 tests in 1.146s\n\nOK\n"
+  },
+  {
+    "suite": "test_deploy_ignores_workbench",
+    "status": "pass",
+    "rc": 0,
+    "tail": "PASS the scratch home is all it looks in\nPASS only his live copy is found, not the Study's workbench or the checkout\n\n2/2\n"
+  },
+  {
+    "suite": "test_websearch_quality",
+    "status": "pass",
+    "rc": 0,
+    "tail": " is read)\nPASS his own daily search may still seed a want\nPASS after a search he takes a position and pushes on it, not a lesson about himself\n\n26/26\n"
+  }
+]

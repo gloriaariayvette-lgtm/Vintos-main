@@ -11,6 +11,7 @@ to change it.
 
     call(system, messages, max_tokens=1800) -> text
 """
+import paid_http
 import json
 import os
 import sys
@@ -67,7 +68,7 @@ def _direct_call(system, messages, max_tokens=1800, timeout=180):
     req = urllib.request.Request(ENDPOINT, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json",
                                           "Authorization": "Bearer " + key})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=timeout) as r:
         d = json.loads(r.read().decode())
     _openai_usage("astra", MODEL, d)
     if d.get("status") not in (None, "completed"):

@@ -13,6 +13,7 @@ Keeps voice untouched (those scripts keep pointing at x.ai; only chat scripts ge
 Run:      python3 vintos_claude_shim.py            (serves on 127.0.0.1:8599)
 Install:  python3 vintos_claude_shim.py --install  (writes+enables systemd --user unit, starts, health-checks)
 """
+import paid_http
 import os, sys, json, time, hashlib, socket, urllib.request, urllib.error
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 for _gp in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.vintos/workspace/scripts"), os.path.expanduser("~/.vintos/workspace/bin")):
@@ -120,7 +121,7 @@ def _post_json(provider, url, body, headers, timeout, call):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=hdrs)
     call.sent.add(mark)
     try:
-        r = urllib.request.urlopen(req, timeout=timeout)
+        r = paid_http.send(urllib.request.urlopen, __file__, req, timeout=timeout)
         raw = r.read()
         try: return r.status, json.loads(raw), None
         except Exception: return r.status, None, GR.make_result(provider, status="error", reason="non-json body: " + raw[:120].decode(errors="replace"))
@@ -342,7 +343,7 @@ def forward_xai(path, raw):
     req = urllib.request.Request(url, data=raw,
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
     try:
-        r = urllib.request.urlopen(req, timeout=300)
+        r = paid_http.send(urllib.request.urlopen, __file__, req, timeout=300)
         return r.status, r.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read()
@@ -490,7 +491,7 @@ def install():
     os.system("systemctl --user enable --now vintos-claude-shim")
     time.sleep(2)
     try:
-        ok = urllib.request.urlopen(f"http://{HOST}:{PORT}/health", timeout=5).read()
+        ok = paid_http.send(urllib.request.urlopen, __file__, f"http://{HOST}:{PORT}/health", timeout=5).read()
         print("installed + running. health:", ok.decode())
     except Exception as e:
         print("installed, but health check failed:", e, "\n  check: journalctl --user -u vintos-claude-shim -e")

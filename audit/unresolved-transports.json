@@ -1,0 +1,4 @@
+{
+  "reviewed": true,
+  "notes": "Dictionary accessors and route decorators were excluded. avatar_sealed_turn uses an in-process test client and a scoped diagnostic hook; actual provider paths are instrumented at their egress. SDK/redirect/cross-host completeness remains an acceptance requirement documented in the audit."
+}

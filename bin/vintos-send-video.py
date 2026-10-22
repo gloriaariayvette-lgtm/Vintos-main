@@ -18,6 +18,7 @@ notification linked straight to the clip. He remembers it (daily-creative + temp
   vintos-send-video.py --dry      # let him write the prompt, but DON'T call Atlas or deliver
   vintos-send-video.py --check    # one real probe generation (verbose) to validate the key + shapes
 """
+import paid_http
 import os, re, sys, json, time, base64
 from datetime import datetime, timedelta
 import requests
@@ -147,7 +148,7 @@ def autonomous_presence_allows():
 def call_mind(system, user, temp=0.9, max_tok=500):
     """His own mind — Claude opus-4-8 via the shim (the shim handles the Anthropic key)."""
     try:
-        r = requests.post(MIND_API, headers={"Content-Type": "application/json"},
+        r = paid_http.send(requests.post, __file__, MIND_API, headers={"Content-Type": "application/json"},
             json={"model": MIND_MODEL,
                   "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                   "temperature": temp, "max_tokens": max_tok}, timeout=180)
@@ -614,7 +615,7 @@ def atlas_generate(prompt, hero_path, model=None, verbose=False, duration=None):
         body = {"model": model, "image": data_uri(hero_path), "prompt": prompt,
                 "negative_prompt": NEG_PROMPT, "resolution": ATLAS_RES, "duration": (duration or ATLAS_DUR), "seed": -1}
     try:
-        r = requests.post(ATLAS_BASE + "/generateVideo", headers=H, json=body, timeout=120)
+        r = paid_http.send(requests.post, __file__, ATLAS_BASE + "/generateVideo", headers=H, json=body, timeout=120)
     except Exception as e:
         log("atlas submit error: %s" % e); return None
     if verbose:
@@ -634,7 +635,7 @@ def atlas_generate(prompt, hero_path, model=None, verbose=False, duration=None):
             break
         time.sleep(5)
         try:
-            pr = requests.get(ATLAS_BASE + "/prediction/" + pid, headers=H, timeout=30).json()
+            pr = paid_http.send(requests.get, __file__, ATLAS_BASE + "/prediction/" + pid, headers=H, timeout=30).json()
         except Exception as e:
             log("poll error: %s" % e); continue
         if verbose and i < 3:
@@ -646,7 +647,7 @@ def atlas_generate(prompt, hero_path, model=None, verbose=False, duration=None):
     if not url:
         log("atlas: no mp4 url after polling"); return None
     try:
-        return requests.get(url, timeout=300).content
+        return paid_http.send(requests.get, __file__, url, timeout=300).content
     except Exception as e:
         log("mp4 download failed: %s" % e); return None
 
@@ -682,7 +683,7 @@ def _atlas_image_once(body, verbose=False):
     # sound. Removed here 2026-09-04 (fable-creative-p6 / grok-creative-p2).
     H = {"Authorization": "Bearer " + ATLAS_KEY, "Content-Type": "application/json"}
     try:
-        r = requests.post(ATLAS_BASE + "/generateImage", headers=H, json=body, timeout=120)
+        r = paid_http.send(requests.post, __file__, ATLAS_BASE + "/generateImage", headers=H, json=body, timeout=120)
     except Exception as e:
         log("image submit error: %s" % e); return None
     if verbose:
@@ -699,7 +700,7 @@ def _atlas_image_once(body, verbose=False):
             break
         time.sleep(4)
         try:
-            pr = requests.get(ATLAS_BASE + "/prediction/" + pid, headers=H, timeout=30).json()
+            pr = paid_http.send(requests.get, __file__, ATLAS_BASE + "/prediction/" + pid, headers=H, timeout=30).json()
         except Exception as e:
             log("image poll error: %s" % e); continue
         if _find_status(pr) in ("failed", "error", "canceled", "cancelled"):
@@ -710,7 +711,7 @@ def _atlas_image_once(body, verbose=False):
     _keep_still(body, "made", "", pid)
     kind, val = img
     try:
-        return requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
+        return paid_http.send(requests.get, __file__, val, timeout=120).content if kind == "url" else base64.b64decode(val)
     except Exception as e:
         log("image fetch/decode failed: %s" % e); return None
 
