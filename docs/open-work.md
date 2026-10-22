@@ -4624,3 +4624,13 @@ Required random environment identity, telemetry/events admission, private GET/HE
 ## 22 October — split review, alarm first
 
 `codex/security-alarms` is the standalone fail-open alarm/paid transport/pause release, with no authentication/client cutover dependency. This branch, `codex/security-auth-cutover`, restores the coordinated identity/private-read/stream/client proposal on top of that release for a separate later approval. Companion app stays at review commit `6056939`. No production actions were taken. Full isolated-suite results are recorded separately for both branches; do not treat focused tests as the full matrix.
+
+## 22 October — review revision: split releases, fail-open accounting, full suite
+
+`codex/security-alarms` is now the standalone alarm/paid_http/pause release. The identity/private-read/stream/client cutover is on `codex/security-auth-cutover`, based on the standalone release, for a separate later approval. Deploy (a) first with the unchanged standard owner command; it needs no client enrollment or cutover environment.
+
+Ledger/import/fsync/fault-sink failures no longer refuse paid calls. Redacted fault/journal health evidence raises the accounting-loss alarm; only the owner's pause refuses a call. Existing compute-ledger remains the sole call ledger. Production inline/function import repairs preserve all three reported test files unchanged. The preview's actual urllib opens/redirects are counted; stub previews keep their no-write contract.
+
+Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full OS-isolated alarm matrix: 467 invoked, 463 passed, four failures reproduced on that deploy snapshot (latent day boundary, missing pdftotext, macOS localhost-bind profile, BSD grep PCRE). See `audit/security-alarm-full-suite.json`. Full Aegis deploy acceptance and installed alarm/ordinary-use delivery remain pending owner approval. Nothing deployed, rotated, restarted or sent by this revision.
+
+Cutover branch final validation: all 468 OS-isolated broker suites invoked, 464 passed; only the four reproduced deploy-baseline failures remain. The 20 auth tests and 33 alarm tests pass. Companion client stub checks pass. Evidence: `audit/security-auth-full-suite.json`. This source branch is the second release, not a dependency of deploying the standalone alarm.

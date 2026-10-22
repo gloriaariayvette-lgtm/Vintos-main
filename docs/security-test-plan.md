@@ -80,3 +80,13 @@ node clients/mobile/tests/house_auth_client.test.cjs /path/to/vintos-app/src/run
 The companion repo has `vintos-app/tests/house-auth.cjs`, runnable directly from its app directory. Fetch, WebSocket, CapacitorKV and notifications are stubs; its tests never send. HTML inline scripts are syntax-checked separately. The standard isolated runner sets an explicit synthetic identity inside the child; production environment credentials are never test inputs.
 
 30 pre-existing focused suites passed after merging the deploy branch; see `audit/regression-results.json`. The complete Aegis deployment suite and physical/native/background acceptance remain pending approval. No approved rollout is inferred from these offline results.
+
+## Full-suite review revision
+
+On `codex/security-alarms`, every **467** `broker/tests/test_*.py` suite was run through `scripts/run_isolated_test.py`: **463 passed, 4 failed**. No suite was excluded by the driver. The unchanged `test_outreach_his_words` (13/13), `test_video_share` (25/25, optional audio backend checks skipped by the suite) and `test_avatar_dryrun_argon` (30/30) pass. The alarm suite passes **33 tests**.
+
+All four remaining failures were reproduced using the identical runner/interpreter against deploy snapshot `0913106c`: `test_latent_stream_linear` (local-date boundary assertion), `test_mail_attachments` (local pdftotext absent), `test_media_embed` (macOS sandbox refuses another localhost bind), `test_study_reading` (BSD grep lacks PCRE). Their tests were not changed. This is **not an all-green full-suite claim**, nor proof of Aegis deployment acceptance. See `audit/security-alarm-full-suite.json` for every suite/result and baseline evidence. The source comparison found no branch-specific failure in that completed matrix.
+
+## Complete cutover-branch matrix
+
+Every **468** broker suite on `codex/security-auth-cutover` was invoked through `scripts/run_isolated_test.py`: **464 passed, 4 failed**, with exactly the same four deploy-baseline failures listed above and no additional branch-specific failures. `test_house_auth` passed all **20** tests, including the in-process HTTP/WebSocket checks; `test_security_alarm` passed all **33**. The unchanged three reported suites pass. Offline browser/native-runner checks also pass. Exact suite names, results and baseline comparisons are in `audit/security-auth-full-suite.json`; full Aegis deployment/physical client acceptance remain unperformed.
