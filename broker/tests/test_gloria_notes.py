@@ -63,7 +63,7 @@ class Notes(unittest.TestCase):
         self.assertEqual(G.open_between(by='nobody'), '')
 
     def test_wired_into_his_letters_his_slack_and_his_avatar_chat(self):
-        self.assertIn('gloria_asks.notes_from(body, by="vintos"', (REPO / 'scripts' / 'want_email.py').read_text())
+        self.assertIn('gloria_asks.notes_from("\\n".join(_notes), by="vintos"', (REPO / 'scripts' / 'want_email.py').read_text())
         self.assertIn('gloria_asks.notes_from(text, by="vintos"', (REPO / 'scripts' / 'dot_channel.py').read_text())
         server = (REPO / 'bin' / 'server.py').read_text()
         self.assertIn('_ob_ga.open_between()', server)

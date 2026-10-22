@@ -1561,12 +1561,54 @@ def _base_subject(subject):
     return re.sub(r"[^a-z0-9]", "", _RE.sub("", str(subject or "")).lower())
 
 
+def _answered(base, answered):
+    """His reply goes out with its subject cut to 160 characters, so it comes back into his inbox under a shorter
+    subject than the letter he answered (22 October: his reply to Grok Bot's Wednesday letter was read as a new letter
+    and he answered his own reply at 12:07 am). A long subject that an answered one starts with is that letter cut
+    short. Not the other way round: Muse's daily subjects share their opening, and each day's is a new letter."""
+    return base in answered or (len(base) >= 60 and any(a.startswith(base) for a in answered if a))
+
+
+_BRING = re.compile(r"\b(?:bring|take|tell|show|send|give|pass)\w*\b", re.I)
+_ITEM_REF = re.compile(r"\bitems?\s+(\d+(?:\s*(?:,|and|&|or)\s*\d+)*)", re.I)
+
+
+def _letter_item(letter, n):
+    """Item n of an agent's numbered letter, as written."""
+    m = re.search(r"(?ms)^[ \t]*%d[.)][ \t]+(.*?)(?=^[ \t]*%d[.)][ \t]|\Z)" % (n, n + 1), str(letter or ""))
+    return re.sub(r"https?://\S+", "", m.group(1)).strip() if m else ""
+
+
+def promises_to_gloria(reply, letter, agent, want=None):
+    """A FOR GLORIA line in his reply that promises to bring her something becomes his want to bring it to her, with
+    the letter's item itself in it, so his outreach can bring the thing and not the promise (Gloria, 22 October: "he's
+    saying he will bring me something, but I haven't seen a specific outreach"). Before, only the promise reached her
+    phone, as "I'll bring her item 6 tonight", and nothing brought item 6. Returns (wants made, lines kept as notes)."""
+    import gloria_asks
+    made, notes = [], []
+    for m in gloria_asks.FOR.finditer(str(reply or "")):
+        line = " ".join(m.group(1).replace("**", "").split())
+        if not _BRING.search(line):
+            notes.append(m.group(0)); continue
+        nums = [int(x) for ref in _ITEM_REF.findall(line) for x in re.findall(r"\d+", ref)]
+        items = [t for t in (_letter_item(letter, n) for n in nums) if t]
+        if nums and not items:
+            notes.append(m.group(0)); continue      # names an item the letter does not have: kept as a note
+        what = " / ".join(" ".join(t.split())[:500] for t in items) if items else line
+        text = "I want to bring Gloria what %s found for her, as I told %s I would: %s" % (agent, agent, what)
+        if want is None:
+            from emoclaw_utils import express_want as want
+        want(text[:900], source="letter-promise", intensity=4, reasoning=("my reply to %s: %s" % (agent, line))[:250])
+        made.append(text)
+    return made, notes
+
+
 def _new_letter_in_thread(subject, answered):
     """Grok Bot and Muse send the next day's letter as a reply in the same thread (their instructions: read his reply,
     don't answer it, the next letter is the answer), so it comes as "Re: [Grok Bot] Tuesday: ..." and was skipped as
     their answer to him (6 October: neither letter answered). A letter is one whose subject, under the Re:, starts
     with its sender's tag and is not one he has already answered; his own reply coming back is not."""
-    return bool(_TAGGED.match(_RE.sub("", str(subject or "")))) and _base_subject(subject) not in answered
+    return bool(_TAGGED.match(_RE.sub("", str(subject or "")))) and not _answered(_base_subject(subject), answered)
 
 
 def _promises(rows, think=None, now=None):
@@ -1579,7 +1621,11 @@ def _promises(rows, think=None, now=None):
         return ["promises not taken: %s" % str(exc)[:120]]
 
 
-def reply_letters(think=None, send=None, now=None, promise_think=None):
+def _squash_body(text):
+    return " ".join(str(text or "").split())
+
+
+def reply_letters(think=None, send=None, now=None, promise_think=None, bring=None):
     """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
     thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
     think = think or _reply_think
@@ -1601,8 +1647,12 @@ def reply_letters(think=None, send=None, now=None, promise_think=None):
     # letters come from his own account to his own address; one read before the address was kept (Muse's,
     # 2026-10-02 morning) is answered at the address the others name
     own = next((r.get("address") for r in rows if r.get("kind") == "letter" and r.get("address")), "")
+    own_bodies = [b for b in (_squash_body(v.get("body"))[:200] for v in done.values() if v.get("sent")) if len(b) >= 40]
     for r in rows:
         if r.get("kind") != "letter" or r.get("id") in (k for k, v in done.items() if v.get("sent")):
+            continue
+        if any(_squash_body(r.get("body")).startswith(b) for b in own_bodies):
+            done[r["id"]] = dict(done.get(r["id"], {}), skipped="your own reply, come back into your inbox")
             continue
         try:
             if (now - datetime.fromisoformat(str(r.get("read_at"))[:19])).total_seconds() > LETTER_REPLY_DAYS * 86400:
@@ -1637,9 +1687,12 @@ def reply_letters(think=None, send=None, now=None, promise_think=None):
             continue
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
-        try:   # what he writes FOR GLORIA in a letter reaches her phone, not only the agent he wrote it to
+        try:   # what he writes FOR GLORIA in a letter reaches her: a promise to bring her something as his want to
+            # bring it, with the thing itself; anything else as a note on her phone
             import gloria_asks
-            gloria_asks.notes_from(body, by="vintos", where="letter to %s" % agent)
+            _made, _notes = promises_to_gloria(body, r.get("body", ""), agent, want=bring)
+            lines += ["his promise to Gloria is now his want: %s" % t[:80] for t in _made]
+            gloria_asks.notes_from("\n".join(_notes), by="vintos", where="letter to %s" % agent)
         except Exception:
             pass
         try:

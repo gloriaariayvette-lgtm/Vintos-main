@@ -1945,7 +1945,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     try:
         import sys as _mr_s; _mr_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
         import wants_meta as _mr
-        _meta = _mr.classify(str(want_text))
+        # a want to bring her a finding or a promised thing carries the thing's own words, which are not his
+        # wanting about himself
+        _meta = None if source in ("lab-finding", "letter-promise") else _mr.classify(str(want_text))
         if _meta:
             _routed = _mr.route(str(want_text), _meta, source)
             print("[express_want] second-order want -> %s: %s" % (_routed, str(want_text)[:60]), file=__import__("sys").stderr)
