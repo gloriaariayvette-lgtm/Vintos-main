@@ -30,8 +30,8 @@ def joined_rows(hist, turns, enc, checkpoint, trained_before):
         for ax, head, index in (("g", "gloria", 1), ("s", "self", 2)):
             row.update({ax + "_conf": None, ax + "_dsim": None, ax + "_err": None})
             triple = h.get(head) or {}
-            if head == "self" and triple.get("source"):
-                triple = h.get("legacy_self") or {}
+            if triple.get("source"):
+                triple = h.get("legacy_" + head) or {}
                 if triple.get("checkpoint_id") != checkpoint:
                     continue
             target = next((t for t in turns if t[0] > h["ts"] and t[index]), None)

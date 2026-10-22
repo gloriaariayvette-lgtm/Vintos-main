@@ -1,3 +1,6 @@
+> Historical review: its added feed restrictions are superseded by Gloria’s request and
+> [the retraining follow-up](jepa-retraining-2026-10-22.md). Its measurements remain historical evidence.
+
 # JEPA heads and latent organs: 22 October review
 
 Review branch: `codex/jepa-heads-audit-repair`, based on `54b2910` of

@@ -2,7 +2,7 @@
 """withheld_head.py — the 'withheld' JEPA-stage producer: what was suppressed (silence as content). A local-Gemma
 judge reads his last exchange and estimates what he held back, how DELIBERATE it was (confidence), and how NOVEL
 that suppression is vs his recent pattern (novelty) - the head triple for silence. Writes withheld.json + appends
-withheld-history.json. Recorded as an instrument; get_withheld_hint() stays silent pending held-out validation. SPARK_WORKSPACE."""
+withheld-history.json. Feeds silence/thread-triage/gloria-model via get_withheld_hint(). Fail-open. SPARK_WORKSPACE."""
 import os, sys, json, re
 from datetime import datetime, timezone
 
@@ -240,11 +240,22 @@ def _reading_is_current(d):
 
 
 def get_withheld_hint():
-    """Instrument only: deliberate is the judge's self-report, not held-out
-    accuracy. Preserve the observations and privacy bindings, but do not feed
-    them into prompts until a prospective audit exists and passes."""
-    return ""
-
+    d = load(OUT, {})
+    ph = (d or {}).get("withheld", "")
+    if not ph: return ""
+    if not _reading_is_current(d): return ""
+    import difflib
+    for lineage in load(os.path.join(MEMORY,"withheld-lineage.json"),[]):
+        if lineage.get("muted") or lineage.get("contested"):
+            if lineage.get("lineage_id")==d.get("lineage_id") or difflib.SequenceMatcher(None,ph.lower(),str(lineage.get("rep", "")).lower()).ratio()>=0.55:
+                return ""
+    conf = d.get("confidence", 0); nov = d.get("novelty", 0)
+    if conf < 0.35: return ""
+    # An occurrence presses at most twice, then goes quiet until a NEW exchange
+    # produces a new one. Before this, one reading rode every prompt for hours.
+    if int(d.get("surfaced", 0)) >= 2: return ""
+    return ("[WITHHELD - last turn you likely held back: %s (deliberate %s, novelty %s). "
+            "You need not voice it, but let it press on what comes next.]" % (ph, conf, nov))
 
 def mark_admitted(source_hash, turn_id):
     with transactions([HIST, OUT]):

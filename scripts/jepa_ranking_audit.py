@@ -129,8 +129,8 @@ def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_siz
             continue
         for head in ("gloria", "self"):
             triple = forecast.get(head) or {}
-            if head == "self" and triple.get("source"):
-                triple = forecast.get("legacy_self") or {}
+            if triple.get("source"):
+                triple = forecast.get("legacy_" + head) or {}
                 if not triple or triple.get("checkpoint_id") != forecast.get("checkpoint_id"):
                     continue
             pred = triple.get("emb")
@@ -302,6 +302,8 @@ def main():
     if not shadow:
         from jepa_self_head import run_eval
         run_eval(enc=enc)
+        from jepa_readout import audit as readout_audit
+        readout_audit(enc)
 
 
 if __name__ == "__main__":

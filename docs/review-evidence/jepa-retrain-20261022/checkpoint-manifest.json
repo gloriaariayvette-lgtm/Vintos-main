@@ -1,0 +1,14 @@
+{
+  "schema": "anchored-readout-v1",
+  "aegis_scratch_directory": "/tmp/jepa-retrain-20261022-6pqxgl59/checkpoints",
+  "intended_reviewed_destination": "memory/jepa-readouts/",
+  "sha256": {
+    "presence.npz": "0cb22bd0a763a0c8cf27752f16cfa27ee2abdd19a974b0c4e40da07718f682ed",
+    "gloria.npz": "1a563a0a97fcf28967f2c975fdf6d0a2c45875c5664411648bfc7956ae1a6594",
+    "self_ahead.npz": "71a01e07b1f691e6b144e9a74ead3c58658d4058e352d31bcf0736a9f771756a",
+    "lam-linear.npz": "e2960c4aa0b41a103affeb7c40daf31e8b300a45b64d62c8611f15adac003a89",
+    "self_on_message.npz": "7c38441aab22a2e7b55d670c07821dc3d1ca5b248324ed04e87b0180af87ee60"
+  },
+  "weights_in_git": false,
+  "installed": false
+}

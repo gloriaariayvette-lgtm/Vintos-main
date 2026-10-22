@@ -550,7 +550,13 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         log("no live context above the ledger floor"); return
     _schema = ck.get("context_schema", "legacy-concat-v1")
     ctx = format_context(turns[-CTX_TURNS:], _schema)
-    _context_id = hashlib.md5(ctx.encode()).hexdigest()[:12]
+    _readout_identity = ""
+    if not shadow:
+        for _name in ("gloria", "self_ahead"):
+            _rp = os.path.join(MEMORY, "jepa-readouts", _name + ".npz")
+            if os.path.exists(_rp):
+                _readout_identity += hashlib.sha256(open(_rp, "rb").read()).hexdigest()
+    _context_id = hashlib.md5((ctx + _readout_identity).encode()).hexdigest()[:12]
     if unchanged_forecast(out_path, loaded_checkpoint, _context_id):
         log("unchanged context — retained existing forecast; no history row written")
         return {"state": "UNCHANGED_CONTEXT", "checkpoint_id": loaded_checkpoint, "context_id": _context_id}
@@ -604,7 +610,17 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     # The SELF triple comes from its own head (jepa_self_head.py: his ledger replies, forecast-time context,
     # his own recent replies) once that head has a checkpoint; until then the shared-trunk self above stands
     # exactly as it was. Nothing the gloria head reads or writes is touched here. Shadow keeps its own.
+    _legacy_g, _legacy_cg = g.copy(), _cg
     _legacy_s, _legacy_cs = s.copy(), _cs
+    _gloria_fc = None
+    if not shadow:
+        try:
+            from jepa_readout import forecast as _readout_forecast
+            _gloria_fc = _readout_forecast(enc, "gloria")
+            if _gloria_fc is not None:
+                g = np.asarray(_gloria_fc["emb"], dtype="float32"); _cg = _gloria_fc["confidence"]
+        except Exception as exc:
+            log("anchored Gloria unavailable; shared head retained: %s" % exc)
     _self_fc = None
     if not shadow:
         try:
@@ -623,6 +639,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     gloria = {"nearest": _g_near,
               "confidence": (_cg if _cg is not None else 0.5), "decode_similarity": _g_sim,
               "novelty": round(1.0 - max(0.0, _cos(g, xe[0])), 3)}
+    if _gloria_fc is not None:
+        gloria.update({k: _gloria_fc[k] for k in ("source", "checkpoint_id", "confidence_evaluation")})
     # presence confidence is null, never a placeholder 0.5, when it is not qualified. Self keeps the
     # 0.5 stand-in for now, MARKED as one: emoclaw_utils._novelty_directive does float() on it
     # unguarded and the calibration audit ranks it beside gloria's, so a null would break both.
@@ -656,6 +674,17 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         # the mean on held-out replies it is not offered there; the forecast stays on record beside it.
         presence = presence_forecast if _p_steer else None
 
+    if not shadow:
+        try:
+            from jepa_readout import presence_forecast as _readout_presence
+            _pr = _readout_presence(enc)
+            if _pr is not None:
+                _pr.update(prediction_id=_pid, predicted_at=_pat)
+                presence = presence_forecast = _pr
+                presence_cal = _pr["evaluation"]
+        except Exception as exc:
+            log("anchored presence unavailable; existing presence retained: %s" % exc)
+
     def _qual(c):   # per-head qualification state, explicit (astra-models-p6)
         return "qualified" if c is not None else ("unavailable" if _lv_mean is None else "unqualified_spreadless")
     # review 202/207: whether a head may steer is the CALIBRATION verdict on held-out evidence against
@@ -688,12 +717,13 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
            "context_schema": _schema, "architecture": ck.get("architecture", "shared-v1"),
            "shadow_only": bool(shadow),
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; shadow checkpoints may never steer"}
+    if _gloria_fc is not None:
+        # These fields feed the existing prose/readiness path. Confidence retains
+        # its independently evaluated error meaning; its receipt is observable.
+        out["readout_calibration"] = _gloria_fc["confidence_evaluation"]
+        out["steering_allowed"] = not shadow
+        out["note"] = "anchored readout; confidence = 1 - estimated cosine error / 2"
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
-    try:
-        out["steering_by_head"] = {h: _cal.forecast_allowed(out, h) for h in ("gloria", "self")}
-    except Exception:
-        out["steering_by_head"] = {"gloria": False, "self": False}
-    out["steering_allowed"] = not shadow and all(out["steering_by_head"].values())
     try:   # _srcs was train()-local: every predict raised NameError here before the forecast was saved (review P05)
         out["training_sources"] = (ck.get("training_sources") if isinstance(ck, dict) else None) or training_sources(turns)
     except Exception as _tse:
@@ -716,6 +746,12 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
                               "decode_similarity": self_h["decode_similarity"],
                               "novelty": self_h["novelty"], "emb": [round(float(x), 4) for x in s]},
                      "variance_qualified": (_cg is not None)}
+        if _gloria_fc is not None:
+            hist_line["gloria"].update({k: _gloria_fc[k] for k in ("source", "checkpoint_id")})
+            _lg_near, _lg_sim = _decode(_legacy_g, gloria_turns, enc)
+            hist_line["legacy_gloria"] = {"checkpoint_id": _ck_id, "confidence": _legacy_cg,
+                "confidence_placeholder": _legacy_cg is None, "decode_similarity": _lg_sim,
+                "emb": [round(float(x), 4) for x in _legacy_g]}
         if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
             hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts", "mode")})
         # Preserve a separately attributed shared-head forecast even while the
@@ -730,6 +766,12 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:
         log(f"history append failed: {_he}")
+    if not shadow and os.path.exists(os.path.join(MEMORY, "jepa-readouts", "lam-linear.npz")):
+        try:
+            import lam
+            lam.predict(enc=enc)
+        except Exception as exc:
+            log("fixed-horizon cascade unavailable: %s" % exc)
     log(f"gloria conf {gloria['confidence']} nov {gloria['novelty']} | self conf {self_h['confidence']} nov {self_h['novelty']}"
         + (f" | presence pred {presence_forecast['predicted']} conf {presence_forecast['confidence']} "
            f"[{presence_forecast['calibration']}, steers={presence_forecast['steering_allowed']}]" if presence_forecast else " | presence n/a"))

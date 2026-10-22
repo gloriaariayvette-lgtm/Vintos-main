@@ -1402,12 +1402,6 @@ def _novelty_directive():
     _j = _load(_no.path.join(_mem, "jepa-prediction.json"))
     if _j.get("source") != "jepa":
         return ""
-    try:
-        from calibration import forecast_allowed
-        if not forecast_allowed(_j, "self"):
-            return ""
-    except Exception:
-        return ""
     _h = _j.get("self") or {}
     def _num(v, d):
         try: return float(v) if v is not None else d

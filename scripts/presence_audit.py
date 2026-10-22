@@ -262,18 +262,6 @@ def forecast_block():
         f = json.load(open(FORECAST))
     except Exception:
         return ""
-    # A copied forecast cannot retain a release after its model or audit changes.
-    try:
-        from calibration import checkpoint_fingerprint
-        audit = load(os.path.join(MEMORY, "jepa-presence-calibration.json"), {})
-        at = _when(f.get("predicted_at"))
-        if (f.get("steering_allowed") is not True or not at
-                or not 0 <= (datetime.now(timezone.utc) - at).total_seconds() <= 7200
-                or not f.get("checkpoint_id") or f["checkpoint_id"] != checkpoint_fingerprint()
-                or audit.get("checkpoint") != f["checkpoint_id"] or audit.get("state") != "RELEASED"):
-            return ""
-    except Exception:
-        return ""
     def _f(x):
         try: return float(x)
         except Exception: return None

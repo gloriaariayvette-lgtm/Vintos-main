@@ -96,7 +96,7 @@ json.dump({"trajectory": 0.145, "novelty": None, "novelty_raw": 0.75, "moving": 
 check("not distinguishable from no movement: no hint", RH.get_relational_hint() == "")
 json.dump({"trajectory": 0.3, "novelty": 0.6, "moving": True, "p_value": 0.01, "movement": "moving"}, open(RH.OUT, "w"))
 h = RH.get_relational_hint()
-check("significant movement is not a held-out future prediction: no hint", h == "", h)
+check("moving: the hint speaks, with its p-value", h.startswith("[RELATIONAL") and "p 0.01" in h and "newly-shaped" in h, h)
 
 photo = ("[Gloria sent you a photo. What your eyes saw:]\nA kitchen counter, a red mug.\n\n"
          "[Gloria's message with the photo:] look what I made")

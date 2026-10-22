@@ -1,3 +1,24 @@
+## 22 October — retrained JEPA readouts; subconscious feeds restored (Codex, not deployed)
+
+`codex/jepa-heads-retrain` supersedes the preceding review's feed restrictions at Gloria's
+request. All original hints/readings/trajectory/readiness/novelty/premonition inputs are
+restored. Attribution, per-speaker counts, retained presence labels, scheduled self-eval
+and drift-residual repairs remain. CPU retraining produced five scratch checkpoints;
+[results and handoff](jepa-retraining-2026-10-22.md) report every comparator and limit.
+
+New text MRR point estimates beat last-turn and recent-mean, but intervals versus last-turn
+cross zero and recent-mean still wins cosine error. Independent self has not demonstrated
+an improvement over the old checkpoint on four unique whole-day held-out targets.
+Confidence points in the right direction; self discrimination remains weak. Fixed-horizon
+LAM lowers MSE 6.8% with an interval below zero. Presence retains 15 labels, joins 14 and
+has only one later test label: no established gain. Do not call these all robust wins.
+
+The actual scratch serving path and restored hint suites pass. Full isolation: 469 suites,
+466 pass, three previously reproduced Mac fixture failures. Trained weights are in Aegis
+scratch and approved private Mac scratch, outside Git. Still open: review the mixed results,
+choose artifacts for Gloria's deployment, then verify ordinary live feeds and prospective
+outcomes. No service, live checkpoint or live store was changed by this work.
+
 ## 22 October — JEPA and latent organs review (Codex; not deployed)
 
 Review work is on `codex/jepa-heads-audit-repair`, originally based on `54b2910`,

@@ -933,6 +933,16 @@ def forecast(enc, rows=None, model_path=SELF_MODEL, today=None, mode="ahead", he
     target date today. on_message: the same, with her message (`her`, arrived at `arrived_at`) and his
     replies to her nearest past messages. None when there is no checkpoint (or no such mode in it)."""
     import numpy as np
+    # A reviewed anchored checkpoint uses the same ahead/on-message entrances.
+    try:
+        from jepa_readout import forecast as readout_forecast
+        fresh = readout_forecast(enc, "self_" + mode, exs=exchanges(rows) if exs is None else exs,
+                                 her=her or "", now=arrived_at)
+        if fresh is not None:
+            fresh["mode"] = mode
+            return fresh
+    except Exception as exc:
+        log("anchored self unavailable; existing self checkpoint retained: %s" % exc)
     m = load_model(model_path)
     if m is None or mode not in m["modes"]:
         return None
@@ -1024,7 +1034,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
     except Exception:
         lk = None
     try:
-        if load_model(model_path) is None:
+        if load_model(model_path) is None and not os.path.exists(os.path.join(MEMORY, "jepa-readouts", "self_on_message.npz")):
             log("no self checkpoint; no on-message forecast"); return None
         enc = enc or _jp().encoder()
         fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
@@ -1036,6 +1046,8 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
                "self": {"emb": [round(float(x), 4) for x in fc["emb"]], "mode": "on_message", "source": fc["source"],
                         "checkpoint_id": fc["checkpoint_id"], "context_last_ts": fc["context_last_ts"],
                         "confidence": fc["confidence"], "qualification": fc["qualification"], "coherence": fc["coherence"]}}
+        if fc.get("context_emb") is not None:
+            row["context_emb"] = fc["context_emb"]
         with open(out_path, "a") as f:
             f.write(json.dumps(row) + "\n")
         log("on-message forecast written (%.1fs after her message)" % (made - arrived))

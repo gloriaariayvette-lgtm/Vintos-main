@@ -28,54 +28,7 @@ import latent_preparation as LP
 import living_trajectory as LT
 import presence_audit as PA
 
-assert C.MEMORY == LP.MEMORY == PA.MEMORY == str(MEM)
-assert sys.modules["requests"].post is no_send
-Path(C.MODEL).write_bytes(b"test checkpoint")
-ck = C.checkpoint_fingerprint()
-audit = {"n_joined": 100, "n_holdout": 31, "axis_lockstep_corr": .3,
-         "criteria_version": C.CRITERIA_VERSION, "checkpoint": ck,
-         "holdout_protocol": "prospective-checkpoint-v1",
-         "g": {"monotonicity_conf_vs_err": -.6, "CONTROL_dsim_vs_err": -.2, "wrong_but_confident": []}}
-Path(C.AUDIT).write_text(json.dumps(audit))
-ranking = {"checkpoint": ck, "criteria_version": A.CRITERIA_VERSION,
-           "gloria": {"state": "EVIDENCE_OF_PREDICTION"}}
-rank_path = MEM / "jepa-ranking-audit.json"
-rank_path.write_text(json.dumps(ranking))
-now = float(int(time.time()))
-forecast = {"source": "jepa", "predicted_at": datetime.fromtimestamp(now).isoformat(),
-            "checkpoint_id": ck, "qualification": {"gloria": "qualified"},
-            "confidence": .8, "novelty": .1, "gloria": {"confidence": .8}}
-assert C.forecast_allowed(forecast, now=now)
-for change in ({"checkpoint_id": "old"}, {"shadow_only": True}, {"qualification": {}},
-               {"predicted_at": datetime.fromtimestamp(now - 7201).isoformat()},
-               {"predicted_at": datetime.fromtimestamp(now + 1).isoformat()},
-               {"gloria": {"confidence": float("nan")}},
-               {"gloria": {"confidence": .5, "confidence_placeholder": True}}):
-    assert not C.forecast_allowed(dict(forecast, **change), now=now), change
-for change in ({"checkpoint": "old"}, {"criteria_version": "old"},
-               {"gloria": {"state": "NO_EVIDENCE_BEYOND_VOICE_RETRIEVAL"}}):
-    rank_path.write_text(json.dumps(dict(ranking, **change)))
-    assert not C.forecast_allowed(forecast, now=now), change
-rank_path.write_text(json.dumps(ranking))
-assert not C.forecast_allowed(dict(forecast, self={"source": "self-head-v2", "confidence": .9}), "self", now)
-small = copy.deepcopy(audit)
-small["g"]["n_holdout"] = 2
-assert C.verdict("gloria", audit=small)["state"] == "INSUFFICIENT"
-print("PASS current checkpoint, freshness, per-head count, ranking and confidence required together")
-
-Path(LP.JEPA).write_text(json.dumps(forecast))
-assert LP.signal()[3] == "jepa"
-entry = {"type": "readiness", "forecast": forecast, "content": "a posture"}
-assert LT.readiness_allowed(entry)
-assert not LT.readiness_allowed({"type": "readiness", "content": "old ungated posture"})
-rank_path.unlink()
-assert not LT.readiness_allowed(entry)
-Path(LP.CACHE).write_text(json.dumps([entry, {"type": "creative", "content": "keep"}]))
-LP.voice = no_send
-LP.main()
-assert json.loads(Path(LP.CACHE).read_text()) == [{"type": "creative", "content": "keep"}]
-print("PASS cached readiness is revoked without a current release and cannot invoke a model")
-
+ck = "fixture-checkpoint"
 assert A._rank([.4, .4, .4]) == 3
 assert A._rank([.5, .3, .4]) == 1
 rows = [{"head": "gloria", "rank": 1, "top1": True, "reciprocal_rank": 1., "pool_size": 6, "voice_baseline_rank": 2,

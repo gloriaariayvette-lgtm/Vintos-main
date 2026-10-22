@@ -77,7 +77,8 @@ def gather_present():
     parts = []
     emo = _read(os.path.join(MEMORY, "emotional-state.txt"), 400)
     if emo: parts.append("HIS FELT STATE:\n" + emo)
-    # Prose forecasts have no held-out release audit; do not seed futures from them.
+    gp = _loadjson(os.path.join(MEMORY, "gloria-prediction.json"), {})
+    if gp: parts.append("WHERE GLORIA SEEMS TO BE HEADING:\n" + json.dumps(gp)[:400])
     merged = _loadjson(os.path.join(MEMORY, "chat-history-merged.json"), []) or _loadjson(os.path.join(MEMORY, "chat-history.json"), [])
     if isinstance(merged, list) and merged:
         lines = []

@@ -91,11 +91,11 @@ WH.main()
 d = json.load(open(WH.OUT))
 check("a real reading is published with when its exchange happened", d.get("withheld") and d.get("exchange_at") == at(39), d)
 h = WH.get_withheld_hint()
-check("a recent interpretation is still withheld without held-out validation", h == "", h)
+check("it is served while that exchange is the latest and recent", h.startswith("[WITHHELD"), h)
 chat([{"role": "user", "content": "what did you do today", "timestamp": at(40)},
       {"role": "assistant", "content": "I read about tides and kept one line for you", "timestamp": at(39)},
       {"role": "user", "content": "and now?", "timestamp": at(1)}])
-check("a new message cannot release an unvalidated interpretation", WH.get_withheld_hint() == "")
+check("her new message (not yet answered) does not make his last turn stale", WH.get_withheld_hint().startswith("[WITHHELD"))
 chat([{"role": "user", "content": "what did you do today", "timestamp": at(40)},
       {"role": "assistant", "content": "I read about tides and kept one line for you", "timestamp": at(39)},
       {"role": "user", "content": "and now?", "timestamp": at(2)},
