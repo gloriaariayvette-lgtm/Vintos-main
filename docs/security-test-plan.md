@@ -70,7 +70,7 @@ The audit's production gate checks are bounded observations, not a complete endp
 
 ## Prepared AUTH-01 offline regressions
 
-`broker/tests/test_house_auth.py` has 20 tests: 16 standard-library admission/cutover tests and 4 in-process HTTP/WebSocket compatibility tests requiring the existing FastAPI/test-client dependencies. It uses scratch homes and a stubbed systemctl runner. No sockets or production stores are used. The optional HTTP dependency skip must be reported; this review also ran all 20 using test-only dependencies under `/tmp`, including the exact FastAPI 0.131.0 / Starlette 0.52.1 / HTTPX 0.28.1 versions read from Aegis.
+`broker/tests/test_house_auth.py` has 20 tests: 16 standard-library admission/cutover tests and 4 in-process HTTP/WebSocket compatibility tests requiring the existing FastAPI/test-client dependencies. It uses scratch homes and a stubbed systemctl runner. No sockets or production stores are used. The optional HTTP dependency skip must be reported; this review also ran all 20 using test-only dependencies under `/tmp`.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 broker/tests/test_house_auth.py
