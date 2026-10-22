@@ -1,3 +1,18 @@
+## 22 October — additive trained evidence for subconscious feeds (proposal)
+
+`codex/subconscious-head-feeds-plan` contains the
+[ranked integration proposal](subconscious-head-feeds-plan.md), based on `237aac9`.
+First export the exact present-moment stream winner and prove online parity, then
+ground trajectory/readiness before generation; extend readings, premonitions,
+withheld and relational context without removing their existing inputs or outputs.
+The newer .132 stream result is supplied by Gloria; the fetched stream document
+still contains the older .120 result. Bind the actual winning run before export.
+Gloria-head ranking gains remain mixed, as the retraining report records.
+
+Still open: implement and validate the proposed additive adapter and consumer wiring,
+run the isolated full suite, review, and Gloria's installation. This branch changes
+documentation only; no consumer, checkpoint, live store or service was changed.
+
 ## 22 October — retrained JEPA readouts; subconscious feeds restored (Codex, not deployed)
 
 `codex/jepa-heads-retrain` supersedes the preceding review's feed restrictions at Gloria's
@@ -4684,4 +4699,3 @@ Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full 
   `6056939`. Merging it makes every deploy refuse until the cutover is prepared, so it is merged on the evening she
   does it: prepare on Aegis, deploy, finalize, enrol the rebuilt phone app (Xcode on the Mac), the Pi if active.
   Steps: docs/security-auth-rollout.md on that branch. Until then the house on Funnel :8443 accepts the default secret.
-
