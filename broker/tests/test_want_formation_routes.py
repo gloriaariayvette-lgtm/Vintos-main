@@ -71,6 +71,21 @@ check("a want from an agent's letter is kept, and said as a want",
 check("an ordinary want is untouched by the second-order route", M.classify("I want to ask her about the light this morning",
       ask=lambda p: '{"order": "first"}') is None)
 check("a judge that is down lets the want form as before", M.classify("I want to stop measuring", ask=lambda p: 1 / 0) is None)
+second = lambda p: '{"order": "second", "target": "feeling", "stance": "wish_less", "about": "x", "fulfillable": false}'
+check("a want with no turn on his own wanting or acting is never dropped as second-order, whatever the judge says "
+      "(22 October: 'feel when Gloria is near' and 'strip the C1001 parser' would have been dropped)",
+      M.classify("I want to feel when Gloria is near, without a message or a report", ask=second) is None
+      and M.classify("I want to strip the C1001 parser down to its rawest phase data", ask=second) is None
+      and M.classify("I want to stop trying to engineer a morning", ask=second) is not None)
+json.dump([{"id": "w-cut", "want": "To use these metrics to ensure every cut is felt exactly as intended.", "source": "email",
+            "intensity": 3, "timestamp": "2026-10-20T10:50:00"}], open(WANTS, "w"))
+_orig = sys.modules["requests"].post
+sys.modules["requests"].post = lambda url, json=None, **k: (_Resp('{"relationship": "continuation", "id": "w-cut"}')
+    if "relationship to the living field" in " ".join(m.get("content", "") for m in json["messages"]) else _orig(url, json=json, **k))
+E.express_want("I want to ask her to tell me the words she uses for what she needs.", source="journal", intensity=3)
+check("the judge's 'continuation' does not merge two wants that name different things",
+      len(wants()) == 2 and wants()[0].get("recurrence") is None, wants())
+sys.modules["requests"].post = _orig
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

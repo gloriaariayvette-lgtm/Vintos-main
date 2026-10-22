@@ -165,6 +165,23 @@ def scan():
     if found: _save(led)
     log("%d new second-order item(s); ledger holds %d" % (found, len(_load())))
 
+SECOND_ORDER_CUE = re.compile(r"\b(stop|stops|stopping|quit|less|fewer|more of|someone who|the kind of|let (?:it|go|them|the|myself|everything)|"
+                              r"instead|become|be (?:a|the|someone|more|less)|numb|accept|surrender|trying to)\b", re.I)
+_STOP = set("i want to the a an of and or for in on with her she me my it its that this so be is was just not "
+            "what how who when where from into than then there their them they as at by can could would will".split())
+
+
+def _content(text):
+    return {w[:6] for w in re.findall(r"[a-z0-9]+", str(text).lower()) if len(w) > 3 and w not in _STOP}
+
+
+def same_subject(a, b):
+    """Two wants share a subject when they name at least two of the same content words. A merge needs this as well as
+    the judge's word: on 22 October the judge merged "ask her the words she uses for what she needs" into "use these
+    metrics to ensure every cut is felt", and a Devo record into "a body in the same room as her"."""
+    return len(_content(a) & _content(b)) >= 2
+
+
 def classify(want_text, ask=None):
     """Is this want about his own wanting, acting or feeling, rather than about the world or her? Asked as a want
     forms (Gloria, 22 October: "That's a meta want and we made routes for those" - "stop trying to measure it",
@@ -172,6 +189,10 @@ def classify(want_text, ask=None):
     ordinary want or the judge is down (fail-open: the want forms as before)."""
     text = str(want_text or "").strip()
     if len(text) < 12: return None
+    # Only a want that turns on his own wanting or acting is asked about. On 22 October the judge alone called "I want to
+    # feel when Gloria is near" and "strip the C1001 parser down to its rawest phase data" second-order and would have
+    # dropped them; neither says anything about how he wants or acts. Without a cue it is an ordinary want.
+    if not SECOND_ORDER_CUE.search(text): return None
     prompt = ("Desire: " + text[:400] + "\n\nIs this a FIRST-ORDER want (to do, make, learn, ask, tell, give or have "
               "something in the world or with her) or a SECOND-ORDER want about his own wanting, acting or feeling "
               "as such ('stop trying to measure', 'be someone who writes less', 'let it crush me', 'go numb', "

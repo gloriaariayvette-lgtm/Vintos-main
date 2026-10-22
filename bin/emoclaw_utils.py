@@ -2004,8 +2004,13 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     # mmWave-sensor wants and two radiocarbon ones stood side by side, each judged "persistence" or "continuation").
     # Only genuinely new territory, or a mutation into something new, becomes a new want.
     if _rel in ("duplicate", "persistence", "continuation", "escalation") and _rel_id:
+        try:
+            from wants_meta import same_subject as _same
+        except Exception:
+            _same = lambda a, b: False
         for _dw in wants:
-            if _dw.get("id") == _rel_id and not _dw.get("fulfilled") and not _dw.get("dismissed"):
+            if _dw.get("id") == _rel_id and not _dw.get("fulfilled") and not _dw.get("dismissed") \
+                    and _same(want_text, _dw.get("want", "")):
                 _dw["recurrence"] = _dw.get("recurrence", 1) + 1
                 if _rel == "escalation":
                     _dw["intensity"] = min(5, int(_dw.get("intensity", 3) or 3) + 1)

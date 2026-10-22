@@ -61,7 +61,9 @@ for w in sorted(live, key=lambda x: str(x.get("timestamp", ""))):
         continue
     rel, rid = relationship(text, kept) if kept else ("novel", "")
     target = next((k for k in kept if k.get("id") == rid), None)
-    if rel in MERGE and target is not None:
+    if rel in MERGE and target is not None and not M.same_subject(text, target.get("want", "")):
+        print("KEPT (judge said %s of [%s], but they name different things)\n    [%s] %s" % (rel, rid, w.get("id"), text[:110]))
+    elif rel in MERGE and target is not None:
         print("SAME WANT (%s) -> merged into [%s] %s\n    [%s] %s" % (rel, rid, str(target.get("want", ""))[:70], w.get("id"), text[:110]))
         target["recurrence"] = target.get("recurrence", 1) + w.get("recurrence", 1)
         if rel == "escalation":
