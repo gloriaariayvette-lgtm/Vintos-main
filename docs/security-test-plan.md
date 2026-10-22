@@ -1,5 +1,3 @@
-> AUTH-01 review update (22 October): source implementation and companion clients are prepared for approval, not deployed. Funnel stays on. Exact commands and rollback: [security-auth-rollout.md](security-auth-rollout.md). Complete public GET inventory: [security-public-get-routes.md](security-public-get-routes.md). Existing snapshot evidence below remains dated; source fixes do not imply live enforcement.
-
 # Security validation and regression plan
 
 22 October 2026. Tests must never contact providers, devices, Slack, ntfy or personal apps. Repoint **every** writable store and stub **every** sender; enforce a socket deny in the interpreter as defense in depth. Do not import live service entry points just to see what happens. No model is needed to validate a security gate.
@@ -51,9 +49,9 @@ Saved collectors in `audit/aegis/` inspect configuration/process metadata and sa
 
 ## AUTH-01 and existing voice-token guard
 
-The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not rewritten. Rerun the route inventory offline alongside alarm regressions after merging. Source tests are not evidence of production deployment. Default-secret rotation, telemetry/events token admission and private reads are one **unapplied-to-production** AUTH-01 source proposal with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, and `clients/mobile/`; validate all consumers and a joint rollback before production cutover approval.
+The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not rewritten. Rerun the route inventory offline alongside alarm regressions after merging. Source tests are not evidence of production deployment. Default-secret rotation and telemetry token admission remain one **unapplied** AUTH-01 proposal with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, and `clients/mobile/`; validate all consumers and a joint rollback before implementation/cutover approval.
 
-## Further remediation tests and acceptance boundaries
+## Proposed remediation tests, not implemented yet
 
 | Control | Offline regression that must fail before the repair | Acceptance boundary |
 |---|---|---|
@@ -67,16 +65,3 @@ The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not 
 | Financial boundary | Review provider pages' enforced/soft semantics; confirm owner-selected limits and independent recipients | No deliberate consumption, purchases or automatic account changes |
 
 The audit's production gate checks are bounded observations, not a complete endpoint authorization matrix. Expand that matrix in isolation and commission with ordinary-use evidence after approval.
-
-## Prepared AUTH-01 offline regressions
-
-`broker/tests/test_house_auth.py` has 20 tests: 16 standard-library admission/cutover tests and 4 in-process HTTP/WebSocket compatibility tests requiring the existing FastAPI/test-client dependencies. It uses scratch homes and a stubbed systemctl runner. No sockets or production stores are used. The optional HTTP dependency skip must be reported; this review also ran all 20 using test-only dependencies under `/tmp`.
-
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 broker/tests/test_house_auth.py
-node clients/mobile/tests/house_auth_client.test.cjs /path/to/vintos-app/src/runners/outreach.js
-```
-
-The companion repo has `vintos-app/tests/house-auth.cjs`, runnable directly from its app directory. Fetch, WebSocket, CapacitorKV and notifications are stubs; its tests never send. HTML inline scripts are syntax-checked separately. The standard isolated runner sets an explicit synthetic identity inside the child; production environment credentials are never test inputs.
-
-30 pre-existing focused suites passed after merging the deploy branch; see `audit/regression-results.json`. The complete Aegis deployment suite and physical/native/background acceptance remain pending approval. No approved rollout is inferred from these offline results.

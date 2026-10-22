@@ -9,8 +9,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 LM_STUDIO_API = os.environ.get("GROK_API_BASE", "http://127.0.0.1:8599/v1")
 LLM_API_KEY = os.environ.get("XAI_API_KEY", "")
 LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
-from house_auth import require_secret as _house_secret
-APP_SECRET = _house_secret()
+APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
 router = APIRouter()
 
 # Shared with cron writers; scope includes the read and mutation, not just replace.

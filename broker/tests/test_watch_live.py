@@ -38,7 +38,7 @@ check("his context has the hour's range from every reading, not one dot", "over 
 check("and says when live heart rate is on", "Live heart rate is on (she turned it on), for 30 more minutes." in block, block)
 check("fewer than three readings make no range", W.heart_trend(now=T + 7200) is None)
 routes = open(os.path.join(REPO, "scripts", "watch_routes.py")).read()
-check("every Watch check-in is told whether to run live", "return offered(dict(result, live=watch_presence.live_state()))" in routes)
+check("every Watch check-in is told whether to run live", "return dict(result, live=watch_presence.live_state())" in routes)
 check("her phone sets it, with the app's secret", '@routes.post("/api/watch/live")' in routes and 'request.headers.get("X-Vintos-Secret") != app_secret' in routes)
 # 21 October: she took it off; an hour later his context still said "wearing probably" from the last check-in
 W._atomic(W.LATEST, {"received_ts": T - 6360, "wearing": "probably", "motion": "unknown", "latest": {

@@ -1,12 +1,10 @@
-> AUTH-01 review update (22 October): source implementation and companion clients are prepared for approval, not deployed. Funnel stays on. Exact commands and rollback: [security-auth-rollout.md](security-auth-rollout.md). Complete public GET inventory: [security-public-get-routes.md](security-public-get-routes.md). Existing snapshot evidence below remains dated; source fixes do not imply live enforcement.
-
 # Vintos security threat model
 
 22 October 2026. Based on the verified Aegis snapshot in `security-audit.md`; proposed controls are not installed by this work.
 
 ## Source update after the audit snapshot
 
-Deploy-branch `a6e28e9e` is merged: the voice-token route now checks existing phone or Watch identity before effects. This is a source-level update, not a new live-deployment claim. The snapshot observations below remain dated evidence. The default-secret and telemetry-token migration is one proposed AUTH-01 package with all app/automation clients; the source proposal is prepared, but no production rotation or deployment is applied.
+Deploy-branch `a6e28e9e` is merged: the voice-token route now checks existing phone or Watch identity before effects. This is a source-level update, not a new live-deployment claim. The snapshot observations below remain dated evidence. The default-secret and telemetry-token migration is one proposed AUTH-01 package with all app/automation clients; none of that migration is applied.
 
 ## Assets and security goals
 

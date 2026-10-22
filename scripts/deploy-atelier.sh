@@ -234,13 +234,13 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS spotify_watch.py"
-SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py house_auth.py house_server_guard.py house_auth_rollout.py"
-BINS="$BINS paid_http.py house_auth.py briefing-audio.sh introspection.sh idle-journal.sh"
+SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py"
+BINS="$BINS paid_http.py briefing-audio.sh introspection.sh idle-journal.sh"
 SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
 
-CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js clients/mobile/house_auth_client.js"
+CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
@@ -491,27 +491,23 @@ if server_dst="$(dest bin/server.py)"; then
 "
         fi
     fi
-    for _client_server in "$server_dst" ${live_server:+"$live_server"}; do
     for spec in $CLIENTFILES; do
         case "$spec" in
-            */index.html) d="$(dirname -- "$_client_server")/website/app.html" ;;
-            *) d="$(dirname -- "$_client_server")/website/app/$(basename -- "$spec")" ;;
+            */index.html) d="$(dirname -- "$server_dst")/website/app.html" ;;
+            *) d="$(dirname -- "$server_dst")/website/app/$(basename -- "$spec")" ;;
         esac
         PLAN="$PLAN$SRC/$spec|$d
 "
-    done
     done
     if [ -f "$HOME/.config/systemd/user/vintos-emoclaw.service" ]; then
         PLAN="$PLAN$SRC/broker/vintos-emoclaw-provenance.conf|$HOME/.config/systemd/user/vintos-emoclaw.service.d/provenance.conf
 "
     fi
-    for _domain_server in "$server_dst" ${live_server:+"$live_server"}; do
     for spec in $DOMAINFILES; do
-        d="$(dirname -- "$_domain_server")/server_domains/$(basename -- "$spec")"
+        d="$(dirname -- "$server_dst")/server_domains/$(basename -- "$spec")"
         printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"
         PLAN="$PLAN$SRC/$spec|$d
 "
-    done
     done
 else
     ambiguous=1
@@ -523,10 +519,6 @@ while IFS='|' read -r _paid_src _paid_dst; do
     [ -f "$_paid_src" ] || continue
     if grep -q 'import paid_http' "$_paid_src"; then
         PLAN="$PLAN$SRC/scripts/paid_http.py|$(dirname -- "$_paid_dst")/paid_http.py
-"
-    fi
-    if grep -q 'house_auth' "$_paid_src"; then
-        PLAN="$PLAN$SRC/scripts/house_auth.py|$(dirname -- "$_paid_dst")/house_auth.py
 "
     fi
 done <<< "$PLAN"
@@ -697,22 +689,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# The first identity cutover is explicit and runs only inside the owner-approved deploy.
-_auth_cutover="${VINTOS_AUTH_CUTOVER:-}"
-if [ -n "$_auth_cutover" ]; then
-    python3 "$SRC/scripts/house_auth_rollout.py" preflight --id "$_auth_cutover" || die "house auth cutover preflight failed"
-else
-    python3 "$SRC/scripts/house_auth_rollout.py" preflight || die "prepare and approve the house identity cutover before deploying this release"
-fi
-
 # Hold through promotion and the final release receipt; never through dry-run.
 mkdir -p "$HOME/.vintos/deploy"
 exec 9>"$HOME/.vintos/deploy/security-install.lock"
 flock -x 9 || die "cannot acquire security installation lock"
-
-if [ -n "$_auth_cutover" ]; then
-    python3 "$SRC/scripts/house_auth_rollout.py" activate --id "$_auth_cutover" || die "house auth activation failed; no code promoted"
-fi
 
 # ------------------------------------------------------------ backup + install
 mkdir -p "$BACKUP" || die "cannot create $BACKUP"
@@ -1507,11 +1487,6 @@ for ln in open(os.environ["PLAN_FILE"]):
     try: sha = hashlib.sha256(open(dst, "rb").read()).hexdigest()[:16]
     except Exception: sha = None
     rows.append({"file": os.path.basename(src), "installed_at": dst, "sha256": sha})
-for rel in ("vintos-server.service.d/house-auth.conf", "vintos-robot-bridge.service.d/house-auth.conf"):
-    dst = os.path.expanduser("~/.config/systemd/user/" + rel)
-    if os.path.isfile(dst):
-        rows.append({"file": os.path.basename(dst), "installed_at": dst,
-                     "sha256": hashlib.sha256(open(dst, "rb").read()).hexdigest()[:16]})
 def unit(u, scope):
     try: return subprocess.run(["systemctl"] + scope + ["is-active", u], capture_output=True, text=True, timeout=5).stdout.strip()
     except Exception: return "unknown"

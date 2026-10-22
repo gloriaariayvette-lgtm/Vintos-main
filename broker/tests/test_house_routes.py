@@ -40,7 +40,7 @@ check("the realtime-token door is closed: the secret or the Watch token, nothing
       "xAI/OpenAI sessions and handed out his instructions to anyone who reached it)",
       "if not _voice_caller_ok(request):" in _vt and '"/api/voice/token"' not in src[src.index("PUBLIC_MUTATIONS"):src.index("def _require_secret")]
       and 'request.headers.get("X-Vintos-Secret") == APP_SECRET' in src[src.index("def _voice_caller_ok"):][:900])
-check("startup requires a provisioned secret", 'APP_SECRET = _house_secret()' in src)
+check("a default secret is warned about at startup", 'WARNING: VINTOS_SECRET is unset' in src)
 ast.parse(src)
 check("server still parses", True)
 
