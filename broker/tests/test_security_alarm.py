@@ -131,6 +131,16 @@ class SecurityTests(unittest.TestCase):
         self.assertTrue(A.remember(state,*events[0],self.now))
         self.assertFalse(A.remember(state,*events[0],self.now+10))
 
+    def test_journal_search_with_no_match_is_clean_not_blind(self):
+        from unittest.mock import patch
+        done=lambda rc,out:type('P',(),{'returncode':rc,'stdout':out})()
+        with patch.object(A.subprocess,'run',lambda *a,**k:done(1,'')):
+            self.assertEqual(A.run(['journalctl','--user','-g','^x']),'')
+            self.assertRaises(RuntimeError,A.run,['journalctl','-u','ssh.service'])
+            self.assertRaises(RuntimeError,A.run,['crontab','-l'])
+        with patch.object(A.subprocess,'run',lambda *a,**k:done(2,'')):
+            self.assertRaises(RuntimeError,A.run,['journalctl','--user','-g','^x'])
+
     def test_urllib_counts_actual_opens_and_redirects_not_preview_stub(self):
         from unittest.mock import patch
         import urllib.request

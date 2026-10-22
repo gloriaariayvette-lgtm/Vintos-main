@@ -104,6 +104,8 @@ def accounting_health(now, runner=None, since=None):
 
 def run(args):
     p = subprocess.run(args, capture_output=True, text=True, timeout=12)
+    # journalctl --grep exits 1 when nothing matched: a clean hour, not a blind monitor (22 October)
+    if p.returncode == 1 and args[0] == 'journalctl' and '-g' in args and not p.stdout.strip(): return ''
     if p.returncode: raise RuntimeError('probe failed: ' + Path(args[0]).name)
     return p.stdout
 
