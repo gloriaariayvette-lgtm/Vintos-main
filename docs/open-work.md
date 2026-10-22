@@ -4624,3 +4624,14 @@ Post-merge validation: 22/22 focused suites passed, including the inherited rout
 Ledger/import/fsync/fault-sink failures no longer refuse paid calls. Redacted fault/journal health evidence raises the accounting-loss alarm; only the owner's pause refuses a call. Existing compute-ledger remains the sole call ledger. Production inline/function import repairs preserve all three reported test files unchanged. The preview's actual urllib opens/redirects are counted; stub previews keep their no-write contract.
 
 Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full OS-isolated alarm matrix: 467 invoked, 463 passed, four failures reproduced on that deploy snapshot (latent day boundary, missing pdftotext, macOS localhost-bind profile, BSD grep PCRE). See `audit/security-alarm-full-suite.json`. Full Aegis deploy acceptance and installed alarm/ordinary-use delivery remain pending owner approval. Nothing deployed, rotated, restarted or sent by this revision.
+
+## Security (22 October)
+
+- **Alarm merged** (codex/security-alarms into the deploy branch, reviewed by Claude Code, Gloria's yes): provider
+  surges and host changes to her phone and the fault loop; `python3 ~/.vintos/workspace/scripts/paid_http.py pause`
+  stops every paid call.
+- **Password change approved by Gloria, NOT merged yet**: `codex/security-auth-cutover` (2acea0a) with app
+  `6056939`. Merging it makes every deploy refuse until the cutover is prepared, so it is merged on the evening she
+  does it: prepare on Aegis, deploy, finalize, enrol the rebuilt phone app (Xcode on the Mac), the Pi if active.
+  Steps: docs/security-auth-rollout.md on that branch. Until then the house on Funnel :8443 accepts the default secret.
+
