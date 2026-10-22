@@ -90,6 +90,13 @@ def normalize_source(spec):
     if out['source'] == 'interpro' and not out.get('accession'):
         value=out.get('uniprot_accession') or out.get('protein_accession') or out.get('query') or out.get('id')
         if value is not None:out['accession']=value
+    if out['source'] == 'pdb' and not out.get('entry_id'):
+        # 22 October: {"source": "pdb", "query": "entry_id:6V7X"} failed "PDB entry ID required" again and again
+        for key in ('pdb_id', 'pdb_code', 'id', 'query'):
+            value = re.sub(r'^\s*(?:entry_id|pdb_id|pdb|entry)\s*[:=]\s*', '', str(out.get(key) or ''), flags=re.I).strip()
+            if re.fullmatch(r'[0-9][A-Za-z0-9]{3}', value):
+                out.pop(key); out['entry_id'] = value.upper()
+                break
     if out['source'] == 'ncbi':
         op = str(out.get('operation') or out.get('database') or out.get('db') or '').lower()
         # Remove a transport prefix, not any scientific qualifier.

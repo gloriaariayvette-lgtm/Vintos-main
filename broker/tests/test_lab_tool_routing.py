@@ -144,7 +144,11 @@ class Tools(unittest.TestCase):
     def test_observed_source_shorthands_retain_exact_identifiers(self):
         for request,expected in [({'uniprot':'P69905'},{'source':'uniprot','query':'accession:P69905'}),
                                  ({'interpro':'P69905'},{'source':'interpro','accession':'P69905'}),
-                                 ({'source':'','pdb':'8SGW'},{'source':'pdb','entry_id':'8SGW'})]:
+                                 ({'source':'','pdb':'8SGW'},{'source':'pdb','entry_id':'8SGW'}),
+                                 # 22 October: the Lab asked this way and failed "PDB entry ID required" each time
+                                 ({'source':'pdb','query':'entry_id:6V7X'},{'source':'pdb','entry_id':'6V7X'}),
+                                 ({'source':'pdb','pdb_id':'6v7x'},{'source':'pdb','entry_id':'6V7X'}),
+                                 ({'source':'pdb','query':'reverse transcriptase'},{'source':'pdb','query':'reverse transcriptase'})]:
             self.assertEqual(T.normalize_request('source',request),expected)
 
     def test_same_question_may_use_distinct_instruments_but_not_repeat_one(self):
