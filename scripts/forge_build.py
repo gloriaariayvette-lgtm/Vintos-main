@@ -72,6 +72,13 @@ def _fable(system, messages, max_tokens=1500, timeout=120):
     """The reviewer (FABLE_MODEL, Opus 5.5 since 20 October) through his Anthropic key. Returns text or raises.
     Not Sonnet: she named the reviewer, so this calls that model and nothing else."""
     import urllib.request
+    try:   # on Gloria's subscription first (22 October); the paid call below only when it cannot answer
+        import claude_sub
+        if claude_sub.subscribed("forge-review"):
+            return claude_sub.ask(FABLE_MODEL, system, "\n\n".join(str(m.get("content", "")) for m in (messages or [])),
+                                  caller="forge-review", timeout=max(timeout, 600), effort="low")
+    except Exception:
+        pass
     key = _anthropic_key()
     if not key:
         raise RuntimeError("no Anthropic key for Fable (ANTHROPIC_API_KEY or auth-profiles.json)")

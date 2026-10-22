@@ -118,7 +118,20 @@ LAST = {}
 
 
 def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None, effort=None):
-    """Claude's text. Raises on no key or an API error, as the callers it replaces did."""
+    """Claude's text. Raises on no key or an API error, as the callers it replaces did. The Study's and the Forge's
+    callers are answered on Gloria's subscription first (claude_sub.py), and pay only when it cannot answer."""
+    if post is None and key is None:
+        try:
+            import claude_sub
+        except ImportError:
+            claude_sub = None
+        if claude_sub is not None and claude_sub.subscribed(caller):
+            try:
+                text = claude_sub.ask(model, system, user, caller=caller, timeout=max(timeout, 600), effort=effort)
+                LAST.clear(); LAST.update(stop="end_turn", out=0, subscription=True)
+                return text
+            except Exception:
+                pass                       # logged in subscription-usage.jsonl; this one call goes to the API
     key = key or _key()
     if not key:
         raise RuntimeError("no Anthropic key")
