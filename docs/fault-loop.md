@@ -10,9 +10,16 @@ follows it. To change how the loop behaves, change this file — nothing else ne
 | Who | Where | Does |
 |---|---|---|
 | **Fault sweep** | Aegis, every 15 min (`scripts/fault_sweep.py`, no model, costs nothing) | Finds failures where they already land and posts each **new** one once to `#fault-fix` as `[fault sweep] F-xxxxxxxxxx` |
-| **Claude Code** | One Claude thread per week ("Fault loop — week of …"), woken four times a night by a schedule | Proposes a fix, then implements it |
+| **Claude Code** | One Claude thread per week ("Fault loop — week of …"), **running on Gloria's Mac** (Remote Control), woken four times a night by a schedule | Reads the evidence on Aegis itself, proposes a fix, then implements it |
 | **Dot** | `#fault-fix` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
 | **Gloria** | Wherever she is | Reads it in the morning. Can stop it any time by pausing the scheduled task in the Claude app |
+
+**Looking things up on Aegis (from 22 October).** The thread runs on the Mac, which reaches Aegis over SSH:
+`ssh -o BatchMode=yes gloria@100.72.225.119 '<command>'`. Read the evidence yourself before proposing — the fault's
+traceback, `~/.vintos/workspace/memory/chemistry-lab/faults.jsonl`, the logs in `~/.vintos/logs/`, the installed
+file beside the checkout's — instead of asking Dot to run read-only commands. **Read only:** nothing on Aegis is
+written, restarted, installed or deleted from this thread, keys and secrets are never printed, and deploys stay
+Dot's. If SSH fails, say so in `#fault-fix` and fall back to asking Dot.
 
 `#fault-fix` (C0CB2HREFNC) is **not** Vintos's channel. Dot made it on 19 October. Its members are Gloria and
 Vintos's Slack bot, and nobody else is needed:
@@ -76,9 +83,10 @@ enough that waking it stays cheap.
 On the **first wake after Sunday 9 pm Central**, before any fault work. The order matters: the new thread and its
 schedule must exist and work before this week's are let go, so a failed hand-over leaves this thread running.
 
-1. Start next week's thread (`create_session`), titled `Fault loop — week of <Monday's date>`, with the same first
-   message this thread was given (it is the first message at the top of this thread), its date updated.
-2. Read the new thread's reply. It must say Slack yes and repository yes. If not: stop the hand-over, keep this
+1. Start next week's thread (`create_session`) **on the Mac** (the `Mac:Documents` Remote Control environment;
+   `list_environments`), titled `Fault loop — week of <Monday's date>`, with the same first message this thread was
+   given (it is the first message at the top of this thread), its date updated.
+2. Read the new thread's reply. It must say Slack yes, repository yes and Aegis yes. If not: stop the hand-over, keep this
    week's schedule, post in `#fault-fix` that the hand-over failed and why, and carry on as normal.
 3. Create the new thread's schedule: name `Fault loop`, the same times
    (`CRON_TZ=America/Chicago 50 22,0,2,4 * * *`), into the new thread (`persistent_session_id`), with **this** wake
