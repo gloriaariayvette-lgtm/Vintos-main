@@ -21,15 +21,15 @@ deploy, the Study itself), no existing test changed, one new test that passes. T
 study_fix.work, and a failure there comes back to this same conversation, with everything it has read, to repair.
 
 Thinking is as the house rule has it (claude_cache.body: effort low where it cannot be switched off). Every call is
-logged in anthropic-usage.jsonl as "study-fix"; a fix stops at its budget (VINTOS_STUDY_BUDGET_USD, default $4).
+logged in anthropic-usage.jsonl as "study-fix"; a fix stops at its budget (VINTOS_STUDY_BUDGET_USD, default $1).
 """
 import copy, json, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-MAX_TURNS = int(os.environ.get("VINTOS_STUDY_TURNS", "60"))
-BUDGET_USD = float(os.environ.get("VINTOS_STUDY_BUDGET_USD", "4.0"))
+MAX_TURNS = int(os.environ.get("VINTOS_STUDY_TURNS", "40"))
+BUDGET_USD = float(os.environ.get("VINTOS_STUDY_BUDGET_USD", "1.0"))   # Gloria, 22 October: not $4 a fix
 TURN_TOKENS = 12000
 LINES = 800
 TEST_TIMEOUT = 600
