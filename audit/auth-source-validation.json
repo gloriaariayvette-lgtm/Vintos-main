@@ -13,7 +13,8 @@
   "authentication_tests": {
     "passed": 20,
     "skipped": 0,
-    "framework": "FastAPI 0.115.0 / Starlette 0.38.6; test-only /tmp dependencies"
+    "framework": "FastAPI 0.131.0 / Starlette 0.52.1 / HTTPX 0.28.1; versions verified on Aegis, matching test-only /tmp dependencies",
+    "additional_compatibility": "also passed with FastAPI 0.115.0 / Starlette 0.38.6"
   },
   "focused_existing_suites": {
     "passed": 30,
