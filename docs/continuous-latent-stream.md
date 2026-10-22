@@ -1,7 +1,7 @@
 # Continuous latent stream — the idea, set against what he already has
 
 Captured 2026-10-18 by Gloria with Chat; fleshed out 2026-10-22 by Claude Code from the repository.
-**Status: an idea, kept. Not started.** Nothing here is built. Where this says what runs on Aegis and how often, it
+**Status: step 1 run on 22 October; not taken further as it stands (results below). Re-run in late November.** Nothing here is built. Where this says what runs on Aegis and how often, it
 is read from the code; schedules live in Aegis's crontab, which the repository does not hold, so the first step
 below is a read-only probe that confirms them.
 
@@ -108,3 +108,54 @@ stopped.
   added *beside* nomic, for his videos, images, music and audio, never in nomic's place. It is now in
   `scripts/media_embed.py` (its own venv and store). For this stream, its vectors are a separate source with their
   own projection; nomic and EmbeddingGemma 2 vectors are never compared directly, even though both are 768-d.
+
+## Step 1 result (22 October, on Aegis)
+
+`scripts/latent_stream_replay.py`, his last 46 days: 5,883 events (4,000 emotion readings, 1,133 inner-life
+sections, 305 threads, 127 creative, 153 of her turns, 165 of his). Trained on 1 to 8 October, validated 9 to 12,
+tested on 13 to 22 October (495 text events). Three runs; the first two exposed scoring and scaling faults, fixed in
+ea70a79 and 915b061. Third run, the one that counts:
+
+| | the recurrent state | "like the last one" | "like the last six" |
+|---|---|---|---|
+| next text event, MRR | 0.022 | **0.058** | 0.035 |
+| next text event, in top 10 | 3.4% | **14.6%** | 8.5% |
+| next emotion reading, error | **0.601** | 0.631 | |
+
+- **Text: it loses.** Even starting exactly at "like the last one", it learned to do worse: about 1,400 training text
+  events are far too few for a 768-d prediction, and it memorised them (training loss 7.8 to 0.48 while validation
+  turned up after epoch 9).
+- **Emotion: a small win**, about 5% under "the same as now".
+- **Surprise looked meaningful but is not yet evidence for the state.** In all three runs the most surprising test
+  events were Gloria's own news (the pier, the bull red, the coffee maker) and the least surprising his templated
+  "First Light" section. But "unlike the event before it" would rank them the same way, and the state lost to that.
+
+Decision, by the rule set before it ran: **not taken further as it stands.** It was not tuned further against the
+test days (three looks are already enough to start fitting the test). What would change the answer is more of him:
+chat-canonical only begins on 16 October. Re-run the same script unchanged in late November; if text still loses,
+try the smaller target (a 64-d projection of the text space, or retrieval from his own memories) before anything
+larger.
+
+## Second design (22 October, Chat's plan): `scripts/latent_stream_linear.py`
+
+Gloria: "Waiting is stupid." Chat's plan, built as written: once-per-event training and scoring; fixed day boundaries
+with all earlier history in training and a manifest of every event's split; a linear state at three fixed timescales
+over a train-only PCA of the text; the "like the last one" score kept as a direct path with a strongly regularised,
+contrastively trained correction; a separate ridge readout for emotion; selection on validation text MRR among designs
+that beat emotion persistence; then the test days once, with the history ablation, per-source results and a paired
+day-block interval. Timestamps, emotion axes and chat deduplication were checked in the stream builder first.
+
+### Second design, first result (22 October)
+
+| test days (13–22 Oct) | text MRR | top 10 | emotion error |
+|---|---|---|---|
+| "like the last one" | 0.057 | 14.5% | 0.346 (persistence) |
+| full state (history) | 0.059 | 12.0% | 0.286 |
+| present moment only (the predeclared ablation) | **0.120** | **26.8%** | 0.306 |
+
+The present-moment model (last text, current emotion, source, time of week, with a learned correction) doubled
+next-event ranking, day-block 95% interval for the gain [0.050, 0.077], and gained on every source. The history model
+lost to it because its state did not contain the last event at all, only the averaged history: it was never "the moment
+plus history". Fixed: the full state now holds everything the moment model has, plus the history. Also fixed: the
+house's bracketed stage directions inside chat turns ("[she spoke with her body, not words]") are no longer counted
+as Gloria's turns. Re-run is the second look at these test days: an informed follow-up, said so.

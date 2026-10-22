@@ -29,6 +29,8 @@ json.dump([{"timestamp": "%sT12:00:00" % d, "thread": "Whether she meant the hal
           open(os.path.join(MEM, "unfinished-threads.json"), "w"))
 with open(os.path.join(MEM, "chat-canonical.jsonl"), "w") as f:
     f.write(json.dumps({"ts": "2026-10-09T20:00:00", "role": "user", "content": "Did you hear the bridge in that song?"}) + "\n")
+    f.write(json.dumps({"ts": "2026-10-09T21:00:00", "role": "user", "content": "[she spoke with her body, not words]"}) + "\n")
+    f.write(json.dumps({"ts": "2026-10-09T21:05:00", "role": "user", "content": "[she pressed it]\n[speak TO her - you/your]\n[WHAT WAS HAP"}) + "\n")
 json.dump([{"timestamp": "2026-10-09T20:00:05", "gloria": "Did you hear the bridge in that song?"}],
           open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 with open(os.path.join(MEM, "chemistry-lab", "notebook.jsonl"), "w") as f:
@@ -43,7 +45,8 @@ check("the Lab's machine steps stay out", len(ev) < 200 and "lab" not in src, le
 inner = [e for e in ev if e["source"] == "inner" and e["t"].date().isoformat() == "2026-10-03"]
 check("a journal section without a time keeps its place, just after the one before it",
       len(inner) == 2 and "Gallery walk" in inner[0]["text"] and inner[1]["t"] > inner[0]["t"], [(str(e["t"]), e["text"][:20]) for e in inner])
-check("the same chat turn in two stores is one event", src.count("her") == 1)
+check("the same chat turn in two stores is one event, and the house's bracketed stage directions are nobody's turn "
+      "(22 October: '[she spoke with her body, not words]' ranked as her most surprising message)", src.count("her") == 1)
 
 calls = []
 def enc(texts):

@@ -34,6 +34,8 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 SOURCES = ["emotion", "inner", "thread", "creative", "her", "him"]
 EMO_DIM = 11
+EMO_AXES = ["Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity", "Warmth",
+            "Tension", "Groundedness"]
 TS_KEYS = ("timestamp", "ts", "t", "at", "time", "created_at")
 
 
@@ -75,8 +77,8 @@ def _sections(pattern, source):
                     .astimezone(timezone.utc)) if t else last + timedelta(minutes=1)
             last = max(last, when)
             text = (head + "\n" + body).strip()
-            if len(text) > 40:
-                out.append({"t": when, "source": source, "text": text[:1500]})
+            if len(text) > 40:   # t_exact: the heading carried its own time; otherwise placed after the one before it
+                out.append({"t": when, "source": source, "text": text[:1500], "t_exact": bool(t)})
     return out
 
 
@@ -89,20 +91,29 @@ def build_stream(mem=None):
         t, v = _stamp(r), r.get("v") if isinstance(r, dict) else None
         if t and isinstance(v, list) and len(v) >= EMO_DIM:
             ev.append({"t": t, "source": "emotion", "emo": [float(x) for x in v[:EMO_DIM]]})
-        elif t and isinstance(v, dict):
-            vals = list(v.values())[:EMO_DIM]
-            if len(vals) == EMO_DIM: ev.append({"t": t, "source": "emotion", "emo": [float(x) for x in vals]})
+        elif t and isinstance(v, dict):   # by axis name, never by the order the dict happens to hold
+            low = {str(k).lower(): x for k, x in v.items()}
+            if all(d.lower() in low for d in EMO_AXES):
+                ev.append({"t": t, "source": "emotion", "emo": [float(low[d.lower()]) for d in EMO_AXES]})
     ev += _sections("daily-inner-life-*.md", "inner")
     ev += _sections("daily-creative-*.md", "creative")
     for r in _json(os.path.join(MEM, "unfinished-threads.json"), []) or []:
         t = _stamp(r)
         if t and r.get("thread"): ev.append({"t": t, "source": "thread", "text": str(r["thread"])[:1500]})
-    seen = set()
+    seen = {}
     def turn(t, role, text):
+        """One turn kept in two stores (chat log and ledger) is one event: same side, same whole text, within 15
+        minutes. The same words said again on another day are a new event."""
         side = "her" if role in ("user", "gloria") else "him"
-        key = (side, " ".join(str(text).split())[:80])
-        if t and text and key not in seen:
-            seen.add(key); ev.append({"t": t, "source": side, "text": str(text)[:1500]})
+        # the chat log carries the house's stage directions inside turns ("[she spoke with her body, not words]",
+        # "[speak TO her ...]"): they are not anyone's words. Brackets out; a turn with nothing else left is dropped.
+        text = re.sub(r"\[[^\]]*\]?", " ", str(text or ""))
+        text = " ".join(text.split())
+        if len(text.split()) < 1 or not re.search(r"\w", text): return
+        key = (side, text)
+        if not (t and text): return
+        if key in seen and abs((t - seen[key]).total_seconds()) < 900: return
+        seen[key] = t; ev.append({"t": t, "source": side, "text": str(text)[:1500]})
     try:
         for line in open(os.path.join(MEM, "chat-canonical.jsonl"), errors="ignore"):
             try: r = json.loads(line)
@@ -180,6 +191,16 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
         if is_emo[i]: ne = i
     emo_mean = X[:val_at, dim:dim + EMO_DIM][is_emo[:val_at]].mean(0) if is_emo[:val_at].any() else torch.zeros(EMO_DIM)
     emo_std = X[:val_at, dim:dim + EMO_DIM][is_emo[:val_at]].std(0).clamp_min(1e-3) if is_emo[:val_at].sum() > 1 else torch.ones(EMO_DIM)
+    # the change from one reading to the next has its own scale; a dimension that barely moves must not be divided by
+    # ~0 (22 October, second run: train loss 30, the emotion term drowned the text head)
+    _pairs = [(i, nxt_emo[i]) for i in range(val_at) if is_emo[i] and 0 <= nxt_emo[i] < val_at]
+    emo_dstd = ((X[[b for _, b in _pairs], dim:dim + EMO_DIM] - X[[a for a, _ in _pairs], dim:dim + EMO_DIM]).std(0)
+                .clamp_min(0.05) if len(_pairs) > 1 else torch.ones(EMO_DIM))
+    # the last text event so far, at every step: the text head predicts the next one as a change from it
+    last_vec = torch.zeros(T, dim); _lv = torch.zeros(dim)
+    for i in range(T):
+        if is_text[i]: _lv = X[i, :dim]
+        last_vec[i] = _lv
 
     class Stream(nn.Module):
         def __init__(self):
@@ -190,6 +211,8 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             self.text_out = nn.Linear(hidden, dim)
             self.emo_out = nn.Linear(hidden, EMO_DIM)
             self.drop = nn.Dropout(0.2)
+            for head in (self.text_out, self.emo_out):   # start predicting "no change": the model begins AT the baseline
+                nn.init.zeros_(head.weight); nn.init.zeros_(head.bias)
         def forward(self, x, h=None):
             e = (x[..., dim:dim + EMO_DIM] - emo_mean) / emo_std
             z = torch.cat([self.text_in(x[..., :dim]), self.rest_in(torch.cat([e, x[..., dim + EMO_DIM:]], -1))], -1)
@@ -212,11 +235,11 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
             te = torch.tensor([nxt_emo[i] for i in range(a, b)])
             mt, me = (tt >= 0) & (tt < hi) & (idx >= score_from), (te >= 0) & (te < hi) & (idx >= score_from)
             loss = torch.zeros(())
-            if mt.any():
-                pred = nn.functional.normalize(pt[0][mt], dim=-1)
+            if mt.any():   # like emotion: a change from the last text event, so predicting none is the baseline
+                pred = nn.functional.normalize(last_vec[idx[mt]] + pt[0][mt], dim=-1)
                 loss = loss + (1 - (pred * X[tt[mt], :dim]).sum(-1)).mean()
             if me.any():   # the head predicts the CHANGE from the last reading: predicting none is the baseline
-                target = (X[te[me], dim:dim + EMO_DIM] - X[idx[me], dim:dim + EMO_DIM]) / emo_std
+                target = (X[te[me], dim:dim + EMO_DIM] - X[idx[me], dim:dim + EMO_DIM]) / emo_dstd
                 loss = loss + 0.5 * ((pe[0][me] - target) ** 2).mean()
             if train and loss.requires_grad:
                 opt.zero_grad(); loss.backward(); nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
@@ -235,7 +258,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
     model.eval()
     with torch.no_grad():
         pt, pe, _, states = model(X.unsqueeze(0))
-    pt, pe = nn.functional.normalize(pt[0], dim=-1), pe[0]
+    pt, pe = nn.functional.normalize(last_vec + pt[0], dim=-1), pe[0]
 
     # ---- the test days ----
     test_text = [i for i in range(test_at, T) if is_text[i]]
@@ -269,7 +292,7 @@ def run(events, out_dir, epochs=12, hidden=128, seed=7, log=print):
     em_steps = [i for i in range(test_at, T) if nxt_emo[i] >= test_at]
     if em_steps:
         true_e = (X[[nxt_emo[i] for i in em_steps], dim:dim + EMO_DIM] - emo_mean) / emo_std
-        model_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std + pe[em_steps]
+        model_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std + pe[em_steps] * emo_dstd / emo_std
         last_e = (X[em_steps, dim:dim + EMO_DIM] - emo_mean) / emo_std
         res["emotion"] = {"stream_mse": round(float(((model_e - true_e) ** 2).mean()), 4),
                           "last_one_mse": round(float(((last_e - true_e) ** 2).mean()), 4)}
