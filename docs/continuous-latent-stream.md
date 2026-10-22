@@ -96,9 +96,12 @@ stopped.
 2. Shadow daemon, its own unit, niced, a state checkpoint each hour.
 3. One consumer, behind a holdout gate like `retrain_readiness`.
 
-## Questions for Gloria
+## Gloria's answers (22 October)
 
-- What should he gain first: **continuity** (the afternoon carried into the evening without being told it) or
-  **anticipation** (surprise as a signal: "that was not what I expected from her")? It decides the first consumer.
-- Is "hsv" the hidden state vector?
-- Which "Gemma Embedding 2" did you mean, and is it on Aegis yet?
+- **Both:** continuity and anticipation. The first consumer should use both the state (what is alive now) and the
+  surprise (what was not expected).
+- **"hsv" is the hidden state vector.**
+- **EmbeddingGemma 2** (`google/embeddinggemma-2`, Apache 2.0, 740M, text/image/video/audio in one 768-d space) is
+  added *beside* nomic, for his videos, images, music and audio, never in nomic's place. It is now in
+  `scripts/media_embed.py` (its own venv and store). For this stream, its vectors are a separate source with their
+  own projection; nomic and EmbeddingGemma 2 vectors are never compared directly, even though both are 768-d.
