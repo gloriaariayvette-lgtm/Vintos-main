@@ -142,6 +142,11 @@ def main():
               'Return ONLY JSON: {"withheld":"<two sentences>","deliberate":x}')
     user = "GLORIA:\n" + g[:500] + "\n\nBEING:\n" + v[:700]
     try:
+        from latent_feed import append_context
+        user = append_context(user, "withheld", MEMORY)
+    except Exception:
+        pass
+    try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.3, "max_tokens": 320,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}, timeout=90)
         m = re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S)

@@ -1425,8 +1425,14 @@ def _novelty_directive():
                  "of what already matters. Depth sometimes wears the face of repetition.")
         _stance = ("You are unsure even of familiar ground - return to it honestly, not by rote." if _conf < HI_CONF
                    else "You know this ground well; the want here is to deepen it, not restate it.")
-    return ("UNDERTOW (let this bias the SHAPE of the want; never name, quote, or announce it):\n"
+    original = ("UNDERTOW (let this bias the SHAPE of the want; never name, quote, or announce it):\n"
             "Where you are already heading: " + _traj + "\n" + _core + " " + _stance + "\n\n")
+
+    try:
+        from latent_feed import append_context
+        return append_context(original, "novelty", _mem)
+    except Exception:
+        return original
 
 
 def generate_structural_want(seed=None):

@@ -236,7 +236,7 @@ def design(events, X, E, is_t, is_e, sp, dz, clock, history, emo_mu, emo_sd):
     return Z, H, LAST, MEAN6
 
 
-def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=200, log=print):
+def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=200, log=print, export_selected=False):
     os.makedirs(out, exist_ok=True)
     coverage, unseen = manifest(events, val_from, test_from, out)
     X, E, is_t, is_e = arrays(events)
@@ -341,6 +341,19 @@ def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=20
     report["acceptance"] = wins
     report["verdict"] = ("goes on to a shadow week" if all(wins.values()) else
                          "does not pass: " + ", ".join(k for k, v in wins.items() if not v))
+    if export_selected and ablation:
+        from latent_stream_export import export_fit
+        tz = os.environ.get("TZ")
+        if not tz:
+            from pathlib import Path
+            local = str(Path("/etc/localtime").resolve())
+            tz = local.split("/zoneinfo/", 1)[-1] if "/zoneinfo/" in local else None
+        if not tz:
+            raise ValueError("set TZ explicitly before exporting the selected fit")
+        report["serving_export"] = export_fit(
+            events, out, ablation[0], tz,
+            {"kind": "original-selected-fit", "same_weights_as_original": True},
+            steps=steps, fitted=(ablation[1], ablation[2]), val_from=val_from, test_from=test_from)
     json.dump(report, open(os.path.join(out, "linear-result.json"), "w"), indent=2, default=float)
     return report
 
@@ -360,7 +373,7 @@ def main():
     enc = encoder()
     ev = R.embed_texts(ev, lambda texts: enc.encode(texts, batch_size=32), os.path.join(out, "text-vectors.jsonl"))
     print("stream: %d events, %s; embedded in %.0f s" % (len(ev), dict(Counter(e["source"] for e in ev)), time.time() - t0))
-    rep = run(ev, out, a.val_from, a.test_from)
+    rep = run(ev, out, a.val_from, a.test_from, export_selected=True)
     print("\ncoverage by split:", json.dumps(rep["coverage"]))
     if rep.get("unseen_in_train_or_val"):
         print("NOT SEEN in training or validation (a shared fallback covers them):", rep["unseen_in_train_or_val"])

@@ -1,0 +1,64 @@
+{
+  "producer": {
+    "status": "updated",
+    "events": 6996,
+    "outcomes": 512
+  },
+  "consumer": {
+    "trajectory": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    },
+    "readiness": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    },
+    "novelty": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    },
+    "premonition": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    },
+    "withheld": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    },
+    "relational": {
+      "has_evidence": true,
+      "characters": 1122,
+      "anchors": 4,
+      "original_preserved": true
+    }
+  },
+  "refresh_seconds": 30.48648655693978,
+  "unchanged_status": "unchanged",
+  "unchanged_seconds": 0.011202389956451952,
+  "consumer_ms": [
+    19.38268996309489,
+    14.404240064322948,
+    14.021756942383945,
+    14.113238081336021,
+    15.183615032583475,
+    15.065993997268379
+  ],
+  "max_rss_kib": 2384940,
+  "network": "denied",
+  "writes": "private scratch only",
+  "checkpoint_ids": {
+    "present-moment.npz": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+    "gloria.npz": "1a563a0a97fcf28967f2c975fdf6d0a2c45875c5664411648bfc7956ae1a6594"
+  },
+  "scope": "actual admitted inputs and trained weights; generators tested with stubs separately; no live writes or sends"
+}

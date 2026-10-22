@@ -99,7 +99,12 @@ def gather_present():
                 lines.append(f"{('Gloria' if e.get('role') == 'user' else 'You')}: {text[:160]}")
         if lines:
             parts.append("THE LAST FEW WORDS BETWEEN YOU:\n" + "\n".join(lines))
-    return "\n\n".join(parts)[:2000]
+    original = "\n\n".join(parts)[:2000]
+    try:
+        from latent_feed import append_context
+        return append_context(original, "premonition", MEMORY)
+    except Exception:
+        return original
 
 
 def roll_future(present, i):

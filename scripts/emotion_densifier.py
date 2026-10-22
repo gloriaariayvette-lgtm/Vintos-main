@@ -27,7 +27,7 @@ def live_state():
     s.close()
     return json.loads(d)
 
-def main():
+def _sample():
     try:
         r = live_state()
     except Exception as e:
@@ -49,6 +49,18 @@ def main():
     traj = traj[-DENSE_CAP:]
     json.dump(traj, open(DENSE, "w"))
     print(f"[densify] appended point; dense trajectory now {len(traj)}")
+
+def main():
+    try:
+        return _sample()
+    finally:
+        # Text may have arrived even when the emotion vector did not change.
+        # The optional worker never delays or replaces the original sample.
+        try:
+            from latent_feed import launch_refresh
+            launch_refresh(memory=MEMORY)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

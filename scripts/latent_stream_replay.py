@@ -61,11 +61,11 @@ def _json(path, default):
     except (OSError, ValueError): return default
 
 
-def _sections(pattern, source):
+def _sections(pattern, source, mem=None):
     """Markdown day files -> one event per '## ' section. A heading's own time is used; a section without one takes
     the time of the section before it, one minute later (the file keeps them in the order they happened)."""
     out = []
-    for path in sorted(glob.glob(os.path.join(MEM, pattern))):
+    for path in sorted(glob.glob(os.path.join(mem or MEM, pattern))):
         m = re.search(r"(\d{4}-\d\d-\d\d)", os.path.basename(path))
         if not m: continue
         day = datetime.fromisoformat(m.group(1)).astimezone(timezone.utc)
@@ -78,7 +78,7 @@ def _sections(pattern, source):
             last = max(last, when)
             text = (head + "\n" + body).strip()
             if len(text) > 40:   # t_exact: the heading carried its own time; otherwise placed after the one before it
-                out.append({"t": when, "source": source, "text": text[:1500], "t_exact": bool(t)})
+                out.append({"t": when, "source": source, "text": text[:1500], "t_exact": bool(t), "file": os.path.basename(path)})
     return out
 
 

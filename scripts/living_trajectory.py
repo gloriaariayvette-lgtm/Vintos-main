@@ -125,6 +125,11 @@ def build():
         "updated": datetime.now(timezone.utc).isoformat(),
     }
 
+    if isinstance(_gp, dict) and _gp.get("latent_grounding"):
+        gloria_traj["latent_grounding"] = _gp["latent_grounding"]
+        gloria_traj["prose_confidence"] = _gp.get("prose_confidence")
+        gloria_traj["semantic_expected_error"] = _gp.get("semantic_expected_error")
+
     unresolved = []
     for src, tag, mfields in [
         (latent_threads, "latent-thread",     ("salience", "momentum", "pressure", "weight")),

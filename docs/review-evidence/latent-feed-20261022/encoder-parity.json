@@ -1,0 +1,8 @@
+{
+  "n": 16,
+  "max_component_abs": 2.3818281863312307e-07,
+  "min_cosine": 0.9999999999985281,
+  "passed": true,
+  "network": "denied",
+  "writes": "scratch only"
+}

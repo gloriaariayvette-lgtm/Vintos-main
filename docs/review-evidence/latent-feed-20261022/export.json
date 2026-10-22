@@ -1,0 +1,68 @@
+{
+  "checkpoint_id": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+  "snapshot_sha256": "cbe203babdd2e0c7783244cf2a5a8bcc5615c87a1962ecad18398891d05e9569",
+  "selection": {
+    "history": false,
+    "dz": 32,
+    "clock": "hour",
+    "lam": 0.01,
+    "emotion_lam": 10.0,
+    "beta": 0.255,
+    "gamma": 0.212
+  },
+  "provenance": {
+    "kind": "retained-input-refit",
+    "original_report_sha256": "63df92a4051e916f361563f5db89014f3745bf3b55e0647914dc542790e7b6dd",
+    "original_manifest_sha256": "581f562a087ca665cd6cfb94da109516f577cfaddc6e04722245ab50ef75364a",
+    "original_n": 7055,
+    "retained_n": 7014,
+    "missing": {
+      "emotion": 37,
+      "inner": 3
+    },
+    "uncached_texts": 1,
+    "original_content_identity": "not verifiable: old manifest has no content hashes",
+    "same_weights_as_original": false
+  },
+  "parity": {
+    "feature_max_abs": 0.0,
+    "last_max_abs": 0.0,
+    "mean_max_abs": 0.0,
+    "score_max_abs": 2.1210953654593467e-07,
+    "emotion_max_abs": 1.1102230246251565e-16,
+    "ranks_identical": true,
+    "n_frames": 7014,
+    "n_text_targets": 477,
+    "n_emotion_targets": 1204,
+    "seconds": 144.1964974120492,
+    "ms_per_frame": 20.55838286456362,
+    "passed": true
+  },
+  "test": {
+    "model": {
+      "mrr": 0.12508251202729917,
+      "top10": 0.27672955974842767,
+      "mrr_dup_aware": 0.12508251202729917
+    },
+    "online": {
+      "mrr": 0.12508251202729917,
+      "top10": 0.27672955974842767,
+      "mrr_dup_aware": 0.12508251202729917
+    },
+    "last_one": {
+      "mrr": 0.06302318154455167,
+      "top10": 0.16142557651991615,
+      "mrr_dup_aware": 0.06302318154455167
+    },
+    "mean_last_six": {
+      "mrr": 0.03324268097561673,
+      "top10": 0.07547169811320754,
+      "mrr_dup_aware": 0.03324268097561673
+    },
+    "emotion": {
+      "model": 0.29875414842393766,
+      "persistence": 0.34154292941093445
+    }
+  },
+  "consumer_claim": "score parity only; downstream benefit requires separate evaluation"
+}

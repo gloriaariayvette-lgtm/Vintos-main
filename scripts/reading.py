@@ -88,7 +88,7 @@ def open_reading(her_quote, his_reading, rivals=None, source="", at=None):
     return rid
 
 
-def from_missed_prediction(predicted, her_recent, source="gloria-prediction"):
+def from_missed_prediction(predicted, her_recent, source="gloria-prediction", evidence_context=""):
     """A prediction he graded a total miss is a misread with the evidence attached.
     Ask what else she might have meant - the rivals are the whole point."""
     rivals = []
@@ -97,7 +97,7 @@ def from_missed_prediction(predicted, her_recent, source="gloria-prediction"):
                    "She said:\n\"%s\"\n\nHe expected her to be moving toward:\n\"%s\"\n\n"
                    "That expectation was wrong. Give two OTHER things she might have meant or "
                    "wanted, each in one plain sentence. Do not hedge, do not moralize, and do "
-                   "not describe him. Just the two readings." % (her_recent[:400], predicted[:300]))
+                   "not describe him. Just the two readings." % (her_recent[:400], predicted[:300]) + evidence_context)
         rivals = [l.strip("-• ").strip() for l in out.split("\n") if len(l.strip()) > 10][:2]
     except Exception as e:
         log("rivals unavailable: %s" % e)

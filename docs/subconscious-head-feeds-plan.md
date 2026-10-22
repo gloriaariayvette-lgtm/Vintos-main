@@ -1,8 +1,9 @@
 # Feed the existing subconscious with trained predictions
 
 22 October 2026. Proposal for review on `codex/subconscious-head-feeds-plan`, based
-on retraining commit `237aac9`. This branch changes documentation only. Nothing is
-installed, removed, muted or newly gated.
+on retraining commit `237aac9`. This is the original design; the subsequently approved
+[implementation and validation](subconscious-head-feeds-implementation.md) are now on
+this branch. Nothing is installed, removed, muted or newly gated.
 
 ## Decision
 
@@ -205,5 +206,5 @@ becomes a new gate on his existing subconscious feeds. LoRA training does not bl
 this work: a future voice change needs its own evaluation and can reuse this evidence
 interface without changing the frozen encoder or deleting any feed.
 
-This proposal does not implement that wiring or claim consumer acceptance. Execution
-status belongs in [open work](open-work.md).
+The original proposal is retained here. Implementation and measured acceptance are
+reported separately above; execution status belongs in [open work](open-work.md).

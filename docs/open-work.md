@@ -1,17 +1,21 @@
-## 22 October — additive trained evidence for subconscious feeds (proposal)
+## 22 October — additive trained subconscious feeds implemented (review only)
 
-`codex/subconscious-head-feeds-plan` contains the
-[ranked integration proposal](subconscious-head-feeds-plan.md), based on `237aac9`.
-First export the exact present-moment stream winner and prove online parity, then
-ground trajectory/readiness before generation; extend readings, premonitions,
-withheld and relational context without removing their existing inputs or outputs.
-The newer .132 stream result is supplied by Gloria; the fetched stream document
-still contains the older .120 result. Bind the actual winning run before export.
-Gloria-head ranking gains remain mixed, as the retraining report records.
+`codex/subconscious-head-feeds-plan` now implements its
+[proposal](subconscious-head-feeds-plan.md). See the
+[implementation, measured limits and artifact handoff](subconscious-head-feeds-implementation.md).
+The portable present-moment scorer passes incremental/batch parity, and its optional
+adapter feeds existing trajectory/readiness/novelty, missed readings, premonition,
+withheld and relational paths without removing their original content or triggers.
 
-Still open: implement and validate the proposed additive adapter and consumer wiring,
-run the isolated full suite, review, and Gloria's installation. This branch changes
-documentation only; no consumer, checkpoint, live store or service was changed.
+The original experiment did not retain weights/full inputs; 37 training emotion
+readings aged out. The explicitly labeled fixed-configuration retained-data refit
+scores MRR .1251 versus .0630/.0332 and emotion error .2988 versus .3415. Past-only
+retrieval improves overall but loses on thread targets. No further test tuning.
+Real weights reach all six context readers in guarded Aegis scratch; nothing is
+installed live. Still open: Claude Code review, any merge only after review, Gloria's
+artifact/deployment decision, and ordinary live consumer/outcome acceptance afterward.
+Full isolated suite and its three known Mac fixture failures are documented in the
+validation receipt. No paid calls or test sends.
 
 ## 22 October — retrained JEPA readouts; subconscious feeds restored (Codex, not deployed)
 

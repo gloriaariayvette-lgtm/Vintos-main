@@ -533,6 +533,14 @@ def _conf(lv):
 
 def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     import numpy as np, torch
+    # This scheduled job also advances the optional stream when chat is unchanged.
+    # Failure adds no evidence and never prevents the original head forecast.
+    if not shadow:
+        try:
+            from latent_feed import refresh
+            refresh(memory=MEMORY)
+        except Exception as exc:
+            log("additive latent context unavailable: %s" % type(exc).__name__)
     if not os.path.exists(model_path):
         log("no model — run `train` first"); return
     import io, hashlib

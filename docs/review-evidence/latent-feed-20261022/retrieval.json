@@ -1,0 +1,50 @@
+{
+  "checkpoint_id": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+  "n": 477,
+  "candidate_pool": "last 512 earlier text events",
+  "anchor_budget": 2,
+  "metric": "mean cosine similarity of selected past anchors to actual next text",
+  "all_candidates_before_target": true,
+  "means": {
+    "recent_context": 0.5358712191476762,
+    "last_text_retrieval": 0.5393726455840425,
+    "trained_retrieval": 0.5557850303764863
+  },
+  "trained_minus_last_retrieval_day_95ci": [
+    0.007820132361708473,
+    0.026181760586084107
+  ],
+  "per_source": {
+    "creative": {
+      "n": 27,
+      "recent_context": 0.46360617324158,
+      "last_text_retrieval": 0.45373588358914413,
+      "trained_retrieval": 0.4716171313215185
+    },
+    "her": {
+      "n": 44,
+      "recent_context": 0.5196011107076298,
+      "last_text_retrieval": 0.5006829012523998,
+      "trained_retrieval": 0.5611513521183621
+    },
+    "him": {
+      "n": 46,
+      "recent_context": 0.6320966326672098,
+      "last_text_retrieval": 0.6359364487554716,
+      "trained_retrieval": 0.6584743410348892
+    },
+    "inner": {
+      "n": 297,
+      "recent_context": 0.5387851247683118,
+      "last_text_retrieval": 0.5442278255717923,
+      "trained_retrieval": 0.5621774196624756
+    },
+    "thread": {
+      "n": 63,
+      "recent_context": 0.4942083940619514,
+      "last_text_retrieval": 0.5096999141905043,
+      "trained_retrieval": 0.48299403370372834
+    }
+  },
+  "limits": "Already inspected October block; descriptive proxy, not generator quality or lived benefit. No test-driven tuning."
+}

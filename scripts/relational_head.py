@@ -146,8 +146,14 @@ def get_relational_hint():
     tr = d.get("trajectory", 0) or 0; nov = d.get("novelty")
     move = "moving strongly" if tr > 0.5 else ("shifting" if tr > 0.2 else "steady")
     fresh = " toward something newly-shaped" if (nov is not None and nov > 0.5) else ""
-    return ("[RELATIONAL - where you two are heading: %s%s (trajectory %s, novelty %s, p %s). "
+    original = ("[RELATIONAL - where you two are heading: %s%s (trajectory %s, novelty %s, p %s). "
             "Let where this is going shape the reach of this moment.]" % (move, fresh, tr, nov, d.get("p_value")))
+
+    try:
+        from latent_feed import append_context
+        return append_context(original, "relational", MEMORY)
+    except Exception:
+        return original
 
 if __name__ == "__main__":
     main()

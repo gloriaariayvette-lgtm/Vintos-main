@@ -184,6 +184,13 @@ def main():
     user = (f"PREVIOUS PREDICTION OF HER: {prev.get('predicted','(none)')}\n\n"
             f"WHAT SHE SAID AFTER THAT PREDICTION WAS MADE (grade it against these words of hers, and only these):\n{_said_after}\n\n"
             f"RECENT CONVERSATION:\n{convo}")
+    grounding = {}
+    try:
+        from latent_feed import evidence
+        extra, grounding = evidence("trajectory", MEMORY)
+        user += extra
+    except Exception:
+        pass
     try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.3, "max_tokens": 220,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}, timeout=90)
@@ -215,6 +222,11 @@ def main():
                               {"output_provenance": "ordinary_generation", "may_witness": True}),
     }
 
+    if grounding:
+        out["latent_grounding"] = grounding
+    out["prose_confidence"] = out["confidence"]
+    out["prose_novelty"] = out["novelty"]
+
     # JEPA fusion: if the frozen-encoder predictor has run, prefer its GROUNDED
     # uncertainty (embedding-based) over the LLM's guessed confidence/novelty.
     # Keeps the LLM's readable 'predicted' sentence; grounds the numbers. Drop-in.
@@ -236,6 +248,9 @@ def main():
         out["grounded_by"] = "jepa"
         out["grounding_evaluated"] = True
         out["confidence_source"] = "jepa_calibrated"
+        if jp.get("readout_calibration"):
+            out["semantic_expected_error"] = 2 * (1 - _jc) if _jc is not None else None
+            out["semantic_confidence_meaning"] = "1 - expected cosine error / 2; not prose certainty"
         out["jepa_nearest"] = str(jp.get("gloria_forecast_nearest", ""))[:160]
     elif jp.get("source") == "jepa":
         # the predictor ran but its numbers do not qualify here: keep the LLM's and say exactly why
@@ -282,7 +297,17 @@ def main():
                 if len(_a["words"]) > 15:
                     _her = _a["turn"]; break
             if _her:
-                _rd_open(prev["predicted"], _her)
+                _extra = ""
+                try:
+                    from latent_feed import missed_evidence
+                    _extra = missed_evidence((prev.get("latent_grounding") or {}).get("frame_id"),
+                                             _her, _a["at"], MEMORY)
+                except Exception:
+                    pass
+                if _extra:
+                    _rd_open(prev["predicted"], _her, evidence_context=_extra)
+                else:
+                    _rd_open(prev["predicted"], _her)
         except Exception as _rd_e:
             print("[gloria-predict] reading not opened:", _rd_e)
 

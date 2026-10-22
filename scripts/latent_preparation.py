@@ -101,6 +101,11 @@ def voice(conf, nov, hint, det_posture):
             f"POSTURE TO VOICE: {det_posture}\n"
             f"(faint directional hint, do NOT quote or plan around it: {hint[:120]})")
     try:
+        from latent_feed import append_context
+        user = append_context(user, "readiness", MEMORY)
+    except Exception:
+        pass
+    try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.7, "max_tokens": 160,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}, timeout=90)
         raw = r.json()["choices"][0]["message"]["content"]
