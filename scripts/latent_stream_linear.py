@@ -112,8 +112,9 @@ def states(events, X, E, is_t, is_e, P, mu, emo_mu, emo_sd, clock="hour", histor
         if clock == "week": clk += [math.sin(loc.weekday() / 7 * 2 * math.pi), math.cos(loc.weekday() / 7 * 2 * math.pi)]
         en = (last_e - emo_mu) / emo_sd
         src = [1.0 if e["source"] == s else 0.0 for s in SOURCES]
-        if history:
-            h = np.concatenate([m.ravel(), en, (last_e - ema) / emo_sd, src, [age], clk, [1.0]])
+        if history:   # everything the present-moment model has, PLUS the held history (22 October: without z_last
+            # here, "with history" was a blurrier picture, not the moment and more; it lost to the moment alone)
+            h = np.concatenate([z_last, en, src, [age], clk, [1.0], m.ravel(), (last_e - ema) / emo_sd])
         else:   # the ablation: no older state, only what the last moment gives
             h = np.concatenate([z_last, en, src, [age], clk, [1.0]])
         H.append(h)

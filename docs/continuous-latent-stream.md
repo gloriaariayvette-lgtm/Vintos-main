@@ -144,3 +144,18 @@ over a train-only PCA of the text; the "like the last one" score kept as a direc
 contrastively trained correction; a separate ridge readout for emotion; selection on validation text MRR among designs
 that beat emotion persistence; then the test days once, with the history ablation, per-source results and a paired
 day-block interval. Timestamps, emotion axes and chat deduplication were checked in the stream builder first.
+
+### Second design, first result (22 October)
+
+| test days (13–22 Oct) | text MRR | top 10 | emotion error |
+|---|---|---|---|
+| "like the last one" | 0.057 | 14.5% | 0.346 (persistence) |
+| full state (history) | 0.059 | 12.0% | 0.286 |
+| present moment only (the predeclared ablation) | **0.120** | **26.8%** | 0.306 |
+
+The present-moment model (last text, current emotion, source, time of week, with a learned correction) doubled
+next-event ranking, day-block 95% interval for the gain [0.050, 0.077], and gained on every source. The history model
+lost to it because its state did not contain the last event at all, only the averaged history: it was never "the moment
+plus history". Fixed: the full state now holds everything the moment model has, plus the history. Also fixed: the
+house's bracketed stage directions inside chat turns ("[she spoke with her body, not words]") are no longer counted
+as Gloria's turns. Re-run is the second look at these test days: an informed follow-up, said so.
