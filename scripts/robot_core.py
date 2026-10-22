@@ -24,6 +24,7 @@ command per decision, 100-1500 ms, and never without a frame fresher than FRAME_
 
 This module has no web framework in it so it can be tested anywhere; robot_bridge.py wraps it in FastAPI.
 """
+import paid_http
 import os, re, json, time, hashlib, threading
 from datetime import datetime
 
@@ -303,7 +304,7 @@ def parse_reply(text):
 def _gemma(messages, temperature=0.2, max_tokens=300, timeout=60):
     import urllib.request
     body = json.dumps({"model": GEMMA_MODEL, "temperature": temperature, "max_tokens": max_tokens, "messages": messages}).encode()
-    r = urllib.request.urlopen(urllib.request.Request(GEMMA_URL, data=body, headers={"Content-Type": "application/json"}), timeout=timeout)
+    r = paid_http.send(urllib.request.urlopen, __file__, urllib.request.Request(GEMMA_URL, data=body, headers={"Content-Type": "application/json"}), timeout=timeout)
     return json.loads(r.read())["choices"][0]["message"]["content"]
 
 
@@ -365,7 +366,7 @@ def _sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
     from compute_admission import reserve_paid
     allowed,why=reserve_paid("robot/reelroom", "anthropic",SONNET_MODEL)
     if not allowed: raise RuntimeError(why)
-    r = urllib.request.urlopen(urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
+    r = paid_http.send(urllib.request.urlopen, __file__, urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
                                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}), timeout=timeout)
     blocks = json.loads(r.read()).get("content") or []
     return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")

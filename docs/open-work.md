@@ -4581,3 +4581,22 @@ advances each anchor after HTTP success regardless of stored count, and retains 
 The offline native regression test exercises the actual response/telemetry/drain code for both outcomes.
 The combined iPhone build 21 with Watch build 21 embedded was installed and verified on the paired iPhone;
 physical Watch installation and sensor delivery still require device-side acceptance.
+
+## 22 October — infrastructure security audit and provider alarms
+
+Review candidate on `codex/security-alarms`; **not deployed**. Read-only Aegis evidence confirms
+accepted source-default app authentication, anonymous telemetry WS acceptance, an installed
+unauthenticated realtime mint/context handler, public Funnel app configuration, shared-UID
+Docker socket access and missing service/resource controls. Findings, evidence, threat model,
+rollback plan, tests and provider-owned billing instructions are in `docs/security-*.md`.
+
+The requested alarm is built locally: existing compute-ledger attempt rows at known transports,
+manual paid pause, provider rate detection through `deliver.py`, host-change monitoring, existing
+fault-loop input, timer/manifest/rollback integration and offline regressions. The focused run
+passes 21/21 suites (29 tests in the new alarm suite). No real provider/test delivery was sent.
+
+Not done: full cross-host/SDK/wire-level paid-call coverage reconciliation; full repository suite;
+owner-approved Aegis scratch commissioning; main-thread review/merge; Gloria's deployment;
+ordinary-usage alarm delivery/installed acceptance; credential/public-route remediation;
+root/Windows/Mac/network-account checks and clean-host backup restoration. Do not call the
+infrastructure hardened or the alarm active before these acceptance boundaries are met.

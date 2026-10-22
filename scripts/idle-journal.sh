@@ -433,6 +433,9 @@ SCENE_IMG=$(python3 /home/gloria/.vintos/workspace/scripts/scene-selector.py jou
 export _JRN_SCENE="$SCENE_IMG"
 _JRN_ENTRY_TMP=$(mktemp /tmp/vintos-idle-entry.XXXXXX) || exit 1
 python3 << 'PYEOF' > "$_JRN_ENTRY_TMP"
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import requests, os
 
 def _safe_extract(r):
@@ -684,7 +687,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         else: _body["output_config"] = {"effort": "low"}
         _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                          headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
-        try: _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+        try: _d = _j.loads(paid_http.send(_u.urlopen, 'idle-journal.sh', _rq, timeout=180).read())
         except Exception: return None, ''
         try:
             _lu = _d.get("usage", {}) if isinstance(_d, dict) else {}
@@ -737,7 +740,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _rq = _u.Request("https://api.openai.com/v1/chat/completions", data=_j.dumps(_body).encode(),
                          headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
-            _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+            _d = _j.loads(paid_http.send(_u.urlopen, 'idle-journal.sh', _rq, timeout=600).read())
         except _u.HTTPError as _he:
             # OpenAI says why in the body; "HTTP Error 400: Bad Request" alone named nothing (2026-09-30)
             try: _why = _he.read().decode("utf-8", "replace")[:400]
@@ -770,7 +773,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _rq = _u.Request("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
                          data=_j.dumps(_body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": k})
         try:
-            _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+            _d = _j.loads(paid_http.send(_u.urlopen, 'idle-journal.sh', _rq, timeout=600).read())
         except _u.HTTPError as _he:
             try: _why = _he.read().decode("utf-8", "replace")[:400]
             except Exception: _why = ""
@@ -1713,6 +1716,9 @@ fi
 
 # Emotion nudge — contextual, based on what he actually wrote
 python3 - << 'JOURNALNUDGEEOF' 2>/dev/null
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import socket, json, os, requests, re
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 LM = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
@@ -1723,7 +1729,7 @@ if not journal_text:
     nudges = {}   # a failed call is not a feeling
 else:
     try:
-        resp = requests.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+        resp = paid_http.send(requests.post, 'idle-journal.sh', LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "temperature": 0.3,
             "max_tokens": 80,

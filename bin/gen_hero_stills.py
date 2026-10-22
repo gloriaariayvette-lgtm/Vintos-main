@@ -17,6 +17,7 @@ promote your favorites into the slots the sender uses.
 
 Options: --no-ref (pure text-to-image, don't face-lock to the hero), --model <id> (override image model).
 """
+import paid_http
 import os, sys, json, time, base64, shutil
 
 def _sg_write(_p, _o, _who="organ"):
@@ -179,7 +180,7 @@ def generate(prompt, use_ref, model=None, verbose=False):
         if use_ref and os.path.exists(HERO):
             body["image"] = data_uri(HERO)   # face reference (Seedream edit/reference); harmless if ignored
     try:
-        r = requests.post(BASE + "/generateImage", headers=H, json=body, timeout=120)
+        r = paid_http.send(requests.post, __file__, BASE + "/generateImage", headers=H, json=body, timeout=120)
     except Exception as e:
         log("submit error: %s" % e); return None
     if verbose:
@@ -199,7 +200,7 @@ def generate(prompt, use_ref, model=None, verbose=False):
             break
         time.sleep(4)
         try:
-            pr = requests.get(BASE + "/prediction/" + pid, headers=H, timeout=30).json()
+            pr = paid_http.send(requests.get, __file__, BASE + "/prediction/" + pid, headers=H, timeout=30).json()
         except Exception as e:
             log("poll error: %s" % e); continue
         if verbose and i < 2:
@@ -211,7 +212,7 @@ def generate(prompt, use_ref, model=None, verbose=False):
         log("no image in response after polling"); return None
     kind, val = img
     try:
-        return requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
+        return paid_http.send(requests.get, __file__, val, timeout=120).content if kind == "url" else base64.b64decode(val)
     except Exception as e:
         log("image fetch/decode failed: %s" % e); return None
 
@@ -227,7 +228,7 @@ def list_models(filter_kw=None):
     data = None
     for u in tried:
         try:
-            r = requests.get(u, headers=H, timeout=30)
+            r = paid_http.send(requests.get, __file__, u, headers=H, timeout=30)
             if r.status_code == 200:
                 data = r.json(); log("models from: %s" % u); break
             else:
@@ -287,7 +288,7 @@ def edit_image(inp, instruction, model, out, verbose=True):
         body = {"model": model, "prompt": prompt, field: [uri]}
         body.update(extra)
         try:
-            r = requests.post(BASE + "/generateImage", headers=H, json=body, timeout=120)
+            r = paid_http.send(requests.post, __file__, BASE + "/generateImage", headers=H, json=body, timeout=120)
         except Exception as e:
             log("  [%s] submit error: %s" % (field, e)); continue
         if verbose:
@@ -308,7 +309,7 @@ def edit_image(inp, instruction, model, out, verbose=True):
                 break
             time.sleep(4)
             try:
-                pr = requests.get(BASE + "/prediction/" + pid, headers=H, timeout=30).json()
+                pr = paid_http.send(requests.get, __file__, BASE + "/prediction/" + pid, headers=H, timeout=30).json()
             except Exception as e:
                 log("  poll error: %s" % e); continue
             if _find_status(pr) in ("failed", "error", "canceled", "cancelled"):
@@ -318,7 +319,7 @@ def edit_image(inp, instruction, model, out, verbose=True):
             log("  no image after polling"); return None
         kind, val = img
         try:
-            data = requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
+            data = paid_http.send(requests.get, __file__, val, timeout=120).content if kind == "url" else base64.b64decode(val)
         except Exception as e:
             log("  fetch/decode failed: %s" % e); return None
         open(out, "wb").write(data)
@@ -337,7 +338,7 @@ def fetch_schema(model):
     for kind in ("example", "schema"):
         url = "https://static.atlascloud.ai/model/%s/%s.json" % (kind, slug)
         try:
-            r = requests.get(url, timeout=30)
+            r = paid_http.send(requests.get, __file__, url, timeout=30)
             if r.status_code == 200:
                 got = True
                 log("\n=== %s  (%s) ===" % (kind.upper(), url))
@@ -376,7 +377,7 @@ def compose_together(hero_file, prompt, model, verbose=True):
         body = {"model": model, "prompt": prompt, field: uris}
         body.update(extra)
         try:
-            r = requests.post(BASE + "/generateImage", headers=H, json=body, timeout=120)
+            r = paid_http.send(requests.post, __file__, BASE + "/generateImage", headers=H, json=body, timeout=120)
         except Exception as e:
             log("  [%s] submit error: %s" % (field, e)); continue
         if verbose:
@@ -398,7 +399,7 @@ def compose_together(hero_file, prompt, model, verbose=True):
                 break
             time.sleep(4)
             try:
-                pr = requests.get(BASE + "/prediction/" + pid, headers=H, timeout=30).json()
+                pr = paid_http.send(requests.get, __file__, BASE + "/prediction/" + pid, headers=H, timeout=30).json()
             except Exception as e:
                 log("  poll error: %s" % e); continue
             if _find_status(pr) in ("failed", "error", "canceled", "cancelled"):
@@ -408,7 +409,7 @@ def compose_together(hero_file, prompt, model, verbose=True):
             log("  no image after polling"); return None
         kind, val = img
         try:
-            data = requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
+            data = paid_http.send(requests.get, __file__, val, timeout=120).content if kind == "url" else base64.b64decode(val)
         except Exception as e:
             log("  fetch/decode failed: %s" % e); return None
         dst = os.path.join(HERO_DIR, "hero-together.jpg")

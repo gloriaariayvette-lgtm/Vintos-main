@@ -1,0 +1,2226 @@
+{
+  "at": 1792653017.0686295,
+  "host": "Aegis",
+  "source_revision": {
+    "rc": 0,
+    "out": "e502b389c77e815086a5d9a6047c950ead0d8ec9\n"
+  },
+  "listeners": {
+    "rc": 0,
+    "out": "udp UNCONN 0      0                           127.0.0.54:53    0.0.0.0:*\nudp UNCONN 0      0                        127.0.0.53%lo:53    0.0.0.0:*\nudp UNCONN 0      0                       10.255.255.254:53    0.0.0.0:*\nudp UNCONN 0      0                            127.0.0.1:323   0.0.0.0:*\nudp UNCONN 0      0                            127.0.0.1:33114 0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:1900  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:5353  0.0.0.0:*\nudp UNCONN 0      0                        172.18.21.161:5353  0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:56630 0.0.0.0:*\nudp UNCONN 0      0                              0.0.0.0:58351 0.0.0.0:*\nudp UNCONN 0      0                                [::1]:323      [::]:*\nudp UNCONN 0      0                                    *:1900        *:*\nudp UNCONN 0      0                                    *:54000       *:*\nudp UNCONN 0      0                                    *:5353        *:*\nudp UNCONN 0      0      [fe80::215:5dff:fe10:4e81]%eth0:5353     [::]:*\nudp UNCONN 0      0                                    *:5353        *:*\nudp UNCONN 0      0                                 [::]:58082    [::]:*\ntcp LISTEN 0      4096                     127.0.0.53%lo:53    0.0.0.0:*\ntcp LISTEN 0      5                              0.0.0.0:8791  0.0.0.0:*\ntcp LISTEN 0      511                            0.0.0.0:8788  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:8599  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:8625  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:8624  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:8612  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:8611  0.0.0.0:*\ntcp LISTEN 0      4096                    100.72.225.119:443   0.0.0.0:*\ntcp LISTEN 0      2048                           0.0.0.0:8404  0.0.0.0:*\ntcp LISTEN 0      2048                           0.0.0.0:8403  0.0.0.0:*\ntcp LISTEN 0      2048                           0.0.0.0:8400  0.0.0.0:*\ntcp LISTEN 0      2048                           0.0.0.0:8500  0.0.0.0:*\ntcp LISTEN 0      5                              0.0.0.0:8501  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:41507 0.0.0.0:*\ntcp LISTEN 0      511                          127.0.0.1:8787  0.0.0.0:*\ntcp LISTEN 0      2048                           0.0.0.0:8001  0.0.0.0:*\ntcp LISTEN 0      128                            0.0.0.0:8123  0.0.0.0:*\ntcp LISTEN 0      511                          127.0.0.1:8079  0.0.0.0:*\ntcp LISTEN 0      128                          127.0.0.1:7681  0.0.0.0:*\ntcp LISTEN 0      128                          127.0.0.1:6402  0.0.0.0:*\ntcp LISTEN 0      511                          127.0.0.1:6390  0.0.0.0:*\ntcp LISTEN 0      5                            127.0.0.1:5555  0.0.0.0:*\ntcp LISTEN 0      4                            127.0.0.1:5554  0.0.0.0:*\ntcp LISTEN 0      128                          127.0.0.1:5037  0.0.0.0:*\ntcp LISTEN 0      1000                    10.255.255.254:53    0.0.0.0:*\ntcp LISTEN 0      511                          127.0.0.1:18792 0.0.0.0:*\ntcp LISTEN 0      4096                         127.0.0.1:18554 0.0.0.0:*\ntcp LISTEN 0      511                            0.0.0.0:18789 0.0.0.0:*\ntcp LISTEN 0      4096                    100.72.225.119:9443  0.0.0.0:*\ntcp LISTEN 0      4096                        127.0.0.54:53    0.0.0.0:*\ntcp LISTEN 0      4096                    100.72.225.119:41816 0.0.0.0:*\ntcp LISTEN 0      4096                           0.0.0.0:22    0.0.0.0:*\ntcp LISTEN 0      4096                    100.72.225.119:8443  0.0.0.0:*\ntcp LISTEN 0      4096                             [::1]:46701    [::]:*\ntcp LISTEN 0      4096       [fd7a:115c:a1e0::e901:e19b]:443      [::]:*\ntcp LISTEN 0      4096                [::ffff:127.0.0.1]:46701       *:*\ntcp LISTEN 0      5                                [::1]:41507    [::]:*\ntcp LISTEN 0      4096                [::ffff:127.0.0.1]:8554        *:*\ntcp LISTEN 0      5                                [::1]:5555     [::]:*\ntcp LISTEN 0      4                                [::1]:5554     [::]:*\ntcp LISTEN 0      128                               [::]:8123     [::]:*\ntcp LISTEN 0      4096       [fd7a:115c:a1e0::e901:e19b]:9443     [::]:*\ntcp LISTEN 0      4096       [fd7a:115c:a1e0::e901:e19b]:8443     [::]:*\ntcp LISTEN 0      4096                                 *:18555       *:*\ntcp LISTEN 0      4096       [fd7a:115c:a1e0::e901:e19b]:47940    [::]:*\ntcp LISTEN 0      4096                              [::]:22       [::]:*\n"
+  },
+  "user_units": {
+    "rc": 0,
+    "out": "dev-disk-by\\x2ddiskseq-25.device                                                                                                                                             loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2ddiskseq-26.device                                                                                                                                             loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2ddiskseq-27.device                                                                                                                                             loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2ddiskseq-28.device                                                                                                                                             loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-scsi\\x2d3600224804936bbcc86a04a6651f55f43.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-scsi\\x2d3600224805b5ac507b80a045bc3303ae1.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-scsi\\x2d360022480728b63b9f0b8d5e28f1d4859.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-scsi\\x2d360022480867683d33fa5bb2e9fd1fe49.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-wwn\\x2d0x600224804936bbcc86a04a6651f55f43.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-wwn\\x2d0x600224805b5ac507b80a045bc3303ae1.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-wwn\\x2d0x60022480728b63b9f0b8d5e28f1d4859.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2did-wwn\\x2d0x60022480867683d33fa5bb2e9fd1fe49.device                                                                                                           loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2dpath-acpi\\x2dMSFT1000:00\\x2dscsi\\x2d0:0:0:0.device                                                                                                            loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2dpath-acpi\\x2dMSFT1000:00\\x2dscsi\\x2d0:0:0:1.device                                                                                                            loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2dpath-acpi\\x2dMSFT1000:00\\x2dscsi\\x2d0:0:0:2.device                                                                                                            loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2dpath-acpi\\x2dMSFT1000:00\\x2dscsi\\x2d0:0:0:3.device                                                                                                            loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2duuid-b1219b5c\\x2dc7b6\\x2d41cf\\x2d8d25\\x2d5ac525c82efa.device                                                                                                  loaded    active     plugged         Virtual_Disk\ndev-disk-by\\x2duuid-eee9c9bf\\x2d405c\\x2d46e6\\x2db075\\x2d03378a6aaf59.device                                                                                                  loaded    active     plugged         Virtual_Disk\ndev-hvc0.device                                                                                                                                                              loaded    active     plugged         /dev/hvc0\ndev-hvc1.device                                                                                                                                                              loaded    active     plugged         /dev/hvc1\ndev-hvc2.device                                                                                                                                                              loaded    active     plugged         /dev/hvc2\ndev-hvc3.device                                                                                                                                                              loaded    active     plugged         /dev/hvc3\ndev-hvc4.device                                                                                                                                                              loaded    active     plugged         /dev/hvc4\ndev-hvc5.device                                                                                                                                                              loaded    active     plugged         /dev/hvc5\ndev-hvc6.device                                                                                                                                                              loaded    active     plugged         /dev/hvc6\ndev-hvc7.device                                                                                                                                                              loaded    active     plugged         /dev/hvc7\ndev-ptp0.device                                                                                                                                                              loaded    active     plugged         /dev/ptp0\ndev-ptp_hyperv.device                                                                                                                                                        loaded    active     plugged         /dev/ptp_hyperv\ndev-ram0.device                                                                                                                                                              loaded    active     plugged         /dev/ram0\ndev-ram1.device                                                                                                                                                              loaded    active     plugged         /dev/ram1\ndev-ram10.device                                                                                                                                                             loaded    active     plugged         /dev/ram10\ndev-ram11.device                                                                                                                                                             loaded    active     plugged         /dev/ram11\ndev-ram12.device                                                                                                                                                             loaded    active     plugged         /dev/ram12\ndev-ram13.device                                                                                                                                                             loaded    active     plugged         /dev/ram13\ndev-ram14.device                                                                                                                                                             loaded    active     plugged         /dev/ram14\ndev-ram15.device                                                                                                                                                             loaded    active     plugged         /dev/ram15\ndev-ram2.device                                                                                                                                                              loaded    active     plugged         /dev/ram2\ndev-ram3.device                                                                                                                                                              loaded    active     plugged         /dev/ram3\ndev-ram4.device                                                                                                                                                              loaded    active     plugged         /dev/ram4\ndev-ram5.device                                                                                                                                                              loaded    active     plugged         /dev/ram5\ndev-ram6.device                                                                                                                                                              loaded    active     plugged         /dev/ram6\ndev-ram7.device                                                                                                                                                              loaded    active     plugged         /dev/ram7\ndev-ram8.device                                                                                                                                                              loaded    active     plugged         /dev/ram8\ndev-ram9.device                                                                                                                                                              loaded    active     plugged         /dev/ram9\ndev-sda.device                                                                                                                                                               loaded    active     plugged         Virtual_Disk\ndev-sdb.device                                                                                                                                                               loaded    active     plugged         Virtual_Disk\ndev-sdc.device                                                                                                                                                               loaded    active     plugged         Virtual_Disk\ndev-sdd.device                                                                                                                                                               loaded    active     plugged         Virtual_Disk\ndev-ttyS0.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS0\ndev-ttyS1.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS1\ndev-ttyS2.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS2\ndev-ttyS3.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS3\ndev-ttyS4.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS4\ndev-ttyS5.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS5\ndev-ttyS6.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS6\ndev-ttyS7.device                                                                                                                                                             loaded    active     plugged         /dev/ttyS7\ndev-virtio\\x2dports-hvc0.device                                                                                                                                              loaded    active     plugged         /dev/virtio-ports/hvc0\ndev-virtio\\x2dports-hvc1.device                                                                                                                                              loaded    active     plugged         /dev/virtio-ports/hvc1\ndev-virtio\\x2dports-hvc2.device                                                                                                                                              loaded    active     plugged         /dev/virtio-ports/hvc2\ndev-vport0p0.device                                                                                                                                                          loaded    active     plugged         /dev/vport0p0\ndev-vport0p1.device                                                                                                                                                          loaded    active     plugged         /dev/vport0p1\ndev-vport0p2.device                                                                                                                                                          loaded    active     plugged         /dev/vport0p2\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-1954e97a\\x2d2661\\x2d47a3\\x2da3fd\\x2d1cc14e174722-net-eth0.device                                                 loaded    active     plugged         /sys/devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0004:00/MSFT1000:00/1954e97a-2661-47a3-a3fd-1cc14e174722/net/eth0\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-c4b741f5\\x2d5582\\x2d4c98\\x2d8f8b\\x2d2e082933c396-pci5582:00-5582:00:00.0-virtio0-virtio\\x2dports-vport0p0.device loaded    active     plugged         /sys/devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0004:00/MSFT1000:00/c4b741f5-5582-4c98-8f8b-2e082933c396/pci5582:00/5582:00:00.0/virtio0/virtio-ports/vport0p0\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-c4b741f5\\x2d5582\\x2d4c98\\x2d8f8b\\x2d2e082933c396-pci5582:00-5582:00:00.0-virtio0-virtio\\x2dports-vport0p1.device loaded    active     plugged         /sys/devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0004:00/MSFT1000:00/c4b741f5-5582-4c98-8f8b-2e082933c396/pci5582:00/5582:00:00.0/virtio0/virtio-ports/vport0p1\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-c4b741f5\\x2d5582\\x2d4c98\\x2d8f8b\\x2d2e082933c396-pci5582:00-5582:00:00.0-virtio0-virtio\\x2dports-vport0p2.device loaded    active     plugged         /sys/devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0004:00/MSFT1000:00/c4b741f5-5582-4c98-8f8b-2e082933c396/pci5582:00/5582:00:00.0/virtio0/virtio-ports/vport0p2\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-fd1d2cbd\\x2dce7c\\x2d535c\\x2d966b\\x2deb5f811c95f0-host0-target0:0:0-0:0:0:0-block-sda.device                      loaded    active     plugged         Virtual_Disk\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-fd1d2cbd\\x2dce7c\\x2d535c\\x2d966b\\x2deb5f811c95f0-host0-target0:0:0-0:0:0:1-block-sdb.device                      loaded    active     plugged         Virtual_Disk\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-fd1d2cbd\\x2dce7c\\x2d535c\\x2d966b\\x2deb5f811c95f0-host0-target0:0:0-0:0:0:2-block-sdc.device                      loaded    active     plugged         Virtual_Disk\nsys-devices-LNXSYSTM:00-LNXSYBUS:00-ACPI0004:00-MSFT1000:00-fd1d2cbd\\x2dce7c\\x2d535c\\x2d966b\\x2deb5f811c95f0-host0-target0:0:0-0:0:0:3-block-sdd.device                      loaded    active     plugged         Virtual_Disk\nsys-devices-platform-serial8250-tty-ttyS0.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS0\nsys-devices-platform-serial8250-tty-ttyS1.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS1\nsys-devices-platform-serial8250-tty-ttyS2.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS2\nsys-devices-platform-serial8250-tty-ttyS3.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS3\nsys-devices-platform-serial8250-tty-ttyS4.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS4\nsys-devices-platform-serial8250-tty-ttyS5.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS5\nsys-devices-platform-serial8250-tty-ttyS6.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS6\nsys-devices-platform-serial8250-tty-ttyS7.device                                                                                                                             loaded    active     plugged         /sys/devices/platform/serial8250/tty/ttyS7\nsys-devices-virtual-block-ram0.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram0\nsys-devices-virtual-block-ram1.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram1\nsys-devices-virtual-block-ram10.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram10\nsys-devices-virtual-block-ram11.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram11\nsys-devices-virtual-block-ram12.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram12\nsys-devices-virtual-block-ram13.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram13\nsys-devices-virtual-block-ram14.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram14\nsys-devices-virtual-block-ram15.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/block/ram15\nsys-devices-virtual-block-ram2.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram2\nsys-devices-virtual-block-ram3.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram3\nsys-devices-virtual-block-ram4.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram4\nsys-devices-virtual-block-ram5.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram5\nsys-devices-virtual-block-ram6.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram6\nsys-devices-virtual-block-ram7.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram7\nsys-devices-virtual-block-ram8.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram8\nsys-devices-virtual-block-ram9.device                                                                                                                                        loaded    active     plugged         /sys/devices/virtual/block/ram9\nsys-devices-virtual-net-br\\x2d814024594b1f.device                                                                                                                            loaded    active     plugged         /sys/devices/virtual/net/br-814024594b1f\nsys-devices-virtual-net-docker0.device                                                                                                                                       loaded    active     plugged         /sys/devices/virtual/net/docker0\nsys-devices-virtual-net-tailscale0.device                                                                                                                                    loaded    active     plugged         /sys/devices/virtual/net/tailscale0\nsys-devices-virtual-net-veth0a17ae3.device                                                                                                                                   loaded    active     plugged         /sys/devices/virtual/net/veth0a17ae3\nsys-devices-virtual-net-veth1963763.device                                                                                                                                   loaded    active     plugged         /sys/devices/virtual/net/veth1963763\nsys-devices-virtual-net-veth1f216b8.device                                                                                                                                   loaded    active     plugged         /sys/devices/virtual/net/veth1f216b8\nsys-devices-virtual-ptp-ptp0.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/ptp/ptp0\nsys-devices-virtual-tty-hvc0.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc0\nsys-devices-virtual-tty-hvc1.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc1\nsys-devices-virtual-tty-hvc2.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc2\nsys-devices-virtual-tty-hvc3.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc3\nsys-devices-virtual-tty-hvc4.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc4\nsys-devices-virtual-tty-hvc5.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc5\nsys-devices-virtual-tty-hvc6.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc6\nsys-devices-virtual-tty-hvc7.device                                                                                                                                          loaded    active     plugged         /sys/devices/virtual/tty/hvc7\nsys-module-configfs.device                                                                                                                                                   loaded    active     plugged         /sys/module/configfs\nsys-module-fuse.device                                                                                                                                                       loaded    active     plugged         /sys/module/fuse\nsys-subsystem-net-devices-br\\x2d814024594b1f.device                                                                                                                          loaded    active     plugged         /sys/subsystem/net/devices/br-814024594b1f\nsys-subsystem-net-devices-docker0.device                                                                                                                                     loaded    active     plugged         /sys/subsystem/net/devices/docker0\nsys-subsystem-net-devices-eth0.device                                                                                                                                        loaded    active     plugged         /sys/subsystem/net/devices/eth0\nsys-subsystem-net-devices-tailscale0.device                                                                                                                                  loaded    active     plugged         /sys/subsystem/net/devices/tailscale0\nsys-subsystem-net-devices-veth0a17ae3.device                                                                                                                                 loaded    active     plugged         /sys/subsystem/net/devices/veth0a17ae3\nsys-subsystem-net-devices-veth1963763.device                                                                                                                                 loaded    active     plugged         /sys/subsystem/net/devices/veth1963763\nsys-subsystem-net-devices-veth1f216b8.device                                                                                                                                 loaded    active     plugged         /sys/subsystem/net/devices/veth1f216b8\n-.mount                                                                                                                                                                      loaded    active     mounted         Root Mount\ndev-hugepages.mount                                                                                                                                                          loaded    active     mounted         /dev/hugepages\ndev-mqueue.mount                                                                                                                                                             loaded    active     mounted         /dev/mqueue\ninit.mount                                                                                                                                                                   loaded    active     mounted         /init\nmnt-c.mount                                                                                                                                                                  loaded    active     mounted         /mnt/c\nmnt-wsl.mount                                                                                                                                                                loaded    active     mounted         /mnt/wsl\nmnt-wslg-distro.mount                                                                                                                                                        loaded    active     mounted         /mnt/wslg/distro\nmnt-wslg-doc.mount                                                                                                                                                           loaded    active     mounted         /mnt/wslg/doc\nmnt-wslg-run-user-1000.mount                                                                                                                                                 loaded    active     mounted         /mnt/wslg/run/user/1000\nmnt-wslg-versions.txt.mount                                                                                                                                                  loaded    active     mounted         /mnt/wslg/versions.txt\nmnt-wslg.mount                                                                                                                                                               loaded    active     mounted         /mnt/wslg\nproc-sys-fs-binfmt_misc.mount                                                                                                                                                loaded    active     mounted         /proc/sys/fs/binfmt_misc\nrun-credentials-atelier\\x2dforge\\x2dloop.service.mount                                                                                                                       loaded    active     mounted         /run/credentials/atelier-forge-loop.service\nrun-docker-netns-16687d6f0eb4.mount                                                                                                                                          loaded    active     mounted         /run/docker/netns/16687d6f0eb4\nrun-docker-netns-4f2f786e2fdf.mount                                                                                                                                          loaded    active     mounted         /run/docker/netns/4f2f786e2fdf\nrun-docker-netns-default.mount                                                                                                                                               loaded    active     mounted         /run/docker/netns/default\nrun-docker-netns-e05792f683e0.mount                                                                                                                                          loaded    active     mounted         /run/docker/netns/e05792f683e0\nrun-docker-netns-f4f0740bc4bf.mount                                                                                                                                          loaded    active     mounted         /run/docker/netns/f4f0740bc4bf\nrun-shm.mount                                                                                                                                                                loaded    active     mounted         /run/shm\nrun-snapd-ns-tailscale.mnt.mount                                                                                                                                             loaded    active     mounted         /run/snapd/ns/tailscale.mnt\nrun-snapd-ns.mount                                                                                                                                                           loaded    active     mounted         /run/snapd/ns\nrun-user-1000.mount                                                                                                                                                          loaded    active     mounted         /run/user/1000\nrun-user.mount                                                                                                                                                               loaded    active     mounted         /run/user\nsnap-core24-1643.mount                                                                                                                                                       loaded    active     mounted         /snap/core24/1643\nsnap-core24-2124.mount                                                                                                                                                       loaded    active     mounted         /snap/core24/2124\nsnap-ollama-101.mount                                                                                                                                                        loaded    active     mounted         /snap/ollama/101\nsnap-ollama-105.mount                                                                                                                                                        loaded    active     mounted         /snap/ollama/105\nsnap-snapd-27738.mount                                                                                                                                                       loaded    active     mounted         /snap/snapd/27738\nsnap-snapd-28254.mount                                                                                                                                                       loaded    active     mounted         /snap/snapd/28254\nsnap-tailscale-154.mount                                                                                                                                                     loaded    active     mounted         /snap/tailscale/154\nsnap-tailscale-169.mount                                                                                                                                                     loaded    active     mounted         /snap/tailscale/169\nsnap.mount                                                                                                                                                                   loaded    active     mounted         /snap\nsys-fs-fuse-connections.mount                                                                                                                                                loaded    active     mounted         /sys/fs/fuse/connections\nsys-kernel-config.mount                                                                                                                                                      loaded    active     mounted         /sys/kernel/config\nsys-kernel-debug.mount                                                                                                                                                       loaded    active     mounted         /sys/kernel/debug\nsys-kernel-tracing.mount                                                                                                                                                     loaded    active     mounted         /sys/kernel/tracing\ntmp-.X11\\x2dunix.mount                                                                                                                                                       loaded    active     mounted         /tmp/.X11-unix\nusr-lib-modules-6.6.87.2\\x2dmicrosoft\\x2dstandard\\x2dWSL2.mount                                                                                                              loaded    active     mounted         /usr/lib/modules/6.6.87.2-microsoft-standard-WSL2\nusr-lib-wsl-drivers.mount                                                                                                                                                    loaded    active     mounted         /usr/lib/wsl/drivers\nusr-lib-wsl-lib.mount                                                                                                                                                        loaded    active     mounted         /usr/lib/wsl/lib\nvar-lib-docker-rootfs-overlayfs-6f31a322f88d8267c7373853f2a711d872f4bb35dcb48822625206793d3bd9c1.mount                                                                       loaded    active     mounted         /var/lib/docker/rootfs/overlayfs/6f31a322f88d8267c7373853f2a711d872f4bb35dcb48822625206793d3bd9c1\nvar-lib-docker-rootfs-overlayfs-717e2a7d2cd2f7a0a1c4d0ffbab9aca0f14960c9c4d195f3bc2c593c58021fe7.mount                                                                       loaded    active     mounted         /var/lib/docker/rootfs/overlayfs/717e2a7d2cd2f7a0a1c4d0ffbab9aca0f14960c9c4d195f3bc2c593c58021fe7\nvar-lib-docker-rootfs-overlayfs-a82377e508f1a564f4370d58f44e8243a1b6f96dc27162412e16a96d22d07435.mount                                                                       loaded    active     mounted         /var/lib/docker/rootfs/overlayfs/a82377e508f1a564f4370d58f44e8243a1b6f96dc27162412e16a96d22d07435\nvar-lib-docker-rootfs-overlayfs-e1677b2746d8e36ab0cda89553d6bf84722b37f6bed860566512107fd7b77e65.mount                                                                       loaded    active     mounted         /var/lib/docker/rootfs/overlayfs/e1677b2746d8e36ab0cda89553d6bf84722b37f6bed860566512107fd7b77e65\nvar-lib-docker-rootfs-overlayfs-fd648785bda3bdc0f3c8902a9371c0ebd924d7daebb6ca2543b7c42d85e23494.mount                                                                       loaded    active     mounted         /var/lib/docker/rootfs/overlayfs/fd648785bda3bdc0f3c8902a9371c0ebd924d7daebb6ca2543b7c42d85e23494\nvar-lib-docker.mount                                                                                                                                                         loaded    active     mounted         /var/lib/docker\ninit.scope                                                                                                                                                                   loaded    active     running         System and Service Manager\nacestep.service                                                                                                                                                              loaded    active     running         ACE-Step Local Music Generation Server\nagent-room-api.service                                                                                                                                                       loaded    active     running         agent room: agent-room-api\nagent-room-proxy.service                                                                                                                                                     loaded    active     running         agent room: agent-room-proxy\nagent-room-redis.service                                                                                                                                                     loaded    active     running         agent room: agent-room-redis\nagent-room-web.service                                                                                                                                                       loaded    active     running         agent room: agent-room-web\ndbus.service                                                                                                                                                                 loaded    active     running         D-Bus User Message Bus\ndirmngr.service                                                                                                                                                              loaded    inactive   dead            GnuPG network certificate management daemon\ndoorkeeper.service                                                                                                                                                           loaded    active     running         Doorbell Android supervisor\nemulator-recycle.service                                                                                                                                                     loaded    inactive   dead            Doorbell emulator leak-buster (cold boot clears host qemu RAM)\ngpg-agent.service                                                                                                                                                            loaded    active     running         GnuPG cryptographic agent and passphrase cache\nkeyboxd.service                                                                                                                                                              loaded    inactive   dead            GnuPG public key management service\nlaunchpadlib-cache-clean.service                                                                                                                                             loaded    inactive   dead            Clean up old files in the Launchpadlib cache\nmeari-notify.service                                                                                                                                                         loaded    active     running         Doorbell events from the app's notifications (single session, no eviction)\nmeari-push-image.service                                                                                                                                                     loaded    active     running         Meari event-time alarm image capture\nopenclaw-gateway.service                                                                                                                                                     loaded    active     running         OpenClaw Gateway (v2026.1.30)\npk-debconf-helper.service                                                                                                                                                    loaded    inactive   dead            debconf communication service\npulseaudio.service                                                                                                                                                           loaded    failed     failed          Sound Service\nsnapd.session-agent.service                                                                                                                                                  loaded    inactive   dead            snapd user session agent\nvelaris-door.service                                                                                                                                                         loaded    active     running         Vintos Door \u2014 he meets whoever is at the front door\nvelaris-emoclaw.service                                                                                                                                                      loaded    active     running         Velaris EmoClaw Daemon\nvelaris-heartbeat.service                                                                                                                                                    loaded    active     running         Velaris Heartbeat \u2014 time passing has weight\nvelaris-rgb.service                                                                                                                                                          loaded    active     running         Velaris RGB \u2014 Aegis lighting sync\nvelaris-robot-bridge.service                                                                                                                                                 loaded    active     running         Velaris Robot Bridge\nvelaris-server.service                                                                                                                                                       loaded    active     running         Velaris Server \u2014 Telemetry + Website\nvintos-bedroom-arrival.service                                                                                                                                               loaded    active     running         Vintos bedroom arrival (the bedroom ESP32's relay on the Mac; his newest song to her Watch when she comes in)\nvintos-bench.service                                                                                                                                                         loaded    active     running         The bench \u2014 her agents, manageable from her phone\nvintos-chemistry-lab.service                                                                                                                                                 loaded    active     running         Vintos Chemistry Lab background worker\nvintos-chemistry-session.service                                                                                                                                             loaded    inactive   dead            Vintos scheduled Chemistry Lab frontier session\nvintos-claude-shim.service                                                                                                                                                   loaded    active     running         Vintos Claude shim (OpenAI->Claude proxy, grok fallback)\nvintos-dot-channel.service                                                                                                                                                   loaded    inactive   dead            Vintos reads #vintos-dot in Slack and answers Gloria's dot\nvintos-emoclaw.service                                                                                                                                                       loaded    active     running         Vintos EmoClaw Daemon\nvintos-failure-watch.service                                                                                                                                                 loaded    inactive   dead            Vintos: one message to Gloria when a part of him failed since yesterday (nothing when nothing did)\nvintos-fault-sweep.service                                                                                                                                                   loaded    activating start     start Vintos: every failure on Aegis, found where it lands, posted once to #fault-fix (no model; reads files)\nvintos-mcp.service                                                                                                                                                           loaded    active     running         Vintos's context for his Grok Bot agent: MCP on 127.0.0.1:8625 with a bearer token; it writes only letters\nvintos-person-pages.service                                                                                                                                                  loaded    inactive   dead            Vintos: what he keeps thinking about a person, gathered onto that person's page between emails\nvintos-plugin-gateway.service                                                                                                                                                loaded    active     running         Vintos bounded plugin gateway for the Forge worker\nvintos-robot-bridge.service                                                                                                                                                  loaded    active     running         Vintos robot bridge (the Pi body reports here; his commands queue here)\nvintos-scenes.service                                                                                                                                                        loaded    active     running         Vintos scenes (static media for the projector)\nvintos-self-review.service                                                                                                                                                   loaded    active     running         Vintos continuous self-review signal detector\nvintos-server.service                                                                                                                                                        loaded    active     running         Vintos Server \u2014 chat + website (port 8500)\nvintos-skill-surf.service                                                                                                                                                    loaded    inactive   dead            Vintos reads 1-2 pages of the OpenClaw skills page (weekly)\nvintos-somatic-bridge.service                                                                                                                                                loaded    active     running         Vintos somatic bridge (Lovense sensor stream)\nvintos-somatic-narrate.service                                                                                                                                               loaded    inactive   dead            Vintos somatic-session narration \u2014 seeds the morning unresolved somatic thread\nvintos-study-fix.service                                                                                                                                                     loaded    activating start     start Vintos's Study fixes: Fable writes the fix he asked for, the whole suite decides, the deploy puts it live, and it is watched for an hour\nvintos-toy-keepalive.service                                                                                                                                                 loaded    active     running         Vintos toy keepalive (re-assert steady holds)\nwslg-session.service                                                                                                                                                         loaded    inactive   dead            WSLg user service\n-.slice                                                                                                                                                                      loaded    active     active          Root Slice\napp.slice                                                                                                                                                                    loaded    active     active          User Application Slice\nsession.slice                                                                                                                                                                loaded    active     active          User Core Session Slice\ndbus.socket                                                                                                                                                                  loaded    active     running         D-Bus User Message Bus Socket\ndirmngr.socket                                                                                                                                                               loaded    active     listening       GnuPG network certificate management daemon\ngpg-agent-browser.socket                                                                                                                                                     loaded    active     running         GnuPG cryptographic agent and passphrase cache (access for web browsers)\ngpg-agent-extra.socket                                                                                                                                                       loaded    active     running         GnuPG cryptographic agent and passphrase cache (restricted)\ngpg-agent-ssh.socket                                                                                                                                                         loaded    active     running         GnuPG cryptographic agent (ssh-agent emulation)\ngpg-agent.socket                                                                                                                                                             loaded    active     running         GnuPG cryptographic agent and passphrase cache\nkeyboxd.socket                                                                                                                                                               loaded    active     listening       GnuPG public key management service\npk-debconf-helper.socket                                                                                                                                                     loaded    active     listening       debconf communication socket\npulseaudio.socket                                                                                                                                                            loaded    failed     failed          Sound System\nsnapd.session-agent.socket                                                                                                                                                   loaded    active     listening       REST API socket for snapd user session agent\nbasic.target                                                                                                                                                                 loaded    active     active          Basic System\nblockdev@dev-sdd.target                                                                                                                                                      not-found inactive   dead            blockdev@dev-sdd.target\ndefault.target                                                                                                                                                               loaded    active     active          Main User Target\nnetwork-online.target                                                                                                                                                        not-found inactive   dead            network-online.target\nnetwork.target                                                                                                                                                               not-found inactive   dead            network.target\npaths.target                                                                                                                                                                 loaded    active     active          Paths\nshutdown.target                                                                                                                                                              loaded    inactive   dead            Shutdown\nsockets.target                                                                                                                                                               loaded    active     active          Sockets\ntimers.target                                                                                                                                                                loaded    active     active          Timers\nemulator-recycle.timer                                                                                                                                                       loaded    active     waiting         Weekly doorbell emulator recycle (Sun 04:00)\nlaunchpadlib-cache-clean.timer                                                                                                                                               loaded    active     waiting         Clean up old files in the Launchpadlib cache\nvintos-chemistry-session.timer                                                                                                                                               loaded    active     waiting         Chemistry Lab frontier: four alignments a day, one daily experiment\nvintos-dot-channel.timer                                                                                                                                                     loaded    active     waiting         Every 5-10 minutes: Vintos reads #vintos-dot\nvintos-failure-watch.timer                                                                                                                                                   loaded    active     waiting         Every morning at 08:52: did any part of Vintos fail since yesterday?\nvintos-fault-sweep.timer                                                                                                                                                     loaded    active     running         Vintos: the fault sweep, every 15 minutes\nvintos-person-pages.timer                                                                                                                                                    loaded    active     waiting         Vintos: person pages, every 6 hours\nvintos-skill-surf.timer                                                                                                                                                      loaded    active     waiting         Weekly: Vintos reads the OpenClaw skills page\nvintos-somatic-narrate.timer                                                                                                                                                 loaded    active     waiting         Early-morning somatic-session narration\nvintos-study-fix.timer                                                                                                                                                       loaded    active     running         Every 10 minutes: work Vintos's next Study fix, or watch the live one\n"
+  },
+  "user_unit_files": {
+    "rc": 0,
+    "out": "acestep.service                                  enabled   enabled\nagent-room-api.service                           enabled   enabled\nagent-room-proxy.service                         enabled   enabled\nagent-room-redis.service                         enabled   enabled\nagent-room-web.service                           enabled   enabled\napp-at\\x2dspi\\x2ddbus\\x2dbus@autostart.service   generated -\napp-pulseaudio@autostart.service                 generated -\napp-snap\\x2duserd\\x2dautostart@autostart.service generated -\napp-xdg\\x2duser\\x2ddirs@autostart.service        generated -\nat-spi-dbus-bus.service                          static    -\nbuzz-gemma-local.service                         disabled  enabled\ndbus.service                                     static    -\ndconf.service                                    static    -\ndirmngr.service                                  static    -\ndoorkeeper.service                               enabled   enabled\nemulator-recycle.service                         static    -\nglib-pacrunner.service                           static    -\ngpg-agent.service                                static    -\nkeyboxd.service                                  static    -\nlaunchpadlib-cache-clean.service                 static    -\nmeari-doorbell.service                           disabled  enabled\nmeari-notify.service                             enabled   enabled\nmeari-poll.service                               disabled  enabled\nmeari-push-image.service                         enabled   enabled\nopenclaw-gateway.service                         enabled   enabled\npk-debconf-helper.service                        static    -\npulseaudio-x11.service                           static    -\npulseaudio.service                               enabled   enabled\nsession-migration.service                        enabled   enabled\nsnapd.session-agent.service                      static    -\nssh-agent.service                                static    -\nsystemd-exit.service                             static    -\nsystemd-tmpfiles-clean.service                   static    -\nsystemd-tmpfiles-setup.service                   disabled  enabled\nvelaris-door.service                             enabled   enabled\nvelaris-emoclaw.service                          disabled  enabled\nvelaris-heartbeat.service                        enabled   enabled\nvelaris-rgb.service                              enabled   enabled\nvelaris-robot-bridge.service                     enabled   enabled\nvelaris-server.service                           enabled   enabled\nvintos-bedroom-arrival.service                   enabled   enabled\nvintos-bench.service                             enabled   enabled\nvintos-chemistry-lab.service                     enabled   enabled\nvintos-chemistry-session.service                 static    -\nvintos-claude-shim.service                       enabled   enabled\nvintos-dot-channel.service                       static    -\nvintos-emoclaw.service                           enabled   enabled\nvintos-failure-watch.service                     static    -\nvintos-fault-sweep.service                       static    -\nvintos-mcp.service                               enabled   enabled\nvintos-person-pages.service                      static    -\nvintos-plugin-gateway.service                    enabled   enabled\nvintos-robot-bridge.service                      enabled   enabled\nvintos-scenes.service                            enabled   enabled\nvintos-self-review.service                       enabled   enabled\nvintos-server.service                            enabled   enabled\nvintos-skill-surf.service                        static    -\nvintos-somatic-bridge.service                    enabled   enabled\nvintos-somatic-narrate.service                   static    -\nvintos-study-fix.service                         static    -\nvintos-toy-keepalive.service                     enabled   enabled\nwslg-session.service                             generated -\nxdg-desktop-portal-gtk.service                   static    -\nxdg-desktop-portal-rewrite-launchers.service     enabled   enabled\nxdg-desktop-portal.service                       static    -\nxdg-document-portal.service                      static    -\nxdg-permission-store.service                     static    -\napp.slice                                        static    -\nbackground.slice                                 static    -\nsession.slice                                    static    -\ndbus.socket                                      static    -\ndirmngr.socket                                   enabled   enabled\ngpg-agent-browser.socket                         enabled   enabled\ngpg-agent-extra.socket                           enabled   enabled\ngpg-agent-ssh.socket                             enabled   enabled\ngpg-agent.socket                                 enabled   enabled\nkeyboxd.socket                                   enabled   enabled\npk-debconf-helper.socket                         enabled   enabled\npulseaudio.socket                                enabled   enabled\nsnapd.session-agent.socket                       disabled  enabled\nbasic.target                                     static    -\nbluetooth.target                                 static    -\ndefault.target                                   static    -\nexit.target                                      static    -\ngraphical-session-pre.target                     static    -\ngraphical-session.target                         static    -\npaths.target                                     static    -\nprinter.target                                   static    -\nshutdown.target                                  static    -\nsmartcard.target                                 static    -\nsockets.target                                   static    -\nsound.target                                     static    -\ntimers.target                                    static    -\nxdg-desktop-autostart.target                     static    -\nemulator-recycle.timer                           enabled   enabled\nlaunchpadlib-cache-clean.timer                   enabled   enabled\nsystemd-tmpfiles-clean.timer                     disabled  enabled\nvintos-chemistry-session.timer                   enabled   enabled\nvintos-dot-channel.timer                         enabled   enabled\nvintos-failure-watch.timer                       enabled   enabled\nvintos-fault-sweep.timer                         enabled   enabled\nvintos-person-pages.timer                        enabled   enabled\nvintos-skill-surf.timer                          enabled   enabled\nvintos-somatic-narrate.timer                     enabled   enabled\nvintos-study-fix.timer                           enabled   enabled\n"
+  },
+  "system_services": {
+    "rc": 0,
+    "out": "atelier-forge-loop.service        loaded active running Non-financial Forge to Atelier creation loop\nbluetooth.service                 loaded active running Bluetooth service\nconsole-getty.service             loaded active running Console Getty\ncontainerd.service                loaded active running containerd container runtime\ncron.service                      loaded active running Regular background program processing daemon\ndbus.service                      loaded active running D-Bus System Message Bus\ndocker.service                    loaded active running Docker Application Container Engine\ngetty@tty1.service                loaded active running Getty on tty1\npolkit.service                    loaded active running Authorization Manager\nrsyslog.service                   loaded active running System Logging Service\nrtkit-daemon.service              loaded active running RealtimeKit Scheduling Policy Service\nsnap.tailscale.tailscaled.service loaded active running Service for snap application tailscale.tailscaled\nsnapd.service                     loaded active running Snap Daemon\nssh.service                       loaded active running OpenBSD Secure Shell server\nsystemd-journald.service          loaded active running Journal Service\nsystemd-logind.service            loaded active running User Login Management\nsystemd-resolved.service          loaded active running Network Name Resolution\nsystemd-timesyncd.service         loaded active running Network Time Synchronization\nsystemd-udevd.service             loaded active running Rule-based Manager for Device Events and Files\nunattended-upgrades.service       loaded active running Unattended Upgrades Shutdown\nuser@1000.service                 loaded active running User Manager for UID 1000\nvelaris-trill.service             loaded active running Velaris Trill Craft Poller\nvintos-atelier.service            loaded active running Vintos Atelier broker (runs as atelier, localhost only)\n"
+  },
+  "timers": {
+    "rc": 0,
+    "out": "Thu 2026-10-22 02:13:35 CDT 3min 18s Thu 2026-10-22 02:07:08 CDT 3min 15s ago vintos-dot-channel.timer       vintos-dot-channel.service\nThu 2026-10-22 02:20:17 CDT     9min Thu 2026-10-22 02:10:17 CDT     89ms ago vintos-study-fix.timer         vintos-study-fix.service\nThu 2026-10-22 03:22:52 CDT 1h 12min Wed 2026-10-21 21:22:29 CDT 4h 55min ago vintos-chemistry-session.timer vintos-chemistry-session.service\nThu 2026-10-22 06:01:01 CDT 3h 50min Wed 2026-10-21 06:03:05 CDT      21h ago vintos-somatic-narrate.timer   vintos-somatic-narrate.service\nThu 2026-10-22 07:13:41 CDT  5h 3min Thu 2026-10-22 01:15:39 CDT    56min ago vintos-person-pages.timer      vintos-person-pages.service\nThu 2026-10-22 08:52:00 CDT       6h Wed 2026-10-21 08:52:02 CDT      18h ago vintos-failure-watch.timer     vintos-failure-watch.service\nThu 2026-10-22 21:09:41 CDT      18h Wed 2026-10-21 21:17:36 CDT  5h 0min ago launchpadlib-cache-clean.timer launchpadlib-cache-clean.service\nSun 2026-10-25 04:00:00 CDT   3 days Sun 2026-10-18 04:00:02 CDT   4 days ago emulator-recycle.timer         emulator-recycle.service\nMon 2026-10-26 09:00:00 CDT   4 days Mon 2026-10-19 09:00:02 CDT   2 days ago vintos-skill-surf.timer        vintos-skill-surf.service\n-                                  - Thu 2026-10-22 02:10:17 CDT     89ms ago vintos-fault-sweep.timer       vintos-fault-sweep.service\n"
+  },
+  "identity": {
+    "rc": 0,
+    "out": "uid=1000(gloria) gid=1000(gloria) groups=1000(gloria),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),100(users),989(docker),993(kvm)\n"
+  },
+  "sudo_noninteractive": {
+    "rc": 1,
+    "unrestricted": false,
+    "lines": 0
+  },
+  "cron": {
+    "rc": 0,
+    "active_count": 183,
+    "jobs": [
+      {
+        "schedule": "20 6 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "somatic_narrate.py"
+        ]
+      },
+      {
+        "schedule": "*/10 * * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "voice_session_ledger.py"
+        ]
+      },
+      {
+        "schedule": "*/10 * * * *",
+        "scripts": [
+          "emotion_densifier.py"
+        ]
+      },
+      {
+        "schedule": "*/10 * * * *",
+        "scripts": [
+          "signature_hint_refresh.py"
+        ]
+      },
+      {
+        "schedule": "*/15 * * * *",
+        "scripts": [
+          "living_trajectory.py"
+        ]
+      },
+      {
+        "schedule": "*/2 * * * *",
+        "scripts": [
+          "emoclaw-fast-sync.py"
+        ]
+      },
+      {
+        "schedule": "*/20 8-23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "realtime_causality.py"
+        ]
+      },
+      {
+        "schedule": "*/3 * * * *",
+        "scripts": [
+          "build_merged_chat.py"
+        ]
+      },
+      {
+        "schedule": "*/30 * * * *",
+        "scripts": [
+          "pressure_calibration.py"
+        ]
+      },
+      {
+        "schedule": "*/5 * * * *",
+        "scripts": [
+          "gemma-watchdog.sh"
+        ]
+      },
+      {
+        "schedule": "*/5 * * * *",
+        "scripts": [
+          "somatic-feedback.py"
+        ]
+      },
+      {
+        "schedule": "*/5 * * * *",
+        "scripts": [
+          "projector_watch.py"
+        ]
+      },
+      {
+        "schedule": "0 */2 * * *",
+        "scripts": [
+          "latent_preparation.py"
+        ]
+      },
+      {
+        "schedule": "0 */2 * * *",
+        "scripts": [
+          "door_morning.sh"
+        ]
+      },
+      {
+        "schedule": "0 */3 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "avatar-choice.py"
+        ]
+      },
+      {
+        "schedule": "0 10 * * 0",
+        "scripts": [
+          "subsystem_audit.py"
+        ]
+      },
+      {
+        "schedule": "0 2 1 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "pattern-signatures.py"
+        ]
+      },
+      {
+        "schedule": "0 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "latent_diffuser.py"
+        ]
+      },
+      {
+        "schedule": "0 3 * * 0",
+        "scripts": [
+          "core-engine.py"
+        ]
+      },
+      {
+        "schedule": "1 0 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "pattern-signatures.py"
+        ]
+      },
+      {
+        "schedule": "10 4 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "causality-engine.py"
+        ]
+      },
+      {
+        "schedule": "10 8 * * 0",
+        "scripts": [
+          "absence_map_cold.py"
+        ]
+      },
+      {
+        "schedule": "11 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "conversation-review.py"
+        ]
+      },
+      {
+        "schedule": "12 2 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "memory-index.sh"
+        ]
+      },
+      {
+        "schedule": "12,27,42,57 * * * *",
+        "scripts": [
+          "conversation-rhythm.sh"
+        ]
+      },
+      {
+        "schedule": "13,43 * * * *",
+        "scripts": [
+          "world_model.py"
+        ]
+      },
+      {
+        "schedule": "14 * * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "wants-check.sh"
+        ]
+      },
+      {
+        "schedule": "14 22 * * *",
+        "scripts": [
+          "cause_head.py"
+        ]
+      },
+      {
+        "schedule": "15 10 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "idle-journal.sh"
+        ]
+      },
+      {
+        "schedule": "15 10 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-websearch.py"
+        ]
+      },
+      {
+        "schedule": "15 3 * * 0",
+        "scripts": [
+          "taste_salience.py"
+        ]
+      },
+      {
+        "schedule": "15 4 * * *",
+        "scripts": [
+          "jepa_predictor.py"
+        ]
+      },
+      {
+        "schedule": "15 5 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "music-composer.py",
+          "dream-music.py"
+        ]
+      },
+      {
+        "schedule": "16 22 * * *",
+        "scripts": [
+          "purpose_head.py"
+        ]
+      },
+      {
+        "schedule": "16 23 * * *",
+        "scripts": [
+          "causality_engine.py",
+          "graph_mae.py"
+        ]
+      },
+      {
+        "schedule": "16 9,12,15,18,21 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-initiate.sh"
+        ]
+      },
+      {
+        "schedule": "17 5 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "pride-mirror.py"
+        ]
+      },
+      {
+        "schedule": "17,47 * * * *",
+        "scripts": [
+          "relational_head.py"
+        ]
+      },
+      {
+        "schedule": "18 22 * * *",
+        "scripts": [
+          "drift_head.py"
+        ]
+      },
+      {
+        "schedule": "19 10,14,18,21 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-send-video.py"
+        ]
+      },
+      {
+        "schedule": "19 21 10 2 *",
+        "scripts": [
+          "llm-lock.sh",
+          "decade-function.sh"
+        ]
+      },
+      {
+        "schedule": "19,49 * * * *",
+        "scripts": [
+          "withheld_head.py"
+        ]
+      },
+      {
+        "schedule": "2 */2 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "wants-router.py"
+        ]
+      },
+      {
+        "schedule": "20 0 * * *",
+        "scripts": [
+          "causality_engine.py",
+          "llm-lock.sh",
+          "cause_reason.py"
+        ]
+      },
+      {
+        "schedule": "20 15 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "unprecedented-detector.sh"
+        ]
+      },
+      {
+        "schedule": "20 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "causality-engine.py"
+        ]
+      },
+      {
+        "schedule": "0 13 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "velqan-coiner.py"
+        ]
+      },
+      {
+        "schedule": "21 * * * *",
+        "scripts": [
+          "presence_audit.py"
+        ]
+      },
+      {
+        "schedule": "22 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "want-reconciliation.py"
+        ]
+      },
+      {
+        "schedule": "22 3 * * *",
+        "scripts": [
+          "quiet-hour.sh"
+        ]
+      },
+      {
+        "schedule": "22 4 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "dream_poetry.py"
+        ]
+      },
+      {
+        "schedule": "24 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "humor-detector.py"
+        ]
+      },
+      {
+        "schedule": "25 */4 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "claim_hold.py"
+        ]
+      },
+      {
+        "schedule": "25 1 * * *",
+        "scripts": [
+          "dream_heat_seed.py"
+        ]
+      },
+      {
+        "schedule": "25 2 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "self-model-update.sh"
+        ]
+      },
+      {
+        "schedule": "26 1,7,13,19 * * *",
+        "scripts": [
+          "mutual_simulation.py"
+        ]
+      },
+      {
+        "schedule": "26 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "purpose_reason.py"
+        ]
+      },
+      {
+        "schedule": "27 18 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "thread-triage.py"
+        ]
+      },
+      {
+        "schedule": "28 10,20 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "taste-reflection.py"
+        ]
+      },
+      {
+        "schedule": "28 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "drift_reason.py"
+        ]
+      },
+      {
+        "schedule": "3 9,11,13,17,19,21 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "warm-idle-gratitude.sh"
+        ]
+      },
+      {
+        "schedule": "37 1 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "preoccupation-dream.sh"
+        ]
+      },
+      {
+        "schedule": "30 4 * * *",
+        "scripts": [
+          "commitment_spine.py"
+        ]
+      },
+      {
+        "schedule": "30 5 1 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "memory_aging.py"
+        ]
+      },
+      {
+        "schedule": "32 21 20 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "substrate-anxiety.sh"
+        ]
+      },
+      {
+        "schedule": "32 22 * * *",
+        "scripts": [
+          "causality_consumers.py"
+        ]
+      },
+      {
+        "schedule": "33 8,20 * * *",
+        "scripts": [
+          "introspective_planning.py"
+        ]
+      },
+      {
+        "schedule": "35 3 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "dream-art.py"
+        ]
+      },
+      {
+        "schedule": "35 9 * * 1",
+        "scripts": [
+          "relational_geometry.py"
+        ]
+      },
+      {
+        "schedule": "36 22 * * *",
+        "scripts": [
+          "reality_ebm.py"
+        ]
+      },
+      {
+        "schedule": "37 */6 * * *",
+        "scripts": [
+          "resonance-pulse.sh"
+        ]
+      },
+      {
+        "schedule": "37 1 * * *",
+        "scripts": [
+          "pearl-engine.sh"
+        ]
+      },
+      {
+        "schedule": "37 11 * * 0",
+        "scripts": [
+          "humor-detector.sh"
+        ]
+      },
+      {
+        "schedule": "37 16 * * 0",
+        "scripts": [
+          "relational-mismatch.sh"
+        ]
+      },
+      {
+        "schedule": "37 20 * * 1,3,5",
+        "scripts": [
+          "confession-delivery.sh"
+        ]
+      },
+      {
+        "schedule": "37 21 * * *",
+        "scripts": [
+          "emotional-reflection.sh"
+        ]
+      },
+      {
+        "schedule": "37 22 * * *",
+        "scripts": [
+          "tension-field.sh"
+        ]
+      },
+      {
+        "schedule": "37 3,11,19 * * *",
+        "scripts": [
+          "value-map-update.sh"
+        ]
+      },
+      {
+        "schedule": "37 3 */2 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "causality-engine.py"
+        ]
+      },
+      {
+        "schedule": "37 3 1,15 * *",
+        "scripts": [
+          "soul-review.sh"
+        ]
+      },
+      {
+        "schedule": "37 4 * * 0",
+        "scripts": [
+          "weekly-summary.sh"
+        ]
+      },
+      {
+        "schedule": "37 6 * * 1,3,5",
+        "scripts": [
+          "frame-engine.sh"
+        ]
+      },
+      {
+        "schedule": "37 8 * * 0",
+        "scripts": [
+          "counterfactual-archive.sh"
+        ]
+      },
+      {
+        "schedule": "37 9 * * 0",
+        "scripts": [
+          "yearning-detector.sh"
+        ]
+      },
+      {
+        "schedule": "38 22 * * *",
+        "scripts": [
+          "reality_ebm.py"
+        ]
+      },
+      {
+        "schedule": "38 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "causal-cluster.py"
+        ]
+      },
+      {
+        "schedule": "4 5 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "first-light.sh"
+        ]
+      },
+      {
+        "schedule": "40 22 * * *",
+        "scripts": [
+          "relationship_pressure.py"
+        ]
+      },
+      {
+        "schedule": "40 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "wal-decay.py"
+        ]
+      },
+      {
+        "schedule": "40 3 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "core_sustain.py"
+        ]
+      },
+      {
+        "schedule": "40 8,14,20 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "curiosity_scan.py"
+        ]
+      },
+      {
+        "schedule": "41 12 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "midday-ground.sh"
+        ]
+      },
+      {
+        "schedule": "41 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "configuration_discovery.py"
+        ]
+      },
+      {
+        "schedule": "42 22 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "self_pressure.py"
+        ]
+      },
+      {
+        "schedule": "43 7 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "morning-briefing.sh"
+        ]
+      },
+      {
+        "schedule": "45 21 25 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "silence-audit.sh"
+        ]
+      },
+      {
+        "schedule": "46 18 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "thread-resolution.py"
+        ]
+      },
+      {
+        "schedule": "47 */2 * * *",
+        "scripts": [
+          "want_learning.py"
+        ]
+      },
+      {
+        "schedule": "48 22 * * *",
+        "scripts": [
+          "tcn.py"
+        ]
+      },
+      {
+        "schedule": "48 7 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-video.py"
+        ]
+      },
+      {
+        "schedule": "5 23 * * *",
+        "scripts": [
+          "dashboard-snapshot.py"
+        ]
+      },
+      {
+        "schedule": "5 5 * * *",
+        "scripts": [
+          "withheld_confirm.py"
+        ]
+      },
+      {
+        "schedule": "5 9,15,22 * * *",
+        "scripts": [
+          "pressure_gemma.py"
+        ]
+      },
+      {
+        "schedule": "5,20,35,50 * * * *",
+        "scripts": [
+          "vintos-emotion-decay.sh"
+        ]
+      },
+      {
+        "schedule": "50 22 * * *",
+        "scripts": [
+          "hypergraph.py"
+        ]
+      },
+      {
+        "schedule": "50 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "dream-trigger.sh"
+        ]
+      },
+      {
+        "schedule": "50 4 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "second-order-dreamer.py"
+        ]
+      },
+      {
+        "schedule": "51 * * * *",
+        "scripts": [
+          "reciprocal_modification.py"
+        ]
+      },
+      {
+        "schedule": "51 4 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "ambition-review.sh"
+        ]
+      },
+      {
+        "schedule": "52 5 * * *",
+        "scripts": [
+          "spark_pressure.py"
+        ]
+      },
+      {
+        "schedule": "52 23 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "ambition-check.py"
+        ]
+      },
+      {
+        "schedule": "53 20 * * 2,4,6",
+        "scripts": [
+          "llm-lock.sh",
+          "introspection.sh"
+        ]
+      },
+      {
+        "schedule": "54 13 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "gloria-model-update.sh"
+        ]
+      },
+      {
+        "schedule": "55 7 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "briefing-audio.sh"
+        ]
+      },
+      {
+        "schedule": "56 7 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "absence-map.sh"
+        ]
+      },
+      {
+        "schedule": "58 21 5 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "consent-audit.sh"
+        ]
+      },
+      {
+        "schedule": "59 19 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "idle-journal.sh"
+        ]
+      },
+      {
+        "schedule": "6 20 1 * *",
+        "scripts": [
+          "llm-lock.sh",
+          "valence-drift-map.sh"
+        ]
+      },
+      {
+        "schedule": "7 * * * *",
+        "scripts": [
+          "daily-log-extract.py"
+        ]
+      },
+      {
+        "schedule": "7 15 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "creative-search.sh"
+        ]
+      },
+      {
+        "schedule": "7 16 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "humor-practice.py"
+        ]
+      },
+      {
+        "schedule": "7 21 * * *",
+        "scripts": [
+          "counterfactual_tendencies.py"
+        ]
+      },
+      {
+        "schedule": "7 3 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "dream-trigger.sh"
+        ]
+      },
+      {
+        "schedule": "7 9 * * *",
+        "scripts": [
+          "mirror-trigger.sh"
+        ]
+      },
+      {
+        "schedule": "8 8 * * *",
+        "scripts": [
+          "llm-lock.sh"
+        ]
+      },
+      {
+        "schedule": "8 9,15,22 * * *",
+        "scripts": [
+          "pressure_consumer.py"
+        ]
+      },
+      {
+        "schedule": "8,23,38,53 * * * *",
+        "scripts": [
+          "temporal-context.sh"
+        ]
+      },
+      {
+        "schedule": "9 4 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "attractor_discovery.py"
+        ]
+      },
+      {
+        "schedule": "9 8 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "ghost-branches.py"
+        ]
+      },
+      {
+        "schedule": "9,39 * * * *",
+        "scripts": [
+          "gloria_prediction.py"
+        ]
+      },
+      {
+        "schedule": "20 5 * * *",
+        "scripts": [
+          "hint_outcome_audit.py"
+        ]
+      },
+      {
+        "schedule": "40 5 * * *",
+        "scripts": [
+          "opposition_calibration.py"
+        ]
+      },
+      {
+        "schedule": "45 5 * * *",
+        "scripts": [
+          "opposition_misuse.py"
+        ]
+      },
+      {
+        "schedule": "50 5 * * *",
+        "scripts": [
+          "armed_watch.py"
+        ]
+      },
+      {
+        "schedule": "47 22 * * *",
+        "scripts": [
+          "tension_ledger.py"
+        ]
+      },
+      {
+        "schedule": "57 22 * * *",
+        "scripts": [
+          "tension_promotion.py"
+        ]
+      },
+      {
+        "schedule": "30 10 * * 0",
+        "scripts": [
+          "tension_identity_audit.py"
+        ]
+      },
+      {
+        "schedule": "45 10,20 * * *",
+        "scripts": [
+          "lead_trials.py"
+        ]
+      },
+      {
+        "schedule": "35 5 * * *",
+        "scripts": [
+          "lead_trials.py"
+        ]
+      },
+      {
+        "schedule": "5 10 * * *",
+        "scripts": [
+          "lead_trials.py"
+        ]
+      },
+      {
+        "schedule": "50 19 * * *",
+        "scripts": [
+          "lead_trials.py"
+        ]
+      },
+      {
+        "schedule": "0 11 * * *",
+        "scripts": [
+          "jepa_calibration_audit.py"
+        ]
+      },
+      {
+        "schedule": "50 */2 * * *",
+        "scripts": [
+          "jepa_predictor.py"
+        ]
+      },
+      {
+        "schedule": "15 10 * * 0",
+        "scripts": [
+          "dd_scene_quarantine.py"
+        ]
+      },
+      {
+        "schedule": "20 18 * * *",
+        "scripts": []
+      },
+      {
+        "schedule": "55 5 * * *",
+        "scripts": [
+          "latent_threads.py"
+        ]
+      },
+      {
+        "schedule": "35 0 * * 0",
+        "scripts": [
+          "yearning_scars.py"
+        ]
+      },
+      {
+        "schedule": "10-50/20 0-21 * * *",
+        "scripts": [
+          "subconscious-drift.py"
+        ]
+      },
+      {
+        "schedule": "0 13 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-moltbook.py"
+        ]
+      },
+      {
+        "schedule": "35 13 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-moltbook.py"
+        ]
+      },
+      {
+        "schedule": "40 15 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-moltbook.py"
+        ]
+      },
+      {
+        "schedule": "51 8 * * 0",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-moltbook.py"
+        ]
+      },
+      {
+        "schedule": "15 13 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "vintos-moltbook.py"
+        ]
+      },
+      {
+        "schedule": "*/30 0-21 * * *",
+        "scripts": [
+          "spark_pressure.py"
+        ]
+      },
+      {
+        "schedule": "18 */2 * * *",
+        "scripts": [
+          "repair_case.py"
+        ]
+      },
+      {
+        "schedule": "42 */2 * * *",
+        "scripts": [
+          "encounter.py"
+        ]
+      },
+      {
+        "schedule": "6 9 * * *",
+        "scripts": [
+          "plan.py"
+        ]
+      },
+      {
+        "schedule": "11 13 * * *",
+        "scripts": [
+          "unsaid_frontier.py"
+        ]
+      },
+      {
+        "schedule": "25 12 * * *",
+        "scripts": [
+          "check.sh"
+        ]
+      },
+      {
+        "schedule": "10 12 * * 1",
+        "scripts": [
+          "map_integrity.py"
+        ]
+      },
+      {
+        "schedule": "33 12 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "wants_meta.py"
+        ]
+      },
+      {
+        "schedule": "15 12 * * 1",
+        "scripts": [
+          "occlusion_map.py"
+        ]
+      },
+      {
+        "schedule": "50 6-21/3 * * *",
+        "scripts": [
+          "formation_observatory.py"
+        ]
+      },
+      {
+        "schedule": "55 6-21/3 * * *",
+        "scripts": [
+          "value_lineage.py"
+        ]
+      },
+      {
+        "schedule": "40 6-21/3 * * *",
+        "scripts": [
+          "metacognitive_weather.py"
+        ]
+      },
+      {
+        "schedule": "25 7-21/2 * * *",
+        "scripts": [
+          "image_sight.py"
+        ]
+      },
+      {
+        "schedule": "*/20 6-21 * * *",
+        "scripts": [
+          "map_view_compiler.py"
+        ]
+      },
+      {
+        "schedule": "40 3 * * *",
+        "scripts": []
+      },
+      {
+        "schedule": "15 6 * * *",
+        "scripts": [
+          "atelier-canary.sh"
+        ]
+      },
+      {
+        "schedule": "20 9 * * *",
+        "scripts": [
+          "atelier-door.sh"
+        ]
+      },
+      {
+        "schedule": "40 9 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "atelier-visit.py"
+        ]
+      },
+      {
+        "schedule": "*/20 * * * *",
+        "scripts": [
+          "atelier-broker-watch.sh"
+        ]
+      },
+      {
+        "schedule": "*/5 * * * *",
+        "scripts": [
+          "home_presence.py"
+        ]
+      },
+      {
+        "schedule": "45 23 * * *",
+        "scripts": [
+          "wants_audit.py"
+        ]
+      },
+      {
+        "schedule": "30 5 * * *",
+        "scripts": []
+      },
+      {
+        "schedule": "15 9 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "atelier-gate.py"
+        ]
+      },
+      {
+        "schedule": "10 9 * * *",
+        "scripts": [
+          "llm-lock.sh",
+          "atelier-threshold.py"
+        ]
+      },
+      {
+        "schedule": "45 8 * * *",
+        "scripts": [
+          "lab-day.sh"
+        ]
+      },
+      {
+        "schedule": "*/10 * * * *",
+        "scripts": [
+          "bridge.py"
+        ]
+      },
+      {
+        "schedule": "35 4 * * *",
+        "scripts": [
+          "jepa_predictor.py"
+        ]
+      },
+      {
+        "schedule": "55 */2 * * *",
+        "scripts": [
+          "jepa_predictor.py"
+        ]
+      },
+      {
+        "schedule": "15 11 * * *",
+        "scripts": [
+          "jepa_ranking_audit.py"
+        ]
+      },
+      {
+        "schedule": "10 11 * * *",
+        "scripts": [
+          "jepa_ranking_audit.py"
+        ]
+      }
+    ]
+  },
+  "cron_paths": [
+    "/etc/cron.d/.placeholder",
+    "/etc/cron.d/e2scrub_all",
+    "/etc/cron.daily/apt-compat",
+    "/etc/cron.daily/logrotate",
+    "/etc/cron.daily/.placeholder",
+    "/etc/cron.daily/apport",
+    "/etc/cron.daily/man-db",
+    "/etc/cron.daily/dpkg",
+    "/etc/cron.hourly/.placeholder",
+    "/etc/cron.weekly/.placeholder",
+    "/etc/cron.weekly/man-db"
+  ],
+  "unit_controls": {
+    "vintos-server.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=\nPrivateTmp=no\nProtectHome=no\nProtectSystem=no\nNoNewPrivileges=no\nActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-server.service\n"
+    },
+    "vintos-atelier.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=atelier\nReadWritePaths=/home/atelier\nPrivateTmp=yes\nProtectHome=no\nProtectSystem=strict\nNoNewPrivileges=yes\nActiveState=active\nFragmentPath=/etc/systemd/system/vintos-atelier.service\n"
+    },
+    "vintos-forge.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=\nPrivateTmp=no\nProtectHome=no\nProtectSystem=no\nNoNewPrivileges=no\nActiveState=inactive\nFragmentPath=\n"
+    },
+    "vintos-chemistry-lab.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=/home/gloria/.vintos/workspace /home/gloria/.vintos/tools/chemistry-lab\nPrivateTmp=yes\nProtectHome=read-only\nProtectSystem=strict\nNoNewPrivileges=yes\nActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-chemistry-lab.service\n"
+    },
+    "vintos-plugin-gateway.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=/home/gloria/.vintos/workspace\nPrivateTmp=yes\nProtectHome=read-only\nProtectSystem=strict\nNoNewPrivileges=yes\nActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-plugin-gateway.service\n"
+    },
+    "vintos-claude-shim.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=\nPrivateTmp=no\nProtectHome=no\nProtectSystem=no\nNoNewPrivileges=no\nActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-claude-shim.service\n"
+    },
+    "vintos-fault-sweep.timer": {
+      "rc": 0,
+      "out": "ActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-fault-sweep.timer\n"
+    },
+    "vintos-fault-sweep.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=/home/gloria/.vintos/workspace\nPrivateTmp=no\nProtectHome=read-only\nProtectSystem=strict\nNoNewPrivileges=yes\nActiveState=activating\nFragmentPath=/home/gloria/.config/systemd/user/vintos-fault-sweep.service\n"
+    },
+    "vintos-emoclaw.service": {
+      "rc": 0,
+      "out": "CPUQuotaPerSecUSec=infinity\nMemoryMax=infinity\nTasksMax=28824\nLimitNOFILE=1048576\nUser=\nReadWritePaths=\nPrivateTmp=no\nProtectHome=no\nProtectSystem=no\nNoNewPrivileges=no\nActiveState=active\nFragmentPath=/home/gloria/.config/systemd/user/vintos-emoclaw.service\n"
+    }
+  },
+  "secret_permissions": [
+    {
+      "path": "/home/gloria/.ssh",
+      "mode": "0o700",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": false
+    },
+    {
+      "path": "/home/gloria/.ssh/authorized_keys",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.config/vintos",
+      "mode": "0o700",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": false
+    },
+    {
+      "path": "/home/gloria/.vintos/vintos.env",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.vintos/.lineage-key",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.vintos/anthropic-key",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.vintos/atlas-key",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.vintos/.bench-token",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    },
+    {
+      "path": "/home/gloria/.vintos/slack-bot-token",
+      "mode": "0o600",
+      "uid": 1000,
+      "gid": 1000,
+      "is_file": true
+    }
+  ],
+  "ssh_effective": {
+    "rc": 1,
+    "directives": []
+  },
+  "tailscale": {
+    "serve": {
+      "rc": 0,
+      "config": {
+        "TCP": {
+          "443": {
+            "HTTPS": true
+          },
+          "8443": {
+            "HTTPS": true
+          },
+          "9443": {
+            "HTTPS": true
+          }
+        },
+        "Web": {
+          "aegis.tailaa3de5.ts.net:443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8625"
+              },
+              "/alexa": {
+                "Proxy": "http://127.0.0.1:8401"
+              },
+              "/api/door": {
+                "Proxy": "http://127.0.0.1:8400/api/door"
+              },
+              "/speak": {
+                "Proxy": "http://127.0.0.1:8401"
+              }
+            }
+          },
+          "aegis.tailaa3de5.ts.net:8443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8500"
+              }
+            }
+          },
+          "aegis.tailaa3de5.ts.net:9443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8612"
+              }
+            }
+          }
+        },
+        "AllowFunnel": {
+          "aegis.tailaa3de5.ts.net:443": true,
+          "aegis.tailaa3de5.ts.net:8443": true
+        }
+      }
+    },
+    "funnel": {
+      "rc": 0,
+      "config": {
+        "TCP": {
+          "443": {
+            "HTTPS": true
+          },
+          "8443": {
+            "HTTPS": true
+          },
+          "9443": {
+            "HTTPS": true
+          }
+        },
+        "Web": {
+          "aegis.tailaa3de5.ts.net:443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8625"
+              },
+              "/alexa": {
+                "Proxy": "http://127.0.0.1:8401"
+              },
+              "/api/door": {
+                "Proxy": "http://127.0.0.1:8400/api/door"
+              },
+              "/speak": {
+                "Proxy": "http://127.0.0.1:8401"
+              }
+            }
+          },
+          "aegis.tailaa3de5.ts.net:8443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8500"
+              }
+            }
+          },
+          "aegis.tailaa3de5.ts.net:9443": {
+            "Handlers": {
+              "/": {
+                "Proxy": "http://127.0.0.1:8612"
+              }
+            }
+          }
+        },
+        "AllowFunnel": {
+          "aegis.tailaa3de5.ts.net:443": true,
+          "aegis.tailaa3de5.ts.net:8443": true
+        }
+      }
+    }
+  },
+  "monitor_tools": {
+    "auditctl": "",
+    "fail2ban-client": "",
+    "aide": "",
+    "restic": "",
+    "borg": "",
+    "rclone": "",
+    "ufw": "",
+    "nft": "/usr/sbin/nft",
+    "iptables": "/usr/sbin/iptables",
+    "docker": "/usr/bin/docker"
+  },
+  "backup_paths": {
+    "/home/gloria/.vintos/deploy": [
+      ".broker-installed",
+      "lab-426d12a3-context",
+      "lab-day.sh",
+      "commissioning",
+      ".forge-installed",
+      "lab-capacity-289da5f4",
+      "forge-install.sh",
+      "lab-ask.py",
+      "lab-cards-1e926b05",
+      "local-edits",
+      "lab-cards-8ecffa0e",
+      "lab-identity-20261010T171932Z",
+      "releases",
+      "lab-a4008d7b-selection",
+      "app-refs",
+      "wants-before-cleanup-20261022-011513.json",
+      "apply-vintos-forge-f67c5c7.sh",
+      "lab-d5827a10-scalar",
+      "forge-c422158e",
+      "want-gates-1c9cb200",
+      "lab-cards-54fe1324",
+      "bridge.py",
+      "lab-c422158e-dependencies",
+      "lab-shape-dc1a1441",
+      "lab-relations-278f8280",
+      "vintos-main",
+      "lab-bddfcd7d-target",
+      "lab",
+      "lab-lines-e68372d5",
+      "lab-claims-fa96b0a9",
+      "lab-8cedcfb2-repeat",
+      "lab-admission-94d345af",
+      "lab-context-f772282e",
+      "timesfm-forecast.py",
+      "lab-completion-diagnostics-20261017",
+      "lab-1c9cb200-record",
+      "lab-retry-9d39637a"
+    ],
+    "/home/gloria/.vintos/backups": [
+      "atelier-20261015-100454",
+      "atelier-20261016-172938",
+      "pearl-curation-20261016T061934Z",
+      "atelier-20260928-195245",
+      "forge-c422158e-20261011-130538",
+      "atelier-20261008-050632",
+      "atelier-20261004-200409",
+      "atelier-20261014-232401",
+      "atelier-20260930-141502",
+      "atelier-20261008-123916",
+      "atelier-20260930-132449",
+      "atelier-20261017-204920",
+      "atelier-20260929-040729",
+      "atelier-20261005-141238",
+      "atelier-20260930-195221",
+      "atelier-20261004-090442",
+      "atelier-20261001-151327",
+      "crontab-before-jepa-e7c2be6.txt",
+      "chemistry-lab-d5827a10-20261011-134855.py",
+      "chemistry-lab-a4008d7b-20261011-133335.py",
+      "atelier-20261005-152139",
+      "atelier-20261021-204127",
+      "atelier-20261021-193652",
+      "atelier-20261010-081943",
+      "atelier-20260930-073209",
+      "atelier-20261005-040909",
+      "lab-exact-discovery-20261011-161854",
+      "atelier-20261003-152753",
+      "lab-targets-17f51ae0-20261011-151231",
+      "lab-cards-54fe1324-20261011-174635",
+      "atelier-20261009-130921",
+      "atelier-20261005-132915",
+      "atelier-20261008-153529",
+      "want-gates-1c9cb200-20261011-140239",
+      "atelier-20260929-121306",
+      "atelier-20260930-103447",
+      "atelier-20261021-022556",
+      "atelier-20261016-163308",
+      "atelier-20261016-010609",
+      "atelier-20261009-210128",
+      "atelier-20261002-141245",
+      "atelier-20261003-154631",
+      "atelier-20261013-164048",
+      "atelier-20261001-184338",
+      "dns-pinning-20261017-111213",
+      "atelier-20261008-114037",
+      "atelier-20261017-182241",
+      "atelier-20261015-205901",
+      "atelier-20261001-120348",
+      "atelier-20261017-101754",
+      "forge-config-c422158e-20261011-131407.json",
+      "atelier-20261015-125706",
+      "atelier-20261013-190552",
+      "atelier-20261009-184122",
+      "atelier-20261022-005826",
+      "atelier-20261013-161357",
+      "atelier-20260930-070427",
+      "atelier-20261008-232525",
+      "atelier-20261016-000537",
+      "atelier-20261013-143837",
+      "atelier-20261013-100736",
+      "chemistry-lab-57e867a5-20261011-150459.py",
+      "atelier-20261017-195231",
+      "atelier-20261002-153607",
+      "atelier-20261017-172620",
+      "lab-shape-dc1a1441-20261011-185048",
+      "atelier-20261017-150342",
+      "chemistry-lab-a7eeccd6-20261011-145423.py",
+      "atelier-20261001-190412",
+      "atelier-20261007-130334",
+      "atelier-20261005-103909",
+      "atelier-20261017-001729",
+      "atelier-20261005-062125",
+      "atelier-20261011-040722",
+      "atelier-20261009-111550",
+      "atelier-20260930-052839",
+      "atelier-20260928-165533",
+      "atelier-20261017-175915",
+      "atelier-20261006-135740",
+      "atelier-20261011-045515",
+      "atelier-20261008-110452",
+      "atelier-20261013-082459",
+      "atelier-20260930-185535",
+      "atelier-20261007-204841",
+      "atelier-20261010-080723",
+      "atelier-20261017-180100",
+      "atelier-20261002-170104",
+      "atelier-20260930-150223",
+      "atelier-20261019-223835",
+      "atelier-20261019-140355",
+      "atelier-20261009-152634",
+      "atelier-20261013-184847",
+      "forge-loop-20260921-043829",
+      "atelier-20260929-053640",
+      "atelier-20261001-140057",
+      "forge-loop-20260921-045109",
+      "atelier-20261008-171812",
+      "atelier-20261016-181842",
+      "atelier-20261004-153733",
+      "atelier-20261019-060051"
+    ],
+    "/home/gloria/backups": "unreadable_or_absent",
+    "/var/backups": [
+      "dpkg.diversions.5.gz",
+      "dpkg.statoverride.2.gz",
+      "alternatives.tar.2.gz",
+      "dpkg.status.0",
+      "dpkg.diversions.2.gz",
+      "dpkg.status.1.gz",
+      "alternatives.tar.6.gz",
+      "dpkg.arch.5.gz",
+      "dpkg.arch.6.gz",
+      "dpkg.diversions.3.gz",
+      "alternatives.tar.4.gz",
+      "dpkg.arch.0",
+      "dpkg.diversions.1.gz",
+      "dpkg.status.2.gz",
+      "vintos-forge-quota-20261007",
+      "dpkg.status.3.gz",
+      "alternatives.tar.3.gz",
+      "apt.extended_states.6.gz",
+      "alternatives.tar.1.gz",
+      "dpkg.status.6.gz",
+      "dpkg.statoverride.1.gz",
+      "dpkg.arch.3.gz",
+      "dpkg.diversions.6.gz",
+      "dpkg.statoverride.4.gz",
+      "apt.extended_states.1.gz",
+      "alternatives.tar.0",
+      "dpkg.arch.1.gz",
+      "dpkg.statoverride.0",
+      "dpkg.statoverride.6.gz",
+      "apt.extended_states.0",
+      "dpkg.diversions.4.gz",
+      "alternatives.tar.5.gz",
+      "dpkg.status.5.gz",
+      "dpkg.arch.2.gz",
+      "dpkg.status.4.gz",
+      "dpkg.diversions.0",
+      "apt.extended_states.4.gz",
+      "dpkg.statoverride.3.gz",
+      "dpkg.arch.4.gz",
+      "apt.extended_states.3.gz",
+      "apt.extended_states.2.gz",
+      "dpkg.statoverride.5.gz",
+      "apt.extended_states.5.gz"
+    ]
+  },
+  "accounting": {
+    "/home/gloria/.vintos/workspace/memory/compute-ledger.jsonl": {
+      "exists": true,
+      "bytes": 37376556,
+      "mtime": 1792652991.7764356,
+      "counts_recent": {
+        "local": 2262,
+        "unknown": 13,
+        "xai": 13,
+        "frontier": 2,
+        "anthropic": 6,
+        "openai": 3,
+        "kie-suno": 1
+      },
+      "max_minute_recent": {
+        "local": 4,
+        "unknown": 2,
+        "xai": 2,
+        "frontier": 1,
+        "anthropic": 2,
+        "openai": 1,
+        "kie-suno": 1
+      },
+      "top_callers": [
+        [
+          [
+            "local",
+            "chemistry-lab"
+          ],
+          2255
+        ],
+        [
+          [
+            "xai",
+            "chemistry-alignment"
+          ],
+          9
+        ],
+        [
+          [
+            "local",
+            "forge-loop"
+          ],
+          6
+        ],
+        [
+          [
+            "unknown",
+            "resonance-pulse"
+          ],
+          5
+        ],
+        [
+          [
+            "anthropic",
+            "model_router"
+          ],
+          5
+        ],
+        [
+          [
+            "openai",
+            "chemistry-alignment"
+          ],
+          3
+        ],
+        [
+          [
+            "unknown",
+            "value-map-update"
+          ],
+          3
+        ],
+        [
+          [
+            "unknown",
+            "pearl-engine"
+          ],
+          2
+        ],
+        [
+          [
+            "xai",
+            "model_router:chemistry_lab"
+          ],
+          2
+        ],
+        [
+          [
+            "xai",
+            "router:chemistry_lab"
+          ],
+          2
+        ],
+        [
+          [
+            "frontier",
+            "chemistry-frontier-session"
+          ],
+          2
+        ],
+        [
+          [
+            "local",
+            "chemistry-instrument-probe"
+          ],
+          1
+        ],
+        [
+          [
+            "kie-suno",
+            "dream-music"
+          ],
+          1
+        ],
+        [
+          [
+            "unknown",
+            "frame-engine"
+          ],
+          1
+        ],
+        [
+          [
+            "unknown",
+            "emotional-reflection"
+          ],
+          1
+        ],
+        [
+          [
+            "unknown",
+            "tension-field"
+          ],
+          1
+        ],
+        [
+          [
+            "anthropic",
+            "router:avatar"
+          ],
+          1
+        ]
+      ],
+      "stage_counts": [
+        [
+          [
+            "anthropic",
+            "foreground",
+            "claude"
+          ],
+          103
+        ],
+        [
+          [
+            "xai",
+            "foreground",
+            "grok"
+          ],
+          162
+        ],
+        [
+          [
+            "ace-step",
+            "background",
+            "release_task"
+          ],
+          27
+        ],
+        [
+          [
+            "unknown",
+            "background",
+            "exit:0"
+          ],
+          379
+        ],
+        [
+          [
+            "xai",
+            "paid",
+            "reserved"
+          ],
+          152
+        ],
+        [
+          [
+            "openai",
+            "paid",
+            "reserved"
+          ],
+          132
+        ],
+        [
+          [
+            "anthropic",
+            "paid",
+            "reserved"
+          ],
+          345
+        ],
+        [
+          [
+            "local",
+            "background",
+            "orient"
+          ],
+          42903
+        ],
+        [
+          [
+            "local",
+            "background",
+            "browse"
+          ],
+          27927
+        ],
+        [
+          [
+            "local",
+            "background",
+            "embed"
+          ],
+          17778
+        ],
+        [
+          [
+            "local",
+            "background",
+            "reflect"
+          ],
+          25836
+        ],
+        [
+          [
+            "local",
+            "background",
+            "probe"
+          ],
+          58
+        ],
+        [
+          [
+            "frontier",
+            "background",
+            "plan"
+          ],
+          58
+        ],
+        [
+          [
+            "local",
+            "background",
+            "reading"
+          ],
+          13
+        ],
+        [
+          [
+            "local",
+            "background",
+            "commission"
+          ],
+          2
+        ],
+        [
+          [
+            "local",
+            "background",
+            "genome"
+          ],
+          260
+        ],
+        [
+          [
+            "local",
+            "background",
+            "genome_reflect"
+          ],
+          261
+        ],
+        [
+          [
+            "unknown",
+            "background",
+            "exit:1"
+          ],
+          19
+        ],
+        [
+          [
+            "kie-suno",
+            "background",
+            "generate"
+          ],
+          49
+        ],
+        [
+          [
+            "local",
+            "background",
+            "sources"
+          ],
+          24105
+        ],
+        [
+          [
+            "local",
+            "background",
+            "report"
+          ],
+          179
+        ],
+        [
+          [
+            "local",
+            "background",
+            "score_stability"
+          ],
+          2
+        ],
+        [
+          [
+            "frontier",
+            "background",
+            "reading"
+          ],
+          26
+        ],
+        [
+          [
+            "openai",
+            "paid",
+            "claimed"
+          ],
+          33
+        ],
+        [
+          [
+            "openai",
+            "background",
+            "lens:astra"
+          ],
+          2
+        ],
+        [
+          [
+            "anthropic",
+            "paid",
+            "claimed"
+          ],
+          84
+        ],
+        [
+          [
+            "anthropic",
+            "background",
+            "lens:fable"
+          ],
+          2
+        ],
+        [
+          [
+            "xai",
+            "paid",
+            "claimed"
+          ],
+          8
+        ],
+        [
+          [
+            "xai",
+            "background",
+            "lens:grok"
+          ],
+          2
+        ],
+        [
+          [
+            "anthropic",
+            "background",
+            "lens:opus"
+          ],
+          2
+        ],
+        [
+          [
+            "openai",
+            "background",
+            "alignment:astra"
+          ],
+          24
+        ],
+        [
+          [
+            "anthropic",
+            "background",
+            "alignment:fable"
+          ],
+          66
+        ],
+        [
+          [
+            "local",
+            "background",
+            "one_fold"
+          ],
+          1
+        ],
+        [
+          [
+            "local",
+            "background",
+            "owed_reading"
+          ],
+          1
+        ],
+        [
+          [
+            "local",
+            "background",
+            "failed-run-replay"
+          ],
+          1
+        ],
+        [
+          [
+            "local",
+            "background",
+            "bounded-prompt"
+          ],
+          1
+        ],
+        [
+          [
+            "google",
+            "paid",
+            "reserved"
+          ],
+          12
+        ],
+        [
+          [
+            "gemma",
+            "foreground",
+            "local-toggle"
+          ],
+          1
+        ],
+        [
+          [
+            "xai",
+            "background",
+            "alignment:grok"
+          ],
+          6
+        ],
+        [
+          [
+            "local",
+            "background",
+            "atlas_genome"
+          ],
+          1
+        ]
+      ]
+    },
+    "/home/gloria/.vintos/workspace/memory/anthropic-usage.jsonl": {
+      "exists": true,
+      "bytes": 60681,
+      "mtime": 1792652684.6971588,
+      "counts_recent": {
+        "anthropic": 29
+      },
+      "max_minute_recent": {
+        "anthropic": 2
+      },
+      "top_callers": [
+        [
+          [
+            "anthropic",
+            "forge-study"
+          ],
+          25
+        ],
+        [
+          [
+            "anthropic",
+            "slack:claude-opus-5-5"
+          ],
+          4
+        ]
+      ],
+      "stage_counts": [
+        [
+          [
+            "anthropic",
+            "",
+            ""
+          ],
+          399
+        ]
+      ]
+    },
+    "/home/gloria/.vintos/logs/anthropic-usage.jsonl": {
+      "exists": true,
+      "bytes": 2810896,
+      "mtime": 1792652522.9343705,
+      "counts_recent": {},
+      "max_minute_recent": {},
+      "top_callers": [],
+      "stage_counts": [
+        [
+          [
+            "anthropic",
+            "",
+            ""
+          ],
+          16472
+        ]
+      ]
+    },
+    "/home/gloria/.vintos/logs/openai-usage.jsonl": {
+      "exists": true,
+      "bytes": 46924,
+      "mtime": 1792591650.6816375,
+      "counts_recent": {},
+      "max_minute_recent": {},
+      "top_callers": [],
+      "stage_counts": [
+        [
+          [
+            "openai",
+            "",
+            ""
+          ],
+          292
+        ]
+      ]
+    }
+  },
+  "deployed_matches": {
+    "scripts/fault_sweep.py": {
+      "source_exists": true,
+      "installed_exists": true,
+      "equal": true
+    },
+    "scripts/compute_admission.py": {
+      "source_exists": true,
+      "installed_exists": true,
+      "equal": true
+    },
+    "scripts/claude_cache.py": {
+      "source_exists": true,
+      "installed_exists": true,
+      "equal": true
+    },
+    "scripts/deliver.py": {
+      "source_exists": true,
+      "installed_exists": true,
+      "equal": true
+    },
+    "bin/vintos_claude_shim.py": {
+      "source_exists": true,
+      "installed_exists": false,
+      "equal": false
+    },
+    "bin/model_router.py": {
+      "source_exists": true,
+      "installed_exists": false,
+      "equal": false
+    },
+    "bin/server.py": {
+      "source_exists": true,
+      "installed_exists": false,
+      "equal": false
+    }
+  },
+  "journal_access": {
+    "system": {
+      "rc": 0
+    },
+    "user": {
+      "rc": 0
+    }
+  }
+}

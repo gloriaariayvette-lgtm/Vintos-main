@@ -376,6 +376,9 @@ EOF
 printf '%s' "$MIRROR_SYSTEM" > /tmp/mirror-sys-2.txt
 printf '%s' "$VELARIS_SPEAKS" > /tmp/mirror-vs.txt
 MIRROR_SPEAKS=$(python3 << 'MSEOF'
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import requests, os, sys
 sys_msg = open('/tmp/mirror-sys-2.txt').read()
 vs = open('/tmp/mirror-vs.txt').read()
@@ -396,7 +399,7 @@ try:
         k = next(l.strip().split('=', 1)[1].strip().strip('"').strip("'")
                  for l in open(_eo.path.expanduser('~/.vintos/vintos.env'))
                  if l.strip().startswith('OPENAI_API_KEY='))
-    r = requests.post('https://api.openai.com/v1/chat/completions',
+    r = paid_http.send(requests.post, 'mirror.sh', 'https://api.openai.com/v1/chat/completions',
         headers={'Authorization': 'Bearer ' + k},
         json={'model': os.environ.get('SOL_MODEL', 'gpt-5.6'),
               'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],

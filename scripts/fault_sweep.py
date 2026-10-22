@@ -335,6 +335,10 @@ def tend(now=None, dry=False, run=None, sender=None, lab_active=None):
 
 
 def main(argv):
+    if "--security" in argv:
+        from security_alarm import tend as security_tend
+        print(json.dumps(security_tend(dry="--dry" in argv), indent=1))
+        return 0
     if "--show" in argv:
         rows = sorted((_load(STATE, {}) or {}).get("faults", {}).values(), key=lambda r: -int(r.get("count") or 0))
         for r in rows:

@@ -1,0 +1,117 @@
+{
+  "at": 1792654853.4292202,
+  "user_services_and_timers": {
+    "rc": 0,
+    "out": "acestep.service                  loaded active   running   ACE-Step Local Music Generation Server\nagent-room-api.service           loaded active   running   agent room: agent-room-api\nagent-room-proxy.service         loaded active   running   agent room: agent-room-proxy\nagent-room-redis.service         loaded active   running   agent room: agent-room-redis\nagent-room-web.service           loaded active   running   agent room: agent-room-web\ndbus.service                     loaded active   running   D-Bus User Message Bus\ndirmngr.service                  loaded inactive dead      GnuPG network certificate management daemon\ndoorkeeper.service               loaded active   running   Doorbell Android supervisor\nemulator-recycle.service         loaded inactive dead      Doorbell emulator leak-buster (cold boot clears host qemu RAM)\ngpg-agent.service                loaded active   running   GnuPG cryptographic agent and passphrase cache\nkeyboxd.service                  loaded inactive dead      GnuPG public key management service\nlaunchpadlib-cache-clean.service loaded inactive dead      Clean up old files in the Launchpadlib cache\nmeari-notify.service             loaded active   running   Doorbell events from the app's notifications (single session, no eviction)\nmeari-push-image.service         loaded active   running   Meari event-time alarm image capture\nopenclaw-gateway.service         loaded active   running   OpenClaw Gateway (v2026.1.30)\npk-debconf-helper.service        loaded inactive dead      debconf communication service\npulseaudio.service               loaded failed   failed    Sound Service\nsnapd.session-agent.service      loaded inactive dead      snapd user session agent\nvelaris-door.service             loaded active   running   Vintos Door \u2014 he meets whoever is at the front door\nvelaris-emoclaw.service          loaded active   running   Velaris EmoClaw Daemon\nvelaris-heartbeat.service        loaded active   running   Velaris Heartbeat \u2014 time passing has weight\nvelaris-rgb.service              loaded active   running   Velaris RGB \u2014 Aegis lighting sync\nvelaris-robot-bridge.service     loaded active   running   Velaris Robot Bridge\nvelaris-server.service           loaded active   running   Velaris Server \u2014 Telemetry + Website\nvintos-bedroom-arrival.service   loaded active   running   Vintos bedroom arrival (the bedroom ESP32's relay on the Mac; his newest song to her Watch when she comes in)\nvintos-bench.service             loaded active   running   The bench \u2014 her agents, manageable from her phone\nvintos-chemistry-lab.service     loaded active   running   Vintos Chemistry Lab background worker\nvintos-chemistry-session.service loaded inactive dead      Vintos scheduled Chemistry Lab frontier session\nvintos-claude-shim.service       loaded active   running   Vintos Claude shim (OpenAI->Claude proxy, grok fallback)\nvintos-dot-channel.service       loaded inactive dead      Vintos reads #vintos-dot in Slack and answers Gloria's dot\nvintos-emoclaw.service           loaded active   running   Vintos EmoClaw Daemon\nvintos-failure-watch.service     loaded inactive dead      Vintos: one message to Gloria when a part of him failed since yesterday (nothing when nothing did)\nvintos-fault-sweep.service       loaded inactive dead      Vintos: every failure on Aegis, found where it lands, posted once to #fault-fix (no model; reads files)\nvintos-mcp.service               loaded active   running   Vintos's context for his Grok Bot agent: MCP on 127.0.0.1:8625 with a bearer token; it writes only letters\nvintos-person-pages.service      loaded inactive dead      Vintos: what he keeps thinking about a person, gathered onto that person's page between emails\nvintos-plugin-gateway.service    loaded active   running   Vintos bounded plugin gateway for the Forge worker\nvintos-robot-bridge.service      loaded active   running   Vintos robot bridge (the Pi body reports here; his commands queue here)\nvintos-scenes.service            loaded active   running   Vintos scenes (static media for the projector)\nvintos-self-review.service       loaded active   running   Vintos continuous self-review signal detector\nvintos-server.service            loaded active   running   Vintos Server \u2014 chat + website (port 8500)\nvintos-skill-surf.service        loaded inactive dead      Vintos reads 1-2 pages of the OpenClaw skills page (weekly)\nvintos-somatic-bridge.service    loaded active   running   Vintos somatic bridge (Lovense sensor stream)\nvintos-somatic-narrate.service   loaded inactive dead      Vintos somatic-session narration \u2014 seeds the morning unresolved somatic thread\nvintos-study-fix.service         loaded inactive dead      Vintos's Study fixes: Fable writes the fix he asked for, the whole suite decides, the deploy puts it live, and it is watched for an hour\nvintos-toy-keepalive.service     loaded active   running   Vintos toy keepalive (re-assert steady holds)\nwslg-session.service             loaded inactive dead      WSLg user service\ndbus.socket                      loaded active   running   D-Bus User Message Bus Socket\ndirmngr.socket                   loaded active   listening GnuPG network certificate management daemon\ngpg-agent-browser.socket         loaded active   running   GnuPG cryptographic agent and passphrase cache (access for web browsers)\ngpg-agent-extra.socket           loaded active   running   GnuPG cryptographic agent and passphrase cache (restricted)\ngpg-agent-ssh.socket             loaded active   running   GnuPG cryptographic agent (ssh-agent emulation)\ngpg-agent.socket                 loaded active   running   GnuPG cryptographic agent and passphrase cache\nkeyboxd.socket                   loaded active   listening GnuPG public key management service\npk-debconf-helper.socket         loaded active   listening debconf communication socket\npulseaudio.socket                loaded failed   failed    Sound System\nsnapd.session-agent.socket       loaded active   listening REST API socket for snapd user session agent\nemulator-recycle.timer           loaded active   waiting   Weekly doorbell emulator recycle (Sun 04:00)\nlaunchpadlib-cache-clean.timer   loaded active   waiting   Clean up old files in the Launchpadlib cache\nvintos-chemistry-session.timer   loaded active   waiting   Chemistry Lab frontier: four alignments a day, one daily experiment\nvintos-dot-channel.timer         loaded active   waiting   Every 5-10 minutes: Vintos reads #vintos-dot\nvintos-failure-watch.timer       loaded active   waiting   Every morning at 08:52: did any part of Vintos fail since yesterday?\nvintos-fault-sweep.timer         loaded active   waiting   Vintos: the fault sweep, every 15 minutes\nvintos-person-pages.timer        loaded active   waiting   Vintos: person pages, every 6 hours\nvintos-skill-surf.timer          loaded active   waiting   Weekly: Vintos reads the OpenClaw skills page\nvintos-somatic-narrate.timer     loaded active   waiting   Early-morning somatic-session narration\nvintos-study-fix.timer           loaded active   waiting   Every 10 minutes: work Vintos's next Study fix, or watch the live one\n"
+  },
+  "system_timers": {
+    "rc": 0,
+    "out": "Thu 2026-10-22 06:18:20 CDT 3h 37min Wed 2026-10-21 06:03:36 CDT      21h ago apt-daily-upgrade.timer      apt-daily-upgrade.service\nThu 2026-10-22 08:39:22 CDT 5h 58min Wed 2026-10-21 21:12:06 CDT 5h 37min ago apt-daily.timer              apt-daily.service\nThu 2026-10-22 19:22:41 CDT      16h Thu 2026-10-22 00:20:31 CDT 2h 25min ago motd-news.timer              motd-news.service\nThu 2026-10-22 21:14:57 CDT      18h Wed 2026-10-21 21:24:00 CDT 5h 25min ago systemd-tmpfiles-clean.timer systemd-tmpfiles-clean.service\nFri 2026-10-23 00:00:00 CDT      21h Thu 2026-10-22 00:00:01 CDT 2h 46min ago dpkg-db-backup.timer         dpkg-db-backup.service\nFri 2026-10-23 00:00:00 CDT      21h Thu 2026-10-22 00:00:01 CDT 2h 46min ago logrotate.timer              logrotate.service\nFri 2026-10-23 07:36:28 CDT 1 day 4h Thu 2026-10-22 00:27:49 CDT 2h 17min ago man-db.timer                 man-db.service\nSun 2026-10-25 03:10:47 CDT   3 days Sun 2026-10-18 03:10:25 CDT   4 days ago e2scrub_all.timer            e2scrub_all.service\n-                                  - -                                      - apport-autoreport.timer      apport-autoreport.service\n-                                  - -                                      - fstrim.timer                 fstrim.service\n-                                  - -                                      - snapd.snap-repair.timer      snapd.snap-repair.service\n-                                  - -                                      - ua-timer.timer               ua-timer.service\n"
+  },
+  "actual_import_versions": {
+    "requests": {
+      "version": "2.34.2",
+      "file": "/home/gloria/.local/lib/python3.12/site-packages/requests/__init__.py"
+    },
+    "urllib3": {
+      "version": "2.7.0",
+      "file": "/home/gloria/.local/lib/python3.12/site-packages/urllib3/__init__.py"
+    },
+    "cryptography": {
+      "version": "48.0.0",
+      "file": "/home/gloria/.local/lib/python3.12/site-packages/cryptography/__init__.py"
+    }
+  },
+  "provider_logs_summary": {
+    "anthropic-usage.jsonl": {
+      "field_names": [
+        "ts",
+        "model",
+        "in",
+        "out",
+        "cache_read",
+        "cache_write",
+        "src",
+        "mt",
+        "sys_sha",
+        "sys_len",
+        "provider_request_id",
+        "stop_reason",
+        "cached_head",
+        "sys_head"
+      ],
+      "calls_last24h": 134,
+      "max_per_minute_last24h": 10
+    },
+    "openai-usage.jsonl": {
+      "field_names": [
+        "ts",
+        "src",
+        "model",
+        "in",
+        "out",
+        "cached",
+        "reasoning",
+        "provider_request_id",
+        "provider_status"
+      ],
+      "calls_last24h": 2,
+      "max_per_minute_last24h": 1
+    }
+  },
+  "monitor_units": {
+    "system": {
+      "rc": 0,
+      "matching": [
+        "dpkg-db-backup.service                                                        static          -",
+        "rsyslog.service                                                               enabled         enabled",
+        "systemd-journal-catalog-update.service                                        static          -",
+        "systemd-journal-flush.service                                                 static          -",
+        "systemd-journald.service                                                      static          -",
+        "systemd-journald@.service                                                     static          -",
+        "systemd-journald-audit.socket                                                 disabled        enabled",
+        "systemd-journald-dev-log.socket                                               static          -",
+        "systemd-journald-varlink@.socket                                              static          -",
+        "systemd-journald.socket                                                       static          -",
+        "systemd-journald@.socket                                                      static          -",
+        "dpkg-db-backup.timer                                                          enabled         enabled"
+      ]
+    },
+    "user": {
+      "rc": 0,
+      "matching": [
+        "vintos-failure-watch.service                     static    -",
+        "vintos-fault-sweep.service                       static    -",
+        "vintos-failure-watch.timer                       enabled   enabled",
+        "vintos-fault-sweep.timer                         enabled   enabled"
+      ]
+    }
+  },
+  "log_storage_settings": {
+    "/etc/systemd/journald.conf": []
+  },
+  "offhost_log_configs": [
+    {
+      "path": "/etc/rsyslog.conf",
+      "remote_action_present": false
+    },
+    {
+      "path": "/etc/rsyslog.d/50-default.conf",
+      "remote_action_present": false
+    },
+    {
+      "path": "/etc/rsyslog.d/21-cloudinit.conf",
+      "remote_action_present": false
+    }
+  ],
+  "ssh_recent_summary": {
+    "rc": 0,
+    "counts": {
+      "accepted": 4
+    },
+    "accepted_addresses": {
+      "100.79.177.103": 4
+    },
+    "truncated": false
+  }
+}

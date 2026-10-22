@@ -21,6 +21,7 @@ The subscription's weekly pool is shared with her own Grok use, so his use is ca
     grok_subscription.py status            login, expiry, and this week's use
     grok_subscription.py probe image|edit|video   one real render, to check a surface
 """
+import paid_http
 import base64, fcntl, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
@@ -39,7 +40,7 @@ class Unavailable(RuntimeError):
 
 
 def _open(req, timeout):
-    return urllib.request.urlopen(req, timeout=timeout)
+    return paid_http.send(urllib.request.urlopen, __file__, req, timeout=timeout)
 
 
 def config():

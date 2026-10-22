@@ -23,6 +23,7 @@ WHAT THIS WILL NOT DO ON ITS OWN
   with Fable's reason on the record. A sandbox failure does the same. Only a proposal
   that Astra wrote, Fable passed, and the sandbox proved goes to `verified`.
 """
+import paid_http
 import json
 import os
 import re
@@ -85,7 +86,7 @@ def _fable(system, messages, max_tokens=1500, timeout=120):
     from compute_admission import reserve_paid
     allowed, why = reserve_paid('forge_build.py', 'anthropic', model=FABLE_MODEL)
     if not allowed: raise RuntimeError(why)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with paid_http.send(urllib.request.urlopen, __file__, req, timeout=timeout) as r:
         blocks = json.loads(r.read().decode()).get("content") or []
     text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
     if not text.strip():

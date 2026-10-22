@@ -2,6 +2,7 @@
 """dream-art.py — Vintos paints dreams locally and want-born images via the paid painter.
 Called by wants-router: dream-art.py --force [--prompt "..."].
 Saves to memory/art/ and appends gallery.json (what /api/art/gallery reads)."""
+import paid_http
 import os, sys, json, base64, glob, io, requests
 from datetime import datetime
 
@@ -117,7 +118,7 @@ def _openai_render(prompt):
         print("[dream-art] no OPENAI_API_KEY — OpenAI painter unavailable")
         return None
     try:
-        r = requests.post("https://api.openai.com/v1/images/generations",
+        r = paid_http.send(requests.post, __file__, "https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={"model": model, "prompt": prompt[:4000], "n": 1, "size": "1024x1024"},
             timeout=240)
@@ -146,13 +147,13 @@ def _extract_prompt(dt):
     """Extract locally too: a nightly dream must not spend through a text side door."""
     base = os.environ.get("VINTOS_LOCAL_LM_BASE", "http://172.18.16.1:1234/v1").rstrip("/")
     try:
-        models = requests.get(base + "/models", timeout=10).json().get("data") or []
+        models = paid_http.send(requests.get, __file__, base + "/models", timeout=10).json().get("data") or []
         model = next((str(row.get("id")) for row in models
                       if row.get("id") and "embed" not in str(row.get("id")).lower()), "")
         if not model:
             print("[dream-art] local prompt model unavailable — dream held")
             return ""
-        r = requests.post(base + "/chat/completions",
+        r = paid_http.send(requests.post, __file__, base + "/chat/completions",
             json={"model": model, "temperature": 0.7, "max_tokens": 150,
                   "messages": [{"role": "user", "content": "Extract ONE vivid visual scene from this dream as a painting prompt - atmospheric, emotional, dreamlike. ""Declare the figure treatment explicitly: dreams are always CLOTHED/UNSPICY - state 'clothed figure' or 'no figures' ""plainly inside the prompt so the renderer has no room to improvise. Reply with only the prompt." + chr(10) + "DREAM:" + chr(10) + dt[:1500]}]},
             timeout=120)

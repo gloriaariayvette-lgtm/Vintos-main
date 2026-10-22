@@ -13,6 +13,7 @@ Once per request, at most STUDIES_PER_DAY a day, at most ROUNDS rounds of readin
     python3 forge_study.py SK-xxxxxxxx      study one proposal now and print the findings
 """
 from __future__ import annotations
+import paid_http
 import importlib.util
 import json
 import os
@@ -115,7 +116,7 @@ def subagent(system, user):
     import requests
     key = _key("XAI_API_KEY", "~/.vintos/xai-key", "~/.vintos/grok-key")
     if not key: raise RuntimeError("no xAI key")
-    r = requests.post("https://api.x.ai/v1/chat/completions", timeout=180, json={
+    r = paid_http.send(requests.post, __file__, "https://api.x.ai/v1/chat/completions", timeout=180, json={
         "model": GROK, "max_tokens": 900, "temperature": 0.2,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
         headers={"Authorization": "Bearer " + key})
@@ -216,7 +217,7 @@ def notify(findings, post=None):
         import urllib.request
         req = urllib.request.Request(NTFY, data=body.encode("utf-8"),
                                      headers={"Title": title.encode("latin-1", "replace").decode("latin-1"), "Tags": "hammer_and_wrench"})
-        urllib.request.urlopen(req, timeout=15)
+        paid_http.send(urllib.request.urlopen, __file__, req, timeout=15)
     else:
         post(NTFY, body, {"Title": title})
 

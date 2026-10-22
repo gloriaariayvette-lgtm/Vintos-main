@@ -25,6 +25,7 @@ What he may edit (the permission boundary, in one place below):
 
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
+import paid_http
 import os, re, json, glob, time, subprocess, shutil
 
 
@@ -278,7 +279,7 @@ def do_gemma(task, material, max_chars=6000):
     user = task + ("\n\nMATERIAL:\n" + material[:60000] if material else "\n\n(no material was pulled in this reply; work from the task alone)")
     try:
         import requests
-        r = requests.post(GEMMA_URL, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 1500,
+        r = paid_http.send(requests.post, __file__, GEMMA_URL, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 1500,
                                             "messages": [{"role": "system", "content": sysm}, {"role": "user", "content": user}]}, timeout=180)
         out = r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
@@ -537,7 +538,7 @@ def reconcile_changes(notify=True):
             try:
                 import urllib.request as _u
                 body = "Study edits no longer in the live file:\n" + "\n".join("- %s (edit of %s)" % (n["file"], n["of"]) for n in newly)
-                _u.urlopen(_u.Request("https://ntfy.sh/vintos-gloria-9kx", data=body.encode(),
+                paid_http.send(_u.urlopen, __file__, _u.Request("https://ntfy.sh/vintos-gloria-9kx", data=body.encode(),
                                       headers={"Title": "Study: edits overwritten", "Priority": "default"}), timeout=15)
             except Exception:
                 pass
@@ -740,7 +741,7 @@ async def ask(system, convo, endpoint, headers, grok_model):
     _mr._learned_body(body, system, model)   # what repeats is cached; nothing else pays the write (2026-10-13)
     _mr.GR.least_thinking(body)                    # no one thinks (Gloria, 2026-10-08); Fable thinks as little as it can
     async with httpx.AsyncClient(timeout=180) as c:
-        r = await c.post("https://api.anthropic.com/v1/messages", json=body,
+        r = await paid_http.asend(c.post, __file__, "https://api.anthropic.com/v1/messages", json=body,
                          headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
                                   "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
         d = r.json()

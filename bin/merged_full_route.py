@@ -1,3 +1,4 @@
+import paid_http
 
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -49,7 +50,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
                 # LLM-based tone reading — accurate, not keyword-brittle
                 try:
                     import requests as _rm_req
-                    _rm_r = _rm_req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+                    _rm_r = paid_http.send(_rm_req.post, __file__, "https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
                         "model": "grok-4.20-0309-non-reasoning",
                         "messages": [
                             {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
@@ -784,7 +785,7 @@ Gloria-specific additions:
     _model_busy = False
     try:
         async with httpx.AsyncClient(timeout=4.0) as _probe:
-            _probe_resp = await _probe.get(
+            _probe_resp = await paid_http.asend(_probe.get, __file__,
                 f"{LM_STUDIO_API}/models",
                 headers=LLM_AUTH_HEADERS
 
@@ -808,7 +809,7 @@ Gloria-specific additions:
       try:
         async with httpx.AsyncClient(timeout=600.0) as client:
             async def _llm_call(msgs, temp=None):
-                r = await client.post(
+                r = await paid_http.asend(client.post, __file__,
                     f"{LM_STUDIO_API}/chat/completions",
                     headers=LLM_AUTH_HEADERS,
                     json={

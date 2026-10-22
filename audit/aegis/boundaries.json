@@ -1,0 +1,75 @@
+{
+  "at": 1792654483.4334173,
+  "default_credential_read_test": {
+    "default_found_in_source": true,
+    "wrong_status": 403,
+    "source_default_status": 200
+  },
+  "source_runtime_hashes": {
+    "/home/gloria/Vintos/server.py": {
+      "exists": true,
+      "matches_checkout": true
+    },
+    "/home/gloria/Vintos/model_router.py": {
+      "exists": true,
+      "matches_checkout": true
+    },
+    "/home/gloria/Vintos-main/bin/vintos_claude_shim.py": {
+      "exists": true,
+      "matches_checkout": true
+    }
+  },
+  "distribution_revisions": {
+    "python3-requests": {
+      "rc": 0,
+      "version": "2.31.0+dfsg-1ubuntu1.2"
+    },
+    "python3-urllib3": {
+      "rc": 0,
+      "version": "2.0.7-1ubuntu0.8"
+    },
+    "python3-cryptography": {
+      "rc": 0,
+      "version": "41.0.7-4ubuntu0.4"
+    }
+  },
+  "package_paths": {
+    "requests": "/home/gloria/.local/lib/python3.12/site-packages/requests/__init__.py",
+    "urllib3": "/home/gloria/.local/lib/python3.12/site-packages/urllib3/__init__.py",
+    "cryptography": "/home/gloria/.local/lib/python3.12/site-packages/cryptography/__init__.py",
+    "torch": "/home/gloria/.local/lib/python3.12/site-packages/torch/__init__.py",
+    "fastapi": "/home/gloria/.local/lib/python3.12/site-packages/fastapi/__init__.py",
+    "starlette": "/home/gloria/.local/lib/python3.12/site-packages/starlette/__init__.py"
+  },
+  "netrc_present": false,
+  "docker_group_socket_metadata": {
+    "mode": "0o660"
+  },
+  "backup_cron_scripts": [
+    {
+      "schedule": "5 23 * * *",
+      "scripts": [
+        "dashboard-snapshot.py"
+      ]
+    },
+    {
+      "schedule": "40 6-21/3 * * *",
+      "scripts": [
+        "metacognitive_weather.py"
+      ]
+    }
+  ],
+  "ssh_directives_source": {
+    "/etc/ssh/sshd_config": []
+  },
+  "unprivileged_firewall_visibility": {
+    "nft": {
+      "rc": 1,
+      "rule_lines": 0
+    },
+    "iptables": {
+      "rc": 4,
+      "rule_lines": 0
+    }
+  }
+}

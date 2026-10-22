@@ -281,6 +281,9 @@ except:
 [ "$CONSENT" = "no" ] && exit 0
 
 RESPONSE=$(python3 << 'PYEOF'
+import sys as _paid_sys, os as _paid_os
+_paid_sys.path.insert(0, _paid_os.path.join(_paid_os.environ.get("SPARK_WORKSPACE", _paid_os.path.expanduser("~/.vintos/workspace")), "scripts"))
+import paid_http
 import json, os, requests, re
 
 TRIGGER = os.environ.get("TRIGGER", "")
@@ -403,14 +406,14 @@ if FORCED_WANT: USER += " Address the WHAT I WANT TO SAY topic directly and spec
 API = "https://api.x.ai/v1/chat/completions" if __import__("os").environ.get("XAI_API_KEY") else "http://127.0.0.1:8599/v1/chat/completions"  # outreach speaks at full strength; everything else stays on the shim
 
 def call_llm_at(api, system, user, temp=0.8, max_tok=200):
-    resp = requests.post(api, json={
+    resp = paid_http.send(requests.post, 'vintos-initiate.sh', api, json={
         "model": "gemma-4-26b-a4b-it-uncensored",
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": temp, "max_tokens": max_tok}, timeout=120)
     return ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
 
 def call_llm(system, user, temp=0.8, max_tok=200):
-    resp = requests.post(API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+    resp = paid_http.send(requests.post, 'vintos-initiate.sh', API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [
             {"role": "system", "content": system},
