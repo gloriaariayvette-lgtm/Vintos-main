@@ -1,0 +1,44 @@
+{
+  "vintos-server.service": {
+    "rc": 0,
+    "paths": [
+      "/home/gloria/Vintos/server.py",
+      "/home/gloria/.vintos/vintos.env",
+      "/home/gloria/.config/systemd/user/vintos-server.service"
+    ]
+  },
+  "vintos-robot-bridge.service": {
+    "rc": 0,
+    "paths": [
+      "/home/gloria/.vintos/workspace/scripts/robot_bridge.py",
+      "/home/gloria/.vintos/secrets/robot.env",
+      "/home/gloria/.config/systemd/user/vintos-robot-bridge.service"
+    ]
+  },
+  "vintos-chemistry-lab.service": {
+    "rc": 0,
+    "paths": [
+      "/home/gloria/.vintos/workspace/scripts/chemistry_lab.py",
+      "/home/gloria/.config/systemd/user/vintos-chemistry-lab.service"
+    ]
+  },
+  "vintos-plugin-gateway.service": {
+    "rc": 0,
+    "paths": [
+      "/home/gloria/.vintos/workspace/scripts/plugin_gateway_service.py",
+      "/home/gloria/.config/systemd/user/vintos-plugin-gateway.service"
+    ]
+  },
+  "vintos-mcp.service": {
+    "rc": 0,
+    "paths": [
+      "/home/gloria/.vintos/workspace/scripts/vintos_mcp.py",
+      "/home/gloria/.config/systemd/user/vintos-mcp.service"
+    ]
+  },
+  "cron_wrappers": [],
+  "env_config": {
+    "path": "/home/gloria/.vintos/vintos.env",
+    "exists": true
+  }
+}

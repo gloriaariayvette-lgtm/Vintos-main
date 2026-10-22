@@ -4616,3 +4616,11 @@ Merged `claude/device-visuals-2026-10-13`, including the existing `a6e28e9e` voi
 AUTH-01 remains **one proposal for Gloria, not applied**: default-secret rotation/removal plus telemetry WebSocket token admission and coordinated updates to vintos-app index.html/outreach.js, scripts/robot_bridge.py, bin/wants-router.py, bin/server_domains/humor_wants.py, clients/mobile and runtime configuration. See docs/security-hardening-plan.md for scope, validation and joint rollback. The review-branch push does not authorize this migration or deployment.
 
 Post-merge validation: 22/22 focused suites passed, including the inherited route inventory (9/9). The upstream voice caller guard is identical, precedes provider/private-context work, and the credential assignment and named client files are unchanged from the alarm candidate. Full repository tests and Aegis commissioning remain open.
+
+## 22 October — AUTH-01 prepared for coordinated approval
+
+Required random environment identity, telemetry/events admission, private GET/HEAD guard, named Python/mobile/native-background clients and scoped Watch media are prepared on `codex/security-alarms`. Funnel and independent Watch identity stay. Existing voice-token guard is inherited unchanged. See `docs/security-auth-rollout.md` and the 168-declaration GET inventory. No production secret generation, configuration changes, restarts or deployment occurred. Native installation/background enrollment, physical Watch media, full deployment suites and actual rollback acceptance remain pending Gloria's approval.
+
+## 22 October — split review, alarm first
+
+`codex/security-alarms` is the standalone fail-open alarm/paid transport/pause release, with no authentication/client cutover dependency. This branch, `codex/security-auth-cutover`, restores the coordinated identity/private-read/stream/client proposal on top of that release for a separate later approval. Companion app stays at review commit `6056939`. No production actions were taken. Full isolated-suite results are recorded separately for both branches; do not treat focused tests as the full matrix.

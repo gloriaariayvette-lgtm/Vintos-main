@@ -903,6 +903,7 @@ input[type="range"]::-webkit-slider-thumb {
 <!-- Hidden file input for photos -->
 <input type="file" id="photo-input" accept="image/*" style="display:none">
 
+<script src="house_auth_client.js"></script>
 <script src="client_lifecycle.js"></script>
 <script>
 // ============================================================
@@ -911,10 +912,10 @@ input[type="range"]::-webkit-slider-thumb {
 const CONFIG = {
     host: '100.72.225.119',
     port: 8500,
-    secret: 'vintos-aegis-2026',
+    get secret() { return VintosAuth.secret(); },
 };
-const API = `http://${CONFIG.host}:${CONFIG.port}`;
-const WS_BASE = `ws://${CONFIG.host}:${CONFIG.port}`;
+const API = VintosAuth.api();
+const WS_BASE = API.replace(/^http/, "ws");
 
 // ============================================================
 //  STATE
@@ -1062,8 +1063,8 @@ function toggleTelemetry() {
 let telemetryWs = null;
 let wsRetryCount = 0;
 
-function connectTelemetry() {
-    telemetryWs = new WebSocket(`${WS_BASE}/ws/telemetry`);
+async function connectTelemetry() {
+    telemetryWs = await VintosAuth.socket(`${WS_BASE}/ws/telemetry`);
 
     telemetryWs.onopen = () => {
         document.getElementById('status').textContent = 'present';
@@ -2808,7 +2809,7 @@ async function loadVoice() {
         const res = await VintosUI.request(`${API}/api/voice/latest`);
         if (!res.ok) { status.textContent = "No recordings yet."; return; }
         const data = await res.json();
-        player.src = `${API}${data.url}`;
+        player.src = VintosAuth.mediaURL(`${API}${data.url}`);
         player.load();
         const ts = data.recorded_at;
         const formatted = ts.length >= 13 ? `${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)} ${ts.slice(9,11)}:${ts.slice(11,13)}` : ts;
@@ -2870,7 +2871,7 @@ async function loadBriefing() {
 function playBriefing() {
     const player = document.getElementById("voice-player");
     if (!window._briefingUrl) return;
-    player.src = window._briefingUrl;
+    player.src = VintosAuth.mediaURL(window._briefingUrl);
     player.load();
     player.play().then(()=>{
         document.getElementById("voice-status").textContent = "Morning briefing playing.";
@@ -3056,7 +3057,7 @@ async function vcStopRecord() {
                 // Autoplay his response
                 if (data.audio_url) {
                     vcAudioPlayer.style.display='block';
-                    vcAudioPlayer.src = API + data.audio_url;
+                    vcAudioPlayer.src = VintosAuth.mediaURL(API + data.audio_url);
                     vcAudioPlayer.play().catch(() => { document.getElementById("vc-hint").textContent="Playback blocked. Tap play to hear the reply."; });
                 }
             }
@@ -4029,7 +4030,7 @@ async function _avSpeakAndShow(raw, eventNote) {
     if(generation!==_avOverlayGeneration||document.hidden)return;
     if(td.audio_url) {
       if(!_avAudioEl) _avAudioEl = new Audio();
-      _avAudioEl.src = td.audio_url;
+      _avAudioEl.src = VintosAuth.mediaURL(td.audio_url);
       _avAudioEl.onended = () => setTimeout(_avHideBubble, 1500);
       _avAudioEl.play().catch(()=>{
         _avAudioEl.controls=true;_avAudioEl.style.cssText='position:absolute;bottom:90px;left:10%;width:80%;z-index:20';
@@ -4206,9 +4207,9 @@ function _avApplyColor(hex) {
     el.style.background = '#e8dcc0'+'99';
   });
 }
-function _avUpdateTelemetry() {
+async function _avUpdateTelemetry() {
   if(_avTelWs && _avTelWs.readyState === WebSocket.OPEN) return;
-  _avTelWs = new WebSocket(WS_BASE+'/ws/telemetry');
+  _avTelWs = await VintosAuth.socket(WS_BASE+'/ws/telemetry');
   _avTelWs.onmessage = (e) => { try { const d=JSON.parse(e.data); _avApplyState(d.dimensions||d); if(d.color) _avApplyColor(d.color); } catch(err){} };
   _avTelWs.onclose = () => { setTimeout(_avUpdateTelemetry, 3000); };
   _avTelWs.onerror = () => _avTelWs.close();
@@ -5568,7 +5569,7 @@ function startVoiceCallWithToken(token, instructions, provider){
             // Use the existing speech renderer for the clean public words instead.
             if(final.changed&&response.text){
               const spoken=await VintosUI.request(API+'/api/avatar/speak',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({text:response.text})}).then(r=>r.json());
-              if(spoken.audio_url&&!response.revoked){const audio=new Audio(API+spoken.audio_url);response.alternateAudio=audio;response.pending++;audio.onended=()=>{response.pending--;response.played++;flush(response,false);};audio.onerror=()=>{response.pending--;flush(response,true);};audio.play().catch(()=>{response.pending--;flush(response,true);});}
+              if(spoken.audio_url&&!response.revoked){const audio=new Audio(VintosAuth.mediaURL(API+spoken.audio_url));response.alternateAudio=audio;response.pending++;audio.onended=()=>{response.pending--;response.played++;flush(response,false);};audio.onerror=()=>{response.pending--;flush(response,true);};audio.play().catch(()=>{response.pending--;flush(response,true);});}
             }else response.audio.forEach(delta=>playChunk(delta,response));
             response.audio=[];response.done=true;flush(response,false);
           }catch(e){response.text='';response.audio=[];response.done=true;flush(response,true);}

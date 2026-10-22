@@ -324,10 +324,8 @@ EXPRESSION_IMPLIES = {
 LM_STUDIO_API = os.environ.get("GROK_API_BASE", "http://127.0.0.1:8599/v1")
 LLM_API_KEY = os.environ.get("XAI_API_KEY", "")
 LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
-APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
-if APP_SECRET == "vintos-aegis-2026":
-    print("[house] WARNING: VINTOS_SECRET is unset - the private routes are guarded by the default secret. "
-          "Set VINTOS_SECRET in the service environment (astra-server-a-p5).", flush=True)
+from house_auth import require_secret as _house_secret
+APP_SECRET = _house_secret()
 
 # Route policy (astra-server-a-p5 / b-p7 / c-p7, 2026-09-05): every mutating route is either guarded by
 # X-Vintos-Secret or listed here WITH THE REASON it is open. broker/tests/test_house_routes.py asserts
@@ -357,10 +355,12 @@ GUESTBOOK_FILE = os.path.join(MEMORY, "guestbook.json")
 PUBLISH_CONFIG = os.path.join(MEMORY, "publish-config.json")
 
 app = FastAPI(title="Vintos", version="1.0.0")
+from house_auth import PUBLIC_ORIGINS, install as _install_house_auth
+_install_house_auth(app, APP_SECRET)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten for production
+    allow_origins=list(PUBLIC_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -3724,6 +3724,12 @@ async def stratagem_voice_asset():
     return FileResponse(os.path.join(WEBSITE_DIR, "app", "stratagem_voice.js"), media_type="application/javascript")
 
 
+@app.get("/house_auth_client.js")
+@app.get("/app/house_auth_client.js")
+async def house_auth_client_asset():
+    return FileResponse(os.path.join(WEBSITE_DIR, "app", "house_auth_client.js"), media_type="application/javascript")
+
+
 @app.get("/client_lifecycle.js")
 @app.get("/app/client_lifecycle.js")
 async def client_lifecycle_asset():
@@ -6093,7 +6099,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
         # Call our own search
         import httpx as _httpx
         async with _httpx.AsyncClient() as client:
-            mem_res = await paid_http.asend(client.get, __file__, f"http://localhost:8500/api/memory/search?q={search_q}&limit=3")
+            mem_res = await paid_http.asend(client.get, __file__, f"http://localhost:8500/api/memory/search?q={search_q}&limit=3", headers={"X-Vintos-Secret": APP_SECRET})
             mem_data = mem_res.json()
             if mem_data.get("results"):
                 memory_context = "\n\nRelevant memories:\n"

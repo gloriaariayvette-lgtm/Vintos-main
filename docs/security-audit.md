@@ -1,3 +1,5 @@
+> AUTH-01 review update (22 October): source implementation and companion clients are prepared for approval, not deployed. Funnel stays on. Exact commands and rollback: [security-auth-rollout.md](security-auth-rollout.md). Complete public GET inventory: [security-public-get-routes.md](security-public-get-routes.md). Existing snapshot evidence below remains dated; source fixes do not imply live enforcement.
+
 # Vintos infrastructure security audit
 
 Audit date: 22 October 2026. Scope: read-only Aegis inspection from the local Mac, source review, and offline alarm development. Review branch: `codex/security-alarms`. Source/deployed release observed: `e502b389c77e815086a5d9a6047c950ead0d8ec9`, receipt `20261022-010546-e502b38.json`, 561 recorded files, no recorded deployment failures. These are snapshots, not permanent claims.
@@ -8,12 +10,12 @@ Audit date: 22 October 2026. Scope: read-only Aegis inspection from the local Ma
 
 The deploy branch's existing `a6e28e9e` fix for `/api/voice/token` is merged into this review branch. It requires the phone app's existing secret or the Watch's bearer token before provider calls, private-context assembly or driver startup. F02 below remains the original snapshot finding, **fixed in merged source; current production deployment was not rechecked**. This branch does not implement a second route fix.
 
-**AUTH-01 is one proposed change, not applied:** default-secret rotation plus telemetry WebSocket token admission, together with the coordinated client updates listed in `security-hardening-plan.md`. Gloria must approve that package before implementation/cutover. The original audit evidence is retained unchanged.
+**AUTH-01 is now prepared as one reviewable source change, not deployed:** required random environment identity, telemetry/events token admission and default-deny private reads, with all named client updates. Gloria must approve the coordinated cutover. See `security-auth-rollout.md` for exact commands and `security-public-get-routes.md` for every declared GET and its response description. The original audit evidence is retained unchanged.
 
 ## Executive summary: five most important improvements
 
 1. Replace the **accepted source-default application credential** through a coordinated client migration, then remove the fallback. A wrong credential returned 403; the default from the installed source returned 200 on the same protected read-only route.
-2. Complete AUTH-01 for public telemetry and its clients, and preserve the already merged voice-token guard. The original snapshot accepted an unauthenticated telemetry upgrade (101) and found the voice-token handler open; `a6e28e9e` has since closed the latter in source.
+2. Approve AUTH-01 to close anonymous memory/history/context reads and both telemetry/events streams, with the coordinated clients; preserve the already merged voice-token guard. The original snapshot accepted an unauthenticated telemetry upgrade (101) and found the voice-token handler open; `a6e28e9e` has since closed the latter in source.
 3. Install the reviewed provider-attempt alarm and pause control, then close the remaining cross-host/SDK coverage gaps. Add provider-owned caps immediately from a trusted device. Existing daily reservations and success-only usage files are incomplete attempt accounting.
 4. Separate network-facing and experimental workloads from Gloria's administrative identity and writable Docker socket, adding measured resource limits. Preserve background autonomy, local inference, and task-specific tool authority.
 5. Add an independent off-host security heartbeat, immutable logs and recoverable encrypted state backups. Existing fault/deploy records and rollback copies share the host and credentials they would need to survive.
