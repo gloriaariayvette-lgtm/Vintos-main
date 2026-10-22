@@ -12,7 +12,7 @@ follows it. To change how the loop behaves, change this file — nothing else ne
 | **Fault sweep** | Aegis, every 15 min (`scripts/fault_sweep.py`, no model, costs nothing) | Finds failures where they already land and posts each **new** one once to `#fault-fix` as `[fault sweep] F-xxxxxxxxxx` |
 | **Claude Code** | One Claude thread per week ("Fault loop — week of …"), **running on Gloria's Mac** (Remote Control), woken four times a night by a schedule | Reads the evidence on Aegis itself, proposes a fix, then implements it |
 | **Dot** | `#fault-fix` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
-| **Gloria** | Wherever she is | Reads it in the morning. Can stop it any time by pausing the scheduled task in the Claude app |
+| **Gloria** | Wherever she is | Reads it in the morning. Starts each week's thread on the Mac. Can stop it any time by telling the thread "stop the fault loop" |
 
 **Looking things up on Aegis (from 22 October).** The thread runs on the Mac, which reaches Aegis over SSH:
 `ssh -o BatchMode=yes gloria@100.72.225.119 '<command>'`. Read the evidence yourself before proposing — the fault's
@@ -78,31 +78,42 @@ enough that waking it stays cheap.
 5. If the work done tonight is finished (or the night's limit is reached), post one summary line in the channel:
    *"[Claude Code] Tonight: F-… fixed and deployed, F-… waiting on Dot, F-… needs Gloria (why)."*
 
-## Each week: hand over to a new thread
+## Each week: a new thread on the Mac
 
-On the **first wake after Sunday 9 pm Central**, before any fault work. The order matters: the new thread and its
-schedule must exist and work before this week's are let go, so a failed hand-over leaves this thread running.
+From 22 October the thread runs on Gloria's Mac (Remote Control session "Fault Loop - week of 19 october",
+`session_01VWevFz9ZKebb81ZdQDZLXV`). Its schedule is the Mac session's own `CronCreate` job (`29f401f5`,
+`50 22,0,2,4 * * *` in the Mac's local time, which is Central): it wakes the thread only **while the Claude app is
+open on the Mac and the thread is idle**, it is gone if the app quits, and it **deletes itself after 7 days**. The old
+cloud thread and its claude.ai schedule were retired that night.
 
-1. Start next week's thread (`create_session`) **on the Mac** (the `Mac:Documents` Remote Control environment;
-   `list_environments`), titled `Fault loop — week of <Monday's date>`, with the same first message this thread was
-   given (it is the first message at the top of this thread), its date updated.
-2. Read the new thread's reply. It must say Slack yes, repository yes and Aegis yes. If not: stop the hand-over, keep this
-   week's schedule, post in `#fault-fix` that the hand-over failed and why, and carry on as normal.
-3. Create the new thread's schedule: name `Fault loop`, the same times
-   (`CRON_TZ=America/Chicago 50 22,0,2,4 * * *`), into the new thread (`persistent_session_id`), with **this** wake
-   message — copy it from here, not from the old schedule, whose text may be stale (the first week's still names the
-   unused `#fault-loop`):
+A Mac session cannot start sessions or create claude.ai schedules, so the weekly hand-over is Gloria's, and short:
 
-   > Fault-loop wake. Pull claude/device-visuals-2026-10-13, re-read docs/fault-loop.md (it may have changed since
-   > your last wake), then read #fault-fix (C0CB2HREFNC) and do this wake's work exactly as that file says —
-   > including its weekly hand-over if this is the first wake after Sunday 9 pm Central. If nothing needs you, end
-   > without posting.
-4. Only once that schedule exists, delete this thread's schedule (`list_triggers`: the `Fault loop` whose
-   `persistent_session_id` is this thread).
-5. Post in `#fault-fix`: `[Claude Code] New week's fault-loop thread started: <its link>.`
-6. Write the new thread's and schedule's ids in `docs/open-work.md` under the fault loop.
+1. **On the first wake after Sunday 9 pm Central**, before any fault work, post once in `#fault-fix`:
+   *"[Claude Code] This week's fault-loop thread expires within a day. To start next week's: new session on Mac:
+   Documents, titled `Fault loop — week of <Monday's date>`, with the first message from docs/fault-loop.md."*
+2. Gloria starts that session with the first message below. It checks repository, Aegis and Slack and replies yes or
+   no to each, then creates its own `CronCreate` schedule with the wake message below.
+3. Write the new thread's id and its schedule id in `docs/open-work.md` under the fault loop.
 
-This hand-over has not run yet; the first one is the night of Sunday 25 October.
+The first message of a new week's thread:
+
+> You are this week's fault-loop thread, running on Gloria's Mac so you can look things up on Aegis yourself. Set up,
+> then report:
+> 1. Repository: in `~/Documents/Vintos-main-faultloop` (clone https://github.com/gloriaariayvette-lgtm/Vintos-main
+>    there if it doesn't exist), check out and pull `claude/device-visuals-2026-10-13`. Read `CLAUDE.md` and
+>    `docs/fault-loop.md`; they are your standing instructions.
+> 2. Aegis: run `ssh -o BatchMode=yes gloria@100.72.225.119 'hostname; whoami'`. On Aegis you only ever read.
+> 3. Slack: read the last 3 messages of #fault-fix (C0CB2HREFNC). Post nothing.
+> Reply with exactly: repository yes/no, Aegis yes/no, Slack yes/no. Then create your own schedule with CronCreate,
+> `50 22,0,2,4 * * *` (the Mac is on Central time), with the wake message from docs/fault-loop.md, and tell me its id.
+
+The wake message:
+
+> Fault-loop wake. Pull claude/device-visuals-2026-10-13, re-read docs/fault-loop.md (it may have changed since your
+> last wake), then read #fault-fix (C0CB2HREFNC) and do this wake's work exactly as that file says. If nothing needs
+> you, end without posting.
+
+**To stop it:** tell the thread "stop the fault loop" (it cancels its own `CronDelete`), or quit the Claude app.
 
 ## How a fix is made — the way Gloria and Claude do it by day
 
