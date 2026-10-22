@@ -341,7 +341,6 @@ PUBLIC_MUTATIONS = {
     "/aq/answer":              "phone-friendly answer form for his architecture questions; answers only, question ids are opaque",
     "/ea/decide":              "phone-friendly approve/decline of a second unanswered email; only a valid one-time link (hashed token) decides",
     "/api/video/hero":         "her phone browser's upload form; filenames are server-chosen, content must be PNG/JPEG under 15 MB",
-    "/api/voice/token":        "the voice client fetches its own 300-second ephemeral realtime token; LAN-only door",
     "/api/hardware/button":    "her physical stop button; the device client carries no header",
     "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
     "/api/ring/sleep":         "the R21M ring bridge sleep estimate; same optional bearer token, validated device estimates only",
@@ -8783,12 +8782,28 @@ async def voice_stratagem(action: str, request: Request):
     raise HTTPException(status_code=404, detail="Unknown voice stratagem operation")
 
 
+def _voice_caller_ok(request):
+    """The phone app's X-Vintos-Secret, or the Watch's own bearer token. 22 October (security audit): this door was
+    open, listed as "LAN-only" with nothing enforcing it - anyone who could reach the house could mint realtime
+    sessions on Gloria's xAI and OpenAI accounts and read his whole instructions with them."""
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
+        return True
+    try:
+        import sys as _vc_s; _vc_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import watch_presence as _vc_wp
+        return bool(_vc_wp.authorized(request.headers.get("Authorization")))
+    except Exception:
+        return False
+
+
 @app.post("/api/voice/token")
-async def voice_token(provider: str = "grok"):
+async def voice_token(request: Request, provider: str = "grok"):
     """An ephemeral realtime token plus his full instructions. provider=grok (xAI, the original) or
     provider=openai (OpenAI Realtime, gpt-realtime): the same instructions, the same framing after each of her
     turns, the same ledger; only the socket differs. The OpenAI session is configured here at mint time (voice,
     formats, turn detection, transcription) so the client only opens the socket and streams."""
+    if not _voice_caller_ok(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
     import requests as _vt_req, json as _vt_j
     provider = (provider or "grok").lower()
     tok = {}
