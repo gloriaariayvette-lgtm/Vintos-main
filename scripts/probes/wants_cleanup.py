@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.join(WS, "scripts"))
 import wants_meta as M
 
 APPLY = "--apply" in sys.argv
+# --keep id,id: wants she reads in the preview and wants left exactly as they are
+KEEP = {x for a in sys.argv if a.startswith("--keep=") for x in a.split("=", 1)[1].split(",") if x}
 WANTS = os.path.join(WS, "memory", "current-wants.json")
 MERGE = ("duplicate", "persistence", "continuation", "escalation")
 
@@ -52,6 +54,8 @@ print("%d wants on file, %d living. %s\n" % (len(wants), len(live), "APPLYING" i
 remove, kept, routed = set(), [], []
 for w in sorted(live, key=lambda x: str(x.get("timestamp", ""))):
     text = str(w.get("want", ""))
+    if w.get("id") in KEEP:
+        print("KEPT (you said so)\n    [%s] %s" % (w.get("id"), text[:110])); kept.append(w); continue
     verdict = M.classify(text, ask=lambda p: ask(p))
     if verdict:
         what = ("trial (%s %s)" % (verdict["stance"], verdict["about"]) if verdict["target"] == "behavior" and verdict["fulfillable"]
