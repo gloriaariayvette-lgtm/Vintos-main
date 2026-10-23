@@ -63,7 +63,7 @@ def report(root, since, until):
         for s in inv.get('steps',[]):
             if not inside(s):continue
             tool=s.get('tool') or s.get('route') or 'unknown'
-            if s.get('origin')=='autonomous_lab' and s.get('state') in ('completed','failed','outcome_unknown') and s.get('route') not in ('read_output','schema'):
+            if s.get('origin')=='autonomous_lab' and not s.get('reused_from') and s.get('state') in ('completed','failed','outcome_unknown') and s.get('route') not in ('read_output','schema'):
                 record(tool,s.get('execution_receipt_id') or s.get('run_id') or s['id'],'investigation',s.get('state')=='completed')
             if s.get('state')!='completed':continue
             for ref in s.get('input_refs') or []:

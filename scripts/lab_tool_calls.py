@@ -142,6 +142,26 @@ def normalize_request(route, request):
                 request={'source':source,'accession':value}
             elif isinstance(value,str) and source=='pubchem':request={'source':source,'name':value}
     if route=='source':return normalize_source(request)
+    if route=='instrument':return normalize_instrument(request)
+    return request
+
+
+def normalize_instrument(request):
+    """Name the instrument when the planner named only its operation, or put the instrument's name where the
+    operation goes ({"operation":"fold_read"}): each operation belongs to one instrument, so nothing is guessed. 125
+    investigation steps in two days were refused as "not offered" for this alone (23 October)."""
+    from lab_instruments import OFFERED
+    from lab_native_instruments import OPERATIONS
+    request=dict(request)
+    skill,op=request.get('skill'),request.get('operation')
+    if skill in OFFERED or skill in OPERATIONS:return request
+    if op in OFFERED and len(OFFERED[op])==1:skill,op=op,OFFERED[op][0]
+    elif op in OPERATIONS:skill,op=op,OPERATIONS[op]
+    else:
+        owners=[k for k,v in OFFERED.items() if op in v]+[k for k,v in OPERATIONS.items() if v==op]
+        if len(owners)!=1:return request
+        skill=owners[0]
+    request.update(skill=skill,operation=op)
     return request
 
 

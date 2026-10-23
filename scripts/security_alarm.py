@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 
 import paid_http
@@ -25,6 +26,40 @@ FLOORS = {'brave': 60, 'kie': 30, 'atlascloud': 30, 'nvidia': 6}
 def paths():
     mem = paid_http.workspace() / 'memory'
     return mem / 'security-alarm-state.json', mem / 'security-alarm.json'
+
+
+# `crontab -l` is setgid crontab, and the alarm's unit runs with NoNewPrivileges, so inside it the spool file cannot be
+# opened ("crontabs/gloria/: fopen: Permission denied", 23 October: the host baseline was blind on every pass). The
+# unit's unsandboxed pre-step (ExecStartPre=-+) writes only the crontab's hash here; the sandboxed pass reads it.
+DIGEST_FRESH_S = 600
+
+
+def digest_path():
+    return paid_http.workspace() / 'memory' / 'security-crontab-digest.json'
+
+
+def write_cron_digest(runner=None, now=None):
+    runner = runner or run
+    now = time.time() if now is None else now
+    try:
+        row = {'at': now, 'sha256': hashlib.sha256(runner(['crontab', '-l']).encode()).hexdigest()}
+    except RuntimeError as e:
+        row = {'at': now, 'error': str(e)[:200]}
+    p = digest_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix('.tmp')
+    tmp.write_text(json.dumps(row))
+    os.replace(tmp, p)
+    return row
+
+
+def cron_from_digest(why, now=None):
+    """The crontab's hash from the pre-step, when this pass could not read it itself; raises when there is none."""
+    now = time.time() if now is None else now
+    d = load(digest_path(), {})
+    if d.get('sha256') and 0 <= now - float(d.get('at') or 0) <= DIGEST_FRESH_S:
+        return d['sha256']
+    raise RuntimeError(why + '; no fresh crontab digest from the pre-step' + (' (%s)' % d['error'] if d.get('error') else ''))
 
 
 def load(path, default):
@@ -151,11 +186,11 @@ def host_snapshot(runner=run):
     for p in [h/'.ssh/authorized_keys', Path('/etc/crontab'), Path('/etc/anacrontab')]:
         files[str(p)] = digest(p)
     # crontab -l uses status 1 for no table. Other failures must be visible.
-    try: cron = runner(['crontab','-l'])
-    except RuntimeError:
-        if (h/'.vintos').exists(): raise
-        cron = ''
-    files['user-crontab'] = hashlib.sha256(cron.encode()).hexdigest()
+    try: files['user-crontab'] = hashlib.sha256(runner(['crontab','-l']).encode()).hexdigest()
+    except RuntimeError as e:
+        if 'Permission denied' in str(e): files['user-crontab'] = cron_from_digest(str(e))
+        elif (h/'.vintos').exists(): raise
+        else: files['user-crontab'] = hashlib.sha256(b'').hexdigest()
     releases = sorted((h/'.vintos/deploy/releases').glob('*.json'))
     receipt = load(releases[-1], {}) if releases else {}
     deployed = {}
@@ -292,3 +327,7 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
         state['last_alert'] = {k:v for k,v in state.get('last_alert',{}).items() if now-v < 7*86400}
         save_json(str(state_path), state)
         return {'rates': rates, 'events': len(events), 'sent': sent, 'pending': len(state['pending']), 'dry': False}
+
+
+if __name__ == '__main__' and '--cron-digest' in sys.argv:
+    write_cron_digest()

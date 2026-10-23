@@ -159,3 +159,19 @@ lost to it because its state did not contain the last event at all, only the ave
 plus history". Fixed: the full state now holds everything the moment model has, plus the history. Also fixed: the
 house's bracketed stage directions inside chat turns ("[she spoke with her body, not words]") are no longer counted
 as Gloria's turns. Re-run is the second look at these test days: an informed follow-up, said so.
+
+### Second design, second look (22 October, after the fix)
+
+| test days (13–22 Oct) | text MRR | top 10 | emotion error |
+|---|---|---|---|
+| "like the last one" | 0.063 | 15.8% | 0.345 (persistence) |
+| full state (the moment plus history) | 0.073 | | |
+| present moment only | **0.132** | **27.9%** | 0.302 |
+
+The present-moment model won on every source; day-block 95% interval for its gain [0.052, 0.087]. The history model,
+now holding the moment too, only tied the baseline (its interval crosses 0) and did worse than the moment alone: on
+these days the history adds noise, not signal. The test days 13–22 October have now been looked at twice and are
+spent for model choice; any further design is judged on days from 23 October on.
+
+**Open, and handed to Codex (`docs/briefs/latent-stream-review-codex.md`):** the two designs that lost, the recurrent
+state and the history state. Why they lost, and whether a different design would make longer memory earn its place.

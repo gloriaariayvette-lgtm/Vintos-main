@@ -9,6 +9,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
 SCRATCH = tempfile.TemporaryDirectory(prefix='security-alarm-')
@@ -130,6 +131,24 @@ class SecurityTests(unittest.TestCase):
         state={}
         self.assertTrue(A.remember(state,*events[0],self.now))
         self.assertFalse(A.remember(state,*events[0],self.now+10))
+
+    def test_sandboxed_crontab_read_uses_the_pre_steps_digest(self):
+        denied=lambda args:(_ for _ in ()).throw(RuntimeError('crontab exited 1: crontabs/gloria/: fopen: Permission denied'))
+        A.write_cron_digest(lambda args:'0 * * * * job\n', now=self.now)
+        stored=json.loads(A.digest_path().read_text())
+        self.assertTrue(str(A.digest_path()).startswith(SCRATCH.name))
+        self.assertNotIn('job',json.dumps(stored))
+        import hashlib, time as _t
+        with patch.object(A.time,'time',return_value=self.now+60):
+            snap=A.host_snapshot(denied)
+        self.assertEqual(snap['files']['user-crontab'],hashlib.sha256(b'0 * * * * job\n').hexdigest())
+        with patch.object(A.time,'time',return_value=self.now+A.DIGEST_FRESH_S+1):
+            with self.assertRaisesRegex(RuntimeError,'no fresh crontab digest'):
+                A.host_snapshot(denied)
+        A.write_cron_digest(denied, now=self.now)
+        with patch.object(A.time,'time',return_value=self.now+1):
+            with self.assertRaisesRegex(RuntimeError,'Permission denied.*no fresh crontab digest'):
+                A.host_snapshot(denied)
 
     def test_journal_search_with_no_match_is_clean_not_blind(self):
         from unittest.mock import patch
