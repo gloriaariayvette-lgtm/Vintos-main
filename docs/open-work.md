@@ -1,3 +1,18 @@
+## 22 October — longer latent memory review (proposal only)
+
+On `codex/latent-memory-review`, [the review and experiment proposal](latent-memory-review.md)
+examines the losing recurrent and pooled-history designs. It recommends a small
+content-addressed correction to the frozen present scorer first, and a separate
+fixed-horizon emotion-history correction second. It identifies remaining GRU
+training/scoring weighting differences and the pooled state's burst/timestamp
+behavior without claiming that either is a measured cause of the losses.
+
+No model or feed changed and no new experiment ran. 13–22 October remain spent;
+any future confirmation uses one predeclared unseen block from 23 October onward.
+Still open: Claude Code review and Gloria's approval of the proposal before
+implementation or any merge. Existing feeds, Gloria's head and live stores are
+untouched.
+
 ## 22 October — additive trained subconscious feeds implemented (review only)
 
 `codex/subconscious-head-feeds-plan` now implements its
