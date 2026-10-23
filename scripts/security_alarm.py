@@ -39,7 +39,7 @@ def digest_path():
     return paid_http.workspace() / 'memory' / 'security-crontab-digest.json'
 
 
-def write_cron_digest(runner=None, now=None):
+def write_cron_digest(runner=None, now=None, by='pre-step'):
     runner = runner or run
     now = time.time() if now is None else now
     try:
@@ -49,12 +49,18 @@ def write_cron_digest(runner=None, now=None):
             text = p.stdout
         else:
             text = runner(['crontab', '-l'])
-        row = {'at': now, 'sha256': hashlib.sha256(text.encode()).hexdigest()}
+        row = {'at': now, 'by': by, 'sha256': hashlib.sha256(text.encode()).hexdigest()}
     except Exception as e:     # a slow crontab (TimeoutExpired) left no digest and no reason (23 October, 02:07, 03:13)
-        row = {'at': now, 'error': ('%s: %s' % (type(e).__name__, e))[:200]}
+        row = {'at': now, 'by': by, 'error': ('%s: %s' % (type(e).__name__, e))[:200]}
     p = digest_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix('.tmp')
+    if row.get('error'):
+        prior = load(p, {}) if p.exists() else {}
+        if prior.get('sha256'):   # a failed read keeps the last good hash beside its reason, not instead of it
+            row.update(sha256=prior['sha256'], hashed_at=prior.get('hashed_at', prior.get('at')))
+    else:
+        row['hashed_at'] = now
+    tmp = p.with_name(p.name + '.%d.tmp' % os.getpid())   # two writers (pre-step, cron) never share a temp file
     tmp.write_text(json.dumps(row))
     os.replace(tmp, p)
     return row
@@ -63,10 +69,18 @@ def write_cron_digest(runner=None, now=None):
 def cron_from_digest(why, now=None):
     """The crontab's hash from the pre-step, when this pass could not read it itself; raises when there is none."""
     now = time.time() if now is None else now
-    d = load(digest_path(), {})
-    if d.get('sha256') and 0 <= now - float(d.get('at') or 0) <= DIGEST_FRESH_S:
+    path = digest_path()
+    try:
+        d = load(path, {})
+    except Exception as e:
+        raise RuntimeError(why + '; the crontab digest is unreadable (%s)' % type(e).__name__)
+    hashed = float(d.get('hashed_at') or (0 if d.get('error') else d.get('at')) or 0)
+    if d.get('sha256') and -60 <= now - hashed <= DIGEST_FRESH_S:
         return d['sha256']
-    raise RuntimeError(why + '; no fresh crontab digest from the pre-step' + (' (%s)' % d['error'] if d.get('error') else ''))
+    if not d:
+        raise RuntimeError(why + '; no crontab digest at %s' % path)
+    raise RuntimeError(why + '; crontab digest by %s is %d min old%s' % (
+        d.get('by', '?'), int((now - hashed) / 60) if hashed else -1, (' (%s)' % d['error']) if d.get('error') else ''))
 
 
 def load(path, default):
@@ -337,4 +351,5 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
 
 
 if __name__ == '__main__' and '--cron-digest' in sys.argv:
-    write_cron_digest()
+    # the unit's unsandboxed pre-step every pass; her crontab every minute as a second writer ("--cron-digest cron")
+    write_cron_digest(by=sys.argv[sys.argv.index('--cron-digest') + 1] if len(sys.argv) > sys.argv.index('--cron-digest') + 1 else 'pre-step')
