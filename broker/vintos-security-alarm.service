@@ -7,6 +7,9 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
+# crontab -l needs its setgid, which NoNewPrivileges forbids: this one step runs outside the sandbox and writes only
+# the crontab's hash (security_alarm.py, 23 October). '-': a failure here leaves the pass to say it is blind.
+ExecStartPre=-+/usr/bin/python3 %h/.vintos/workspace/scripts/security_alarm.py --cron-digest
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/fault_sweep.py --security
 TimeoutStartSec=90
 NoNewPrivileges=true
