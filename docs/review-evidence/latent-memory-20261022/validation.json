@@ -1,0 +1,34 @@
+{
+  "total": 473,
+  "pass": 470,
+  "fail": 3,
+  "skipped": 0,
+  "focused_suite": {
+    "tests": 18,
+    "passed": 18,
+    "final_rerun": "memory-publication-check"
+  },
+  "failures": [
+    {
+      "test": "broker/tests/test_mail_attachments.py",
+      "exit": 1,
+      "seconds": 0.8,
+      "reason": "Mac PDF fallback lacks the form feed required by the pdftotext fixture"
+    },
+    {
+      "test": "broker/tests/test_media_embed.py",
+      "exit": 1,
+      "seconds": 0.6,
+      "reason": "Loopback-port probe denied by the OS test sandbox"
+    },
+    {
+      "test": "broker/tests/test_study_reading.py",
+      "exit": 1,
+      "seconds": 0.5,
+      "reason": "Mac BSD grep lacks the Perl-regex behavior expected by this fixture"
+    }
+  ],
+  "isolation": "fresh copies and HOME, OS sandbox, scratch stores, senders denied/stubbed",
+  "classification": "same three known host fixture failures; logs inspected again",
+  "scope": "no live-store write, test send, merge or deployment"
+}

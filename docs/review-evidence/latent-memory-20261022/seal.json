@@ -1,0 +1,73 @@
+{
+  "bank_cap": 2048,
+  "bank_days": 14,
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 20261022,
+  "check": [
+    "2026-10-11",
+    "2026-10-13"
+  ],
+  "ci_quantiles": [
+    0.00625,
+    0.99375
+  ],
+  "code_sha256": "12e6cdd503fd4df63852acc47c66a953ded3a0d6b1543f29aee07f3f50c6642f",
+  "coefficient_budget": 0.25,
+  "development_sha256": "f17fe511a0f1aed2900ddb1a146fde7039ffafebf949a40e2b57f14fc0c0dc0d",
+  "eligible_for_fresh": {
+    "emotion": true,
+    "text": false
+  },
+  "emotion_penalty": 1.0,
+  "excluded_recent": 6,
+  "fresh": [
+    "2026-10-23",
+    "2026-10-30"
+  ],
+  "frozen_sha256": "8b939aa1e900988ab5b87094686aaf9bee300f1a9e9c95c34c12050b9daee7d8",
+  "half_life_days": 3,
+  "horizon_seconds": 600,
+  "incumbent_sha256": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+  "input_sha256": "7b6fdfa55b2d391fc49645ca33e03770610e606d0d1ce52733e6a57600c51ca5",
+  "max_input_timestamp": "2026-10-23T00:10:01.408377+00:00",
+  "no_fresh_outcomes_read": true,
+  "old_hours": 6,
+  "penalties": [
+    1.0,
+    10.0,
+    100.0
+  ],
+  "random_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "refit_emotion_n": 1718,
+  "refit_sources": {
+    "creative": 327,
+    "her": 279,
+    "him": 310,
+    "inner": 1872,
+    "thread": 221
+  },
+  "refit_text_n": 3009,
+  "schema": "latent-memory-v1",
+  "sealed_at": "2026-10-22T19:39:24.133471-05:00",
+  "selection": [
+    "2026-10-09",
+    "2026-10-11"
+  ],
+  "temperature": 0.1,
+  "text_penalty": 1.0,
+  "timezone": "America/Chicago",
+  "tolerance_seconds": 120,
+  "top_k": 4,
+  "train_until_exclusive": "2026-10-23"
+}

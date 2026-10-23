@@ -1,6 +1,8 @@
 # How longer memory could earn its place
 
-Proposal for review, 22 October 2026. No experiment or runtime change is made here.
+Proposal reviewed and approved, 22 October 2026. The implementation and development
+results are in [the scratch experiment report](latent-memory-development.md).
+Approval changes the final training cutoff as recorded below; no runtime feed is changed.
 Read against deploy-branch snapshot `c1dd56ffb191a0cb330e59f120b73897fe29ce66`,
 including the [brief](briefs/latent-stream-review-codex.md),
 [experiment history](continuous-latent-stream.md), and
@@ -239,11 +241,17 @@ Everything below describes a proposed future scratch experiment, not completed w
    fixed development check. Both are reused validation, not fresh holdout evidence.
    Keep the exported present scorer frozen. Do not select by a text/emotion sum,
    enlarge the architecture after a failed development check, or retune against
-   13–22 October. Those spent days may supply causal warm-up state at the start of
-   the fresh block, but no new fitted parameters or design selection here.
+   13–22 October. **Approved amendment:** after selecting the penalty, refit the
+   fixed designs and controls on all available admitted inputs through 22 October.
+   Those spent days may train the registered design and supply causal warm-up,
+   but choose no hyperparameter, architecture or acceptance criterion. Keep the
+   incumbent present scorer frozen. The later chat coverage is the reason for this
+   amendment. Record the actual capture time if 22 October is not yet complete.
 3. **Register one candidate per design, or stop at development.** Require positive
    development gain over the appropriate present baseline on both two-day blocks.
-   If only zero memory survives, the design stops. Save chosen weights and an
+   If only zero memory survives, the design is not eligible for promotion. The
+   explicitly authorized through-22-October refit is still saved for review, with
+   that failed development status preserved. Save chosen weights and an
    evaluation manifest before opening final outcomes. Assign losses to splits by target timestamp and drop any training pair whose
    outcome crosses the training boundary. Keep labels/candidates from
    the final block inaccessible to fitting and state construction. For next-event
@@ -306,9 +314,7 @@ state could be evaluated as a bounded compression of that successful memory,
 with the explicit bank as another baseline. Otherwise a more sophisticated
 update rule merely makes the negative result harder to diagnose.
 
-This branch changes documentation only. Validation consists of reviewing the
-source contracts, checking the parameter/update arithmetic, Markdown links and
-`git diff --check`; no training, broker suite, live-store access or deployment is
-needed for this document-only change. Implementation remains subject to Claude
-Code's review and Gloria's yes. The outstanding decision is tracked in
-[open work](open-work.md), not a second task ledger here.
+Implementation remains scratch-only and is documented in the development report.
+It adds no runtime consumer, deployment manifest entry, cron or provider call.
+Nothing merges without review. Outstanding decisions remain in
+[open work](open-work.md).

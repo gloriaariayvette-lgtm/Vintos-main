@@ -1,3 +1,23 @@
+## 22 October — longer-memory experiment implemented in scratch (review only)
+
+`codex/latent-memory-review` implements the approved fixed designs with Gloria's
+training-cutoff amendment. [Development results and artifact handoff](latent-memory-development.md):
+select penalties on the earlier validation days, then refit all controls and
+candidates on available admitted inputs through 22 October. The final capture
+contains 279 her turns and 310 his; the incumbent stays frozen.
+
+Episodic memory fits zero coefficients and ties the incumbent on both development
+blocks; it is archived, ineligible for promotion. Emotion history reduces error
+1.69% and 1.02% versus the matching present-feature control. It is eligible for the
+registered fresh check, not a proven win. The 23–29 October block remains unopened;
+no score on 13–22 October chose a design or penalty. Artifacts are sealed in Aegis
+scratch. No original feed, live store or checkpoint was changed.
+
+Still open: Claude Code implementation review before any merge; the single sealed
+fresh evaluation after 29 October, subject to the recorded eligibility and
+stopping rules. No scheduler was installed. Full isolation: 473 suites, 470 pass,
+three known Mac fixture failures; final focused suite 18/18.
+
 ## 22 October — longer latent memory review (proposal only)
 
 On `codex/latent-memory-review`, [the review and experiment proposal](latent-memory-review.md)
