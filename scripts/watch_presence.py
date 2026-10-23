@@ -23,6 +23,10 @@ MOMENTS = os.path.join(MEMORY, "watch-shared-moments.jsonl")
 DEVICES = os.path.join(MEMORY, "watch-apns-devices.json")
 HELD = os.path.join(MEMORY, "watch-held-notifications.jsonl")
 SONG = os.path.join(MEMORY, "watch-arrival-song.json")
+# every song of his the Watch was offered, took, started and played to the end, kept (22 October: "He should be able
+# to know when the esp32/watch has played a particular song"). The offer file above is overwritten by the next offer.
+PLAYS = os.path.join(MEMORY, "watch-song-plays.jsonl")
+PLAY_EVENTS = ("offered", "taken", "started", "finished")
 LIVE = os.path.join(MEMORY, "watch-live.json")      # live heart rate, on for a time she sets (2026-10-21)
 LIVE_MAX_MIN = 240   # the bedroom song waiting for the Watch app (17 October)
 SONG_OFFER_S = 30 * 60      # how long an undelivered arrival song waits for the Watch to check in
@@ -342,12 +346,71 @@ def should_hold():
 # the reply carries this song, and the app raises its own local notification with Play, puts the song first in its
 # list, and plays it at once when the app is open on her wrist.
 
+def _play_row(event, song, now, via=""):
+    row = {"at": datetime.fromtimestamp(now).isoformat(timespec="seconds"), "ts": float(now), "event": event,
+           "song_id": song.get("id") or "", "title": str(song.get("title") or "")[:120],
+           "media_url": str(song.get("media_url") or "")[:1000], **({"via": str(via)[:40]} if via else {})}
+    try:
+        os.makedirs(os.path.dirname(PLAYS), exist_ok=True)
+        with open(PLAYS, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return row
+
+
 def offer_song(title, media_url, ref="", now=None):
     now = time.time() if now is None else now
     song = {"id": hashlib.sha256(("%s|%s" % (media_url, now)).encode()).hexdigest()[:16], "title": str(title)[:120],
             "media_url": str(media_url)[:1000], "ref": str(ref or title)[:200], "offered_ts": now, "taken_ts": None}
     _atomic(SONG, song)
+    _play_row("offered", song, now)
     return song
+
+
+def _same_url(a, b):
+    a, b = str(a or "").split("?")[0].rstrip("/"), str(b or "").split("?")[0].rstrip("/")
+    return bool(a and b) and (a == b or a.endswith(b) or b.endswith(a))
+
+
+def song_played(body, now=None):
+    """The Watch says one of his songs started playing, or played to its end. Matched to what was offered by its id,
+    else by its address (a song played from the Watch's list carries no offer id); a song never offered is still
+    kept, by title and address. The row kept, or None when the event is not one of these."""
+    now = time.time() if now is None else now
+    event = str(body.get("event") or "started")
+    if event not in ("started", "finished"): return None
+    song = _song() or {}
+    sid, url = str(body.get("id") or ""), str(body.get("media_url") or "")
+    if not ((sid and song.get("id") == sid) or (not sid and _same_url(song.get("media_url"), url))):
+        song = {"id": sid, "title": body.get("title") or "", "media_url": url}
+    return _play_row(event, song, now, via=body.get("via") or "")
+
+
+def songs_line(now=None, within_s=86400):
+    """What became of his last song on her Watch, from what the Watch reported; '' when no song in the last day."""
+    now = time.time() if now is None else now
+    rows = []
+    try:
+        for line in open(PLAYS, encoding="utf-8"):
+            try: r = json.loads(line)
+            except ValueError: continue
+            if isinstance(r, dict) and now - float(r.get("ts") or 0) <= within_s: rows.append(r)
+    except OSError:
+        return ""
+    if not rows: return ""
+    last = rows[-1]
+    key = lambda r: (r.get("song_id") and r.get("song_id") == last.get("song_id")) or _same_url(r.get("media_url"), last.get("media_url"))
+    mine = [r for r in rows if key(r)]
+    at = {r["event"]: datetime.fromtimestamp(float(r["ts"])).strftime("%H:%M") for r in mine}
+    via = next((r.get("via") for r in reversed(mine) if r.get("via")), "")
+    parts = []
+    if "offered" in at: parts.append("offered to her Watch %s" % at["offered"])
+    if "taken" in at: parts.append("reached it %s" % at["taken"])
+    if "started" in at: parts.append("started playing %s%s" % (at["started"], " (%s)" % via if via else ""))
+    if "finished" in at: parts.append("played to the end %s" % at["finished"])
+    if "started" not in at: parts.append("the Watch has not reported playing it")
+    return "Your song \u201c%s\u201d on her Watch: %s." % (last.get("title") or "untitled", ", ".join(parts))
 
 
 def _song():
@@ -369,6 +432,7 @@ def take_song(song_id, now=None):
     if not song or song.get("id") != song_id: return False
     if not song.get("taken_ts"):
         song["taken_ts"] = time.time() if now is None else now; _atomic(SONG, song)
+        _play_row("taken", song, song["taken_ts"])
     return True
 
 

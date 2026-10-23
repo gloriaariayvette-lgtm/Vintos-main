@@ -51,6 +51,14 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         auth(request); body = await request.json()
         return {"ok": watch_presence.take_song(str(body.get("id") or ""))}
 
+    @routes.post("/api/watch/song/played")
+    async def arrival_song_played(request: Request):
+        """{id?, media_url, title?, event: started|finished, via?}: one of his songs played on her Watch."""
+        auth(request)
+        row = watch_presence.song_played(await request.json())
+        if row is None: raise HTTPException(status_code=422, detail="event must be started or finished")
+        return {"ok": True}
+
     @routes.post("/api/watch/register")
     async def register(request: Request):
         auth(request)

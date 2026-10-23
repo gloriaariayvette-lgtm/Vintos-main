@@ -3072,6 +3072,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     except Exception:
         lines_pre = []
     import room_work
+    try:   # Gloria played a film in the ReelRoom: the work, goal and promises about a film night are met (22 October)
+        import film_night
+        lines_pre += [l for l in film_night.in_room(state, now, journal=journal)]
+    except Exception as exc:
+        lines_pre.append("film night not read: %s" % str(exc)[:120])
     stale = room_work.expire(state, now)
     if stale:      # work nobody touched in three days stops pinning him
         lines_pre.append("his work in hand expired: %s" % stale["goal"][:80])

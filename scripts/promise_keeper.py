@@ -233,6 +233,20 @@ def resolve(thread, text):
     return item
 
 
+def close_matching(matches, result):
+    """Open promises whose words `matches` accepts are kept, with `result` as what came of them: something that
+    happened outside his journal fulfilled them (film_night.py: Gloria played the film). The items closed."""
+    d = load()
+    closed = []
+    for item in d["items"]:
+        if item["state"] == "open" and matches("%s %s" % (item.get("quote", ""), item.get("what", ""))):
+            item.update(state="done", result=str(result)[:1500], ended=_now().isoformat(timespec="seconds"), posted=False)
+            closed.append(item)
+    if closed:
+        save(d)
+    return closed
+
+
 def pending():
     return [i for i in load()["items"] if i["state"] != "open" and not i.get("posted")]
 

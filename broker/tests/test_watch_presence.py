@@ -34,12 +34,13 @@ W.REPLIES=os.path.join(mem,"watch-replies.jsonl")
 W.MOMENTS=os.path.join(mem,"watch-shared-moments.jsonl")
 W.DEVICES=os.path.join(mem,"watch-apns-devices.json")
 W.HELD=os.path.join(mem,"watch-held-notifications.jsonl")
+W.SONG=os.path.join(mem,"watch-arrival-song.json"); W.PLAYS=os.path.join(mem,"watch-song-plays.jsonl")
 W.TOKEN_FILE=os.path.join(secrets,"watch-bearer")
 open(W.TOKEN_FILE,"w").write("throwaway-token")
 A.RECEIPTS=os.path.join(mem,"watch-delivery-receipts.jsonl")
 
 check("every Watch store is inside the scratch directory",
-      all(os.path.commonpath([tmp,p]) == tmp for p in (W.LATEST,W.HISTORY,W.REPLIES,W.MOMENTS,W.DEVICES,W.HELD,W.TOKEN_FILE,A.RECEIPTS)))
+      all(os.path.commonpath([tmp,p]) == tmp for p in (W.LATEST,W.HISTORY,W.REPLIES,W.MOMENTS,W.DEVICES,W.HELD,W.SONG,W.PLAYS,W.TOKEN_FILE,A.RECEIPTS)))
 check("the suite uses a throwaway bearer", W.authorized("Bearer throwaway-token"))
 check("a missing or wrong bearer is refused", not W.authorized("") and not W.authorized("Bearer wrong"))
 

@@ -261,6 +261,18 @@ def goal_routes(g):
     return [r for r in (g or {}).get("routes", []) if r.get("state") in ("done", "dropped", "expired")]
 
 
+def reach_goal(state, said, now, by):
+    """The room's campaign is reached, with `said` as its proof. The goal, or None when there is none."""
+    g = goal(state)
+    if not g:
+        return None
+    b = board(state)
+    g.update(state="reached", closed_at=float(now), closed_said=str(said)[:300], closed_by=by)
+    b["goal_history"] = (b.get("goal_history", []) + [g])[-8:]
+    b["goal"] = None
+    return g
+
+
 def gloria_drops_goal(state, now, said="Gloria closed it"):
     g = goal(state)
     if not g:
@@ -286,9 +298,7 @@ def _goal_lines(state, text, now, by, log):
                      "where (a file, a link, an ID with its status, the result itself)." % said)
             log.append("goal not closed: no proof")
         else:
-            g.update(state="reached", closed_at=float(now), closed_said=said[:300], closed_by=by)
-            b["goal_history"] = (b.get("goal_history", []) + [g])[-8:]
-            b["goal"] = None
+            reach_goal(state, said, now, by)
             shown = "\U0001F3C1 Room campaign reached: %s — %s" % (g["goal"][:160], said)
             log.append("goal reached %s" % g["id"])
             g = None
