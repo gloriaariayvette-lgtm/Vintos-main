@@ -144,11 +144,15 @@ paired day comparisons and 98.75% intervals for the four registered contrasts.
 Sparse comparator comparisons use matching rows, not incompatible pooled averages.
 Insufficient data cannot become a win by extending the block.
 
-No fresh result is reported here. No monitoring job or automatic deployment was
-installed. Failed development eligibility cannot be rescued by a favorable final
+No fresh result is reported here. No Aegis monitoring job or automatic deployment
+was installed. After acceptance of the development report, a one-time Codex
+follow-up was scheduled for **30 October at 08:00 America/Chicago** to run the
+sealed evaluation in Aegis scratch. The episodic design is closed; the
+emotion-history result is judged against the existing 5% threshold and adjusted
+98.75% interval, without reopening any selection. Failed development eligibility cannot be rescued by a favorable final
 score; the existing feeds remain intact regardless of the experiment's outcome.
 
-## Validation and review boundary
+## Original Mac validation and review boundary
 
 The focused synthetic suite passes **18/18** checks, including useful nonzero
 fitting, unchanged zero correction, ties and future causality, bounded source-aware
@@ -175,3 +179,27 @@ that process was inspected or used.
 
 Claude Code reviews this implementation before any merge. No consumer integration
 or model promotion is part of this branch.
+
+
+## Accepted review: dependency repair and Aegis validation
+
+Claude Code accepted the development results in `f076f37`. The episodic design
+is closed as unsuccessful; no further development or fitting is authorized.
+The emotion-history design proceeds only to its registered one-time fresh check.
+
+The broker test now runs with NumPy and the standard library, without importing
+SciPy. Test-local SciPy import seams fail immediately if called; they never return
+fake optimizer results. Two existing optimizer regressions were moved unchanged
+outside the deployment suite to `experiments/latent-memory/test_optimizer.py`.
+The sealed `replay.py` and checkpoint bytes are unchanged and still match their
+manifest; the fresh attempt receipt does not exist.
+
+**Aegis validation: 473/473 broker suites exited successfully, zero failures.**
+The repaired suite passes **17/17** checks using the actual deploy interpreter,
+`/usr/bin/python3.12` (3.12.3), NumPy 1.26.4, no SciPy. The full run uses the
+repository OS-isolated runner with scratch copies and stores. One existing test
+inside `test_lab_atlas_sdk.py` is skipped because its optional pinned SDK
+environment is absent; no entire suite was omitted. The original Mac receipt
+above is retained separately. [Aegis receipt and per-suite outcomes](review-evidence/latent-memory-20261022/aegis-validation.json).
+
+No merge is authorized now. Nothing was deployed, sent, muted or gated.

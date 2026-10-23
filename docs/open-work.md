@@ -1,3 +1,23 @@
+## 22 October — accepted memory results, Aegis suite repair
+
+Claude Code accepted `f076f37`. Episodic memory is closed as unsuccessful in
+development: no further work on that design. Emotion history remains sealed for
+one evaluation of 23–29 October, after the complete block closes. A one-time
+Codex follow-up is scheduled for 30 October at 08:00 America/Chicago; it will
+report the 5% threshold and adjusted 98.75% interval exactly as registered.
+No Aegis collection job was installed, and no fresh score has been read.
+
+The SciPy dependency is removed from the broker test, with fail-closed import
+seams and the two real optimizer checks preserved unchanged outside the deploy
+suite. Sealed replay and checkpoint hashes are unchanged. Full isolated Aegis
+run: **473/473 suites passed**, zero failures; focused **17/17**. One optional
+SDK test inside the atlas suite was skipped for its missing pinned environment.
+[Evidence](review-evidence/latent-memory-20261022/aegis-validation.json).
+
+Still open: the single sealed fresh evaluation, Claude Code review of this repair,
+and Gloria's yes before any eventual merge. **Do not merge this branch now.**
+No feeds, live stores or deployed code were changed.
+
 ## 22 October — longer-memory experiment implemented in scratch (review only)
 
 `codex/latent-memory-review` implements the approved fixed designs with Gloria's

@@ -7,6 +7,7 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+from types import ModuleType
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -18,7 +19,20 @@ REPO=Path(__file__).resolve().parents[2]
 def deny(*a,**k):raise AssertionError('no network or senders in tests')
 socket.socket.connect=deny
 spec=importlib.util.spec_from_file_location('memory_experiment',REPO/'experiments/latent-memory/replay.py')
-R=importlib.util.module_from_spec(spec);spec.loader.exec_module(R)
+# replay.py is sealed by SHA256 for the registered fresh evaluation. Keep it
+# byte-for-byte unchanged. Only its offline text fitter uses SciPy: provide
+# fail-closed import seams here, never an optimizer or numerical substitute.
+# The two real optimizer regressions live in experiments/latent-memory/test_optimizer.py.
+def offline_optimizer_only(*args, **kwargs):
+    raise AssertionError('SciPy fitting is outside the NumPy-only deployment suite')
+
+scipy_seams = {name: ModuleType(name) for name in
+               ('scipy', 'scipy.optimize', 'scipy.special')}
+scipy_seams['scipy.optimize'].minimize = offline_optimizer_only
+scipy_seams['scipy.special'].logsumexp = offline_optimizer_only
+R=importlib.util.module_from_spec(spec)
+with patch.dict(sys.modules, scipy_seams):
+    spec.loader.exec_module(R)
 from latent_stream_model import save,Model,State
 
 
@@ -44,13 +58,12 @@ class Tests(unittest.TestCase):
         assert socket.socket.connect is deny
         cls.model=make_model();cls.at=datetime(2026,10,1,tzinfo=R.TZ)
 
-    def test_01_zero_correction_and_budget(self):
-        rows=[]
-        for i in range(12):
-            v=np.eye(8)[i%8]
-            rows.append(dict(y=v,query=v,source='inner',memory={'episodic':np.zeros((3,8))}))
-        a=R.fit_text(rows,'episodic',1.,5.)
-        np.testing.assert_array_equal(a,np.zeros(3));self.assertLessEqual(a.sum(),.25+1e-8)
+    def test_01_scipy_seams_fail_closed(self):
+        self.assertIs(R.minimize, offline_optimizer_only)
+        self.assertIs(R.logsumexp, offline_optimizer_only)
+        for function in (R.minimize, R.logsumexp):
+            with self.assertRaisesRegex(AssertionError, 'outside the NumPy-only'):
+                function(np.zeros(3))
 
     def test_02_old_bank_admission_and_cap(self):
         bank=R.Bank(8)
@@ -164,14 +177,6 @@ class Tests(unittest.TestCase):
         self.assertNotIn('test',report)
         self.assertFalse(manifest['eligible_for_fresh']['text'])
         self.assertEqual(fit.call_args_list[-1].args[0][-1]['day'],'2026-10-22')
-
-    def test_16_useful_memory_fit_is_nonzero_and_constrained(self):
-        rows=[]
-        for i in range(8):
-            v=np.eye(8)[i];m=np.zeros((3,8));m[0]=v
-            rows.append(dict(y=v,query=np.zeros(8),source='inner',memory={'episodic':m}))
-        a=R.fit_text(rows,'episodic',1.,5.)
-        self.assertGreater(a[0],.1);self.assertTrue(np.all(a>=0));self.assertLessEqual(a.sum(),.25000001)
 
     def test_17_fresh_insufficient_is_terminal_and_no_repeat(self):
         sealed=ROOT/'empty-sealed';sealed.mkdir()

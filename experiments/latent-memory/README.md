@@ -84,7 +84,11 @@ continuity remains unproved.
 The registered block is **23–29 October inclusive, America/Chicago**. Capture of
 that block (`collect.py --through 2026-10-29`) refuses to run before 30 October.
 Likewise the evaluator refuses early, before loading fresh inputs. No interim
-score check or automatic collection job is installed.
+score check or Aegis collection job is installed. Following the accepted review,
+a one-time Codex follow-up is scheduled for 30 October at 08:00 America/Chicago
+to run the sealed evaluation in scratch. The episodic design is closed; only
+the registered emotion-history conclusion remains open. The sealed evaluator
+retains its fixed ancillary comparisons without new fitting or selection.
 
 After the block closes, use a new private capture directory. For evaluation,
 point the two scratch environment variables at a common private parent containing
@@ -113,8 +117,17 @@ head. Claude Code reviews any next step before a merge.
 
 `broker/tests/test_latent_memory.py` runs with synthetic vectors, scratch paths,
 stubbed network access and the repository's OS-isolated runner. It covers target
-causality, ties, duplicates, bank bounds, controls, constrained fitting, horizon
+causality, ties, duplicates, bank bounds, controls, horizon
 uniqueness, gaps, split crossing, source removal/rebuild, incumbent state restart,
 future-cutoff refusal, no early/repeated evaluation, paired bootstrap behavior,
 partial comparator coverage and final fitting after the development freeze.
 The full broker-suite receipt is linked from the development report.
+
+The deployment suite needs no SciPy. It loads the byte-for-byte sealed replay
+file with test-local import seams for its two SciPy functions; either function
+raises if called. This prevents an accidental numerical substitute or a silent
+optimizer skip. The orchestration test explicitly mocks the text fitter, as it
+did before; emotion ridge fitting and bootstrap checks execute real NumPy code.
+The two existing synthetic optimizer regressions have moved unchanged to
+`test_optimizer.py`, outside `broker/tests/`, for the offline SciPy environment.
+This separation changes no experiment code, parameter, score or selection rule.
