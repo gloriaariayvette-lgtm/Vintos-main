@@ -151,6 +151,36 @@ patterns; they now go through the formation door (40c036b). Not done: Moltbook p
 questions are still refused by latent as abstract research questions. That may be the gate doing its job (her rule of
 11 August); it is left as it is until she says otherwise.
 
+## 22 October, night — the fault loop: one fix made, one agreed and not yet made, one disagreement for Gloria
+
+- **F-7e73896373, his Gemma draft overflowing its window — fixed (fault loop, Dot reviewed), not deployed.** On 22
+  October the draft overflowed LM Studio's 32,000-token window at 12:50 (system=81,690 user=45,109 chars, 35,177
+  tokens) and 18:27 (user=38,990, 32,910 tokens), and Grok wrote both turns. Now the pass keeps the conversation as
+  whole messages (`answer_prompt(k)`), and when Gemma writes, its draft, lookup and final calls each leave out the
+  oldest whole messages until a character estimate (3.3 chars/token, plus 700 for the reply and a 600 margin) fits the
+  window. The message he answers, the thread, the work and his steering are never left out; the sent-back and Atelier
+  retries keep their own additions; every other lens, and every fallback, gets the whole prompt. The rewrites after the
+  draft use the shortened prompt but are not budgeted on their own. `test_gemma_window_fit.py`, 20 checks; the 12:50
+  sizes overflow without the fix. **An estimate, not a tokenizer:** an overflow can still happen, is still told
+  (`stage=…`), and Grok still writes. His system context (81,690 chars, about 22,000 tokens of the 32,000) is untouched;
+  shortening it, or a larger window, is Gloria's call.
+- **F-2a958bec9f, `malformed UniProt query` faulting a Lab turn — design agreed by Dot, not implemented.** Twice (13
+  and 23 October UTC), phase orient. A demonstrated possible path, not a proven cause (the query was not kept): the
+  raw-alias path of `uniprot_from_plugin` validates and raises in `_inquiry`, which nothing catches. Agreed: a
+  `MalformedUniProtQuery` subclass; validate the produced query once in `_inquiry` and refuse on it; no replanning in
+  `_orient` or `_held_to_plan` (nor identity grounding) for such a refusal; the generic repeat key in `lab_repeats`;
+  a bounded, sanitized excerpt. Left for the next wake: the no-replan guards cross `_orient`, `_held_to_plan` and
+  `_fresh_free_inquiry`, and were not rushed into the night's last wake.
+- **F-17dd10e362, 18 anthropic calls in one minute through the shim — disagreement, for Gloria.** One burst (18:27:05–
+  :27, Haiku 5.5, all succeeded), not repeated; the shim records no caller. Proposed a diagnostic: the requested model
+  and the User-Agent's first product/version token, sanitized, on the shim's log line and ledger row. Dot, after the
+  one revision: the patterns admit arbitrary text (`private-secret-123`, `PrivateSecret/1.0` would be kept), so only
+  *recognized* model names and User-Agent products should be kept, with tests of secrets placed in those fields.
+  Not done; whether the burst matters enough for a diagnostic, and in which form, is Gloria's decision.
+- **Not proposed tonight (three were open):** F-03f331c0af (`source_gene_mismatch: requested A1AT`, SERPINA1's record
+  names AAT, not A1AT — looks like the alias shape of F-d71d7af615; unchecked), F-82f9f2048f (crontab digest still
+  unread after the day thread's fix; security work, not the loop's). F-dca5b5749c was one dropped connection.
+
 ## 21 October, night — a gene-identity refusal costs three Lab turns (F-d71d7af615), proposed, not fixed
 
 - **Seen:** `source_gene_mismatch` raised in the browse phase is not caught, so the same request is retried until
