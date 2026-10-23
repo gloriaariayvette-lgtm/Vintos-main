@@ -334,6 +334,11 @@ def _plan(investigation, context, ask):
         'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs')}
                            for s in visible],
         'retained_outputs':[{'id':s['id'],'state':s.get('state'),'tool':s.get('tool')} for s in steps],
+        # the tools whose questions the repeat check already refused in this investigation: Gemma kept rewording the
+        # same PubMed question (about 600 refusals in two days) instead of moving to another tool (23 October)
+        'already_asked': sorted({s.get('tool') for s in steps if s.get('state') == 'failed'
+                                 and any(w in str(s.get('error') or '') for w in ('you already asked this',
+                                         'you already ran this exact lookup', 'already done in this investigation'))}),
         'available_inputs': {'structures': lab_instruments.artifacts('structure', 8),
                              'sequences': lab_instruments.artifacts('sequence', 8)},
         'tools': _menu(),
@@ -355,7 +360,10 @@ def _plan(investigation, context, ask):
                                     'Boltz start operations remain ask-only; hosted inference keeps its six-job cap. '
                                     'Screening has no reserved share. Choose it only when it advances this question. '
                                     'Use all available experiment types when they address the question, including '
-                                    'molecule and titrate. A repeat is not new evidence. build_on holds your latest '
+                                    'molecule and titrate. A repeat is not new evidence: for a tool in already_asked, '
+                                    'what it returns is already known, so take the next step with a different tool '
+                                    '(a fold, a comparison, a connector, an experiment) on what you have. '
+                                    'build_on holds your latest '
                                     'findings: when opening an investigation, prefer testing one of their next '
                                     'questions with a different tool over starting somewhere unrelated.'),
     }
@@ -372,7 +380,11 @@ def _plan(investigation, context, ask):
             result.pop('summary', None)
         prompt = json.dumps(task, ensure_ascii=False)
     if len(prompt.encode('utf-8')) > limit:
-        task['tools'] = {'routes':list(_menu()), 'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
+        menu = _menu()
+        task['tools'] = {'routes':list(menu), 'connectors':sorted(menu.get('connectors') or {}),
+                         'account_connectors':sorted(k for k, v in __import__('claude_connector_catalog').PLUGINS.items()
+                                                     if v.get('enabled') is not False and 'lab' in v.get('surfaces', ())),
+                         'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
                          'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
         prompt = json.dumps(task, ensure_ascii=False)
     # Still too long: shed what matters least, oldest results first, before ever refusing to plan. Every output stays
@@ -459,6 +471,24 @@ def dispatch(route, request, question, steps):
         return result
     field = {'source':'source_query', 'plugin':'plugin_query', 'instrument':'instrument_query'}.get(route)
     if not field: raise ValueError('unknown investigation route')
+    if route == 'instrument':
+        request = dict(request)
+        if len(str(request.get('question') or '')) < 10:
+            request['question'] = question     # the step's own question is what the instrument should answer
+        files = [f for f in (request.get('files') or []) if isinstance(f, str)]
+        import lab_instruments
+        if request.get('skill') in lab_instruments.LOCAL and len(files) > 1:
+            # one model per run: read each model it named, each through the same checks (23 October: three pendrin
+            # models in one read were refused 108 times)
+            reads, errors = [], []
+            for f in files[:4]:
+                try:
+                    reads.append({'file': f, 'result': dispatch(route, dict(request, files=[f]), question, steps)})
+                except Exception as exc:
+                    errors.append({'file': f, 'error': str(exc)[:300]})
+            if not reads:
+                raise ValueError(errors[0]['error'] if errors else 'no model could be read')
+            return {'reads': reads, 'not_read': errors}
     # Retain the ordinary identity and identical-lookup checks. No replan or
     # generic fallback changes the investigation's requested operation.
     inquiry = lab._inquiry({'question':question, field:request, 'browse_lane':'protein'})
@@ -528,6 +558,36 @@ def _budget_spent(investigation):
     if run >= MAX_FAILED_RUN:
         return '%d operations in a row produced nothing' % run
     return ''
+
+
+def _answered_before(refusal, step, data):
+    """The completed step whose output answers what the repeat check just refused, or None. Gloria's rule is no
+    repeats; a repeat refused with nothing in its place left the investigation empty-handed, and about 600 steps in two
+    days ended that way (23 October). Only a refusal that says it was asked or run before qualifies; an identity or
+    plan refusal never does. The earlier step must be the same tool, on the same files for an instrument, and either
+    the same request or a question the repeat check itself would call the same."""
+    if 'you already asked this' not in refusal and 'you already ran this exact lookup' not in refusal \
+            and 'prior model read already includes' not in refusal:
+        return None
+    import lab_repeats
+    mine = lab_repeats._words(step.get('question'))
+    req = step.get('executed_request') or step.get('request') or {}
+    def bare(r):
+        return {k: v for k, v in (r or {}).items() if k not in ('question', 'range')} if isinstance(r, dict) else r
+    best = None
+    for inv in data.get('investigations', []):
+        for s in inv.get('steps', []):
+            if s is step or s.get('state') != 'completed' or not s.get('output_file') or s.get('tool') != step.get('tool'):
+                continue
+            other = s.get('executed_request') or s.get('request') or {}
+            if step.get('route') == 'instrument' and (other.get('files') or []) != (req.get('files') or []):
+                continue
+            theirs = lab_repeats._words(s.get('question'))
+            similar = bool(mine) and len(mine & theirs) / len(mine) >= lab_repeats.SIMILAR
+            if bare(other) == bare(req) or similar:
+                if best is None or str(s.get('at') or '') > str(best.get('at') or ''):
+                    best = s
+    return best
 
 
 SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
@@ -683,8 +743,23 @@ def _turn(context, *, ask=None, execute=None):
             _store_result(step, payload)
         else:
             _save(data)
-            result = execute(route, request, step['question'], investigation['steps'][:-1])
-            _store_result(step, normalize_result(result))
+            try:
+                result = execute(route, request, step['question'], investigation['steps'][:-1])
+            except ValueError as exc:
+                earlier = _answered_before(str(exc), step, data)
+                if earlier is None:
+                    raise
+                if any(earlier is t for t in investigation['steps']):
+                    raise ValueError('already done in this investigation as %s; use its output: {"step":"%s","path":[...]}'
+                                     % (earlier['id'], earlier['id']))
+                payload = lab._load(_path(earlier['output_file']), None)
+                encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+                if payload is None or hashlib.sha256(encoded).hexdigest() != earlier.get('output_sha256'):
+                    raise
+                step.update(reused_from=earlier['id'], reused_because=str(exc)[:200])
+                _store_result(step, payload)
+            else:
+                _store_result(step, normalize_result(result))
     except SourceWaiting as exc:
         step.update(state='waiting_not_sent',retry_at=exc.until,error=str(exc))
     except Exception as exc:

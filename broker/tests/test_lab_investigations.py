@@ -161,6 +161,59 @@ class Investigations(unittest.TestCase):
         self.assertEqual(seen[0][1].get('source'),'pubmed')
         self.assertEqual((row['state'],row['tool'],row['authored_route']),('completed','source:pubmed','pubmed'))
 
+    def test_an_instrument_named_only_by_its_operation_is_named(self):
+        from lab_tool_calls import normalize_request
+        self.assertEqual(normalize_request('instrument',{'instrument_query':{'operation':'fold_read','files':['a.pdb']}}),
+                         {'operation':'structure.read','skill':'fold_read','files':['a.pdb']})
+        self.assertEqual(normalize_request('instrument',{'operation':'structure.compare'})['skill'],'reference_compare')
+        self.assertNotIn('skill',normalize_request('instrument',{'operation':'no.such'}))
+        valid={'skill':'structure_viewer','operation':'structure.analyze','files':['a.pdb']}
+        self.assertEqual(normalize_request('instrument',dict(valid)),valid)
+
+    def test_several_models_are_read_one_at_a_time_and_the_step_question_is_asked(self):
+        import lab_instruments
+        read=[]
+        def run(req):
+            read.append((req['files'],req['question']))
+            return {'instrument_receipt':{'records':[{'file':req['files'][0]}]}}
+        with patch.object(C,'_inquiry',lambda d:d), \
+             patch.object(C,'_held_to_plan',lambda *a,**k:({'instrument_query':a[2]['instrument_query']},{})), \
+             patch.object(lab_instruments,'run',run):
+            out=I.dispatch('instrument',{'skill':'fold_read','operation':'structure.read',
+                           'files':['artifacts/esmfold/a.pdb','artifacts/esmfold/b.pdb']},'Which helices hold the pore?',[])
+        self.assertEqual(read,[(['artifacts/esmfold/a.pdb'],'Which helices hold the pore?'),
+                               (['artifacts/esmfold/b.pdb'],'Which helices hold the pore?')])
+        self.assertEqual([r['file'] for r in out['reads']],['artifacts/esmfold/a.pdb','artifacts/esmfold/b.pdb'])
+
+    def test_a_question_refused_as_a_repeat_takes_the_answer_already_retained(self):
+        q='Identify bacteriophages carrying a reverse transcriptase beside a CRISPR array'
+        self.ask.return_value=json.dumps({'question':'q1','prediction':'p','plan':[],'route':'source',
+            'request':{'source':'pubmed','query':'phage RT CRISPR'},'step_question':q,'why':'w'})
+        first=I.turn('',ask=self.ask,execute=lambda *a:{'receipt':{'source':'pubmed','receipt_id':'R-9','records':[{'pmid':'1'}]}})
+        data=C._load(I._path('investigations.json'),{}); data['investigations'][0]['state']='stalled'
+        C._atomic(I._path('investigations.json'),data)
+        self.ask.return_value=json.dumps({'question':'q2','prediction':'p','plan':[],'route':'source',
+            'request':{'source':'pubmed','query':'reverse transcriptase CRISPR bacteriophage'},'step_question':q+' in phage genomes','why':'w'})
+        def refuse(*a): raise ValueError('no eligible saved step: you already asked this on 2026-10-22 10:00, in other words: '+q)
+        second=I.turn('',ask=self.ask,execute=refuse)
+        self.assertEqual((second['state'],second['reused_from']),('completed',first['id']))
+        self.assertIn('you already asked this',second['reused_because'])
+        def identity(*a): raise ValueError('no eligible saved step: unchanged unresolved identity: multiple accessions')
+        data=C._load(I._path('investigations.json'),{}); data['investigations'][-1]['state']='stalled'
+        C._atomic(I._path('investigations.json'),data)
+        self.ask.return_value=json.dumps({'question':'q3','prediction':'p','plan':[],'route':'source',
+            'request':{'source':'pubmed','query':'another wording'},'step_question':q,'why':'w'})
+        third=I.turn('',ask=self.ask,execute=identity)
+        self.assertEqual(third['state'],'failed')
+        self.assertNotIn('reused_from',third)
+
+    def test_the_planner_is_told_which_tools_were_refused_as_repeats(self):
+        self.ask.return_value=self.choice('source',{'source':'pubmed','query':'x'})
+        def refuse(*a): raise ValueError('no eligible saved step: you already asked this on 2026-10-22, in other words: x')
+        I.turn('',ask=self.ask,execute=refuse)
+        I.turn('',ask=self.ask,execute=refuse)
+        self.assertIn('"already_asked": ["source:pubmed"]',self.ask.call_args.args[1])
+
     def test_source_step_enters_existing_embedding_phase_and_records_its_output(self):
         self.ask.return_value=self.choice('source',{'source':'uniprot','query':'accession:P12345'})
         raw={'primaryAccession':'P12345','sequence':{'value':'MAAAA','length':5}}
