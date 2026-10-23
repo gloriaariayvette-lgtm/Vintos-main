@@ -69,6 +69,25 @@ def negate_vec(v):
     mag = math.sqrt(sum(x*x for x in flipped)) or 1.0
     return [x/mag for x in flipped]
 
+def vector_problem(core_entries):
+    """RW-706bcf9c: why these entries may not be published as Core, or None.
+    Every reader pairs entries by vector, so one bad vector spoils the file."""
+    if not isinstance(core_entries, list) or not core_entries:
+        return "no core entries"
+    width = None
+    for i, e in enumerate(core_entries):
+        v = e.get("vector") if isinstance(e, dict) else None
+        if not isinstance(v, list) or not v:
+            return f"entry {i}: vector missing or empty"
+        for x in v:
+            # bool is an int subclass; it is not a coordinate
+            if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+                return f"entry {i}: vector holds a non-finite or non-numeric value"
+        if width is None: width = len(v)
+        elif len(v) != width:
+            return f"entry {i}: vector length {len(v)} != {width}"
+    return None
+
 def collect_friction_events():
     """Pull friction events from all four sources."""
     events = []
@@ -330,6 +349,12 @@ def bootstrap():
         "clusters": len(clusters),
         "core": core_entries
     }
+
+    # Check before either route writes: a rejected Core leaves the previous one in place.
+    problem = vector_problem(core_entries)
+    if problem:
+        log(f"Core NOT written ({problem}); previous {CORE_FILE} kept")
+        return
 
     _sg_write(CORE_FILE, output, "core-engine") or open(CORE_FILE, "w").write(json.dumps(output, indent=2))
     log(f"Core written: {len(core_entries)} elements → {CORE_FILE}")
