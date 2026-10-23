@@ -11969,9 +11969,16 @@ async def reelroom_film(request: Request):
     if not title: raise HTTPException(status_code=400, detail="title required")
     import asyncio as _a
     try:
-        return {"ok": True, "film": await _a.get_event_loop().run_in_executor(None, _reelroom_mod().film_lookup, title)}
+        film = await _a.get_event_loop().run_in_executor(None, _reelroom_mod().film_lookup, title)
     except Exception as e:
         raise HTTPException(status_code=502, detail="film lookup: " + str(e)[:200])
+    try:   # she chose the film: what he held open about a film night with her is met (film_night.py, 22 October)
+        _reelroom_mod()
+        import film_night as _fn
+        await _a.get_event_loop().run_in_executor(None, _fn.started, str(film.get("title") or title))
+    except Exception as e:
+        print("[reelroom] film night not recorded: %s" % str(e)[:160], flush=True)
+    return {"ok": True, "film": film}
 
 
 @app.post("/api/game/reelroom/chat")
