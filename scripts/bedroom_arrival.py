@@ -358,12 +358,18 @@ def context_line(now=None):
         try: when = datetime.fromisoformat(last["at"]).astimezone().strftime("%b %d, %H:%M")
         except Exception: when = str(last.get("at", ""))[:16]
         line += " Last time: %s, \u201c%s\u201d." % (when, str(last.get("song", ""))[:60])
+        try:   # what the Watch reported doing with it, not only that it was sent (22 October)
+            import watch_presence
+            heard = watch_presence.songs_line()
+            if heard: line += " " + heard
+        except Exception:
+            pass
     now = time.time() if now is None else now
     picks = _load(PICKS, {})
     if isinstance(picks, dict) and picks.get("date") == _today(now) and picks.get("by") == "him":
         played = picks.get("played") or []
         line += " Today's three, your choice: %s." % "; ".join(
-            "\u201c%s\u201d%s" % (str(s.get("title"))[:50], " (played)" if s.get("url") in played else "")
+            "\u201c%s\u201d%s" % (str(s.get("title"))[:50], " (sent)" if s.get("url") in played else "")
             for s in picks.get("songs") or [])
     else:
         titles = [t for t, _ in library()][:12]

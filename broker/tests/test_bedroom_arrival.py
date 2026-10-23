@@ -32,7 +32,7 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 
 check("every store is throwaway and every sender is a stub",
-      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC, B.PICKS, W.SONG, W.LATEST, W.TOKEN_FILE))
+      all(p.startswith(HOME) for p in (B.CONFIG, B.STATE, B.SEEN, B.ARRIVALS, B.MUSIC, B.PICKS, W.SONG, W.PLAYS, W.LATEST, W.TOKEN_FILE))
       and sys.modules["watch_apns"].send is apns_send and sys.modules["deliver"].deliver is phone)
 
 check("an ESPresense bedroom message is read", B.parse("espresense/devices/gloria-phone/bedroom", b'{"distance":1.03}') == ("gloria-phone", 1.03))
@@ -73,6 +73,19 @@ check("the song is first in the Watch's list, with its playable track",
 check("taking it ends the offer", W.take_song(song["id"]) and W.pending_song() is None)
 check("... but it stays first in the list for the evening", W.top_song() and W.top_song(now=NOW + 12 * 3600 + 1) is None)
 check("an unknown id takes nothing", W.take_song("nope") is False)
+plays = [json.loads(l) for l in open(W.PLAYS)]
+check("the offer and the Watch taking it are kept, by song id", [(r["event"], r["song_id"]) for r in plays][-2:]
+      == [("offered", song["id"]), ("taken", song["id"])], plays)
+W.song_played({"id": song["id"], "event": "started", "via": "play tap"}, now=NOW + 120)
+check("before it finishes he is told it started, and how", "started playing" in W.songs_line(now=NOW + 130)
+      and "(play tap)" in W.songs_line(now=NOW + 130) and "played to the end" not in W.songs_line(now=NOW + 130),
+      W.songs_line(now=NOW + 130))
+W.song_played({"media_url": song["media_url"].replace("https://cdn.test", ""), "event": "finished"}, now=NOW + 300)
+check("played from the Watch's list (no id, its address only), it is still matched to the same song",
+      [json.loads(l) for l in open(W.PLAYS)][-1]["song_id"] == song["id"] and "played to the end" in W.songs_line(now=NOW + 310),
+      W.songs_line(now=NOW + 310))
+check("an event that is not a start or an end is refused", W.song_played({"id": song["id"], "event": "skipped"}) is None)
+check("a day later the line is gone", W.songs_line(now=NOW + 86400 + 400) == "")
 wr = open(os.path.join(REPO, "scripts", "watch_routes.py")).read()
 check("the telemetry reply carries the pending song, only while she is awake",
       "song = watch_presence.pending_song()" in wr and wr.index("if not body.get(\"asleep\"):") < wr.index("song = watch_presence.pending_song()"))
@@ -124,8 +137,9 @@ check("the next arrival plays the next of his three that has not played", row an
       and row["picked_by"] == "him", row)
 row = B.observe("gloria-phone", 1.0, now=NOW + 120000)
 check("his three all played: nothing more today", row and not row["sent"] and row["why"] == "today's three have all played", row)
-check("he sees today's three as his choice, and which played", "your choice" in B.context_line(now=NOW + 120000)
-      and "(played)" in B.context_line(now=NOW + 120000))
+check("he sees today's three as his choice, and which were sent (sent is not heard: 22 October)",
+      "your choice" in B.context_line(now=NOW + 120000) and "(sent)" in B.context_line(now=NOW + 120000)
+      and "(played)" not in B.context_line(now=NOW + 120000))
 check("a test or witness-less turn strips the tag without choosing",
       B.take_picks("x [ARRIVAL SONGS: Static]", act=False) == "x" and json.load(open(B.PICKS))["by"] == "him")
 check("a reply without the tag is untouched", B.take_picks("plain [HOME: blanket_on]") == "plain [HOME: blanket_on]")
