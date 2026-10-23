@@ -530,6 +530,9 @@ def _budget_spent(investigation):
     return ''
 
 
+SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
+                           'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea',
+                           'quickgo','imgvr','bvbrc'))
 MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the investigation is closed, not retried
 _CURRENT = {}
 
@@ -607,6 +610,12 @@ def _turn(context, *, ask=None, execute=None):
     investigation['plan'] = value.get('plan') or investigation.get('plan') or []
     route, request = value.get('route'), value.get('request') or {}
     if not isinstance(request,dict): raise ValueError('operation request must be an object')
+    authored_route = None
+    if route in SOURCE_ROUTES:
+        # a source named as the route ("pubmed", "ncbi") is that source's query: 250 steps in two days were refused
+        # as an unknown route for this alone (23 October)
+        authored_route, route = route, 'source'
+        request = dict(request, source=request.get('source') or authored_route)
     if route == 'finish':
         original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
         if any(step.get('state') == 'outcome_unknown' for step in investigation['steps']):
@@ -634,7 +643,7 @@ def _turn(context, *, ask=None, execute=None):
     step = {'id':'S-'+uuid.uuid4().hex[:12], 'at':lab.now_iso(), 'route':route,
             'question':str(value.get('step_question') or investigation['question']),
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
-            'origin':'autonomous_lab', 'tool':tool_name(route,request)}
+            'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
     # are not retried automatically (especially hosted inference).
     step['state'] = 'started'
@@ -653,13 +662,29 @@ def _turn(context, *, ask=None, execute=None):
         resolved = execution_request(route,resolve(request, investigation['steps'][:-1]))
         step['request_sha256'] = hashlib.sha256(json.dumps([route,resolved],sort_keys=True).encode()).hexdigest()
         prior = [s for inv in data['investigations'] for s in inv.get('steps', []) if s is not step]
-        if route not in ('schema','read_output') and any(
-                s.get('request_sha256') == step['request_sha256'] and
-                s.get('state') in ('completed','started','outcome_unknown') for s in prior):
-            raise ValueError('operation already completed or has an unknown outcome; use its output or reconcile it')
-        _save(data)
-        result = execute(route, request, step['question'], investigation['steps'][:-1])
-        _store_result(step, normalize_result(result))
+        same = [s for s in prior if s.get('request_sha256') == step['request_sha256']] if route not in ('schema','read_output') else []
+        if any(s.get('state') in ('started','outcome_unknown') for s in same):
+            raise ValueError('operation has an unknown outcome; reconcile it before repeating')
+        done = [s for s in same if s.get('state') == 'completed' and s.get('output_file')]
+        mine = [s for s in done if any(s is t for t in investigation['steps'])]
+        if mine:
+            raise ValueError('already done in this investigation as %s; use its output: {"step":"%s","path":[...]}'
+                             % (mine[-1]['id'], mine[-1]['id']))
+        if done:
+            # The same lookup another investigation already made: its retained output is this step's output, and
+            # nothing is sent again. Refusing it closed 478 investigations in two days on "5 operations in a row
+            # produced nothing", before any of them reached a second tool (23 October).
+            source_step = done[-1]
+            payload = lab._load(_path(source_step['output_file']), None)
+            encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+            if payload is None or hashlib.sha256(encoded).hexdigest() != source_step.get('output_sha256'):
+                raise ValueError('the earlier output of this operation (%s) is missing or changed' % source_step['id'])
+            step['reused_from'] = source_step['id']
+            _store_result(step, payload)
+        else:
+            _save(data)
+            result = execute(route, request, step['question'], investigation['steps'][:-1])
+            _store_result(step, normalize_result(result))
     except SourceWaiting as exc:
         step.update(state='waiting_not_sent',retry_at=exc.until,error=str(exc))
     except Exception as exc:

@@ -131,6 +131,36 @@ class Investigations(unittest.TestCase):
         self.assertEqual(second['state'],'failed')
         self.assertIn('unknown outcome',second['error'])
 
+    def test_same_lookup_in_a_new_investigation_reuses_the_earlier_output_without_sending(self):
+        self.ask.return_value=self.choice('source',{'source':'pubchem','name':'fixture'})
+        execute=Mock(return_value={'receipt':{'source':'pubchem','receipt_id':'R-1','records':[{'SMILES':'CCO'}]}})
+        first=I.turn('',ask=self.ask,execute=execute)
+        data=C._load(I._path('investigations.json'),{})
+        data['investigations'][0]['state']='stalled'; C._atomic(I._path('investigations.json'),data)
+        second=I.turn('',ask=self.ask,execute=execute)
+        execute.assert_called_once()
+        self.assertNotEqual(first['investigation'],second['investigation'])
+        self.assertEqual((second['state'],second['reused_from']),('completed',first['id']))
+        self.assertEqual(I.resolve({'step':second['id'],'path':['receipt','records',0,'SMILES']},[second]),'CCO')
+
+    def test_same_lookup_twice_in_one_investigation_points_back_to_its_own_step(self):
+        self.ask.return_value=self.choice('source',{'source':'pubchem','name':'fixture'})
+        execute=Mock(return_value={'receipt':{'source':'pubchem','records':[{'SMILES':'CCO'}]}})
+        first=I.turn('',ask=self.ask,execute=execute)
+        second=I.turn('',ask=self.ask,execute=execute)
+        execute.assert_called_once()
+        self.assertEqual(second['state'],'failed')
+        self.assertIn('already done in this investigation as %s' % first['id'],second['error'])
+
+    def test_a_source_named_as_the_route_is_that_sources_query(self):
+        self.ask.return_value=self.choice('pubmed',{'query':'reverse transcriptase CRISPR phage'})
+        seen=[]
+        row=I.turn('',ask=self.ask,execute=lambda route,request,*a:(seen.append((route,request)),
+                   {'receipt':{'source':'pubmed','records':[{'pmid':'1'}]}})[1])
+        self.assertEqual(seen[0][0],'source')
+        self.assertEqual(seen[0][1].get('source'),'pubmed')
+        self.assertEqual((row['state'],row['tool'],row['authored_route']),('completed','source:pubmed','pubmed'))
+
     def test_source_step_enters_existing_embedding_phase_and_records_its_output(self):
         self.ask.return_value=self.choice('source',{'source':'uniprot','query':'accession:P12345'})
         raw={'primaryAccession':'P12345','sequence':{'value':'MAAAA','length':5}}

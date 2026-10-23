@@ -44,3 +44,12 @@ for k, n in Counter(norm(i.get("closed_reason") or i.get("state")) for i in inv)
 print("\n== planning failures (before any step) ==")
 for k, n in Counter(norm(i.get("last_planning_error")) for i in inv if i.get("last_planning_error")).most_common(10):
     print("  %5d  %s" % (n, k))
+
+print("\n== what the planner actually wrote, for the instrument failures (5 of each error) ==")
+shown = Counter()
+for s in steps:
+    if s.get("route") not in ("instrument", "native") or s.get("state") == "completed": continue
+    e = norm(s.get("error"))[:60]
+    if shown[e] >= 5: continue
+    shown[e] += 1
+    print("  [%s]\n     %s" % (e, json.dumps(s.get("request"), ensure_ascii=False)[:300]))
