@@ -150,6 +150,14 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'Permission denied.*no fresh crontab digest'):
                 A.host_snapshot(denied)
 
+    def test_a_slow_crontab_leaves_its_reason_in_the_digest(self):
+        import subprocess
+        def slow(args): raise subprocess.TimeoutExpired(args, 60)
+        row=A.write_cron_digest(slow, now=self.now)
+        self.assertIn('TimeoutExpired', row['error'])
+        self.assertIn('TimeoutExpired', json.loads(A.digest_path().read_text())['error'])
+        self.assertGreaterEqual(A.DIGEST_FRESH_S, 1800)
+
     def test_journal_search_with_no_match_is_clean_not_blind(self):
         from unittest.mock import patch
         done=lambda rc,out:type('P',(),{'returncode':rc,'stdout':out,'stderr':''})()

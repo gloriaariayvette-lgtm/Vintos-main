@@ -31,7 +31,8 @@ def paths():
 # `crontab -l` is setgid crontab, and the alarm's unit runs with NoNewPrivileges, so inside it the spool file cannot be
 # opened ("crontabs/gloria/: fopen: Permission denied", 23 October: the host baseline was blind on every pass). The
 # unit's unsandboxed pre-step (ExecStartPre=-+) writes only the crontab's hash here; the sandboxed pass reads it.
-DIGEST_FRESH_S = 600
+DIGEST_FRESH_S = 1800      # the pre-step can miss a while when the host is busy; a lasting failure still alarms
+DIGEST_TIMEOUT_S = 60      # the pre-step may wait longer for crontab than a pass's 12 s probes
 
 
 def digest_path():
@@ -42,9 +43,15 @@ def write_cron_digest(runner=None, now=None):
     runner = runner or run
     now = time.time() if now is None else now
     try:
-        row = {'at': now, 'sha256': hashlib.sha256(runner(['crontab', '-l']).encode()).hexdigest()}
-    except RuntimeError as e:
-        row = {'at': now, 'error': str(e)[:200]}
+        if runner is run:
+            p = subprocess.run(['crontab', '-l'], capture_output=True, text=True, timeout=DIGEST_TIMEOUT_S)
+            if p.returncode: raise RuntimeError('crontab exited %d: %s' % (p.returncode, (p.stderr or '').strip()[:120]))
+            text = p.stdout
+        else:
+            text = runner(['crontab', '-l'])
+        row = {'at': now, 'sha256': hashlib.sha256(text.encode()).hexdigest()}
+    except Exception as e:     # a slow crontab (TimeoutExpired) left no digest and no reason (23 October, 02:07, 03:13)
+        row = {'at': now, 'error': ('%s: %s' % (type(e).__name__, e))[:200]}
     p = digest_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix('.tmp')
