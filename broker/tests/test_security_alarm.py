@@ -143,12 +143,21 @@ class SecurityTests(unittest.TestCase):
             snap=A.host_snapshot(denied)
         self.assertEqual(snap['files']['user-crontab'],hashlib.sha256(b'0 * * * * job\n').hexdigest())
         with patch.object(A.time,'time',return_value=self.now+A.DIGEST_FRESH_S+1):
-            with self.assertRaisesRegex(RuntimeError,'no fresh crontab digest'):
+            with self.assertRaisesRegex(RuntimeError,'crontab digest by pre-step is 30 min old'):
                 A.host_snapshot(denied)
-        A.write_cron_digest(denied, now=self.now)
-        with patch.object(A.time,'time',return_value=self.now+1):
-            with self.assertRaisesRegex(RuntimeError,'Permission denied.*no fresh crontab digest'):
+        # a failed read keeps the last good hash and says why beside it; once that hash is stale, the reason is shown
+        A.write_cron_digest(denied, now=self.now+30)
+        with patch.object(A.time,'time',return_value=self.now+60):
+            self.assertEqual(A.host_snapshot(denied)['files']['user-crontab'],hashlib.sha256(b'0 * * * * job\n').hexdigest())
+        with patch.object(A.time,'time',return_value=self.now+A.DIGEST_FRESH_S+120):
+            with self.assertRaisesRegex(RuntimeError,'Permission denied; crontab digest by pre-step is 32 min old \\(RuntimeError: crontab exited 1'):
                 A.host_snapshot(denied)
+        A.digest_path().unlink()
+        with self.assertRaisesRegex(RuntimeError,'no crontab digest at'):
+            A.host_snapshot(denied)
+        A.write_cron_digest(lambda args:'x\n', now=self.now, by='cron')
+        self.assertEqual(json.loads(A.digest_path().read_text())['by'],'cron')
+        self.assertEqual([p.name for p in A.digest_path().parent.glob('*.tmp')],[])
 
     def test_a_slow_crontab_leaves_its_reason_in_the_digest(self):
         import subprocess
