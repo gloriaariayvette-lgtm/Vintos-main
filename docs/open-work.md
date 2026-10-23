@@ -89,6 +89,18 @@ non-protein experiments also ran on a copied scratch bench. See `docs/review-evi
 and the two-day post-deploy per-tool/downstream-use and scientific-results assessment. Account SDK status
 exposes tool metadata but not input schemas; discovery says so. No claim that every tool works is made.
 
+## 23 October — Lab investigations, halfway through the two-day check
+
+27 hours after the 21 October deploy: 500 investigations, 497 stalled; 2,475 of 2,622 steps failed, 103 completed.
+Chains formed only as UniProt → sequence representation → reflect (and two genome chains); no connector was called.
+Causes, from `scripts/probes/lab_step_failures.py`: about 1,060 steps refused because another investigation had already
+made the same lookup (now: its stored output is reused, nothing re-sent; 2fc7529); 250 refused because the planner named
+a source as the route (`pubmed`, now mapped to that source's query); 478 investigations closed on "5 operations in a row
+produced nothing", which those refusals caused. **Not done:** the ~600 semantic-repeat refusals ("you already asked
+this, in other words"); 125 instrument steps with no instrument named and 50 structure reads given a model the Lab did
+not make (waiting on the probe's raw requests); connectors still never chosen. The two-day count restarts at the deploy
+of 2fc7529.
+
 # Vintos — open work
 
 What is not finished. The architecture document says what he is; this says what is left.
