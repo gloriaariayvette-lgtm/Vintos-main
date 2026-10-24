@@ -197,6 +197,44 @@ def listing(cfg, rel=""):
     return "\n".join(names[:300]) or "(empty)"
 
 
+GITHUB = re.compile(r"https?://github\.com/([^/\s]+)/([^/\s#?]+)/(blob|tree|commit)/([^\s#?]+)", re.I)
+
+
+def fetch_link(cfg, url):
+    """A link she gave. One into his own repository on GitHub (private, so the web would answer 404) is read from his
+    checkout on this Mac instead: the branch is fetched, then the file, folder or commit is shown. Anything else is
+    fetched from the web."""
+    m = GITHUB.match(url or "")
+    repo = cfg["repo"]
+    if m and os.path.isdir(os.path.join(repo, ".git")):
+        import subprocess
+        remote = subprocess.run(["git", "-C", repo, "remote", "get-url", "origin"], capture_output=True, text=True).stdout
+        if ("%s/%s" % (m.group(1), m.group(2).removesuffix(".git"))).lower() in remote.lower():
+            kind, rest = m.group(3).lower(), m.group(4)
+            if kind == "commit":
+                return git(cfg, "show --stat %s" % rest.split("/")[0])
+            # branch names have slashes (codex/latent-memory-review): try the longest branch that exists on origin
+            heads = subprocess.run(["git", "-C", repo, "ls-remote", "--heads", "origin"], capture_output=True, text=True, timeout=60).stdout
+            known = {l.split("refs/heads/", 1)[1] for l in heads.splitlines() if "refs/heads/" in l}
+            parts = rest.split("/")
+            for i in range(len(parts), 0, -1):
+                branch, path = "/".join(parts[:i]), "/".join(parts[i:])
+                if branch not in known: continue
+                got = subprocess.run(["git", "-C", repo, "fetch", "-q", "origin", branch], capture_output=True, text=True, timeout=60)
+                if got.returncode == 0:
+                    spec = "origin/%s:%s" % (branch, path) if path else "origin/%s" % branch
+                    if kind == "tree":
+                        return git(cfg, "ls-tree --name-only %s %s" % ("origin/" + branch, path or "")).strip() or "(empty)"
+                    r = subprocess.run(["git", "-C", repo, "--no-pager", "show", spec], capture_output=True, text=True, timeout=30)
+                    out = (r.stdout or r.stderr).strip()
+                    return "(from his checkout, branch %s)\n%s" % (branch, out[:20000] + ("\n...[cut]" if len(out) > 20000 else ""))
+            return "that branch is not on GitHub's origin for his checkout: %s" % rest
+    return fetch(url)
+
+
+URL = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
 GIT_READ = {"log", "show", "diff", "branch", "status", "ls-tree", "grep", "rev-parse", "describe", "shortlog", "blame"}
 GIT_NEVER = re.compile(r"^(?:--output|-o$|--exec|-c$|--ext-diff|--upload-pack|--receive-pack|--config|-C$|--git-dir|--work-tree)")
 
@@ -253,7 +291,7 @@ def run_tools(reply, cfg):
     for verb, arg in TOOL.findall(reply)[:6]:
         arg = _unwrap(arg)
         if verb == "FETCH":
-            result = fetch(_unwrap(arg.split()[0]) if arg else "")
+            result = fetch_link(cfg, _unwrap(arg.split()[0]) if arg else "")
         elif verb == "GREP":
             m = re.match(r"(.*?)\s+in\s+(\S+)$", arg)
             pattern, scope = (m.groups() if m else (arg, None))
@@ -330,6 +368,11 @@ def turn(tid, text, cfg, model_call=complete):
         th = load_thread(tid)
     th["messages"].append({"role": "user", "content": text, "at": time.strftime("%H:%M")})
     if not th.get("title"): th["title"] = text.strip().splitlines()[0][:60] if text.strip() else "Untitled"
+    links = list(dict.fromkeys(u.rstrip(".,;:") for u in URL.findall(text)))[:3]
+    if links:   # the links she gave are read for it before it answers (25 October: it never asked to FETCH them)
+        th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
+                               "content": "LINKS GLORIA GAVE (read by the Workbench):\n\n" +
+                                          "\n\n".join("=== %s ===\n%s" % (u, fetch_link(cfg, u)) for u in links)})
     shown, saved = [], []
     for _ in range(int(cfg["tool_rounds"]) + 1):
         system = SYSTEM + "\n\nReadable folders: %s. His checkout (relative paths start here): %s." % (

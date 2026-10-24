@@ -67,5 +67,23 @@ check("on the Mac itself it is open; through Tailscale only with her login; a ta
       and W.allowed({"Host": "mac.tail1234.ts.net", "X-Forwarded-For": "100.1.2.3", "Tailscale-User-Login": "her@example.com"})
       and not W.allowed({"Host": "mac.tail1234.ts.net", "X-Forwarded-For": "100.1.2.3"})
       and not W.allowed({"Host": "127.0.0.1:8765", "X-Forwarded-For": "100.1.2.3"}))
+seen.clear()
+W.fetch = lambda url, limit=20000: "PAGE TEXT of " + url
+W.turn("t3", "Read this: https://example.test/notes.html please", cfg, model_call=lambda c, m: (seen.append(m), "ok")[1])
+check("a link she gives is read for the model before it answers, without it having to ask",
+      "PAGE TEXT of https://example.test/notes.html" in seen[0][-1]["content"], seen[0][-1:])
+subprocess.run(["git", "-C", code, "remote", "add", "origin", "https://github.com/gloria/Vintos-main.git"])
+subprocess.run(["git", "-C", code, "update-ref", "refs/remotes/origin/main", "HEAD"])
+W.subprocess = subprocess
+real_run = subprocess.run
+def no_fetch(cmd, *a, **k):   # nothing is fetched from GitHub in a test: the branch is already "on origin"
+    if "fetch" in cmd: return subprocess.CompletedProcess(cmd, 0, "", "")
+    if "ls-remote" in cmd: return subprocess.CompletedProcess(cmd, 0, "abc\trefs/heads/main\nabd\trefs/heads/codex/x\n", "")
+    return real_run(cmd, *a, **k)
+subprocess.run = no_fetch
+page = W.fetch_link(cfg, "https://github.com/gloria/Vintos-main/blob/main/scripts/alarm.py")
+subprocess.run = real_run
+check("a GitHub link into his own repository is read from his checkout, not the web",
+      page.startswith("(from his checkout, branch main)") and "def tend(now):" in page, page[:200])
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
