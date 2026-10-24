@@ -58,8 +58,10 @@ HOSTS                               list every device on Gloria's network with i
 BT                                  investigate Bluetooth: this Mac's radio, paired/connected devices, nearby advertisers.
 Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
 Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer:
-do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder. Say
-plainly when you do not know something, and quote paths and line numbers only from what the tools returned."""
+do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder.
+Do ONE tool per message and wait for its result before the next: to test code, SAVE it in one message, and after it is
+saved, RUN it in the next message. Say plainly when you do not know something, and quote paths and line numbers only
+from what the tools returned."""
 
 
 def load_config():
