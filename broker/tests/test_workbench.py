@@ -46,6 +46,10 @@ cfg2 = dict(cfg, also_read=os.path.join(TMP, "Codex"))
 out = W.run_tools("Let me look.\n\n`LIST %s`\n- GREP runtime in %s\n1. **READ %s/plan.md**" % (codex, codex, codex), cfg2)
 check("a tool line in backticks, a bullet or bold still runs, on a folder she made readable",
       "plan.md" in out and "plan.md:1: runtime selection" in out and "1\truntime selection" in out, out)
+out = W.run_tools("LIST [%s]\nREAD <%s/plan.md>\nLIST [/]" % (codex, codex), cfg2)
+check("brackets copied from the usage line are not part of the path (25 October)",
+      "plan.md" in out and "1\truntime selection" in out and "not readable here: /" in out, out)
+check("a missing folder says where it can look", "it can look in:" in W.listing(cfg2, "no-such"))
 check("a word like 'List' in prose is not a tool", W.run_tools("**List** the directory first.\nThen Read it.", cfg2) == "")
 import subprocess
 subprocess.run(["git", "init", "-q", code]); subprocess.run(["git", "-C", code, "add", "."])

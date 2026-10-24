@@ -45,7 +45,8 @@ READ <path> [<first>-<last>]        read a file: a path GREP or LIST gave, or co
 LIST [<folder>]                     list a folder
 GIT [in <folder>] <command> <args>  read-only git: log, show, diff, branch, status, ls-tree, grep, blame
 SAVE <filename>                     save code: the next ``` fenced block is written to her Workbench code folder
-Paths are relative to his checkout, or absolute inside a folder she made readable. Look before you answer: do not
+Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
+Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer: do not
 describe a plan to look, look. Never pretend a tool ran. You never run code and nothing you write is run; SAVE only
 stores it for her. Say plainly when you do not know something, and quote paths and line numbers only from what the
 tools returned."""
@@ -104,6 +105,15 @@ def _inside(root, rel):
     return path if path == os.path.realpath(root) or path.startswith(os.path.realpath(root) + os.sep) else None
 
 
+def _unwrap(text):
+    """The argument itself, without the brackets, quotes or backticks a model copies from a usage line
+    (25 October: Gemma wrote LIST [/Users/kevin/...] and every path read as missing)."""
+    text = str(text or "").strip()
+    while len(text) >= 2 and text[0] + text[-1] in ("[]", "<>", "()", "``", "''", '""', "{}"):
+        text = text[1:-1].strip()
+    return text
+
+
 def roots(cfg):
     """Where it may read: his checkout, the folders she adds in Settings (e.g. Codex's worktrees), its own code folder."""
     extra = [os.path.expanduser(r.strip()) for r in str(cfg.get("also_read") or "").split(",") if r.strip()]
@@ -113,7 +123,8 @@ def roots(cfg):
 def where(cfg, path):
     """(root, absolute path) for a path it named: absolute inside a readable folder, code/<name>, or relative to his
     checkout; (None, None) for anything else."""
-    path = (path or ".").strip().strip("`'\"").rstrip("…").rstrip(".,;:") or "."
+    path = _unwrap(path).rstrip("…").rstrip(",;:") or "."
+    if path not in (".", "..") and path.endswith("."): path = path.rstrip(".")
     if path.startswith("~"): path = os.path.expanduser(path)
     if path.startswith("code/"): return CODE, _inside(CODE, path[5:])
     if os.path.isabs(path):
@@ -164,7 +175,7 @@ def read(cfg, rel, span=None, limit=400):
     root, path = where(cfg, rel)
     if not path: return _refused(cfg, rel)
     if not os.path.isfile(path):
-        return "no such file: %s" % rel
+        return "no such file: %s (it can look in: %s)" % (rel, ", ".join(roots(cfg)))
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
     except (UnicodeDecodeError, OSError) as e:
@@ -181,7 +192,7 @@ def listing(cfg, rel=""):
     root, path = where(cfg, rel or ".")
     if not path: return _refused(cfg, rel)
     if not os.path.isdir(path):
-        return "no such folder: %s" % rel
+        return "no such folder: %s (it can look in: %s)" % (rel, ", ".join(roots(cfg)))
     names = sorted(n + ("/" if os.path.isdir(os.path.join(path, n)) else "") for n in os.listdir(path) if n not in SKIP_DIRS)
     return "\n".join(names[:300]) or "(empty)"
 
@@ -240,15 +251,16 @@ def run_tools(reply, cfg):
     """The results of every lookup line in a reply, or '' when it asked for none."""
     out = []
     for verb, arg in TOOL.findall(reply)[:6]:
-        arg = arg.strip().strip("`").strip()
+        arg = _unwrap(arg)
         if verb == "FETCH":
-            result = fetch(arg.split()[0] if arg else "")
+            result = fetch(_unwrap(arg.split()[0]) if arg else "")
         elif verb == "GREP":
             m = re.match(r"(.*?)\s+in\s+(\S+)$", arg)
-            result = grep(cfg, *(m.groups() if m else (arg, None)))
+            pattern, scope = (m.groups() if m else (arg, None))
+            result = grep(cfg, _unwrap(pattern), _unwrap(scope) if scope else None)
         elif verb == "READ":
             parts = arg.split()
-            result = read(cfg, parts[0] if parts else "", parts[1] if len(parts) > 1 else None)
+            result = read(cfg, _unwrap(parts[0]) if parts else "", _unwrap(parts[1]) if len(parts) > 1 else None)
         elif verb == "GIT":
             result = git(cfg, arg)
         else:
@@ -320,7 +332,9 @@ def turn(tid, text, cfg, model_call=complete):
     if not th.get("title"): th["title"] = text.strip().splitlines()[0][:60] if text.strip() else "Untitled"
     shown, saved = [], []
     for _ in range(int(cfg["tool_rounds"]) + 1):
-        msgs = fitted([{"role": "system", "content": SYSTEM}] +
+        system = SYSTEM + "\n\nReadable folders: %s. His checkout (relative paths start here): %s." % (
+            ", ".join(roots(cfg)) or "none yet", cfg["repo"])
+        msgs = fitted([{"role": "system", "content": system}] +
                       [{"role": m["role"], "content": m["content"]} for m in th["messages"]], int(cfg["context_chars"]))
         try:
             reply = model_call(cfg, msgs)
