@@ -612,7 +612,26 @@ MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the in
 # Gloria turns it on (VINTOS_LAB_FRONTIER_PLANS=1) when she can watch the first runs. A line with no plan, or whose
 # plan is finished or abandoned, falls back to free choice, so this never freezes the Lab.
 FRONTIER_PLANS = os.environ.get('VINTOS_LAB_FRONTIER_PLANS') == '1'
+REFUSAL_DEFER_SECONDS = 3600   # a refused selection sets the investigation aside this long; selection skips it
 _CURRENT = {}
+
+
+def _refuse(data, investigation, why):
+    """A selection that cannot run, refused before anything executes. It spends the same budget as a turn that
+    failed before a step (three in a row close it), and sets the investigation aside for a while so the next turns do
+    not pick it again at once. Its line is not touched: a refusal answers nothing."""
+    investigation['planning_failures'] = int(investigation.get('planning_failures', 0)) + 1
+    investigation['last_planning_error'] = why[:300]
+    investigation['deferred_until'] = time.time() + REFUSAL_DEFER_SECONDS
+    if investigation['planning_failures'] >= MAX_PLANNING_FAILURES:
+        investigation.update(state='stalled', closed_reason='%d turns in a row failed before any step: %s'
+                             % (investigation['planning_failures'], why[:160]))
+    _save(data)
+    row = {'at':lab.now_iso(), 'kind':'investigation_refused', 'investigation':investigation['id'], 'why':why,
+           'planning_failures':investigation['planning_failures'], 'deferred_until':investigation['deferred_until'],
+           'state':investigation['state'], 'truth_status':'refused_before_any_execution'}
+    lab._append(lab.NOTEBOOK, row)
+    return row
 
 
 def turn(context, *, ask=None, execute=None):
@@ -650,7 +669,10 @@ def _turn(context, *, ask=None, execute=None):
             if pending.get('state') == 'started':
                 pending.update(state='outcome_unknown', error='process ended before outcome was retained; reconcile before repeating')
     _save(data)
-    active = [i for i in data['investigations'] if i.get('state') == 'open']
+    opened = [i for i in data['investigations'] if i.get('state') == 'open']
+    active = [i for i in opened if float(i.get('deferred_until') or 0) <= time.time()]
+    if opened and not active:
+        return None   # every open one is set aside after a refusal: the ordinary turn runs, and none is opened over it
     if active:
         investigation = min(active, key=lambda i:i.get('last_step_at', i['opened_at']))
     else:
@@ -671,8 +693,9 @@ def _turn(context, *, ask=None, execute=None):
     else:
         value = _plan(investigation, context, ask)
     if not isinstance(value, dict) or not str(value.get('route') or ''):
-        raise ValueError('investigation planner returned no route')
+        return _refuse(data, investigation, 'investigation planner returned no route')
     investigation['planning_failures'] = 0
+    investigation.pop('deferred_until', None)
     if not investigation.get('question'):
         investigation['question'] = str(value.get('question') or '')
         investigation['prediction'] = str(value.get('prediction') or '')

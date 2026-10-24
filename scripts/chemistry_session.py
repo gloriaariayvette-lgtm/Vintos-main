@@ -58,6 +58,11 @@ DIVERGENCE_ENABLED = "divergence_enabled"
 
 MAC_AWAY_PROTEIN = True   # with the Mac offline, the session still offers "protein" (ESMFold on Aegis)
 
+
+class PlanRefused(Exception):
+    """The frontier chose something that was not offered. Refused before anything runs, and recorded as that, not as
+    a fault; the session still ends the ordinary way, its lens advanced once."""
+
 def frontier_log(limit=8):
     """The one log every frontier model shares: the four daily alignment reviews and the daily experiment
     sessions, oldest first (chemistry_alignment.shared_log). Gemma's notebook is not in it."""
@@ -354,7 +359,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
         if not raw: raise RuntimeError("frontier lens %s returned no plan" % lens)
         value = lab._json_object(raw)
         experiment = str(value.get("experiment", ""))
-        if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
+        if experiment not in experiments:
+            raise PlanRefused("frontier selected an unavailable experiment: %r (offered %s)" % (experiment[:80], experiments))
         parameters, dropped = _bounded_parameters(value.get("parameters"))
         parameters = _named_protein_parameters(experiment, parameters, value.get("question"),
                                                value.get("why_this"), value.get("prediction"))
@@ -792,6 +798,9 @@ def run():
                 # rather than leaving it for nobody.
                 try: owed.owe(session_id, lens, plan, result, grade, receipt["context_sha256"])
                 except Exception as exc: lab._fault("owe_reading", exc, session_id=session_id)
+        except PlanRefused as exc:
+            row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "refused_before_execution",
+                   "refused": str(exc)[:300]}
         except Exception as exc:
             held = bool(result and result.get("ok"))
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens,
