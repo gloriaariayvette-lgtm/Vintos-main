@@ -82,7 +82,12 @@ def no_fetch(cmd, *a, **k):   # nothing is fetched from GitHub in a test: the br
     return real_run(cmd, *a, **k)
 subprocess.run = no_fetch
 page = W.fetch_link(cfg, "https://github.com/gloria/Vintos-main/blob/main/scripts/alarm.py")
+tree = W.fetch_link(cfg, "https://github.com/gloria/Vintos-main/tree/main/scripts")
+root = W.fetch_link(cfg, "https://github.com/gloria/Vintos-main")
 subprocess.run = real_run
+check("a folder link lists that folder of the branch, and says how to go further",
+      "scripts/alarm.py" in tree and "GIT show origin/main:<path>" in tree, tree)
+check("the repository link itself shows its branches and top level", "main" in root and "scripts/" in root, root)
 check("a GitHub link into his own repository is read from his checkout, not the web",
       page.startswith("(from his checkout, branch main)") and "def tend(now):" in page, page[:200])
 check("nothing reached the network", NET == [], NET[:3])

@@ -197,7 +197,9 @@ def listing(cfg, rel=""):
     return "\n".join(names[:300]) or "(empty)"
 
 
-GITHUB = re.compile(r"https?://github\.com/([^/\s]+)/([^/\s#?]+)/(blob|tree|commit)/([^\s#?]+)", re.I)
+GITHUB = re.compile(r"https?://github\.com/([^/\s]+)/([^/\s#?]+)(?:/(blob|tree|commit)/([^\s#?]+))?/?(?:[#?]\S*)?$", re.I)
+NAVIGATE = ("\n\nTo go further in branch %s: GIT ls-tree --name-only origin/%s <folder>/ lists a folder, "
+            "GIT show origin/%s:<path> reads a file, GIT log --oneline -10 origin/%s shows its latest commits.")
 
 
 def fetch_link(cfg, url):
@@ -210,6 +212,12 @@ def fetch_link(cfg, url):
         import subprocess
         remote = subprocess.run(["git", "-C", repo, "remote", "get-url", "origin"], capture_output=True, text=True).stdout
         if ("%s/%s" % (m.group(1), m.group(2).removesuffix(".git"))).lower() in remote.lower():
+            if not m.group(3):   # the repository itself: its branches and its top level, and how to go on
+                heads = subprocess.run(["git", "-C", repo, "ls-remote", "--heads", "origin"], capture_output=True, text=True, timeout=60).stdout
+                names = sorted(l.split("refs/heads/", 1)[1] for l in heads.splitlines() if "refs/heads/" in l)
+                return ("His repository (read from his checkout on this Mac). Branches on GitHub: %s\n\nTop level of the "
+                        "checkout:\n%s" % (", ".join(names) or "none read", listing(cfg, "."))
+                        + NAVIGATE % (("<branch>",) * 4))
             kind, rest = m.group(3).lower(), m.group(4)
             if kind == "commit":
                 return git(cfg, "show --stat %s" % rest.split("/")[0])
@@ -224,10 +232,13 @@ def fetch_link(cfg, url):
                 if got.returncode == 0:
                     spec = "origin/%s:%s" % (branch, path) if path else "origin/%s" % branch
                     if kind == "tree":
-                        return git(cfg, "ls-tree --name-only %s %s" % ("origin/" + branch, path or "")).strip() or "(empty)"
+                        return ("(from his checkout, branch %s)\n" % branch
+                                + (git(cfg, "ls-tree --name-only %s %s" % ("origin/" + branch, (path.rstrip("/") + "/") if path else "")).strip() or "(empty)")
+                                + NAVIGATE % ((branch,) * 4))
                     r = subprocess.run(["git", "-C", repo, "--no-pager", "show", spec], capture_output=True, text=True, timeout=30)
                     out = (r.stdout or r.stderr).strip()
-                    return "(from his checkout, branch %s)\n%s" % (branch, out[:20000] + ("\n...[cut]" if len(out) > 20000 else ""))
+                    return ("(from his checkout, branch %s)\n%s" % (branch, out[:20000] + ("\n...[cut]" if len(out) > 20000 else ""))
+                            + NAVIGATE % ((branch,) * 4))
             return "that branch is not on GitHub's origin for his checkout: %s" % rest
     return fetch(url)
 
