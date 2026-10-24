@@ -26,6 +26,3 @@ secrets/
 
 # Bench runtime ledgers — per-agent append-only state, never committed (test_bench uses a throwaway copy)
 bench/ledgers/*.jsonl
-
-# Gloria's local-only success log — stays on this checkout, never committed or pushed
-docs/successes.md
