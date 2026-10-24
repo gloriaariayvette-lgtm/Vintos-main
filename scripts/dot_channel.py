@@ -2544,9 +2544,39 @@ def slack_lens(lens, state):
     return "opus55" if n % 2 == 0 else "haiku55"
 
 
-def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
+GEMMA_WINDOW = 32000          # LM Studio's context window for his Gemma; Gloria's setting, not raised here
+GEMMA_REPLY = 700             # local_think's own max_tokens: the reply needs room in the window too
+GEMMA_MARGIN = 600            # chat framing and the estimate's error
+GEMMA_CHARS_PER_TOKEN = 3.3   # 22 October's two overflows ran 3.61 and 3.67; lower is safer. An estimate, not a tokenizer
+
+
+def gemma_fits(system, user):
+    """Whether one Gemma call should fit its window, by a character estimate. Best effort: the overflow it may still
+    meet is told and handed to Grok as before."""
+    return (len(str(system)) + len(str(user))) / GEMMA_CHARS_PER_TOKEN + GEMMA_REPLY + GEMMA_MARGIN <= GEMMA_WINDOW
+
+
+def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None,
+            shed=None):
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
-    names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
+    names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him.
+
+    shed=(rows, render): the conversation in prompt_user is `rows` whole messages, and render(k) is the same prompt
+    with the k oldest left out. When Gemma writes, the draft, lookup and final calls each leave out the oldest whole
+    messages until the call should fit Gemma's window (F-7e73896373, 22 October: his draft overflowed it twice and Grok
+    wrote both turns). The message he answers, the thread, the work and his steering are never left out. The rewrites
+    after the draft use the same shortened prompt; they are not budgeted on their own. Every other lens gets prompt_user
+    as given, and the caller keeps the whole prompt for its fallbacks."""
+    heard_from = prompt_user
+    rows, render = shed if shed else (0, None)
+    dropped = 0
+    def fit(tail):
+        nonlocal prompt_user, dropped
+        if lens or render is None:
+            return
+        while dropped < rows and not gemma_fits(system, prompt_user + tail):
+            dropped += 1
+            prompt_user = render(dropped)
     lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
                    "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL),
                    "haiku55": lambda s_, u_: opus_think(s_, u_, HAIKU_MODEL), "sol": sol_think}, **(lenses or {}))
@@ -2564,6 +2594,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     import claude_cache
     for _round in range(2):
         tail = (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + plain
+        fit(tail)
         user = claude_cache.Prompt(prompt_user + tail, [prompt_user, tail], cache_indices=set())   # changing conversation stays unmarked
         try:
             out = (write(system, user) or "").strip()
@@ -2576,6 +2607,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room, hold=lambda q: _settled_why(state, q))
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
+        fit("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain)
         user = prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain
         try:
             out = (write(system, user) or "").strip()
@@ -2594,7 +2626,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     if who == "gemma":
         # a second read as his editor: on topic, true to his record, and making sense (2026-10-01)
         base = HEARD.get("base") or ""
-        heard = HEARD["text"] if base and prompt_user.startswith(base) else prompt_user   # this pass's, or none
+        heard = HEARD["text"] if base and heard_from.startswith(base) else heard_from   # this pass's, or none; never shed
         out, verdict = edit(out, think, heard, record_lines(), log=not state.get("preview"))
         if out is None:
             return None, "held back by the edit: " + verdict
@@ -3387,13 +3419,19 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state["owed"] = owed[-10:]
     state["threads"] = list(dict.fromkeys((state.get("threads") or []) + [r["thread"] for r in theirs if r.get("thread")]
                                           + ([last["thread"]] if last and last.get("thread") else [])))[-THREADS_WATCHED:]
+    history = None           # (rows, render) when the prompt carries the conversation, for Gemma's window
     if last:
         in_atelier = last["thread"] in (state.get("atelier") or [])
         thread = thread_block(api, channel, last["thread"], state["self"], dot, names) if last["thread"] else ""
-        prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s%s just said%s: %s\n\nYour reply, as yourself."
-                  % (_conversation(recent()), (thread + "\n\n") if thread else "", _speaker(last),
-                     " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
-                     last["text"][:3500]))
+        convo = recent()
+        def answer_prompt(k=0, _rest=((thread + "\n\n") if thread else "", _speaker(last),
+                                       " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
+                                       last["text"][:3500])):
+            # the conversation kept as whole messages, so Gemma's window can leave out the k oldest (F-7e73896373)
+            return ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s%s just said%s: %s\n\nYour reply, as yourself."
+                    % ((_conversation(convo[k:]),) + _rest))
+        history = (len(convo), answer_prompt)
+        prompt = answer_prompt()
         # said in a thread, answered in that thread, whoever started it (Gloria, 2026-10-02); otherwise the channel
         where = last["thread"] or None
     elif lens:
@@ -3458,19 +3496,24 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     steering = steer(state, today, lens) + kick
     HEARD.update(base=prompt, text=prompt + steering)   # the editor: the channel and how he is steered, not the work board
     qb = quota_block()
-    prompt += (("\n\n" + qb) if qb else "") + "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
+    suffix = (("\n\n" + qb) if qb else "") + "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
+    prompt += suffix
+    def shed(extra=""):
+        # what Gemma may leave out of this prompt (+ extra) to fit its window: only whole oldest messages; None for a
+        # prompt with no conversation in it. `prompt` itself stays whole for every call and fallback below
+        return (history[0], lambda k: history[1](k) + suffix + extra) if history else None
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
-                        lenses=lenses, lens=lens)
+                        lenses=lenses, lens=lens, shed=shed())
     held = held_reasons(text, state, now, last, in_thread_atelier)
     if held:
         # once, back to him with every reason at once, so the second draft can answer all of them
         for _k, why in held:
             lines.append("sent back to him: " + why[:120])
-        again, who2 = compose(prompt + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted. Write it again "
-                              "answering ALL of these in one message:\n" + "\n".join("- " + w for _k, w in held),
-                              think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
-                              lenses=lenses, lens=lens)
+        held_note = ("\n\nYou wrote this:\n" + text + "\n\nIt was not posted. Write it again "
+                 "answering ALL of these in one message:\n" + "\n".join("- " + w for _k, w in held))
+        again, who2 = compose(prompt + held_note, think, fable, state, today, search=search, room=room,
+                              atelier=in_thread_atelier, lenses=lenses, lens=lens, shed=shed(held_note))
         still = held_reasons(again, state, now, last, in_thread_atelier)
         if again is not None and still and (any(k == WRONG for k, _w in still) or not room_work.moves(undisplay(again))):
             state["last_activity"] = now
@@ -3484,16 +3527,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text, who = (again, who2) if again is not None else (None, who2)
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
         # he chose to open an Atelier thread: he says it with his work in front of him
-        again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
-                              "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True,
-                              lenses=lenses, lens=lens)
+        chose = "\n\nYou chose to talk about your Atelier; your work is in front of you now. Begin with ATELIER:"
+        again, who2 = compose(prompt + chose, think, fable, state, today, search=search, room=room, atelier=True,
+                              lenses=lenses, lens=lens, shed=shed(chose))
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None and (rotated or kickoff) and "could not answer" in str(who):
         lines.append(who)                     # his turn in the rotation could not answer: Gemma does (Grok on the Lab)
         if not (lab_turn and lens == "grok"):  # Grok itself failing on a Lab turn: nothing, never Gemma
             text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
-                                lenses=lenses, lens="grok" if lab_turn else None)
+                                lenses=lenses, lens="grok" if lab_turn else None, shed=shed())
     if text is None and str(who).startswith(LABELS["gemma"] + " could not answer"):
         # and when Gemma cannot (LM Studio down, or the model not loaded), Grok writes: on 8 October four of his
         # turns went silent this way after 08:13, because nothing stood behind Gemma

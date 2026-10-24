@@ -67,6 +67,21 @@ class Investigations(unittest.TestCase):
         self.assertFalse(C._campaign_due({'turns':0}, {'campaigns':True}))
         self.assertFalse(C._campaign_due({'turns':2}, {'campaigns':True}))
 
+    def test_dotted_source_name_is_routed_not_refused(self):
+        # the planner writes a source's operation into the name ("ncbi.literature"): route it to source ncbi with
+        # operation literature rather than refuse it as an unsupported source (hundreds of her steps lost to this)
+        self.ask.return_value = self.choice('source', {'source':'ncbi.literature','term':'reverse transcriptase'})
+        I.turn('', ask=self.ask, execute=lambda *a:{'receipt':{'source':'ncbi','records':[{'pmid':'1'}]}})
+        step = C._load(I._path('investigations.json'), {})['investigations'][0]['steps'][-1]
+        self.assertEqual(step['request'].get('source'), 'ncbi')
+        self.assertEqual(step['request'].get('operation'), 'literature')
+
+    def test_dotted_source_that_names_a_real_source_is_joined(self):
+        self.ask.return_value = self.choice('source', {'source':'ncbi.protein_context','accession':'P0DTC2'})
+        I.turn('', ask=self.ask, execute=lambda *a:{'receipt':{'source':'ncbi_protein_context','records':[]}})
+        step = C._load(I._path('investigations.json'), {})['investigations'][0]['steps'][-1]
+        self.assertEqual(step['request'].get('source'), 'ncbi_protein_context')
+
     def test_failure_is_saved_as_next_step_context_without_retry(self):
         self.ask.return_value = self.choice('plugin', {'plugin':'nvidia_nim','tool':'nvidia_nim.boltz2'})
         execute = Mock(side_effect=TimeoutError('unknown outcome'))

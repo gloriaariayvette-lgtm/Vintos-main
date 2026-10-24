@@ -75,8 +75,17 @@ def validate(req):
     chain = str(req.get("chain") or "A").strip()
     span = req.get("ref_span")
     offset = req.get("offset")
+    # The planner sometimes appends the chain to the entry id ("1ABC_A", "1ABCA"); split it off so a well-formed
+    # reference is not refused. A UniProt accession is not a PDB id and is still refused, now with a reason that says so.
     if not PDB_ID.fullmatch(ref):
-        raise ValueError("reference must be a four-character PDB id")
+        m = re.fullmatch(r"([0-9][A-Za-z0-9]{3})[ _-]?([A-Za-z0-9])", ref)
+        if m:
+            ref = m.group(1)
+            if not req.get("chain"):
+                chain = m.group(2)
+    if not PDB_ID.fullmatch(ref):
+        raise ValueError("reference must be a four-character PDB entry id (a deposited structure to compare the model "
+                         "against, not a UniProt accession)")
     if not CHAIN.fullmatch(chain):
         raise ValueError("chain must be a chain id")
     if not (isinstance(span, list) and len(span) == 2 and all(isinstance(x, int) for x in span)

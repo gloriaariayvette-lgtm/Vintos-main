@@ -87,6 +87,10 @@ class Tests(unittest.TestCase):
         for label, alt in sources.uniprot_relaxations(sources.validate_uniprot(
                 'protein_name:SLC25A1 AND organism_id:9606 AND length:500')):
             self.assertNotRegex(alt, r'length:\d')
+        # UniProt has no "query" field; the planner's query:(...) wrapper is unwrapped, not refused.
+        self.assertEqual(sources.validate_uniprot('query:gene:kaiC'), 'gene:kaiC')
+        self.assertEqual(sources.validate_uniprot('query:(gene:kaiC AND reviewed:true)'),
+                         '(gene:kaiC AND reviewed:true)')
     def test_bounded_queries(self):
         for q in ('length:[40 TO 350', 'protein_name:"abc', '\nreviewed:true'):
             with self.assertRaises(ValueError): sources.validate_uniprot(q)
