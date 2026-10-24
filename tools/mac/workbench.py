@@ -26,12 +26,14 @@ import fnmatch, html, html.parser, json, os, re, sys, threading, time, urllib.er
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOME = os.environ.get("WORKBENCH_HOME", os.path.expanduser("~/Vintos-Workbench"))
-CODE = os.path.join(HOME, "code")
+CODE = os.path.join(HOME, "code")        # its one working folder: files it writes and the sandbox may run
+CODE_HISTORY = os.path.join(CODE, ".history")
+RUNS = os.path.join(HOME, "runs")        # a throwaway working dir per run; nothing it does escapes here or CODE
 THREADS = os.path.join(HOME, "threads")
 CONFIG = os.path.join(HOME, "config.json")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8765"))
 DEFAULTS = {"base_url": "http://localhost:1234/v1", "model": "", "repo": os.path.expanduser("~/Documents/Vintos-main-faultloop"),
-            "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 6}
+            "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 8, "allow_network_runs": False}
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".mypy_cache"}
 LOCK = threading.Lock()
 
@@ -44,12 +46,15 @@ GREP <regex> [in <glob or folder>]  search code (read-only), e.g. GREP def tend 
 READ <path> [<first>-<last>]        read a file: a path GREP or LIST gave, or code/<name> for one you saved
 LIST [<folder>]                     list a folder
 GIT [in <folder>] <command> <args>  read-only git: log, show, diff, branch, status, ls-tree, grep, blame
-SAVE <filename>                     save code: the next ``` fenced block is written to her Workbench code folder
+SAVE <filename>                     save code: the next ``` fenced block is written to code/<filename> (the prior
+                                    version is kept); keep working one file and SAVE it again to update it
+RUN <filename>                      run code/<filename> and get its output and errors back. It runs contained: it may
+                                    read the Mac but may only write inside your code folder and a throwaway run folder,
+                                    and it has NO network. Write a fix with SAVE, then RUN again, until it works.
 Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
-Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer: do not
-describe a plan to look, look. Never pretend a tool ran. You never run code and nothing you write is run; SAVE only
-stores it for her. Say plainly when you do not know something, and quote paths and line numbers only from what the
-tools returned."""
+Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer:
+do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder. Say
+plainly when you do not know something, and quote paths and line numbers only from what the tools returned."""
 
 
 def load_config():
@@ -323,7 +328,7 @@ GIT_NEVER = re.compile(r"^(?:--output|-o$|--exec|-c$|--ext-diff|--upload-pack|--
 
 def git(cfg, arg):
     """Read-only git in a readable folder: GIT [in <folder>] <log|show|diff|branch|...> <args>. Never writes."""
-    import shlex, subprocess
+    import shlex, subprocess, tempfile
     try:
         words = shlex.split(arg)
     except ValueError as e:
@@ -348,26 +353,93 @@ def git(cfg, arg):
 
 
 def save_code(name, code):
-    """A plain file in the code folder. Never executable, never overwritten."""
+    """Write code/<name>, its one working file, keeping the previous version in code/.history so an edit loop never
+    loses a good draft. A plain file, inside the code folder only."""
     name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(name.strip()))[:120].lstrip(".") or "untitled.txt"
     os.makedirs(CODE, exist_ok=True)
     path = os.path.join(CODE, name)
-    if os.path.exists(path):
+    if os.path.exists(path):   # keep the version it is replacing, so an edit loop never loses a good draft
+        os.makedirs(CODE_HISTORY, exist_ok=True)
         stem, ext = os.path.splitext(name)
-        path = os.path.join(CODE, "%s-%s%s" % (stem, time.strftime("%Y%m%d-%H%M%S"), ext))
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        try:
+            with open(path, "rb") as a, open(os.path.join(CODE_HISTORY, "%s.%s%s" % (stem, time.strftime("%Y%m%d-%H%M%S"), ext)), "wb") as b:
+                b.write(a.read())
+        except OSError:
+            pass
+    tmp = os.path.join(CODE, ".%s.%d.tmp" % (name, os.getpid()))
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(code if code.endswith("\n") else code + "\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
     return path
+
+
+INTERP = {".py": "python3", ".sh": "bash", ".js": "node", ".ts": "node", ".rb": "ruby", ".pl": "perl", "": "python3"}
+RUN_TIMEOUT_S = 30
+RUN_OUTPUT_CAP = 16000
+
+SANDBOX = """(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write* (subpath "%(code)s") (subpath "%(scratch)s") (subpath "%(tmp)s") (subpath "/private/var/folders"))
+(allow file-write-data (literal "/dev/null") (regex #"^/dev/(stdout|stderr|tty|dtracehelper)"))
+%(net)s"""
+
+
+def run_code(cfg, arg):
+    """Run code/<file> and return its output and errors, so the model can fix it and run it again. Contained: it may
+    read the Mac but writes only inside the code folder and a throwaway run folder, and has no network unless Gloria
+    turned 'allow network in runs' on in Settings AND the line says --net (for code that must reach another machine)."""
+    import shlex, subprocess, tempfile
+    want_net = False
+    words = shlex.split(_unwrap(arg)) if arg else []
+    words = [w for w in words if (want_net := want_net or w in ("--net", "--network")) is not None and w not in ("--net", "--network")]
+    name = os.path.basename(words[0]) if words else ""
+    path = _inside(CODE, name)
+    if not name or not path or not os.path.isfile(path):
+        return "no such saved file: code/%s — SAVE it first, then RUN it" % (name or "?")
+    interp = INTERP.get(os.path.splitext(path)[1].lower())
+    if not interp:
+        return "I only run .py, .sh, .js, .ts, .rb or .pl files here"
+    net_on = want_net and cfg.get("allow_network_runs")
+    os.makedirs(RUNS, exist_ok=True)
+    scratch = tempfile.mkdtemp(prefix="run-", dir=RUNS)
+    cmd = [interp, path]
+    sandboxed = False
+    if os.path.exists("/usr/bin/sandbox-exec"):
+        profile = SANDBOX % {"code": os.path.realpath(CODE), "scratch": os.path.realpath(scratch),
+                             "tmp": os.path.realpath(tempfile.gettempdir()),
+                             "net": "" if net_on else "(deny network*)"}
+        cmd = ["/usr/bin/sandbox-exec", "-p", profile] + cmd
+        sandboxed = True
+    try:
+        env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER")}
+        done = subprocess.run(cmd, cwd=scratch, capture_output=True, text=True, timeout=RUN_TIMEOUT_S, env=env)
+        out = ((done.stdout or "") + (("\n--- errors ---\n" + done.stderr) if done.stderr.strip() else "")).strip()
+        head = "ran code/%s%s%s, exit %d%s" % (name, " (with network)" if net_on else "",
+               "" if sandboxed else " — NOT sandboxed on this Mac (sandbox-exec missing)", done.returncode,
+               "" if done.returncode == 0 else "  ← it failed; read the errors and SAVE a fix")
+        if want_net and not cfg.get("allow_network_runs"):
+            head += "\n(note: it asked for the network; runs have none until you turn on 'allow network in runs' in Settings)"
+        return "%s\n%s" % (head, out[:RUN_OUTPUT_CAP] + ("\n...[output cut]" if len(out) > RUN_OUTPUT_CAP else "") or "(no output)")
+    except subprocess.TimeoutExpired:
+        return "code/%s ran longer than %d seconds and was stopped (a loop, or it is waiting on something)." % (name, RUN_TIMEOUT_S)
+    except FileNotFoundError:
+        return "cannot run code/%s: %s is not installed on this Mac" % (name, interp)
+    except Exception as e:
+        return "could not run code/%s: %s" % (name, str(e)[:200])
+    finally:
+        import shutil
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 # a tool line, however the model dressed it: `LIST x`, - GREP y, 1. READ z, **GIT log** (25 October: Gemma wrote
 # "`LIST /Users/kevin/...`" in backticks and nothing ran)
-TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
+TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT|RUN)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
 SAVE = re.compile(r"^\s*SAVE[ \t]+(\S+)[^\n]*\n(?:.*?\n)??\s*```[^\n]*\n(.*?)\n\s*```", re.M | re.S)
 
 
-VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE"}
+VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE", "run": "RUN"}
 NATIVE = re.compile(r"(?:<\|?tool_call\|?>|<tool_call>)?\s*call:\s*([A-Za-z_]+)\s*(\{.*?\}(?=\s*(?:<\|?/?tool_call\|?>|<tool_call\|>|END|$))|[^\n]*)", re.S)
 
 
@@ -411,6 +483,8 @@ def run_tools(reply, cfg):
             result = read(cfg, _unwrap(parts[0]) if parts else "", _unwrap(parts[1]) if len(parts) > 1 else None)
         elif verb == "GIT":
             result = git(cfg, arg)
+        elif verb == "RUN":
+            result = run_code(cfg, arg)
         else:
             result = listing(cfg, arg)
         out.append("=== %s %s ===\n%s" % (verb, arg, result))
@@ -454,7 +528,8 @@ TOOLS = [_fn("fetch", "Read a web page, or a GitHub repository, folder, file or 
          _fn("read", "Read a file", path="its path", lines="optional: first-last, e.g. 40-120"),
          _fn("list", "List a folder", folder="its path; . for his checkout's top"),
          _fn("git", "Read-only git", command="e.g. log --oneline -10, or in <folder> show <rev>:<path>"),
-         _fn("save", "Save code for Gloria (never run)", filename="the file name", code="the whole file")]
+         _fn("save", "Save code to your working folder (prior version kept)", filename="the file name", code="the whole file"),
+         _fn("run", "Run a file you saved and get its output and errors (contained, no network)", filename="code/<name>")]
 
 
 def _as_lines(message):
@@ -577,6 +652,7 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
 <p><label class="mut">Also readable (folders, comma-separated)<br><input id="also" style="width:100%"></label></p>
+<p><label class="mut"><input type="checkbox" id="netrun"> Let code it runs use the network (e.g. reach another machine). Off keeps runs fully contained.</label></p>
 <button onclick="saveCfg()">Save settings</button></details></aside>
 <main><div id="bar"><button id="menu" onclick="side(true)">☰</button><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
 <form onsubmit="send(event)"><textarea id="txt" placeholder="Ask, paste a link, or ask it to grep his code. Cmd+Enter sends."></textarea><button>Send</button></form></main>
@@ -584,13 +660,13 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 let tid=localStorage.getItem('wb-thread')||'';const $=id=>document.getElementById(id);
 function side(on){$('side').classList.toggle('open',on)}
 async function j(u,o){const r=await fetch(u,o);return r.json()}
-async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;$('also').value=c.also_read||'';
+async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;$('also').value=c.also_read||'';$('netrun').checked=!!c.allow_network_runs;
  const ms=await j('/api/models');const s=$('model');s.innerHTML='';
  if(ms.error){$('st').textContent='No model server: '+ms.error;return}
  ms.forEach(m=>{const o=document.createElement('option');o.value=o.textContent=m;if(m==c.model)o.selected=true;s.appendChild(o)});
  $('st').textContent='Local only. It remembers this thread and nothing else.'}
 $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({model:$('model').value})});
-async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value})});cfg()}
+async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value,allow_network_runs:$('netrun').checked})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
  ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
 function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
@@ -657,7 +733,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         if self.path == "/api/config":
             cfg = load_config()
-            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read")})
+            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read", "allow_network_runs")})
             save_json(CONFIG, cfg)
             return self._send(200, cfg)
         if self.path == "/api/send":
@@ -674,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    for d in (HOME, CODE, THREADS):
+    for d in (HOME, CODE, THREADS, RUNS):
         os.makedirs(d, exist_ok=True)
     if not os.path.exists(CONFIG):
         save_json(CONFIG, DEFAULTS)

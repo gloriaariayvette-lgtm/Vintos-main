@@ -32,12 +32,14 @@ check("the code it wrote is saved as a plain file in the Workbench code folder, 
       out["saved"] == [os.path.join(W.CODE, "tend_fix.py")] and open(out["saved"][0]).read() == "def tend(now):\n    return now + 1\n"
       and not os.access(out["saved"][0], os.X_OK))
 again = W.save_code("tend_fix.py", "x = 1")
-check("a saved name is never overwritten", again != out["saved"][0] and open(out["saved"][0]).read().startswith("def tend"))
+check("SAVE updates the same working file and keeps the prior version in .history",
+      again == out["saved"][0] and open(again).read() == "x = 1\n"
+      and any("def tend" in open(os.path.join(W.CODE_HISTORY, h)).read() for h in os.listdir(W.CODE_HISTORY)))
 check("a name cannot leave the code folder", os.path.dirname(W.save_code("../../etc/evil.sh", "x")) == W.CODE)
 check("its memory is this thread only: the first message it sees is its own instructions, then her words",
       seen[0][0]["role"] == "system" and seen[0][1]["content"] == "Where is tend? Write a fix." and len(seen[0]) == 2)
 seen.clear(); W.turn("t2", "hello", cfg, model_call=lambda c, m: (seen.append(m), "hi")[1])
-check("a new thread starts empty", len(seen[0]) == 2 and "Write a fix" not in json.dumps(seen[0]))
+check("a new thread starts empty", len(seen[0]) == 2 and "Where is tend" not in json.dumps(seen[0]))
 check("reading outside his code is refused", W.read(cfg, "../../etc/passwd").startswith("not readable here")
       and W.read(cfg, "/etc/passwd").startswith("not readable here"))
 codex = os.path.join(TMP, "Codex", "2026-10-23", "worktree"); os.makedirs(codex)
@@ -117,5 +119,31 @@ check("another repository is read through GitHub, not copied to the Mac: its bra
       and "FETCH any link above" in o_root and not os.path.exists(os.path.join(W.HOME, "repos")), o_root)
 check("a file on a branch whose name holds a slash is read", "someone/tool, branch feat/x, src/app.py" in o_file
       and "def run():" in o_file, o_file)
+# --- RUN: it tests and fixes its own code, contained ---
+W.RUNS = os.path.join(W.HOME, "runs"); os.makedirs(W.RUNS, exist_ok=True)
+bad = W.save_code("try.py", "import sys\nprint('hello')\nsys.exit(3)\n")
+check("a fresh working file is written in the code folder", os.path.basename(bad) == "try.py" and os.path.dirname(bad) == W.CODE)
+r1 = W.run_code(cfg, "try.py")
+check("RUN runs the saved file and returns its output and non-zero exit", "hello" in r1 and "exit 3" in r1 and "it failed" in r1, r1)
+W.save_code("try.py", "print('fixed')\n")
+check("SAVE again keeps the earlier draft in .history and updates the file",
+      os.path.isdir(W.CODE_HISTORY) and open(bad).read() == "print('fixed')\n"
+      and any("import sys" in open(os.path.join(W.CODE_HISTORY, h)).read() for h in os.listdir(W.CODE_HISTORY)))
+check("RUN the fix: clean exit", "exit 0" in W.run_code(cfg, "try.py") and "it failed" not in W.run_code(cfg, "try.py"))
+check("RUN refuses a file that was not saved", W.run_code(cfg, "ghost.py").startswith("no such saved file"))
+check("RUN only runs the languages it names", W.save_code("x.bin", "data") and W.run_code(cfg, "x.bin").startswith("I only run"))
+loop = W.run_code(cfg, W.save_code("spin.py", "while True:\n    pass\n") and "spin.py")
+check("an endless run is stopped by the time limit, not left hanging", "longer than" in loop, loop)
+netcfg = dict(cfg, allow_network_runs=False)
+W.save_code("net.py", "print('hi')\n")
+nr = W.run_code(netcfg, "net.py --net")
+check("a run that asks for the network while it is off in Settings is told network stays off",
+      "turn on 'allow network in runs'" in nr, nr)
+prof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": "(deny network*)"}
+check("the macOS sandbox profile denies network and confines writes to the code and run folders (enforced on her Mac)",
+      "(deny network*)" in prof and "(deny file-write*)" in prof and '(subpath "/c")' in prof and '(subpath "/s")' in prof)
+onprof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": ""}
+check("with network allowed, the profile drops only the network denial", "network*" not in onprof and "(deny file-write*)" in onprof)
+
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
