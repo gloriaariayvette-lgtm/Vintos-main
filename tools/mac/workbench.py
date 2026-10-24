@@ -559,7 +559,7 @@ def complete(cfg, messages):
     for attempt in (0, 1):
         req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=600) as r:
+            with urllib.request.urlopen(req, timeout=240) as r:
                 return _as_lines(json.load(r)["choices"][0]["message"])
         except urllib.error.HTTPError as e:
             if attempt or e.code not in (400, 422): raise
@@ -599,6 +599,11 @@ def turn(tid, text, cfg, model_call=complete):
         th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
                                "content": "LINKS GLORIA GAVE (read by the Workbench):\n\n" +
                                           "\n\n".join("=== %s ===\n%s" % (u, fetch_link(cfg, u)) for u in links)})
+    def flush(working=True):
+        th["working"] = working
+        with LOCK:
+            save_json(thread_path(tid), th)
+    flush()                                   # her message (and any links) show at once, before the model is asked
     shown, saved = [], []
     for _ in range(int(cfg["tool_rounds"]) + 1):
         system = SYSTEM + "\n\nReadable folders: %s. His checkout (relative paths start here): %s." % (
@@ -610,18 +615,18 @@ def turn(tid, text, cfg, model_call=complete):
         except Exception as e:
             reply = "(the model did not answer: %s)" % str(e)[:300]
         th["messages"].append({"role": "assistant", "content": reply, "at": time.strftime("%H:%M"), "model": cfg["model"]})
-        shown.append(reply)
-        saved += do_saves(reply)
+        shown.append(reply); saved += do_saves(reply)
         results = run_tools(reply, cfg)
+        if results:
+            th["messages"].append({"role": "user", "content": "TOOL RESULTS (from the Workbench, not from Gloria):\n" + results,
+                                   "at": time.strftime("%H:%M"), "tool": True})
+            shown.append("[looked up]\n" + results[:4000] + ("\n..." if len(results) > 4000 else ""))
+        flush(bool(results))                  # each round is saved, so the page shows it the moment it lands
         if not results: break
-        th["messages"].append({"role": "user", "content": "TOOL RESULTS (from the Workbench, not from Gloria):\n" + results,
-                               "at": time.strftime("%H:%M"), "tool": True})
-        shown.append("[looked up]\n" + results[:4000] + ("\n..." if len(results) > 4000 else ""))
     if saved:
         th["messages"].append({"role": "user", "content": "SAVED (by the Workbench): " + ", ".join(saved), "tool": True,
                                "at": time.strftime("%H:%M")})
-    with LOCK:
-        save_json(thread_path(tid), th)
+    flush(False)
     return {"thread": th, "saved": saved}
 
 
@@ -667,16 +672,26 @@ $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({mode
 async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value,offline_runs:$('offline').checked})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
  ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
-function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
-async function open_(id){tid=id;localStorage.setItem('wb-thread',id);const th=await j('/api/thread?id='+id);draw(th);threads()}
-function draw(th){const l=$('log');l.innerHTML='';(th.messages||[]).forEach(m=>{const d=document.createElement('div');
+function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';drawn=0;threads();watch()}
+async function open_(id){tid=id;localStorage.setItem('wb-thread',id);const th=await j('/api/thread?id='+id);draw(th);threads();watch()}
+function draw(th){const l=$('log');const bottom=l.scrollHeight-l.scrollTop-l.clientHeight<80;l.innerHTML='';
+ (th.messages||[]).forEach(m=>{const d=document.createElement('div');
  d.className='m'+(m.tool?' tool':'');d.innerHTML='<div class="who"></div><div class="b"></div>';
  d.querySelector('.who').textContent=(m.tool?'Workbench':m.role=='user'?'You':(m.model||'Model'))+' · '+(m.at||'');
- d.querySelector('.b').textContent=m.content;l.appendChild(d)});l.scrollTop=l.scrollHeight}
+ d.querySelector('.b').textContent=m.content;l.appendChild(d)});
+ if(th.working){const d=document.createElement('div');d.className='m';d.innerHTML='<div class="who"></div><div class="b"></div>';
+  d.querySelector('.who').textContent='Workbench';d.querySelector('.b').textContent='…working';l.appendChild(d)}
+ drawn=(th.messages||[]).length+(th.working?1:0);if(bottom)l.scrollTop=l.scrollHeight}
+let drawn=0,poll=null;
+function watch(){clearInterval(poll);poll=setInterval(async()=>{if(!tid)return;const th=await j('/api/thread?id='+tid);
+ const n=(th.messages||[]).length+(th.working?1:0);if(n!=drawn){draw(th);if(!th.working){$('st').textContent='';threads()}}
+ },2000)}
 async function send(e){e&&e.preventDefault();const t=$('txt').value.trim();if(!t)return;if(!tid)newThread();
- $('txt').value='';$('st').textContent='Thinking… (if the phone sleeps, reopen: the answer is kept)';const r=await j('/api/send',{method:'POST',body:JSON.stringify({thread:tid,text:t})});
- if(r.error){$('txt').value=t;$('st').textContent=r.error;return}
- draw(r.thread);threads();$('st').textContent=r.saved&&r.saved.length?'Saved: '+r.saved.join(', '):''}
+ $('txt').value='';$('st').textContent='Working… (it updates as it goes; safe to leave or send more)';watch();
+ try{const r=await j('/api/send',{method:'POST',body:JSON.stringify({thread:tid,text:t})});
+  if(r.error){$('txt').value=t;$('st').textContent=r.error;return}
+  draw(r.thread);threads();$('st').textContent=r.saved&&r.saved.length?'Saved: '+r.saved.join(', '):''}
+ catch(err){$('st').textContent='still working on the Mac; it keeps going and the thread updates when it lands'}}
 $('txt').onkeydown=e=>{if(e.key=='Enter'&&(e.metaKey||e.ctrlKey))send()};
 cfg();if(tid)open_(tid);else threads();
 </script></body></html>"""

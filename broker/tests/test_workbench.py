@@ -71,6 +71,15 @@ check("git that writes is refused", W.git(cfg, "commit -m x").startswith("only r
       and W.git(cfg, "in /etc log").startswith("not readable here"))
 check("FETCH takes only web addresses", W.fetch("file:///etc/passwd").startswith("refused"))
 check("the thread is kept on disk with what was looked up", len(json.load(open(W.thread_path("t1")))["messages"]) >= 4)
+# progress is written as the turn runs, and the flag clears when it is done
+saw = []
+def slow_model(c, m):
+    saw.append(len(json.load(open(W.thread_path("t4")))["messages"]))   # her message is already on disk before the model answers
+    return "done"
+W.turn("t4", "hi there", cfg, model_call=slow_model)
+done = json.load(open(W.thread_path("t4")))
+check("her message is saved before the model is asked, and 'working' clears when the turn ends",
+      saw == [1] and done.get("working") is False and done["messages"][-1]["content"] == "done")
 big = [{"role": "system", "content": "s"}] + [{"role": "user", "content": "x" * 1000}] * 50
 check("a long thread is fitted to the model's room, newest kept", len(W.fitted(big, 5000)) < 10)
 check("on the Mac itself it is open; through Tailscale only with her login; a tagged machine is refused",
