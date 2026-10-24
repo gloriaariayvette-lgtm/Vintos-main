@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HOME = os.environ.get("WORKBENCH_HOME", os.path.expanduser("~/Vintos-Workbench"))
 CODE = os.path.join(HOME, "code")
 THREADS = os.path.join(HOME, "threads")
+REPOS = os.path.join(HOME, "repos")    # other repositories she links, cloned here to be read (never run)
 CONFIG = os.path.join(HOME, "config.json")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8765"))
 DEFAULTS = {"base_url": "http://localhost:1234/v1", "model": "", "repo": os.path.expanduser("~/Documents/Vintos-main-faultloop"),
@@ -117,7 +118,7 @@ def _unwrap(text):
 def roots(cfg):
     """Where it may read: his checkout, the folders she adds in Settings (e.g. Codex's worktrees), its own code folder."""
     extra = [os.path.expanduser(r.strip()) for r in str(cfg.get("also_read") or "").split(",") if r.strip()]
-    return [r for r in [cfg["repo"]] + extra + [CODE] if os.path.isdir(r)]
+    return [r for r in [cfg["repo"]] + extra + [CODE, REPOS] if os.path.isdir(r)]
 
 
 def where(cfg, path):
@@ -198,49 +199,73 @@ def listing(cfg, rel=""):
 
 
 GITHUB = re.compile(r"https?://github\.com/([^/\s]+)/([^/\s#?]+)(?:/(blob|tree|commit)/([^\s#?]+))?/?(?:[#?]\S*)?$", re.I)
-NAVIGATE = ("\n\nTo go further in branch %s: GIT ls-tree --name-only origin/%s <folder>/ lists a folder, "
-            "GIT show origin/%s:<path> reads a file, GIT log --oneline -10 origin/%s shows its latest commits.")
+
+
+def _local_repo(cfg, owner, name):
+    """(folder, is_his) holding that GitHub repository on this Mac: his checkout when it is his, else a shallow clone in
+    ~/Vintos-Workbench/repos (made the first time, refreshed after). Cloning only reads: nothing in it is run."""
+    import subprocess
+    name = name.removesuffix(".git")
+    repo = cfg["repo"]
+    if os.path.isdir(os.path.join(repo, ".git")):
+        remote = subprocess.run(["git", "-C", repo, "remote", "get-url", "origin"], capture_output=True, text=True).stdout
+        if ("%s/%s" % (owner, name)).lower() in remote.lower():
+            return repo, True
+    folder = os.path.join(REPOS, re.sub(r"[^A-Za-z0-9._-]", "_", "%s__%s" % (owner, name)))
+    if os.path.isdir(os.path.join(folder, ".git")):
+        subprocess.run(["git", "-C", folder, "pull", "-q", "--ff-only"], capture_output=True, text=True, timeout=120)
+        return folder, False
+    os.makedirs(REPOS, exist_ok=True)
+    r = subprocess.run(["git", "clone", "-q", "--depth", "1", "--no-tags", "https://github.com/%s/%s.git" % (owner, name), folder],
+                       capture_output=True, text=True, timeout=300, env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+    if r.returncode:
+        return None, "could not clone github.com/%s/%s: %s" % (owner, name, (r.stderr or "").strip()[-300:])
+    return folder, False
 
 
 def fetch_link(cfg, url):
-    """A link she gave. One into his own repository on GitHub (private, so the web would answer 404) is read from his
-    checkout on this Mac instead: the branch is fetched, then the file, folder or commit is shown. Anything else is
-    fetched from the web."""
+    """A link she gave. A GitHub repository, folder, file or commit is read from a copy on this Mac (his checkout for
+    his own, private, repository; a shallow clone for any other) so it can be navigated with LIST, READ, GREP and GIT.
+    Anything else is fetched from the web."""
     m = GITHUB.match(url or "")
-    repo = cfg["repo"]
-    if m and os.path.isdir(os.path.join(repo, ".git")):
-        import subprocess
-        remote = subprocess.run(["git", "-C", repo, "remote", "get-url", "origin"], capture_output=True, text=True).stdout
-        if ("%s/%s" % (m.group(1), m.group(2).removesuffix(".git"))).lower() in remote.lower():
-            if not m.group(3):   # the repository itself: its branches and its top level, and how to go on
-                heads = subprocess.run(["git", "-C", repo, "ls-remote", "--heads", "origin"], capture_output=True, text=True, timeout=60).stdout
-                names = sorted(l.split("refs/heads/", 1)[1] for l in heads.splitlines() if "refs/heads/" in l)
-                return ("His repository (read from his checkout on this Mac). Branches on GitHub: %s\n\nTop level of the "
-                        "checkout:\n%s" % (", ".join(names) or "none read", listing(cfg, "."))
-                        + NAVIGATE % (("<branch>",) * 4))
-            kind, rest = m.group(3).lower(), m.group(4)
-            if kind == "commit":
-                return git(cfg, "show --stat %s" % rest.split("/")[0])
-            # branch names have slashes (codex/latent-memory-review): try the longest branch that exists on origin
-            heads = subprocess.run(["git", "-C", repo, "ls-remote", "--heads", "origin"], capture_output=True, text=True, timeout=60).stdout
-            known = {l.split("refs/heads/", 1)[1] for l in heads.splitlines() if "refs/heads/" in l}
-            parts = rest.split("/")
-            for i in range(len(parts), 0, -1):
-                branch, path = "/".join(parts[:i]), "/".join(parts[i:])
-                if branch not in known: continue
-                got = subprocess.run(["git", "-C", repo, "fetch", "-q", "origin", branch], capture_output=True, text=True, timeout=60)
-                if got.returncode == 0:
-                    spec = "origin/%s:%s" % (branch, path) if path else "origin/%s" % branch
-                    if kind == "tree":
-                        return ("(from his checkout, branch %s)\n" % branch
-                                + (git(cfg, "ls-tree --name-only %s %s" % ("origin/" + branch, (path.rstrip("/") + "/") if path else "")).strip() or "(empty)")
-                                + NAVIGATE % ((branch,) * 4))
-                    r = subprocess.run(["git", "-C", repo, "--no-pager", "show", spec], capture_output=True, text=True, timeout=30)
-                    out = (r.stdout or r.stderr).strip()
-                    return ("(from his checkout, branch %s)\n%s" % (branch, out[:20000] + ("\n...[cut]" if len(out) > 20000 else ""))
-                            + NAVIGATE % ((branch,) * 4))
-            return "that branch is not on GitHub's origin for his checkout: %s" % rest
-    return fetch(url)
+    if not m:
+        return fetch(url)
+    import subprocess
+    folder, his = _local_repo(cfg, m.group(1), m.group(2))
+    if not folder:
+        return his
+    there = "" if his else "in %s " % folder
+    name = "his repository" if his else "github.com/%s/%s (cloned to %s)" % (m.group(1), m.group(2).removesuffix(".git"), folder)
+    run = lambda *a, **k: subprocess.run(["git", "-C", folder] + list(a), capture_output=True, text=True,
+                                         timeout=k.get("timeout", 60), env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+    heads = run("ls-remote", "--heads", "origin").stdout
+    known = sorted(l.split("refs/heads/", 1)[1] for l in heads.splitlines() if "refs/heads/" in l)
+    go = lambda b: ("\n\nTo go further in branch {b}: GIT {t}ls-tree --name-only origin/{b} <folder>/ lists a folder, "
+                    "GIT {t}show origin/{b}:<path> reads a file, GIT {t}log --oneline -10 origin/{b} shows its commits"
+                    + ("" if his else "; the default branch is also on disk, so LIST {f}, READ {f}/<path> and "
+                                      "GREP <regex> in {f} work too") + ".").format(b=b, t=there, f=folder)
+    if not m.group(3):
+        current = run("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        return ("%s. Branches: %s\n\nTop level (%s):\n%s" % (name, ", ".join(known) or "none read", current or "?",
+                listing(cfg, folder if not his else "."))) + go(current or "<branch>")
+    kind, rest = m.group(3).lower(), m.group(4)
+    if kind == "commit":
+        sha = rest.split("/")[0]
+        run("fetch", "-q", "--depth", "50", "origin", sha)
+        return git(cfg, "%sshow --stat %s" % (there, sha))
+    parts = rest.split("/")
+    for i in range(len(parts), 0, -1):     # branch names may hold slashes: the longest one that exists
+        branch, path = "/".join(parts[:i]), "/".join(parts[i:])
+        if branch not in known: continue
+        if run("fetch", "-q", "--depth", "1", "origin", "%s:refs/remotes/origin/%s" % (branch, branch)).returncode:
+            continue
+        if kind == "tree":
+            listed = git(cfg, "%sls-tree --name-only origin/%s %s" % (there, branch, (path.rstrip("/") + "/") if path else "")).strip()
+            return "%s, branch %s, %s:\n%s%s" % (name, branch, path or "top level", listed or "(empty)", go(branch))
+        r = run("--no-pager", "show", "origin/%s:%s" % (branch, path), timeout=30)
+        out = (r.stdout or r.stderr).strip()
+        return "%s, branch %s, %s:\n%s%s" % (name, branch, path, out[:20000] + ("\n...[cut]" if len(out) > 20000 else ""), go(branch))
+    return "no branch of %s matches %s (branches: %s)" % (name, rest, ", ".join(known[:30]))
 
 
 URL = re.compile(r"https?://[^\s<>\"')\]]+")
@@ -532,7 +557,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    for d in (HOME, CODE, THREADS):
+    for d in (HOME, CODE, THREADS, REPOS):
         os.makedirs(d, exist_ok=True)
     if not os.path.exists(CONFIG):
         save_json(CONFIG, DEFAULTS)

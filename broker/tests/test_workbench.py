@@ -89,6 +89,20 @@ check("a folder link lists that folder of the branch, and says how to go further
       "scripts/alarm.py" in tree and "GIT show origin/main:<path>" in tree, tree)
 check("the repository link itself shows its branches and top level", "main" in root and "scripts/" in root, root)
 check("a GitHub link into his own repository is read from his checkout, not the web",
-      page.startswith("(from his checkout, branch main)") and "def tend(now):" in page, page[:200])
+      page.startswith("his repository, branch main, scripts/alarm.py") and "def tend(now):" in page, page[:200])
+other = os.path.join(W.REPOS, "someone__tool"); os.makedirs(W.REPOS, exist_ok=True)
+real_run(["git", "clone", "-q", code, other])
+real_run(["git", "-C", other, "update-ref", "refs/remotes/origin/main", "HEAD"])
+W._local_repo = lambda cfg_, owner, name: (other, False)
+subprocess.run = no_fetch
+o_root = W.fetch_link(cfg, "https://github.com/someone/tool")
+o_file = W.fetch_link(cfg, "https://github.com/someone/tool/blob/main/scripts/alarm.py")
+subprocess.run = real_run
+check("another repository's link is cloned to the Workbench and navigable: its branches, top level, and files",
+      "github.com/someone/tool (cloned to %s)" % other in o_root and "scripts/" in o_root and "def tend(now):" in o_file
+      and ("GIT in %s show origin/main:<path>" % other) in o_file, (o_root[:300], o_file[:300]))
+check("and its files can be read and searched like his", "def tend" in W.read(cfg, other + "/scripts/alarm.py")
+      and "alarm.py:1:" in W.grep(cfg, "def tend", other)
+      and "first tend" in W.git(cfg, "in %s log --oneline" % other))
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
