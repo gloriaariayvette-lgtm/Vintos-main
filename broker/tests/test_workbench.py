@@ -198,5 +198,29 @@ tdat = json.load(open(W.thread_path("t5")))
 check("typing HOSTS runs it directly and does not call the model",
       hist == [] and "192.168.1.9" in tdat["messages"][-1]["content"] and tdat["messages"][-1].get("tool"))
 
+# --- a new thread cannot see another thread's findings, and bad threads can be deleted ---
+W.turn("bad1", "the Acer is at 10.0.0.9 and runs macOS (WRONG, from Gemma)", dict(cfg), model_call=lambda c, m: "noted")
+seen2 = []
+W.turn("fresh", "hello again", dict(cfg), model_call=lambda c, m: (seen2.append(m), "hi")[1])
+check("a new thread's context holds only its own messages, never another thread's content",
+      "10.0.0.9" not in json.dumps(seen2[0]) and "WRONG, from Gemma" not in json.dumps(seen2[0])
+      and [mm["content"] for mm in seen2[0][1:]] == ["hello again"])
+check("the bad thread is on disk until deleted", os.path.exists(W.thread_path("bad1")))
+import importlib
+def post(path, payload):
+    class H(W.Handler):
+        def __init__(self): self.headers = {"Host": "127.0.0.1:%d" % W.PORT, "Content-Length": str(len(payload))}; self._body=payload; self.out={}
+        def rfile_read(self): return self._body
+        def _send(self, code, body, kind="application/json"): self.out = body
+    h = H(); import io; h.rfile = io.BytesIO(payload.encode()); h.path = path; h.do_POST(); return h.out
+check("deleting a thread removes its file for good", post("/api/delete", json.dumps({"thread": "bad1"}))["deleted"] == 1
+      and not os.path.exists(W.thread_path("bad1")))
+W.turn("b2", "x", dict(cfg), model_call=lambda c, m: "y"); W.turn("b3", "x", dict(cfg), model_call=lambda c, m: "y")
+check("delete-all clears every thread", post("/api/delete", json.dumps({"thread": "*"}))["deleted"] >= 2
+      and (not os.path.isdir(W.THREADS) or os.listdir(W.THREADS) == []))
+outside = os.path.join(W.HOME, "keep.txt"); open(outside, "w").write("safe")
+check("delete cannot escape the threads folder", post("/api/delete", json.dumps({"thread": "../keep.txt"}))["deleted"] == 0
+      and post("/api/delete", json.dumps({"thread": "../../../etc/hosts"}))["deleted"] == 0 and open(outside).read() == "safe")
+
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

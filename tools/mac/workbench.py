@@ -839,7 +839,16 @@ async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$
 $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({model:$('model').value})});
 async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value,offline_runs:$('offline').checked})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
- ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
+ ts.forEach(t=>{const row=document.createElement('div');row.style.cssText='display:flex;gap:4px;align-items:center';
+  const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.style.flex='1';b.onclick=()=>{side(false);open_(t.id)};
+  const x=document.createElement('button');x.textContent='\u00d7';x.title='Delete this thread';x.style.cssText='padding:4px 8px';
+  x.onclick=async()=>{if(!confirm('Delete this thread and everything in it? This cannot be undone.'))return;
+   await j('/api/delete',{method:'POST',body:JSON.stringify({thread:t.id})});if(t.id==tid){newThread()}else{threads()}};
+  row.appendChild(b);row.appendChild(x);$('threads').appendChild(row)});
+ const all=document.createElement('button');all.textContent='Delete all threads';all.style.cssText='margin-top:10px;width:100%';
+ all.onclick=async()=>{if(!confirm('Delete ALL threads and their history? This cannot be undone.'))return;
+  await j('/api/delete',{method:'POST',body:JSON.stringify({thread:'*'})});newThread()};
+ if(ts.length)$('threads').appendChild(all)}
 function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';drawn=0;threads();watch()}
 async function open_(id){tid=id;localStorage.setItem('wb-thread',id);const th=await j('/api/thread?id='+id);draw(th);threads();watch()}
 function draw(th){const l=$('log');const bottom=l.scrollHeight-l.scrollTop-l.clientHeight<80;l.innerHTML='';
@@ -928,6 +937,18 @@ class Handler(BaseHTTPRequestHandler):
             cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read", "offline_runs")})
             save_json(CONFIG, cfg)
             return self._send(200, cfg)
+        if self.path == "/api/delete":
+            which = str(body.get("thread") or "")
+            removed = 0
+            targets = ([thread_path(which)] if which != "*" else
+                       [os.path.join(THREADS, n) for n in (os.listdir(THREADS) if os.path.isdir(THREADS) else [])])
+            for fp in targets:
+                try:
+                    if os.path.realpath(os.path.dirname(fp)) == os.path.realpath(THREADS) and os.path.isfile(fp):
+                        os.remove(fp); removed += 1
+                except OSError:
+                    pass
+            return self._send(200, {"deleted": removed})
         if self.path == "/api/send":
             cfg = load_config()
             if not cfg.get("model"):
