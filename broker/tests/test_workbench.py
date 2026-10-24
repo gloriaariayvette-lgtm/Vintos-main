@@ -38,7 +38,22 @@ check("its memory is this thread only: the first message it sees is its own inst
       seen[0][0]["role"] == "system" and seen[0][1]["content"] == "Where is tend? Write a fix." and len(seen[0]) == 2)
 seen.clear(); W.turn("t2", "hello", cfg, model_call=lambda c, m: (seen.append(m), "hi")[1])
 check("a new thread starts empty", len(seen[0]) == 2 and "Write a fix" not in json.dumps(seen[0]))
-check("reading outside his code is refused", W.read(code, "../../etc/passwd").startswith("no such file"))
+check("reading outside his code is refused", W.read(cfg, "../../etc/passwd").startswith("not readable here")
+      and W.read(cfg, "/etc/passwd").startswith("not readable here"))
+codex = os.path.join(TMP, "Codex", "2026-10-23", "worktree"); os.makedirs(codex)
+open(os.path.join(codex, "plan.md"), "w").write("runtime selection\n")
+cfg2 = dict(cfg, also_read=os.path.join(TMP, "Codex"))
+out = W.run_tools("Let me look.\n\n`LIST %s`\n- GREP runtime in %s\n1. **READ %s/plan.md**" % (codex, codex, codex), cfg2)
+check("a tool line in backticks, a bullet or bold still runs, on a folder she made readable",
+      "plan.md" in out and "plan.md:1: runtime selection" in out and "1\truntime selection" in out, out)
+check("a word like 'List' in prose is not a tool", W.run_tools("**List** the directory first.\nThen Read it.", cfg2) == "")
+import subprocess
+subprocess.run(["git", "init", "-q", code]); subprocess.run(["git", "-C", code, "add", "."])
+subprocess.run(["git", "-C", code, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first tend"])
+check("read-only git runs: log", "first tend" in W.git(cfg, "log --oneline"))
+check("git that writes is refused", W.git(cfg, "commit -m x").startswith("only read-only git")
+      and W.git(cfg, "log --output=/tmp/x") == "that git option is not allowed here"
+      and W.git(cfg, "in /etc log").startswith("not readable here"))
 check("FETCH takes only web addresses", W.fetch("file:///etc/passwd").startswith("refused"))
 check("the thread is kept on disk with what was looked up", len(json.load(open(W.thread_path("t1")))["messages"]) >= 4)
 big = [{"role": "system", "content": "s"}] + [{"role": "user", "content": "x" * 1000}] * 50

@@ -31,21 +31,24 @@ THREADS = os.path.join(HOME, "threads")
 CONFIG = os.path.join(HOME, "config.json")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8765"))
 DEFAULTS = {"base_url": "http://localhost:1234/v1", "model": "", "repo": os.path.expanduser("~/Documents/Vintos-main-faultloop"),
-            "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 6}
+            "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 6}
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".mypy_cache"}
 LOCK = threading.Lock()
 
 SYSTEM = """You are a careful coding companion working with Gloria on her Mac. You remember only this conversation.
 
-You can look things up. To use a tool, put it on its own line at the very start of a line, and nothing else on that line:
-FETCH <url>                       read a web page or file from the internet
-GREP <regex> [in <glob>]          search Vintos's code (read-only), e.g. GREP def tend in scripts/*.py
-READ <path> [<first>-<last>]      read a file of his code by its path from GREP, or a file you saved (code/<name>)
-LIST [<dir>]                      list a folder of his code
-SAVE <filename>                   save code: the next ``` fenced block is written to her Workbench code folder
-After a FETCH, GREP, READ or LIST line, stop and wait: the results come back in the next message. Use as few as you need.
-You never run code and nothing you write is run; SAVE only stores it for her. Say plainly when you do not know something,
-and quote file paths and line numbers from what the tools returned, never from memory."""
+You can look things up yourself. To use a tool, write the tool line on its own line, plain text, no backticks, no
+bullet, nothing else on the line, and then END your message; the results come back to you in the next message:
+FETCH <url>                         read a web page or file from the internet
+GREP <regex> [in <glob or folder>]  search code (read-only), e.g. GREP def tend in scripts/*.py
+READ <path> [<first>-<last>]        read a file: a path GREP or LIST gave, or code/<name> for one you saved
+LIST [<folder>]                     list a folder
+GIT [in <folder>] <command> <args>  read-only git: log, show, diff, branch, status, ls-tree, grep, blame
+SAVE <filename>                     save code: the next ``` fenced block is written to her Workbench code folder
+Paths are relative to his checkout, or absolute inside a folder she made readable. Look before you answer: do not
+describe a plan to look, look. Never pretend a tool ran. You never run code and nothing you write is run; SAVE only
+stores it for her. Say plainly when you do not know something, and quote paths and line numbers only from what the
+tools returned."""
 
 
 def load_config():
@@ -101,25 +104,55 @@ def _inside(root, rel):
     return path if path == os.path.realpath(root) or path.startswith(os.path.realpath(root) + os.sep) else None
 
 
-def grep(repo, pattern, glob=None, limit=60):
-    if not os.path.isdir(repo):
-        return "his code is not at %s; set the checkout in Settings" % repo
+def roots(cfg):
+    """Where it may read: his checkout, the folders she adds in Settings (e.g. Codex's worktrees), its own code folder."""
+    extra = [os.path.expanduser(r.strip()) for r in str(cfg.get("also_read") or "").split(",") if r.strip()]
+    return [r for r in [cfg["repo"]] + extra + [CODE] if os.path.isdir(r)]
+
+
+def where(cfg, path):
+    """(root, absolute path) for a path it named: absolute inside a readable folder, code/<name>, or relative to his
+    checkout; (None, None) for anything else."""
+    path = (path or ".").strip().strip("`'\"").rstrip("…").rstrip(".,;:") or "."
+    if path.startswith("~"): path = os.path.expanduser(path)
+    if path.startswith("code/"): return CODE, _inside(CODE, path[5:])
+    if os.path.isabs(path):
+        for r in roots(cfg):
+            hit = _inside(r, os.path.relpath(path, r)) if os.path.realpath(path).startswith(os.path.realpath(r)) else None
+            if hit: return r, hit
+        return None, None
+    return cfg["repo"], _inside(cfg["repo"], path)
+
+
+def _refused(cfg, path):
+    return "not readable here: %s (readable: %s)" % (path, ", ".join(roots(cfg)) or "nothing yet: set his checkout in Settings")
+
+
+def grep(cfg, pattern, scope=None, limit=60):
+    base, glob = cfg["repo"], scope
+    if scope and (os.path.isabs(scope) or scope.startswith(("~", "code/"))):
+        root, base = where(cfg, scope)
+        if not base: return _refused(cfg, scope)
+        glob = None
+        if os.path.isfile(base): base, glob = os.path.dirname(base), os.path.basename(base)
+    if not os.path.isdir(base):
+        return "his code is not at %s; set the checkout in Settings" % base
     try:
         rx = re.compile(pattern)
     except re.error as e:
         return "bad regex: %s" % e
     hits = []
-    for top, dirs, files in os.walk(repo):
+    for top, dirs, files in os.walk(base):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         for name in sorted(files):
-            path = os.path.join(top, name); rel = os.path.relpath(path, repo)
+            path = os.path.join(top, name); rel = os.path.relpath(path, base)
             if glob and not fnmatch.fnmatch(rel, glob) and not fnmatch.fnmatch(name, glob): continue
             try:
                 if os.path.getsize(path) > 1_000_000: continue
                 with open(path, encoding="utf-8") as f:
                     for n, line in enumerate(f, 1):
                         if rx.search(line):
-                            hits.append("%s:%d: %s" % (rel, n, line.rstrip()[:240]))
+                            hits.append("%s:%d: %s" % (path if base != cfg["repo"] else rel, n, line.rstrip()[:240]))
                             if len(hits) >= limit:
                                 return "\n".join(hits) + "\n...[first %d matches]" % limit
             except (UnicodeDecodeError, OSError):
@@ -127,10 +160,10 @@ def grep(repo, pattern, glob=None, limit=60):
     return "\n".join(hits) or "no matches"
 
 
-def read(repo, rel, span=None, limit=400):
-    root, rel = (CODE, rel[5:]) if rel.startswith("code/") else (repo, rel)
-    path = _inside(root, rel)
-    if not path or not os.path.isfile(path):
+def read(cfg, rel, span=None, limit=400):
+    root, path = where(cfg, rel)
+    if not path: return _refused(cfg, rel)
+    if not os.path.isfile(path):
         return "no such file: %s" % rel
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
@@ -144,12 +177,43 @@ def read(repo, rel, span=None, limit=400):
         "\n...[%d lines in all]" % len(lines) if last < len(lines) else "")
 
 
-def listing(repo, rel=""):
-    path = _inside(repo, rel or ".")
-    if not path or not os.path.isdir(path):
+def listing(cfg, rel=""):
+    root, path = where(cfg, rel or ".")
+    if not path: return _refused(cfg, rel)
+    if not os.path.isdir(path):
         return "no such folder: %s" % rel
     names = sorted(n + ("/" if os.path.isdir(os.path.join(path, n)) else "") for n in os.listdir(path) if n not in SKIP_DIRS)
     return "\n".join(names[:300]) or "(empty)"
+
+
+GIT_READ = {"log", "show", "diff", "branch", "status", "ls-tree", "grep", "rev-parse", "describe", "shortlog", "blame"}
+GIT_NEVER = re.compile(r"^(?:--output|-o$|--exec|-c$|--ext-diff|--upload-pack|--receive-pack|--config|-C$|--git-dir|--work-tree)")
+
+
+def git(cfg, arg):
+    """Read-only git in a readable folder: GIT [in <folder>] <log|show|diff|branch|...> <args>. Never writes."""
+    import shlex, subprocess
+    try:
+        words = shlex.split(arg)
+    except ValueError as e:
+        return "could not read the git line: %s" % e
+    folder = cfg["repo"]
+    if len(words) >= 2 and words[0] == "in":
+        root, folder = where(cfg, words[1]); words = words[2:]
+        if not folder: return _refused(cfg, arg.split()[1])
+    if not words or words[0] not in GIT_READ:
+        return "only read-only git here: %s" % ", ".join(sorted(GIT_READ))
+    if any(GIT_NEVER.match(w) for w in words[1:]):
+        return "that git option is not allowed here"
+    cmd = ["git", "-C", folder, "--no-pager", "-c", "core.pager=cat", words[0]]
+    if words[0] in ("log", "show", "diff"): cmd += ["--no-ext-diff", "--no-textconv"]
+    if words[0] == "branch" and not any(w.startswith("-") for w in words[1:]): words = words + ["-a"]
+    try:
+        r = subprocess.run(cmd + words[1:], capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        return "git did not run: %s" % str(e)[:200]
+    out = (r.stdout or r.stderr or "(nothing)").strip()
+    return out[:20000] + ("\n...[cut]" if len(out) > 20000 else "")
 
 
 def save_code(name, code):
@@ -166,7 +230,9 @@ def save_code(name, code):
     return path
 
 
-TOOL = re.compile(r"^\s*(FETCH|GREP|READ|LIST)\b[ \t]*(.*?)\s*$", re.M)
+# a tool line, however the model dressed it: `LIST x`, - GREP y, 1. READ z, **GIT log** (25 October: Gemma wrote
+# "`LIST /Users/kevin/...`" in backticks and nothing ran)
+TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
 SAVE = re.compile(r"^\s*SAVE[ \t]+(\S+)[^\n]*\n(?:.*?\n)??\s*```[^\n]*\n(.*?)\n\s*```", re.M | re.S)
 
 
@@ -174,16 +240,19 @@ def run_tools(reply, cfg):
     """The results of every lookup line in a reply, or '' when it asked for none."""
     out = []
     for verb, arg in TOOL.findall(reply)[:6]:
+        arg = arg.strip().strip("`").strip()
         if verb == "FETCH":
             result = fetch(arg.split()[0] if arg else "")
         elif verb == "GREP":
             m = re.match(r"(.*?)\s+in\s+(\S+)$", arg)
-            result = grep(cfg["repo"], *(m.groups() if m else (arg, None)))
+            result = grep(cfg, *(m.groups() if m else (arg, None)))
         elif verb == "READ":
             parts = arg.split()
-            result = read(cfg["repo"], parts[0] if parts else "", parts[1] if len(parts) > 1 else None)
+            result = read(cfg, parts[0] if parts else "", parts[1] if len(parts) > 1 else None)
+        elif verb == "GIT":
+            result = git(cfg, arg)
         else:
-            result = listing(cfg["repo"], arg)
+            result = listing(cfg, arg)
         out.append("=== %s %s ===\n%s" % (verb, arg, result))
     return "\n\n".join(out)
 
@@ -297,6 +366,7 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 <p class="mut">Code it saves: ~/Vintos-Workbench/code</p><details><summary class="mut">Settings</summary>
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
+<p><label class="mut">Also readable (folders, comma-separated)<br><input id="also" style="width:100%"></label></p>
 <button onclick="saveCfg()">Save settings</button></details></aside>
 <main><div id="bar"><button id="menu" onclick="side(true)">☰</button><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
 <form onsubmit="send(event)"><textarea id="txt" placeholder="Ask, paste a link, or ask it to grep his code. Cmd+Enter sends."></textarea><button>Send</button></form></main>
@@ -304,13 +374,13 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 let tid=localStorage.getItem('wb-thread')||'';const $=id=>document.getElementById(id);
 function side(on){$('side').classList.toggle('open',on)}
 async function j(u,o){const r=await fetch(u,o);return r.json()}
-async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;
+async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;$('also').value=c.also_read||'';
  const ms=await j('/api/models');const s=$('model');s.innerHTML='';
  if(ms.error){$('st').textContent='No model server: '+ms.error;return}
  ms.forEach(m=>{const o=document.createElement('option');o.value=o.textContent=m;if(m==c.model)o.selected=true;s.appendChild(o)});
  $('st').textContent='Local only. It remembers this thread and nothing else.'}
 $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({model:$('model').value})});
-async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value})});cfg()}
+async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
  ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
 function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
@@ -377,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         if self.path == "/api/config":
             cfg = load_config()
-            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo")})
+            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read")})
             save_json(CONFIG, cfg)
             return self._send(200, cfg)
         if self.path == "/api/send":
