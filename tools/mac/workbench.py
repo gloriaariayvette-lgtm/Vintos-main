@@ -17,6 +17,9 @@ it but store it in a set file that won't be disrupted by our deploys, just lives
   - Local models only, no paid calls. It talks to an OpenAI-compatible server (LM Studio: http://localhost:1234/v1).
 
 Run:  python3 ~/Vintos-Workbench/workbench.py      then open http://127.0.0.1:8765
+From her phone (24 October): `tailscale serve --bg 8765` on the Mac, then open https://<the Mac's name>.ts.net on the
+phone. Only her tailnet reaches it; a request that came through Tailscale must carry her Tailscale login, and nothing
+listens beyond 127.0.0.1 on the Mac itself.
 Python's standard library only; nothing to install.
 """
 import fnmatch, html, html.parser, json, os, re, sys, threading, time, urllib.error, urllib.request, uuid
@@ -199,6 +202,16 @@ def models(cfg):
         return {"error": str(e)[:200]}
 
 
+def loaded_models(cfg):
+    """The models LM Studio has in memory now (its own /api/v0/models says which); [] when it cannot say."""
+    base = re.sub(r"/v1/?$", "", cfg["base_url"].rstrip("/"))
+    try:
+        with urllib.request.urlopen(base + "/api/v0/models", timeout=8) as r:
+            return [m["id"] for m in json.load(r).get("data", []) if m.get("state") == "loaded"]
+    except Exception:
+        return []
+
+
 def complete(cfg, messages):
     body = {"model": cfg["model"], "messages": messages, "max_tokens": int(cfg["max_tokens"]),
             "temperature": float(cfg["temperature"]), "stream": False}
@@ -275,16 +288,21 @@ button{cursor:pointer}.t{display:block;width:100%;text-align:left;margin:4px 0;w
 .tool .b{background:var(--tool);font:12px/1.4 ui-monospace,Menlo,monospace;max-height:260px;overflow:auto}
 form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}textarea{flex:1;min-height:60px;resize:vertical}
 #bar{display:flex;gap:8px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}.mut{color:var(--mut);font-size:13px}
+#menu{display:none}
+@media (max-width:700px){body{display:block;height:100dvh}main{height:100dvh}aside{display:none;position:fixed;inset:0;z-index:5;width:auto;background:var(--bg)}
+ aside.open{display:block}#menu{display:inline-block}#log{padding:12px}form{padding:8px 12px;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+ #bar{padding:8px 12px}textarea{font-size:16px;min-height:48px}.m{max-width:100%}select{max-width:60vw}}
 </style></head><body>
-<aside><button onclick="newThread()">+ New thread</button><div id="threads"></div>
+<aside id="side"><button onclick="newThread()">+ New thread</button> <button id="close" onclick="side(false)">Close</button><div id="threads"></div>
 <p class="mut">Code it saves: ~/Vintos-Workbench/code</p><details><summary class="mut">Settings</summary>
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
 <button onclick="saveCfg()">Save settings</button></details></aside>
-<main><div id="bar"><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
+<main><div id="bar"><button id="menu" onclick="side(true)">☰</button><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
 <form onsubmit="send(event)"><textarea id="txt" placeholder="Ask, paste a link, or ask it to grep his code. Cmd+Enter sends."></textarea><button>Send</button></form></main>
 <script>
 let tid=localStorage.getItem('wb-thread')||'';const $=id=>document.getElementById(id);
+function side(on){$('side').classList.toggle('open',on)}
 async function j(u,o){const r=await fetch(u,o);return r.json()}
 async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;
  const ms=await j('/api/models');const s=$('model');s.innerHTML='';
@@ -294,19 +312,29 @@ async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$
 $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({model:$('model').value})});
 async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
- ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>open_(t.id);$('threads').appendChild(b)})}
-function newThread(){tid=crypto.randomUUID();localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
+ ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
+function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
 async function open_(id){tid=id;localStorage.setItem('wb-thread',id);const th=await j('/api/thread?id='+id);draw(th);threads()}
 function draw(th){const l=$('log');l.innerHTML='';(th.messages||[]).forEach(m=>{const d=document.createElement('div');
  d.className='m'+(m.tool?' tool':'');d.innerHTML='<div class="who"></div><div class="b"></div>';
  d.querySelector('.who').textContent=(m.tool?'Workbench':m.role=='user'?'You':(m.model||'Model'))+' · '+(m.at||'');
  d.querySelector('.b').textContent=m.content;l.appendChild(d)});l.scrollTop=l.scrollHeight}
 async function send(e){e&&e.preventDefault();const t=$('txt').value.trim();if(!t)return;if(!tid)newThread();
- $('txt').value='';$('st').textContent='Thinking…';const r=await j('/api/send',{method:'POST',body:JSON.stringify({thread:tid,text:t})});
+ $('txt').value='';$('st').textContent='Thinking… (if the phone sleeps, reopen: the answer is kept)';const r=await j('/api/send',{method:'POST',body:JSON.stringify({thread:tid,text:t})});
+ if(r.error){$('txt').value=t;$('st').textContent=r.error;return}
  draw(r.thread);threads();$('st').textContent=r.saved&&r.saved.length?'Saved: '+r.saved.join(', '):''}
 $('txt').onkeydown=e=>{if(e.key=='Enter'&&(e.metaKey||e.ctrlKey))send()};
 cfg();if(tid)open_(tid);else threads();
 </script></body></html>"""
+
+
+def allowed(headers, port=PORT):
+    """On the Mac itself (no proxy in between), or through Tailscale with her login on it. Tailscale serve adds
+    Tailscale-User-Login for a person's device and never for a tagged machine, so an agent on the tailnet is refused."""
+    proxied = any(headers.get(h) for h in ("X-Forwarded-For", "Tailscale-User-Login", "Tailscale-User-Name"))
+    if not proxied:
+        return (headers.get("Host") or "").split(":")[0] in ("127.0.0.1", "localhost")
+    return bool(headers.get("Tailscale-User-Login"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -319,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if not allowed(self.headers):
+            return self._send(403, {"error": "her Mac or her Tailscale only"})
         cfg = load_config()
         if self.path in ("/", "/index.html"):
             return self._send(200, PAGE.encode(), "text/html; charset=utf-8")
@@ -340,8 +370,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.headers.get("Origin") not in (None, "http://127.0.0.1:%d" % PORT, "http://localhost:%d" % PORT):
-            return self._send(403, {"error": "local page only"})
+        origin = self.headers.get("Origin")
+        if not allowed(self.headers) or (origin and origin.split("://", 1)[-1] != (self.headers.get("Host") or "")
+                                         and origin not in ("http://127.0.0.1:%d" % PORT, "http://localhost:%d" % PORT)):
+            return self._send(403, {"error": "her Mac or her Tailscale only"})
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         if self.path == "/api/config":
             cfg = load_config()
@@ -351,8 +383,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/send":
             cfg = load_config()
             if not cfg.get("model"):
-                ms = models(cfg)
-                if isinstance(ms, list) and ms: cfg["model"] = ms[0]
+                # never one that is only downloaded: LM Studio would load it, and the Mac may have no room (24 October)
+                loaded = loaded_models(cfg)
+                if not loaded:
+                    return self._send(200, {"thread": load_thread(str(body.get("thread") or "")), "saved": [],
+                                            "error": "choose a model that is already loaded in LM Studio"})
+                cfg["model"] = loaded[0]
             return self._send(200, turn(str(body.get("thread") or uuid.uuid4()), str(body.get("text") or ""), cfg))
         self._send(404, {"error": "not found"})
 

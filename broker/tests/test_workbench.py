@@ -43,5 +43,10 @@ check("FETCH takes only web addresses", W.fetch("file:///etc/passwd").startswith
 check("the thread is kept on disk with what was looked up", len(json.load(open(W.thread_path("t1")))["messages"]) >= 4)
 big = [{"role": "system", "content": "s"}] + [{"role": "user", "content": "x" * 1000}] * 50
 check("a long thread is fitted to the model's room, newest kept", len(W.fitted(big, 5000)) < 10)
+check("on the Mac itself it is open; through Tailscale only with her login; a tagged machine is refused",
+      W.allowed({"Host": "127.0.0.1:8765"}) and not W.allowed({"Host": "mac.tail1234.ts.net"})
+      and W.allowed({"Host": "mac.tail1234.ts.net", "X-Forwarded-For": "100.1.2.3", "Tailscale-User-Login": "her@example.com"})
+      and not W.allowed({"Host": "mac.tail1234.ts.net", "X-Forwarded-For": "100.1.2.3"})
+      and not W.allowed({"Host": "127.0.0.1:8765", "X-Forwarded-For": "100.1.2.3"}))
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
