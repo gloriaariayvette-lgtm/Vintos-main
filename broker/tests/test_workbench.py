@@ -153,5 +153,33 @@ check("writes are always confined to the code and run folders (on her Mac via sa
 check("the default profile allows the network; only offline denies it",
       "deny network" not in default_prof and "(deny network*)" in offline_prof)
 
+# --- HOSTS: find devices on her network (and she can run tools herself) ---
+check("HOSTS is wired as a tool the model can call", any(f["function"]["name"] == "hosts" for f in W.TOOLS)
+      and "HOSTS" in W.VERBS.values() and "HOSTS" in W.SYSTEM)
+check("the device finder uses TCP+ARP, never ping (so a Windows PC that ignores ping still shows)",
+      "arp" in W.discover_hosts.__doc__.lower() and "ping" in W.discover_hosts.__doc__.lower())
+W._local_ipv4 = lambda: "192.168.1.50"
+W._gateway = lambda: "192.168.1.1"
+W._rdns = lambda ip: ""
+W._arp_table = lambda: {"192.168.1.9": "ac:de:48:11:22:33", "192.168.1.1": "00:11:22:aa:bb:cc", "192.168.1.50": "aa:bb:cc:dd:ee:ff"}
+W._poke = lambda ip, port, timeout=0: ip == "192.168.1.9" and port in (445, 3389)   # the Acer: smb + rdp, no ping needed
+rep = W.discover_hosts(dict(cfg), "")
+check("HOSTS lists the network and the Acer shows by its MAC and its open services, with the router and this Mac marked",
+      "192.168.1.9" in rep and "ac:de:48:11:22:33" in rep and "445/smb" in rep and "3389/rdp" in rep
+      and "← router" in rep and "← this Mac" in rep and "ipconfig /all" in rep, rep)
+check("HOSTS on one address reports only it", "192.168.1.9" in W.discover_hosts(dict(cfg), "192.168.1.9")
+      and "192.168.1.1" not in W.discover_hosts(dict(cfg), "192.168.1.9"))
+check("Gloria can type a command herself: the verb alone, or with one argument",
+      W.direct_tool("HOSTS") == "HOSTS" and W.direct_tool("hosts 10.0.0.5") == "HOSTS 10.0.0.5"
+      and W.direct_tool("HOSTS ports=8080") == "HOSTS ports=8080" and W.direct_tool("list code/") == "LIST code/")
+check("a sentence that starts with a verb is left for the model, not run as a command",
+      W.direct_tool("run the tests again") is None and W.direct_tool("read the handoff doc") is None
+      and W.direct_tool("what is on my network?") is None)
+hist = []
+W.turn("t5", "HOSTS 192.168.1.9", dict(cfg), model_call=lambda c, m: (hist.append(m), "should not be called")[1])
+tdat = json.load(open(W.thread_path("t5")))
+check("typing HOSTS runs it directly and does not call the model",
+      hist == [] and "192.168.1.9" in tdat["messages"][-1]["content"] and tdat["messages"][-1].get("tool"))
+
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

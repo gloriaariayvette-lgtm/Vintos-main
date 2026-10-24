@@ -52,6 +52,9 @@ RUN <filename>                      run code/<filename> and get its output and e
                                     code that must find or reach a machine on Gloria's network (like her Acer laptop)
                                     can do so. It may read the Mac but may only WRITE inside your code folder and a
                                     throwaway run folder. Save a fix with SAVE, then RUN again, until it works.
+HOSTS                               list every device on Gloria's network with its IP, MAC and open services. USE THIS
+                                    to find a machine's address — never ping-sweep, Windows PCs ignore ping. HOSTS <ip>
+                                    inspects one device; HOSTS ports=8080 sweeps a specific port.
 Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
 Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer:
 do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder. Say
@@ -323,6 +326,127 @@ def _his_link(cfg, m):
 URL = re.compile(r"https?://[^\s<>\"')\]]+")
 
 
+COMMON_PORTS = [22, 80, 135, 139, 443, 445, 515, 548, 631, 1883, 3000, 3389, 5000, 5357, 5900, 7860, 8000, 8080, 8443, 9100, 62078]
+PORT_NAME = {22: "ssh", 80: "http", 135: "rpc", 139: "netbios", 443: "https", 445: "smb", 515: "printer", 548: "afp",
+             631: "ipp", 1883: "mqtt", 3389: "rdp", 5000: "http", 5357: "wsd", 5900: "vnc", 7860: "http", 8000: "http",
+             8080: "http", 8443: "https", 9100: "printer", 62078: "iphone"}
+
+
+def _local_ipv4():
+    import socket as _s
+    try:
+        u = _s.socket(_s.AF_INET, _s.SOCK_DGRAM); u.connect(("8.8.8.8", 80))
+        ip = u.getsockname()[0]; u.close(); return ip
+    except Exception:
+        return ""
+
+
+def _poke(ip, port, timeout=0.7):
+    import socket as _s
+    c = _s.socket(_s.AF_INET, _s.SOCK_STREAM); c.settimeout(timeout)
+    try:
+        open_ = c.connect_ex((ip, port)) == 0
+    except OSError:
+        open_ = False
+    finally:
+        c.close()
+    return open_
+
+
+def _arp_table():
+    import subprocess
+    out = {}
+    try:
+        text = subprocess.run(["arp", "-an"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return out
+    for line in text.splitlines():
+        m = re.search(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-fA-F:]+)", line)
+        if m and "incomplete" not in line:
+            mac = m.group(2).lower()
+            if mac.count(":") == 5:
+                out[m.group(1)] = mac
+    return out
+
+
+def _gateway():
+    import subprocess
+    try:
+        for line in subprocess.run(["netstat", "-rn"], capture_output=True, text=True, timeout=8).stdout.splitlines():
+            if line.split()[:1] == ["default"]:
+                return line.split()[1]
+    except Exception:
+        pass
+    return ""
+
+
+def _rdns(ip):
+    import socket as _s
+    old = _s.getdefaulttimeout(); _s.setdefaulttimeout(0.6)
+    try:
+        return _s.gethostbyaddr(ip)[0]
+    except Exception:
+        return ""
+    finally:
+        _s.setdefaulttimeout(old)
+
+
+def discover_hosts(cfg, arg=""):
+    """Every device alive on her network, by IP and MAC, with the services each one answers on. Finds a Windows laptop
+    (the Acer) that ignores ping, because it pokes a TCP port (which makes the host answer ARP at the network layer,
+    firewall or not) and then reads the Mac's ARP table. Her own tool, not model-written code: bounded and read-only.
+
+    HOSTS                      list the network
+    HOSTS <ip>                 look only at that one device, across more ports
+    HOSTS ports=8080,5000      sweep with these ports (e.g. the one your Acer service listens on)"""
+    import concurrent.futures, socket as _s
+    arg = _unwrap(arg).strip()
+    me = _local_ipv4()
+    if not me or me.count(".") != 3:
+        return "could not read this Mac's network address"
+    sub = me.rsplit(".", 1)[0]
+    ports = COMMON_PORTS
+    m = re.search(r"ports?\s*=\s*([\d, ]+)", arg)
+    if m:
+        ports = [int(x) for x in re.findall(r"\d+", m.group(1))][:40] or COMMON_PORTS
+    one = re.match(r"(\d+\.\d+\.\d+\.\d+)$", arg)
+    if one:
+        targets, ports = [one.group(1)], ([int(x) for x in re.findall(r"\d+", m.group(1))] if m else
+                          sorted(set(COMMON_PORTS + [21, 23, 25, 111, 1433, 2049, 3306, 5432, 5555, 8888, 9000])))
+    else:
+        targets = ["%s.%d" % (sub, i) for i in range(1, 255)]
+    found = {}
+    def scan(ip):
+        opens = []
+        for port in ports:
+            if _poke(ip, port, 0.7 if one else 0.3):
+                opens.append(port)
+        if opens:
+            found[ip] = opens
+    with concurrent.futures.ThreadPoolExecutor(max_workers=200) as pool:
+        list(pool.map(scan, targets))
+    arp = _arp_table()
+    gw = _gateway()
+    rows, ips = [], sorted(set(list(found) + list(arp)) if not one else [one.group(1)],
+                           key=lambda x: int(x.rsplit(".", 1)[-1]))
+    for ip in ips:
+        mac = arp.get(ip, "")
+        opens = found.get(ip, [])
+        if not mac and not opens and not one:
+            continue
+        name = _rdns(ip)
+        tag = " ← this Mac" if ip == me else " ← router" if ip == gw else ""
+        svc = ", ".join("%d/%s" % (p, PORT_NAME.get(p, "?")) for p in opens) or ("no common port open" if mac else "quiet")
+        rows.append("%-15s  %-17s  %-22s  %s%s" % (ip, mac or "(no MAC yet)", (name or "")[:22], svc, tag))
+    head = ("Devices on %s.0/24 (this Mac is %s).\n"
+            "IP               MAC                Name                    Services open\n"
+            "%s\n" % (sub, me, "-" * 78))
+    note = ("\n\nFind your Acer by its MAC: on the Acer run  ipconfig /all  and match the Physical Address. A Windows PC "
+            "often shows no name here and may answer on no common port; its MAC still appears once it is awake and has "
+            "been on the network. If your Acer service uses a particular port, run  HOSTS ports=<that port>  to spot it.")
+    return head + ("\n".join(rows) or "no other devices answered — is Wi-Fi the same network as the Acer?") + (note if not one else "")
+
+
 GIT_READ = {"log", "show", "diff", "branch", "status", "ls-tree", "grep", "rev-parse", "describe", "shortlog", "blame"}
 GIT_NEVER = re.compile(r"^(?:--output|-o$|--exec|-c$|--ext-diff|--upload-pack|--receive-pack|--config|-C$|--git-dir|--work-tree)")
 
@@ -433,11 +557,11 @@ def run_code(cfg, arg):
 
 # a tool line, however the model dressed it: `LIST x`, - GREP y, 1. READ z, **GIT log** (25 October: Gemma wrote
 # "`LIST /Users/kevin/...`" in backticks and nothing ran)
-TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT|RUN)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
+TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT|RUN|HOSTS|SCAN)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
 SAVE = re.compile(r"^\s*SAVE[ \t]+(\S+)[^\n]*\n(?:.*?\n)??\s*```[^\n]*\n(.*?)\n\s*```", re.M | re.S)
 
 
-VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE", "run": "RUN"}
+VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE", "run": "RUN", "hosts": "HOSTS", "scan": "HOSTS"}
 NATIVE = re.compile(r"(?:<\|?tool_call\|?>|<tool_call>)?\s*call:\s*([A-Za-z_]+)\s*(\{.*?\}(?=\s*(?:<\|?/?tool_call\|?>|<tool_call\|>|END|$))|[^\n]*)", re.S)
 
 
@@ -483,6 +607,8 @@ def run_tools(reply, cfg):
             result = git(cfg, arg)
         elif verb == "RUN":
             result = run_code(cfg, arg)
+        elif verb == "HOSTS":
+            result = discover_hosts(cfg, arg)
         else:
             result = listing(cfg, arg)
         out.append("=== %s %s ===\n%s" % (verb, arg, result))
@@ -527,7 +653,8 @@ TOOLS = [_fn("fetch", "Read a web page, or a GitHub repository, folder, file or 
          _fn("list", "List a folder", folder="its path; . for his checkout's top"),
          _fn("git", "Read-only git", command="e.g. log --oneline -10, or in <folder> show <rev>:<path>"),
          _fn("save", "Save code to your working folder (prior version kept)", filename="the file name", code="the whole file"),
-         _fn("run", "Run a file you saved and get its output/errors; it may use the network but writes only in your folder", filename="code/<name>")]
+         _fn("run", "Run a file you saved and get its output/errors; it may use the network but writes only in your folder", filename="code/<name>"),
+         _fn("hosts", "List devices on Gloria's network by IP and MAC with their open services (finds Windows PCs that ignore ping)", target="optional: an IP to inspect, or ports=8080,5000")]
 
 
 def _as_lines(message):
@@ -588,12 +715,36 @@ def load_thread(tid):
         return {"id": tid, "title": "", "created": time.strftime("%Y-%m-%d %H:%M"), "messages": []}
 
 
+def direct_tool(text):
+    """When Gloria types a tool command herself (HOSTS, LIST x, RUN foo.py, ...), the Workbench runs it directly and
+    shows the result — no model in the way, so it works even when Gemma is fumbling or the model server is down."""
+    line = str(text or "").strip()
+    if "\n" in line:
+        return None
+    parts = line.split(None, 1)
+    first = parts[0].upper() if parts else ""
+    rest = parts[1].strip() if len(parts) > 1 else ""
+    # her own command only when it is the verb alone or with a single argument (an IP, a path, a flag, ports=...),
+    # never a sentence like "run the tests" or "read the handoff"
+    if first in ("FETCH", "GREP", "READ", "LIST", "GIT", "RUN", "HOSTS", "SCAN") and (not rest or " " not in rest):
+        return (first if first != "SCAN" else "HOSTS") + ((" " + rest) if rest else "")
+    return None
+
+
 def turn(tid, text, cfg, model_call=complete):
     """Her message in, the model's answer out, with as many lookup rounds as it asks for (up to tool_rounds)."""
     with LOCK:
         th = load_thread(tid)
     th["messages"].append({"role": "user", "content": text, "at": time.strftime("%H:%M")})
     if not th.get("title"): th["title"] = text.strip().splitlines()[0][:60] if text.strip() else "Untitled"
+    cmd = direct_tool(text)
+    if cmd:
+        th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
+                               "content": run_tools(cmd, cfg) or "(the command produced nothing)"})
+        th["working"] = False
+        with LOCK:
+            save_json(thread_path(tid), th)
+        return {"thread": th, "saved": do_saves(cmd)}
     links = list(dict.fromkeys(u.rstrip(".,;:") for u in URL.findall(text)))[:3]
     if links:   # the links she gave are read for it before it answers (25 October: it never asked to FETCH them)
         th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
