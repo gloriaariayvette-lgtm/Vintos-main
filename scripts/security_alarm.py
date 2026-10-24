@@ -344,8 +344,11 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
                 authority=lambda: (True, 'Gloria requested infrastructure security alarms'), retries=1, priority='high')
             if receipt.get('state') in ('sent','acknowledged'):
                 del state['pending'][event_id]; delivered[row['key']] = now; sent += 1
-        # Bound long-term suppression metadata; no event history is stored here.
+        # Bound long-term suppression metadata; no event history is stored here. delivered was never pruned, so a
+        # churny key (an SSH login from a rotating address) left a dead entry on every pass and the state grew without
+        # limit; bound it like last_alert.
         state['last_alert'] = {k:v for k,v in state.get('last_alert',{}).items() if now-v < 7*86400}
+        state['delivered'] = {k:v for k,v in state.get('delivered',{}).items() if now-v < 7*86400}
         save_json(str(state_path), state)
         return {'rates': rates, 'events': len(events), 'sent': sent, 'pending': len(state['pending']), 'dry': False}
 

@@ -266,6 +266,13 @@ class SecurityTests(unittest.TestCase):
         A.paths()[1].write_text(json.dumps({'known_ssh_addresses':['100.9.8.7']}))
         self.tick(now=self.now+2,logins=[('cursor-3','100.9.8.7')]);self.assertEqual(len(self.sent),1)
 
+    def test_delivered_metadata_is_bounded(self):
+        # a key delivered over 7 days ago is dropped, so a login from a rotating address cannot grow the state forever
+        A.paths()[0].write_text(json.dumps({'delivered':{'ssh:100.0.0.1':self.now-8*86400,'ssh:100.0.0.2':self.now-10}}))
+        self.tick()
+        delivered=json.loads(A.paths()[0].read_text()).get('delivered',{})
+        self.assertNotIn('ssh:100.0.0.1',delivered);self.assertIn('ssh:100.0.0.2',delivered)
+
     def test_journal_only_accepted_addresses(self):
         lines=[{'MESSAGE':'Accepted publickey for gloria from 100.1.2.3 port 22 ssh2','__CURSOR':'abc'},
                {'MESSAGE':'Failed password for user from 1.2.3.4'}, {'MESSAGE':'Accepted publickey for user from $(evil) port 4'}]
