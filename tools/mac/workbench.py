@@ -367,10 +367,38 @@ TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT
 SAVE = re.compile(r"^\s*SAVE[ \t]+(\S+)[^\n]*\n(?:.*?\n)??\s*```[^\n]*\n(.*?)\n\s*```", re.M | re.S)
 
 
+VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE"}
+NATIVE = re.compile(r"(?:<\|?tool_call\|?>|<tool_call>)?\s*call:\s*([A-Za-z_]+)\s*(\{.*?\}(?=\s*(?:<\|?/?tool_call\|?>|<tool_call\|>|END|$))|[^\n]*)", re.S)
+
+
+def native_lines(reply):
+    """A model's own tool-call syntax turned into the Workbench's lines (25 October: Gemma wrote
+    "<|tool_call>call:LIST [/Users/kevin/...]END", its native form, and nothing ran). Handles call:NAME args and
+    call:name{key:value,...}, with Gemma's <|"|> quotes."""
+    text = reply.replace('<|"|>', '"')
+    lines = []
+    for name, args in NATIVE.findall(text):
+        verb = VERBS.get(name.lower())
+        if not verb: continue
+        args = re.sub(r"(?:<\|?/?tool_call\|?>|<tool_call\|>|\bEND)\s*$", "", args.strip()).strip()
+        if args.startswith("{"):
+            body = args[1:-1] if args.endswith("}") else args[1:]
+            try:
+                values = list(json.loads("{" + body + "}").values())
+            except ValueError:
+                values = [v.strip().strip('"') for v in re.findall(r'\w+\s*:\s*("[^"]*"|[^,]+)', body)]
+            if verb == "SAVE" and len(values) >= 2:
+                lines.append("SAVE %s\n```\n%s\n```" % (values[0], values[1])); continue
+            args = " ".join(str(v) for v in values)
+        lines.append("%s %s" % (verb, args))
+    return "\n".join(lines)
+
+
 def run_tools(reply, cfg):
     """The results of every lookup line in a reply, or '' when it asked for none."""
     out = []
-    for verb, arg in TOOL.findall(reply)[:6]:
+    reply = reply + "\n" + native_lines(reply)
+    for verb, arg in list(dict.fromkeys(TOOL.findall(reply)))[:6]:
         arg = _unwrap(arg)
         if verb == "FETCH":
             result = fetch_link(cfg, _unwrap(arg.split()[0]) if arg else "")
@@ -390,7 +418,8 @@ def run_tools(reply, cfg):
 
 
 def do_saves(reply):
-    return [save_code(name, code) for name, code in SAVE.findall(reply)]
+    reply = reply + "\n" + native_lines(reply)
+    return [save_code(name, code) for name, code in dict.fromkeys(SAVE.findall(reply))]
 
 
 # ------------------------------------------------------------------------------------------------ the model
@@ -413,13 +442,55 @@ def loaded_models(cfg):
         return []
 
 
+def _fn(name, about, **params):
+    return {"type": "function", "function": {"name": name, "description": about, "parameters": {
+        "type": "object", "properties": {k: {"type": "string", "description": v} for k, v in params.items()},
+        "required": list(params)[:1]}}}
+
+
+TOOLS = [_fn("fetch", "Read a web page, or a GitHub repository, folder, file or commit link", url="the link"),
+         _fn("grep", "Search code (read-only) for a regular expression", pattern="the regex",
+             scope="optional: a glob like scripts/*.py, or a readable folder"),
+         _fn("read", "Read a file", path="its path", lines="optional: first-last, e.g. 40-120"),
+         _fn("list", "List a folder", folder="its path; . for his checkout's top"),
+         _fn("git", "Read-only git", command="e.g. log --oneline -10, or in <folder> show <rev>:<path>"),
+         _fn("save", "Save code for Gloria (never run)", filename="the file name", code="the whole file")]
+
+
+def _as_lines(message):
+    """The answer's text, with any native tool calls written as Workbench lines so they run the same way."""
+    out = [message.get("content") or ""]
+    for call in message.get("tool_calls") or []:
+        fn = call.get("function") or {}
+        verb = VERBS.get(str(fn.get("name", "")).lower())
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except ValueError:
+            args = {}
+        if not verb: continue
+        if verb == "SAVE":
+            out.append("SAVE %s\n```\n%s\n```" % (args.get("filename", "untitled.txt"), args.get("code", "")))
+        elif verb == "GREP":
+            out.append("GREP %s%s" % (args.get("pattern", ""), (" in " + args["scope"]) if args.get("scope") else ""))
+        else:
+            out.append("%s %s" % (verb, " ".join(str(v) for v in args.values())))
+    return "\n".join(x for x in out if x)
+
+
 def complete(cfg, messages):
+    """The model's answer. Its tools are offered natively (LM Studio passes them to Gemma in Gemma's own format and
+    returns tool_calls); a server that refuses tools is asked again without them, and the text lines still work."""
+    url = cfg["base_url"].rstrip("/") + "/chat/completions"
     body = {"model": cfg["model"], "messages": messages, "max_tokens": int(cfg["max_tokens"]),
-            "temperature": float(cfg["temperature"]), "stream": False}
-    req = urllib.request.Request(cfg["base_url"].rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=600) as r:
-        return json.load(r)["choices"][0]["message"].get("content") or ""
+            "temperature": float(cfg["temperature"]), "stream": False, "tools": TOOLS}
+    for attempt in (0, 1):
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=600) as r:
+                return _as_lines(json.load(r)["choices"][0]["message"])
+        except urllib.error.HTTPError as e:
+            if attempt or e.code not in (400, 422): raise
+            body.pop("tools", None)
 
 
 def fitted(messages, limit):

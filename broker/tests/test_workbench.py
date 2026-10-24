@@ -50,6 +50,15 @@ out = W.run_tools("LIST [%s]\nREAD <%s/plan.md>\nLIST [/]" % (codex, codex), cfg
 check("brackets copied from the usage line are not part of the path (25 October)",
       "plan.md" in out and "1\truntime selection" in out and "not readable here: /" in out, out)
 check("a missing folder says where it can look", "it can look in:" in W.listing(cfg2, "no-such"))
+out = W.run_tools("<|tool_call>call:LIST [%s/]END" % codex, cfg2)
+check("Gemma's own tool-call form runs (25 October: <|tool_call>call:LIST [...]END did nothing)", "plan.md" in out, out)
+out = W.run_tools('<|tool_call>call:read{path:<|"|>%s/plan.md<|"|>}<tool_call|>' % codex, cfg2)
+check("... and its call:name{key:value} form too", "1\truntime selection" in out, out)
+msg = {"content": "", "tool_calls": [{"function": {"name": "list", "arguments": json.dumps({"folder": codex})}},
+                                     {"function": {"name": "save", "arguments": json.dumps({"filename": "a.py", "code": "x = 1"})}}]}
+lines = W._as_lines(msg)
+check("native tool_calls from LM Studio become the same lines", ("LIST " + codex) in lines and "SAVE a.py" in lines
+      and "plan.md" in W.run_tools(lines, cfg2), lines)
 check("a word like 'List' in prose is not a tool", W.run_tools("**List** the directory first.\nThen Read it.", cfg2) == "")
 import subprocess
 subprocess.run(["git", "init", "-q", code]); subprocess.run(["git", "-C", code, "add", "."])
