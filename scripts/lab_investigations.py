@@ -676,6 +676,18 @@ def _turn(context, *, ask=None, execute=None):
         # as an unknown route for this alone (23 October)
         authored_route, route = route, 'source'
         request = dict(request, source=request.get('source') or authored_route)
+    if route == 'source':
+        # the planner writes a source's operation into the name as a dotted form ("ncbi.literature", "ncbi.gene");
+        # map it to the real source and operation rather than refuse it as an unsupported source (hundreds of her
+        # steps in two days were lost to this alone)
+        src = str(request.get('source') or '')
+        if '.' in src and src not in SOURCE_ROUTES:
+            head, _, op = src.partition('.')
+            joined = src.replace('.', '_')
+            if joined in SOURCE_ROUTES:                       # "ncbi.protein_context" -> source ncbi_protein_context
+                request = dict(request, source=joined)
+            elif head in SOURCE_ROUTES and op and not request.get('operation'):
+                request = dict(request, source=head, operation=op)   # "ncbi.literature" -> source ncbi, op literature
     if route == 'finish':
         original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
         if any(step.get('state') == 'outcome_unknown' for step in investigation['steps']):

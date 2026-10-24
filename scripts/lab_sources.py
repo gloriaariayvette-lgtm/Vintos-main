@@ -514,6 +514,9 @@ def validate_uniprot(query):
         raise ValueError('malformed UniProt query')
     # "organism_id : 1224" is not a field to UniProt; it is three free-text words, and matches nothing.
     query = re.sub(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*:\s*', r'\1:', query)
+    # UniProt has no "query" field; the planner sometimes wraps the whole search as query:(...). Unwrap it rather
+    # than refuse ("unsupported UniProt fields: query", repeatedly in her real data).
+    query = re.sub(r'\bquery:\s*', '', query).strip()
     query = normalize_uniprot_subjects(query)
     fields = re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*):', query)
     unknown = set(fields) - FIELDS
