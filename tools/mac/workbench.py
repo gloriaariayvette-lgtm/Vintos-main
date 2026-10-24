@@ -31,6 +31,7 @@ CODE_HISTORY = os.path.join(CODE, ".history")
 RUNS = os.path.join(HOME, "runs")        # a throwaway working dir per run; nothing it does escapes here or CODE
 THREADS = os.path.join(HOME, "threads")
 CONFIG = os.path.join(HOME, "config.json")
+SUCCESSES = os.path.join(HOME, "successes.md")   # local-only log of what worked; never committed, pushed, or deployed
 PORT = int(os.environ.get("WORKBENCH_PORT", "8765"))
 DEFAULTS = {"base_url": "http://localhost:1234/v1", "model": "", "repo": os.path.expanduser("~/Documents/Vintos-main-faultloop"),
             "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 8, "offline_runs": False}
@@ -62,6 +63,12 @@ do not describe a plan to look, look. Never pretend a tool ran. Everything you b
 Do ONE tool per message and wait for its result before the next: to test code, SAVE it in one message, and after it is
 saved, RUN it in the next message. Say plainly when you do not know something, and quote paths and line numbers only
 from what the tools returned."""
+
+DISTILL = """Gloria just marked this thread a success. Write ONLY the recipe for what worked: the final solution and
+everything it needed — the exact commands, file names, settings, addresses, versions, and any gotcha that would trip up
+someone repeating it. Leave out the dead ends, the back-and-forth, and anything that did not end up mattering. Write it
+as finished steps someone could follow cold, in plain markdown. No preamble, no sign-off, no questions — the recipe
+only."""
 
 
 def load_config():
@@ -865,12 +872,69 @@ def direct_tool(text):
     return None
 
 
+def write_success(headline, recipe, th):
+    """Append one clean entry to the local successes log, newest on top. Written atomically; never leaves the Mac."""
+    entry = "## %s — %s\n\n%s\n\n_thread: %s (%s)_\n\n---\n" % (
+        time.strftime("%Y-%m-%d %H:%M"), headline, recipe.strip(), th.get("title") or "?", th.get("id") or "?")
+    header = ("# Successes — local only\n\nWhat worked on this Mac, kept apart from the messy threads. This file is "
+              "never committed, pushed, or deployed; it lives only here. Newest entry on top.\n\n---\n")
+    with LOCK:
+        try:
+            old = open(SUCCESSES, encoding="utf-8").read()
+        except OSError:
+            old = ""
+        if "---\n" in old:
+            i = old.index("---\n") + len("---\n")
+            new = old[:i] + "\n" + entry + old[i:]
+        else:
+            new = header + "\n" + entry
+        tmp = SUCCESSES + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new)
+        os.replace(tmp, SUCCESSES)
+    return SUCCESSES
+
+
+def mark_success(th, headline, cfg, model_call=complete):
+    """Gloria typed !success: the model distils what worked in this thread into a clean recipe, and the Workbench saves
+    it to the local successes log. Gemma writes the prose; the Workbench does the saving, so the save never depends on
+    Gemma getting a tool call right."""
+    if not any(m.get("role") == "assistant" and not m.get("tool") for m in th["messages"]):
+        return "Nothing to save yet — !success keeps what worked in this thread, but this thread has no results in it."
+    convo = [{"role": "system", "content": DISTILL}] + \
+            [{"role": m["role"], "content": m["content"]} for m in th["messages"]
+             if not str(m.get("content", "")).strip().lower().startswith("!success")]
+    convo.append({"role": "user", "content": "Write the success recipe now." +
+                  ((" Gloria's note on what succeeded: " + headline) if headline else "")})
+    try:
+        recipe = str(model_call(cfg, fitted(convo, int(cfg["context_chars"]))) or "").strip()
+    except Exception:
+        recipe = ""
+    note = ""
+    if not recipe:   # the model fumbled or the server is down: keep the last real answer verbatim so the win is not lost
+        recipe = next((str(m["content"]).strip() for m in reversed(th["messages"])
+                       if m.get("role") == "assistant" and not m.get("tool")), "")
+        note = "  (the model could not distil it; saved the last answer as-is — edit the file if it is off)"
+    head = (headline or th.get("title") or "Untitled").strip().splitlines()[0][:80] if (headline or th.get("title")) else "Untitled"
+    where = write_success(head, recipe, th)
+    return "SAVED a success — \"%s\" -> %s%s\n\n%s" % (
+        head, where, note, recipe[:1500] + ("\n..." if len(recipe) > 1500 else ""))
+
+
 def turn(tid, text, cfg, model_call=complete):
     """Her message in, the model's answer out, with as many lookup rounds as it asks for (up to tool_rounds)."""
     with LOCK:
         th = load_thread(tid)
     th["messages"].append({"role": "user", "content": text, "at": time.strftime("%H:%M")})
     if not th.get("title"): th["title"] = text.strip().splitlines()[0][:60] if text.strip() else "Untitled"
+    if text.strip().lower().startswith("!success"):   # she marks the win; the model writes the recipe, we save it local
+        headline = text.strip()[len("!success"):].strip()
+        th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
+                               "content": mark_success(th, headline, cfg, model_call)})
+        th["working"] = False
+        with LOCK:
+            save_json(thread_path(tid), th)
+        return {"thread": th, "saved": []}
     cmd = direct_tool(text)
     if cmd:
         th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
@@ -936,7 +1000,7 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
  #bar{padding:8px 12px}textarea{font-size:16px;min-height:48px}.m{max-width:100%}select{max-width:60vw}}
 </style></head><body>
 <aside id="side"><button onclick="newThread()">+ New thread</button> <button id="close" onclick="side(false)">Close</button><div id="threads"></div>
-<p class="mut">Code it saves: ~/Vintos-Workbench/code</p><details><summary class="mut">Settings</summary>
+<p class="mut">Code it saves: ~/Vintos-Workbench/code</p><p class="mut">Type <b>!success</b> to keep what worked in this thread → ~/Vintos-Workbench/successes.md (local only)</p><details><summary class="mut">Settings</summary>
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
 <p><label class="mut">Also readable (folders, comma-separated)<br><input id="also" style="width:100%"></label></p>
