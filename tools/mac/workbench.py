@@ -709,8 +709,19 @@ def allowed(headers, port=PORT):
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, kind="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
-        self.send_response(code); self.send_header("Content-Type", kind); self.send_header("Content-Length", str(len(data)))
-        self.end_headers(); self.wfile.write(data)
+        try:
+            self.send_response(code); self.send_header("Content-Type", kind); self.send_header("Content-Length", str(len(data)))
+            self.end_headers(); self.wfile.write(data)
+        except (BrokenPipeError, ConnectionError):
+            # the phone or browser closed the connection while a slow turn was still running; the turn already saved
+            # its work as it went, so the thread is intact and this answer is simply not delivered. Not an error.
+            self.close_connection = True
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionError):
+            self.close_connection = True
 
     def log_message(self, *a):
         pass
