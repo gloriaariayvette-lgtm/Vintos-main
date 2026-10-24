@@ -110,6 +110,20 @@ capped = align.run(call=frontier, now=time.time() + 2 * 86400)
 check("a refused paid reservation holds without calling", capped["state"] == "held_paid_cap" and len(prompts) == 4, capped)
 refuse.clear()
 
+extra = align.run(call=frontier, lens="opus")
+check("an extra turn she asks for runs on exactly that model, even after every model has run today",
+      extra["state"] == "completed" and extra["lens"] == "opus" and extra.get("extra") == "requested"
+      and prompts[-1]["model"] == "claude-opus-5-5", extra)
+again = align.run(call=frontier, lens="opus")
+check("a requested turn is not held for want of new Lab work: it is there to set plans",
+      again["state"] == "completed" and len(prompts) == 6, again)
+check("the frontier is asked for an executable plan per line, and shown the Lab's real tools",
+      "plan (REQUIRED" in prompts[-1]["user"] and "THE LAB'S TOOLS" in prompts[-1]["user"]
+      and "success_criteria" in prompts[-1]["user"])
+check("the tools it is shown include searching her IMG/VR database by protein, not only its metadata",
+      "protein_similarity" in prompts[-1]["user"], prompts[-1]["user"].split("THE LAB'S TOOLS")[-1][:400])
+check("there is room in the answer for those plans", align.ALIGN_MAX_TOKENS >= 4000)
+
 timer = open(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")).read()
 session_src = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 check("the timer fires four times a day", timer.count("OnCalendar=") == 4, timer)

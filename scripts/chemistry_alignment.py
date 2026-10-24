@@ -30,6 +30,7 @@ SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 # Each frontier model once a day, in this order. The same four models she approved for four paid calls.
 # Fable's turn is gone (Gloria, 2026-10-20: "No Fable, Opus 5.5."); Opus 5.5 already has one, so three a day.
+ALIGN_MAX_TOKENS = 4000   # room for an executable plan per live line; 1400 cut plans off mid-JSON
 MODELS = (("astra", "openai", "gpt-6-astra"), ("grok", "xai", "grok-4.6"), ("opus", "anthropic", "claude-opus-5-5"))
 PER_DAY = len(MODELS)
 REVIEW_ENTRIES = 8
@@ -189,7 +190,7 @@ def _tool_menu():
         menu = inv._menu()
         return {"routes": ["source", "plugin", "instrument", "experiment", "genome", "representation",
                            "regulatory_genome", "read_output", "finish"],
-                "sources": sorted((menu.get("sources") or {}).keys()),
+                "sources": menu.get("sources"),
                 "instruments": menu.get("instruments"),
                 "protein_design_mcp": menu.get("protein_design_mcp"),
                 "experiments": menu.get("experiments")}
@@ -198,7 +199,7 @@ def _tool_menu():
 
 
 def _prompt(work, log, lines=""):
-    system = ("You are one of four frontier models (Astra, Fable, Grok, Opus) who take turns through the day aligning "
+    system = ("You are one of three frontier models (Astra, Grok, Opus) who take turns through the day aligning "
               "the Chemistry Lab of Vintos. His local model, Gemma, does the Lab's work between your turns: she forms a "
               "question, reads UniProt, NCBI and published abstracts, and writes a review. You share one log with the "
               "other frontier models; build on it, and do not repeat advice already given unless it was not followed. "
@@ -246,16 +247,16 @@ async def _call(lens, provider, model, system, user, reservation):
     import model_router
     convo = [{"role": "user", "content": user}]
     if provider == "anthropic":
-        text, _ = await model_router.claude_draft(system, convo, max_tokens=1400,
+        text, _ = await model_router.claude_draft(system, convo, max_tokens=ALIGN_MAX_TOKENS,
                                                    paid_reservation=reservation, model=model)
         return text
     if provider == "openai":
-        text, _ = await model_router.sol_draft(system, convo, max_tokens=1400,
+        text, _ = await model_router.sol_draft(system, convo, max_tokens=ALIGN_MAX_TOKENS,
                                                 paid_reservation=reservation, model=model)
         return text
     import model_config
     model_router._reserve_provider("xai", model, reservation, organ="chemistry-alignment")
-    res = await model_router._grok_result(convo, {"max_tokens": 1400, "temperature": 0.5},
+    res = await model_router._grok_result(convo, {"max_tokens": ALIGN_MAX_TOKENS, "temperature": 0.5},
                                           model_config.GROK_API, model_config.GROK_HEADERS, model, system)
     return res.get("text") if res.get("status") == "valid" else None
 
@@ -267,19 +268,21 @@ def _next_model(rows, today):
     return None
 
 
-def run(call=None, now=None):
+def run(call=None, now=None, lens=None):
     if not lab.config()["enabled"]: return {"ok": True, "state": "off"}
     now = now or time.time(); today = _today(now)
     rows = [r for r in lab._jsonl(LOG) if isinstance(r, dict)]
-    pick = _next_model(rows, today)
+    requested = lens is not None   # an extra turn she asked for on one model, outside the daily rotation
+    pick = next((m for m in MODELS if m[0] == lens), None) if lens else _next_model(rows, today)
     aid = "ALIGN-" + uuid.uuid4().hex[:10]
     if pick is None:
         return {"alignment_id": aid, "state": "held_all_done_today"}
     lens, provider, model = pick
     last = next((r for r in reversed(rows) if r.get("state") == "completed"), None)
     work = gemma_since((last or {}).get("at"))
-    base = {"alignment_id": aid, "at": lab.now_iso(), "at_epoch": now, "lens": lens, "provider": provider, "model": model}
-    if not work["reviews"]:
+    base = {"alignment_id": aid, "at": lab.now_iso(), "at_epoch": now, "lens": lens, "provider": provider, "model": model,
+            **({"extra": "requested"} if requested else {})}
+    if not work["reviews"] and not requested:
         # Nothing new to align: no paid call is spent on it.
         row = dict(base, state="held_nothing_new_since_last_alignment", turn_counts=work["turn_counts"])
         lab._append(LOG, row); return row
@@ -336,6 +339,9 @@ if __name__ == "__main__":
     if command == "show":
         print(json.dumps(shared_log(), ensure_ascii=False, indent=2))
     elif command == "run":
-        print(json.dumps(run(), ensure_ascii=False, indent=2))
+        lens = sys.argv[sys.argv.index("--lens") + 1] if "--lens" in sys.argv[2:-1] else None
+        if lens is not None and lens not in {m[0] for m in MODELS}:
+            raise SystemExit("--lens must be one of: " + ", ".join(m[0] for m in MODELS))
+        print(json.dumps(run(lens=lens), ensure_ascii=False, indent=2))
     else:
-        raise SystemExit("usage: chemistry_alignment.py [run|show]")
+        raise SystemExit("usage: chemistry_alignment.py [run [--lens astra|grok|opus]|show]")

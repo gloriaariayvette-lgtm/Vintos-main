@@ -278,7 +278,7 @@ def _menu():
     import chemistry_mcp
     import lab_native_instruments
     return {
-        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'imgvr':'{operation:metadata}', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
+        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'imgvr':'local IMG/VR v4.1 high-confidence phage and virus genomes: {operation:protein_similarity,sequence:<20-2000 residue protein>} finds similar viral proteins across all of it (mmseqs); {operation:uvig,uvig:<UViG id>,start,end} reads up to 12000 bases of one genome; {operation:metadata,term} searches its annotations', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
                     'pdb': '{entry_id,operation:structure_evidence}',
                     'atlas': '{gene} or sourced {chromosome,start,end}',
                     'rt_locus_screen': '{accession:exact sourced protein accession.version}'},
