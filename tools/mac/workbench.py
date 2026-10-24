@@ -54,7 +54,8 @@ RUN <filename>                      run code/<filename> and get its output and e
                                     throwaway run folder. Save a fix with SAVE, then RUN again, until it works.
 HOSTS                               list every device on Gloria's network with its IP, MAC and open services. USE THIS
                                     to find a machine's address — never ping-sweep, Windows PCs ignore ping. HOSTS <ip>
-                                    inspects one device; HOSTS ports=8080 sweeps a specific port.
+                                    inspects one device and says which ports are open, refused, or firewalled (dropped).
+BT                                  investigate Bluetooth: this Mac's radio, paired/connected devices, nearby advertisers.
 Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
 Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer:
 do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder. Say
@@ -342,15 +343,22 @@ def _local_ipv4():
 
 
 def _poke(ip, port, timeout=0.7):
-    import socket as _s
+    return _poke_status(ip, port, timeout) == "open"
+
+
+def _poke_status(ip, port, timeout=0.7):
+    """open (a service answered), closed (the host refused — nothing there), or filtered (no reply — a firewall is
+    dropping it, and a service could be hidden behind it)."""
+    import socket as _s, errno
     c = _s.socket(_s.AF_INET, _s.SOCK_STREAM); c.settimeout(timeout)
     try:
-        open_ = c.connect_ex((ip, port)) == 0
-    except OSError:
-        open_ = False
+        rc = c.connect_ex((ip, port))
+        if rc == 0: return "open"
+        return "closed" if rc in (errno.ECONNREFUSED, errno.ECONNRESET) else "filtered"
+    except (_s.timeout, OSError):
+        return "filtered"
     finally:
         c.close()
-    return open_
 
 
 def _arp_table():
@@ -391,6 +399,99 @@ def _rdns(ip):
         _s.setdefaulttimeout(old)
 
 
+def _bt_le_scan(seconds=6):
+    """A short Bluetooth-LE scan via CoreBluetooth, when this Mac's Python has pyobjc. Returns a list of nearby
+    devices (name, identifier, RSSI) or a reason it could not scan. Never raises."""
+    try:
+        import objc  # noqa
+        from CoreBluetooth import CBCentralManager
+        from Foundation import NSObject, NSRunLoop, NSDate
+    except Exception:
+        return "live scan needs pyobjc (not on this Mac's Python); showing paired/known devices only"
+    found = {}
+    class D(NSObject):
+        def centralManagerDidUpdateState_(self, c):
+            if c.state() == 5: c.scanForPeripheralsWithServices_options_(None, None)
+        def centralManager_didDiscoverPeripheral_advertisementData_RSSI_(self, c, per, adv, rssi):
+            key = str(per.identifier().UUIDString())
+            nm = (adv.get("kCBAdvDataLocalName") or per.name() or "")
+            found[key] = {"name": str(nm), "id": key, "rssi": int(rssi)}
+    try:
+        d = D.alloc().init()
+        mgr = CBCentralManager.alloc().initWithDelegate_queue_(d, None)  # noqa
+        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(seconds))
+        try: mgr.stopScan()
+        except Exception: pass
+    except Exception as e:
+        return "live scan could not run (%s); showing paired/known devices only" % str(e)[:120]
+    return sorted(found.values(), key=lambda x: -x["rssi"])
+
+
+def discover_bluetooth(cfg, arg=""):
+    """Investigate Bluetooth from this Mac: the Mac's own radio, every paired or connected device (the Acer shows here
+    if it has ever paired or is connected), each with its address, whether it is connected, and its signal; plus a
+    short live scan for nearby advertising devices when this Mac's Python can do it. Read-only."""
+    import subprocess
+    out = ["== Bluetooth on this Mac =="]
+    try:
+        text = subprocess.run(["system_profiler", "SPBluetoothDataType"], capture_output=True, text=True, timeout=25).stdout.strip()
+    except Exception as e:
+        text = ""
+        out.append("could not read system Bluetooth: %s" % str(e)[:120])
+    if text:
+        # keep it readable: the controller block and each device with its address/connection/RSSI
+        keep, device = [], False
+        for line in text.splitlines():
+            low = line.strip().lower()
+            if any(k in low for k in ("address:", "connected:", "rssi", "services:", "minor type", "vendor", "firmware",
+                                      "state:", "discoverable", "device type", "paired")) or line.endswith(":"):
+                keep.append(line.rstrip())
+        out.append("\n".join(keep[:200]) or text[:4000])
+    live = _bt_le_scan()
+    out.append("\n== Nearby devices advertising right now ==")
+    if isinstance(live, str):
+        out.append(live)
+    elif live:
+        out += ["  %-32s  RSSI %4d  %s" % ((d["name"] or "(no name)")[:32], d["rssi"], d["id"]) for d in live[:40]]
+    else:
+        out.append("no devices were advertising in the scan window")
+    out.append("\nTo reach the Acer over Bluetooth it must be paired (or in pairing mode). A never-paired, non-"
+               "advertising device will not appear until it is made discoverable on the Acer, or paired once in the "
+               "Mac's Bluetooth settings. Classic-Bluetooth devices that are paired already show above with their address.")
+    return "\n".join(out)
+
+
+def _probe_one(ip, ports, me, gw):
+    """Look closely at one device: which ports are open, which are refused, which are firewalled (dropped). A machine
+    whose ports are mostly 'filtered' is alive but behind a firewall that is swallowing the probes — a service may be
+    there and simply blocked, which is different from 'nothing is listening'."""
+    import concurrent.futures
+    status = {}
+    def one(port): status[port] = _poke_status(ip, port, 0.8)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=120) as pool:
+        list(pool.map(one, ports))
+    openp = sorted(p for p, st in status.items() if st == "open")
+    filt = sorted(p for p, st in status.items() if st == "filtered")
+    closed = sorted(p for p, st in status.items() if st == "closed")
+    mac = _arp_table().get(ip, "")
+    name = _rdns(ip)
+    lines = ["%s%s%s%s" % (ip, ("  " + mac) if mac else "", ("  " + name) if name else "",
+                           "  ← this Mac" if ip == me else "  ← router" if ip == gw else "")]
+    lines.append("  alive: %s" % ("yes (MAC %s)" % mac if mac else "no ARP entry — may be off or on another subnet"))
+    lines.append("  OPEN   : %s" % (", ".join("%d/%s" % (p, PORT_NAME.get(p, "?")) for p in openp) or "none"))
+    lines.append("  closed : %s" % (("%d ports actively refused (the host says nothing is there)" % len(closed)) if closed else "none"))
+    lines.append("  firewalled: %s" % (("%d ports dropped with no reply — a firewall is swallowing probes; a service "
+                 "could be hidden behind it" % len(filt)) if filt else "none"))
+    if filt and not openp:
+        lines.append("  → it answers at the network layer but its firewall is dropping connections. Nothing here can "
+                     "reach a service until that machine allows it, or it opens an outbound/paired channel instead.")
+    elif openp:
+        lines.append("  → connect to an OPEN port above.")
+    else:
+        lines.append("  → every port actively refused: it is up but genuinely running no TCP service.")
+    return "\n".join(lines)
+
+
 def discover_hosts(cfg, arg=""):
     """Every device alive on her network, by IP and MAC, with the services each one answers on. Finds a Windows laptop
     (the Acer) that ignores ping, because it pokes a TCP port (which makes the host answer ARP at the network layer,
@@ -411,10 +512,10 @@ def discover_hosts(cfg, arg=""):
         ports = [int(x) for x in re.findall(r"\d+", m.group(1))][:40] or COMMON_PORTS
     one = re.match(r"(\d+\.\d+\.\d+\.\d+)$", arg)
     if one:
-        targets, ports = [one.group(1)], ([int(x) for x in re.findall(r"\d+", m.group(1))] if m else
-                          sorted(set(COMMON_PORTS + [21, 23, 25, 111, 1433, 2049, 3306, 5432, 5555, 8888, 9000])))
-    else:
-        targets = ["%s.%d" % (sub, i) for i in range(1, 255)]
+        ports = [int(x) for x in re.findall(r"\d+", m.group(1))] if m else \
+                sorted(set(COMMON_PORTS + [21, 23, 25, 111, 1433, 2049, 3306, 5432, 5555, 8888, 9000]))
+        return _probe_one(one.group(1), ports, me, _gateway())
+    targets = ["%s.%d" % (sub, i) for i in range(1, 255)]
     found = {}
     def scan(ip):
         opens = []
@@ -574,11 +675,12 @@ def run_code(cfg, arg):
 
 # a tool line, however the model dressed it: `LIST x`, - GREP y, 1. READ z, **GIT log** (25 October: Gemma wrote
 # "`LIST /Users/kevin/...`" in backticks and nothing ran)
-TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT|RUN|HOSTS|SCAN)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
+TOOL = re.compile(r"^[ \t>*\-`]*(?:\d+[.)][ \t]*)?[*`]*(FETCH|GREP|READ|LIST|GIT|RUN|HOSTS|SCAN|BT|BLUETOOTH)\b[*`]*[ \t:]*(.*?)[*`]*[ \t]*$", re.M)
 SAVE = re.compile(r"^\s*SAVE[ \t]+(\S+)[^\n]*\n(?:.*?\n)??\s*```[^\n]*\n(.*?)\n\s*```", re.M | re.S)
 
 
-VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE", "run": "RUN", "hosts": "HOSTS", "scan": "HOSTS"}
+VERBS = {"fetch": "FETCH", "grep": "GREP", "read": "READ", "list": "LIST", "git": "GIT", "save": "SAVE", "run": "RUN",
+         "hosts": "HOSTS", "scan": "HOSTS", "bt": "BT", "bluetooth": "BT"}
 NATIVE = re.compile(r"(?:<\|?tool_call\|?>|<tool_call>)?\s*call:\s*([A-Za-z_]+)\s*(\{.*?\}(?=\s*(?:<\|?/?tool_call\|?>|<tool_call\|>|END|$))|[^\n]*)", re.S)
 
 
@@ -626,6 +728,8 @@ def run_tools(reply, cfg):
             result = run_code(cfg, arg)
         elif verb == "HOSTS":
             result = discover_hosts(cfg, arg)
+        elif verb == "BT":
+            result = discover_bluetooth(cfg, arg)
         else:
             result = listing(cfg, arg)
         out.append("=== %s %s ===\n%s" % (verb, arg, result))
@@ -671,7 +775,8 @@ TOOLS = [_fn("fetch", "Read a web page, or a GitHub repository, folder, file or 
          _fn("git", "Read-only git", command="e.g. log --oneline -10, or in <folder> show <rev>:<path>"),
          _fn("save", "Save code to your working folder (prior version kept)", filename="the file name", code="the whole file"),
          _fn("run", "Run a file you saved and get its output/errors; it may use the network but writes only in your folder", filename="code/<name>"),
-         _fn("hosts", "List devices on Gloria's network by IP and MAC with their open services (finds Windows PCs that ignore ping)", target="optional: an IP to inspect, or ports=8080,5000")]
+         _fn("hosts", "List devices on Gloria's network; HOSTS <ip> shows a device's open/closed/firewalled ports", target="optional: an IP to inspect, or ports=8080,5000"),
+         _fn("bt", "Investigate Bluetooth: the Mac's radio, paired/connected devices (incl. the Acer if paired), and nearby advertisers", note="no argument needed")]
 
 
 def _as_lines(message):
@@ -743,8 +848,8 @@ def direct_tool(text):
     rest = parts[1].strip() if len(parts) > 1 else ""
     # her own command only when it is the verb alone or with a single argument (an IP, a path, a flag, ports=...),
     # never a sentence like "run the tests" or "read the handoff"
-    if first in ("FETCH", "GREP", "READ", "LIST", "GIT", "RUN", "HOSTS", "SCAN") and (not rest or " " not in rest):
-        return (first if first != "SCAN" else "HOSTS") + ((" " + rest) if rest else "")
+    if first in ("FETCH", "GREP", "READ", "LIST", "GIT", "RUN", "HOSTS", "SCAN", "BT", "BLUETOOTH") and (not rest or " " not in rest):
+        return {"SCAN": "HOSTS", "BLUETOOTH": "BT"}.get(first, first) + ((" " + rest) if rest else "")
     return None
 
 

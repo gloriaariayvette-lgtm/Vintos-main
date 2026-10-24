@@ -222,5 +222,42 @@ outside = os.path.join(W.HOME, "keep.txt"); open(outside, "w").write("safe")
 check("delete cannot escape the threads folder", post("/api/delete", json.dumps({"thread": "../keep.txt"}))["deleted"] == 0
       and post("/api/delete", json.dumps({"thread": "../../../etc/hosts"}))["deleted"] == 0 and open(outside).read() == "safe")
 
+# --- WiFi: open vs refused vs firewalled, so "nothing there" and "firewall dropping" are told apart ---
+W._arp_table = lambda: {"192.168.1.110": "f0:68:e3:83:5b:75"}
+W._rdns = lambda ip: ""
+import errno as _e
+def status(ip, port, timeout=0):
+    return {80: "open", 22: "closed", 445: "filtered", 3389: "filtered"}.get(port, "closed")
+W._poke_status = status
+rep = W.discover_hosts(dict(cfg), "192.168.1.110")
+check("one-host probe separates open, refused, and firewalled ports",
+      "OPEN" in rep and "80/http" in rep and "actively refused" in rep and "firewall is swallowing" in rep, rep)
+def allfilt(ip, port, timeout=0): return "filtered"
+W._poke_status = allfilt
+rep2 = W.discover_hosts(dict(cfg), "192.168.1.110")
+check("a device that answers ARP but drops every port is reported as firewalled, not empty",
+      "firewall is dropping connections" in rep2 and "nothing is listening" not in rep2, rep2)
+def allclosed(ip, port, timeout=0): return "closed"
+W._poke_status = allclosed
+check("a device that refuses every port is reported as genuinely running no service",
+      "genuinely running no TCP service" in W.discover_hosts(dict(cfg), "192.168.1.110"))
+
+# --- Bluetooth investigator: reads the Mac's radio + devices, offline-stubbed ---
+import subprocess as _sp
+_real = _sp.run
+def fake_sysprofiler(cmd, *a, **k):
+    if cmd[:2] == ["system_profiler", "SPBluetoothDataType"]:
+        return type("P", (), {"stdout": "Bluetooth:\n  State: On\n  Devices (Paired):\n    Acer-Laptop:\n      Address: F0:68:E3:83:5B:75\n      Connected: No\n      RSSI: -61\n"})()
+    return _real(cmd, *a, **k)
+_sp.run = fake_sysprofiler
+W._bt_le_scan = lambda seconds=6: "live scan needs pyobjc (not on this Mac's Python); showing paired/known devices only"
+bt = W.discover_bluetooth(dict(cfg), "")
+_sp.run = _real
+check("BT reports the Mac's radio and paired devices (the Acer shows with its address)",
+      "Bluetooth on this Mac" in bt and "F0:68:E3:83:5B:75" in bt and "Acer-Laptop" in bt and "pairing mode" in bt, bt[:200])
+check("BT and the one-host probe are callable by the model and by Gloria directly",
+      any(f["function"]["name"] == "bt" for f in W.TOOLS) and W.direct_tool("BT") == "BT"
+      and W.direct_tool("bluetooth") == "BT" and "BT" in W.SYSTEM)
+
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
