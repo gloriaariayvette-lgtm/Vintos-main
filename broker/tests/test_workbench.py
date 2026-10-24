@@ -134,16 +134,15 @@ check("RUN refuses a file that was not saved", W.run_code(cfg, "ghost.py").start
 check("RUN only runs the languages it names", W.save_code("x.bin", "data") and W.run_code(cfg, "x.bin").startswith("I only run"))
 loop = W.run_code(cfg, W.save_code("spin.py", "while True:\n    pass\n") and "spin.py")
 check("an endless run is stopped by the time limit, not left hanging", "longer than" in loop, loop)
-netcfg = dict(cfg, allow_network_runs=False)
-W.save_code("net.py", "print('hi')\n")
-nr = W.run_code(netcfg, "net.py --net")
-check("a run that asks for the network while it is off in Settings is told network stays off",
-      "turn on 'allow network in runs'" in nr, nr)
-prof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": "(deny network*)"}
-check("the macOS sandbox profile denies network and confines writes to the code and run folders (enforced on her Mac)",
-      "(deny network*)" in prof and "(deny file-write*)" in prof and '(subpath "/c")' in prof and '(subpath "/s")' in prof)
-onprof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": ""}
-check("with network allowed, the profile drops only the network denial", "network*" not in onprof and "(deny file-write*)" in onprof)
+check("by default a run may use the network (so its code can find the Acer), and does not say offline",
+      "offline" not in W.run_code(dict(cfg), W.save_code("ok.py", "print('ok')\n") and "ok.py"))
+check("offline in Settings takes the network away for the run", "(offline)" in W.run_code(dict(cfg, offline_runs=True), "ok.py"))
+default_prof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": ""}
+offline_prof = W.SANDBOX % {"code": "/c", "scratch": "/s", "tmp": "/t", "net": "(deny network*)"}
+check("writes are always confined to the code and run folders (on her Mac via sandbox-exec)",
+      '(deny file-write*)' in default_prof and '(subpath "/c")' in default_prof and '(subpath "/s")' in default_prof)
+check("the default profile allows the network; only offline denies it",
+      "deny network" not in default_prof and "(deny network*)" in offline_prof)
 
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

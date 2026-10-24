@@ -33,7 +33,7 @@ THREADS = os.path.join(HOME, "threads")
 CONFIG = os.path.join(HOME, "config.json")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8765"))
 DEFAULTS = {"base_url": "http://localhost:1234/v1", "model": "", "repo": os.path.expanduser("~/Documents/Vintos-main-faultloop"),
-            "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 8, "allow_network_runs": False}
+            "also_read": os.path.expanduser("~/Documents/Codex"), "context_chars": 80000, "max_tokens": 2048, "temperature": 0.4, "tool_rounds": 8, "offline_runs": False}
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "build", "dist", ".mypy_cache"}
 LOCK = threading.Lock()
 
@@ -48,9 +48,10 @@ LIST [<folder>]                     list a folder
 GIT [in <folder>] <command> <args>  read-only git: log, show, diff, branch, status, ls-tree, grep, blame
 SAVE <filename>                     save code: the next ``` fenced block is written to code/<filename> (the prior
                                     version is kept); keep working one file and SAVE it again to update it
-RUN <filename>                      run code/<filename> and get its output and errors back. It runs contained: it may
-                                    read the Mac but may only write inside your code folder and a throwaway run folder,
-                                    and it has NO network. Write a fix with SAVE, then RUN again, until it works.
+RUN <filename>                      run code/<filename> and get its output and errors back. It may use the network, so
+                                    code that must find or reach a machine on Gloria's network (like her Acer laptop)
+                                    can do so. It may read the Mac but may only WRITE inside your code folder and a
+                                    throwaway run folder. Save a fix with SAVE, then RUN again, until it works.
 Write the real value where the usage shows <...> or [...]: LIST scripts, not LIST [scripts] or LIST <folder>.
 Paths are relative to his checkout, or absolute inside a folder she made readable (named below). Look before you answer:
 do not describe a plan to look, look. Never pretend a tool ran. Everything you build stays in your code folder. Say
@@ -387,13 +388,12 @@ SANDBOX = """(version 1)
 
 
 def run_code(cfg, arg):
-    """Run code/<file> and return its output and errors, so the model can fix it and run it again. Contained: it may
-    read the Mac but writes only inside the code folder and a throwaway run folder, and has no network unless Gloria
-    turned 'allow network in runs' on in Settings AND the line says --net (for code that must reach another machine)."""
+    """Run code/<file> and return its output and errors, so the model can fix it and run it again. It may use the
+    network (so its code can find and reach machines on Gloria's network, like her Acer laptop) and read the Mac, but
+    it may only WRITE inside the code folder and a throwaway run folder: everything it builds stays contained there.
+    Turn 'run code offline' on in Settings to take the network away."""
     import shlex, subprocess, tempfile
-    want_net = False
-    words = shlex.split(_unwrap(arg)) if arg else []
-    words = [w for w in words if (want_net := want_net or w in ("--net", "--network")) is not None and w not in ("--net", "--network")]
+    words = [w for w in (shlex.split(_unwrap(arg)) if arg else []) if w not in ("--net", "--network", "--offline")]
     name = os.path.basename(words[0]) if words else ""
     path = _inside(CODE, name)
     if not name or not path or not os.path.isfile(path):
@@ -401,7 +401,7 @@ def run_code(cfg, arg):
     interp = INTERP.get(os.path.splitext(path)[1].lower())
     if not interp:
         return "I only run .py, .sh, .js, .ts, .rb or .pl files here"
-    net_on = want_net and cfg.get("allow_network_runs")
+    offline = bool(cfg.get("offline_runs"))
     os.makedirs(RUNS, exist_ok=True)
     scratch = tempfile.mkdtemp(prefix="run-", dir=RUNS)
     cmd = [interp, path]
@@ -409,18 +409,16 @@ def run_code(cfg, arg):
     if os.path.exists("/usr/bin/sandbox-exec"):
         profile = SANDBOX % {"code": os.path.realpath(CODE), "scratch": os.path.realpath(scratch),
                              "tmp": os.path.realpath(tempfile.gettempdir()),
-                             "net": "" if net_on else "(deny network*)"}
+                             "net": "(deny network*)" if offline else ""}
         cmd = ["/usr/bin/sandbox-exec", "-p", profile] + cmd
         sandboxed = True
     try:
         env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER")}
         done = subprocess.run(cmd, cwd=scratch, capture_output=True, text=True, timeout=RUN_TIMEOUT_S, env=env)
         out = ((done.stdout or "") + (("\n--- errors ---\n" + done.stderr) if done.stderr.strip() else "")).strip()
-        head = "ran code/%s%s%s, exit %d%s" % (name, " (with network)" if net_on else "",
+        head = "ran code/%s%s%s, exit %d%s" % (name, " (offline)" if offline else "",
                "" if sandboxed else " — NOT sandboxed on this Mac (sandbox-exec missing)", done.returncode,
                "" if done.returncode == 0 else "  ← it failed; read the errors and SAVE a fix")
-        if want_net and not cfg.get("allow_network_runs"):
-            head += "\n(note: it asked for the network; runs have none until you turn on 'allow network in runs' in Settings)"
         return "%s\n%s" % (head, out[:RUN_OUTPUT_CAP] + ("\n...[output cut]" if len(out) > RUN_OUTPUT_CAP else "") or "(no output)")
     except subprocess.TimeoutExpired:
         return "code/%s ran longer than %d seconds and was stopped (a loop, or it is waiting on something)." % (name, RUN_TIMEOUT_S)
@@ -529,7 +527,7 @@ TOOLS = [_fn("fetch", "Read a web page, or a GitHub repository, folder, file or 
          _fn("list", "List a folder", folder="its path; . for his checkout's top"),
          _fn("git", "Read-only git", command="e.g. log --oneline -10, or in <folder> show <rev>:<path>"),
          _fn("save", "Save code to your working folder (prior version kept)", filename="the file name", code="the whole file"),
-         _fn("run", "Run a file you saved and get its output and errors (contained, no network)", filename="code/<name>")]
+         _fn("run", "Run a file you saved and get its output/errors; it may use the network but writes only in your folder", filename="code/<name>")]
 
 
 def _as_lines(message):
@@ -652,7 +650,7 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
 <p><label class="mut">Also readable (folders, comma-separated)<br><input id="also" style="width:100%"></label></p>
-<p><label class="mut"><input type="checkbox" id="netrun"> Let code it runs use the network (e.g. reach another machine). Off keeps runs fully contained.</label></p>
+<p><label class="mut"><input type="checkbox" id="offline"> Run code offline (take the network away). Default: runs may use the network to reach machines on your network; files stay contained either way.</label></p>
 <button onclick="saveCfg()">Save settings</button></details></aside>
 <main><div id="bar"><button id="menu" onclick="side(true)">☰</button><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
 <form onsubmit="send(event)"><textarea id="txt" placeholder="Ask, paste a link, or ask it to grep his code. Cmd+Enter sends."></textarea><button>Send</button></form></main>
@@ -660,13 +658,13 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 let tid=localStorage.getItem('wb-thread')||'';const $=id=>document.getElementById(id);
 function side(on){$('side').classList.toggle('open',on)}
 async function j(u,o){const r=await fetch(u,o);return r.json()}
-async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;$('also').value=c.also_read||'';$('netrun').checked=!!c.allow_network_runs;
+async function cfg(){const c=await j('/api/config');$('base').value=c.base_url;$('repo').value=c.repo;$('also').value=c.also_read||'';$('offline').checked=!!c.offline_runs;
  const ms=await j('/api/models');const s=$('model');s.innerHTML='';
  if(ms.error){$('st').textContent='No model server: '+ms.error;return}
  ms.forEach(m=>{const o=document.createElement('option');o.value=o.textContent=m;if(m==c.model)o.selected=true;s.appendChild(o)});
  $('st').textContent='Local only. It remembers this thread and nothing else.'}
 $('model').onchange=()=>j('/api/config',{method:'POST',body:JSON.stringify({model:$('model').value})});
-async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value,allow_network_runs:$('netrun').checked})});cfg()}
+async function saveCfg(){await j('/api/config',{method:'POST',body:JSON.stringify({base_url:$('base').value,repo:$('repo').value,also_read:$('also').value,offline_runs:$('offline').checked})});cfg()}
 async function threads(){const ts=await j('/api/threads');$('threads').innerHTML='';
  ts.forEach(t=>{const b=document.createElement('button');b.className='t'+(t.id==tid?' on':'');b.textContent=t.title||'Untitled';b.onclick=()=>{side(false);open_(t.id)};$('threads').appendChild(b)})}
 function newThread(){side(false);tid=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));localStorage.setItem('wb-thread',tid);$('log').innerHTML='';threads()}
@@ -733,7 +731,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         if self.path == "/api/config":
             cfg = load_config()
-            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read", "allow_network_runs")})
+            cfg.update({k: v for k, v in body.items() if k in ("base_url", "model", "repo", "also_read", "offline_runs")})
             save_json(CONFIG, cfg)
             return self._send(200, cfg)
         if self.path == "/api/send":
