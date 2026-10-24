@@ -82,6 +82,36 @@ class Investigations(unittest.TestCase):
         step = C._load(I._path('investigations.json'), {})['investigations'][0]['steps'][-1]
         self.assertEqual(step['request'].get('source'), 'ncbi_protein_context')
 
+    def test_frontier_plan_directs_the_step_only_when_enabled(self):
+        planned = {'step_number':1,'of':3,'objective':'Fold the candidate','route':'instrument','tool':'esmfold',
+                   'depends_on':'step 1','success_criteria':'a model','upcoming':[]}
+        inv = {'id':'I-x','line_id':'L-x','question':'q','prediction':'','steps':[],'plan':[]}
+        with patch('lab_lines.get', return_value={'id':'L-x'}), \
+             patch('lab_lines.plan_for_planner', return_value=planned):
+            captured = {}
+            def ask(system, prompt, **k):
+                captured.update(system=system, prompt=prompt); return self.choice('source', {'source':'pubchem'})
+            with patch.object(I, 'FRONTIER_PLANS', True):
+                I._plan(dict(inv), 'ctx', ask)
+            self.assertIn('planned_step', captured['prompt'])
+            self.assertIn('esmfold', captured['prompt'])
+            self.assertIn('executable plan', captured['system'])
+            captured.clear()
+            with patch.object(I, 'FRONTIER_PLANS', False):
+                I._plan(dict(inv), 'ctx', ask)
+            self.assertNotIn('planned_step', captured['prompt'])   # off by default: free choice, unchanged
+
+    def test_completed_step_advances_the_lines_plan_when_enabled(self):
+        C._atomic(I._path('investigations.json'), {'investigations':[
+            {'id':'I-p','opened_at':'t','state':'open','line_id':'L-p','question':'q','prediction':'p','steps':[]}]})
+        self.ask.return_value = self.choice('source', {'source':'pubchem','name':'fixture'})
+        calls = []
+        with patch.object(I, 'FRONTIER_PLANS', True), \
+             patch('lab_lines.get', return_value=None), \
+             patch('lab_lines.advance_plan', side_effect=lambda line_id, completed: calls.append((line_id, completed))):
+            I.turn('', ask=self.ask, execute=lambda *a:{'receipt':{'source':'pubchem','records':[{'smiles':'CCO'}]}})
+        self.assertEqual(calls, [('L-p', True)])
+
     def test_failure_is_saved_as_next_step_context_without_retry(self):
         self.ask.return_value = self.choice('plugin', {'plugin':'nvidia_nim','tool':'nvidia_nim.boltz2'})
         execute = Mock(side_effect=TimeoutError('unknown outcome'))

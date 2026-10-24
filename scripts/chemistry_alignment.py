@@ -181,6 +181,22 @@ def _lines():
         return _leans()
 
 
+def _tool_menu():
+    """The real routes, sources, instruments and experiments a plan may name, compactly, so a frontier plan names
+    tools that exist (and reaches for the generative instruments, not only lookups)."""
+    try:
+        import lab_investigations as inv
+        menu = inv._menu()
+        return {"routes": ["source", "plugin", "instrument", "experiment", "genome", "representation",
+                           "regulatory_genome", "read_output", "finish"],
+                "sources": sorted((menu.get("sources") or {}).keys()),
+                "instruments": menu.get("instruments"),
+                "protein_design_mcp": menu.get("protein_design_mcp"),
+                "experiments": menu.get("experiments")}
+    except Exception:
+        return {}
+
+
 def _prompt(work, log, lines=""):
     system = ("You are one of four frontier models (Astra, Fable, Grok, Opus) who take turns through the day aligning "
               "the Chemistry Lab of Vintos. His local model, Gemma, does the Lab's work between your turns: she forms a "
@@ -192,7 +208,11 @@ def _prompt(work, log, lines=""):
             + json.dumps(log, ensure_ascii=False)[:9000] +
             "\n\nGEMMA'S LAB WORK SINCE THE LAST ALIGNMENT (each review with the evidence it was written from; "
             "turn_counts show how many turns ended empty or redirected):\n" + json.dumps(work, ensure_ascii=False)[:16000]
-            + (("\n\n" + lines[:9000]) if lines else "") +
+            + (("\n\n" + lines[:9000]) if lines else "")
+            + "\n\nTHE LAB'S TOOLS (a plan may name only these routes, sources, instruments and experiments; prefer the "
+              "generative instruments and experiments — folds, designs, comparisons, measurements, simulations — over "
+              "repeated literature lookups, which supply inputs but are not the research result):\n"
+            + json.dumps(_tool_menu(), ensure_ascii=False)[:6000] +
             "\n\nThis is your segment: the work Gemma did since the last frontier model's turn. Check each review "
             "against its own evidence and literature, realign her, and summarise the segment for the next model. "
             "Return keys in this order: "
@@ -204,9 +224,17 @@ def _prompt(work, log, lines=""):
             "drop (a thread to let go of, or empty), next_focus (one question worth asking next), "
             "lines (one decision per open line of inquiry above — you steer them; he follows each to its end between "
             "your turns: {line_id, decision: 'continue', 'redirect', 'answered' or 'drop', note (why, and what he "
-            "should test next), next_step (required for redirect: the exact next test)}; and at most one "
-            "{decision: 'open', title, question, why} when his work shows a question worth following for days. "
-            "Gloria's standing lines can be redirected, never dropped or answered), "
+            "should test next), next_step (required for redirect: the exact next test), "
+            "plan (REQUIRED on 'continue', 'redirect' and 'open' for any live line: an ordered executable plan Gemma "
+            "carries out one step at a time — an array of 3 to 8 steps, each "
+            "{objective: the scientific objective of this step; route: one route from THE LAB'S TOOLS; "
+            "tool: the exact source, instrument operation, plugin tool or experiment type to use; "
+            "depends_on: which earlier step's output this consumes, or '' for the first; "
+            "success_criteria: the result that would satisfy this step, or refute the line's prediction}. "
+            "Build a plan that reaches a computed finding — a fold, design, comparison, measurement or simulation "
+            "tested against a reference — not a chain of lookups. Revise the plan when the results warrant)}; "
+            "and at most one {decision: 'open', title, question, why, plan} when his work shows a question worth "
+            "following for days. Gloria's standing lines can be redirected, never dropped or answered), "
             "keep (a list, usually empty, at most two: {entry_id, why} for a review in this segment whose finding is "
             "worth him returning to — sourced, specific, and opening something; why says what it opens. Kept is not "
             "proven; he may ask dot to double-check it).")

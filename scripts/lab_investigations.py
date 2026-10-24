@@ -369,6 +369,19 @@ def _plan(investigation, context, ask):
     }
     # Smaller, complete output contract rather than the legacy journal/menu plus
     # several contradictory question contracts. No added parser/model retry.
+    if FRONTIER_PLANS and investigation.get('line_id'):
+        try:    # the frontier's plan for this line directs the step; the local model only fills in the exact request
+            import lab_lines
+            planned = lab_lines.plan_for_planner(lab_lines.get(investigation['line_id']))
+        except Exception:
+            planned = None
+        if planned:
+            task['planned_step'] = planned
+            system += (' A frontier model has set an executable plan for this line of inquiry. planned_step is the '
+                       'step to carry out now: use exactly its route and tool, consume the output of the prior step it '
+                       'names in depends_on, and return the single request that pursues its objective toward its '
+                       'success_criteria. Do not substitute a different operation; fill in the exact arguments for '
+                       'this one.')
     for row in task['results_so_far']:
         row['summary'] = str(row.get('summary') or '')[:800]
         row['output_index'] = (row.get('output_index') or [])[:24]
@@ -594,6 +607,11 @@ SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','
                            'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea',
                            'quickgo','imgvr','bvbrc'))
 MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the investigation is closed, not retried
+# When set, the frontier's executable plan for a line directs each step (objective, tool, dependency, success
+# criterion); the local model fills in the exact request rather than choosing the operation. Off by default:
+# Gloria turns it on (VINTOS_LAB_FRONTIER_PLANS=1) when she can watch the first runs. A line with no plan, or whose
+# plan is finished or abandoned, falls back to free choice, so this never freezes the Lab.
+FRONTIER_PLANS = os.environ.get('VINTOS_LAB_FRONTIER_PLANS') == '1'
 _CURRENT = {}
 
 
@@ -777,6 +795,12 @@ def _turn(context, *, ask=None, execute=None):
     except Exception as exc:
         step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
         step['error'] = str(exc)[:300]
+    if FRONTIER_PLANS and investigation.get('line_id') and step.get('state') in ('completed', 'failed', 'outcome_unknown'):
+        try:    # move the line's frontier plan on: the step done, or counted a failure (skipped after too many)
+            import lab_lines
+            lab_lines.advance_plan(investigation['line_id'], completed=step['state'] == 'completed')
+        except Exception:
+            pass
     investigation['last_step_at'] = lab.now_iso()
     closed = _budget_spent(investigation)
     if closed:

@@ -147,7 +147,8 @@ def opened_by(title, question, why, origin="vintos"):
             return None
         line = {"id": "L-" + uuid.uuid4().hex[:8], "title": title or question[:80], "question": question,
                 "why": str(why or "")[:600], "origin": origin, "standing": False, "state": "open",
-                "opened": _now(), "steps": [], "steer": [], "stalls": 0, "next_step": ""}
+                "opened": _now(), "steps": [], "steer": [], "stalls": 0, "next_step": "",
+                "plan": [], "plan_cursor": 0}
         d["lines"].append(line); _write(d)
         return line
 
@@ -284,6 +285,8 @@ def steer(decisions, by):
         note = str(dec.get("note") or "")[:600]
         if kind == "open":
             line = opened_by(dec.get("title"), dec.get("question"), dec.get("why") or note, origin="frontier:" + by)
+            if line and dec.get("plan"):
+                set_plan(line["id"], dec.get("plan"), by)
             applied.append({"decision": "open", "line_id": line["id"] if line else None,
                             **({} if line else {"refused": "too many open lines, or it repeats one"})})
             continue
@@ -301,11 +304,109 @@ def steer(decisions, by):
                 if kind == "redirect" and dec.get("next_step"):
                     line["next_step"] = str(dec["next_step"])[:700]
                     line["stalls"] = 0
+                plan = _clean_plan(dec.get("plan"))
+                if plan:   # a redirect or a renewed plan replaces the old one and starts from its first step
+                    line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
                 line["steer"] = ((line.get("steer") or []) + [{"at": _now(), "by": by, "decision": kind,
-                                                               "note": note, "next_step": line.get("next_step", "")}])[-20:]
+                                                               "note": note, "next_step": line.get("next_step", ""),
+                                                               "plan_steps": len(plan) if plan else None}])[-20:]
                 _write(d)
-        applied.append({"decision": kind, "line_id": line_id, **({} if line else {"refused": "no open line"})})
+        applied.append({"decision": kind, "line_id": line_id,
+                        **({"planned_steps": len(_clean_plan(dec.get("plan")))} if dec.get("plan") else {}),
+                        **({} if line else {"refused": "no open line"})})
     return applied
+
+
+# --- Executable plans: a frontier model sets an ordered plan for a line; Gemma carries out one step at a time. ---
+PLAN_MAX_STEPS = 8
+PLAN_STEP_MAX_FAILS = 2   # a planned step the local model cannot carry out twice is skipped, never allowed to freeze
+
+
+def _clean_plan(plan):
+    """A frontier plan, bounded and typed. Each step: a scientific objective, the route and tool to use, the prior
+    step it depends on, and what result would satisfy it. A step with no objective or route is dropped."""
+    out = []
+    for st in plan if isinstance(plan, list) else []:
+        if not isinstance(st, dict):
+            continue
+        objective = str(st.get("objective") or "").strip()[:300]
+        route = str(st.get("route") or "").strip()[:40]
+        if not objective or not route:
+            continue
+        out.append({"objective": objective, "route": route,
+                    "tool": str(st.get("tool") or st.get("instrument") or st.get("source") or "").strip()[:80],
+                    "depends_on": str(st.get("depends_on") or st.get("depends") or "").strip()[:200],
+                    "success_criteria": str(st.get("success_criteria") or st.get("success") or "").strip()[:300],
+                    "state": "pending", "fails": 0})
+        if len(out) >= PLAN_MAX_STEPS:
+            break
+    return out
+
+
+def set_plan(line_id, plan, by):
+    """Replace a line's plan (used when a line is opened with one). Returns the number of steps stored."""
+    plan = _clean_plan(plan)
+    with _locked():
+        d = _read()
+        line = next((l for l in d["lines"] if l["id"] == line_id and l.get("state") == "open"), None)
+        if line is None:
+            return 0
+        line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
+        _write(d)
+    return len(plan)
+
+
+def get(line_id):
+    """One line by id, live state, or None."""
+    return next((l for l in load()["lines"] if l.get("id") == line_id), None)
+
+
+def current_plan_step(line):
+    """The (index, step) the line is on, or None when there is no plan or it is finished."""
+    if not isinstance(line, dict):
+        return None
+    plan = line.get("plan") or []
+    i = int(line.get("plan_cursor") or 0)
+    if 0 <= i < len(plan) and plan[i].get("state") == "pending":
+        return i, plan[i]
+    return None
+
+
+def plan_for_planner(line):
+    """What the Lab's step planner is shown so it carries out the current planned step, or None for free choice."""
+    cur = current_plan_step(line)
+    if not cur:
+        return None
+    i, step = cur
+    plan = line.get("plan") or []
+    return {"step_number": i + 1, "of": len(plan), "objective": step.get("objective"),
+            "route": step.get("route"), "tool": step.get("tool"), "depends_on": step.get("depends_on"),
+            "success_criteria": step.get("success_criteria"),
+            "upcoming": [s.get("objective") for s in plan[i + 1:i + 3]]}
+
+
+def advance_plan(line_id, completed):
+    """After a Lab step on the current planned step: mark it done and move on, or count a failure and skip the step
+    once it has failed PLAN_STEP_MAX_FAILS times, so a plan the local model cannot carry out never freezes the line."""
+    with _locked():
+        d = _read()
+        line = next((l for l in d["lines"] if l.get("id") == line_id), None)
+        if line is None:
+            return
+        plan = line.get("plan") or []
+        i = int(line.get("plan_cursor") or 0)
+        if not (0 <= i < len(plan)) or plan[i].get("state") != "pending":
+            return
+        step = plan[i]
+        if completed:
+            step["state"] = "done"
+            line["plan_cursor"] = i + 1
+        else:
+            step["fails"] = int(step.get("fails") or 0) + 1
+            if step["fails"] >= PLAN_STEP_MAX_FAILS:
+                step["state"] = "skipped"
+                line["plan_cursor"] = i + 1
+        _write(d)
 
 
 def _step_line(s):
