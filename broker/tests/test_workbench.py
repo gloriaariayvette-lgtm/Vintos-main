@@ -36,6 +36,13 @@ check("SAVE updates the same working file and keeps the prior version in .histor
       again == out["saved"][0] and open(again).read() == "x = 1\n"
       and any("def tend" in open(os.path.join(W.CODE_HISTORY, h)).read() for h in os.listdir(W.CODE_HISTORY)))
 check("a name cannot leave the code folder", os.path.dirname(W.save_code("../../etc/evil.sh", "x")) == W.CODE)
+check("stray characters around a filename are dropped, never turned into a trailing underscore (udp_probe.py_)",
+      os.path.basename(W.save_code("udp_probe.py_", "x")) == "udp_probe.py"
+      and os.path.basename(W.save_code("`udp_probe.py`", "x")) == "udp_probe.py"
+      and os.path.basename(W.save_code("udp_probe.py<|", "x")) == "udp_probe.py"
+      and os.path.basename(W.save_code("  udp probe.py ", "x")) == "udp_probe.py")
+check("RUN cleans the name the same way, so a trailing-underscore name still finds the saved file",
+      not W.run_code(dict(cfg, repo="/x"), "udp_probe.py_").startswith("no such saved file"))
 check("its memory is this thread only: the first message it sees is its own instructions, then her words",
       seen[0][0]["role"] == "system" and seen[0][1]["content"] == "Where is tend? Write a fix." and len(seen[0]) == 2)
 seen.clear(); W.turn("t2", "hello", cfg, model_call=lambda c, m: (seen.append(m), "hi")[1])

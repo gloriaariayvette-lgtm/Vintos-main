@@ -597,10 +597,20 @@ def git(cfg, arg):
     return out[:20000] + ("\n...[cut]" if len(out) > 20000 else "")
 
 
+def _clean_name(name):
+    """A tidy filename from whatever the model wrote: strip quotes/backticks/brackets, drop any other stray character
+    (so `udp_probe.py` or udp_probe.py<junk> never becomes udp_probe.py_), collapse spaces, keep the real extension."""
+    name = os.path.basename(_unwrap(str(name or "")).strip())
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^A-Za-z0-9._-]", "", name)   # drop junk entirely, never turn it into an underscore
+    name = name.strip("_.-")                       # trim edge punctuation, but a trailing .py is kept (ends in a letter)
+    return name[:120] or "untitled.txt"
+
+
 def save_code(name, code):
     """Write code/<name>, its one working file, keeping the previous version in code/.history so an edit loop never
     loses a good draft. A plain file, inside the code folder only."""
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(name.strip()))[:120].lstrip(".") or "untitled.txt"
+    name = _clean_name(name)
     os.makedirs(CODE, exist_ok=True)
     path = os.path.join(CODE, name)
     if os.path.exists(path):   # keep the version it is replacing, so an edit loop never loses a good draft
@@ -638,7 +648,7 @@ def run_code(cfg, arg):
     Turn 'run code offline' on in Settings to take the network away."""
     import shlex, subprocess, tempfile
     words = [w for w in (shlex.split(_unwrap(arg)) if arg else []) if w not in ("--net", "--network", "--offline")]
-    name = os.path.basename(words[0]) if words else ""
+    name = _clean_name(words[0]) if words else ""
     path = _inside(CODE, name)
     if not name or not path or not os.path.isfile(path):
         return "no such saved file: code/%s — SAVE it first, then RUN it" % (name or "?")
