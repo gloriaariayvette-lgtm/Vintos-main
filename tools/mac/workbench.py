@@ -447,8 +447,16 @@ def discover_hosts(cfg, arg=""):
     return head + ("\n".join(rows) or "no other devices answered — is Wi-Fi the same network as the Acer?") + (note if not one else "")
 
 
-GIT_READ = {"log", "show", "diff", "branch", "status", "ls-tree", "grep", "rev-parse", "describe", "shortlog", "blame"}
-GIT_NEVER = re.compile(r"^(?:--output|-o$|--exec|-c$|--ext-diff|--upload-pack|--receive-pack|--config|-C$|--git-dir|--work-tree)")
+# inherently read-only subcommands: their positional arguments are refs or paths, never a mutating action
+GIT_READONLY = {"log", "show", "diff", "status", "ls-tree", "grep", "rev-parse", "describe", "shortlog", "blame"}
+GIT_SUBS = GIT_READONLY | {"branch"}
+# options that could write a file or run an external program, rejected on every subcommand
+GIT_ESCAPE = re.compile(r"^(?:-o|--output(=.*)?|--exec(=.*)?|--upload-pack(=.*)?|--receive-pack(=.*)?|--ext-diff|--textconv)$")
+# `branch` is list-only here: only these (read/list) flags, and never a branch name, so it cannot create, rename,
+# delete, move, copy, force, or change upstream (Chat, 24 October: -D, -m and a bare name slipped through before)
+GIT_BRANCH_LIST = re.compile(r"^(?:-a|--all|-r|--remotes|-v|-vv|--verbose|-l|--list|--show-current|-q|--quiet|"
+                             r"--color(=.*)?|--no-color|--column(=.*)?|--no-column|--sort=.*|--points-at(=.*)?|"
+                             r"--contains(=.*)?|--no-contains(=.*)?|--merged(=.*)?|--no-merged(=.*)?|--format=.*)$")
 
 
 def git(cfg, arg):
@@ -462,13 +470,22 @@ def git(cfg, arg):
     if len(words) >= 2 and words[0] == "in":
         root, folder = where(cfg, words[1]); words = words[2:]
         if not folder: return _refused(cfg, arg.split()[1])
-    if not words or words[0] not in GIT_READ:
-        return "only read-only git here: %s" % ", ".join(sorted(GIT_READ))
-    if any(GIT_NEVER.match(w) for w in words[1:]):
-        return "that git option is not allowed here"
-    cmd = ["git", "-C", folder, "--no-pager", "-c", "core.pager=cat", words[0]]
-    if words[0] in ("log", "show", "diff"): cmd += ["--no-ext-diff", "--no-textconv"]
-    if words[0] == "branch" and not any(w.startswith("-") for w in words[1:]): words = words + ["-a"]
+    if not words or words[0] not in GIT_SUBS:
+        return "only read-only git here: %s, and branch (list-only)" % ", ".join(sorted(GIT_READONLY))
+    sub, args = words[0], words[1:]
+    if any(GIT_ESCAPE.match(w) for w in args):
+        return "that git option is not allowed here (it could write a file or run a program)"
+    if sub == "branch":
+        for w in args:
+            if not w.startswith("-"):
+                return "GIT branch only lists branches here; it will not create, rename or delete one"
+            if not GIT_BRANCH_LIST.match(w):
+                return "GIT branch is list-only here; '%s' could change a branch and is refused" % w
+        if not args:
+            args = ["-a"]
+    cmd = ["git", "-C", folder, "--no-pager", "-c", "core.pager=cat", sub]
+    if sub in ("log", "show", "diff"): cmd += ["--no-ext-diff", "--no-textconv"]
+    words = [sub] + args
     try:
         r = subprocess.run(cmd + words[1:], capture_output=True, text=True, timeout=30)
     except Exception as e:

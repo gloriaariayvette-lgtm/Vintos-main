@@ -67,8 +67,25 @@ subprocess.run(["git", "init", "-q", code]); subprocess.run(["git", "-C", code, 
 subprocess.run(["git", "-C", code, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first tend"])
 check("read-only git runs: log", "first tend" in W.git(cfg, "log --oneline"))
 check("git that writes is refused", W.git(cfg, "commit -m x").startswith("only read-only git")
-      and W.git(cfg, "log --output=/tmp/x") == "that git option is not allowed here"
+      and "not allowed" in W.git(cfg, "log --output=/tmp/x")
       and W.git(cfg, "in /etc log").startswith("not readable here"))
+# the read-only boundary on `branch` (Chat, 24 October): no create, delete, rename, move, copy, force, upstream
+import subprocess as _sp
+real = _sp.run; _sp.run = real_run if 'real_run' in dir() else _sp.run
+def _refs(): return sorted(l.strip().lstrip("* ").split()[0] for l in real(["git","-C",code,"branch","-a"],capture_output=True,text=True).stdout.splitlines() if l.strip())
+real(["git","-C",code,"branch","keep-me"],capture_output=True)
+before = _refs()
+for bad in ("branch -D keep-me", "branch -d keep-me", "branch -m keep-me renamed", "branch -M keep-me renamed",
+            "branch newbranch", "branch -c keep-me copy", "branch -f keep-me HEAD", "branch --delete keep-me",
+            "branch keep-me origin/main", "branch -u origin/main"):
+    r = W.git(cfg, bad)
+    check("refused and nothing changed: GIT %s" % bad, "list-only" in r or "will not create" in r, r)
+check("the branches are exactly as before any refused branch command", _refs() == before, (_refs(), before))
+check("listing branches still works", "keep-me" in W.git(cfg, "branch") and "keep-me" in W.git(cfg, "branch -a")
+      and "keep-me" in W.git(cfg, "branch --merged"))
+check("ordinary read commands still work", "first tend" in W.git(cfg, "log --oneline")
+      and "def tend" in W.git(cfg, "show HEAD:scripts/alarm.py") and W.git(cfg, "status").strip() != ""
+      and "alarm.py" in W.git(cfg, "ls-tree --name-only HEAD scripts/"))
 check("FETCH takes only web addresses", W.fetch("file:///etc/passwd").startswith("refused"))
 check("the thread is kept on disk with what was looked up", len(json.load(open(W.thread_path("t1")))["messages"]) >= 4)
 # progress is written as the turn runs, and the flag clears when it is done
