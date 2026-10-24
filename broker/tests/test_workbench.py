@@ -90,19 +90,23 @@ check("a folder link lists that folder of the branch, and says how to go further
 check("the repository link itself shows its branches and top level", "main" in root and "scripts/" in root, root)
 check("a GitHub link into his own repository is read from his checkout, not the web",
       page.startswith("his repository, branch main, scripts/alarm.py") and "def tend(now):" in page, page[:200])
-other = os.path.join(W.REPOS, "someone__tool"); os.makedirs(W.REPOS, exist_ok=True)
-real_run(["git", "clone", "-q", code, other])
-real_run(["git", "-C", other, "update-ref", "refs/remotes/origin/main", "HEAD"])
-W._local_repo = lambda cfg_, owner, name: (other, False)
-subprocess.run = no_fetch
+calls = []
+def api(path):
+    calls.append(path)
+    if path == "/repos/someone/tool": return {"default_branch": "main"}
+    if path.startswith("/repos/someone/tool/branches"): return [{"name": "main"}, {"name": "feat/x"}]
+    if path == "/repos/someone/tool/contents/?ref=main":
+        return [{"name": "src", "type": "dir", "path": "src"}, {"name": "README.md", "type": "file", "path": "README.md"}]
+    if path == "/repos/someone/tool/contents/src/app.py?ref=feat%2Fx":
+        import base64; return {"encoding": "base64", "content": base64.b64encode(b"def run():\n    pass\n").decode()}
+    raise AssertionError(path)
+W._api, W._gh_token = api, lambda: ""
 o_root = W.fetch_link(cfg, "https://github.com/someone/tool")
-o_file = W.fetch_link(cfg, "https://github.com/someone/tool/blob/main/scripts/alarm.py")
-subprocess.run = real_run
-check("another repository's link is cloned to the Workbench and navigable: its branches, top level, and files",
-      "github.com/someone/tool (cloned to %s)" % other in o_root and "scripts/" in o_root and "def tend(now):" in o_file
-      and ("GIT in %s show origin/main:<path>" % other) in o_file, (o_root[:300], o_file[:300]))
-check("and its files can be read and searched like his", "def tend" in W.read(cfg, other + "/scripts/alarm.py")
-      and "alarm.py:1:" in W.grep(cfg, "def tend", other)
-      and "first tend" in W.git(cfg, "in %s log --oneline" % other))
+o_file = W.fetch_link(cfg, "https://github.com/someone/tool/blob/feat/x/src/app.py")
+check("another repository is read through GitHub, not copied to the Mac: its branches, top level, and links to go on",
+      "Branches: main, feat/x" in o_root and "https://github.com/someone/tool/tree/main/src" in o_root
+      and "FETCH any link above" in o_root and not os.path.exists(os.path.join(W.HOME, "repos")), o_root)
+check("a file on a branch whose name holds a slash is read", "someone/tool, branch feat/x, src/app.py" in o_file
+      and "def run():" in o_file, o_file)
 check("nothing reached the network", NET == [], NET[:3])
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
