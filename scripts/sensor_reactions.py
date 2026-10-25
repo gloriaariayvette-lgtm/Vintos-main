@@ -16,6 +16,7 @@ is ever touched from here; a reaction is a thing he may say or feel, never a thi
     python3 sensor_reactions.py                  status: limits, pending reactions, the last decisions
 """
 import os, sys, json, time, uuid
+from store_guard import serialized
 
 WS = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
@@ -76,6 +77,7 @@ def _change(sensor, prev, value, meta):
     return False, "unknown sensor"
 
 
+@serialized('STATE')
 def observe(sensor, value, at=None, meta=None, now=None):
     if sensor not in LIMITS:
         return {"reacted": False, "why": "no limits named for sensor %r; a sensor without a contract never reacts" % sensor, "reaction": None}
@@ -127,6 +129,7 @@ def _feel(reaction, delta):
         reaction["felt"] = "emotion organ unavailable: %s" % str(e)[:80]
 
 
+@serialized('STATE')
 def pending(now=None):
     now = now if now is not None else time.time()
     st = _load_state()
@@ -136,6 +139,7 @@ def pending(now=None):
     return live
 
 
+@serialized('STATE')
 def consume(reaction_id, now=None):
     st = _load_state()
     for r in st.get("pending", []):
@@ -144,6 +148,7 @@ def consume(reaction_id, now=None):
     _save_state(st)
 
 
+@serialized('STATE')
 def context_line(now=None):
     """The unexpired context reactions as one line for his prompt; each is consumed once served."""
     rs = [r for r in pending(now) if r.get("channel") == "context"]
