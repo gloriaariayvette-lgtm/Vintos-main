@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import uuid
 import subprocess
@@ -93,6 +94,24 @@ def tool_name(route, request):
     if route == 'source': return 'source:'+str(request.get('source'))
     if route == 'experiment': return 'experiment:'+str(request.get('experiment'))
     return route
+
+
+def plan_step_matches(plan_ref, route, request):
+    """Whether a request is the operation a planned step asked for: the same route (a source named as the route
+    counts as that source), and, when the step names a tool, that tool among the request's own identifiers."""
+    norm = lambda x: re.sub(r'[^a-z0-9]', '', str(x or '').lower())
+    want_route, want_tool = str(plan_ref.get('route') or '').lower(), norm(plan_ref.get('tool'))
+    if want_route in SOURCE_ROUTES:
+        want_tool, want_route = want_tool or norm(want_route), 'source'
+    kind = lambda r: 'instrument' if r in ('instrument', 'native') else r
+    if kind(want_route) != kind(route):
+        return False
+    if len(want_tool) < 3:
+        return True
+    r = request if isinstance(request, dict) else {}
+    seen = [tool_name(route, r)] + [r.get(k) for k in ('source', 'operation', 'skill', 'tool', 'plugin', 'experiment')]
+    seen += [str(r.get('source') or '') + str(r.get('operation') or ''), str(r.get('plugin') or '') + str(r.get('tool') or '')]
+    return any(want_tool in norm(x) for x in seen if x)
 
 
 def uncertain(exc):
@@ -369,6 +388,7 @@ def _plan(investigation, context, ask):
     }
     # Smaller, complete output contract rather than the legacy journal/menu plus
     # several contradictory question contracts. No added parser/model retry.
+    planned = None
     if FRONTIER_PLANS and investigation.get('line_id'):
         try:    # the frontier's plan for this line directs the step; the local model only fills in the exact request
             import lab_lines
@@ -379,9 +399,9 @@ def _plan(investigation, context, ask):
             task['planned_step'] = planned
             system += (' A frontier model has set an executable plan for this line of inquiry. planned_step is the '
                        'step to carry out now: use exactly its route and tool, consume the output of the prior step it '
-                       'names in depends_on, and return the single request that pursues its objective toward its '
-                       'success_criteria. Do not substitute a different operation; fill in the exact arguments for '
-                       'this one.')
+                       'names in depends_on (inputs_from gives that step id; consume it with {"step":id,"path":[...]}), '
+                       'and return the single request that pursues its objective toward its success_criteria. Do not '
+                       'substitute a different operation: one that does not match the planned route and tool is not run.')
     for row in task['results_so_far']:
         row['summary'] = str(row.get('summary') or '')[:800]
         row['output_index'] = (row.get('output_index') or [])[:24]
@@ -422,7 +442,10 @@ def _plan(investigation, context, ask):
                'Completed outputs remain available even when recent attempts failed. '
                'Choose your own operation from the available tools; route is a single word. '
                'Use {"step":"id","path":["field",0]} inside request to consume stored output.')
-    return lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.35))
+    value = lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.35))
+    if planned and isinstance(value, dict):
+        value['_planned'] = planned
+    return value
 
 
 
@@ -689,9 +712,13 @@ def _turn(context, *, ask=None, execute=None):
         return {'kind':'investigation_wait','investigation':investigation['id'],'state':'waiting_not_sent','retry_at':waiting['retry_at']}
     if waiting:
         value={'route':waiting['route'],'request':waiting['request'],'step_question':waiting['question'],'why':waiting.get('why','')}
+        if waiting.get('plan_ref'): value['_planned'] = waiting['plan_ref']
         waiting['state']='superseded_not_sent'
     else:
         value = _plan(investigation, context, ask)
+    planned = value.pop('_planned', None) if isinstance(value, dict) else None
+    plan_ref = ({k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
+                if FRONTIER_PLANS and isinstance(planned, dict) else None)
     if not isinstance(value, dict) or not str(value.get('route') or ''):
         return _refuse(data, investigation, 'investigation planner returned no route')
     investigation['planning_failures'] = 0
@@ -756,7 +783,8 @@ def _turn(context, *, ask=None, execute=None):
     step = {'id':'S-'+uuid.uuid4().hex[:12], 'at':lab.now_iso(), 'route':route,
             'question':str(value.get('step_question') or investigation['question']),
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
-            'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {})}
+            'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
+            **({'plan_ref':plan_ref} if plan_ref else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
     # are not retried automatically (especially hosted inference).
     step['state'] = 'started'
@@ -771,6 +799,9 @@ def _turn(context, *, ask=None, execute=None):
         step['input_refs'] = _inputs(request)
         step['reference_origin'] = 'explicit_or_exact_equal_returned_value' if step['input_refs'] else None
         step['tool'] = tool_name(route, request)
+        if plan_ref and not plan_step_matches(plan_ref, route, request):
+            raise ValueError('planned step %s requires %s/%s; the request was %s, so it was not run'
+                             % (plan_ref.get('step_number'), plan_ref.get('route'), plan_ref.get('tool') or '*', step['tool']))
         from lab_tool_calls import execution_request
         resolved = execution_request(route,resolve(request, investigation['steps'][:-1]))
         step['request_sha256'] = hashlib.sha256(json.dumps([route,resolved],sort_keys=True).encode()).hexdigest()
@@ -818,12 +849,16 @@ def _turn(context, *, ask=None, execute=None):
     except Exception as exc:
         step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
         step['error'] = str(exc)[:300]
-    if FRONTIER_PLANS and investigation.get('line_id') and step.get('state') in ('completed', 'failed', 'outcome_unknown'):
-        try:    # move the line's frontier plan on: the step done, or counted a failure (skipped after too many)
+    if FRONTIER_PLANS and plan_ref and step.get('state') in ('completed', 'failed'):
+        # Settle the attempt against the exact plan step it was made for. Credit needs a completed operation with a
+        # retained output; an unknown outcome or a send still waiting is neither credit nor failure.
+        retained = step['state'] == 'completed' and bool(step.get('output_file') and step.get('output_sha256'))
+        try:
             import lab_lines
-            lab_lines.advance_plan(investigation['line_id'], completed=step['state'] == 'completed')
-        except Exception:
-            pass
+            step['plan_credit'] = lab_lines.advance_plan(plan_ref['line_id'], plan_ref['plan_id'], plan_ref['step_index'],
+                                                         completed=retained, result_step=step['id'] if retained else None)
+        except Exception as exc:
+            step['plan_credit'] = 'unrecorded: %s' % str(exc)[:120]
     investigation['last_step_at'] = lab.now_iso()
     closed = _budget_spent(investigation)
     if closed:

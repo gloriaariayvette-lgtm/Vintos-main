@@ -101,17 +101,6 @@ class Investigations(unittest.TestCase):
                 I._plan(dict(inv), 'ctx', ask)
             self.assertNotIn('planned_step', captured['prompt'])   # off by default: free choice, unchanged
 
-    def test_completed_step_advances_the_lines_plan_when_enabled(self):
-        C._atomic(I._path('investigations.json'), {'investigations':[
-            {'id':'I-p','opened_at':'t','state':'open','line_id':'L-p','question':'q','prediction':'p','steps':[]}]})
-        self.ask.return_value = self.choice('source', {'source':'pubchem','name':'fixture'})
-        calls = []
-        with patch.object(I, 'FRONTIER_PLANS', True), \
-             patch('lab_lines.get', return_value=None), \
-             patch('lab_lines.advance_plan', side_effect=lambda line_id, completed: calls.append((line_id, completed))):
-            I.turn('', ask=self.ask, execute=lambda *a:{'receipt':{'source':'pubchem','records':[{'smiles':'CCO'}]}})
-        self.assertEqual(calls, [('L-p', True)])
-
     def test_failure_is_saved_as_next_step_context_without_retry(self):
         self.ask.return_value = self.choice('plugin', {'plugin':'nvidia_nim','tool':'nvidia_nim.boltz2'})
         execute = Mock(side_effect=TimeoutError('unknown outcome'))

@@ -306,7 +306,7 @@ def steer(decisions, by):
                     line["stalls"] = 0
                 plan = _clean_plan(dec.get("plan"))
                 if plan:   # a redirect or a renewed plan replaces the old one and starts from its first step
-                    line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
+                    _new_plan(line, plan, by)
                 line["steer"] = ((line.get("steer") or []) + [{"at": _now(), "by": by, "decision": kind,
                                                                "note": note, "next_step": line.get("next_step", ""),
                                                                "plan_steps": len(plan) if plan else None}])[-20:]
@@ -318,13 +318,17 @@ def steer(decisions, by):
 
 
 # --- Executable plans: a frontier model sets an ordered plan for a line; Gemma carries out one step at a time. ---
+# A step is "done" when its operation completed and its output was retained. That is not a finding: whether the
+# step's success_criteria were met is judged by the investigation's review, never here.
 PLAN_MAX_STEPS = 8
 PLAN_STEP_MAX_FAILS = 2   # a planned step the local model cannot carry out twice is skipped, never allowed to freeze
+_STEP_REF = re.compile(r"\b(?:step|#)\s*(\d+)", re.I)
 
 
 def _clean_plan(plan):
     """A frontier plan, bounded and typed. Each step: a scientific objective, the route and tool to use, the prior
-    step it depends on, and what result would satisfy it. A step with no objective or route is dropped."""
+    step it depends on, and what result would satisfy it. A step with no objective or route is dropped. A
+    dependency written as "step N" is kept as `requires` (earlier steps only), so advancement can enforce it."""
     out = []
     for st in plan if isinstance(plan, list) else []:
         if not isinstance(st, dict):
@@ -333,14 +337,21 @@ def _clean_plan(plan):
         route = str(st.get("route") or "").strip()[:40]
         if not objective or not route:
             continue
+        depends = str(st.get("depends_on") or st.get("depends") or "").strip()[:200]
         out.append({"objective": objective, "route": route,
                     "tool": str(st.get("tool") or st.get("instrument") or st.get("source") or "").strip()[:80],
-                    "depends_on": str(st.get("depends_on") or st.get("depends") or "").strip()[:200],
+                    "depends_on": depends,
+                    "requires": sorted({int(n) - 1 for n in _STEP_REF.findall(depends) if 0 < int(n) <= len(out)}),
                     "success_criteria": str(st.get("success_criteria") or st.get("success") or "").strip()[:300],
                     "state": "pending", "fails": 0})
         if len(out) >= PLAN_MAX_STEPS:
             break
     return out
+
+
+def _new_plan(line, plan, by):
+    line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
+    line["plan_id"] = "P-" + uuid.uuid4().hex[:10]
 
 
 def set_plan(line_id, plan, by):
@@ -351,63 +362,86 @@ def set_plan(line_id, plan, by):
         line = next((l for l in d["lines"] if l["id"] == line_id and l.get("state") == "open"), None)
         if line is None:
             return 0
-        line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
+        _new_plan(line, plan, by)
         _write(d)
     return len(plan)
 
 
-def get(line_id):
-    """One line by id, live state, or None."""
-    return next((l for l in load()["lines"] if l.get("id") == line_id), None)
+def plan_id(line):
+    """The plan's revision id; a plan written before ids existed is named by when it was set."""
+    return (line or {}).get("plan_id") or ("legacy-" + str((line or {}).get("plan_at") or ""))
+
+
+def _settled(plan):
+    """Each step's state with dependencies applied: a pending step whose prerequisite was skipped or blocked is
+    blocked. Nothing is invented for it; it is passed over so the steps that do not need it can still run."""
+    states = []
+    for st in plan:
+        state = st.get("state", "pending")
+        if state == "pending" and any(0 <= r < len(states) and states[r] in ("skipped", "blocked")
+                                      for r in st.get("requires") or []):
+            state = "blocked"
+        states.append(state)
+    return states
 
 
 def current_plan_step(line):
-    """The (index, step) the line is on, or None when there is no plan or it is finished."""
+    """The (index, step) the line is on: the first pending step that is not blocked, or None."""
     if not isinstance(line, dict):
         return None
     plan = line.get("plan") or []
-    i = int(line.get("plan_cursor") or 0)
-    if 0 <= i < len(plan) and plan[i].get("state") == "pending":
-        return i, plan[i]
+    states = _settled(plan)
+    for i in range(int(line.get("plan_cursor") or 0), len(plan)):
+        if states[i] == "pending":
+            return i, plan[i]
     return None
 
 
 def plan_for_planner(line):
-    """What the Lab's step planner is shown so it carries out the current planned step, or None for free choice."""
+    """What the Lab's step planner is shown so it carries out the current planned step, or None for free choice.
+    Carries the plan id and step index so the attempt can be credited to exactly this step of this plan."""
     cur = current_plan_step(line)
     if not cur:
         return None
     i, step = cur
     plan = line.get("plan") or []
-    return {"step_number": i + 1, "of": len(plan), "objective": step.get("objective"),
+    inputs = [{"step_number": r + 1, "investigation_step": plan[r].get("result_step")}
+              for r in step.get("requires") or [] if 0 <= r < len(plan) and plan[r].get("result_step")]
+    return {"line_id": line.get("id"), "plan_id": plan_id(line), "step_index": i,
+            "step_number": i + 1, "of": len(plan), "objective": step.get("objective"),
             "route": step.get("route"), "tool": step.get("tool"), "depends_on": step.get("depends_on"),
-            "success_criteria": step.get("success_criteria"),
+            "inputs_from": inputs, "success_criteria": step.get("success_criteria"),
             "upcoming": [s.get("objective") for s in plan[i + 1:i + 3]]}
 
 
-def advance_plan(line_id, completed):
-    """After a Lab step on the current planned step: mark it done and move on, or count a failure and skip the step
-    once it has failed PLAN_STEP_MAX_FAILS times, so a plan the local model cannot carry out never freezes the line."""
+def advance_plan(line_id, plan, step_index, completed, result_step=None):
+    """Settle one attempt at one planned step. Credit only the step it was made for, in the plan it was made
+    under: a replaced plan, or a step that is no longer current, takes nothing ("stale"). completed=True means the
+    operation that step requires completed with its output retained; anything else counts one failure, and a step
+    that fails PLAN_STEP_MAX_FAILS times is skipped. Returns the step's new state, or "stale"."""
     with _locked():
         d = _read()
         line = next((l for l in d["lines"] if l.get("id") == line_id), None)
-        if line is None:
-            return
-        plan = line.get("plan") or []
-        i = int(line.get("plan_cursor") or 0)
-        if not (0 <= i < len(plan)) or plan[i].get("state") != "pending":
-            return
-        step = plan[i]
+        if line is None or plan_id(line) != plan:
+            return "stale"
+        steps = line.get("plan") or []
+        cur = current_plan_step(line)
+        if cur is None or cur[0] != step_index:
+            return "stale"
+        step = steps[step_index]
         if completed:
-            step["state"] = "done"
-            line["plan_cursor"] = i + 1
+            step.update(state="done", outcome="operation_completed", result_step=result_step)
         else:
             step["fails"] = int(step.get("fails") or 0) + 1
             if step["fails"] >= PLAN_STEP_MAX_FAILS:
                 step["state"] = "skipped"
-                line["plan_cursor"] = i + 1
+        for st, state in zip(steps, _settled(steps)):
+            if state == "blocked" and st.get("state") == "pending":
+                st.update(state="blocked", outcome="prerequisite_not_available")
+        nxt = current_plan_step(line)
+        line["plan_cursor"] = nxt[0] if nxt else len(steps)
         _write(d)
-
+        return step["state"]
 
 def _step_line(s):
     return "  - %s%s: %s -> %s%s" % (s.get("at", "")[:16], (" [%s]" % s["source"]) if s.get("source") else "",
