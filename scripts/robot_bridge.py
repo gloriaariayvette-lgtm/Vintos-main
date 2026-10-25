@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import robot_core as rc
 from fastapi import FastAPI, Request, HTTPException
 
-APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
+from house_auth import require_secret as _house_secret
+APP_SECRET = _house_secret()
 PORT = int(os.environ.get("VINTOS_ROBOT_PORT", "8404"))
 app = FastAPI(title="Vintos robot bridge", version="1.0")
 
