@@ -29,6 +29,13 @@ import paid_http
 import os, re, json, glob, time, subprocess, shutil
 
 
+def _house_matches(supplied, secret):
+    """Constant-time; never true while the house credential is unconfigured."""
+    import hmac
+    return bool(secret) and isinstance(supplied, str) and bool(supplied) and hmac.compare_digest(
+        supplied.encode("utf-8", "replace"), secret.encode("utf-8", "replace"))
+
+
 def _said_when(e):
     """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
     try:
@@ -776,7 +783,7 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
     from fastapi.responses import JSONResponse
 
     def _auth(request):
-        if request.headers.get("X-Vintos-Secret", "") != secret:
+        if not _house_matches(request.headers.get("X-Vintos-Secret"), secret):
             raise HTTPException(status_code=403, detail="Unauthorized")
 
     @app.get("/api/chat/study/log")

@@ -31,6 +31,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 from urllib import request as urlrequest
 
+
+def _house_matches(supplied, secret):
+    """Constant-time; never true while the house credential is unconfigured."""
+    import hmac
+    return bool(secret) and isinstance(supplied, str) and bool(supplied) and hmac.compare_digest(
+        supplied.encode("utf-8", "replace"), secret.encode("utf-8", "replace"))
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
@@ -618,7 +625,7 @@ def register(app: Any, secret: str) -> None:
     from fastapi import HTTPException, Request
 
     def auth(request: Any) -> None:
-        if request.headers.get("X-Vintos-Secret", "") != secret:
+        if not _house_matches(request.headers.get("X-Vintos-Secret"), secret):
             raise HTTPException(status_code=403, detail="Unauthorized")
 
     @app.get("/api/desktop/status")

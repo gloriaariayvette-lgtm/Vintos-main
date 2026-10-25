@@ -107,7 +107,8 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         return receipt
 
     def phone(request):
-        if not app_secret or request.headers.get("X-Vintos-Secret") != app_secret:
+        from house_auth import matches
+        if not matches(request.headers.get("X-Vintos-Secret", ""), app_secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     @routes.get("/api/watch/live")

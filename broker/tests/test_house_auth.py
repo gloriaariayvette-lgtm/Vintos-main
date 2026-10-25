@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts'))
 import house_auth as a
-import house_auth_rollout as rollout
 SECRET='isolated-test-house-credential-only-0000'
 
 class Admission(unittest.TestCase):
@@ -21,6 +21,13 @@ class Admission(unittest.TestCase):
         with patch.object(a,'LEGACY_SHA256',hashlib.sha256(SECRET.encode()).hexdigest()),patch.dict(os.environ,{'VINTOS_SECRET':SECRET}):
             with self.assertRaises(RuntimeError): a.require_secret()
         with patch.dict(os.environ,{'VINTOS_SECRET':SECRET}):self.assertEqual(a.require_secret(),SECRET)
+        for value in ['', 'short', ' '+SECRET]:
+            with patch.dict(os.environ,{'VINTOS_SECRET':value}):self.assertEqual(a.configured_secret(log=False),'')
+        self.assertFalse(a.matches('', ''));self.assertFalse(a.matches(None, SECRET));self.assertFalse(a.matches('x', ''))
+        self.assertTrue(a.matches(SECRET, SECRET));self.assertFalse(a.matches(SECRET+'x', SECRET))
+        with self.assertRaises(ValueError):a.issue('', 'read')
+        self.assertFalse(a.valid('', a.issue(SECRET,'read'), 'read'))
+        self.assertEqual(a.signed_media('/api/art/x', ''), '/api/art/x')
 
     def test_tickets_expiry_signature_and_audience(self):
         token=a.issue(SECRET,'ws:events',60,100)
@@ -29,7 +36,7 @@ class Admission(unittest.TestCase):
             self.assertFalse(a.valid(secret,token,audience,now))
         for token in ['', 'x'*1600, 'bad.bad', None]:self.assertFalse(a.valid(SECRET,token,'read'))
 
-    def call(self,path,headers=None,kind='http',protocols=None,query=b'',method='GET'):
+    def call(self,path,headers=None,kind='http',protocols=None,query=b'',method='GET',secret=SECRET,public=('/api/gcs','/api/food-order/review/{token}/approve')):
         reached=[];messages=[]
         async def app(scope,receive,send):
             reached.append(scope.copy())
@@ -37,7 +44,7 @@ class Admission(unittest.TestCase):
         async def receive():return {'type':'http.request','body':b''}
         async def send(message):messages.append(message)
         scope={'type':kind,'path':path,'method':method,'headers':headers or [],'query_string':query,'subprotocols':protocols or []}
-        asyncio.run(a.HouseReadGuard(app,SECRET,lambda token:token=='Bearer watch-fixture')(scope,receive,send))
+        asyncio.run(a.HouseReadGuard(app,secret,lambda token:token=='Bearer watch-fixture',public_writes=public)(scope,receive,send))
         return reached,messages
 
     def test_every_unknown_get_and_head_denied(self):
@@ -48,7 +55,7 @@ class Admission(unittest.TestCase):
                 self.assertIn((b'cache-control',b'no-store'),msg[0]['headers'])
 
     def test_public_assets_do_not_include_memory(self):
-        for path in a.PUBLIC_GETS|{'/avatar-models/public.glb','/models/public.glb'}:
+        for path in set(a.PUBLIC_GETS)|{'/avatar-models/public.glb','/models/public.glb'}:
             self.assertTrue(self.call(path)[0])
         self.assertFalse(a.is_public_get('/api/history'))
 
@@ -85,45 +92,87 @@ class Admission(unittest.TestCase):
     def test_queries_redacted_even_when_rejected(self):
         self.assertFalse(self.call('/api/history',query=b'access_token=bad')[0])
 
-    def test_post_authorization_is_left_to_existing_handlers(self):
-        self.assertTrue(self.call('/api/voice/token',method='POST')[0])
+    def test_every_method_is_guarded_not_only_reads(self):
+        for method in ['POST','PUT','PATCH','DELETE','OPTIONS']:
+            for path in ['/api/landings','/api/stratagem/owner/stop','/api/new-private-write','/api/voice/token']:
+                reached,msg=self.call(path,method=method)
+                self.assertFalse(reached,(method,path));self.assertEqual(msg[0]['status'],401)
+                self.assertFalse(self.call(path,[(b'x-vintos-secret',b'wrong')],method=method)[0])
+                # the read session cookie is not a write credential
+                self.assertFalse(self.call(path,[(b'cookie',('vintos_read='+a.issue(SECRET,'read')).encode())],method=method)[0])
+            self.assertTrue(self.call('/api/landings',[(b'x-vintos-secret',SECRET.encode())],method=method)[0])
 
-class Cutover(unittest.TestCase):
+    def test_reviewed_public_writes_and_their_templates(self):
+        self.assertTrue(self.call('/api/gcs',method='POST')[0])
+        self.assertTrue(self.call('/api/food-order/review/abc/approve',method='POST')[0])
+        self.assertFalse(self.call('/api/food-order/review/abc/def/approve',method='POST')[0])
+        self.assertFalse(self.call('/api/gcs/other',method='POST')[0])
+        self.assertTrue(self.call('/api/auth/session',method='POST')[0])   # it checks the credential itself
+
+    def test_watch_bearer_on_watch_writes_only(self):
+        h=[(b'authorization',b'Bearer watch-fixture')]
+        for path in ['/api/watch/telemetry','/api/watch/register','/api/voice/token']:
+            self.assertFalse(self.call(path,method='POST')[0]);self.assertTrue(self.call(path,h,method='POST')[0])
+        self.assertFalse(self.call('/api/watch/live',h,method='POST')[0])
+        self.assertFalse(self.call('/api/landings',h,method='POST')[0])
+
+    def test_cookie_admits_only_the_plain_forms_and_stage_query_only_its_pages(self):
+        cookie=[(b'cookie',('vintos_read='+a.issue(SECRET,'read')).encode())]
+        self.assertTrue(self.call('/aq/answer',cookie,method='POST')[0])
+        self.assertFalse(self.call('/aq/answer',method='POST')[0])
+        self.assertTrue(self.call('/avatar/stage/stills',query=('s='+SECRET).encode())[0])
+        self.assertFalse(self.call('/avatar/stage/stills',query=b's=wrong')[0])
+        self.assertFalse(self.call('/api/history',query=('s='+SECRET).encode())[0])
+
+    def test_unconfigured_fails_closed_but_public_still_answers(self):
+        for method in ['GET','POST']:
+            for headers in [[],[(b'x-vintos-secret',b'')],[(b'x-vintos-secret',SECRET.encode())]]:
+                reached,msg=self.call('/api/history',headers,method=method,secret='')
+                self.assertFalse(reached);self.assertEqual(msg[0]['status'],503)
+        self.assertTrue(self.call('/',secret='')[0]);self.assertTrue(self.call('/api/gcs',method='POST',secret='')[0])
+        for name in ['telemetry','events']:
+            reached,msg=self.call('/ws/'+name,[(b'x-vintos-secret',b'')],kind='websocket',secret='')
+            self.assertFalse(reached);self.assertEqual(msg,[{'type':'websocket.close','code':4401}])
+
+    def test_unknown_websocket_needs_the_credential(self):
+        reached,msg=self.call('/ws/other',kind='websocket',protocols=['vintos-token.'+a.issue(SECRET,'ws:other')])
+        self.assertFalse(reached);self.assertEqual(msg,[{'type':'websocket.close','code':4401}])
+        self.assertTrue(self.call('/ws/other',[(b'x-vintos-secret',SECRET.encode())],kind='websocket')[0])
+
+    def test_pushed_links_open_exactly_their_own_path(self):
+        url=a.link('http://100.72.225.119:8500/api/video/file/clip.mp4',secret=SECRET)
+        path,q=url.split('8500',1)[1].split('?',1)
+        self.assertTrue(self.call(path,query=q.encode())[0])
+        self.assertFalse(self.call('/api/video/file/other.mp4',query=q.encode())[0])
+        self.assertFalse(self.call('/api/chat/history',query=q.encode())[0])
+        self.assertFalse(self.call(path,query=q.encode(),method='POST')[0])
+        token=dict(__import__('urllib.parse').parse.parse_qsl(q))['access_token']
+        self.assertTrue(a.valid(SECRET,token,'link:'+path,time.time()+6*86400))
+        self.assertFalse(a.valid(SECRET,token,'link:'+path,time.time()+8*86400))
+        self.assertFalse(a.valid(SECRET,a.issue(SECRET,'read',7*86400),'read',time.time()+7200))   # sessions stay short
+        aq=a.link('https://aegis.tailaa3de5.ts.net:8443/aq?qid=q1',secret=SECRET).split('8443',1)[1]
+        self.assertTrue(self.call('/aq',query=aq.split('?',1)[1].encode())[0])
+        answer='access_token='+a.issue(SECRET,'link:/aq/answer',3600)
+        self.assertTrue(self.call('/aq/answer',query=answer.encode(),method='POST')[0])
+        self.assertFalse(self.call('/aq/answer',query=aq.split('?',1)[1].encode(),method='POST')[0])
+        for other in ['https://external.invalid/api/art/x','http://100.72.225.119:8500/api/chat/history']:
+            self.assertEqual(a.link(other,secret=SECRET),other)
+        self.assertEqual(a.link('http://100.72.225.119:8500/api/art/x',secret=''),'http://100.72.225.119:8500/api/art/x') if not os.environ.get('VINTOS_SECRET') else None
+
+    def test_capability_pages_are_exactly_one_item(self):
+        self.assertTrue(self.call('/api/gloria/asks/q1')[0]);self.assertFalse(self.call('/api/gloria/asks')[0])
+        self.assertFalse(self.call('/api/gloria/asks/q1/extra')[0])
+        self.assertTrue(self.call('/api/food-order/review/tok')[0]);self.assertFalse(self.call('/api/food-order/review/tok/x')[0])
+
+    def test_both_copies_are_identical(self):
+        root=Path(__file__).resolve().parents[2]
+        self.assertEqual((root/'bin/house_auth.py').read_bytes(),(root/'scripts/house_auth.py').read_bytes())
+
+class PiEnrollment(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(prefix='house-auth-test-')
         self.home=Path(self.tmp.name);self.assertIn('house-auth-test-',str(self.home))
-        self.patch=patch.object(rollout,'home',lambda:self.home);self.patch.start()
-        self.server=self.home/'Vintos/server.py';self.server.parent.mkdir();self.server.write_text('# fixture\n')
-        self.calls=[]
-    def tearDown(self):self.patch.stop();self.tmp.cleanup()
-    def runner(self,args,**kwargs):self.calls.append(args)
-    def test_prepare_activate_and_protected_modes(self):
-        identifier=rollout.prepare(self.server);rollout.preflight(identifier)
-        self.assertFalse(rollout.env_path().exists())
-        rollout.activate(identifier,self.runner)
-        value=rollout.read_secret(rollout.env_path());self.assertGreaterEqual(len(value),32)
-        for p in rollout.canonical_envs()+[rollout.env_path()]:
-            self.assertEqual(p.stat().st_mode&0o777,0o600);self.assertEqual(rollout.read_secret(p),value)
-        self.assertEqual(self.calls,[['systemctl','--user','daemon-reload']])
-        self.assertIn('house_server_guard.py',rollout.unit_paths()[0].read_text())
-    def test_concurrent_configuration_aborts_without_writes(self):
-        identifier=rollout.prepare(self.server)
-        p=rollout.canonical_envs()[0];p.parent.mkdir(exist_ok=True);p.write_text('CHANGED=1\n')
-        with self.assertRaises(ValueError):rollout.activate(identifier,self.runner)
-        self.assertFalse(rollout.env_path().exists());self.assertFalse(self.calls)
-    def test_activation_failure_restores_previous_configuration(self):
-        p=rollout.canonical_envs()[0];p.parent.mkdir(parents=True);p.write_text('OTHER=fixture\n');p.chmod(0o640)
-        identifier=rollout.prepare(self.server)
-        def fail(*args,**kwargs):raise RuntimeError('stubbed systemctl failure')
-        with self.assertRaises(RuntimeError):rollout.activate(identifier,fail)
-        self.assertEqual(p.read_text(),'OTHER=fixture\n');self.assertEqual(p.stat().st_mode&0o777,0o640)
-        self.assertFalse(rollout.env_path().exists())
-    def test_guard_tamper_and_rollback_path_rejected(self):
-        identifier=rollout.prepare(self.server)
-        guard=rollout.state_path(identifier).parent/'guard/house_auth.py';guard.write_text('# tampered')
-        with self.assertRaises(ValueError):rollout.preflight(identifier)
-        with self.assertRaises(ValueError):rollout.rollback(identifier,self.runner)
-        self.assertFalse(self.calls)
+    def tearDown(self):self.tmp.cleanup()
     def test_pi_enrollment_uses_stdin_and_environment_not_arguments(self):
         import subprocess
         tools=self.home/'tools';tools.mkdir()
@@ -141,25 +190,6 @@ class Cutover(unittest.TestCase):
         self.assertIn('EnvironmentFile=/home/pi/.config/vintos/house-auth.env',payload)
         self.assertIn("bash -s -- '100.72.225.119' '8404'",args)
 
-    def test_finalize_binds_successful_receipt_and_rollback(self):
-        identifier=rollout.prepare(self.server);rollout.activate(identifier,self.runner)
-        releases=self.home/'.vintos/deploy/releases';releases.mkdir(parents=True)
-        backup=self.home/'.vintos/backups/fixture';backup.mkdir(parents=True)
-        (backup/'restore.sh').write_text('# fixture only\n')
-        receipt={'backup':str(backup),'failures':[],'services':{'vintos-server':'active','vintos-robot-bridge':'active'},
-                 'files':[{'installed_at':str(p),'sha256':rollout.digest(p)[:16]} for p in rollout.unit_paths()]}
-        file=releases/'fixture.json';file.write_text(json.dumps(receipt));rollout.finalize(identifier)
-        self.assertEqual(rollout.load(identifier)[1]['rollback'],str((backup/'restore.sh').resolve()))
-        receipt['services']['vintos-server']='failed';file.write_text(json.dumps(receipt))
-        with self.assertRaises(ValueError):rollout.finalize(identifier)
-        receipt['services']['vintos-server']='active';receipt['files']=[];file.write_text(json.dumps(receipt))
-        with self.assertRaises(ValueError):rollout.finalize(identifier)
-
-    def test_secure_rollback_keeps_random_identity(self):
-        identifier=rollout.prepare(self.server);rollout.activate(identifier,self.runner)
-        value=rollout.read_secret(rollout.env_path());rollout.secure_rollback(identifier,self.runner)
-        self.assertEqual(rollout.read_secret(rollout.env_path()),value)
-        self.assertEqual(rollout.load(identifier)[1]['status'],'rolled_back_guarded')
 
 try:
     from fastapi import FastAPI, WebSocket
@@ -215,16 +245,5 @@ class HTTPIntegration(unittest.TestCase):
                 self.assertEqual(client.get('/api/watch/landings').status_code,401)
                 result=client.post('/api/watch/telemetry',headers=headers,json={'asleep':True})
                 self.assertEqual(result.json()['live'],{'active':True})
-
-    def test_private_guard_survives_legacy_code_and_blocks_voice(self):
-        import house_server_guard
-        with tempfile.TemporaryDirectory(prefix='house-auth-server-') as tmp:
-            file=Path(tmp)/'server.py'
-            file.write_text("from fastapi import FastAPI\napp=FastAPI()\n@app.post('/api/voice/token')\ndef voice():return {'must':'never happen anonymously'}\n")
-            with patch.dict(os.environ,{'VINTOS_SECRET':SECRET}):app=house_server_guard.build(file)
-            client=TestClient(app,base_url='https://house.invalid')
-            self.assertEqual(client.post('/api/voice/token').status_code,401)
-            self.assertEqual(client.post('/api/voice/token',headers={'X-Vintos-Secret':SECRET}).status_code,200)
-            self.assertEqual(client.get('/unknown').status_code,401)
 
 if __name__=='__main__':unittest.main()

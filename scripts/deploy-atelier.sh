@@ -235,7 +235,7 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS spotify_watch.py"
-SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py house_auth.py house_server_guard.py house_auth_rollout.py"
+SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py house_auth.py"   # house_auth: the house credential and route guard (2026-10-25)
 BINS="$BINS paid_http.py house_auth.py briefing-audio.sh introspection.sh idle-journal.sh"
 SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
@@ -701,22 +701,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# The first identity cutover is explicit and runs only inside the owner-approved deploy.
-_auth_cutover="${VINTOS_AUTH_CUTOVER:-}"
-if [ -n "$_auth_cutover" ]; then
-    python3 "$SRC/scripts/house_auth_rollout.py" preflight --id "$_auth_cutover" || die "house auth cutover preflight failed"
-else
-    python3 "$SRC/scripts/house_auth_rollout.py" preflight || die "prepare and approve the house identity cutover before deploying this release"
-fi
-
 # Hold through promotion and the final release receipt; never through dry-run.
 mkdir -p "$HOME/.vintos/deploy"
 exec 9>"$HOME/.vintos/deploy/security-install.lock"
 flock -x 9 || die "cannot acquire security installation lock"
-
-if [ -n "$_auth_cutover" ]; then
-    python3 "$SRC/scripts/house_auth_rollout.py" activate --id "$_auth_cutover" || die "house auth activation failed; no code promoted"
-fi
 
 # ------------------------------------------------------------ backup + install
 mkdir -p "$BACKUP" || die "cannot create $BACKUP"
@@ -1511,11 +1499,6 @@ for ln in open(os.environ["PLAN_FILE"]):
     try: sha = hashlib.sha256(open(dst, "rb").read()).hexdigest()[:16]
     except Exception: sha = None
     rows.append({"file": os.path.basename(src), "installed_at": dst, "sha256": sha})
-for rel in ("vintos-server.service.d/house-auth.conf", "vintos-robot-bridge.service.d/house-auth.conf"):
-    dst = os.path.expanduser("~/.config/systemd/user/" + rel)
-    if os.path.isfile(dst):
-        rows.append({"file": os.path.basename(dst), "installed_at": dst,
-                     "sha256": hashlib.sha256(open(dst, "rb").read()).hexdigest()[:16]})
 def unit(u, scope):
     try: return subprocess.run(["systemctl"] + scope + ["is-active", u], capture_output=True, text=True, timeout=5).stdout.strip()
     except Exception: return "unknown"

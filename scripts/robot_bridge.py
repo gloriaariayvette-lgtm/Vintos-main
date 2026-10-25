@@ -9,14 +9,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import robot_core as rc
 from fastapi import FastAPI, Request, HTTPException
 
-from house_auth import require_secret as _house_secret
-APP_SECRET = _house_secret()
+from house_auth import configured_secret as _house_secret, matches as _house_matches
+# No built-in value. Its unit loads robot.env, not vintos.env, so the canonical file is read too;
+# unset or weak means "" and every route but /health refuses.
+APP_SECRET = _house_secret(from_file=True)
 PORT = int(os.environ.get("VINTOS_ROBOT_PORT", "8404"))
 app = FastAPI(title="Vintos robot bridge", version="1.0")
 
 
 def _auth(request):
-    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+    if not APP_SECRET:
+        raise HTTPException(status_code=503, detail="House credential is not configured")
+    if not _house_matches(request.headers.get("X-Vintos-Secret", ""), APP_SECRET):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
