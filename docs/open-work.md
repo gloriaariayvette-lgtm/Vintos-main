@@ -53,6 +53,10 @@ take it (rebuild the native iPhone app from the companion vintos-app commit firs
 - The lost Workbench win saved to `successes.md` on the Mac.
 
 **Still open:**
+- `build_merged_chat.py` still mixes the August chat file into what temporal, rhythm and the predictors read; a fix is
+  in progress on `claude/finish-memory-history-2026-10-25`, not in this deploy.
+- Semantic recall still serves the legacy index (rows for deleted files, and dream rows without their marker); same
+  branch, not in this deploy.
 - The Buzz relay container lost its compose network on 15 October and has been down since; not worked on.
 - Firewall rules for `:8500`/`:8501` to the Private profile.
 - `~/AGENTS.md` still describes `:8443` as a public Funnel; it is now tailnet-only.
