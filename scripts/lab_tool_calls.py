@@ -50,6 +50,13 @@ def normalize_inquiry(value):
         plugins = getattr(plugin_catalog, 'PLUGINS', {})
         account_plugins = getattr(claude_connector_catalog, 'PLUGINS', {})
         source = str(sq.get('source') or '')
+        # pubmed and chembl are public Lab sources and account connectors both: a source request is the connector's
+        # call only when it names one of the connector's own tools. {"source":"pubmed","operation":"literature"}
+        # went to the connector as "pubmed.literature" and was refused by its policy, 25 times by 25 October.
+        account = account_plugins.get(source)
+        if source in ('pubmed', 'chembl') and isinstance(account, dict) and tool.split('.')[-1] not in (
+                set(account.get('read') or ()) | set(account.get('action') or ())):
+            tool = ''
         if tool and (source in plugins or source in account_plugins or tool.split('.')[-1].startswith('boltz_')):
             arguments = sq.get('arguments')
             if arguments is None:
@@ -133,6 +140,10 @@ def normalize_request(route, request):
     wrappers={'source':'source_query','plugin':'plugin_query','instrument':'instrument_query'}
     wrapper=wrappers.get(route)
     if wrapper and set(request)=={wrapper} and isinstance(request[wrapper],dict):request=dict(request[wrapper])
+    if route=='source' and isinstance(request.get('source'),str) and set(request)=={'source',request['source']}:
+        # {"source":"pubmed","pubmed":"<search>"}: the query under the source's own name is the shorthand below
+        # with the source said twice; it was refused as having no search terms (25 October)
+        request={request['source']:request[request['source']]}
     if route=='source' and not request.get('source'):
         request={k:v for k,v in request.items() if k!='source'}
     if route=='source' and not request.get('source') and len(request)==1:

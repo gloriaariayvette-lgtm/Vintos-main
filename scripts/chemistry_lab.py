@@ -3600,9 +3600,11 @@ def _gather_material(state, inquiry, fresh_only=False):
             import chemistry_sources
             source = (state.get('additional_source') or {})
             source = source.get('receipt') or source.get('source_receipt') or {}
+            # RCSB writes -1 for an entry with no PubMed citation; as a "PMID" it failed the whole read with "one to
+            # six exact PubMed IDs required" (25 October). Only a real PMID is one.
             pmids = list(dict.fromkeys(str((r.get('primary_citation') or {}).get('pdbx_database_id_PubMed'))
                 for r in source.get('records', []) if isinstance(r, dict)
-                and (r.get('primary_citation') or {}).get('pdbx_database_id_PubMed')))[:3]
+                and re.fullmatch(r'[1-9][0-9]{0,19}', str((r.get('primary_citation') or {}).get('pdbx_database_id_PubMed')))))[:3]
             # PubMed search is discovery metadata. Read its returned articles
             # through the existing bounded material path, not a new guessed search.
             if (source.get('source') == 'ncbi' and

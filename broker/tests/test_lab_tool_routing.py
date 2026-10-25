@@ -175,6 +175,52 @@ class Tools(unittest.TestCase):
         self.assertEqual(spec, {'source': 'pubmed', 'query': phrase})
         self.assertTrue(read.called)
 
+    def test_pubmed_literature_operation_stays_the_public_search(self):
+        # 23-25 October: this shape went to the PubMed connector as "pubmed.literature" and was refused by its
+        # policy, 25 times; the public search reads it
+        authored = {'operation': 'literature', 'source': 'pubmed',
+                    'term': 'bacteriophage "CRISPR" "reverse transcriptase" genome'}
+        inquiry = T.normalize_inquiry({'question': 'Which phages carry an RT beside CRISPR?', 'source_query': authored})
+        self.assertEqual(inquiry['source_query'], authored)
+        self.assertFalse(inquiry.get('plugin_query'))
+        with patch.object(L.Sources, '_abstracts', return_value={'records': []}) as read:
+            L.Sources(fetch=SEND).query(inquiry['source_query'])
+        self.assertEqual(read.call_args.args[0]['terms'], ['bacteriophage', 'CRISPR', 'reverse', 'transcriptase', 'genome'])
+        # ChEMBL's public target search the same way; the connectors' own tools still reach the connectors
+        chembl = {'source': 'chembl', 'operation': 'search_targets', 'term': 'CFTR'}
+        self.assertEqual(T.normalize_inquiry({'question': 'q', 'source_query': chembl})['source_query'], chembl)
+        for sq, plugin in (({'source': 'pubmed', 'operation': 'search_articles', 'term': 'x'}, 'pubmed'),
+                           ({'source': 'chembl', 'tool': 'chembl_search_targets', 'arguments': {'target_name': 'CFTR'}},
+                            'chembl'),
+                           ({'source': 'nvmolkit', 'operation': 'nvmolkit.similarity', 'arguments': {}}, 'nvmolkit')):
+            self.assertEqual(T.normalize_inquiry({'question': 'q', 'source_query': sq})['plugin_query']['plugin'], plugin)
+
+    def test_pubmed_query_under_the_sources_own_name_is_searched(self):
+        # 25 October: refused "one or more plain search terms required", the words sitting under "pubmed"
+        phrase = 'bacteriophage "CRISPR-Cas" AND "reverse transcriptase" AND (retrotransposon OR pol-like)'
+        spec = T.normalize_request('source', {'pubmed': phrase, 'source': 'pubmed'})
+        self.assertEqual(spec, {'source': 'pubmed', 'query': phrase})
+        with patch.object(L.Sources, '_abstracts', return_value={'records': []}) as read:
+            L.Sources(fetch=SEND).query(spec)
+        self.assertEqual(read.call_args.args[0]['terms'],
+                         ['bacteriophage', 'CRISPR-Cas', 'reverse', 'transcriptase', 'retrotransposon', 'pol-like'])
+        # anything else beside the source keeps its own meaning
+        self.assertEqual(T.normalize_request('source', {'source': 'pubmed', 'query': 'x', 'pubmed': 'y'})['query'], 'x')
+
+    def test_a_structure_without_a_pubmed_citation_still_gets_its_reading(self):
+        # 25 October, 1V4Z: RCSB's primary_citation carries pdbx_database_id_PubMed -1 when there is none; the
+        # reading failed whole as "one to six exact PubMed IDs required", twice
+        def state(pmid):
+            return {'additional_source': {'receipt': {'source': 'pdb', 'records': [
+                {'primary_citation': {'pdbx_database_id_PubMed': pmid}}]}}}
+        with patch.object(S, 'material', return_value={'records': [{'pmid': '1'}]}) as material:
+            self.assertTrue(C._gather_material(state(-1), {'question': 'q'}))
+            self.assertEqual(material.call_args.kwargs, {})
+            C._gather_material(state(15302935), {'question': 'q'})
+            self.assertEqual(material.call_args.kwargs, {'primary_pmids': ['15302935']})
+            C._gather_material(state(None), {'question': 'q'})
+            self.assertEqual(material.call_args.kwargs, {})
+
     def test_named_model_reader_reaches_validation_with_generic_viewer_skill(self):
         import lab_instruments
         model = 'artifacts/esmfold/fixture.pdb'
