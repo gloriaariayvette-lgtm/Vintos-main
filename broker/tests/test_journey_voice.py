@@ -32,6 +32,8 @@ assert _sg_client._post("/stratagem/inventory") == {}  # sender is stubbed
 ns = {"os": os, "json": json, "time": time, "MEMORY": MEM, "WORKSPACE": WS, "_test_mode_active": lambda: False,
       "Request": object, "_require_secret": lambda r: None, "_voice_keep_cues": lambda s: s, "_voice_readable": lambda s: s, "print": lambda *a, **k: None}
 import threading; threading.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
+_helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_append_avatar_history")
+exec(ast.get_source_segment(src, _helper), ns)   # the one locked writer of the avatar history
 exec(route("_voice_ledger_owned"), ns); exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
 _voice_ledger_route = ns["voice_ledger"]
 ns["voice_ledger"] = lambda payload: _voice_ledger_route(payload, object())
