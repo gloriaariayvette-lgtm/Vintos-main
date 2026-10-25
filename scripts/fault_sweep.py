@@ -41,12 +41,14 @@ LAB_NOTEBOOK = os.path.join(LAB, "notebook.jsonl")
 WATCH_RECEIPTS = os.path.join(MEM, "watch-delivery-receipts.jsonl")
 MUSIC = os.path.join(MEM, "art", "music", "music.json")
 TOKEN_FILE = os.path.expanduser(os.environ.get("VINTOS_SLACK_TOKEN_FILE", "~/.vintos/slack-bot-token"))
+LOGDIR = os.path.expanduser("~/.vintos/logs")   # where his cron jobs write; a job that dies here was invisible to the sweep
 
 TAIL_BYTES = 4 * 1024 * 1024
 LOOP_AT_LEAST = 12            # one question waiting this many times in the window is a loop, not a wait
 LOOP_WINDOW_S = 6 * 3600
 SILENT_SONG_S = 36 * 3600     # he makes a song a night
 SILENT_LAB_S = 6 * 3600       # the Lab reviews every few minutes when it is running
+FRESH_CRON_S = 26 * 3600     # a once-a-day job that crashed stays visible until its next run; a later clean run clears it
 FORGET_S = 7 * 86400          # a fault unseen this long is gone; if it comes back it is posted again
 POSTS_PER_SWEEP = 5           # a flood is one sweep's worth, and the rest wait for the next
 
@@ -239,13 +241,60 @@ def _unit_active(unit, run=None):
         return False
 
 
+_CRASH_TAIL = re.compile(r"(Traceback \(most recent call last\):|^\s*\w*(Error|Exception):|"
+                         r"\b(ModuleNotFoundError|ImportError|SyntaxError|NameError|AttributeError|"
+                         r"KeyError|UnboundLocalError|TypeError|IndexError|FileNotFoundError)\b)", re.M)
+
+
+def cron_log_failures(now, logdir=None):
+    """A cron job that crashed leaves a Python traceback at the end of its own log and writes nothing structured,
+    so the sweep never saw it (the JEPA ranking audit died daily for a month unnoticed). This reads the tail of each
+    log under LOGDIR: if its last lines end in a crash and it was written within the last day, that is a finding.
+    A later clean run leaves no crash at the tail, so the finding clears on its own (snapshot)."""
+    out = []
+    logdir = logdir or LOGDIR
+    try:
+        names = sorted(os.listdir(logdir))
+    except OSError:
+        return out
+    for name in names:
+        if not name.endswith(".log"):
+            continue
+        path = os.path.join(logdir, name)
+        try:
+            if now - os.path.getmtime(path) > FRESH_CRON_S:
+                continue
+            tail = _tail_text(path)
+        except OSError:
+            continue
+        lines = [ln for ln in tail.splitlines() if ln.strip()][-40:]
+        if not lines:
+            continue
+        window = "\n".join(lines)
+        last = lines[-1]
+        # the most recent run ended badly: a traceback among the last lines, or an error as the final line
+        if "Traceback (most recent call last):" in window or _CRASH_TAIL.match(last) or _CRASH_TAIL.search(last):
+            out.append(_finding(name[:-4], "cron_crash", "last run ended with: " + last, snapshot=True))
+    return out
+
+
+def _tail_text(path, nbytes=64 * 1024):
+    with open(path, "rb") as f:
+        try:
+            f.seek(-nbytes, os.SEEK_END)
+        except OSError:
+            f.seek(0)
+        return f.read().decode("utf-8", "replace")
+
+
 def sweep(now=None, since=None, run=None, lab_active=None):
     now = time.time() if now is None else now
     since = now - 3600 if since is None else since
     found = []
     for name, step in (("units", lambda: failed_units(run)), ("organs", lambda: organ_failures(since)),
                        ("lab", lambda: lab_faults(since)), ("watch", lambda: watch_failures(since)),
-                       ("loops", lambda: lab_loops(now)), ("silence", lambda: silences(now, lab_active))):
+                       ("loops", lambda: lab_loops(now)), ("silence", lambda: silences(now, lab_active)),
+                      ("cron", lambda: cron_log_failures(now))):
         try:
             found += step()
         except Exception as e:      # one unreadable source is itself a finding, never the end of the sweep
