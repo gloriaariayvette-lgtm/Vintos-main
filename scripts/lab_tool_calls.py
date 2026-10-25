@@ -165,6 +165,12 @@ def normalize_instrument(request):
     if op in OFFERED and len(OFFERED[op]) == 1:
         request.update(skill=op, operation=OFFERED[op][0])
         return request
+    # An operation only one instrument has names it under another instrument's name too:
+    # {"skill":"structure_viewer","operation":"structure.read"} is fold_read's read (25 October).
+    owners=[k for k,v in OFFERED.items() if op in v]
+    if skill in OFFERED and op not in OFFERED[skill] and len(owners)==1:
+        request.update(skill=owners[0])
+        return request
     if skill in OFFERED or skill in OPERATIONS:return request
     if op in OFFERED and len(OFFERED[op])==1:skill,op=op,OFFERED[op][0]
     elif op in OPERATIONS:skill,op=op,OPERATIONS[op]

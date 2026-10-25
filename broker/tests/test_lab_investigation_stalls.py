@@ -169,6 +169,48 @@ class Stalls(unittest.TestCase):
         self.assertFalse(I._carries({'receipt': {'records': [{'primaryAccession': 'P99999'}]}}, step))
         self.assertTrue(first['id'])
 
+    # 5. a two-model read whose models were each read before (25 October: 31 such steps refused whole in a day)
+    def test_each_model_of_a_multi_model_read_refused_as_a_repeat_takes_its_retained_read(self):
+        a, b, c = ('artifacts/esmfold/O43511-ac5611395a4c.pdb', 'artifacts/esmfold/O43511-60e20d840671.pdb',
+                   'artifacts/esmfold/O43511-920c104e94a4.pdb')
+        earlier = {}
+        for f in (a, b):
+            self.ask.return_value = choice('instrument', {'instrument_query': {'skill': 'fold_read', 'operation':
+                'structure.read', 'files': [f]}}, 'Identify the secondary structure (helix vs strand) and confidence '
+                'for the C-terminal region where the STAS domain is located.')
+            rec = {'receipt': {'receipt_id': 'fold_read-' + f[-20:], 'records': [{'skill': 'fold_read',
+                   'inputs': [f], 'summary': 'residues 1-780: helices 700-712'}]}}
+            earlier[f] = I.turn('', ask=self.ask, execute=lambda *x, rec=rec: rec)['id']
+        refusal = ('no eligible saved step: you already ran this exact lookup on 2026-10-21 21:24 (instrument_query:'
+                   '{"files": ["artifacts/esmfold/o43511-ac5611395a4c.pdb"], "operation": "structure.read", "skill": '
+                   '"fold_); it would return the same thing')
+        import lab_instruments
+        q = ('Extract the helix and strand geometry for the C-terminal region (approx. residues 700-780) to check '
+             'for STAS motif consistency.')
+        with patch.object(C, '_inquiry', lambda d: d), \
+             patch.object(C, '_held_to_plan', lambda *x, **k: ({'refused': refusal}, {})), \
+             patch.object(lab_instruments, 'run', Mock(side_effect=AssertionError('nothing is read again'))):
+            out = I.dispatch('instrument', {'skill': 'fold_read', 'operation': 'structure.read', 'files': [a, b],
+                                            'question': q}, q, [])
+            self.assertEqual([(r['file'], r['reused_from']) for r in out['reads']], [(a, earlier[a]), (b, earlier[b])])
+            self.assertIn('helices 700-712', json.dumps(out['reads'][0]['result']))
+            self.assertEqual(out['not_read'], [])
+            # a model never read before is still refused, and never given another model's read
+            out = I.dispatch('instrument', {'skill': 'fold_read', 'operation': 'structure.read', 'files': [a, c]}, q, [])
+            self.assertEqual([r['file'] for r in out['reads']], [a])
+            self.assertEqual([(e['file'], e['error'][:40]) for e in out['not_read']], [(c, refusal[:40])])
+            with self.assertRaisesRegex(ValueError, 'you already ran this exact lookup'):
+                I.dispatch('instrument', {'skill': 'fold_read', 'operation': 'structure.read', 'files': [c, c]}, q, [])
+
+    def test_fold_reads_operation_under_the_viewer_name_is_fold_read(self):
+        from lab_tool_calls import normalize_request
+        got = normalize_request('instrument', {'instrument_query': {'skill': 'structure_viewer', 'operation':
+                                'structure.read', 'files': ['artifacts/esmfold/O43511-60e20d840671.pdb']}})
+        self.assertEqual((got['skill'], got['operation']), ('fold_read', 'structure.read'))
+        for op in ('structure.analyze', None, 'no.such'):
+            self.assertEqual(normalize_request('instrument', {'skill': 'structure_viewer', 'operation': op})['skill'],
+                             'structure_viewer')
+
     def test_a_referenced_output_is_identified_by_its_content(self):
         steps = [{'id': 'S-x', 'output_sha256': 'aaa'}, {'id': 'S-y', 'output_sha256': 'aaa'},
                  {'id': 'S-z', 'output_sha256': 'bbb'}]

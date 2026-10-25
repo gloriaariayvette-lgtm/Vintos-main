@@ -537,8 +537,18 @@ def dispatch(route, request, question, steps):
             # models in one read were refused 108 times)
             reads, errors = [], []
             for f in files[:4]:
+                one = dict(request, files=[f])
                 try:
-                    reads.append({'file': f, 'result': dispatch(route, dict(request, files=[f]), question, steps)})
+                    reads.append({'file': f, 'result': dispatch(route, one, question, steps)})
+                except ValueError as exc:
+                    # a model already read is refused per file as a repeat; its retained read is that file's answer,
+                    # as it is for a one-model step (25 October: 31 two-model reads of O43511 in a day were refused
+                    # whole, each model's own read retained and never handed over)
+                    earlier = _retained_read(str(exc), route, one, question)
+                    if earlier:
+                        reads.append({'file': f, 'result': earlier[1], 'reused_from': earlier[0]})
+                    else:
+                        errors.append({'file': f, 'error': str(exc)[:300]})
                 except Exception as exc:
                     errors.append({'file': f, 'error': str(exc)[:300]})
             if not reads:
@@ -773,6 +783,24 @@ def _answered_before(refusal, step, data):
                 if best is None or str(s.get('at') or '') > str(best.get('at') or ''):
                     best = s
     return best
+
+
+def _retained_read(refusal, route, request, question):
+    """(step id, retained output) of the completed step that answers one model's read refused as a repeat, under the
+    same rules and digest check as a refused step's reuse in _turn; None when there is none."""
+    data = lab._load(_path('investigations.json'), {'investigations': []})
+    probe = {'id': None, 'route': route, 'tool': tool_name(route, request), 'question': question,
+             'executed_request': request}
+    earlier = _answered_before(refusal, probe, data)
+    if earlier is None:
+        return None
+    payload = lab._load(_path(earlier['output_file']), None)
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    if payload is None or hashlib.sha256(encoded).hexdigest() != earlier.get('output_sha256'):
+        return None
+    if not _carries(payload, probe):
+        return None
+    return earlier['id'], payload
 
 
 SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
