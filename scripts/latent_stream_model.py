@@ -92,7 +92,8 @@ class State:
         self.at = self.text_at = None
         self.source = 'emotion'
         self.cursor = None
-        self.seen_at = set()
+        self.seen = set()
+        self._legacy = False
         self.observed_at = None
         if payload:
             if payload['checkpoint_id'] != model.checkpoint_id:
@@ -104,7 +105,9 @@ class State:
             self.at = stamp(payload['at']) if payload['at'] else None
             self.text_at = stamp(payload['text_at']) if payload['text_at'] else None
             self.source, self.cursor = payload['source'], payload['cursor']
-            self.seen_at = set(payload.get('seen_at', []))
+            self.seen = set(payload.get('seen', []))
+            # Legacy state had only the event-time cursor; its backlog is not re-folded.
+            self._legacy = 'seen' not in payload and self.at is not None
             self.observed_at = payload.get('observed_at')
             if self.source not in SOURCES:
                 raise ValueError('unknown source')
@@ -135,13 +138,22 @@ class State:
                                [float(self.source == s) for s in SOURCES], [age], clk, [1.]]).astype(np.float32)
 
     def advance(self, event, observed_at=None):
-        """Reject duplicates/backfill without rewinding. Score the preceding state once.
+        """Ingest once, without rewinding the event-time cursor. Score the preceding state once.
 
-        Returned errors are raw cosine / standardized MSE, never probabilities.
-        The caller records whether this frame was actually served before the outcome.
+        The ingestion cursor (``seen``) is kept separate from the event-time cursor
+        (``at``/``cursor``): a true duplicate is one already ingested, not merely one
+        whose time precedes the frontier. A late-arriving event (written now but stamped
+        before the frontier, e.g. a journal section or a merged turn) still folds into
+        ``last``/``six`` so it reaches him, but does not drag the frontier backwards; its
+        outcome stays ``replay`` (the caller never relabels an old-timestamped frame
+        prospective). Returned errors are raw cosine / standardized MSE, never probabilities.
         """
         at, eid = stamp(event['t']), event_id(event)
-        if self.at and (at < self.at or (at == self.at and eid in self.seen_at)):
+        if eid in self.seen:
+            return None                              # already ingested
+        late = bool(self.at and at < self.at)        # arrived after the frontier passed its time
+        if late and self._legacy:
+            self.seen.add(eid)                       # no ingestion record carried: do not re-fold the backlog
             return None
         source = event['source']
         if source not in SOURCES:
@@ -162,16 +174,16 @@ class State:
             result['emotion_error'] = float(np.mean(((self.model.emotion(self)-emo)/sd)**2))
             result['persistence_error'] = float(np.mean(((self.emo-emo)/sd)**2))
             result['target'] = 'next_emotion_reading'
-        if self.at != at:
-            self.seen_at.clear()
-        self.seen_at.add(eid)
+        self.seen.add(eid)
         if vec is not None:
             self.last = vec
             self.six = (self.six + [vec])[-6:]
-            self.text_at = at
-        if emo is not None:
+            if not late:
+                self.text_at = at
+        if emo is not None and not late:
             self.emo, self.has_emotion = emo, True
-        self.at, self.source, self.cursor = at, source, eid
+        if not late:
+            self.at, self.source, self.cursor = at, source, eid
         self.observed_at = stamp(observed_at or datetime.now(timezone.utc)).isoformat()
         return result
 
@@ -180,5 +192,5 @@ class State:
                 'six': [v.tolist() for v in self.six], 'emo': self.emo.tolist(),
                 'has_emotion': self.has_emotion, 'at': self.at.isoformat() if self.at else None,
                 'text_at': self.text_at.isoformat() if self.text_at else None,
-                'source': self.source, 'cursor': self.cursor, 'seen_at': sorted(self.seen_at),
+                'source': self.source, 'cursor': self.cursor, 'seen': sorted(self.seen),
                 'observed_at': self.observed_at}

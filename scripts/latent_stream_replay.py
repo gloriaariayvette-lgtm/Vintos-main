@@ -69,7 +69,7 @@ def _sections(pattern, source, mem=None):
         m = re.search(r"(\d{4}-\d\d-\d\d)", os.path.basename(path))
         if not m: continue
         day = datetime.fromisoformat(m.group(1)).astimezone(timezone.utc)
-        last = day.replace(hour=0, minute=0)
+        last = day   # local midnight of the file's day (not 00:00 UTC, which is the prior evening locally)
         for sec in open(path, errors="ignore").read().split("\n## ")[1:]:
             head, _, body = sec.partition("\n")
             t = re.search(r"\b(\d{1,2}):(\d\d)\b", head)

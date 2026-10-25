@@ -51,6 +51,21 @@ def epoch(value):
     return (d if d.tzinfo else d.astimezone()).timestamp()
 
 
+def _forget_marks(mem):
+    """Basenames of forget/erase/purge/corrupt backups in memory — the only signals that
+    removed text genuinely carried away meaning (forget_avatar_turns writes *.before-forget-*,
+    quarantine writes *.corrupt-*; jepa_self_head treats pre-erase/pre-purge the same way).
+    Ordinary thread resolution, an in-place section edit and chat id churn leave none, so they
+    must not be read as forgetting."""
+    import glob
+    out=set()
+    for pat in ('*.before-forget-*','*.before-erase-*','*.before-purge-*','*.pre-erase-*',
+                '*.pre-purge-*','*.corrupt-*','*.scrub-*'):
+        for p in glob.glob(str(Path(mem)/pat)):
+            out.add(Path(p).name)
+    return out
+
+
 def _exchange_rows(mem):
     import jepa_self_head as sh
     if Path(sh.MEMORY).resolve()!=mem.resolve():
@@ -237,14 +252,24 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
         if not isinstance(cache,dict):cache={}
         _encode(enc,events,cache,model.meta['encoder'])
         ids={e['id'] for e in events}
-        # A rolling emotion window is expected. Only text removals can carry forgotten meaning.
-        text_ids={e['id'] for e in events if e.get('text')}
-        removed=set(old.get('text_ids',[]))-text_ids
-        try:state=State(model,old.get('state')) if not removed else State(model)
-        except (ValueError,KeyError,TypeError):state=State(model)
+        # Only a genuine forget/erase/purge/corrupt-quarantine carries forgotten meaning and
+        # warrants dropping the carried state and ledger. Thread resolution, an edited section
+        # and chat id churn also make ids disappear, but the state, outcomes and pending must
+        # survive those (removed targets are dropped individually below). A newly appeared
+        # backup — one not seen at the last refresh — is the reset signal.
+        marks=sorted(_forget_marks(mem))
+        forget=bool(set(marks)-set(old.get('forget_marks',[])))
+        state_payload=old.get('state')
+        try:state=State(model,state_payload) if not forget else State(model)
+        except (ValueError,KeyError,TypeError):state,state_payload=State(model),None
+        if state_payload is not None and 'seen' not in state_payload and state.at is not None:
+            # Legacy state tracked only the event-time cursor. Seed the ingestion cursor with
+            # everything up to the frontier so this first pass neither re-folds the backlog nor
+            # double-counts; new and late events fold normally from the next refresh on.
+            state.seen|={e['id'] for e in events if epoch(e['t'])<=state.at.timestamp()}
         previous=old.get('packet',{})
-        outcomes=list(old.get('outcomes',[])) if not removed else []
-        served_cursor=previous.get('cursor') if not removed else None
+        outcomes=list(old.get('outcomes',[])) if not forget else []
+        served_cursor=previous.get('cursor') if not forget else None
         basis_ids=list(old.get('basis_ids', [])) if state.cursor else []
         for e in events:
             outcome=state.advance(e,observed_at=now)
@@ -255,20 +280,32 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
                 outcome['kind']='prospective' if (outcome['before_cursor']==served_cursor and
                     float(previous.get('generated_at',now))<epoch(e['t']) and e.get('t_exact',True)) else 'replay'
                 outcomes.append(outcome)
-        # Evaluate the first actually arrived Gloria turn against the last emitted Gloria forecast.
-        pending = list(old.get('pending_gloria', [])) if not removed else []
-        previous_g = previous.get('channels', {}).get('gloria') if not removed else None
-        if previous_g and not any(g.get('frame_id') == previous.get('frame_id') for g in pending):
-            pending.append(dict(previous_g, frame_id=previous['frame_id']))
+        # Evaluate arrived Gloria turns against the emitted forecasts. Key pending by the
+        # forecast's identity — (checkpoint, context) — not the per-tick frame id: a forecast
+        # from a quiet day was otherwise re-appended on every 10-minute emotion tick and the
+        # real frame evicted by the [-128:] cap before she ever replied. An unchanged
+        # query+context adds nothing new, so it is not pushed again.
+        pending = list(old.get('pending_gloria', [])) if not forget else []
+        previous_g = previous.get('channels', {}).get('gloria') if not forget else None
+        if previous_g:
+            key=(previous_g.get('checkpoint_id'),previous_g.get('context_at'))
+            if not any((g.get('checkpoint_id'),g.get('context_at'))==key for g in pending):
+                pending.append(dict(previous_g, frame_id=previous['frame_id']))
         remaining = []
         for previous_g in pending:
-            after=[e for e in events if e['source']=='her' and epoch(e['t'])>previous_g['forecast_at']]
+            after=[e for e in events if e['source']=='her' and epoch(e['t'])>previous_g['forecast_at']
+                   and e.get('gloria_vec') is not None]
             if not after:
                 remaining.append(previous_g)
                 continue
-            e=after[0];oid=digest([previous_g['frame_id'],e['id'],'gloria'])
-            if not any(o.get('id')==oid for o in outcomes):
-                v=np.asarray(e['gloria_vec']);q=np.asarray(previous_g['query']);last=np.asarray(previous_g['last'])
+            # Grade every her-turn in the window, not only the first: the reader matches the
+            # outcome against the last turn over 15 words, so one must exist for whichever turn
+            # it picks, or the measured miss never reaches him.
+            q=np.asarray(previous_g['query']);last=np.asarray(previous_g['last'])
+            for e in after:
+                oid=digest([previous_g['frame_id'],e['id'],'gloria'])
+                if any(o.get('id')==oid for o in outcomes):continue
+                v=np.asarray(e['gloria_vec'])
                 outcomes.append({'id':oid,'event_id':e['id'],'content_hash':e['ref']['content_hash'],
                      'at':epoch(e['t']),'source':'her','target':'next_gloria_turn','kind':'prospective',
                      'frame_id':previous_g['frame_id'],'forecast_at':previous_g['forecast_at'],
@@ -299,9 +336,12 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
         if g:
             packet['agreement']={'shared_anchor_ids':sorted({r['id'] for r in g['anchors']} & {r['id'] for r in stream['anchors']}),
                                   'meaning':'retrieval overlap only; targets differ'}
-        # Outcomes whose underlying text has disappeared are purged together with the cache.
+        # Drop only the specific outcomes whose target text genuinely disappeared.
         outcomes=[o for o in outcomes if o.get('event_id') in ids][-512:]
-        record={'input_identity':identity,'state':state.dump(),'text_ids':sorted(text_ids),'basis_ids':basis_ids,
+        # Bound the ingestion cursor to the current working set: an id no longer among the
+        # inputs can never be re-fed, so forgetting it is safe and keeps the state small.
+        state.seen&=ids
+        record={'input_identity':identity,'state':state.dump(),'forget_marks':marks,'basis_ids':basis_ids,
                 'packet':packet,'outcomes':outcomes,'pending_gloria':remaining[-128:]}
         atomic(mem/'latent-feed-embeddings.json',cache)
         atomic(mem/'latent-feed-state.json',record)
