@@ -262,11 +262,14 @@ async def _call(lens, provider, model, system, user, reservation):
 
 
 def _next_model(rows, today):
-    # a model that faulted today has had its turn: retrying it every slot starved the models after it
-    done = {r.get("lens") for r in rows if r.get("state") in ("completed", "held_fault") and _local_day(r.get("at")) == today}
-    for lens, provider, model in MODELS:
-        if lens not in done: return lens, provider, model
-    return None
+    daily = [r for r in rows if _local_day(r.get("at")) == today]
+    done = {r.get("lens") for r in daily if r.get("state") == "completed"}
+    pending = [pick for pick in MODELS if pick[0] not in done]
+    # A failed or capped provider must not take every remaining scheduled slot.
+    # Consider unattempted providers first; existing reservations still decide
+    # whether a call may run, and a completed daily review is never repeated.
+    return min(pending, key=lambda pick: sum(r.get('lens') == pick[0]
+               and r.get('state') in ('held_fault', 'held_paid_cap') for r in daily)) if pending else None
 
 
 def run(call=None, now=None, lens=None):

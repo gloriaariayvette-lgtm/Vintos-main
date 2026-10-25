@@ -143,5 +143,32 @@ check("each fire aligns; the experiment runs only once a day",
 check("the deploy installs the alignment module",
       "chemistry_alignment.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 
+saved_log = align.LOG
+try:
+    align.LOG = os.path.join(lab.ROOT, 'rotation-failure-regression.jsonl')
+    gemma_turn(20)
+    align.run(call=frontier)
+    gemma_turn(21)
+    def failed_provider(*args):
+        raise ConnectionError('fixture provider unavailable')
+    failed = align.run(call=failed_provider)
+    next_review = align.run(call=frontier)
+    check('a failed provider does not monopolize later scheduled review slots',
+          failed['state'] == 'held_fault' and failed['lens'] == align.MODELS[1][0]
+          and next_review['state'] == 'completed' and next_review['lens'] == align.MODELS[2][0],
+          (failed, next_review))
+    day = align._today()
+    row_time = lab.now_iso()
+    rows = [{'at':row_time,'lens':align.MODELS[0][0],'state':'held_fault'},
+            {'at':row_time,'lens':align.MODELS[1][0],'state':'held_paid_cap'}]
+    check('a capped provider does not prevent an unattempted provider from being considered',
+          align._next_model(rows, day) == align.MODELS[2])
+    rows.append({'at':row_time,'lens':align.MODELS[2][0],'state':'held_fault'})
+    rows.append({'at':row_time,'lens':align.MODELS[0][0],'state':'held_fault'})
+    check('after every provider has been attempted, retries favor fewer failed attempts',
+          align._next_model(rows, day) == align.MODELS[1])
+finally:
+    align.LOG = saved_log
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
