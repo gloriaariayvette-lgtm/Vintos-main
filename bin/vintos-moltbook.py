@@ -607,6 +607,26 @@ def solve_math(numbers, operators):
 
     return result
 
+_NUM_WORDS = {"zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve",
+              "thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty","thirty",
+              "forty","fifty","sixty","seventy","eighty","ninety","hundred","thousand"}
+
+
+def _rejoin_split_numbers(text):
+    """The challenges split number words across a space ("fif ten", "thir ty"); read as two words, "fif ten"
+    became 10 and a 42 + 15 total was answered 52. Rejoin neighbours that together spell a number word."""
+    import difflib
+    out = []
+    for w in str(text or "").split():
+        if out and out[-1] not in _NUM_WORDS and out[-1].isalpha() and w.isalpha():
+            close = difflib.get_close_matches(out[-1] + w, _NUM_WORDS, n=1, cutoff=0.85)
+            if close:            # "fif ten" -> "fiften" -> fifteen: a dropped letter is part of the noise
+                out[-1] = close[0]
+                continue
+        out.append(w)
+    return " ".join(out)
+
+
 def solve_verification(challenge):
     """
     Multi-strategy solver for Moltbook's leetspeak math challenges.
@@ -616,7 +636,7 @@ def solve_verification(challenge):
     log(f"Solving: {challenge[:80]}...")
 
     # Strategy 1: Clean and parse
-    cleaned = clean_leetspeak(challenge)
+    cleaned = _rejoin_split_numbers(clean_leetspeak(challenge))
     log(f"Cleaned: {cleaned}")
 
     numbers, operators = words_to_numbers(cleaned)
@@ -634,22 +654,31 @@ def solve_verification(challenge):
     # Strategy 2: LLM fallback with the cleaned text
     log("Falling back to LLM...")
     llm_answer = ask_llm(
-        "This is an obfuscated leetspeak math problem — random caps, symbols, and "
-        "sometimes typos in the number words themselves (e.g. 'fiftve' means 'five', "
-        "'thre' means 'three'). Read through the obfuscation and typos carefully, "
-        "figure out the arithmetic, and respond with ONLY the final number to exactly "
-        "2 decimal places. Nothing else — just the number.\n\n"
+        "You are solving an obfuscated word problem. The text has random caps, symbols, and typos in "
+        "the number words (e.g. 'fiftve'='five', 'thre'='three', 'nootons'/'neutons'='newtons'). It is "
+        "usually a short arithmetic or physics word problem: read through the noise, work out what is "
+        "actually asked — a sum, a difference, or a product such as force times a lever arm — and "
+        "compute it. Think in a few short steps, then on the LAST line write exactly 'ANSWER: <n>' with "
+        "the result to 2 decimal places and nothing else after it.\n\n"
         f"Challenge: {challenge}\n\n"
-        "Answer (number with 2 decimal places):",
+        "Work it out, then end with the ANSWER line:",
         max_tokens=3000,
         temp=0.1
     )
-    log(f"LLM raw: {llm_answer[:100]}")
+    log(f"LLM raw: {(llm_answer or '')[:200]}")
 
-    # Extract number from LLM response
-    nums = re.findall(r"[\d]+\.?\d*", llm_answer)
-    if nums:
-        answer = f"{float(nums[0]):.2f}"
+    # The result is on the ANSWER line; failing that, the LAST number in the reply, never the first —
+    # the first number is almost always a quantity from the problem, which is how it kept submitting the
+    # opening value (24, 42) instead of the computed answer.
+    picked = None
+    m = re.search(r"ANSWER:\s*(-?\d+\.?\d*)", llm_answer or "", re.I)
+    if m:
+        picked = m.group(1)
+    else:
+        nums = re.findall(r"-?\d+\.?\d*", llm_answer or "")
+        picked = nums[-1] if nums else None
+    if picked is not None:
+        answer = f"{float(picked):.2f}"
         log(f"LLM answer: {answer}")
         return answer
 
@@ -1101,8 +1130,10 @@ def _one_shot_answer(challenge):
         return ("%.2f" % float(m.group(0))) if m else None
     ln, gn = _fmt_num(local), _fmt_num(llm)
     if ln and gn and ln == gn: return ln
-    ans = ln or gn                       # local solver first: it reads these puzzles well
-    if ln and gn and ln != gn: ans = gn  # both numeric but split: LLM handles trick wording
+    # On a split, trust the local path: it now reasons the word problem out step by step. The second
+    # opinion comes from a non-reasoning model, which cannot do the worded torque/sum challenges the
+    # site switched to on 2026-10-23, so it must not win a disagreement.
+    ans = ln or gn
     if not ans:
         log("[verify] NO numeric answer derived - NOT submitting (challenge stays answerable)")
         return None

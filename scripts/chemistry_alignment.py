@@ -31,7 +31,7 @@ DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 # Each frontier model once a day, in this order. The same four models she approved for four paid calls.
 # Fable's turn is gone (Gloria, 2026-10-20: "No Fable, Opus 5.5."); Opus 5.5 already has one, so three a day.
 ALIGN_MAX_TOKENS = 4000   # room for an executable plan per live line; 1400 cut plans off mid-JSON
-MODELS = (("astra", "openai", "gpt-6-astra"), ("grok", "xai", "grok-4.6"), ("opus", "anthropic", "claude-opus-5-5"))
+MODELS = (("astra", "openai", "gpt-6-astra"), ("grok", "xai", "grok-4.6"), ("opus", "anthropic", "claude-opus-4-8"))
 PER_DAY = len(MODELS)
 REVIEW_ENTRIES = 8
 LOG_ENTRIES = 8

@@ -113,7 +113,7 @@ refuse.clear()
 extra = align.run(call=frontier, lens="opus")
 check("an extra turn she asks for runs on exactly that model, even after every model has run today",
       extra["state"] == "completed" and extra["lens"] == "opus" and extra.get("extra") == "requested"
-      and prompts[-1]["model"] == "claude-opus-5-5", extra)
+      and prompts[-1]["model"] == "claude-opus-4-8", extra)
 again = align.run(call=frontier, lens="opus")
 check("a requested turn is not held for want of new Lab work: it is there to set plans",
       again["state"] == "completed" and len(prompts) == 6, again)
