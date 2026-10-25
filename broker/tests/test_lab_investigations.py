@@ -182,9 +182,10 @@ class Investigations(unittest.TestCase):
         execute=Mock(return_value={'receipt':{'source':'pubchem','records':[{'SMILES':'CCO'}]}})
         first=I.turn('',ask=self.ask,execute=execute)
         second=I.turn('',ask=self.ask,execute=execute)
-        execute.assert_called_once()
-        self.assertEqual(second['state'],'failed')
-        self.assertIn('already done in this investigation as %s' % first['id'],second['error'])
+        execute.assert_called_once()    # never sent twice
+        # handed its own earlier output (25 October: refusing it was 47 of 85 failed steps), counted as no failure
+        self.assertEqual((second['state'],second['reused_from'],second['repeat_within']),('completed',first['id'],True))
+        self.assertEqual(I.resolve({'step':second['id'],'path':['receipt','records',0,'SMILES']},[second]),'CCO')
 
     def test_a_source_named_as_the_route_is_that_sources_query(self):
         self.ask.return_value=self.choice('pubmed',{'query':'reverse transcriptase CRISPR phage'})
