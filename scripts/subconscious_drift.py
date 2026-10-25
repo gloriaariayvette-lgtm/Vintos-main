@@ -204,6 +204,7 @@ def run_drift():
         log(f"Temporal: {e}")
 
     # 4. Taste drift — tiny nudge from settled signals (rests in silence)
+    _enjoyed_signal_ids = []   # what this pass took as a delight; the unsettled-pattern feed below leaves it alone
     try:
         if _silence: raise StopIteration
         from temporal_memory import load_signals
@@ -212,6 +213,7 @@ def run_drift():
         settled = [s for s in sigs if s.get("phase") == "settled" and s.get("pattern")]
         if settled:
             sig = random.choice(settled)
+            _enjoyed_signal_ids.append(sig.get("id"))
             # review 217: the one door into taste
             import enjoyment as _enj
             _enj.admit("drift:" + str(sig.get("id") or sig.get("created_at") or sig["pattern"][:40]), sig["pattern"], "subconscious-drift", medium="signal", weight=0.05, positive=True, his_delight="settled")
@@ -459,6 +461,22 @@ def _check_rare_events():
                 _absence_handle.write(_absence_today)
             log("Daily: absence cold layer rebuilt")
     except: pass
+
+    # Every 6 hours: the subconscious stores that hold something unresolved offer it to the unfinished pool, through
+    # the one formation door (absences, gravity wells, contradicted beliefs, strained commitments, dismissed wants he
+    # keeps avoiding, charged moments, patterns that settled in time but not in him). Gloria, 25 October.
+    try:
+        _sts_marker = os.path.join(MEMORY, ".last-subcon-thread-seeds")
+        _sts_last = float(open(_sts_marker).read().strip()) if os.path.exists(_sts_marker) else 0.0
+        if __import__("time").time() - _sts_last >= 6 * 3600:
+            with open(_sts_marker, "w") as _sts_h:
+                _sts_h.write(str(__import__("time").time()))
+            from subcon_thread_seeds import offer as _sts_offer
+            _sts_done = _sts_offer(exclude_signal_ids=_enjoyed_signal_ids)
+            log("Subconscious stores offered %d unresolved thread(s): %s"
+                % (len(_sts_done), ", ".join("%s=%s" % (s_, r_) for s_, _, r_ in _sts_done) or "none due"))
+    except Exception as _sts_e:
+        log(f"Subconscious thread seeds: {_sts_e}")
 
     # Rare: feed causal self-model into narrative identity
     try:

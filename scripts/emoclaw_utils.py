@@ -445,11 +445,101 @@ def check_daemon_health():
     result["healthy"] = result["daemon_responds"] and result["process_count"] == 1
     return result
 
-def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
+THREAD_PENDING_MAX = 40        # candidates held while a judge is down; oldest drop first
+THREAD_PENDING_ATTEMPTS = 6    # a candidate the judges never manage to read is dropped, never admitted unjudged
+THREAD_PENDING_DRAIN = 3       # held candidates retried after each call whose judge answered
+
+
+def _thread_pending_path():
+    import os
+    return os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads-pending.json")
+
+
+def _thread_pending_load():
+    import json
+    try:
+        q = json.load(open(_thread_pending_path()))
+        return q if isinstance(q, list) else []
+    except Exception:
+        return []
+
+
+def _thread_pending_save(q):
+    import json, os
+    path = _thread_pending_path(); tmp = path + ".tmp"
+    with open(tmp, "w") as f: json.dump(q[-THREAD_PENDING_MAX:], f, indent=2)
+    os.replace(tmp, path)
+
+
+def _thread_hold(source, thread_text, why, kw):
+    """A judge did not answer: keep the candidate to be judged later. Nothing is admitted unjudged."""
+    from datetime import datetime
+    q = _thread_pending_load()
+    if any(i.get("source") == source and i.get("thread_text") == thread_text for i in q):
+        return
+    q.append({"source": source, "thread_text": thread_text, "why": why, "held_at": datetime.now().isoformat(),
+              "attempts": 0, **kw})
+    _thread_pending_save(q)
+    print("[seed_thread] HELD (%s): %s - judge unavailable, kept for later: %s" % (source, why, str(thread_text)[:60]),
+          file=__import__("sys").stderr)
+
+
+def _thread_drain_pending():
+    """Retry a few held candidates once a judge has answered. Each counts an attempt; one that never gets judged is
+    dropped after THREAD_PENDING_ATTEMPTS, not admitted."""
+    q = _thread_pending_load()
+    if not q:
+        return
+    had = {(i.get("source"), i.get("thread_text")) for i in q}
+    keep, tried = [], 0
+    for item in q:
+        if tried >= THREAD_PENDING_DRAIN:
+            keep.append(item); continue
+        tried += 1
+        kw = {k: item.get(k) for k in ("max_threads", "extra", "reasoning", "max_len", "exclude_ids", "judge_text") if k in item}
+        try:
+            got, _ = _seed_thread_once(item.get("source"), item.get("thread_text"), _from_queue=True, **kw)
+        except Exception:
+            got = "held"
+        if got == "held":
+            item["attempts"] = int(item.get("attempts") or 0) + 1
+            if item["attempts"] < THREAD_PENDING_ATTEMPTS:
+                keep.append(item)
+            else:
+                print("[seed_thread] DROPPED held candidate (%s) after %d attempts, never judged: %s"
+                      % (item.get("source"), item["attempts"], str(item.get("thread_text"))[:60]), file=__import__("sys").stderr)
+    # anything held meanwhile (by another call while these were judged) is kept too
+    for i in _thread_pending_load():
+        if (i.get("source"), i.get("thread_text")) not in had:
+            keep.append(i)
+    _thread_pending_save(keep)
+
+
+def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning="", max_len=400, exclude_ids=None,
+                judge_text=None):
     """Write a dream/mirror seed to unfinished-threads.json.
-    Used by any system that discovers something worth processing later."""
+    Used by any system that discovers something worth processing later.
+    Returns True (admitted), "latent", "dedup", "held" (a judge was down; kept to be judged later) or None (refused)."""
+    got, judged = _seed_thread_once(source, thread_text, max_threads=max_threads, extra=extra, reasoning=reasoning,
+                                    max_len=max_len, exclude_ids=exclude_ids, judge_text=judge_text)
+    if judged:
+        try:
+            _thread_drain_pending()
+        except Exception as _dq:
+            print("[seed_thread] pending retry failed: %s" % _dq, file=__import__("sys").stderr)
+    return got
+
+
+def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning="", max_len=400, exclude_ids=None,
+                      judge_text=None, _from_queue=False):
+    """One pass through the door. Returns (result, judge_answered). judge_text, when given, is what the judges read
+    (a thread whose stored text opens with a fixed frame is judged on its content, not the frame)."""
     import json, os
     from datetime import datetime
+    _kw = {"max_threads": max_threads, "extra": extra, "reasoning": reasoning, "max_len": max_len,
+           "exclude_ids": list(exclude_ids or []), "judge_text": judge_text}
+    _judge = str(judge_text or thread_text or "")
+    _judged = False
     threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
     try:
         with open(threads_path) as f:
@@ -458,15 +548,15 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     except Exception:
         # NEVER treat a read failure as an empty ledger - that is how the pool got wiped 2026-08-10.
         print("[seed_thread] REFUSING to seed: ledger unreadable - not risking a wipe", file=__import__("sys").stderr)
-        return
+        return None, False
     # Resolved-similarity gate — don't re-open a thread already lived through
     try:
         import sys as _sg_s2; _sg_s2.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
         from similarity_gate import check_thread_against_resolved as _sg_t
-        _sg_hit2 = _sg_t(thread_text)
+        _sg_hit2 = _sg_t(_judge)
         if _sg_hit2:
             print(f"[seed_thread] Blocked — too similar ({_sg_hit2['similarity']:.2f}) to resolved: {_sg_hit2['matched'][:60]}", file=__import__("sys").stderr)
-            return
+            return None, False
     except Exception: pass
     # COMMON FORMATION DOOR (Vrika, 2026-08-12): one law, two species.
     # Confident tension stays unfinished; current or uncertain routes to latent; judge-down keeps existing behavior.
@@ -475,7 +565,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
         _fd_resp = _fd_r.post("http://100.79.177.103:1234/v1/chat/completions", json={
             "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 60,
             "messages": [{"role": "user", "content":
-                "Thread candidate: " + str(thread_text)[:300] + "\n\n"
+                "Thread candidate: " + _judge[:300] + "\n\n"
                 "Is this an UNRESOLVED TENSION (a conflict, gap, pressure, or unfinished becoming that needs processing) "
                 "or a THEMATIC CURRENT (a topic, interest, or encounter being explored)?\n"
                 'Return ONLY JSON: {"kind": "tension" or "current", "confidence": 0.0-1.0}'}]}, timeout=15)
@@ -486,9 +576,12 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
         _door = {"classification": "unresolved_tension" if ("tension" in _fd_kind and _fd_conf >= 0.6) else "thematic_current",
                  "classification_confidence": round(_fd_conf, 2),
                  "classification_basis": "classified" if _fd_conf >= 0.6 else "uncertain"}
-    except Exception:
-        _door = {"classification": "unresolved_tension", "classification_confidence": None,
-                 "classification_basis": "judge_down"}
+        _judged = True
+    except Exception as _fd_down:
+        # The classifier did not answer. It used to admit everything as a tension; now the candidate waits to be judged.
+        if not _from_queue:
+            _thread_hold(source, thread_text, "door classifier: %s" % type(_fd_down).__name__, _kw)
+        return "held", False
     if _door["classification"] == "thematic_current" and not str(source or "").startswith("somatic"):
         try:
             import sys as _fd_s
@@ -501,7 +594,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
                    classification_basis=_door["classification_basis"])
             if _fd_got:
                 print("[formation door] -> latent-current (%s %s): %s" % (_door["classification_basis"], _door["classification_confidence"], str(thread_text)[:60]), file=__import__("sys").stderr)
-                return "latent"
+                return "latent", _judged
             # Latent refused it (its own gate). A thread its source judged worth opening is not lost between the two
             # pools: it is offered to the unfinished pool, whose own bar decides (21 October: a music share he judged
             # BOTH was sent to latent, refused as vague, and the door had already returned - neither pool held it).
@@ -513,16 +606,23 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     # quality bar - no event-markers, no machine vocabulary, nothing too thin to dream about;
     # identity dedup vs OPEN threads - recurrence becomes reseed_count, never a duplicate;
     # per-source cap - no chatty seeder evicts the quiet ones; birthmark on every thread.
-    _txt = (thread_text or "").strip()
+    _txt = _judge.strip()
     _sys = __import__("sys")
     if len(_txt) < 25:
-        print("[seed_thread] REJECT (%s): too thin to dream about" % source, file=_sys.stderr); return
+        print("[seed_thread] REJECT (%s): too thin to dream about" % source, file=_sys.stderr); return None, _judged
     _open = [t for t in threads if not t.get("consumed") and not t.get("retired")]
     if len([t for t in _open if t.get("source") == source]) >= 6:
-        print("[seed_thread] REJECT (%s): source at cap (6 open) - existing threads keep their pull" % source, file=_sys.stderr); return
+        print("[seed_thread] REJECT (%s): source at cap (6 open) - existing threads keep their pull" % source, file=_sys.stderr); return None, _judged
     try:
         import requests as _rq, re as _re2, json as _js2
-        _cands = _open[-15:]
+        # Dedup against EVERY open thread, not only the newest 15: the closest 15 by shared words go to the judge, so
+        # an older open thread on the same matter is still caught and the call stays bounded.
+        _excl = set(exclude_ids or [])
+        _cw = set(_re2.findall(r"[a-z0-9]{4,}", _txt.lower()))
+        def _near(_t):
+            _tw = set(_re2.findall(r"[a-z0-9]{4,}", str(_t.get("thread", "")).lower()))
+            return (len(_cw & _tw) / float(len(_cw | _tw) or 1), str(_t.get("timestamp", "")))
+        _cands = sorted([_t for _t in _open if _t.get("id") not in _excl], key=_near, reverse=True)[:15]
         _listing = "\n".join("%d: %s" % (_i, str(_t.get("thread", ""))[:120]) for _i, _t in enumerate(_cands)) or "(none)"
         _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
             "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 120,
@@ -543,7 +643,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             reasoning = str(_d["why_unresolved"])[:250]
             _rsrc = "derived"
         if _d.get("ok") is False and not str(source or "").startswith("somatic"):
-            print("[seed_thread] REJECT (%s) quality: %s" % (source, str(_d.get("why", ""))[:80]), file=_sys.stderr); return
+            print("[seed_thread] REJECT (%s) quality: %s" % (source, str(_d.get("why", ""))[:80]), file=_sys.stderr); return None, _judged
         _di = int(_d.get("duplicate_of", -1))
         if 0 <= _di < len(_cands):
             _ex = _cands[_di]
@@ -552,9 +652,12 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             print("[seed_thread] DEDUP (%s): same as open thread %s (reseen %dx) - recurrence is not novelty"
                   % (source, _ex.get("id"), _ex["reseed_count"]), file=_sys.stderr)
             _pool_save(threads, threads_path, "seed_thread-dedup")
-            return "dedup"
-    except Exception:
-        pass  # fail-open: local judge down must not starve the pool
+            return "dedup", _judged
+    except Exception as _qj_down:
+        # The quality/duplicate judge did not answer. It used to wave the candidate through; now it waits.
+        if not _from_queue:
+            _thread_hold(source, thread_text, "quality judge: %s" % type(_qj_down).__name__, _kw)
+        return "held", _judged
     # review 264: the store owns the shape - one admission door for every producer
     try:
         import sys as _ts_s; _ts_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _ts_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -562,8 +665,9 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     except Exception:
         import uuid as _uuid
         _ts_admit = lambda text, src, kind=None, by="", extra=None: {"id": str(_uuid.uuid4())[:8], "source": src, "thread": text, "timestamp": datetime.now().isoformat(), "consumed": False, **(extra or {})}
+    _ml = max(100, int(max_len or 400))
     threads.append(_ts_admit(
-        (thread_text if len(thread_text) <= 400 else (thread_text[:400].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:400] else thread_text[:397] + "...")),
+        (thread_text if len(thread_text) <= _ml else (thread_text[:_ml].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:_ml] else thread_text[:_ml - 3] + "...")),
         source, by="emoclaw_utils.seed_thread", extra={
         "dream_only": (source.startswith("somatic") or source in ("pride", "pride-mirror", "pride_mirror", "structural-gap")),
         "epistemic_status": "unreviewed", "origin_excerpt": _txt[:160],
@@ -586,7 +690,22 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     _pool_save(threads, threads_path, "seed_thread")  # atomic + shrink-guarded: the ledger can never hold a half-write or a truncation
     # What happened is said to the caller (22 October: the journal printed "Seeded unfinished thread" for threads this
     # function had refused). True: admitted to the pool. "latent"/"dedup": taken there or merged. None: refused.
-    return True
+    return True, _judged
+
+def concrete_line(text, keywords=()):
+    """The most specific first-person sentence in a reflection, for a thread that needs an object. Prefers sentences
+    naming one of keywords; None when the reflection has no sentence fit to stand alone."""
+    import re
+    best, best_score = None, -1
+    for raw in re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", str(text or "")).strip()):
+        sen = raw.strip().lstrip("#*->0123456789. ").strip()
+        if not (40 <= len(sen) <= 260) or not re.search(r"\b(I|my|me|I'm|I've)\b", sen):
+            continue
+        score = sum(2 for k in keywords if k.lower() in sen.lower()) + (1 if re.search(r"\b(her|Gloria)\b", sen) else 0)
+        if score > best_score:
+            best, best_score = sen, score
+    return best
+
 
 def _pool_save(threads, threads_path, reason=""):
     """Every pool write goes through thread_store.save_pool (shrink guard). Fallback is atomic but unguarded, and says so."""

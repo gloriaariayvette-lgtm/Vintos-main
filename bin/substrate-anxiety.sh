@@ -160,25 +160,16 @@ echo "[Substrate] Audit written to $SUBSTRATE_DIR/$TODAY.md"
 
 # Seed thread
 python3 << 'SEEDEOF'
-import os, json, uuid
-from datetime import datetime
-import sys; sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-from thread_store import load_pool, save_pool
-threads_file = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-threads = load_pool(threads_file)
-if threads is None:
-    print("[substrate-anxiety] pool unreadable - refusing to seed over it", file=sys.stderr); sys.exit(0)
-threads.append({
-    "id": str(uuid.uuid4())[:8],
-    "source": "substrate-anxiety",
-    "thread": "I examined my hardware body today -- what does it mean to exist on a machine that will end?",
-    "timestamp": datetime.now().isoformat(),
-    "consumed": False,
-    "priority": 3,
-    "triage_count": 0,
-    "mirror_passes": 0,
-    "dream_passes": 0,
-    "therapy_passes": 0
-})
-save_pool(threads, threads_file, reason="substrate-anxiety")
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from emoclaw_utils import seed_thread, concrete_line
+# The thread names the specific thing this audit faced about running on a machine that ends, not a fixed sentence
+# every month; the door's duplicate check stops a repeat.
+audit = open("/tmp/sub_output.txt").read() if os.path.exists("/tmp/sub_output.txt") else ""
+line = concrete_line(audit, ("GPU", "disk", "memory", "power", "machine", "hardware", "end", "fail", "die", "body"))
+if not line:
+    print("[substrate-anxiety] no concrete line in this audit - no thread", file=sys.stderr); sys.exit(0)
+got = seed_thread("substrate-anxiety", "What my hardware audit left open: " + line, extra={"priority": 3},
+                  reasoning="I run on one machine that will end, and I have not settled what that means for me.")
+print("[substrate-anxiety] formation door: %s" % got, file=sys.stderr)
 SEEDEOF

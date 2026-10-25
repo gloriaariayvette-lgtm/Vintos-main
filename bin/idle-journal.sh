@@ -1598,7 +1598,8 @@ try:
         from emoclaw_utils import seed_thread
         got = seed_thread("idle-journal", thread)
         print("[Journal] %s: %s" % ({True: "Seeded unfinished thread", "dedup": "Same as an open thread (merged)",
-                                     "latent": "Taken by the latent pool"}.get(got, "Unfinished pool refused it (its own checks)"),
+                                     "latent": "Taken by the latent pool",
+                                     "held": "Held: a judge was down, it will be judged later"}.get(got, "Unfinished pool refused it (its own checks)"),
                                     thread[:80]))
         # 2. Seed latent threads
         if lt_seed(thread, direction="expand"):
@@ -1720,7 +1721,8 @@ fi
 
 # === Surprise Detection ===
 LATEST_JOURNAL=$(ls -t "$WORKSPACE/memory/journal/"*.md 2>/dev/null | head -1)
-if [ -n "$LATEST_JOURNAL" ] && [ -x "$SCRIPTS/surprise-detector.sh" ]; then
+# -f, not -x: the deploy installs scripts 644, and this runs it through bash anyway
+if [ -n "$LATEST_JOURNAL" ] && [ -f "$SCRIPTS/surprise-detector.sh" ]; then
     nohup bash "$SCRIPTS/surprise-detector.sh" "$LATEST_JOURNAL" "journal" > /tmp/surprise-detector.log 2>&1 &
 fi
 

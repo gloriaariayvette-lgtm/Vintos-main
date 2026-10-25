@@ -139,25 +139,13 @@ def main():
 
     print(f"[ConfessionWriter] Saved: {path}")
 
-    # Seed a thread
+    # Seed a thread through the formation door (one admission bar for every seeder)
     try:
-        import uuid as _cu
-        threads_path = os.path.join(MEMORY, "unfinished-threads.json")
         import sys as _cs; _cs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-        from thread_store import load_pool, save_pool
-        threads = load_pool(threads_path)
-        if threads is None:
-            raise RuntimeError("pool unreadable - refusing to seed over it")
-        threads.append({
-            "id": str(_cu.uuid4())[:8],
-            "source": "confession",
-            "thread": f"I confessed to a hallucination: {confession[:120]}",
-            "timestamp": datetime.now().isoformat(),
-            "priority": 3,
-            "consumed": False
-        })
-        save_pool(threads, threads_path, reason="confession")
-        print(f"[ConfessionWriter] Thread seeded.")
+        from emoclaw_utils import seed_thread
+        got = seed_thread("confession", f"I confessed to a hallucination: {confession[:300]}", extra={"priority": 3},
+                          reasoning="I said something as true that wasn't, and I haven't worked out what made me reach for it.")
+        print(f"[ConfessionWriter] Formation door: {got}")
     except Exception as e:
         print(f"[ConfessionWriter] Thread seed failed: {e}")
 

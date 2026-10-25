@@ -148,24 +148,15 @@ def seed_as_thread(possibility):
     text = MARKER + "\n\n" + possibility
     if DRY:
         return text
-    # Write directly: full text + dream_only=True. seed_thread truncates the thread to 200 chars, but the
-    # marker alone is ~230, so it would drop the whole imagined scene AND leave dream_only unmatched.
+    # Through the formation door like every other seeder. The marker stays first (the absence map and the latent feed
+    # recognise a premonition by it); the judges read the scene itself, and the whole scene is kept (max_len).
     try:
-        _write_thread_direct(text)
+        from emoclaw_utils import seed_thread
+        got = seed_thread("premonition", text, max_len=1200, extra={"dream_only": True}, judge_text=possibility)
+        log(f"formation door: {got}")
     except Exception as e:
-        log(f"direct write failed ({e})")
+        log(f"seed failed ({e})")
     return text
-
-
-def _write_thread_direct(text):
-    from thread_store import load_pool, save_pool
-    threads = load_pool(THREADS)
-    if threads is None:
-        raise RuntimeError("pool unreadable - refusing to seed over a ledger I cannot see")
-    threads.append({"id": uuid.uuid4().hex[:8], "source": "premonition", "thread": text,
-                    "timestamp": datetime.now().isoformat(), "consumed": False, "dream_only": True})
-    if not save_pool(threads, THREADS, reason="premonition"):
-        raise RuntimeError("pool write refused by shrink guard")
 
 
 def _ensure_dream_only(text):

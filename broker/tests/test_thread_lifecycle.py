@@ -45,7 +45,16 @@ import json, os
 _P = os.path.expanduser("~/.vintos/workspace/memory/current-preoccupation.json")
 def recent_pearls(*a, **k): return ""
 def get_state(): return {}
-def seed_thread(*a, **k): pass
+def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning="", **k):
+    # the formation door's admission without its judges: every writer now seeds through seed_thread, so the
+    # stub admits through thread_store as the real door does, and refuses an unreadable ledger as it does
+    import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from thread_store import load_pool, save_pool, admit
+    path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
+    pool = load_pool(path)
+    if pool is None: return None
+    pool.append(admit(thread_text, source, by="stub-door", extra=extra))
+    return True if save_pool(pool, path, reason="stub-door") else None
 def get_preoccupation():
     try:
         p = json.load(open(_P)); return p if p.get("thread") else None

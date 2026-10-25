@@ -49,6 +49,12 @@ MUTATION_THRESHOLD = 0.75
 BLEND_THRESHOLD = 0.12  # score difference below which secondary bleeds in
 LOSS_WINDOW_HOURS = 6
 LOSS_COUNT_FOR_MUTATION = 4
+# A current that has HARDENED into a tension is offered to the unfinished pool once: his replies kept failing to
+# engage it until its pressure reached the mutation point, it has lasted, it still pulls, and engaging it never got far.
+HARDEN_MIN_HOURS = 24
+HARDEN_MIN_SALIENCE = 0.5
+HARDEN_MAX_RESOLUTION = 0.5
+PROMOTE_IN_BACKGROUND = True   # the door makes model calls; a reply must never wait for them
 
 DAY_PHASES = [
     ("late_night", 0, 4),
@@ -1295,13 +1301,67 @@ def update_from_input(input_text, output_text=""):
 
     save_threads(data)
 
-    # Check mutations
+    # Check mutations. A thread reaching the mutation point is the moment a current that could not be said turns
+    # into a tension: if it has also lasted and still pulls, it is offered to the unfinished pool (once) before the
+    # mutation resets its pressure.
+    hardened = []
     for _, t in scored:
         if t.get("pressure", 0) > MUTATION_THRESHOLD:
+            if _hardened(t):
+                t["promoted_to_unfinished"] = datetime.now().isoformat()
+                hardened.append({"id": t.get("id"), "origin": t.get("origin", ""), "pressure": round(t.get("pressure", 0), 2),
+                                 "losses": len(t.get("loss_timestamps") or []), "salience": round(t.get("salience", 0), 2)})
             _mutate_thread(t, scored)
 
     save_threads(data)
+    if hardened:
+        _offer_hardened(hardened)
     return dominant, secondary if bleed else None
+
+
+def _born(thread):
+    """When a latent thread was first formed: its own field, else the time in its lt_YYYYmmdd_HHMMSS id."""
+    for k in ("created", "created_at", "born"):
+        try:
+            return datetime.fromisoformat(str(thread[k])[:19])
+        except Exception:
+            pass
+    try:
+        return datetime.strptime(str(thread.get("id", ""))[3:18], "%Y%m%d_%H%M%S")
+    except Exception:
+        return None
+
+
+def _hardened(thread, now=None):
+    if thread.get("promoted_to_unfinished"):
+        return False
+    if thread.get("pressure", 0) <= MUTATION_THRESHOLD:
+        return False
+    if thread.get("salience", 0) < HARDEN_MIN_SALIENCE or thread.get("resolution_score", 0) >= HARDEN_MAX_RESOLUTION:
+        return False
+    born = _born(thread)
+    return born is not None and ((now or datetime.now()) - born) >= timedelta(hours=HARDEN_MIN_HOURS)
+
+
+def _offer_hardened(items):
+    def _go():
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from emoclaw_utils import seed_thread
+            for h in items:
+                got = seed_thread("latent-hardened", "Something I keep coming back to and can't get said: " + str(h["origin"]),
+                                  extra={"latent_id": h["id"], "latent_pressure": h["pressure"], "latent_losses": h["losses"]},
+                                  reasoning=("It kept pressing at me (pressure %.2f, %d recent turns where my words went "
+                                             "elsewhere), so it is no longer a passing interest; it is something unresolved."
+                                             % (h["pressure"], h["losses"])))
+                log(f"Hardened current offered to the unfinished pool ({got}): {str(h['origin'])[:50]}")
+        except Exception as e:
+            log(f"Hardened current not offered: {e}")
+    if PROMOTE_IN_BACKGROUND:
+        import threading
+        threading.Thread(target=_go, name="latent-hardened", daemon=False).start()
+    else:
+        _go()
 
 def _record_loss(thread):
     """Record a loss for pressure accumulation."""
