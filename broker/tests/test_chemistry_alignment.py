@@ -124,6 +124,17 @@ check("the tools it is shown include searching her IMG/VR database by protein, n
       "protein_similarity" in prompts[-1]["user"], prompts[-1]["user"].split("THE LAB'S TOOLS")[-1][:400])
 check("there is room in the answer for those plans", align.ALIGN_MAX_TOKENS >= 4000)
 
+def failing(lens, provider, model, system, user, reservation):
+    prompts.append({"lens": lens, "model": model, "user": user, "reservation": reservation})
+    if lens == "grok": raise RuntimeError("the frontier model returned nothing")
+    return frontier(lens, provider, model, system, user, reservation)
+align.LOG = os.path.join(HOME, "fresh-frontier-log.jsonl")   # a day with no turns yet, in scratch
+gemma_turn(7); align.run(call=failing)
+gemma_turn(8); g = align.run(call=failing)
+gemma_turn(9); o = align.run(call=failing)
+check("a model that faults is not retried all day: the next slot goes to the model after it",
+      g["lens"] == "grok" and g["state"] == "held_fault" and o["lens"] == "opus" and o["state"] == "completed", (g, o))
+
 timer = open(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")).read()
 session_src = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 check("the timer fires four times a day", timer.count("OnCalendar=") == 4, timer)

@@ -262,7 +262,8 @@ async def _call(lens, provider, model, system, user, reservation):
 
 
 def _next_model(rows, today):
-    done = {r.get("lens") for r in rows if r.get("state") == "completed" and _local_day(r.get("at")) == today}
+    # a model that faulted today has had its turn: retrying it every slot starved the models after it
+    done = {r.get("lens") for r in rows if r.get("state") in ("completed", "held_fault") and _local_day(r.get("at")) == today}
     for lens, provider, model in MODELS:
         if lens not in done: return lens, provider, model
     return None
