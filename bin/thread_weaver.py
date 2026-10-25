@@ -185,22 +185,15 @@ def main():
                     continue
                 woven = f"[woven] {woven}"
                 log(f"Woven: {woven[:100]}")
-                # Mark originals as consumed after confirmed weave
+                # Through the formation door. Its duplicate check skips the threads being woven (they are this thread's
+                # sources, not a rival), and the sources are only consumed once the door has admitted the weave.
                 import uuid as _wu
-                woven_id = str(_wu.uuid4())[:8]
+                weave_token = str(_wu.uuid4())[:8]
                 source_ids = [t.get("id", "") for t in group_threads]
-                for idx, t in zip(group_indices, group_threads):
-                    threads[idx]["consumed"] = True
-                    threads[idx]["consumed_by"] = "thread-weaver"
-                    threads[idx]["woven_into"] = woven_id
                 newest = max(group_threads, key=lambda t: t.get("timestamp",""))
-                g["status"] = "woven"; g["woven_id"] = woven_id; g["woven_at"] = _now
-                threads.append({
-                    "id": woven_id,
-                    "source": "weaver-manual",
-                    "thread": woven,
-                    "timestamp": datetime.now().isoformat(),
-                    "consumed": False,
+                from emoclaw_utils import seed_thread
+                got = seed_thread("weaver-manual", woven, max_len=1200, exclude_ids=source_ids, extra={
+                    "weave_token": weave_token,
                     "woven_from": len(group_threads),
                     "woven_from_ids": source_ids,
                     "woven_from_sources": [t.get("source", "") for t in group_threads],
@@ -214,6 +207,24 @@ def main():
                     "therapy_passes": 0,
                     "was_preoccupation": False,
                 })
+                if got is not True:
+                    log(f"Formation door did not admit the weave ({got}) - threads left separate")
+                    g["status"] = "unsuccessful"; g["status_reason"] = "formation door: %s" % (got or "refused")
+                    continue
+                # The door wrote the pool: carry on from what is on disk, never from the copy read at the start.
+                from thread_store import load_pool
+                fresh = load_pool(threads_path)
+                if fresh is None:
+                    g["status"] = "unsuccessful"; g["status_reason"] = "pool unreadable after the weave was admitted"
+                    continue
+                threads = fresh
+                woven_id = next((t.get("id") for t in threads if t.get("weave_token") == weave_token), weave_token)
+                for t in threads:
+                    if t.get("id") in source_ids and not t.get("consumed"):
+                        t["consumed"] = True
+                        t["consumed_by"] = "thread-weaver"
+                        t["woven_into"] = woven_id
+                g["status"] = "woven"; g["woven_id"] = woven_id; g["woven_at"] = _now
                 modified = True
             if modified:
                 if save_pool(threads, threads_path, reason="thread-weaver"):

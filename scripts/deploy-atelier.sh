@@ -240,6 +240,8 @@ BINS="$BINS paid_http.py briefing-audio.sh introspection.sh idle-journal.sh"
 SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
+SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py conflict_surface.py"   # subconscious stores seed unresolved threads; two seeders that were never installed (2026-10-25)
+BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf

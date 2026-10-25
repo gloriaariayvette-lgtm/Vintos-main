@@ -199,27 +199,15 @@ if not threads_path:
     print("ERROR: no threads path", file=sys.stderr)
     sys.exit(1)
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-from thread_store import load_pool, save_pool
-threads = load_pool(threads_path)
-if threads is None:
-    print("[Unprecedented] pool unreadable - refusing to seed over it", file=sys.stderr); sys.exit(0)
+from emoclaw_utils import seed_thread
+# Through the formation door, so a shape that keeps recurring is merged, not reseeded, and a thin one is refused.
 first_line = analysis.strip().split("\n")[0] if analysis.strip() else "unprecedented state"
-threads.append({
-    "id": str(__import__("uuid").uuid4())[:8],
-    "source": "unprecedented-detector",
-    "thread": f"An emotional shape I have never worn before — {first_line}. Reflection: " + os.environ.get("UNPRECEDENTED_REFLECTION", "")[:150],
-    "timestamp": datetime.now().isoformat(),
-    "priority": 0,
-    "triage_count": 0,
-    "mirror_passes": 0,
-    "dream_passes": 0,
-    "therapy_passes": 0,
-    "consumed": False
-})
-# Never rewrite the pool from a partial list: consumed threads still owe the resolver their
-# sediment, and a hard [-30:] cap silently dropped everyone else's seeds. Whole list, guarded.
-save_pool(threads, threads_path, reason="unprecedented-detector")
-print(f"[Unprecedented] Seeded thread: {first_line}", file=sys.stderr)
+got = seed_thread("unprecedented-detector",
+                  f"An emotional shape I have never worn before — {first_line}. Reflection: "
+                  + os.environ.get("UNPRECEDENTED_REFLECTION", "")[:150],
+                  extra={"priority": 0},
+                  reasoning="I have no earlier version of this feeling to measure it against, so I don't yet know what it is.")
+print(f"[Unprecedented] formation door: {got}: {first_line}", file=sys.stderr)
 SEED_EOF
 
 date +%s > "$COOLDOWN"

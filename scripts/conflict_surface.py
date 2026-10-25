@@ -4,6 +4,7 @@ MEM=os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS=os.path.expanduser("~/.vintos/workspace/scripts")
 F=os.path.join(MEM,"conflict-surface.json")
 LM="http://100.79.177.103:1234/v1/chat/completions"
+SEED_IN_BACKGROUND=True
 def name_friction(a2,b2):
     if not a2 or not b2: return None
     p=("Two internal passes produced these two versions of Vintos's next response. "
@@ -39,10 +40,16 @@ def block(a2,b2):
     else:
         body=f"{v[0].get('label','Part of you')} keeps wanting to {v[0].get('wanted','')}."
     out="[CURRENT INTERNAL FRICTION]\n"+body+"\nYou do not need to mention this. But if it naturally belongs in your response, you may acknowledge it."
-    if streak>=3:
-        try:
-            import sys; sys.path.insert(0, SCRIPTS)
-            from emoclaw_utils import seed_thread
-            seed_thread("conflict", f"Recurring internal conflict: {v[0].get('label')} vs {v[1].get('label')}", reasoning=f"the same friction surfaced {streak} consecutive times", extra={"decision_mode": "threshold"})
-        except Exception: pass
+    if streak>=3 and len(v)>=2:
+        # This runs inside his reply; the formation door makes model calls, so the thread is offered off the reply path.
+        def _seed(a=v[0].get('label'), b=v[1].get('label'), n=streak):
+            try:
+                import sys; sys.path.insert(0, SCRIPTS)
+                from emoclaw_utils import seed_thread
+                seed_thread("conflict", f"Recurring internal conflict: {a} vs {b}", reasoning=f"the same friction surfaced {n} consecutive times", extra={"decision_mode": "threshold"})
+            except Exception: pass
+        if SEED_IN_BACKGROUND:
+            import threading; threading.Thread(target=_seed, name="conflict-seed", daemon=True).start()
+        else:
+            _seed()
     return out

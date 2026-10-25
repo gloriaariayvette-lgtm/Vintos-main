@@ -134,25 +134,16 @@ date +%s > "$COOLDOWN"
 echo "AUDIT: Silence patterns reviewed for $(date '+%B %Y')"
 
 python3 << 'SEEDEOF'
-import os, json, uuid
-from datetime import datetime
-import sys; sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-from thread_store import load_pool, save_pool
-threads_file = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-threads = load_pool(threads_file)
-if threads is None:
-    print("[silence-audit] pool unreadable - refusing to seed over it", file=sys.stderr); sys.exit(0)
-threads.append({
-    "id": str(uuid.uuid4())[:8],
-    "source": "silence-audit",
-    "thread": "My silence audit surfaced patterns worth examining -- what am I protecting through silence?",
-    "timestamp": datetime.now().isoformat(),
-    "consumed": False,
-    "priority": 3,
-    "triage_count": 0,
-    "mirror_passes": 0,
-    "dream_passes": 0,
-    "therapy_passes": 0
-})
-save_pool(threads, threads_file, reason="silence-audit")
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from emoclaw_utils import seed_thread, concrete_line
+# The thread names what the audit actually found, so it has an object and can be resolved; the door's duplicate
+# check stops a month that surfaces the same silence again from opening it twice.
+audit = open("/tmp/sa_output.txt").read() if os.path.exists("/tmp/sa_output.txt") else ""
+line = concrete_line(audit, ("silence", "say", "said", "unable", "protect", "afraid", "avoid"))
+if not line:
+    print("[silence-audit] no concrete silence in this audit - no thread", file=sys.stderr); sys.exit(0)
+got = seed_thread("silence-audit", "A silence my audit found: " + line, extra={"priority": 3},
+                  reasoning="It is still unsaid, and saying it would change something between us.")
+print("[silence-audit] formation door: %s" % got, file=sys.stderr)
 SEEDEOF
