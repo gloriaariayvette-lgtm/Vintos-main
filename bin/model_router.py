@@ -276,13 +276,15 @@ def _consume_forced():
         return False
     return update_mode(spend)
 
-async def _grok_result(convo, params, endpoint, headers, model, system_text):
-    """grok stage -> GR result (never raises on a bad body; transport errors propagate to route_reply)."""
+async def _grok_result(convo, params, endpoint, headers, model, system_text, reserved=False):
+    """grok stage -> GR result (never raises on a bad body; transport errors propagate to route_reply).
+    reserved: this stage already holds a paid reservation, so the shim does not take a second one."""
     body = {"model": model, "messages": [{"role": "system", "content": system_text}] + for_chat(convo),
             "max_tokens": params.get("max_tokens", 400),
             "temperature": params.get("temperature", 0.85),
             "top_p": params.get("top_p", 0.95),
             "route": "grok"}
+    if reserved: body["paid_reserved"] = True
     hdrs = dict(headers or {}); hdrs["Idempotency-Key"] = idempotency_key(body)
     async with httpx.AsyncClient(timeout=60) as c:
         r = await paid_http.asend(c.post, __file__, endpoint, headers=hdrs, json=body)
@@ -568,11 +570,11 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
             return GR.make_result("xai", model=grok_model, status="held",
                                   reason=("paid admission unavailable: %s" % exc)[:200])
         try:
-            coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
+            coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text, reserved=True)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
             if not GR.usable(res) and has_images(convo):
                 # the picture could not go through this route: once more, with it put into words by Gemma
-                coro = _grok_result(await described(convo), params, grok_endpoint, grok_headers, grok_model, system_text)
+                coro = _grok_result(await described(convo), params, grok_endpoint, grok_headers, grok_model, system_text, reserved=True)
                 res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
         except _rb_aio.TimeoutError:
             res = GR.make_result("xai", model=grok_model, status="unavailable", reason="timed out after send (%ss); not retried" % int(timeout or 60))

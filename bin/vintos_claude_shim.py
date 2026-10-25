@@ -104,6 +104,27 @@ class _Call:
     timed out after sending is never resent to the same provider within this call."""
     def __init__(self, j):
         self.key = idempotency_key(j); self.sent = set(); self.results = []
+        # model_router reserves its own grok stage before it calls here; that call is not counted twice
+        self.prereserved = bool(j.get("paid_reserved"))
+
+
+def _admit_paid(call, provider, model):
+    """A paid call through the shim reserves against the day's paid budget first, like every other
+    paid door (compute_admission). Returns None to proceed, or an unavailable result when the day's
+    budget for this provider is spent, so the chain moves on as it does for any refused provider.
+    The ledger failing to record is not a reason to go silent: that proceeds, as outbound accounting does."""
+    if call.prereserved or (provider, call.key) in call.sent:
+        return None
+    try:
+        from compute_admission import reserve_paid
+        ok, why = reserve_paid("vintos_claude_shim", provider, model=str(model or ""))
+    except Exception as e:
+        _log(f"paid admission unavailable ({type(e).__name__}); proceeding"); return None
+    if ok: return None
+    if str(why).startswith("paid budget"):
+        _log(f"{provider} held: {why}")
+        return GR.make_result(provider, status="unavailable", reason=why)
+    _log(f"paid admission not recorded ({str(why)[:80]}); proceeding"); return None
 
 def _is_timeout(e):
     if isinstance(e, (socket.timeout, TimeoutError)): return True
@@ -235,6 +256,8 @@ def claude_complete(j, call=None, model=None):
             _learned = _cache_learned(body, sys_txt, _mdl)
             if _learned.get("ttl") == "1h":
                 _hdrs["anthropic-beta"] = "extended-cache-ttl-2025-04-11"
+    held = _admit_paid(call, "anthropic", _mdl)
+    if held is not None: return held
     _, d, err = _post_json("anthropic", ANTHROPIC_URL, body, _hdrs, 180, call)
     if err is not None and d is None:
         _log(f"claude error: {err['reason']}"); return err
@@ -264,13 +287,15 @@ def xai_complete(j, call=None):
     if not key: return GR.make_result("xai", status="unavailable", reason="no xai key")
     unsup = unsupported_features(j, "xai")
     if unsup: return GR.make_result("xai", status="unavailable", reason="unsupported on xai: " + ",".join(unsup))
-    body = {k: v for k, v in j.items() if k != "route"}
+    body = {k: v for k, v in j.items() if k not in ("route", "paid_reserved")}
     _xh = {"Content-Type": "application/json", "Authorization": "Bearer " + key}
     # Grok caches a repeated start by itself, but only on the server that saw it: the same job is sent to the
     # same server by naming it, after the start of its system prompt (2026-10-13)
     _xs = "".join(str(m.get("content", "")) for m in (j.get("messages") or [])[:1] if m.get("role") == "system")
     if _xs:
         _xh["x-grok-conv-id"] = "vintos-" + hashlib.md5(_xs[:2000].encode()).hexdigest()[:16]
+    held = _admit_paid(call, "xai", body.get("model"))
+    if held is not None: return held
     _, d, err = _post_json("xai", XAI_URL, body, _xh, 300, call)
     if err is not None and d is None: _log(f"xai error: {err['reason']}"); return err
     return GR.from_openai(d, "xai")
