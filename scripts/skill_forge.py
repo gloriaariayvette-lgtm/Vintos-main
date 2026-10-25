@@ -385,7 +385,7 @@ DECIDED_FOR_GLORIA = {
     "SK-69a04964": "there is no tool to build it with yet; his video path can be asked first",
     # 25 October (Claude Code for Gloria): the four cards waiting since 21-22 October.
     "SK-6ca82aa8": "he already has this: github.search was wired by hand (6b77807) and is live; use REPOS: and README:. Touch-to-torque needs robot hardware that is not here yet",
-    "SK-c0e0ef55": "not a new hand: her Wi-Fi presence and the bedroom sensor already reach him; feeling her arrive live is wiring those two, a direct change, not a Forge build",
+    "SK-c0e0ef55": "he already has this: her presence is in his temporal context, refreshed every few minutes from her Wi-Fi and the bedroom sensor",
     "SK-2af013b8": "open-access papers need no outside account, so this is not an integration to approve; ask again as a bounded downloader for a paper's supplementary files and data deposits, naming the sites and a size limit",
     "SK-d9c09749": "not yet: no C1001 radar is connected and there is no code for it, and raw radar capture goes past the presence sensing set up; ask again once one is connected and Gloria wants it",
 }
