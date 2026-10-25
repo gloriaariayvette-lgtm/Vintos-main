@@ -69,7 +69,7 @@ class Routes(unittest.TestCase):
         message = types.SimpleNamespace(message='machine-composed photo frame', original_text='!strategy stop')
         for route in ['chat_with_vintos', 'chat_full_context', 'chat_with_memory']:
             self.adopt()
-            fn = self.function(route, {'APP_SECRET': 'fixture-secret',
+            fn = self.function(route, {'APP_SECRET': 'fixture-secret', '_secret_ok': lambda v, _s='fixture-secret': bool(v) and __import__('hmac').compare_digest(str(v), _s),
                                        '_her_turn_text': lambda msg: msg.original_text,
                                        '_self_on_message': lambda *args, **kwargs: None,
                                        '_test_mode_active': lambda: True})

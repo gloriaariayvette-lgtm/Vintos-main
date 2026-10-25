@@ -32,7 +32,7 @@ code = "\n".join(l for l in ast.get_source_segment(src, fn).splitlines() if not 
 class Req:
     headers = {"X-Vintos-Secret": "s"}
     async def json(self): return {"correction": "she grew up in Raleigh; the lighthouse was one holiday when she was nine"}
-ns = {"os": os, "json": json, "MEMORY": MEM, "WORKSPACE": WS, "APP_SECRET": "s", "print": lambda *a, **k: None, "Request": object}
+ns = {"os": os, "json": json, "MEMORY": MEM, "WORKSPACE": WS, "APP_SECRET": "s", "_secret_ok": lambda v, _s="s": bool(v) and __import__("hmac").compare_digest(str(v), _s), "print": lambda *a, **k: None, "Request": object}
 exec(code, ns)
 out = asyncio.run(ns["review_hallucination_flag"]("F-1", Req()))
 

@@ -30,7 +30,7 @@ ok = V.make_one("the two of us under the balcony light", want_id="w-123")
 check("a video from a want is made", ok and len(os.listdir(V.VID_DIR)) >= 1)
 check("and sent to her phone once, linked to the clip", len(SENT) == 1 and "/api/video/file/video-" in SENT[0][2].get("Click", "")
       and SENT[0][2].get("Attach") == SENT[0][2].get("Click"), SENT)
-fname = SENT[0][2]["Click"].rsplit("/", 1)[-1]
+fname = SENT[0][2]["Click"].split("?", 1)[0].rsplit("/", 1)[-1]   # the link may carry its path ticket
 check("its receipt says sent", D.receipt_for(fname, "ntfy").get("state") == "sent")
 V._send_to_her(fname, "w-123")
 check("the same clip is never sent twice", len(SENT) == 1)
