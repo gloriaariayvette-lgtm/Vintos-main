@@ -1064,6 +1064,7 @@ def check_want_interference(new_want_text, new_want_id):
     MEMORY = _wi_o.path.expanduser("~/.vintos/workspace/memory")
     LM = "http://100.79.177.103:1234/v1/chat/completions"
 
+    _synth = None
     try:
         wants = _wi_j.load(open(_wi_o.path.join(MEMORY, "current-wants.json")))
     except:
@@ -1164,19 +1165,7 @@ def check_want_interference(new_want_text, new_want_id):
             }, timeout=20)
             synth_text = r3.json()["choices"][0]["message"]["content"].strip()
             if synth_text.lower().startswith("i want"):
-                import uuid as _wi_uuid
-                synth_entry = {
-                    "id": str(_wi_uuid.uuid4())[:8],
-                    "want": synth_text,
-                    "source": "interference-synthesis",
-                    "synthesized_from": [new_want_id, conflict_id],
-                    "intensity": 4,
-                    "timestamp": _wi_dt.now().isoformat(),
-                    "fulfilled": False,
-                    "outreach_count": 0,
-                }
-                wants.append(synth_entry)
-                print(f"[interference] Synthesis spawned: {synth_text[:60]}", file=__import__("sys").stderr)
+                _synth = (synth_text, [new_want_id, conflict_id])
 
         elif outcome == "OSCILLATING":
             print(f"[interference] Oscillating — both wants marked, no resolution attempted", file=__import__("sys").stderr)
@@ -1184,9 +1173,19 @@ def check_want_interference(new_want_text, new_want_id):
         else:  # IRRECONCILABLE
             print(f"[interference] Irreconcilable — both stay active, pressure distortion flagged", file=__import__("sys").stderr)
 
-        _wi_j.dump(wants, open(_wi_o.path.join(MEMORY, "current-wants.json"), "w"), indent=2)
+        _wi_path = _wi_o.path.join(MEMORY, "current-wants.json")
+        with open(_wi_path + ".tmp", "w") as _wi_f:
+            _wi_j.dump(wants, _wi_f, indent=2)
+        _wi_o.replace(_wi_path + ".tmp", _wi_path)
     except Exception as e:
         print(f"[interference] Save failed: {e}", file=__import__("sys").stderr)
+        return
+    # A synthesized want is a candidate like any other: it goes through express_want's door (admission, dedup,
+    # similarity, relation to the living field) and its locked write. It used to be appended here directly.
+    if _synth:
+        _made = express_want(_synth[0], source="interference-synthesis", intensity=4, synthesized_from=_synth[1])
+        if _made:
+            print(f"[interference] Synthesis spawned: {_synth[0][:60]}", file=__import__("sys").stderr)
 
 
 def spawn_echo_want(parent_want):
@@ -1982,9 +1981,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             return
     except Exception: pass
     # Relational formation: what is this candidate relative to the living field?
-    _rel = "novel"; _rel_id = ""
+    _rel = "novel"; _rel_id = ""; _rel_failed = False
+    _rf_live = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")][-30:]
     try:
-        _rf_live = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")][-30:]
         if _rf_live:
             import requests as _rf_r, json as _rf_j
             _rf_list = "\n".join(f"[{w.get('id','?')}] {w.get('want','')[:100]}" for w in _rf_live)
@@ -2007,7 +2006,18 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             _rf_d = _rf_j.loads(_rf_raw[_rf_raw.find("{"):_rf_raw.rfind("}")+1])
             _rel = str(_rf_d.get("relationship", "novel")).lower()
             _rel_id = str(_rf_d.get("id", ""))
-    except Exception: pass
+    except Exception:
+        _rel_failed = True
+    if _rel_failed:
+        # The judge did not answer (model down, unreadable reply). Silence is not "new territory": decide by the
+        # same-subject check instead, so a returning desire merges into the want it already is.
+        try:
+            from wants_meta import same_subject as _rf_same
+            _rf_hit = next((w for w in reversed(_rf_live) if _rf_same(want_text, w.get("want", ""))), None)
+        except Exception:
+            _rf_hit = None
+        if _rf_hit and _rf_hit.get("id"):
+            _rel, _rel_id = "persistence", str(_rf_hit["id"])
     # The same desire returning, continued or intensified is that want again, not a new one (22 October: four
     # mmWave-sensor wants and two radiocarbon ones stood side by side, each judged "persistence" or "continuation").
     # Only genuinely new territory, or a mutation into something new, becomes a new want.
@@ -2045,6 +2055,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         entry["source_event_id"] = source_event_id
     if kwargs.get("source_thread_id"):
         entry["source_thread_id"] = str(kwargs["source_thread_id"])[:80]
+    if kwargs.get("synthesized_from"):
+        entry["synthesized_from"] = [str(x)[:40] for x in kwargs["synthesized_from"]][:4]
     if reasoning:
         entry["reasoning"] = reasoning[:300]
     if "self_interpretation" in kwargs:
@@ -2137,7 +2149,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         json.dump(wants, f, indent=2)
     # Check for interference with active wants
     try:
-        check_want_interference(want_text, entry["id"])
+        if not kwargs.get("synthesized_from"):     # a synthesis is the outcome of a check; it does not start another
+            check_want_interference(want_text, entry["id"])
     except Exception as _wi_err:
         print(f"[express_want] Interference check failed: {_wi_err}", file=__import__("sys").stderr)
     # Keep the last 10 working wants. Protected: a want that completed a step in the last two days (it is being

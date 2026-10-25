@@ -272,7 +272,11 @@ try:
     lt = json.load(open(os.path.join(MEMORY, "latent-threads.json")))
     threads = [t for t in lt.get("threads",[]) if t.get("salience",0) > 0.6]
     threads.sort(key=lambda x: x.get("salience",0), reverse=True)
-    latent = "\n".join(f"- {t.get('origin','')[:100]}" for t in threads[:3])
+    latent = "\n".join(f"- [{t.get('id','')}] {t.get('origin','')[:100]}" for t in threads[:3])
+    # When no unresolved thread or spark is this want's source, the strongest latent thread pulling at him is:
+    # record it, so the want can be traced back to the thread it came from.
+    if threads and not source_thread_id and not source_event_id and threads[0].get("id"):
+        source_thread_id = str(threads[0]["id"])
 except: pass
 
 trial_failures = ""
