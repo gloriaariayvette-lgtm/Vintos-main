@@ -60,7 +60,7 @@ class Tests(unittest.TestCase):
         return {'activities':[{'standard_value':'10','standard_units':'nM','standard_relation':'>','assay_type':'F'}]}, {}
     def client(self): return sources.Sources(fetch=self.fetch)
     def test_uniprot_local_validation(self):
-        with self.assertRaises(ValueError): self.client().query({'source':'uniprot','query':'organism:human'})
+        with self.assertRaises(ValueError): self.client().query({'source':'uniprot','query':'feature_type:STAS'})
         self.assertEqual(self.calls, [])
         result=self.client().query({'source':'uniprot','query':'protein_name:actin AND organism_id:9606'})
         self.assertEqual(result['metadata']['release'],'test-release')
@@ -70,7 +70,21 @@ class Tests(unittest.TestCase):
                          'taxonomy_id:1224 AND reviewed:true')
         self.assertEqual(sources.validate_uniprot('(organism_id : 1224 reviewed : True)'),
                          '(taxonomy_id:1224 reviewed:true)')
-        with self.assertRaises(ValueError): sources.validate_uniprot('organism : human')
+        with self.assertRaises(ValueError): sources.validate_uniprot('feature_type : STAS')
+    def test_uniprot_organism_and_free_text_fields_by_their_other_names(self):
+        # 24-25 October, refused "unsupported UniProt fields: organism, term" / "taxonomy, term"
+        self.assertEqual(sources.validate_uniprot('organism:Pseudomonas aeruginosa AND term:ExoU'),
+                         'organism_name:"Pseudomonas aeruginosa" AND ExoU')
+        self.assertEqual(sources.validate_uniprot('taxonomy:9606 AND term:ExoU'), 'taxonomy_id:9606 AND ExoU')
+        self.assertEqual(sources.validate_uniprot('query:ExoU AND organism:Pseudomonas aeruginosa AND reviewed:true'),
+                         'ExoU AND organism_name:"Pseudomonas aeruginosa" AND reviewed:true')
+        self.assertEqual(sources.validate_uniprot('gene:SOD1 AND organism:"Homo sapiens"'),
+                         'gene:SOD1 AND organism_name:"Homo sapiens"')
+        self.assertEqual(sources.validate_uniprot('(gene:mntA) AND organism:1224'), '(gene:mntA) AND taxonomy_id:1224')
+        self.assertEqual(sources.validate_uniprot('search:LDLR'), 'LDLR')
+        # a field UniProt has under no name is still refused, locally
+        with self.assertRaisesRegex(ValueError, 'unsupported UniProt fields: feature_type'):
+            sources.validate_uniprot('accession:O43511,feature_type:STAS')
         self.assertEqual(sources.validate_uniprot(
             'reviewed:true AND length:[40 TO 1000] AND protein_name:PFOR'),
             'reviewed:true AND protein_name:PFOR')

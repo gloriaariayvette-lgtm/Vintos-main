@@ -200,6 +200,24 @@ class Tools(unittest.TestCase):
             L.Sources(fetch=SEND).query(T.normalize_request('source', {'accession': '3042852874',
                                                                        'operation': 'rt_locus_screen'}))
 
+    def test_an_ncbi_protein_accession_asked_of_uniprot_reads_its_ncbi_record(self):
+        # 24-25 October: an NCBI protein search returned DBB25069.1, the next step asked UniProt for
+        # "accession:DBB25069.1", and UniProt answered HTTP 400 every time
+        spec = T.normalize_request('source', {'query': 'accession:DBB25069.1', 'source': 'uniprot'})
+        self.assertEqual(spec, {'source': 'ncbi_protein_context', 'accession': 'DBB25069.1'})
+        asked = []
+        def record(url):
+            asked.append(url); raise RuntimeError('stop: fixture')
+        with self.assertRaisesRegex(RuntimeError, 'fixture'):
+            L.Sources(fetch=SEND, fetch_record=record).query(T.execution_request('source', spec))
+        self.assertIn('db=protein', asked[0]); self.assertIn('id=DBB25069.1', asked[0])
+        self.assertEqual(T.normalize_request('source', {'source': 'uniprot', 'accession': 'NP_000483.3'}),
+                         {'source': 'ncbi_protein_context', 'accession': 'NP_000483.3'})
+        # UniProt accessions, isoforms, and anything not a protein accession.version stay UniProt's
+        for query in ('accession:P01130', 'P01130', 'accession:P01130-2', 'accession:NC_000913.3',
+                      'gene:SLC26A4 AND taxonomy_id:9606', 'accession:DBB25069'):
+            self.assertEqual(T.normalize_request('source', {'source': 'uniprot', 'query': query})['source'], 'uniprot', query)
+
     def test_pubmed_literature_operation_stays_the_public_search(self):
         # 23-25 October: this shape went to the PubMed connector as "pubmed.literature" and was refused by its
         # policy, 25 times; the public search reads it

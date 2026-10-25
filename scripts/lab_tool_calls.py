@@ -100,6 +100,12 @@ def normalize_source(spec):
         query=out.get('query') or out.get('accession')
         if isinstance(query,str) and re.fullmatch(UNIPROT_ACCESSION,query.upper()):
             out['query']='accession:'+query.upper()
+        # An NCBI protein accession.version (DBB25069.1, NP_000483.3) is no UniProt accession: UniProt answered
+        # HTTP 400 every time it was asked for one (DBB25069.1, from an NCBI protein search, 24-25 October). Its
+        # record is NCBI's, and that is the one read.
+        bare=re.sub(r'^\s*accession\s*:\s*','',query.strip()) if isinstance(query,str) else ''
+        if re.fullmatch(r'(?:[A-Z]{3}[0-9]{5}(?:[0-9]{2})?|(?:NP|XP|YP|WP|AP)_[0-9]{6,9})\.[1-9][0-9]*',bare):
+            out={'source':'ncbi_protein_context','accession':bare}
     if out['source'] == 'interpro' and not out.get('accession'):
         value=out.get('uniprot_accession') or out.get('protein_accession') or out.get('query') or out.get('id')
         if value is not None:out['accession']=value

@@ -517,6 +517,14 @@ def validate_uniprot(query):
     # UniProt has no "query" field; the planner sometimes wraps the whole search as query:(...). Unwrap it rather
     # than refuse ("unsupported UniProt fields: query", repeatedly in her real data).
     query = re.sub(r'\bquery:\s*', '', query).strip()
+    # The same for "term:" and "search:" (free text too). "organism" and "taxonomy" are UniProt's organism fields
+    # by their other names; each was refused as an unsupported field (17 of her refused queries by 25 October).
+    # A several-word organism name stays one value.
+    query = re.sub(r'\b(?:term|search):\s*', '', query).strip()
+    query = re.sub(r'\b(?:organism|taxonomy):(?=[0-9]+\b)', 'taxonomy_id:', query)
+    query = re.sub(r'\borganism:(?=")', 'organism_name:', query)
+    query = re.sub(r'\borganism:([^"()]+?)(?=\s+(?:AND|OR|NOT)\b|[()]|$)',
+                   lambda m: 'organism_name:' + ('"%s"' % m[1].strip() if ' ' in m[1].strip() else m[1].strip()), query)
     query = normalize_uniprot_subjects(query)
     fields = re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*):', query)
     unknown = set(fields) - FIELDS
