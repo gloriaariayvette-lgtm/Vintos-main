@@ -895,6 +895,26 @@ def write_success(headline, recipe, th):
     return SUCCESSES
 
 
+def parse_successes():
+    """Read successes.md and return a list of entries, newest first. Each entry is {headline, recipe, thread, at}."""
+    try:
+        text = open(SUCCESSES, encoding="utf-8").read()
+    except OSError:
+        return []
+    entries = []
+    for block in re.split(r"\n---\n", text):
+        m = re.match(r"\s*##\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*[—–-]\s*(.*)", block)
+        if not m:
+            continue
+        at, headline = m.group(1), m.group(2).strip()
+        body = block[m.end():].strip()
+        th_m = re.search(r"_thread:\s*(.+?)\s*\(([^)]+)\)_\s*$", body)
+        thread_title, thread_id = (th_m.group(1), th_m.group(2)) if th_m else ("", "")
+        recipe = body[:th_m.start()].strip() if th_m else body
+        entries.append({"at": at, "headline": headline, "recipe": recipe, "thread_title": thread_title, "thread_id": thread_id})
+    return entries
+
+
 def mark_success(th, headline, cfg, model_call=complete):
     """Gloria typed !success: the model distils what worked in this thread into a clean recipe, and the Workbench saves
     it to the local successes log. Gemma writes the prose; the Workbench does the saving, so the save never depends on
@@ -995,11 +1015,15 @@ button{cursor:pointer}.t{display:block;width:100%;text-align:left;margin:4px 0;w
 form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}textarea{flex:1;min-height:60px;resize:vertical}
 #bar{display:flex;gap:8px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}.mut{color:var(--mut);font-size:13px}
 #menu{display:none}
+.modal{display:none;position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.5);align-items:center;justify-content:center}
+.modal.open{display:flex}.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow:auto}
+.modal-box h3{margin:0 0 12px}.suc{display:block;width:100%;text-align:left;margin:6px 0;padding:10px 12px;cursor:pointer}
+.suc:hover{border-color:var(--acc)}.suc .sh{font-weight:600}.suc .sd{font-size:13px;color:var(--mut);margin-top:4px;white-space:pre-wrap;max-height:80px;overflow:hidden}
 @media (max-width:700px){body{display:block;height:100dvh}main{height:100dvh}aside{display:none;position:fixed;inset:0;z-index:5;width:auto;background:var(--bg)}
  aside.open{display:block}#menu{display:inline-block}#log{padding:12px}form{padding:8px 12px;padding-bottom:max(8px,env(safe-area-inset-bottom))}
  #bar{padding:8px 12px}textarea{font-size:16px;min-height:48px}.m{max-width:100%}select{max-width:60vw}}
 </style></head><body>
-<aside id="side"><button onclick="newThread()">+ New thread</button> <button id="close" onclick="side(false)">Close</button><div id="threads"></div>
+<aside id="side"><button onclick="newThread()">+ New thread</button> <button onclick="fromSuccess()">From success</button> <button id="close" onclick="side(false)">Close</button><div id="threads"></div>
 <p class="mut">Code it saves: ~/Vintos-Workbench/code</p><p class="mut">Type <b>!success</b> to keep what worked in this thread → ~/Vintos-Workbench/successes.md (local only)</p><details><summary class="mut">Settings</summary>
 <p><label class="mut">Model server<br><input id="base" style="width:100%"></label></p>
 <p><label class="mut">His code (checkout on this Mac)<br><input id="repo" style="width:100%"></label></p>
@@ -1008,6 +1032,7 @@ form{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}tex
 <button onclick="saveCfg()">Save settings</button></details></aside>
 <main><div id="bar"><button id="menu" onclick="side(true)">☰</button><select id="model"></select><span id="st" class="mut"></span></div><div id="log"></div>
 <form onsubmit="send(event)"><textarea id="txt" placeholder="Ask, paste a link, or ask it to grep his code. Cmd+Enter sends."></textarea><button>Send</button></form></main>
+<div id="sucModal" class="modal" onclick="if(event.target===this)this.classList.remove('open')"><div class="modal-box"><h3>Start from a success</h3><div id="sucList"></div><button onclick="$('sucModal').classList.remove('open')">Cancel</button></div></div>
 <script>
 let tid=localStorage.getItem('wb-thread')||'';const $=id=>document.getElementById(id);
 function side(on){$('side').classList.toggle('open',on)}
@@ -1051,6 +1076,14 @@ async function send(e){e&&e.preventDefault();const t=$('txt').value.trim();if(!t
   draw(r.thread);threads();$('st').textContent=r.saved&&r.saved.length?'Saved: '+r.saved.join(', '):''}
  catch(err){$('st').textContent='still working on the Mac; it keeps going and the thread updates when it lands'}}
 $('txt').onkeydown=e=>{if(e.key=='Enter'&&(e.metaKey||e.ctrlKey))send()};
+async function fromSuccess(){const ss=await j('/api/successes');const el=$('sucList');el.innerHTML='';
+ if(!ss.length){el.innerHTML='<p class="mut">No successes saved yet. Type <b>!success</b> in a thread to save one.</p>';$('sucModal').classList.add('open');return}
+ ss.forEach((s,i)=>{const b=document.createElement('button');b.className='suc';
+  b.innerHTML='<div class="sh">'+esc(s.headline)+'</div><div class="sd">'+esc(s.at+(s.thread_title?' — '+s.thread_title:''))+'\n'+esc(s.recipe.slice(0,200)+(s.recipe.length>200?'…':''))+'</div>';
+  b.onclick=()=>{$('sucModal').classList.remove('open');side(false);newThread();
+   $('txt').value='Starting from this working recipe:\n\n'+s.recipe;send()};el.appendChild(b)});
+ $('sucModal').classList.add('open')}
+function esc(s){const d=document.createElement('span');d.textContent=s;return d.innerHTML}
 cfg();if(tid)open_(tid);else threads();
 </script></body></html>"""
 
@@ -1103,6 +1136,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             return self._send(200, sorted(rows, key=lambda r: -r["at"])[:100])
+        if self.path == "/api/successes":
+            return self._send(200, parse_successes())
         if self.path.startswith("/api/thread?id="):
             return self._send(200, load_thread(self.path.split("=", 1)[1]))
         self._send(404, {"error": "not found"})
