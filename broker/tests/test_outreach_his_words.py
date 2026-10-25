@@ -45,6 +45,6 @@ open(os.path.join(fake, "requests.py"), "w").write(
 p = subprocess.run([sys.executable, "-c", block], env=dict(env, TRIGGER="free"), capture_output=True, text=True, timeout=60)
 check("asked freely, he can have nothing to say, and then nothing is sent", p.stdout.strip() == "", p.stdout + p.stderr[-300:])
 check("with no feeling past a threshold he is still asked, at most once in six hours",
-      'TRIGGER="free"' in src and "-mmin -360" in src)
+      'CHOSEN="free|"' in src and "-mmin -360" in src)
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

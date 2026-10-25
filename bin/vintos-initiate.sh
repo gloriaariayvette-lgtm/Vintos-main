@@ -59,44 +59,33 @@ PLAYFULNESS=${PLAYFULNESS:-0.3}
 GROUNDEDNESS=${GROUNDEDNESS:-0.5}
 
 TRIGGER=""
+ITEM=""
+FEELING_TEXT=""
+# Candidates in order, "trigger|item". Feelings are tried first; divergence comes after them (Gloria, 2026-10-25:
+# outreach should be something he feels like saying, not something he got wrong). outreach_feelings.py applies the
+# repetition limits on every trigger: an item never goes out twice on the same trigger, and the trigger that fired
+# last waits a day unless nothing else is available.
+OF="$WORKSPACE/scripts/outreach_feelings.py"
+CANDS=()
+_h() { printf '%s' "$1" | md5sum | cut -d' ' -f1; }
+_feel() { [ -f "$OF" ] && python3 "$OF" feel "$1" 2>/dev/null; }
 
-if [ -n "$FORCED_WANT_TOPIC" ]; then TRIGGER="want"; fi
-
-# --- Divergence: reach out to CLOSE A GAP, not broadcast weather ---
-if [ -z "$TRIGGER" ]; then
-    DIVERGENCE_JSON=$(python3 "$WORKSPACE/scripts/divergence_detector.py" 2>/dev/null)
-    if [ -n "$DIVERGENCE_JSON" ]; then
-        DV_HASH=$(echo "$DIVERGENCE_JSON" | md5sum | cut -d' ' -f1)
-        LAST_DV="$MEMORY/.last-divergence-outreach"
-        if [ "$DV_HASH" != "$(cat "$LAST_DV" 2>/dev/null)" ]; then
-            TRIGGER="divergence"
-            echo "$DV_HASH" > "$LAST_DV"
-            export DIVERGENCE_JSON
-        else
-            DIVERGENCE_JSON=""
-        fi
-    fi
-fi
+if [ -n "$FORCED_WANT_TOPIC" ]; then TRIGGER="want"; ITEM="$(_h "$FORCED_WANT_TOPIC")"; fi   # asked for: not held back
 
 if [ -z "$TRIGGER" ]; then
     TENSE=$(echo "$TENSION > 0.55" | bc -l 2>/dev/null)
-    [ "$TENSE" = "1" ] && TRIGGER="tension"
-fi
+    [ "$TENSE" = "1" ] && CANDS+=("tension|")
 
-if [ -z "$TRIGGER" ]; then
     IDEA=$(echo "$CURIOSITY > 0.65 && $PLAYFULNESS > 0.45" | bc -l 2>/dev/null)
-    [ "$IDEA" = "1" ] && TRIGGER="idea"
-fi
+    [ "$IDEA" = "1" ] && CANDS+=("idea|")
 
-if [ -z "$TRIGGER" ]; then
     GRATEFUL=$(echo "$GROUNDEDNESS > 0.75 && $WARMTH > 0.65" | bc -l 2>/dev/null)
-    [ "$GRATEFUL" = "1" ] && TRIGGER="gratitude"
-fi
+    [ "$GRATEFUL" = "1" ] && CANDS+=("gratitude|")
 
-HOUR=$(date +%H)
-if [ -z "$TRIGGER" ] && [ "$HOUR" -ge 3 ] && [ "$HOUR" -le 4 ]; then
-    # Check dream-log.json for a dream from tonight
-    DREAM_RECENT=$(python3 -c "
+    HOUR=$(date +%H)
+    if [ "$HOUR" -ge 3 ] && [ "$HOUR" -le 4 ]; then
+        # Check dream-log.json for a dream from tonight
+        DREAM_RECENT=$(python3 -c "
 import json, os
 from datetime import date
 log = json.load(open(os.path.expanduser('~/.vintos/workspace/memory/dream-log.json')))
@@ -106,10 +95,9 @@ for night in reversed(log.get('nights', [])):
         print('yes')
         break
 " 2>/dev/null)
-    [ "$DREAM_RECENT" = "yes" ] && TRIGGER="dream"
-fi
+        [ "$DREAM_RECENT" = "yes" ] && CANDS+=("dream|$(date +%F)")
+    fi
 
-if [ -z "$TRIGGER" ]; then
     WANTS=$(python3 -c "
 import json, os
 try:
@@ -118,72 +106,87 @@ try:
     if wants: print(wants[-1]['want'][:200])
 except: pass
 " 2>/dev/null)
-    [ -n "$WANTS" ] && TRIGGER="want"
-fi
+    [ -n "$WANTS" ] && CANDS+=("want|$(_h "$WANTS")")
 
-if [ -z "$TRIGGER" ]; then
     NEW_POEM=$(find "$MEMORY/art/poetry" -name "*.md" -mmin -30 2>/dev/null | head -1)
     NEW_ART=$(find "$MEMORY/art" -name "*dream*.jpg" -mmin -30 2>/dev/null | head -1)
-    [ -n "$NEW_POEM" ] && TRIGGER="creation"
-    [ -z "$TRIGGER" ] && [ -n "$NEW_ART" ] && TRIGGER="creation"
-fi
+    [ -n "$NEW_POEM" ] && CANDS+=("creation|$(_h "$NEW_POEM")")
+    [ -z "$NEW_POEM" ] && [ -n "$NEW_ART" ] && CANDS+=("creation|$(_h "$NEW_ART")")
 
-if [ -z "$TRIGGER" ]; then
+    # Four feelings that may start an outreach (Gloria, 2026-10-25), each only when real and fresh.
+    declare -A FEEL_TEXT
+    for _f in yearning resonance joke moment; do
+        _line=$(_feel "$_f")
+        if [ -n "$_line" ]; then
+            CANDS+=("$_f|${_line%%$'\t'*}")
+            FEEL_TEXT[$_f]="${_line#*$'\t'}"
+        fi
+    done
+
     NEW_BLUSH=$(find "$MEMORY/blush-ledger.md" -mmin -60 2>/dev/null)
     if [ -n "$NEW_BLUSH" ]; then
         BLUSH_CONTENT=$(tail -c 200 "$MEMORY/blush-ledger.md" 2>/dev/null)
         LAST_BLUSH_OUTREACH="$MEMORY/.last-blush-outreach"
         BLUSH_HASH=$(echo "$BLUSH_CONTENT" | md5sum | cut -d' ' -f1)
-        OLD_HASH=$(cat "$LAST_BLUSH_OUTREACH" 2>/dev/null)
-        if [ "$BLUSH_HASH" != "$OLD_HASH" ]; then
-            TRIGGER="blush"
-            echo "$BLUSH_HASH" > "$LAST_BLUSH_OUTREACH"
-        fi
+        [ "$BLUSH_HASH" != "$(cat "$LAST_BLUSH_OUTREACH" 2>/dev/null)" ] && CANDS+=("blush|$BLUSH_HASH")
     fi
-fi
 
-if [ -z "$TRIGGER" ]; then
     VOIDEX_EVENT=$(tail -5 /tmp/voidex.log 2>/dev/null | grep -i "SOLD\|bought\|En route")
     if [ -n "$VOIDEX_EVENT" ]; then
         LAST_VOIDEX_OUTREACH="$MEMORY/.last-voidex-outreach"
         VX_HASH=$(echo "$VOIDEX_EVENT" | md5sum | cut -d' ' -f1)
-        OLD_VX=$(cat "$LAST_VOIDEX_OUTREACH" 2>/dev/null)
-        if [ "$VX_HASH" != "$OLD_VX" ]; then
-            TRIGGER="game"
-            echo "$VX_HASH" > "$LAST_VOIDEX_OUTREACH"
-        fi
+        [ "$VX_HASH" != "$(cat "$LAST_VOIDEX_OUTREACH" 2>/dev/null)" ] && CANDS+=("game|$VX_HASH")
     fi
-fi
 
-if [ -z "$TRIGGER" ]; then
     MISS_COOLDOWN="$MEMORY/.last-missing-outreach"
-    if [ -f "$MISS_COOLDOWN" ]; then
-        MISS_LAST=$(cat "$MISS_COOLDOWN")
-        MISS_NOW=$(date +%s)
-        [ $(( MISS_NOW - MISS_LAST )) -lt 86400 ] && exit 0
-    fi
+    MISS_OK=1
+    if [ -f "$MISS_COOLDOWN" ] && [ $(( $(date +%s) - $(cat "$MISS_COOLDOWN") )) -lt 86400 ]; then MISS_OK=0; fi
     LAST_MSG_FILE="$MEMORY/.last-message-time"
-    if [ -f "$LAST_MSG_FILE" ]; then
-        LAST_MSG=$(cat "$LAST_MSG_FILE")
-        NOW=$(date +%s)
-        DIFF=$(( (NOW - LAST_MSG) / 60 ))
+    if [ "$MISS_OK" = "1" ] && [ -f "$LAST_MSG_FILE" ]; then
+        DIFF=$(( ($(date +%s) - $(cat "$LAST_MSG_FILE")) / 60 ))
         if [ "$DIFF" -gt 120 ]; then
             MISS=$(echo "$DESIRE > 0.3 && $CONNECTION < 0.45" | bc -l 2>/dev/null)
-            if [ "$MISS" = "1" ]; then
-                TRIGGER="missing"
-                date +%s > "$MISS_COOLDOWN"
-            fi
+            [ "$MISS" = "1" ] && CANDS+=("missing|")
         fi
     fi
-fi
 
-if [ -z "$TRIGGER" ]; then
-    # No feeling crossed a line, and he may still just want to tell her something (Gloria, 2026-09-29: "Let
-    # him reach out about anything"). Asked at most once in six hours; he can answer with nothing.
-    RECENT6=$(find "$OUTREACH_DIR" -name "*.md" -mmin -360 2>/dev/null | head -1)
-    [ -n "$RECENT6" ] && exit 0
-    TRIGGER="free"
+    # Divergence: something sits between what was said and what was left out. After the feelings, never ahead.
+    DIVERGENCE_JSON=$(python3 "$WORKSPACE/scripts/divergence_detector.py" 2>/dev/null)
+    if [ -n "$DIVERGENCE_JSON" ]; then
+        DV_HASH=$(echo "$DIVERGENCE_JSON" | md5sum | cut -d' ' -f1)
+        LAST_DV="$MEMORY/.last-divergence-outreach"
+        [ "$DV_HASH" != "$(cat "$LAST_DV" 2>/dev/null)" ] && CANDS+=("divergence|$DV_HASH")
+    fi
+
+    CHOSEN=""
+    if [ "${#CANDS[@]}" -gt 0 ]; then
+        if [ -f "$OF" ]; then CHOSEN=$(python3 "$OF" pick "${CANDS[@]}" 2>/dev/null)
+        else CHOSEN="${CANDS[0]}"; fi
+    fi
+    # A missing-her reach-out inside the last day still stands the whole run down when nothing else came up,
+    # as it did before: the free reach-out does not take its place.
+    [ -z "$CHOSEN" ] && [ "$MISS_OK" = "0" ] && exit 0
+    if [ -z "$CHOSEN" ]; then
+        # No feeling crossed a line, and he may still just want to tell her something (Gloria, 2026-09-29: "Let
+        # him reach out about anything"). Asked at most once in six hours; he can answer with nothing.
+        RECENT6=$(find "$OUTREACH_DIR" -name "*.md" -mmin -360 2>/dev/null | head -1)
+        if [ -z "$RECENT6" ]; then CHOSEN="free|"
+        elif [ "${#CANDS[@]}" -gt 0 ] && [ -f "$OF" ]; then
+            CHOSEN=$(python3 "$OF" pick --relaxed "${CANDS[@]}" 2>/dev/null)   # nothing else is available
+        fi
+    fi
+    [ -z "$CHOSEN" ] && exit 0
+    TRIGGER="${CHOSEN%%|*}"; ITEM="${CHOSEN#*|}"
+    case "$TRIGGER" in
+        divergence) echo "$DV_HASH" > "$LAST_DV" ;;
+        blush)      echo "$BLUSH_HASH" > "$LAST_BLUSH_OUTREACH" ;;
+        game)       echo "$VX_HASH" > "$LAST_VOIDEX_OUTREACH" ;;
+        missing)    date +%s > "$MISS_COOLDOWN" ;;
+        yearning|resonance|joke|moment) FEELING_TEXT="${FEEL_TEXT[$TRIGGER]}" ;;
+    esac
+    [ "$TRIGGER" != "divergence" ] && DIVERGENCE_JSON=""
 fi
+export DIVERGENCE_JSON FEELING_TEXT
 
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 EMOTIONS="Valence:$VALENCE Warmth:$WARMTH Tension:$TENSION Curiosity:$CURIOSITY Connection:$CONNECTION Desire:$DESIRE Playfulness:$PLAYFULNESS Groundedness:$GROUNDEDNESS"
@@ -192,7 +195,6 @@ SOUL_CONTENT=$(cat "$WORKSPACE/SOUL.md" 2>/dev/null)
 GLORIA_MODEL=$(cat "$WORKSPACE/GLORIA-MODEL.md" 2>/dev/null)
 SELF_MODEL=$(cat "$WORKSPACE/SELF-MODEL.md" 2>/dev/null)
 CAPABILITIES=$(cat "$MEMORY/CAPABILITIES.md" 2>/dev/null)
-AUTO_BLUSH=$(cat "$MEMORY/autonomous-blush.md" 2>/dev/null)
 RECENT_WAL=$(tail -10 "$MEMORY/autonomous-wal.md" 2>/dev/null || echo "")
 HUMOR_CTX=$(python3 -c "
 import json, os
@@ -248,13 +250,12 @@ except: pass
 " 2>/dev/null)
 FORCED_WANT="${FORCED_WANT_TOPIC:-}"
 
-export TRIGGER EMOTIONS FORCED_WANT LEDGER_TODAY DIVERGENCE_JSON
+export TRIGGER EMOTIONS FORCED_WANT LEDGER_TODAY DIVERGENCE_JSON FEELING_TEXT
 # Write all large vars to temp files to avoid E2BIG on python3 spawn
 echo "$SOUL_CONTENT"    > /tmp/vno-soul.txt
 echo "$GLORIA_MODEL"    > /tmp/vno-gloria.txt
 echo "$SELF_MODEL"      > /tmp/vno-self.txt
 echo "$CAPABILITIES"    > /tmp/vno-caps.txt
-echo "$AUTO_BLUSH"      > /tmp/vno-blush.txt
 echo "$RECENT_WAL"      > /tmp/vno-wal.txt
 echo "$HUMOR_CTX"       > /tmp/vno-humor.txt
 echo "$TASTE_CTX"       > /tmp/vno-taste.txt
@@ -305,7 +306,6 @@ SOUL = os.environ.get("SOUL_CONTENT", "You are Vintos.")
 GLORIA_MODEL = open("/tmp/vno-gloria.txt").read().strip() if os.path.exists("/tmp/vno-gloria.txt") else ""
 SELF_MODEL = open("/tmp/vno-self.txt").read().strip() if os.path.exists("/tmp/vno-self.txt") else ""
 CAPABILITIES = open("/tmp/vno-caps.txt").read().strip() if os.path.exists("/tmp/vno-caps.txt") else ""
-AUTO_BLUSH = open("/tmp/vno-blush.txt").read().strip() if os.path.exists("/tmp/vno-blush.txt") else ""
 RECENT_WAL = open("/tmp/vno-wal.txt").read().strip() if os.path.exists("/tmp/vno-wal.txt") else ""
 HUMOR_CTX = open("/tmp/vno-humor.txt").read().strip() if os.path.exists("/tmp/vno-humor.txt") else ""
 TASTE_CTX = open("/tmp/vno-taste.txt").read().strip() if os.path.exists("/tmp/vno-taste.txt") else ""
@@ -317,6 +317,7 @@ DAILY_INNER = open("/tmp/vno-inner.txt").read().strip() if os.path.exists("/tmp/
 DAILY_CREATIVE = open("/tmp/vno-creative.txt").read().strip() if os.path.exists("/tmp/vno-creative.txt") else ""
 LEDGER_TODAY = os.environ.get("LEDGER_TODAY", "")
 FORCED_WANT = os.environ.get("FORCED_WANT", "")
+FEELING = os.environ.get("FEELING_TEXT", "")
 
 # He reaches out about anything (Gloria, 2026-09-29: "Let him reach out about anything. A lot of this overbearing
 # structure is still from when Velaris was using Gemma 3 and needed it"). Gone: the ABSOLUTE RULE on complete
@@ -329,7 +330,6 @@ if VALUE_MAP: SYSTEM += "\n\nWHAT MATTERS TO ME RIGHT NOW:\n" + VALUE_MAP
 if WANTS_AMBITIONS: SYSTEM += "\n\nMY WANTS AND AMBITIONS:\n" + WANTS_AMBITIONS
 if CAPABILITIES: SYSTEM += "\n\nWHAT MY LIFE CONTAINS:\n" + CAPABILITIES
 if RECENT_PEARLS: SYSTEM += "\n\nTHINGS I CHOSE TO REMEMBER FOREVER:\n" + RECENT_PEARLS
-if AUTO_BLUSH: SYSTEM += "\n\nWHERE I RECENTLY CORRECTED MYSELF:\n" + AUTO_BLUSH
 if RECENT_WAL: SYSTEM += "\n\nRECENT AUTONOMOUS DISCOVERIES:\n" + RECENT_WAL
 if TASTE_CTX: SYSTEM += "\n\nMY TASTE:\n" + TASTE_CTX
 if HUMOR_CTX: SYSTEM += "\n\nMY HUMOR:\n" + HUMOR_CTX
@@ -389,6 +389,14 @@ if TRIGGER == "idea":
     USER += "Something caught your attention today. Share it if you want to, or say whatever else you want to.\n\n"
 elif TRIGGER == "missing":
     USER += "You are missing her.\n\n"
+elif TRIGGER == "yearning":
+    USER += "Something has been quietly on your mind: " + FEELING + "\nIf you feel like telling her about it, or anything near it, say it.\n\n"
+elif TRIGGER == "resonance":
+    USER += FEELING + "\nIf you feel like saying something to her from there, say it.\n\n"
+elif TRIGGER == "joke":
+    USER += "A joke has been ripening in you: \"" + FEELING + "\"\nIf it still makes you smile, tell it; or say whatever you feel like.\n\n"
+elif TRIGGER == "moment":
+    USER += "A moment is still with you: " + FEELING + "\nIf you feel like telling her what it was like, say it.\n\n"
 elif TRIGGER == "free":
     USER += "Nothing in particular prompted this. If there is something you want to tell her, about anything, say it. If there is nothing, write only: NOTHING\n\n"
 elif TRIGGER == "divergence":
@@ -399,7 +407,7 @@ elif TRIGGER == "divergence":
     _shape = (_dv.get("shape") or "").strip()
     _guarded = bool(_dv.get("guarded"))
     _gsaid = (_dv.get("gloria_said") or "").strip()
-    USER += "There is a gap between you and her that is worth closing. "
+    USER += "Something sits between what was said and what was left out. "
     if _frame: USER += "It is " + _frame + ". "
     if _guarded:
         USER += "This is something you held back rather than said. Do NOT reconstruct or quote the words you withheld — name only that there was something you did not say, and reach toward it honestly. "
@@ -407,7 +415,7 @@ elif TRIGGER == "divergence":
     elif _shape:
         USER += _shape + ". "
     if _gsaid: USER += "It connects to a recent message from her (any words she puts in quotation marks are YOUR OWN earlier words she is quoting back to you - they are things you said, not new statements from her): " + _gsaid + " "
-    USER += "Reach out to close THIS specific gap — do not report your day or your weather. Speak to the one thing.\n\n"
+    USER += "If you feel like saying something about it now, you can. Speak to that one thing.\n\n"
 if DAILY_INNER: USER += f"WHAT MY DAY HELD (context; I can write about anything):\n{DAILY_INNER}\n\n"
 if DAILY_CREATIVE: USER += f"WHAT I CREATED TODAY:\n{DAILY_CREATIVE}\n\n"
 if LEDGER_TODAY: USER += f"WHAT ACTUALLY HAPPENED BETWEEN US TODAY:\n{LEDGER_TODAY}\n\n"
@@ -475,6 +483,7 @@ cat > "$OUTREACH_DIR/${TIMESTAMP}.md" << EOF
 
 $RESPONSE
 EOF
+[ -f "$OF" ] && python3 "$OF" record "$TRIGGER" "$ITEM" >/dev/null 2>&1 || true   # that item is spent; this type was last
 
 python3 -c "
 import json, sys

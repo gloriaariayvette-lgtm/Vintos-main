@@ -1549,13 +1549,14 @@ new Chart(document.getElementById('bar'), {{
 
 def _is_communicative(want_text):
     """True when a want is really 'say/send something to Gloria' -> expedited direct track (not the discussion
-    board). Excludes wants about understanding/observing her."""
+    board). Excludes wants about understanding/observing her. A want carrying the self-critique label
+    "flat_repetition" is no longer sent to her as outreach on that label alone (Gloria, 2026-10-25)."""
     import re as _re
     t = (want_text or "").lower()
     if _re.search(r"understand|discern|what (gloria|she) (need|mean|feel|want|is)|gloria's (feel|need|mean|posture|body|schedule|time|routine|percep|longing|vulnerab)", t):
         return False
     return bool(_re.search(r"\b(tell|send|say|give|write)\b.{0,40}\b(gloria|her)\b", t)
-                or "unsent ask" in t or "plain sentence" in t or "flat_repetition" in t
+                or "unsent ask" in t or "plain sentence" in t
                 or _re.search(r"\bsend (the|her|it|gloria)\b|\bthe (unsent )?(ask|claim|sentence|words|message)\b", t))
 
 

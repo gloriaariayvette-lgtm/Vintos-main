@@ -241,6 +241,7 @@ SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathe
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
 SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py"   # subconscious stores seed unresolved threads; a seeder that was never installed (2026-10-25). conflict_surface held: installing it turns on a Gemma call in every two-pass reply, waiting on her yes
+SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
