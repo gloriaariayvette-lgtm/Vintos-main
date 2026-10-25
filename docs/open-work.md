@@ -1,3 +1,15 @@
+## 25 October — house credential cutover (built and tested; not deployed)
+
+`claude/house-auth-cutover-2026-10-25` completes `codex/security-auth-cutover`: the credential comes only from
+`~/.vintos/vintos.env` (no built-in value anywhere); unset or weak means the server still starts, public routes
+answer, and every private route answers 503; the house guard is default-deny for every method, every
+`server_domains` router, `watch_routes`, `/static`, the schema pages and both WebSockets, with a reviewed public
+list; the robot bridge follows the same rule; pushed links carry a ticket for their own path. The deploy gate and
+rollout scripts are removed. Steps for Gloria: [house-auth-cutover.md](house-auth-cutover.md).
+**Not done:** the iPhone app rebuild (vintos-app companion) was not checked here; the Mac ReelRoom helper must be
+restarted after the house restarts and still carries its own fallback; browser pages such as `/calendar` that post
+without the header will be refused; `/aq` "back" links after answering need an enrolled browser.
+
 ## 22 October — additive trained subconscious feeds implemented (review only)
 
 `codex/subconscious-head-feeds-plan` now implements its
