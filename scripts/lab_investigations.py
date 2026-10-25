@@ -247,6 +247,7 @@ def sync_sessions(data):
 def next_phase(state, row, cfg):
     """The existing phases keep their code, admission, cadence and provenance."""
     if row.get('kind')!='investigation_step' or row.get('state')!='completed':return 'orient'
+    if row.get('repeat_within'):return 'orient'   # a repeat's output is not run through the phases a second time
     result=lab._load(_path(row['output_file']),{})
     receipt=result.get('receipt') or result.get('source_receipt') or {}
     state['investigation_id']=row['investigation'];state['investigation_input_step']=row['id']
@@ -339,7 +340,9 @@ def line_summary(line, steps_kept=3, cap=300):
 def _plan(investigation, context, ask):
     import lab_instruments
     steps = investigation.get('steps') or []
-    visible = [s for s in steps if s.get('state')=='completed'][-6:] + [s for s in steps if s.get('state')!='completed'][-2:]
+    # a repeat handed its earlier output is shown as an attempt, not as a result: it must not push real results out
+    fresh = lambda s: s.get('state') == 'completed' and not s.get('repeat_within')
+    visible = [s for s in steps if fresh(s)][-6:] + [s for s in steps if not fresh(s)][-2:]
     system = ('You are at your Chemistry Lab conducting an investigation. Produce a new computed finding: '
               'a measurement, screen, fold, alignment, simulation or prediction tested against a reference. '
               'Documented-fact retrieval supplies inputs; it is not the research result. '
@@ -350,14 +353,16 @@ def _plan(investigation, context, ask):
         'line_context': line_summary(investigation.get('line_context')),
         'build_on': __import__('lab_findings').for_planner(3),
         'plan': investigation.get('plan'), 'context': context[-2500:],
-        'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs')}
+        'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs','reused_from')}
                            for s in visible],
-        'retained_outputs':[{'id':s['id'],'state':s.get('state'),'tool':s.get('tool')} for s in steps],
+        'retained_outputs':[{'id':s['id'],'state':s.get('state'),'tool':s.get('tool'),
+                             **({'repeat_of':s['reused_from']} if s.get('repeat_within') else {})} for s in steps],
         # the tools whose questions the repeat check already refused in this investigation: Gemma kept rewording the
-        # same PubMed question (about 600 refusals in two days) instead of moving to another tool (23 October)
-        'already_asked': sorted({s.get('tool') for s in steps if s.get('state') == 'failed'
+        # same PubMed question (about 600 refusals in two days) instead of moving to another tool (23 October). A
+        # repeat handed its own earlier output counts here too: what that tool returns is already known.
+        'already_asked': sorted({s.get('tool') for s in steps if s.get('repeat_within') or (s.get('state') == 'failed'
                                  and any(w in str(s.get('error') or '') for w in ('you already asked this',
-                                         'you already ran this exact lookup', 'already done in this investigation'))}),
+                                         'you already ran this exact lookup', 'already done in this investigation')))}),
         'available_inputs': {'structures': lab_instruments.artifacts('structure', 8),
                              'sequences': lab_instruments.artifacts('sequence', 8)},
         'tools': _menu(),
@@ -453,6 +458,20 @@ class SourceWaiting(RuntimeError):
     def __init__(self, until):
         super().__init__('source cooldown; request has not been sent')
         self.until=until
+
+
+def _cooldown_until(request):
+    """When the source this request names may be asked again: its throttle entry, under its own name or the name the
+    source door normalizes it to, else a minute from now (the door's own per-source spacing)."""
+    names = {str((request or {}).get('source') or '')}
+    try:
+        from lab_sources import normalize_source_spec
+        names.add(str(normalize_source_spec(dict(request or {})).get('source') or ''))
+    except Exception:
+        pass
+    throttle = lab._load(_path('source-throttle.json'), {}) or {}
+    until = max([float(throttle.get(n, 0) or 0) for n in names if n] or [0])
+    return until if until > time.time() else time.time() + 60
 
 
 def dispatch(route, request, question, steps):
@@ -581,43 +600,173 @@ MAX_FAILED_RUN = 5       # consecutive steps that produced nothing: the investig
 MAX_UNANSWERED_REVIEWS = 3   # finishes whose review said the outputs do not answer it
 
 
+# Outcomes that are neither progress nor failure. Nothing was sent (a source still cooling down, a send set aside
+# to wait for it), or the step repeated an operation this investigation had already completed and was handed that
+# step's retained output. They do not count toward MAX_FAILED_RUN and do not interrupt a run of real failures
+# either; MAX_STEPS still counts them, so a planner that only repeats or only waits is still closed. On 24-25 October
+# 47 of 85 failed steps were a repeat of the investigation's own earlier step, and every one closed "stalled".
+NOT_SENT = ('waiting_not_sent', 'superseded_not_sent')
+FAILED = ('failed', 'outcome_unknown')
+COOLDOWN = 'source_cooldown_active'
+
+
+def _neutral(step):
+    return step.get('state') in NOT_SENT or bool(step.get('repeat_within'))
+
+
+_CAUSES = (
+    (('you already asked this', 'you already ran this exact lookup', 'prior model read already includes',
+      'already done in this investigation', 'operation already completed'),
+     'refused as a repeat with no retained output to reuse'),
+    (('identity',), 'identity not established'),
+    (('unknown investigation route', 'not offered in the lab', 'unsupported', 'unknown ncbi operation',
+      'requires exact', 'required', 'must be', 'takes one', 'say what the instrument'),
+     'operation not offered or malformed as requested'),
+    (('source_query_unavailable',), 'source unavailable'),
+    (('planned step',), 'not the planned operation'),
+    (('waiting on changed evidence', 'spent subject'), 'waiting on changed evidence'),
+    (('unknown outcome', 'reconcile'), 'unknown outcome not reconciled'),
+)
+
+
+def _cause(step):
+    """The kind of failure a step was, in a few words, so a closure can say why rather than only that."""
+    if step.get('state') == 'outcome_unknown':
+        return 'outcome unknown after send'
+    text = str(step.get('error') or '').lower()
+    for needles, cause in _CAUSES:
+        if any(n in text for n in needles):
+            return cause
+    text = re.sub(r'\b[si]-[0-9a-f]{6,}\b', '<id>', text)
+    return re.sub(r'\d+', '<n>', text).strip()[:80] or 'no output'
+
+
+def _mostly(steps):
+    from collections import Counter
+    causes = Counter(_cause(s) for s in steps)
+    if not causes:
+        return ''
+    cause, n = causes.most_common(1)[0]
+    return 'mostly %s (%d of %d)' % (cause, n, len(steps))
+
+
 def _budget_spent(investigation):
     """Why this investigation should close now, or ''. Only one investigation is open at a time, so one that can
-    neither finish nor progress would otherwise be chosen again on every turn, forever."""
+    neither finish nor progress would otherwise be chosen again on every turn, forever. The reason names what the
+    failures mostly were, not only that there were five."""
     steps = investigation.get('steps') or []
     if len(steps) >= MAX_STEPS:
-        return 'step budget spent (%d operations) without a finish' % len(steps)
-    run = 0
+        failed = [s for s in steps if s.get('state') in FAILED]
+        done = [s for s in steps if s.get('state') == 'completed' and not s.get('repeat_within')]
+        repeats = [s for s in steps if s.get('repeat_within')]
+        waits = [s for s in steps if s.get('state') in NOT_SENT]
+        return ('step budget spent (%d operations) without a finish: %d new outputs, %d repeats given their earlier '
+                'output, %d not sent while a source cooled down, %d failed%s'
+                % (len(steps), len(done), len(repeats), len(waits), len(failed),
+                   ('; failures ' + _mostly(failed)) if failed else ''))
+    run = []
     for s in reversed(steps):
-        if s.get('state') in ('failed', 'outcome_unknown', 'superseded_not_sent'): run += 1
+        if _neutral(s): continue
+        if s.get('state') in FAILED: run.append(s)
         else: break
-    if run >= MAX_FAILED_RUN:
-        return '%d operations in a row produced nothing' % run
+    if len(run) >= MAX_FAILED_RUN:
+        return '%d operations in a row produced nothing: %s' % (len(run), _mostly(run))
     return ''
+
+
+# Request fields that name what an operation is about. Two steps are the same operation on the same thing only when
+# every one of these agrees exactly; question wording never stands in for them.
+_ID_FIELDS = frozenset(('accession', 'accessions', 'target_accession', 'entry_id', 'pdb_id', 'id', 'ids', 'uvig',
+                        'files', 'file', 'organism', 'species', 'taxon', 'taxon_id', 'pmid', 'pmids', 'sequence',
+                        'sequences', 'smiles', 'cid', 'name', 'gene', 'genes', 'target_id', 'chromosome', 'start',
+                        'end', 'anchor_start', 'anchor_end', 'flank', 'database', 'operation', 'records', 'receipt',
+                        'reference', 'molecule', 'protein', 'ligand', 'uniprot_id', 'sequence_id', 'seq_id',
+                        'source_receipt_id', 'source_receipt_ids', 'skill', 'tool', 'plugin', 'experiment'))
+# An identifier-shaped token in free text: letters and digits together (O43511, NP_123456.1, 6VXX, SLC26A4).
+_ID_TOKEN = re.compile(r'(?<![A-Za-z0-9_.])(?=[A-Za-z0-9_.]*\d)(?=[A-Za-z0-9_.]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_.]{3,}')
+
+
+def _tokens(text):
+    return {t.rstrip('.').lower() for t in _ID_TOKEN.findall(str(text or ''))}
+
+
+def _output_shas(data):
+    return {s.get('id'): s.get('output_sha256') for inv in data.get('investigations', []) for s in inv.get('steps', [])}
+
+
+def _identity(step, shas):
+    """Everything that identifies what a step operated on: its identifier fields exactly, identifier-shaped tokens
+    in its free-text fields and its question, and, for a stored-output reference, the referenced output itself."""
+    fields, tokens = set(), set(_tokens(step.get('question')))
+    def walk(value, key):
+        if isinstance(value, dict) and set(value) == {'step', 'path'}:
+            fields.add((key, 'output', shas.get(value['step']) or value['step'], json.dumps(value['path'])))
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if k not in ('question', 'why'): walk(v, str(k))
+        elif isinstance(value, list):
+            items = [v for v in value]
+            if key in _ID_FIELDS and all(not isinstance(v, (dict, list)) for v in items):
+                fields.add((key, json.dumps(sorted(str(v).strip().lower() for v in items))))
+                for v in items: tokens.update(_tokens(v))   # a model file names its protein: o43511-<hash>.pdb
+            else:
+                for v in items: walk(v, key)
+        elif value not in (None, ''):
+            if key in _ID_FIELDS:
+                fields.add((key, str(value).strip().lower()))
+            tokens.update(_tokens(value))
+    walk(step.get('executed_request') or step.get('request') or {}, '')
+    return fields, tokens
+
+
+def _carries(payload, step):
+    """Whether a retained output actually names the identifiers the new request asks about. A reused output skips
+    execution, so the source's own identity check does not run on it; this stands in for it."""
+    text = json.dumps(payload, ensure_ascii=False).lower()
+    req = step.get('executed_request') or step.get('request') or {}
+    wanted = set()
+    def walk(value, key):
+        if isinstance(value, dict):
+            if set(value) == {'step', 'path'}: return
+            for k, v in value.items():
+                if k not in ('question', 'why', 'files', 'file', 'sequence', 'sequences', 'records'): walk(v, str(k))
+        elif isinstance(value, list):
+            for v in value: walk(v, key)
+        elif isinstance(value, str):
+            wanted.update(_tokens(value))
+    walk(req, '')
+    return all(t in text for t in wanted)
 
 
 def _answered_before(refusal, step, data):
     """The completed step whose output answers what the repeat check just refused, or None. Gloria's rule is no
     repeats; a repeat refused with nothing in its place left the investigation empty-handed, and about 600 steps in two
     days ended that way (23 October). Only a refusal that says it was asked or run before qualifies; an identity or
-    plan refusal never does. The earlier step must be the same tool, on the same files for an instrument, and either
-    the same request or a question the repeat check itself would call the same."""
+    plan refusal never does. The earlier step must be the same tool on exactly the same identifiers (accessions, files,
+    organism, PMIDs, sequence ids, referenced outputs: whatever the request carries, and any identifier its question
+    names), and either the same request or a question the repeat check itself would call the same. Question wording
+    alone never reaches across different identifiers: on 25 October a step for O43511 was offered to a Q8ECH7 request."""
     if 'you already asked this' not in refusal and 'you already ran this exact lookup' not in refusal \
             and 'prior model read already includes' not in refusal:
         return None
     import lab_repeats
     mine = lab_repeats._words(step.get('question'))
     req = step.get('executed_request') or step.get('request') or {}
+    shas = _output_shas(data)
+    wanted = _identity(step, shas)
     def bare(r):
         return {k: v for k, v in (r or {}).items() if k not in ('question', 'range')} if isinstance(r, dict) else r
     best = None
     for inv in data.get('investigations', []):
         for s in inv.get('steps', []):
-            if s is step or s.get('state') != 'completed' or not s.get('output_file') or s.get('tool') != step.get('tool'):
+            # a repeat's copy is never the source, and a step is never its own earlier answer
+            if s is step or s.get('id') == step.get('id') or s.get('repeat_within') or s.get('state') != 'completed':
+                continue
+            if not s.get('output_file') or s.get('tool') != step.get('tool'):
+                continue
+            if _identity(s, shas) != wanted:
                 continue
             other = s.get('executed_request') or s.get('request') or {}
-            if step.get('route') == 'instrument' and (other.get('files') or []) != (req.get('files') or []):
-                continue
             theirs = lab_repeats._words(s.get('question'))
             similar = bool(mine) and len(mine & theirs) / len(mine) >= lab_repeats.SIMILAR
             if bare(other) == bare(req) or similar:
@@ -809,21 +958,22 @@ def _turn(context, *, ask=None, execute=None):
         same = [s for s in prior if s.get('request_sha256') == step['request_sha256']] if route not in ('schema','read_output') else []
         if any(s.get('state') in ('started','outcome_unknown') for s in same):
             raise ValueError('operation has an unknown outcome; reconcile it before repeating')
-        done = [s for s in same if s.get('state') == 'completed' and s.get('output_file')]
+        # a repeat's copy is never the source: point back to the step that actually ran
+        done = [s for s in same if s.get('state') == 'completed' and s.get('output_file') and not s.get('repeat_within')]
         mine = [s for s in done if any(s is t for t in investigation['steps'])]
-        if mine:
-            raise ValueError('already done in this investigation as %s; use its output: {"step":"%s","path":[...]}'
-                             % (mine[-1]['id'], mine[-1]['id']))
         if done:
-            # The same lookup another investigation already made: its retained output is this step's output, and
-            # nothing is sent again. Refusing it closed 478 investigations in two days on "5 operations in a row
-            # produced nothing", before any of them reached a second tool (23 October).
-            source_step = done[-1]
+            # The same operation already completed: its retained output is this step's output, and nothing is sent
+            # again. Another investigation's: refusing it closed 478 investigations in two days on "5 operations in
+            # a row produced nothing" (23 October). This investigation's own: refusing it was 47 of 85 failed steps
+            # on 24-25 October, each counted as a failure, closing investigations that had made real progress.
+            source_step = (mine or done)[-1]
             payload = lab._load(_path(source_step['output_file']), None)
             encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
             if payload is None or hashlib.sha256(encoded).hexdigest() != source_step.get('output_sha256'):
                 raise ValueError('the earlier output of this operation (%s) is missing or changed' % source_step['id'])
             step['reused_from'] = source_step['id']
+            if mine:
+                step['repeat_within'] = True
             _store_result(step, payload)
         else:
             _save(data)
@@ -833,22 +983,28 @@ def _turn(context, *, ask=None, execute=None):
                 earlier = _answered_before(str(exc), step, data)
                 if earlier is None:
                     raise
-                if any(earlier is t for t in investigation['steps']):
-                    raise ValueError('already done in this investigation as %s; use its output: {"step":"%s","path":[...]}'
-                                     % (earlier['id'], earlier['id']))
                 payload = lab._load(_path(earlier['output_file']), None)
                 encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
                 if payload is None or hashlib.sha256(encoded).hexdigest() != earlier.get('output_sha256'):
                     raise
+                if not _carries(payload, step):
+                    raise   # the earlier output does not name what this request names: never handed over
                 step.update(reused_from=earlier['id'], reused_because=str(exc)[:200])
+                if any(earlier is t for t in investigation['steps']):
+                    step['repeat_within'] = True
                 _store_result(step, payload)
             else:
                 _store_result(step, normalize_result(result))
     except SourceWaiting as exc:
         step.update(state='waiting_not_sent',retry_at=exc.until,error=str(exc))
     except Exception as exc:
-        step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
-        step['error'] = str(exc)[:300]
+        if str(exc) == COOLDOWN:
+            # the source door itself found the source cooling down: nothing was sent, so this is a wait, not a failure
+            step.update(state='waiting_not_sent', retry_at=_cooldown_until(step.get('executed_request') or request),
+                        error='source cooldown; request has not been sent')
+        else:
+            step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
+            step['error'] = str(exc)[:300]
     if FRONTIER_PLANS and plan_ref and step.get('state') in ('completed', 'failed'):
         # Settle the attempt against the exact plan step it was made for. Credit needs a completed operation with a
         # retained output; an unknown outcome or a send still waiting is neither credit nor failure.
@@ -868,7 +1024,7 @@ def _turn(context, *, ask=None, execute=None):
            'question':investigation['question'], 'prediction':investigation.get('prediction',''), **step,
            'origin':'autonomous_lab', 'truth_status':'operation_output_not_independent_biological_validation'}
     lab._append(lab.NOTEBOOK, row)
-    if investigation.get('line_id'):
+    if investigation.get('line_id') and not step.get('repeat_within'):   # a repeat tells the line nothing new
         import lab_lines
         lab_lines.record_step(investigation['line_id'], {'question':step['question'], 'source':route,
             'result':step.get('summary') or '', 'answered':'not assessed: investigation continues',
