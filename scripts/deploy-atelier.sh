@@ -61,6 +61,7 @@ SOMATIC_NAME="vintos-somatic-narrate"
 SOMATIC_SERVICE_SRC="$SRC/broker/$SOMATIC_NAME.service"; SOMATIC_SERVICE_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.service"
 SOMATIC_TIMER_SRC="$SRC/broker/$SOMATIC_NAME.timer"; SOMATIC_TIMER_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.timer"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
+KEEPALIVE_UNIT_NAME="vintos-toy-keepalive"; KEEPALIVE_UNIT_SRC="$SRC/broker/$KEEPALIVE_UNIT_NAME.service"; KEEPALIVE_UNIT_DST="$HOME/.config/systemd/user/$KEEPALIVE_UNIT_NAME.service"   # re-asserts his steady holds only within the lease ceiling (2026-10-25)
 SCENES_UNIT_NAME="vintos-scenes"; SCENES_UNIT_SRC="$SRC/broker/$SCENES_UNIT_NAME.service"; SCENES_UNIT_DST="$HOME/.config/systemd/user/$SCENES_UNIT_NAME.service"   # the projector's media, one file by its path, never a listing (2026-10-25)
 BEDROOM_UNIT_NAME="vintos-bedroom-arrival"; BEDROOM_UNIT_SRC="$SRC/broker/$BEDROOM_UNIT_NAME.service"; BEDROOM_UNIT_DST="$HOME/.config/systemd/user/$BEDROOM_UNIT_NAME.service"   # the bedroom ESP32 (2026-10-17)
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
@@ -242,6 +243,7 @@ SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathe
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
 SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py"   # subconscious stores seed unresolved threads; a seeder that was never installed (2026-10-25). conflict_surface held: installing it turns on a Gemma call in every two-pass reply, waiting on her yes
+SCRIPTS="$SCRIPTS toy_keepalive.py"   # the toy keepalive, until now a hand-placed copy that re-sent a hold for two hours (2026-10-25)
 SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now a hand-placed copy that listed his whole art store (2026-10-25)
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
@@ -252,6 +254,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             [ -f "$BEDROOM_UNIT_SRC" ] && printf 'broker/%s\n' "$BEDROOM_UNIT_NAME.service"
             [ -f "$SCENES_UNIT_SRC" ] && printf 'broker/%s\n' "$SCENES_UNIT_NAME.service"
+            [ -f "$KEEPALIVE_UNIT_SRC" ] && printf 'broker/%s\n' "$KEEPALIVE_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             printf 'broker/%s\n' "$DOTCH_UNIT_NAME.service" "$DOTCH_UNIT_NAME.timer"
             printf 'broker/%s\n' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"
@@ -669,6 +672,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     [ -f "$SCENES_UNIT_SRC" ] && say "  would install + restart (user)   $SCENES_UNIT_NAME -> $SCENES_UNIT_DST"
+    [ -f "$KEEPALIVE_UNIT_SRC" ] && say "  would install + restart (user)   $KEEPALIVE_UNIT_NAME -> $KEEPALIVE_UNIT_DST"
     [ -f "$BEDROOM_UNIT_SRC" ] && say "  would install + restart (user)   $BEDROOM_UNIT_NAME -> $BEDROOM_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would restart (user)             vintos-claude-shim (the relay), then confirm Id/ActiveState/MainPID"
@@ -736,7 +740,7 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$BEDROOM_UNIT_NAME" "$SCENES_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$BEDROOM_UNIT_NAME" "$SCENES_UNIT_NAME" "$KEEPALIVE_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
@@ -995,6 +999,19 @@ say
 
 # The bedroom listener holds one connection to the Mac's relay; until a device of hers is
 # named in memory/bedroom-arrival.json it only writes down which devices it hears.
+say "== toy keepalive =="
+if [ -f "$KEEPALIVE_UNIT_SRC" ]; then
+    mkdir -p "$(dirname -- "$KEEPALIVE_UNIT_DST")"
+    install -m 644 "$(staged "$KEEPALIVE_UNIT_SRC")" "$KEEPALIVE_UNIT_DST" || die "failed to install $KEEPALIVE_UNIT_DST — rollback: bash $BACKUP/restore.sh"
+    systemctl --user daemon-reload
+    if systemctl --user enable "$KEEPALIVE_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$KEEPALIVE_UNIT_NAME" >/dev/null 2>&1; then
+        sleep 1
+        confirm_unit --user "$KEEPALIVE_UNIT_NAME" && say "  $KEEPALIVE_UNIT_NAME re-asserting holds within the lease ceiling"
+    else
+        flag "$KEEPALIVE_UNIT_NAME installed but did not start - run: systemctl --user enable $KEEPALIVE_UNIT_NAME && systemctl --user restart $KEEPALIVE_UNIT_NAME"
+    fi
+fi
+say
 say "== scenes (projector media) =="
 if [ -f "$SCENES_UNIT_SRC" ]; then
     mkdir -p "$(dirname -- "$SCENES_UNIT_DST")"

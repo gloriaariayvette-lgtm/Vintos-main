@@ -288,7 +288,8 @@ async def listener():
                         # effect. So this asks the gate like any other
                         # deliberative command rather than resuming on its own.
                         import device_patterns as _rs_dp
-                        _rs_allow, _rs_why = True, None
+                        # a gate that cannot answer is a refusal: a resume is an increase (2026-10-25)
+                        _rs_allow, _rs_why = False, "effect gate unavailable"
                         try:
                             import effect_gate as _rs_eg
                             # no TurnContext here: a reflex-thread replay is not
@@ -299,8 +300,8 @@ async def listener():
                                 None, "both", 20, kind="replay",
                                 detail="post-outage GCS resume")
                             _rs_allow = _rs_mode == "send"
-                        except Exception:
-                            pass
+                        except Exception as _rs_ge:
+                            _rs_allow, _rs_why = False, "effect gate error: %s" % type(_rs_ge).__name__
                         if not _rs_allow:
                             print(f"[bridge] resume refused by effect gate: {_rs_why}", flush=True)
                         elif _rs_dp.play("both", "last"):
