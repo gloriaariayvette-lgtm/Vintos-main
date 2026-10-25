@@ -40,5 +40,34 @@ class Tests(unittest.TestCase):
         valid = {'primaryAccession': 'O43511', 'genes': [{'geneName': {'value': 'SLC26A4'}}]}
         self.assertEqual(sources.verify_uniprot_identity('gene:SLC26A4', [wrong, valid]), [valid])
 
+    def test_a_records_exact_short_protein_name_establishes_it(self):
+        # 25 October, "requested PHD2; returned Q9GZT9,... naming C1ORF12,EGLN1,...": the right record, refused because
+        # PHD2 is its short protein name, not a gene synonym. TFR1 (P02786) and P2X7 (Q99572) failed the same way.
+        def record(acc, gene, full, short=(), alt=()):
+            return {'primaryAccession': acc, 'genes': [{'geneName': {'value': gene}}],
+                    'proteinDescription': {'recommendedName': {'fullName': {'value': full},
+                                                               'shortNames': [{'value': s} for s in short]},
+                                           'alternativeNames': [{'fullName': {'value': f},
+                                                                 'shortNames': [{'value': s} for s in ss]}
+                                                                for f, ss in alt]}}
+        egln1 = record('Q9GZT9', 'EGLN1', 'Egl nine homolog 1',
+                       alt=[('Prolyl hydroxylase domain-containing protein 2', ['PHD2']), ('Hypoxia-inducible factor '
+                            'prolyl hydroxylase 2', ['HIF-PH2', 'HIF-prolyl hydroxylase 2'])])
+        ptges3 = record('Q15185', 'PTGES3', 'Prostaglandin E synthase 3', alt=[('Telomerase-binding protein p23', ['p23'])])
+        self.assertEqual(sources.verify_uniprot_identity('(gene:PHD2) AND taxonomy_id:9606 AND reviewed:true',
+                                                         [egln1, ptges3]), [egln1])
+        tfrc = record('P02786', 'TFRC', 'Transferrin receptor protein 1', short=['TR', 'TfR', 'TfR1', 'Trfr'])
+        tfr2 = record('Q9UP52', 'TFR2', 'Transferrin receptor protein 2', short=['TfR2'])
+        self.assertEqual(sources.verify_uniprot_identity('gene:TFR1 AND taxonomy_id:9606', [tfrc, tfr2]), [tfrc])
+        # a full name, or a short name that only resembles the symbol, establishes nothing
+        with self.assertRaisesRegex(ValueError, 'source_gene_mismatch: requested P2X7'):
+            sources.verify_uniprot_identity('gene:P2X7', [record('Q99572', 'P2RX7', 'P2X7')])
+        with self.assertRaisesRegex(ValueError, 'source_gene_mismatch: requested PHD3'):
+            sources.verify_uniprot_identity('gene:PHD3', [egln1])
+        # the wrong records the 25 October SOXS/SOXR request returned are still refused, their names given
+        tipa = record('P0A4T8', 'tipA', 'HTH-type transcriptional activator TipA', short=['TipA'])
+        with self.assertRaisesRegex(ValueError, 'requested SOXS,SOXR; returned P0A4T8 naming TIPA'):
+            sources.verify_uniprot_identity('gene:soxS OR gene:soxR', [tipa])
+
 
 if __name__ == '__main__': unittest.main()

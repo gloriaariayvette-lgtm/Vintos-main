@@ -493,6 +493,13 @@ def verify_uniprot_identity(query, records):
                 values = gene.get(key) or []
                 if isinstance(values, dict): values = [values]
                 names.update(str(v.get('value', '')).upper() for v in values)
+        # The record's own short protein names are its names too: PHD2 is EGLN1's (Q9GZT9), TfR1 TFRC's and P2X7
+        # P2RX7's, and each right record was refused as a mismatch for being asked for by that name (25 October).
+        # Only an exact short name counts, never a full name or a likeness.
+        description = row.get('proteinDescription') or {}
+        for entry in [description.get('recommendedName') or {}] + list(description.get('alternativeNames') or []):
+            if isinstance(entry, dict):
+                names.update(str(v.get('value', '')).upper() for v in entry.get('shortNames') or [] if isinstance(v, dict))
         # The names a record carries are kept before the check so a refusal can say what came back,
         # not only that it was wrong: "returned O95905" told him nothing about which gene that was.
         returned.extend(n for n in sorted(names) if n and n not in returned)
