@@ -50,6 +50,8 @@ MARKERS = {
     "[Something the two of you said":        "plan_mutual",
     "[You took this of hers":                "reading",
     "[STRATAGEM — sealed capsule":           "stratagem_tactic",
+    "[SHE ANSWERED SOMETHING YOU ASKED":      "architecture_answer",
+    "[YOU ASKED HER THIS":                   "architecture_waiting",
 }
 
 
@@ -115,6 +117,8 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
             "behavioral_intercept": "behavioral_intercept",
             "confidence_penalty": "confidence_penalty",
             "stratagem_tactic": "stratagem",
+            "architecture_answer": "architecture_answers",
+            "architecture_waiting": "architecture_answers",
         }
         offers = {}; o = {}
         try:
@@ -192,7 +196,8 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
         admission_id=getattr(context,"turn_id",None) or (o or {}).get("selection_id")
         if admission_id:
             from importlib import import_module
-            for marker,module in (("[FERMENTED CALLBACK","joke_fermentation"),("[CURIOSITY -","curiosity_debt"),("[YOU DECIDED, PRIVATELY","unsaid_frontier")):
+            for marker,module in (("[FERMENTED CALLBACK","joke_fermentation"),("[CURIOSITY -","curiosity_debt"),("[YOU DECIDED, PRIVATELY","unsaid_frontier"),
+                                  ("[SHE ANSWERED SOMETHING YOU ASKED","architecture_answers"),("[YOU ASKED HER THIS","architecture_answers")):
                 if marker in text:
                     try: import_module(module).admit_block(text,str(admission_id))
                     except Exception: pass

@@ -77,7 +77,7 @@ _FULL = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification"
 _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification", "get_field_hint"),
             ("mutual_simulation", "get_interaction_hint"), ("world_model", "get_world_block"),
             ("relational_head", "get_relational_hint"), ("withheld_head", "get_withheld_hint"),
-            ("presence_audit", "forecast_block"), ("repair_case", "block"),
+            ("presence_audit", "forecast_block"), ("architecture_answers", "block"), ("repair_case", "block"),
             ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("velqan_voice", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
             ("pleasure_substrate", "context_block"), ("resonance_felt", "block")]
 
