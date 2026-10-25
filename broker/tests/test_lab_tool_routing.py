@@ -175,6 +175,31 @@ class Tools(unittest.TestCase):
         self.assertEqual(spec, {'source': 'pubmed', 'query': phrase})
         self.assertTrue(read.called)
 
+    def test_a_request_with_no_source_field_reaches_the_source_it_names(self):
+        # 24-25 October: 72 steps were recorded with an empty source and refused "unsupported Lab source"; these are
+        # their shapes (identifiers replaced by fixtures of the same form)
+        for request, expected in [
+                ({'pubmed': "bacteriophage 'CRISPR' 'reverse transcriptase' genome"},
+                 {'source': 'pubmed', 'query': "bacteriophage 'CRISPR' 'reverse transcriptase' genome"}),
+                ({'accession': 'NC_000913.3', 'operation': 'rt_locus_screen'},
+                 {'source': 'rt_locus_screen', 'accession': 'NC_000913.3'}),
+                ({'accession': 'NC_000913.3', 'anchor_start': 0, 'anchor_end': 325, 'operation': 'ncbi_neighborhood'},
+                 {'source': 'ncbi_neighborhood', 'accession': 'NC_000913.3', 'anchor_start': 0, 'anchor_end': 325}),
+                ({'query': 'accession:O43511'}, {'source': 'uniprot', 'query': 'accession:O43511'}),
+                ({'source': '', 'query': 'accession:Q86SQ4'}, {'source': 'uniprot', 'query': 'accession:Q86SQ4'})]:
+            self.assertEqual(T.normalize_request('source', request), expected)
+        # a query that names no source still names none: nothing is guessed
+        for request in ({'query': 'reverse transcriptase'}, {'query': 'accession:not-an-accession'},
+                        {'query': 'accession:O43511', 'term': 'x'}, {'operation': 'search_genes', 'term': 'x'}):
+            spec = T.normalize_request('source', dict(request))
+            self.assertEqual(spec['source'], '', request)
+            with self.assertRaisesRegex(ValueError, 'unsupported Lab source'):
+                L.Sources(fetch=SEND).query(spec)
+        # the source named as operation is then checked as that source: a GI is not an accession.version
+        with self.assertRaisesRegex(ValueError, 'accession.version required'):
+            L.Sources(fetch=SEND).query(T.normalize_request('source', {'accession': '3042852874',
+                                                                       'operation': 'rt_locus_screen'}))
+
     def test_pubmed_literature_operation_stays_the_public_search(self):
         # 23-25 October: this shape went to the PubMed connector as "pubmed.literature" and was refused by its
         # policy, 25 times; the public search reads it

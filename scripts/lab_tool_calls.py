@@ -83,6 +83,7 @@ NCBI_OPERATIONS = {
     'pubmed': 'literature', 'search_pubmed': 'literature', 'search_articles': 'literature',
     'search_literature': 'literature', 'nucleotide': 'sequence', 'nuccore': 'sequence',
 }
+UNIPROT_ACCESSION = r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})'
 
 
 def normalize_source(spec):
@@ -97,7 +98,7 @@ def normalize_source(spec):
             out.update(source='pubmed_abstracts', pmids=[citation.strip()])
     if out['source'] == 'uniprot':
         query=out.get('query') or out.get('accession')
-        if isinstance(query,str) and re.fullmatch(r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})',query.upper()):
+        if isinstance(query,str) and re.fullmatch(UNIPROT_ACCESSION,query.upper()):
             out['query']='accession:'+query.upper()
     if out['source'] == 'interpro' and not out.get('accession'):
         value=out.get('uniprot_accession') or out.get('protein_accession') or out.get('query') or out.get('id')
@@ -144,12 +145,19 @@ def normalize_request(route, request):
         # {"source":"pubmed","pubmed":"<search>"}: the query under the source's own name is the shorthand below
         # with the source said twice; it was refused as having no search terms (25 October)
         request={request['source']:request[request['source']]}
+    allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
+             'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc'}
     if route=='source' and not request.get('source'):
         request={k:v for k,v in request.items() if k!='source'}
+        # A source named where its operation goes ({"operation":"rt_locus_screen","accession":...}), or a UniProt
+        # accession query with no source ({"query":"accession:O43511"}): each names one source, and each was
+        # refused as an empty source ("unsupported Lab source", 25 October)
+        if request.get('operation') in allowed:
+            request=dict({k:v for k,v in request.items() if k!='operation'},source=request['operation'])
+        elif set(request)=={'query'} and re.fullmatch(r'accession:'+UNIPROT_ACCESSION,str(request['query']).strip()):
+            request={'source':'uniprot','query':request['query'].strip()}
     if route=='source' and not request.get('source') and len(request)==1:
         source,value=next(iter(request.items()))
-        allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
-                 'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc'}
         if source in allowed:
             if isinstance(value,dict):request=dict(value,source=source)
             elif isinstance(value,str) and source=='uniprot':request={'source':'uniprot','query':value}
