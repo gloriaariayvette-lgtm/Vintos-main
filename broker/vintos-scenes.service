@@ -1,0 +1,12 @@
+[Unit]
+Description=Vintos scenes (static media for the projector)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/scenes_server.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
