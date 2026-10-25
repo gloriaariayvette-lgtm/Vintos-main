@@ -84,8 +84,12 @@ def load_pool(path=None):
     return lst
 
 
-def save_pool(threads, path=None, reason=""):
-    """Write the pool through the shrink guard. Returns True when written."""
+def save_pool(threads, path=None, reason="", *, expected=None):
+    """Write through the shrink guard; reject a changed explicit base snapshot.
+
+    Slow readers can pass an untouched copy of their loaded pool as expected.
+    A conflict leaves the current pool intact for a later scheduled pass.
+    """
     from store_guard import transactions
     with transactions([path or POOL_FILE]):
         path = path or POOL_FILE
@@ -94,6 +98,10 @@ def save_pool(threads, path=None, reason=""):
             return False
         n_after = len(threads)
         on_disk = load_pool(path)
+        if expected is not None and on_disk != expected:
+            _say("REFUSING write%s: pool changed since snapshot; retry from current pool"
+                 % ((" (" + reason + ")") if reason else ""))
+            return False
         if on_disk is None:
             # Unreadable ledger: a small rewrite would replace a pool we cannot see.
             if n_after <= SHRINK_MIN_POOL:

@@ -6,7 +6,7 @@ exponential decay each pass, plus additive impulses (embedding drift since last 
 NO LLM. Import-safe: exposes run(apply, quiet); triage calls run(apply=True, quiet=True) each pass.
 Run standalone:  python3 thread_temperature.py [apply]
 """
-import os, sys, json, math, time, shutil, urllib.request
+import os, sys, json, math, time, shutil, urllib.request, copy
 from collections import deque
 from datetime import datetime
 
@@ -86,8 +86,10 @@ def run(apply=False, quiet=False):
             print(*a)
     index, idxmat, vk, tk = _load_index()
     out(f"index: {len(index)} vectors (dim {len(index[0])}), vector-key='{vk}', text-key='{tk}', numpy={NP}")
-    obj = json.load(open(THREADS))
+    with open(THREADS) as source:
+        obj = json.load(source)
     tlist = obj if isinstance(obj, list) else obj.get("threads", [])
+    expected = copy.deepcopy(tlist)
     active = [t for t in tlist if isinstance(t, dict) and not t.get("consumed")]
     if not active:
         out("no unconsumed threads."); return {"count": 0}
@@ -142,10 +144,10 @@ def run(apply=False, quiet=False):
         # Shrink guard now lives in thread_store.save_pool (one door for every pool writer).
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from thread_store import save_pool
-        if save_pool(tlist, THREADS, reason="thread-temperature"):
+        if save_pool(tlist, THREADS, reason="thread-temperature", expected=expected):
             out("  applied: stability + temperature written, backed up.")
         else:
-            out("  NOT applied: pool write refused by shrink guard.")
+            out("  NOT applied: pool changed or shrink guard refused; retry on next pass.")
     else:
         out("  dry run — pass apply to write.")
     return {"count": len(results), "S": (min(Ss), max(Ss)), "T": (min(Ts), max(Ts))}
