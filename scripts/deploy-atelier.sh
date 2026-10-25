@@ -379,6 +379,7 @@ locate() {
             case "$h" in
                 "$_SELF"/*) ;;                    # the checkout we deploy FROM
                 "$HOME"/.vintos/deploy/*) ;;      # any other deploy clone
+                "$HOME"/sealed-latent-memory-*/*) ;;  # the sealed experiment snapshot (its own code); never live
                 "$HOME"/faultloop/*) ;;           # the fault-loop thread's own clone (docs/fault-loop.md)
                 "$HOME"/review-scratch-*/*) ;;    # review clones and worktrees; never live (2026-10-25: two
                                                   # deploys refused, finding their copies of live files)
