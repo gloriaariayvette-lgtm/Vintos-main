@@ -237,8 +237,8 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS spotify_watch.py"
-SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py"
-BINS="$BINS paid_http.py briefing-audio.sh introspection.sh idle-journal.sh"
+SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py house_auth.py"   # house_auth: the house credential and route guard (2026-10-25)
+BINS="$BINS paid_http.py house_auth.py briefing-audio.sh introspection.sh idle-journal.sh"
 SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
@@ -248,7 +248,7 @@ SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now 
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
-CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
+CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js clients/mobile/house_auth_client.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
@@ -501,23 +501,27 @@ if server_dst="$(dest bin/server.py)"; then
 "
         fi
     fi
+    for _client_server in "$server_dst" ${live_server:+"$live_server"}; do
     for spec in $CLIENTFILES; do
         case "$spec" in
-            */index.html) d="$(dirname -- "$server_dst")/website/app.html" ;;
-            *) d="$(dirname -- "$server_dst")/website/app/$(basename -- "$spec")" ;;
+            */index.html) d="$(dirname -- "$_client_server")/website/app.html" ;;
+            *) d="$(dirname -- "$_client_server")/website/app/$(basename -- "$spec")" ;;
         esac
         PLAN="$PLAN$SRC/$spec|$d
 "
+    done
     done
     if [ -f "$HOME/.config/systemd/user/vintos-emoclaw.service" ]; then
         PLAN="$PLAN$SRC/broker/vintos-emoclaw-provenance.conf|$HOME/.config/systemd/user/vintos-emoclaw.service.d/provenance.conf
 "
     fi
+    for _domain_server in "$server_dst" ${live_server:+"$live_server"}; do
     for spec in $DOMAINFILES; do
-        d="$(dirname -- "$server_dst")/server_domains/$(basename -- "$spec")"
+        d="$(dirname -- "$_domain_server")/server_domains/$(basename -- "$spec")"
         printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"
         PLAN="$PLAN$SRC/$spec|$d
 "
+    done
     done
 else
     ambiguous=1
@@ -529,6 +533,10 @@ while IFS='|' read -r _paid_src _paid_dst; do
     [ -f "$_paid_src" ] || continue
     if grep -q 'import paid_http' "$_paid_src"; then
         PLAN="$PLAN$SRC/scripts/paid_http.py|$(dirname -- "$_paid_dst")/paid_http.py
+"
+    fi
+    if grep -q 'house_auth' "$_paid_src"; then
+        PLAN="$PLAN$SRC/scripts/house_auth.py|$(dirname -- "$_paid_dst")/house_auth.py
 "
     fi
 done <<< "$PLAN"

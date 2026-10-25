@@ -11,27 +11,34 @@ if [ "${1:-}" = "--revert" ]; then REVERT=1; shift; fi
 PI="${1:-192.168.1.89}"
 AEGIS_TS="$(tailscale ip -4 2>/dev/null | head -1 || true)"; AEGIS_TS="${AEGIS_TS:-100.72.225.119}"
 PORT="${VINTOS_ROBOT_PORT:-8404}"
-SECRET="${VINTOS_SECRET:-vintos-aegis-2026}"
+SECRET="${VINTOS_SECRET:?VINTOS_SECRET must be provisioned}"
+[[ "$AEGIS_TS" =~ ^[0-9.]+$ && "$PORT" =~ ^[0-9]+$ ]] || exit 1
 F=/home/pi/velaris-pi-client.py
 
 if [ "$REVERT" = 1 ]; then
-  ssh "pi@$PI" "set -e; B=\$(ls -t $F.bak-vintos-* | head -1); cp \"\$B\" $F; python3 -m py_compile $F; sudo systemctl restart velaris-pi.service; echo reverted from \$B"
-  exit 0
+  echo "Use the reviewed guarded rollback; legacy Pi backups may embed a retired identity." >&2
+  exit 1
 fi
 
 echo "Pi $PI -> bridge http://$AEGIS_TS:$PORT (header X-Vintos-Secret)"
-ssh "pi@$PI" bash -s -- "$AEGIS_TS" "$PORT" "$SECRET" <<'REMOTE'
+{ printf '%s\n' "$SECRET"; cat <<'REMOTE'
 set -e
-AEGIS_TS="$1"; PORT="$2"; SECRET="$3"; F=/home/pi/velaris-pi-client.py
+AEGIS_TS="$1"; PORT="$2"; SECRET="$VINTOS_SECRET"; F=/home/pi/velaris-pi-client.py
 B="$F.bak-vintos-$(date +%Y%m%d-%H%M%S)"; cp "$F" "$B"
 # every bridge URL, whatever port it carried; the header name; the secret by its variable and its literal
 # whatever bridge it pointed at last (Aegis, or the Mac while Gemma lived there): any host on a bridge port
 sed -i -E "s#http://[0-9.]+:(8403|8500|8404)#http://${AEGIS_TS}:${PORT}#g; s#X-Velaris-Secret#X-Vintos-Secret#g" "$F"
-sed -i -E "s#^SECRET *= *['\"][^'\"]*['\"]#SECRET = \"${SECRET}\"#" "$F"
-sed -i -E "s#'velaris-aegis-2026'#'${SECRET}'#g" "$F"
+sed -i -E "s#^SECRET *=.*#SECRET = __import__('os').environ['VINTOS_SECRET']#" "$F"
+
+install -d -m 700 /home/pi/.config/vintos
+(umask 077; printf 'VINTOS_SECRET=%s\n' "$SECRET" > /home/pi/.config/vintos/house-auth.env)
+sudo install -d -m 755 /etc/systemd/system/velaris-pi.service.d
+printf '[Service]\nEnvironmentFile=/home/pi/.config/vintos/house-auth.env\n' | sudo tee /etc/systemd/system/velaris-pi.service.d/house-auth.conf >/dev/null
+sudo systemctl daemon-reload
 python3 -m py_compile "$F" && echo "client compiles"
-grep -nE "AEGIS *=|X-Vintos-Secret|:${PORT}" "$F" | head -8
+
 sudo systemctl restart velaris-pi.service; sleep 4
-tail -5 /home/pi/velaris-pi.log
-echo "backup: $B   (revert: bash robot-pi-repoint.sh --revert)"
+
+echo "backup: $B (code backup only; retain the rotated environment on rollback)"
 REMOTE
+} | ssh "pi@$PI" "IFS= read -r VINTOS_SECRET; export VINTOS_SECRET; bash -s -- '$AEGIS_TS' '$PORT'"
