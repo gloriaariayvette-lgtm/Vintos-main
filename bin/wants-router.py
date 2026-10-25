@@ -2641,8 +2641,11 @@ def main():
                 if any(_pp.startswith("missing required") for _pp in _param_problems):
                     log(f"  → step blocked: {'; '.join(_pp for _pp in _param_problems if _pp.startswith('missing required'))}")
                     try:
-                        want["blocked"] = {"cause": "; ".join(_param_problems), "blocked_step": action, "at": datetime.now().timestamp()}
-                    except Exception: pass
+                        from want_spine import hold_invalid_params
+                        _held_params = hold_invalid_params(want, action, _param_problems)
+                        if _held_params: want['blocked'] = _held_params
+                    except Exception as _param_error:
+                        log(f"  → parameter block persistence failed: {type(_param_error).__name__}")
                     continue
                 os.environ["STEP_PARAMS"] = json.dumps(_clean_params) if is_multistep else "{}"
                 # For introspect steps in multistep wants, seed with previous step findings

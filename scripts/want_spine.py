@@ -12,7 +12,51 @@ for weeks because failure and no-result wore the same face.)
 
 Wraps the EXISTING router capabilities — nothing re-implemented, everything
 re-enveloped. Direct dispatch retires in S3, same patch that adopts this."""
-import os, sys, time, importlib.util
+import os, sys, time, importlib.util, hashlib, json
+
+
+def step_params_signature(want):
+    """Identity of the selected authored step, without storing parameter values in a block."""
+    steps = want.get('steps') or []
+    index = want.get('current_step_index', 0)
+    if not isinstance(index, int) or not 0 <= index < len(steps) or not isinstance(steps[index], dict):
+        return None
+    step = steps[index]
+    raw = json.dumps([index, step.get('capability'), step.get('params') or {}, step.get('status')],
+                     sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def hold_invalid_params(want, action, problems, path=None):
+    """Retain a validation failure only while the exact selected step still stands."""
+    from store_guard import locked_update
+    signature = step_params_signature(want)
+    if signature is None:
+        return None
+    path = path or os.path.expanduser('~/.vintos/workspace/memory/current-wants.json')
+    held = []
+    def mutate(current):
+        rows = current if isinstance(current, list) else current.get('wants', [])
+        for row in rows:
+            if row.get('id') != want.get('id') or row.get('fulfilled') or row.get('dismissed'):
+                continue
+            if step_params_signature(row) != signature:
+                return None
+            block = row.get('blocked')
+            if block:
+                if isinstance(block, dict) and block.get('block_type') == 'INVALID_STEP_PARAMS' \
+                        and block.get('step_signature') == signature:
+                    held.append(dict(block))
+                return None
+            block = {'block_type':'INVALID_STEP_PARAMS', 'blocked_step':action,
+                     'evidence':'; '.join(problems)[:600], 'resume_event':'selected step parameters revised',
+                     'step_signature':signature, 'at':time.time()}
+            row['blocked'] = block
+            held.append(dict(block))
+            return current
+        return None
+    locked_update(path, mutate, default=[], reader='want_spine.hold_invalid_params')
+    return held[0] if held else None
 
 _ROUTER = None
 def _router():

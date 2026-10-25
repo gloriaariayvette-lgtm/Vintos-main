@@ -190,6 +190,13 @@ def tend(now=None, age=None, discussions=None):
                 closed_f.append(w); continue
             if w.get("dismissed"):
                 closed_d.append(w); continue
+            block = w.get('blocked') or {}
+            if isinstance(block, dict) and block.get('block_type') == 'INVALID_STEP_PARAMS' \
+                    and block.get('step_signature'):
+                from want_spine import step_params_signature
+                if step_params_signature(w) != block['step_signature']:
+                    w.pop('blocked', None)
+                    log.append('step parameters revised: %s' % w.get('id'))
             board = w.get("board")
             if board == "awaiting_gloria" and _gloria_answered(w.get("id", ""), disc):
                 w.pop("board", None); w.pop("parked_at", None); w["unparked_at"] = stamp
@@ -200,7 +207,8 @@ def tend(now=None, age=None, discussions=None):
             elif board == "blocked" and not _blocked(w):
                 w.pop("board", None); w.pop("parked_at", None); w["unparked_at"] = stamp
                 log.append("unblocked: %s" % w.get("id"))
-            elif not board and _blocked(w) and not moving(w, now) and not _planner_retry_due(w, now):
+            elif (not board and _blocked(w) and not _planner_retry_due(w, now)
+                  and (not moving(w, now) or _block(w).get('block_type') == 'INVALID_STEP_PARAMS')):
                 w["board"], w["parked_at"] = "blocked", stamp
                 log.append("parked BLOCKED (%s): %s" % (_block(w).get("block_type"), w.get("id")))
             elif (not board and w.get("gloria_routed") and not _gloria_answered(w.get("id", ""), disc)
