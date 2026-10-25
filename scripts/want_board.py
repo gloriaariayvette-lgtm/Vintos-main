@@ -125,6 +125,15 @@ def _blocked(w):
     return bool(_block(w))
 
 
+def _planner_retry_due(w, now):
+    """A transient planner failure returns to the router's existing two-hour retry door."""
+    if w.get('steps') or (isinstance(w.get('blocked'), dict) and w['blocked'].get('block_type')):
+        return False
+    block = w.get('plan_block') or {}
+    return (isinstance(block, dict) and block.get('block_type') in ('PLANNER_NO_RESULT', 'PLANNER_FAILED')
+            and now - _t(block.get('at')) >= 7200)
+
+
 def _gloria_answered(want_id, discussions):
     msgs = discussions.get(want_id) or []
     return bool(msgs) and isinstance(msgs[-1], dict) and msgs[-1].get("role") == "gloria"
@@ -185,10 +194,13 @@ def tend(now=None, age=None, discussions=None):
             if board == "awaiting_gloria" and _gloria_answered(w.get("id", ""), disc):
                 w.pop("board", None); w.pop("parked_at", None); w["unparked_at"] = stamp
                 log.append("woken: Gloria answered %s" % w.get("id"))
+            elif board == "blocked" and _planner_retry_due(w, now):
+                w.pop("board", None); w.pop("parked_at", None)
+                log.append("planning retry due: %s" % w.get("id"))
             elif board == "blocked" and not _blocked(w):
                 w.pop("board", None); w.pop("parked_at", None); w["unparked_at"] = stamp
                 log.append("unblocked: %s" % w.get("id"))
-            elif not board and _blocked(w) and not moving(w, now):
+            elif not board and _blocked(w) and not moving(w, now) and not _planner_retry_due(w, now):
                 w["board"], w["parked_at"] = "blocked", stamp
                 log.append("parked BLOCKED (%s): %s" % (_block(w).get("block_type"), w.get("id")))
             elif (not board and w.get("gloria_routed") and not _gloria_answered(w.get("id", ""), disc)
