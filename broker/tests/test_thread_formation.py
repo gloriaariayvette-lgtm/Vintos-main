@@ -230,8 +230,12 @@ E.seed_thread = E_seed
 man = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 toks = set(" ".join(l.split("=", 1)[1].split("#")[0] for l in man.splitlines()
                    if l.startswith(("SCRIPTS=", "BINS="))).replace('"', " ").replace("$SCRIPTS", " ").replace("$BINS", " ").split())
-check("absence-map, graph_mae, conflict_surface, surprise-detector and the feed are installed",
-      {"absence-map.sh", "graph_mae.py", "conflict_surface.py", "surprise-detector.sh", "subcon_thread_seeds.py"} <= toks)
+check("absence-map, graph_mae, surprise-detector and the feed are installed",
+      {"absence-map.sh", "graph_mae.py", "surprise-detector.sh", "subcon_thread_seeds.py"} <= toks)
+check("conflict_surface is held out until she says yes: installing it adds a Gemma call to every two-pass reply",
+      "conflict_surface.py" not in toks)
+check("creative-search and velqan-coiner are not installed (a paid search key; not approved)",
+      not ({"creative-search.sh", "velqan-coiner.py"} & toks))
 check("creative-search and velqan-coiner are not", not ({"creative-search.sh", "velqan-coiner.py"} & toks))
 check("idle-journal runs surprise-detector although the deploy installs it 644",
       '[ -f "$SCRIPTS/surprise-detector.sh" ]' in open(os.path.join(REPO, "bin", "idle-journal.sh")).read())
