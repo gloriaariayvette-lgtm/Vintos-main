@@ -4319,7 +4319,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     try:
         with open(os.path.join(MEMORY, "conversation-rhythm.json")) as _rf:
             _rd = json.load(_rf)
-            rhythm_ctx = f"Messages today: {_rd.get('total_messages', 0)}, current silence: {_rd.get('current_silence_hours', 0)}h"
+            rhythm_ctx = f"Messages today: {_messages_today(_rd)}, current silence: {_rd.get('current_silence_hours', 0)}h"
     except: pass
     outreach_ctx = ""
     discovery_ctx = ""
@@ -4993,7 +4993,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     try:
         with open(os.path.join(MEMORY, "conversation-rhythm.json")) as _rf:
             _rd = json.load(_rf)
-            rhythm_ctx = f"Messages today: {_rd.get('total_messages', 0)}, current silence: {_rd.get('current_silence_hours', 0)}h"
+            rhythm_ctx = f"Messages today: {_messages_today(_rd)}, current silence: {_rd.get('current_silence_hours', 0)}h"
     except: pass
     outreach_ctx = ""
     discovery_ctx = ""
@@ -6665,7 +6665,9 @@ def _spark_block():
     parts = []
     try:
         _last = ''
-        for _hp in ('voice-chat-history.json', 'chat-history.json'):
+        # the live conversation first (2026-10-25: these read only files last written in August, so every
+        # prompt named an August reply as his last); the older doors' files stay as fallbacks
+        for _hp in ('avatar-overlay-chat.json', 'voice-chat-history.json', 'chat-history.json'):
             try:
                 _h = _sj.load(open(_so.path.join(MEMORY, _hp)))
                 for _e in reversed(_h):
@@ -6684,7 +6686,7 @@ def _spark_block():
         # that appears in 2+ of his last 20 replies is named as already said - whatever it is.
         try:
             _reps = {}
-            for _hp2 in ('chat-history.json', 'avatar-chat-history.json', 'voice-chat-history.json'):
+            for _hp2 in ('avatar-overlay-chat.json', 'chat-history.json', 'avatar-chat-history.json', 'voice-chat-history.json'):
                 try:
                     _h2 = _sj.load(open(_so.path.join(MEMORY, _hp2)))
                 except Exception:
@@ -6743,7 +6745,7 @@ def _spark_block():
     try:
         import residue as _res, json as _rj, os as _ro
         _last = ""
-        for _hp in ('avatar-chat-history.json', 'chat-history.json'):
+        for _hp in ('avatar-overlay-chat.json', 'avatar-chat-history.json', 'chat-history.json'):
             try:
                 _h = _rj.load(open(_ro.path.join(MEMORY, _hp)))
                 for _e in reversed(_h):
@@ -7909,6 +7911,26 @@ def _sent_media(msg, note=None):
 # label it "[REELROOM EVENT - not Gloria's words]" and skip her side of the before-and-after steps (2026-09-30).
 _SENT_BARE = "[Gloria sent you %s without a message]"
 _TAGS_RX = re.compile(r"\[(?:FELT|SCENE|RENDER|DO|TOUCH|SPEAK)[^\]]*\]", re.I)
+
+
+def _append_avatar_history(path, rows, keep=40):
+    """Append rows to the avatar history under its lock, keeping the newest `keep`. The one writer for the
+    file in this server: a snapshot written back whole loses whatever another writer added meanwhile."""
+    rows = [{**r, "ts": r.get("ts") or time.time()} for r in rows if isinstance(r, dict)]
+    if not rows: return
+    from store_guard import locked_update
+    locked_update(path, lambda cur: ((cur if isinstance(cur, list) else []) + rows)[-keep:],
+                  default=[], reader="server.avatar_history")
+
+
+def _messages_today(rhythm):
+    """Her messages today from conversation-rhythm.json. It has no 'total_messages'; reading that key
+    put "Messages today: 0" in every prompt (2026-10-25). Today is its daily_summary row for today's date."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    for row in (rhythm.get("daily_summary") or []):
+        if isinstance(row, dict) and row.get("date") == today:
+            return int(row.get("message_count") or 0)
+    return 0
 
 
 def _same_as_last_reply(reply, history):
@@ -9111,12 +9133,8 @@ async def _voice_ledger_owned(payload: dict):
     try:
         if not _test_mode_active() and (g or v):
             _avh_p = os.path.join(MEMORY, "avatar-overlay-chat.json")
-            try: _avh = json.load(open(_avh_p))
-            except: _avh = []
-            if not isinstance(_avh, list): _avh = []
-            if g: _avh.append({"role": "user", "content": g})
-            if v: _avh.append({"role": "assistant", "content": v})
-            json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in _avh[-40:]], open(_avh_p, "w"), indent=2)
+            _append_avatar_history(_avh_p, ([{"role": "user", "content": g}] if g else []) +
+                                           ([{"role": "assistant", "content": v}] if v else []))
     except Exception as _vae: print("[voice->avatar-history]", _vae, flush=True)
     try:
         from emotional_operators import step as _vo_step, causal_step as _vo_cstep
@@ -9786,7 +9804,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         try:
             with open(os.path.join(MEMORY, "conversation-rhythm.json")) as f:
                 _rd = json.load(f)
-                rhythm_ctx = f"Messages today: {_rd.get('total_messages', 0)}, current silence: {_rd.get('current_silence_hours', 0)}h"
+                rhythm_ctx = f"Messages today: {_messages_today(_rd)}, current silence: {_rd.get('current_silence_hours', 0)}h"
         except: pass
         outreach_ctx = ""
         try:
@@ -10120,6 +10138,7 @@ Your current self-model (excerpt):
                 with open(av_chat_log) as f:
                     av_history = json.load(f)[-12:]
             except: pass
+        _av_loaded_n = len(av_history)   # rows after this are this turn's own; only they are appended at save
 
         # Build messages
         try:
@@ -10617,8 +10636,10 @@ Your current self-model (excerpt):
                                                           and _counterpart_text else {})) for r in _cv_rows],
                               surface=_surface)
             if _surface != "reelroom" and not _test_turn:
-                with open(av_chat_log, "w") as f:
-                    json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in av_history[-40:]], f, indent=2)
+                # Append this turn's rows to the file as it is now, under its lock. Writing back the 12 rows the
+                # prompt was given held the file at 14 (2026-10-25), and anything written meanwhile (a voice turn,
+                # a desktop follow-up) was overwritten by this turn's older snapshot.
+                _append_avatar_history(av_chat_log, av_history[_av_loaded_n:])
         except: pass
 
         # Explicit Avatar desktop commands begin only after his ordinary reply
