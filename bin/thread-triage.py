@@ -85,6 +85,10 @@ def llm(system, prompt, temperature=0.7):
 
 import subprocess; subprocess.run(["bash", os.path.expanduser("~/.vintos/workspace/scripts/backup-threads.sh")])
 
+def _pool_copy(threads):
+    return json.loads(json.dumps(threads))
+
+
 def main():
     # Load threads
     try:
@@ -93,6 +97,12 @@ def main():
     except:
         log("No threads file found.")
         return
+    # The pool as this pass loaded it. The pass makes model calls before it saves; each save
+    # merges this pass's changes onto the pool as it is then, never over another writer's.
+    base = [_pool_copy(threads)]
+    def _save(reason):
+        if save_pool(threads, THREADS_FILE, reason=reason, base=base[0]):
+            base[0] = _pool_copy(threads)
 
     # Deduplicate — keep oldest instance of identical thread text
     seen = {}
@@ -107,7 +117,7 @@ def main():
     if len(deduped) < len(threads):
         _n_dup = len(threads) - len(deduped)
         threads = deduped
-        save_pool(threads, THREADS_FILE, reason="triage-dedup")
+        _save("triage-dedup")
         log(f"  Pruned {_n_dup} duplicate(s).")
 
     # Semantic near-duplicate detection — ask LLM to identify redundant threads
@@ -154,7 +164,7 @@ def main():
                         append_retired(doomed)
                     except Exception as _nd_e:
                         log(f"  Retire archive failed: {_nd_e}")
-                    save_pool(threads, THREADS_FILE, reason="triage-near-duplicate")
+                    _save("triage-near-duplicate")
 
     # Clean up consumed threads that fell through without being retired
     # Exclude near-duplicates — they are already handled
@@ -323,7 +333,7 @@ PULL: [1-5]"""
         log(f"  [{source}] pull={pull}: {voice[:80]}")
 
     # Save updated threads
-    save_pool(threads, THREADS_FILE, reason="triage")
+    _save("triage")
 
     # Log the triage session
     os.makedirs(os.path.dirname(TRIAGE_LOG), exist_ok=True)
@@ -350,7 +360,7 @@ PULL: [1-5]"""
                 if (highest.get("id") and t.get("id") == highest["id"]) or (t.get("thread") == highest["thread"] and not t.get("retired")):
                     t["was_preoccupation"] = True
             # Save updated flag back to file
-            save_pool(threads, THREADS_FILE, reason="triage-preoccupation")
+            _save("triage-preoccupation")
     except: pass
 
     log(f"Triaged {len(triage_entries)} of {len(unconsumed)} threads ({len(unconsumed) - len(triage_entries)} without verdict). Session logged.")

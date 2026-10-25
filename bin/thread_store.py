@@ -84,11 +84,42 @@ def load_pool(path=None):
     return lst
 
 
-def save_pool(threads, path=None, reason="", *, expected=None):
-    """Write through the shrink guard; reject a changed explicit base snapshot.
+def _merge_pool(local, base, current):
+    """Apply what this writer changed since its snapshot onto the pool as it is now.
 
-    Slow readers can pass an untouched copy of their loaded pool as expected.
-    A conflict leaves the current pool intact for a later scheduled pass.
+    Threads another writer added meanwhile stay; a thread this writer removed is removed;
+    a field this writer changed (or dropped) is changed on the current thread, other fields
+    keep the other writer's values. A thread another writer removed stays removed.
+    """
+    base_by = {t.get("id"): t for t in base if isinstance(t, dict) and t.get("id")}
+    local_by = {t.get("id"): t for t in local if isinstance(t, dict) and t.get("id")}
+    out = []
+    for t in current:
+        tid = t.get("id") if isinstance(t, dict) else None
+        if not tid or tid not in base_by:
+            out.append(t); continue                      # added elsewhere, or unidentifiable: keep
+        if tid not in local_by:
+            continue                                     # this writer removed it
+        b, l = base_by[tid], local_by[tid]
+        if l == b:
+            out.append(t); continue
+        merged = dict(t)
+        for k in set(b) | set(l):
+            if k not in l: merged.pop(k, None)
+            elif b.get(k) != l[k] or k not in b: merged[k] = l[k]
+        out.append(merged)
+    have = {t.get("id") for t in out if isinstance(t, dict)}
+    out.extend(t for t in local if isinstance(t, dict) and t.get("id") and t["id"] not in base_by and t["id"] not in have)
+    return out
+
+
+def save_pool(threads, path=None, reason="", *, expected=None, base=None):
+    """Write through the shrink guard.
+
+    expected: an untouched copy of the loaded pool; a changed pool refuses the write.
+    base: an untouched copy of the loaded pool; a changed pool is merged by thread id
+    (_merge_pool) instead of being overwritten, so a slow writer never loses a
+    concurrent change. Either way the current pool is read under the lock.
     """
     from store_guard import transactions
     with transactions([path or POOL_FILE]):
@@ -102,6 +133,13 @@ def save_pool(threads, path=None, reason="", *, expected=None):
             _say("REFUSING write%s: pool changed since snapshot; retry from current pool"
                  % ((" (" + reason + ")") if reason else ""))
             return False
+        if base is not None and not isinstance(base, list):
+            base = _as_list(base)
+        if base is not None and on_disk is not None and on_disk != base:
+            threads = _merge_pool(threads, base, on_disk)
+            n_after = len(threads)
+            _say("merged write%s: pool changed since snapshot; kept %d concurrent change(s)"
+                 % ((" (" + reason + ")") if reason else "", sum(1 for t in on_disk if t not in base)))
         if on_disk is None:
             # Unreadable ledger: a small rewrite would replace a pool we cannot see.
             if n_after <= SHRINK_MIN_POOL:

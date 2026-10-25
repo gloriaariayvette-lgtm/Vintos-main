@@ -81,15 +81,23 @@ def llm(system, prompt, temperature=0.7):
         log(f"LLM error: {e}")
         return ""
 
+_POOL_BASE = None   # the pool as this run loaded it; saves merge onto the pool as it is then
+
 def load_threads():
+    global _POOL_BASE
     try:
         with open(THREADS_FILE) as f:
-            return json.load(f)
+            threads = json.load(f)
+        _POOL_BASE = json.loads(json.dumps(threads))
+        return threads
     except:
         print("[thread-resolution] ABORT: ledger unreadable - refusing to resolve against nothing (wipe of 2026-08-10)"); __import__("sys").exit(1)
 
 def save_threads(threads):
-    return _ts.save_pool(threads, THREADS_FILE, reason="thread-resolution")
+    global _POOL_BASE
+    ok = _ts.save_pool(threads, THREADS_FILE, reason="thread-resolution", base=_POOL_BASE)
+    if ok: _POOL_BASE = json.loads(json.dumps(threads))
+    return ok
 
 def load_retired():
     # Accepts both historical archive shapes (bare list, {"threads": [...]}).
