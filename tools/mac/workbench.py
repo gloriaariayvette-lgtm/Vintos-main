@@ -941,14 +941,28 @@ def mark_success(th, headline, cfg, model_call=complete):
         head, where, note, recipe[:1500] + ("\n..." if len(recipe) > 1500 else ""))
 
 
+def success_headline(text):
+    """The headline if this message is a !success command, else None. It fires when !success leads the message or
+    any line (the plain case), and also when a one-line message ENDS with it — so "save this with !success" saves,
+    instead of falling through to the model, which cheerfully agrees and keeps nothing (25 October: a whole thread's
+    win was lost this way). The headline is the message with the !success token taken out."""
+    t = text.strip()
+    if not t: return None
+    low = t.lower()
+    single = "\n" not in t
+    at_edge = low.startswith("!success") or (single and low.rstrip(" :.—-\t").endswith("!success"))
+    if not at_edge: return None
+    return re.sub(r"(?<![\w!])!success\b", "", t, count=1, flags=re.I).strip(" :.—-\t").strip()
+
+
 def turn(tid, text, cfg, model_call=complete):
     """Her message in, the model's answer out, with as many lookup rounds as it asks for (up to tool_rounds)."""
     with LOCK:
         th = load_thread(tid)
     th["messages"].append({"role": "user", "content": text, "at": time.strftime("%H:%M")})
     if not th.get("title"): th["title"] = text.strip().splitlines()[0][:60] if text.strip() else "Untitled"
-    if text.strip().lower().startswith("!success"):   # she marks the win; the model writes the recipe, we save it local
-        headline = text.strip()[len("!success"):].strip()
+    headline = success_headline(text)
+    if headline is not None:   # she marks the win; the model writes the recipe, we save it local
         th["messages"].append({"role": "user", "tool": True, "at": time.strftime("%H:%M"),
                                "content": mark_success(th, headline, cfg, model_call)})
         th["working"] = False
