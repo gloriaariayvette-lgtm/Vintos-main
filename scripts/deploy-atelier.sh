@@ -379,6 +379,9 @@ locate() {
             case "$h" in
                 "$_SELF"/*) ;;                    # the checkout we deploy FROM
                 "$HOME"/.vintos/deploy/*) ;;      # any other deploy clone
+                "$HOME"/faultloop/*) ;;           # the fault-loop thread's own clone (docs/fault-loop.md)
+                "$HOME"/review-scratch-*/*) ;;    # review clones and worktrees; never live (2026-10-25: two
+                                                  # deploys refused, finding their copies of live files)
                 "$HOME"/.vintos/study-workbench*) ;;    # the Study's own clone (study_fix.py), where Fable
                                                         # writes; never live (2026-10-03: the first Study fix was
                                                         # refused because the deploy found its turn_coordinator.py)
