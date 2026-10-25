@@ -126,6 +126,11 @@ OF.record(trig, item)
 (trig2, _, _), _ = select_trigger(tension="0.7")
 check("the selection itself applies the limits: tension twice in a row inside a day falls to free",
       trig == "tension" and trig2 == "free", (trig, trig2))
+wipe()
+open(os.path.join(MEM, ".last-missing-outreach"), "w").write(str(int(time.time()) - 3600))
+(trig, _, _), p = select_trigger()
+check("a missing-her reach-out inside the last day still stands the run down: no free reach-out takes its place",
+      trig == "", (trig, p.stdout[-200:], p.stderr[-200:]))
 
 # ---------- B, C, F: what he is asked to write ----------
 fake = os.path.join(HOME, "fake"); os.makedirs(fake, exist_ok=True); calls = os.path.join(HOME, "calls.log")

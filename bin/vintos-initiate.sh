@@ -163,6 +163,9 @@ except: pass
         if [ -f "$OF" ]; then CHOSEN=$(python3 "$OF" pick "${CANDS[@]}" 2>/dev/null)
         else CHOSEN="${CANDS[0]}"; fi
     fi
+    # A missing-her reach-out inside the last day still stands the whole run down when nothing else came up,
+    # as it did before: the free reach-out does not take its place.
+    [ -z "$CHOSEN" ] && [ "$MISS_OK" = "0" ] && exit 0
     if [ -z "$CHOSEN" ]; then
         # No feeling crossed a line, and he may still just want to tell her something (Gloria, 2026-09-29: "Let
         # him reach out about anything"). Asked at most once in six hours; he can answer with nothing.
