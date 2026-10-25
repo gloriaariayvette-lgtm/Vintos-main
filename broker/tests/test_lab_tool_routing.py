@@ -151,6 +151,43 @@ class Tools(unittest.TestCase):
                                  ({'source':'pdb','query':'reverse transcriptase'},{'source':'pdb','query':'reverse transcriptase'})]:
             self.assertEqual(T.normalize_request('source',request),expected)
 
+    def test_pubmed_shorthand_reads_the_named_citation_without_a_search(self):
+        # A retained failed step used this shape. An exact citation must reach
+        # the article reader without a keyword search or an inferred identifier.
+        spec = T.normalize_request('source', {'pubmed': '36115831'})
+        xml = ('<PubmedArticleSet><PubmedArticle><MedlineCitation>'
+               '<PMID>36115831</PMID><Article><ArticleTitle>Fixture</ArticleTitle>'
+               '<Abstract><AbstractText>Measured fixture result.</AbstractText></Abstract>'
+               '</Article></MedlineCitation></PubmedArticle></PubmedArticleSet>')
+        read = Mock(return_value=xml)
+        result = L.Sources(fetch=SEND, fetch_record=read).query(spec)
+        self.assertEqual([r['pmid'] for r in result['records']], ['36115831'])
+        self.assertIn('efetch.fcgi?', read.call_args.args[0])
+        self.assertIn('id=36115831', read.call_args.args[0])
+        self.assertEqual(result['query']['pmids'], ['36115831'])
+        read.assert_called_once()
+
+    def test_pubmed_shorthand_search_keeps_the_authored_phrase(self):
+        phrase = 'bacteriophage "reverse transcriptase" CRISPR-Cas'
+        spec = T.normalize_request('source', {'pubmed': phrase})
+        with patch.object(L.Sources, '_abstracts', return_value={'records': []}) as read:
+            L.Sources(fetch=SEND).query(spec)
+        self.assertEqual(spec, {'source': 'pubmed', 'query': phrase})
+        self.assertTrue(read.called)
+
+    def test_named_model_reader_reaches_validation_with_generic_viewer_skill(self):
+        import lab_instruments
+        model = 'artifacts/esmfold/fixture.pdb'
+        request = T.normalize_request('instrument', {'skill': 'structure_viewer',
+            'operation': 'fold_read', 'files': [model], 'question': 'Read the retained model helices.'})
+        with patch.object(lab_instruments, 'artifacts', return_value=[model]):
+            skill, operation, files, question = lab_instruments.validate(request)
+        self.assertEqual((skill, operation, files), ('fold_read', 'structure.read', [model]))
+        self.assertEqual(question, request['question'])
+        request['files'] = ['/etc/passwd']
+        with self.assertRaisesRegex(ValueError, 'artifacts the Lab listed'):
+            lab_instruments.validate(request)
+
     def test_same_question_may_use_distinct_instruments_but_not_repeat_one(self):
         import lab_repeats
         question='Measure the resulting energy against the same exact reference.'

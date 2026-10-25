@@ -83,6 +83,11 @@ def normalize_source(spec):
     source = str(out.get('source') or '').lower()
     out['source'] = {'rcsb': 'pdb', 'alphagenome': 'atlas', 'entrez': 'ncbi',
                      'ncbi_rt_locus_screen': 'rt_locus_screen'}.get(source, source)
+    if out['source'] == 'pubmed':
+        citation = out.get('query') or out.get('term')
+        if isinstance(citation, str) and re.fullmatch(r'[1-9][0-9]{0,19}', citation.strip()) and not out.get('pmids'):
+            out = {k: v for k, v in out.items() if k not in ('query', 'term')}
+            out.update(source='pubmed_abstracts', pmids=[citation.strip()])
     if out['source'] == 'uniprot':
         query=out.get('query') or out.get('accession')
         if isinstance(query,str) and re.fullmatch(r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})',query.upper()):
@@ -141,6 +146,7 @@ def normalize_request(route, request):
             elif isinstance(value,str) and source in ('interpro','ncbi_sequence','ncbi_protein_context','rt_locus_screen'):
                 request={'source':source,'accession':value}
             elif isinstance(value,str) and source=='pubchem':request={'source':source,'name':value}
+            elif isinstance(value,str) and source=='pubmed':request={'source':source,'query':value}
     if route=='source':return normalize_source(request)
     if route=='instrument':return normalize_instrument(request)
     return request
@@ -154,6 +160,11 @@ def normalize_instrument(request):
     from lab_native_instruments import OPERATIONS
     request=dict(request)
     skill,op=request.get('skill'),request.get('operation')
+    # An explicit single-operation instrument name identifies its reader even
+    # when the request also carries the generic viewer skill.
+    if op in OFFERED and len(OFFERED[op]) == 1:
+        request.update(skill=op, operation=OFFERED[op][0])
+        return request
     if skill in OFFERED or skill in OPERATIONS:return request
     if op in OFFERED and len(OFFERED[op])==1:skill,op=op,OFFERED[op][0]
     elif op in OPERATIONS:skill,op=op,OPERATIONS[op]
