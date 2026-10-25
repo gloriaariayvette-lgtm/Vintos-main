@@ -63,6 +63,30 @@ class QueryWords(unittest.TestCase):
         C.chembl_from_plugin({'plugin':'chembl','tool':'chembl_search_targets','arguments':args})
         self.assertEqual(args,{'term':'CFTR','limit':2})
 
+class TargetNames(unittest.TestCase):
+    """The faults recorded for this search, 14-23 October: target_synonym, target_alias, target_names, and the
+    arguments as a bare string, each refused as an unsupported argument."""
+    def test_chembls_own_name_fields_name_the_target(self):
+        for key in ('target_synonym','target_alias','target_names','pref_name'):
+            self.assertEqual(plan(**{key:'Ferroportin'})['term'],'Ferroportin',key)
+        self.assertEqual(plan(target_names=['Ferroportin'],organism='Homo sapiens')['term'],'Ferroportin')
+        self.assertEqual(plan(target_synonym='SLC40A1',term='iron')['term'],'SLC40A1')   # ChEMBL's own field first
+        self.assertEqual(plan(target_name='CFTR',target_synonym='ABCC7')['term'],'CFTR')  # target_name still wins
+    def test_a_bare_string_is_the_target_name(self):
+        spec=C.chembl_from_plugin({'plugin':'chembl','tool':'chembl_search_targets','arguments':'Ferroportin'})
+        self.assertEqual((spec['source'],spec['operation'],spec['term']),('chembl','search_targets','Ferroportin'))
+    def test_the_name_reaches_chembls_synonym_search(self):
+        urls=[]
+        def fetch(url):
+            urls.append(url); return {'targets':[],'page_meta':{'total_count':0}},{}
+        S.Sources(fetch=fetch).query(plan(target_synonym='Ferroportin'))
+        self.assertIn('target_synonym__icontains=Ferroportin',urls[0])
+    def test_several_names_or_no_name_still_fail(self):
+        with self.assertRaises(ValueError):plan(target_names=['Ferroportin','SLC40A1'])
+        with self.assertRaises(ValueError):C.chembl_from_plugin({'plugin':'chembl','tool':'chembl_search_targets','arguments':'  '})
+        with self.assertRaisesRegex(ValueError,'unsupported ChEMBL target-search arguments: species'):
+            plan(target_synonym='Ferroportin',species='x')
+
 class Isolation(unittest.TestCase):
     def test_throwaway_home_and_no_network(self):
         self.assertTrue(C.WS.startswith(scratch.name))

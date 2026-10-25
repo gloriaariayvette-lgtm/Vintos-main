@@ -2733,17 +2733,27 @@ def uniprot_from_plugin(pq, purpose=""):
     return {"source": "uniprot", "query": human_scope(" AND ".join(terms)), "limit": 1 if "accession" in args else 4}
 
 
+_CHEMBL_TARGET_NAMES = ("target_synonym", "target_synonyms", "target_alias", "target_names", "pref_name")
+
+
 def chembl_from_plugin(pq):
     """The named read-only target search uses public ChEMBL without account OAuth."""
     if not isinstance(pq, dict) or pq.get('plugin') != 'chembl' or pq.get('tool') != 'chembl_search_targets':
         return None
     args = pq.get('arguments') or {}
+    if isinstance(args, str) and args.strip():
+        args = {'target_name': args}   # the arguments given as the name alone (16 October: refused as "str")
     if isinstance(args, dict):
         # The planner is never told the name target_name and reaches for the usual search word: `term` faulted a
         # whole Lab turn (19 October, F-70cbe17adc). The words PubMed takes stand in when target_name is missing
         # or blank, the first string one in their order; a target_name that is there but not text still fails.
         args = dict(args)
-        named = [args.pop(k) for k in _QUERY_ALIASES if k in args]
+        # The names ChEMBL's own target records carry (target_synonym, the field this search matches on, and its
+        # kin) come first; each was refused as an unsupported argument (23 October, the last of five). One name
+        # in a list is that name.
+        named = [v[0] if isinstance(v, list) and len(v) == 1 else v
+                 for v in (args.pop(k) for k in _CHEMBL_TARGET_NAMES if k in args)]
+        named += [args.pop(k) for k in _QUERY_ALIASES if k in args]
         name = args.get('target_name')
         if name is None or (isinstance(name, str) and not name.strip()):
             alias = next((v for v in named if isinstance(v, str) and v.strip()), None)
