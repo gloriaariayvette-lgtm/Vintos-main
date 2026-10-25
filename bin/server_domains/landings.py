@@ -4,22 +4,14 @@ Her side only. The store lives outside his workspace (scripts/landings.py); noth
 feeds his context, and nothing here counts or flags what she has not rated.
 """
 import os, sys
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException
 
 for _p in (os.path.expanduser("~/.vintos/workspace/scripts"),
            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts")):
     if os.path.isdir(_p) and _p not in sys.path: sys.path.append(_p)
 import landings as _l
-from house_auth import configured_secret as _house_secret, matches as _house_matches
 
 router = APIRouter()
-_SECRET = _house_secret(log=False)   # "" when unconfigured: every write below refuses
-
-
-def _owner(request):
-    """Her notes flow into GLORIA-MODEL.md: only the house credential may write one."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret", ""), _SECRET):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @router.get("/api/landings/sent")
@@ -46,8 +38,7 @@ async def landings_notes(days: int = 0):
 
 
 @router.post("/api/landings")
-async def landing_record(request: Request, body: dict = Body(...)):
-    _owner(request)
+async def landing_record(body: dict = Body(...)):
     try:
         row = _l.record(body.get("surface"), body.get("ref"), body.get("rating"), body.get("why"),
                         body.get("before", ""))

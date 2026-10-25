@@ -125,7 +125,7 @@ check("temporal context prefers Watch and uses ring only as fallback",
       temporal.index('WATCH_TEMPORAL=') < temporal.index('heart_rate.py'))
 routes=open(os.path.join(ROOT,"scripts","watch_routes.py")).read()
 check("the wrist feed is bounded to five newest Landings (the bedroom song first)",
-      'items = source.sent(days=max(1, min(int(days), 30)))' in routes and 'return offered({"items": items[:5]})' in routes)
+      'items = source.sent(days=max(1, min(int(days), 30)))' in routes and 'return {"items": items[:5]}' in routes)
 check("Watch words never create Avatar-chat turns",'/api/avatar/chat' not in routes and 'record_reply(body)' in routes)
 check("shared moments have a dedicated route",'@routes.post("/api/watch/moment")' in routes)
 

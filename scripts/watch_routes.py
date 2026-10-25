@@ -13,10 +13,6 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
     routes = APIRouter()
     voice_live_path = voice_live_path or os.path.expanduser("~/.vintos/workspace/memory/.voice-live")
 
-    def offered(value):
-        from house_auth import signed_media
-        return signed_media(value, app_secret)
-
     def local_voice():
         if voice_module is not None: return voice_module
         import voice_local
@@ -44,11 +40,11 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
             song = watch_presence.pending_song()
             if song: result = dict(result, song=song)   # the Watch raises its own notification and plays it
         # whether to run (or stop) the live heart-rate session; the Watch learns it at every check-in
-        return offered(dict(result, live=watch_presence.live_state()))
+        return dict(result, live=watch_presence.live_state())
 
     @routes.get("/api/watch/song")
     async def arrival_song(request: Request):
-        auth(request); return offered({"song": watch_presence.pending_song()})
+        auth(request); return {"song": watch_presence.pending_song()}
 
     @routes.post("/api/watch/song/taken")
     async def arrival_song_taken(request: Request):
@@ -77,7 +73,7 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         items = source.sent(days=max(1, min(int(days), 30)))
         top = watch_presence.top_song()
         if top: items = [top] + [i for i in items if not (i.get("surface") == "song" and i.get("ref") == top["ref"])]
-        return offered({"items": items[:5]})
+        return {"items": items[:5]}
 
     @routes.post("/api/watch/landing")
     async def landing(request: Request):
@@ -107,8 +103,7 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         return receipt
 
     def phone(request):
-        from house_auth import matches
-        if not matches(request.headers.get("X-Vintos-Secret", ""), app_secret):
+        if not app_secret or request.headers.get("X-Vintos-Secret") != app_secret:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     @routes.get("/api/watch/live")

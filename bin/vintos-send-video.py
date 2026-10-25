@@ -59,15 +59,6 @@ SHARED_DIR = os.path.join(MEMORY, "shared-images")   # photos SHE sends him (sav
 NTFY = os.environ.get("VINTOS_NTFY", "https://ntfy.sh/vintos-gloria-9kx")
 SERVE_BASE = os.environ.get("VINTOS_SERVE_BASE", "http://100.72.225.119:8500")
 
-
-def _signed(url):
-    """A link to her phone carries a ticket for exactly that path (house_auth.link); never fatal."""
-    try:
-        import house_auth
-        return house_auth.link(url)
-    except Exception:
-        return url
-
 # HIS MIND — Claude (opus-4-8) via his shim. The shim holds the Anthropic key and routes claude-* to Claude.
 MIND_MODEL = os.environ.get("VINTOS_MIND_MODEL", "claude-opus-5-5")
 MIND_API = os.environ.get("VINTOS_MIND_API", "http://127.0.0.1:8599/v1/chat/completions")
@@ -916,7 +907,7 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref="", keep=N
 def deliver_still(path, caption, authority=None):
     """The still he made, to her phone, when its video would not render: she gets what was made, not nothing."""
     name = os.path.basename(path)
-    url = _signed("%s/api/video/still/%s" % (SERVE_BASE, name))
+    url = "%s/api/video/still/%s" % (SERVE_BASE, name)
     _deliver.CHANNELS["ntfy"] = NTFY
     if authority is None:
         authority = lambda: ((not DRY) and os.path.isfile(path), "dry run" if DRY else "still missing")
@@ -930,7 +921,7 @@ def deliver(fname, caption, authority=None):
     """Single ntfy notification linked directly to the clip, through the shared delivery path:
     bounded retry, a receipt keyed by the clip (a repeat call never resends), and the shelf record
     marked with what the send did. No chat injection. Returns the receipt."""
-    video_url = _signed("%s/api/video/file/%s" % (SERVE_BASE, fname))
+    video_url = "%s/api/video/file/%s" % (SERVE_BASE, fname)
     _deliver.CHANNELS["ntfy"] = NTFY
     if authority is None:   # the checks this file already makes: not a dry run, and a real clip on the shelf
         authority = lambda: ((not DRY) and os.path.isfile(os.path.join(VID_DIR, fname)),

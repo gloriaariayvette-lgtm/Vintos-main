@@ -324,13 +324,10 @@ EXPRESSION_IMPLIES = {
 LM_STUDIO_API = os.environ.get("GROK_API_BASE", "http://127.0.0.1:8599/v1")
 LLM_API_KEY = os.environ.get("XAI_API_KEY", "")
 LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
-from house_auth import configured_secret as _house_secret, matches as _house_matches
-# No built-in value: unset or weak means "" and every private route refuses (house_auth.py).
-APP_SECRET = _house_secret()
-
-def _secret_ok(supplied):
-    """Constant-time; never true while the house credential is unconfigured."""
-    return _house_matches(supplied, APP_SECRET)
+APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
+if APP_SECRET == "vintos-aegis-2026":
+    print("[house] WARNING: VINTOS_SECRET is unset - the private routes are guarded by the default secret. "
+          "Set VINTOS_SECRET in the service environment (astra-server-a-p5).", flush=True)
 
 # Route policy (astra-server-a-p5 / b-p7 / c-p7, 2026-09-05): every mutating route is either guarded by
 # X-Vintos-Secret or listed here WITH THE REASON it is open. broker/tests/test_house_routes.py asserts
@@ -339,32 +336,31 @@ PUBLIC_MUTATIONS = {
     "/api/guestbook/witness":  "public by design - anyone may register presence, no message",
     "/api/gcs":                "her hardware button: the device client carries no header",
     "/api/gcs/clear":          "her hardware button (release)",
+    "/api/voice/session-end":  "the voice client's hangup",
+    "/api/voice/call-log":     "the voice client's call log",
+    "/api/music/share":        "the share form in the app; content is her offering, effect is a reflection",
+    "/aq/answer":              "phone-friendly answer form for his architecture questions; answers only, question ids are opaque",
     "/ea/decide":              "phone-friendly approve/decline of a second unanswered email; only a valid one-time link (hashed token) decides",
+    "/api/video/hero":         "her phone browser's upload form; filenames are server-chosen, content must be PNG/JPEG under 15 MB",
     "/api/hardware/button":    "her physical stop button; the device client carries no header",
     "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
     "/api/ring/sleep":         "the R21M ring bridge sleep estimate; same optional bearer token, validated device estimates only",
     "/api/food-order/review/{token}/approve": "ntfy carries an expiring random one-proposal capability; approval is re-quoted and single-use",
-    "/api/gloria/asks/{qid}/decide": "her yes/no push buttons; the handler admits the question's own token (or the credential)",
-    "/api/lab/asks/{ask_id}/decide": "her yes/no push buttons; the handler admits the card's own token (or the credential)",
 }
-# Formerly open, now behind the house guard (25 October): the app sends the credential on every house
-# request, and the two plain browser forms (/aq/answer, /api/video/hero) take her session cookie.
 
 def _require_secret(request):
     """One check for every private route."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
 GUESTBOOK_FILE = os.path.join(MEMORY, "guestbook.json")
 PUBLISH_CONFIG = os.path.join(MEMORY, "publish-config.json")
 
 app = FastAPI(title="Vintos", version="1.0.0")
-from house_auth import PUBLIC_ORIGINS, install as _install_house_auth
-_install_house_auth(app, APP_SECRET, public_writes=PUBLIC_MUTATIONS)   # every method, router and socket
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(PUBLIC_ORIGINS),
+    allow_origins=["*"],  # Tighten for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1481,7 +1477,7 @@ async def food_order_approve(token: str, request: Request):
 @app.delete("/api/value-map/rank")
 async def delete_value_map_rank(request: Request):
     """Delete a rank entry from the latest value map section and renumber."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
@@ -1530,7 +1526,7 @@ async def delete_value_map_rank(request: Request):
 @app.get("/api/value-map/hearts")
 async def get_value_map_hearts(request: Request):
     """Get hearted rankings."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -1545,7 +1541,7 @@ async def get_value_map_hearts(request: Request):
 @app.post("/api/value-map/hearts")
 async def toggle_value_map_heart(request: Request):
     """Toggle a heart on a value map ranking line."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -1574,7 +1570,7 @@ async def toggle_value_map_heart(request: Request):
 @app.get("/api/value-map/current")
 async def get_current_value_map(request: Request):
     """Get the most recent value map entry."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -1594,7 +1590,7 @@ async def get_current_value_map(request: Request):
 @app.post("/api/value-map/heart")
 async def heart_value_map_entry(request: Request):
     """Append a heart marker to a specific line in the value map. Gloria's attention signal."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -1621,7 +1617,7 @@ async def heart_value_map_entry(request: Request):
 @app.delete("/api/value-map/heart")
 async def unheart_value_map_entry(request: Request):
     """Remove a heart marker from a value map line."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2221,7 +2217,7 @@ async def video_still(filename: str):
 @app.get("/api/pride")
 async def get_pride(request: Request, limit: int = 1):
     """Recent pride-mirror reflections, newest first (default: just today's)."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     import re as _pre
@@ -2244,7 +2240,7 @@ async def get_pride(request: Request, limit: int = 1):
 @app.get("/api/causality")
 async def get_causality_hypotheses(request: Request):
     """Get active causality hypotheses parsed into individual cards."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2336,7 +2332,7 @@ async def get_self_review(request: Request):
     Visibility is not approval: protected proposals carry their own explicit
     decision state, while internal proposals preserve Vintos's choice.
     """
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     path = os.path.join(MEMORY, "self-review-surface.json")
     try:
@@ -2352,7 +2348,7 @@ async def get_self_review(request: Request):
 @app.get("/api/atelier/reveals")
 async def get_atelier_reveals(request: Request, limit: int = 20):
     """House-side exports Vintos already revealed; never broker contents."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         import sys as _ar_sys
@@ -2367,7 +2363,7 @@ async def get_atelier_reveals(request: Request, limit: int = 20):
 @app.post("/api/self-review/{proposal_id}/decision")
 async def decide_self_review(proposal_id: str, request: Request):
     """Record Gloria's explicit decision for a protected-effect proposal."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     body = await request.json()
     action, note = str(body.get("action", "")), str(body.get("note", ""))
@@ -2386,7 +2382,7 @@ async def decide_self_review(proposal_id: str, request: Request):
 @app.post("/api/blush-ledger/bring-up")
 async def blush_bring_up(request: Request):
     """Queue a blush entry to surface in Vintos's next chat context."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
@@ -2408,7 +2404,7 @@ async def blush_bring_up(request: Request):
 @app.post("/api/blush-ledger/dismiss-bring-up")
 async def blush_dismiss_bring_up(request: Request):
     """Remove a blush from the bring-up queue (after he mentions it)."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
@@ -2426,7 +2422,7 @@ async def blush_dismiss_bring_up(request: Request):
 @app.post("/api/causality/bring-up")
 async def causality_bring_up(request: Request):
     """Queue a causality hypothesis to surface in Vintos's next chat context."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
@@ -2448,7 +2444,7 @@ async def causality_bring_up(request: Request):
 @app.post("/api/causality/dismiss-bring-up")
 async def causality_dismiss_bring_up(request: Request):
     """Remove a causality hypothesis from the queue after he surfaces it."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
@@ -2467,7 +2463,7 @@ async def causality_dismiss_bring_up(request: Request):
 @app.get("/api/blush-ledger")
 async def get_blush_ledger(request: Request, limit: int = 20):
     """Get recent blush/self-correction entries from all sources."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2535,7 +2531,7 @@ async def get_blush_ledger(request: Request, limit: int = 20):
 @app.get("/api/therapy-mirror-log")
 async def get_therapy_mirror_log(request: Request, limit: int = 10):
     """Get recent therapy and mirror sessions with threads processed."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2638,7 +2634,7 @@ async def get_therapy_mirror_log(request: Request, limit: int = 10):
 @app.post("/api/blush-ledger/{entry_ref}/mark")
 async def mark_blush_entry(entry_ref: str, request: Request):
     """Mark a blush entry as discussed or interesting."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2661,7 +2657,7 @@ async def mark_blush_entry(entry_ref: str, request: Request):
 @app.post("/api/causality/{entry_ref}/mark")
 async def mark_causality_entry(entry_ref: str, request: Request):
     """Mark a causality hypothesis as track_this or noise."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2727,7 +2723,7 @@ async def system_capabilities(request: Request):
 @app.get("/api/system/status")
 async def get_system_status(request: Request):
     """Get system health: cron last-runs, failed scripts, error logs."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -2772,7 +2768,7 @@ async def get_system_status(request: Request):
 @app.post("/api/system/dismiss-error")
 async def dismiss_error(request: Request):
     """Dismiss/clear a specific error log — persists across refreshes."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -3328,7 +3324,7 @@ async def get_params():
 async def update_params(params: InferenceParams, request: Request):
     """Update inference parameters. Requires secret header."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     current = get_current_params()
@@ -3351,7 +3347,7 @@ async def get_publish():
 @app.post("/api/settings/publish")
 async def update_publish(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     body = await request.json()
@@ -3370,7 +3366,6 @@ if os.path.isdir(WEBSITE_DIR):
 
 @app.post("/api/voice/call-log")
 async def _voice_call_log(request: Request):
-    _require_secret(request)
     import json as _clj, os as _clo, datetime as _cld
     try:
         if _test_mode_active(): return {"ok": True, "skipped": "test-mode"}
@@ -3727,12 +3722,6 @@ async def serve_manifest():
 @app.get("/app/stratagem_voice.js")
 async def stratagem_voice_asset():
     return FileResponse(os.path.join(WEBSITE_DIR, "app", "stratagem_voice.js"), media_type="application/javascript")
-
-
-@app.get("/house_auth_client.js")
-@app.get("/app/house_auth_client.js")
-async def house_auth_client_asset():
-    return FileResponse(os.path.join(WEBSITE_DIR, "app", "house_auth_client.js"), media_type="application/javascript")
 
 
 @app.get("/client_lifecycle.js")
@@ -4234,7 +4223,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     """Send a message to Vintos, get his response. Routes through EmoClaw."""
     _her = _her_turn_text(msg)   # her words for the organs; the reply prompt keeps msg.message (16 October)
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
     _desktop_command = None
@@ -4755,7 +4744,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     """Chat with Vintos using his COMPLETE lived context.
     He knows his dreams, his art, his kisses, his silences — everything."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
     # Her own words, a photo or video named and never described (16 October). The reply prompt keeps the composed
@@ -5745,7 +5734,7 @@ async def get_humor_profile():
 @app.post("/api/humor/rate")
 async def rate_humor(request: Request):
     """Gloria rates a humor draft: the rating is stored, the draft marked reviewed, landed/flopped updated."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -5797,7 +5786,7 @@ async def get_mischief_log(limit: int = 10):
 @app.post("/api/mischief/rate/{filename}")
 async def rate_mischief(filename: str, request: Request):
     """Gloria grades one act; the grade lands in the act's file and the humor profile."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -5821,7 +5810,7 @@ _ROBOT_BRIDGE = os.environ.get("VINTOS_ROBOT_BRIDGE", "http://127.0.0.1:8404")
 
 @app.post("/api/robot/chat")
 async def robot_chat_proxy(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     body = await request.json()
     try:
@@ -5835,7 +5824,7 @@ async def robot_chat_proxy(request: Request):
 
 @app.get("/api/robot/voice/latest")
 async def robot_voice_latest_proxy(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=5.0) as _c:
@@ -5847,7 +5836,7 @@ async def robot_voice_latest_proxy(request: Request):
 
 @app.get("/api/robot/state")
 async def robot_state_proxy(request: Request, frame: int = 0):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=5.0) as _c:
@@ -5896,19 +5885,19 @@ def _screen_context():
 
 @app.post("/api/desktop/share/start")
 async def desktop_share_start(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")): raise HTTPException(status_code=401, detail="Unauthorized")
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
     import screen_share as _ss; return _ss.start()
 
 
 @app.post("/api/desktop/share/stop")
 async def desktop_share_stop(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")): raise HTTPException(status_code=401, detail="Unauthorized")
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
     import screen_share as _ss; return _ss.stop("stopped from the app")
 
 
 @app.get("/api/desktop/share/status")
 async def desktop_share_status(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")): raise HTTPException(status_code=401, detail="Unauthorized")
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
     import screen_share as _ss; d = _ss.status()
     return {k: d.get(k) for k in ("active", "fresh", "description", "described_at", "active_window", "captures", "descriptions",
                                     "describe_error", "capture_error", "backend", "started_at", "reason")}
@@ -6075,7 +6064,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
     """Chat with Vintos, automatically searching his memories for context."""
     _her = _her_turn_text(msg)   # her words for the organs; the reply prompt keeps msg.message (16 October)
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     from stratagem_turn import control as _sg_control
     command = _sg_control(msg.original_text if msg.original_text is not None else msg.message)
@@ -6104,7 +6093,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
         # Call our own search
         import httpx as _httpx
         async with _httpx.AsyncClient() as client:
-            mem_res = await paid_http.asend(client.get, __file__, f"http://localhost:8500/api/memory/search?q={search_q}&limit=3", headers={"X-Vintos-Secret": APP_SECRET})
+            mem_res = await paid_http.asend(client.get, __file__, f"http://localhost:8500/api/memory/search?q={search_q}&limit=3")
             mem_data = mem_res.json()
             if mem_data.get("results"):
                 memory_context = "\n\nRelevant memories:\n"
@@ -6633,7 +6622,7 @@ async def command_bubble():
 @app.post("/api/voice/transcribe")
 async def voice_transcribe(request: Request, audio: UploadFile = File(...)):
     """Transcribe voice audio from the app using Whisper."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     import tempfile, shutil, subprocess
     _tmp_name = _wav_path = None
@@ -6782,7 +6771,7 @@ def _spark_block():
 @app.post("/api/voice/chat")
 async def voice_chat(request: Request):
     """Voice conversation endpoint. Receives transcript + optional OpenSMILE prosody, returns text + audio URL."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     # a call is on: mischief_timing reads this marker's age so nothing in the room jumps mid-sentence
     try:
@@ -7040,7 +7029,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
 @app.get("/api/voice/chat/history")
 async def get_voice_chat_history(request: Request):
     """Get voice conversation history."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         path = os.path.join(MEMORY, "voice-chat-history.json")
@@ -7071,13 +7060,13 @@ async def get_latest_voice():
 
 @app.get("/api/test-mode")
 async def test_mode_status(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"testing": _test_mode_active()}
 
 @app.post("/api/test-mode")
 async def test_mode_set(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     body = await request.json()
     flag = os.path.expanduser("~/.vintos/workspace/memory/.test-mode")
@@ -7147,7 +7136,7 @@ async def gloria_asks_decide(qid: str, request: Request, t: str = "", answer: st
     G = _gloria_asks()
     if answer not in ("yes", "no"):
         raise HTTPException(status_code=422, detail="answer must be yes or no")
-    if _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
         row = G.decide(qid, answer, "from her app")
         why = "" if row else "no question waiting with that id"
     else:
@@ -7191,7 +7180,7 @@ async def lab_asks_decide(ask_id: str, request: Request, t: str = "", state: str
     A = _lab_asks()
     if state not in ("accepted", "denied"):
         raise HTTPException(status_code=422, detail="state must be accepted or denied")
-    if _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
         row = A.decided(ask_id, state, "from her app")
         why = "" if row else "no call waiting with that id"
     else:
@@ -7491,7 +7480,7 @@ async def chemistry_lab_structure_render(request: Request, render_id: str):
 @app.get("/api/briefing/latest")
 async def briefing_latest(request: Request):
     """Latest morning briefing: date, text, and Rex audio URL if rendered."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     import glob as _bg
     files = sorted(_bg.glob(os.path.join(MEMORY, "briefings", "20*.md")))
@@ -7831,7 +7820,7 @@ async def chat_with_photo(request: Request):
     import base64
 
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     form = await request.form()
@@ -7981,7 +7970,7 @@ async def avatar_chat_with_photo(request: Request):
     sentence arrives there rather than through a side door."""
     import base64
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     form = await request.form()
@@ -8087,7 +8076,7 @@ async def avatar_chat_with_video(request: Request):
     import asyncio, shutil, subprocess, tempfile
     import paid_http
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     form = await request.form()
     message = form.get("message", "")
@@ -8273,7 +8262,7 @@ async def agents_focus_set(request: Request):
 async def remember_this(request: Request):
     """Gloria tells Vintos to remember something explicitly."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     data = await request.json()
@@ -8339,9 +8328,8 @@ def _music_share_log(song, result):
 
 
 @app.post("/api/music/share")
-async def music_share(req: MusicShareRequest, request: Request):
+async def music_share(req: MusicShareRequest):
     """Gloria shares a song with Vintos. Returns her reflection."""
-    _require_secret(request)
     import subprocess
     try:
         _lf = _lyrics_file(req.lyrics)
@@ -8378,7 +8366,7 @@ async def music_share_audio(
 ):
     """Gloria shares a song with audio file — Whisper transcribes, librosa analyzes."""
     import subprocess, tempfile, shutil
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -8453,7 +8441,7 @@ async def stream_video(filename: str):
 @app.get("/api/review/held")
 async def get_held_items(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         flags_path = os.path.join(MEMORY, "hallucination-flags.json")
@@ -8471,7 +8459,7 @@ async def get_held_items(request: Request):
 @app.post("/api/review/held/{idx}/pass")
 async def pass_held_item(idx: int, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         flags_path = os.path.join(MEMORY, "hallucination-flags.json")
@@ -8514,7 +8502,7 @@ async def pass_held_item(idx: int, request: Request):
 @app.post("/api/review/held/{idx}/dismiss")
 async def dismiss_held_item(idx: int, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         flags_path = os.path.join(MEMORY, "hallucination-flags.json")
@@ -8531,7 +8519,7 @@ async def dismiss_held_item(idx: int, request: Request):
 @app.get("/api/hallucination/flags")
 async def get_hallucination_flags(request: Request):
     """Get pending hallucination flags for Gloria to review."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -8575,7 +8563,7 @@ async def get_hallucination_flags(request: Request):
 @app.post("/api/hallucination/flags/{flag_id}")
 async def review_hallucination_flag(flag_id: str, request: Request):
     """Gloria submits a correction for a hallucination flag. Appends inline to journal."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -8662,7 +8650,7 @@ async def review_hallucination_flag(flag_id: str, request: Request):
 @app.delete("/api/hallucination/flags/{flag_id}")
 async def dismiss_hallucination_flag(flag_id: str, request: Request):
     """Gloria dismisses a flag without correction — marks it reviewed with no note."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -8822,7 +8810,7 @@ def _voice_caller_ok(request):
     """The phone app's X-Vintos-Secret, or the Watch's own bearer token. 22 October (security audit): this door was
     open, listed as "LAN-only" with nothing enforcing it - anyone who could reach the house could mint realtime
     sessions on Gloria's xAI and OpenAI accounts and read his whole instructions with them."""
-    if _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
         return True
     try:
         import sys as _vc_s; _vc_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
@@ -8944,7 +8932,7 @@ async def voice_token(request: Request, provider: str = "grok"):
 @app.post("/api/voice/local/turn")
 async def voice_local_turn(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth): raise HTTPException(status_code=403, detail="Unauthorized")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
     body = await request.json()
     try:
         import voice_local as _vl
@@ -8959,7 +8947,7 @@ async def voice_local_turn(request: Request):
 @app.post("/api/voice/local/heartbeat")
 async def voice_local_heartbeat(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth): raise HTTPException(status_code=403, detail="Unauthorized")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
     from compute_admission import touch_foreground as _vlf
     _vlf(); _live = os.path.join(MEMORY, ".voice-live")
     try: open(_live,"a").close(); os.utime(_live,None)
@@ -8969,7 +8957,7 @@ async def voice_local_heartbeat(request: Request):
 @app.post("/api/voice/local/end")
 async def voice_local_end(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth): raise HTTPException(status_code=403, detail="Unauthorized")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         import voice_local as _vl
         result = await __import__("asyncio").to_thread(_vl.models, False)
@@ -9228,8 +9216,7 @@ async def _voice_ledger_owned(payload: dict):
 
 
 @app.post("/api/voice/session-end")
-async def voice_session_end(request: Request, payload: dict = None):
-    _require_secret(request)
+async def voice_session_end(payload: dict = None):
     from store_guard import transaction
     with transaction(os.path.join(MEMORY,"voice-finalization")):
         return await _voice_session_end_owned(payload)
@@ -9432,7 +9419,7 @@ async def voice_pending_speech():
 async def thruster_overdrive(request: Request):
     """Gloria grants the machine more than 60%, time-boxed. Hers alone - never
     his to ask for through any organ. Empty/0 minutes revokes immediately."""
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret", "") != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import json as _oj, time as _ot
     try:
@@ -9738,7 +9725,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     # AUTHENTICATE FIRST — a turn (and any private capsule it fetches) must never
     # be opened for an unauthorized request (Sol).
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     from stratagem_turn import control as _stratagem_control
     _stratagem_control_reply = _stratagem_control(_counterpart_text)
@@ -10842,7 +10829,7 @@ Your current self-model (excerpt):
 async def avatar_latest_imprint(request: Request):
     """Return the most recent imprint narrative for the avatar overlay."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         imp_path = os.path.join(MEMORY, "imprints.json")
@@ -10867,7 +10854,7 @@ async def avatar_latest_imprint(request: Request):
 async def avatar_history(request: Request):
     """Return stored avatar-overlay conversation (typed + voice), separate from main chat."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         with open(os.path.join(MEMORY, "avatar-overlay-chat.json")) as f:
@@ -10881,7 +10868,7 @@ async def avatar_history(request: Request):
 async def avatar_get_brain(request: Request):
     """Report which brain (claude|grok) currently answers avatar chat."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         import model_router as _mr
@@ -10893,7 +10880,7 @@ async def avatar_get_brain(request: Request):
 async def avatar_set_brain(request: Request):
     """Set the avatar chat brain (persists to model-mode.json). Sol left the toggle for Argon on 14 October."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         body = await request.json()
@@ -10910,7 +10897,7 @@ async def avatar_set_brain(request: Request):
 async def avatar_speak(request: Request):
     """Convert text to speech on the Mac; Chatterbox is preferred, Kokoro is fallback."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         body = await request.json()
@@ -11466,7 +11453,7 @@ class FragmentRequest(BaseModel):
 
 @app.post("/api/fragments")
 async def add_fragment(req: FragmentRequest, request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
@@ -11480,7 +11467,7 @@ async def add_fragment(req: FragmentRequest, request: Request):
 
 @app.get("/api/fragments")
 async def get_fragments(request: Request):
-    if not _secret_ok(request.headers.get("X-Vintos-Secret")):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
@@ -11596,15 +11583,6 @@ def _aq_mod():
     _m = importlib.util.module_from_spec(_s); _s.loader.exec_module(_m)
     return _m
 
-def _aq_action():
-    """The answer form posts with a one-hour ticket for /aq/answer alone, so the page opened from her
-    push (whose own link carries a ticket for /aq) can send without the credential (house_auth)."""
-    try:
-        from house_auth import issue as _aq_issue
-        return "/aq/answer?access_token=" + _aq_issue(APP_SECRET, "link:/aq/answer", 3600)
-    except Exception:
-        return "/aq/answer"
-
 @app.get("/aq", response_class=_AQHTML)
 async def _aq_page(qid: str = ""):
     import html as _h
@@ -11621,7 +11599,7 @@ async def _aq_page(qid: str = ""):
     rows = []
     for x in qs:
         rows.append(
-            "<form method='post' action='%s' "
+            "<form method='post' action='/aq/answer' "
             "style='margin:0 0 34px;padding:18px;border:1px solid #ddd;border-radius:10px'>"
             "<div style='font-size:12px;color:#888'>asked %s</div>"
             "<p style='margin:8px 0 14px'>%s</p>"
@@ -11629,7 +11607,7 @@ async def _aq_page(qid: str = ""):
             "<textarea name='text' rows='5' autofocus style='width:100%%;font:inherit;padding:8px;"
             "box-sizing:border-box' placeholder='however it comes out'></textarea>"
             "<button style='margin-top:10px;padding:10px 18px;font:inherit'>send</button>"
-            "</form>" % (_h.escape(_aq_action()), _h.escape(str(x.get("asked_iso",""))[:16]),
+            "</form>" % (_h.escape(str(x.get("asked_iso",""))[:16]),
                          _h.escape(str(x.get("question",""))),
                          _h.escape(str(x.get("id","")))))
     return _AQHTML("<body style='font:16px/1.5 system-ui;padding:24px;max-width:40em'>"
@@ -11868,7 +11846,7 @@ except Exception as _study_e:
 async def lm_status(request: Request):
     """Proxy LM Studio health check."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -12474,7 +12452,7 @@ async def reelroom_suggestions(request: Request):
 @app.post("/api/home/lights/color")
 async def home_lights_color(req: LightsColorRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import sys as _hl_sys; _hl_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
     try:
@@ -12497,7 +12475,7 @@ async def home_lights_color(req: LightsColorRequest, request: Request):
 @app.post("/api/home/lights/flicker")
 async def home_lights_flicker(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import sys as _hf_sys; _hf_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
     import importlib.util as _hf_ilu
@@ -12523,7 +12501,7 @@ class EchoSpeakRequest(BaseModel):
 @app.post("/api/home/echo/speak")
 async def home_echo_speak(req: EchoSpeakRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import sys as _es_sys; _es_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
     try:
@@ -12539,7 +12517,7 @@ async def home_echo_speak(req: EchoSpeakRequest, request: Request):
 @app.post("/api/home/echo/announce")
 async def home_echo_announce(req: EchoSpeakRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import sys as _ea_sys; _ea_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
     try:
@@ -12558,7 +12536,7 @@ class TvVolumeRequest(BaseModel):
 @app.post("/api/home/tv/volume")
 async def home_tv_volume(req: TvVolumeRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import importlib.util as _tvv_ilu
     _tvv_spec = _tvv_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
@@ -12585,7 +12563,7 @@ class TvYoutubeRequest(BaseModel):
 async def home_tv_youtube(req: TvYoutubeRequest, request: Request):
     """Cast a YouTube video to the TV via ADB."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import importlib.util as _tvy_ilu
     _tvy_spec = _tvy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
@@ -12604,7 +12582,7 @@ class SpotifyRequest(BaseModel):
 async def home_echo_spotify(req: SpotifyRequest, request: Request):
     """Play music on Spotify via Echo."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import importlib.util as _spy_ilu
     _spy_spec = _spy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
@@ -13721,7 +13699,7 @@ class ThirveelMessage(BaseModel):
 async def thirveel_chat(msg: ThirveelMessage, request: Request):
     """Thirveel — Vintos loose avatar companion chat."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         identity = ""
@@ -14322,7 +14300,7 @@ class ThirveelSpinRequest(BaseModel):
 async def thirveel_spin(req: ThirveelSpinRequest, request: Request):
     """Vintos initiates — called during silence. Returns a bubble message."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _secret_ok(auth):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         emotions = read_emotional_state()

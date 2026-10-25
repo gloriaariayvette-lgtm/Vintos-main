@@ -39,7 +39,7 @@ src = open(os.path.join(REPO, "bin", "server.py")).read()
 route = src[src.index('@app.post("/api/avatar/video")'):]
 route = route[:route.index("@app.get(\"/api/grounding/status\")")]
 check("the avatar chat takes a video", "async def avatar_chat_with_video" in route)
-check("the video door is guarded by the secret", 'X-Vintos-Secret' in route and "_secret_ok(" in route)
+check("the video door is guarded by the secret", 'X-Vintos-Secret' in route and "APP_SECRET" in route)
 check("the clip is taken apart outside the server", '"video_share.py"' in route and "subprocess.run" in route
       and "--frames-dir" in route)
 check("the frames go to the toggled brain in her message, not through eyes first (2026-10-01)",
@@ -82,7 +82,7 @@ from datetime import datetime as _dt
 WS = os.path.join(TMP, "ws"); os.makedirs(os.path.join(WS, "memory"))
 ns = {"app": _App(), "Request": object, "HTTPException": _HTTPExc, "httpx": types.SimpleNamespace(AsyncClient=_Client),
       "os": os, "json": _json, "time": __import__("time"), "datetime": _dt, "WORKSPACE": WS,
-      "MEMORY": os.path.join(WS, "memory"), "APP_SECRET": "s", "_secret_ok": lambda v, _s="s": bool(v) and __import__("hmac").compare_digest(str(v), _s), "LLM_AUTH_HEADERS": {}, "_anthropic_key": lambda: "k"}
+      "MEMORY": os.path.join(WS, "memory"), "APP_SECRET": "s", "LLM_AUTH_HEADERS": {}, "_anthropic_key": lambda: "k"}
 exec(compile(ast.Module(body=_nodes, type_ignores=[]), "server-route", "exec"), ns)
 fr = os.path.join(TMP, "route-frame.jpg"); open(fr, "wb").write(b"\xff\xd8" + b"0" * 600)
 WATCHED = {"duration": 9.0, "has_audio": True, "quiet": False, "speech": "the kettle is on",

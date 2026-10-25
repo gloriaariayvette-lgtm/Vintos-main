@@ -232,7 +232,7 @@ srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the buttons reach a route that runs as her, beside the store", '@app.post("/api/lab/asks/{ask_id}/decide")' in srv
       and '@app.get("/api/lab/asks")' in srv and "_la_s.path.insert(0, \"/home/gloria/.vintos/workspace/scripts\")" in srv)
 check("... which accepts the card's token or her app secret, and nothing else", "A.decide_with_token(ask_id, t, state)" in srv
-      and '_secret_ok(request.headers.get("X-Vintos-Secret"))' in srv and "status_code=403" in srv)
+      and 'request.headers.get("X-Vintos-Secret") == APP_SECRET' in srv and "status_code=403" in srv)
 check("... and her Yes actually runs it, then tells her what came of it", "A.run_accepted()" in srv and "A.told(aid," in srv)
 
 # --- a result in her words, and a run checked until it finishes (Gloria, 2026-10-04: "What is this notification?") ---

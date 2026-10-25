@@ -1,12 +1,5 @@
 import paid_http
 
-
-def _house_matches(supplied, secret):
-    """Constant-time; never true while the house credential is unconfigured."""
-    import hmac
-    return bool(secret) and isinstance(supplied, str) and bool(supplied) and hmac.compare_digest(
-        supplied.encode("utf-8", "replace"), secret.encode("utf-8", "replace"))
-
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -28,7 +21,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     """Chat with Vintos using his COMPLETE lived context.
     He knows his dreams, his art, his kisses, his silences — everything."""
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _house_matches(auth, APP_SECRET):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
 

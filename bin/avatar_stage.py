@@ -29,13 +29,6 @@ CLI:
 """
 import os, sys, json, time, hashlib, subprocess, argparse
 
-
-def _house_matches(supplied, secret):
-    """Constant-time; never true while the house credential is unconfigured."""
-    import hmac
-    return bool(secret) and isinstance(supplied, str) and bool(supplied) and hmac.compare_digest(
-        supplied.encode("utf-8", "replace"), secret.encode("utf-8", "replace"))
-
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -920,7 +913,7 @@ def register(app, secret):
     from fastapi.responses import FileResponse, JSONResponse
 
     def _auth(request):
-        if not _house_matches(request.headers.get("X-Vintos-Secret"), secret):
+        if request.headers.get("X-Vintos-Secret", "") != secret:
             raise HTTPException(status_code=403, detail="Unauthorized")
 
     @app.get("/avatar/stage/manifest")
@@ -936,7 +929,7 @@ def register(app, secret):
         """Room-photo drop, served by HIS server on the tailnet: photos go
         straight from her phone to this box - never through his chat, never
         off the house network. Open with ?s=SECRET."""
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         from fastapi.responses import HTMLResponse
         s = request.query_params.get("s", "")
@@ -957,7 +950,7 @@ def register(app, secret):
 
     @app.post("/avatar/stage/room-photo/{name}")
     async def stage_room_photo(name: str, request: Request):
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         if name not in ROOM_POSES:
             raise HTTPException(status_code=404, detail="unknown room slot")
@@ -980,7 +973,7 @@ def register(app, secret):
     async def stage_stills(request: Request):
         """Review page for pending room stills: open in a browser on the
         tailnet with ?s=SECRET. Approval itself happens over Termius/chat."""
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         from fastapi.responses import HTMLResponse
         names = sorted(f[:-4] for f in os.listdir(STILLS)) if os.path.isdir(STILLS) else []
@@ -995,7 +988,7 @@ def register(app, secret):
 
     @app.get("/avatar/stage/still/{name}")
     async def stage_still(name: str, request: Request):
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         path = os.path.realpath(os.path.join(STILLS, name + ".jpg"))
         if not path.startswith(os.path.realpath(STILLS) + os.sep) or not os.path.exists(path):
@@ -1006,7 +999,7 @@ def register(app, secret):
     async def stage_rooms_review(request: Request):
         """Every room loop, playable in a browser on the tailnet (?s=SECRET) -
         review without opening the app or sending him anything."""
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         from fastapi.responses import HTMLResponse
         s = request.query_params.get("s", "")
@@ -1026,7 +1019,7 @@ def register(app, secret):
 
     @app.get("/avatar/stage/clip/{name}")
     async def stage_clip(name: str, request: Request):
-        if not _house_matches(request.query_params.get("s", ""), secret):
+        if request.query_params.get("s", "") != secret:
             _auth(request)
         path = os.path.realpath(os.path.join(CLIPS, name))
         if not path.startswith(os.path.realpath(CLIPS) + os.sep) or not os.path.exists(path):

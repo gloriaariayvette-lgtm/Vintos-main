@@ -1,4 +1,4 @@
-## 25 October — handoff repairs (Claude Code; on the deploy branch, not yet deployed)
+## 25 October — handoff repairs (Claude Code; on the deploy branch)
 
 From the 25 October reviews (Claude whole-system review; Codex comprehensive audit on the Mac). In this deploy:
 - **Codex's seven Mac repairs, reviewed:**
@@ -9,7 +9,6 @@ From the 25 October reviews (Claude whole-system review; Codex comprehensive aud
   - architecture answers marked delivered only when admitted (they had errored in every prompt selection)
   - thread-temperature compare-and-swap
   - invalid want parameters held until the step changes
-- **The house credential cutover** (next entry).
 - **Thread pool:** resolution and triage merge their changes onto the pool as it is when they save. They no longer
   overwrite threads or fields another writer changed during their model calls.
 - **Lab investigations:** a repeat of the investigation's own step is handed that step's retained output and does not
@@ -22,40 +21,41 @@ From the 25 October reviews (Claude whole-system review; Codex comprehensive aud
   - The avatar history keeps 40 rows (it was held at 14), with appends under a lock.
   - "Your last reply" and the already-said list read the live history (they read August files).
   - "Messages today" is real (it was always 0).
+- **Present-moment feed:** late text now enters the stream state instead of being dropped; untimed journal sections
+  are stamped from local midnight; ordinary thread changes no longer wipe the pending Gloria forecasts and outcome
+  ledger (only a real forget does); missed-prediction evidence matches any turn in the window. Nothing removed.
+- **Fault sweep:** sees a cron job that crashed in its own log (a traceback at the tail, within a day); it clears
+  when a later run is clean.
+- **Formation door (Gloria):** a wider "tension" (longing, want, an open question, anything he keeps returning to),
+  and a confident "current" is also offered to the unresolved pool, not only diverted to latent. Too few new
+  unresolved threads were forming.
 - **Devices:** the toy keepalive and the scenes server come into the repo and the deploy.
   - Keepalive: behaviour unchanged (his steady holds re-sent for up to two hours after his last command; Gloria,
     25 October: holds are in use for hours).
   - Scenes server: serves a media file by its path, never a listing.
   - Somatic auto-resume: unchanged.
 
-**Hers to do, not code:**
-- Rotate the xAI key, which a review agent printed into its local transcript.
-- Restart the Buzz relay, whose container has been stopped since 15 Oct on a DNS failure at start. Then the four
-  workers (failed since 14 Oct). Correct `buzz-claude` first: it is configured for a Fable model.
-- Firewall rules for :8500/:8501 to the Private profile.
-- Recover the lost Workbench win: reopen thread `39a8be12` and type `!success`.
+**Public access:** the house (`:8443` -> `:8500`) is tailnet-only since 25 October; the doorbell, MCP, `/alexa` and
+`/speak` on `:443` are unchanged. Her phone reaches the house over the tailnet (MagicDNS). If anything that reached the
+house from outside the tailnet stops working (a Watch calling in directly), that is the reason.
+
+**Held, not in this deploy:** the house credential cutover (`claude/house-auth-cutover-2026-10-25`). It was reverted
+from the deploy branch on 25 October because her phone app cannot yet enter a new credential, so deploying it would
+cut her phone off; with the house tailnet-only it is not needed now. It is ready on its branch for when the app can
+take it (rebuild the native iPhone app from the companion vintos-app commit first, and test it on her phone).
+
+**Done 25 October, not code:**
+- The sealed latent-memory artifacts copied off `/tmp` (cleared at boot) to `~/sealed-latent-memory-20261022`,
+  hashes verified against `seal.json`. The sealed snapshot carries its own original serving code
+  (`latent_stream_model.py` 1aa1713, `latent_feed.py` 662c7de, `latent_stream_replay.py` 8ba328d), so the
+  30 October evaluation must run from that snapshot, not the live workspace.
+- The local transcript that held the x.ai key deleted.
+- The lost Workbench win saved to `successes.md` on the Mac.
 
 **Still open:**
-- `build_merged_chat.py` still mixes the August chat file into what temporal/rhythm/predictors read.
-- The sealed latent-memory artifacts sit in `/tmp`, which is cleared at boot; a persistent copy needs her yes before 30 Oct.
-- Semantic recall still serves the legacy index (deleted and dream rows).
-- Present-moment stream: late text never enters it.
-- Gloria forecasts: pending ones are wiped by ordinary thread changes.
-- Fault detection does not see cron exits.
-
-The full ranked review is kept off this public repository until the cutover is live.
-
-## 25 October — house credential cutover (built and tested; not deployed)
-
-`claude/house-auth-cutover-2026-10-25` completes `codex/security-auth-cutover`: the credential comes only from
-`~/.vintos/vintos.env` (no built-in value anywhere); unset or weak means the server still starts, public routes
-answer, and every private route answers 503; the house guard is default-deny for every method, every
-`server_domains` router, `watch_routes`, `/static`, the schema pages and both WebSockets, with a reviewed public
-list; the robot bridge follows the same rule; pushed links carry a ticket for their own path. The deploy gate and
-rollout scripts are removed. Steps for Gloria: [house-auth-cutover.md](house-auth-cutover.md).
-**Not done:** the iPhone app rebuild (vintos-app companion) was not checked here; the Mac ReelRoom helper must be
-restarted after the house restarts and still carries its own fallback; browser pages such as `/calendar` that post
-without the header will be refused; `/aq` "back" links after answering need an enrolled browser.
+- The Buzz relay container lost its compose network on 15 October and has been down since; not worked on.
+- Firewall rules for `:8500`/`:8501` to the Private profile.
+- `~/AGENTS.md` still describes `:8443` as a public Funnel; it is now tailnet-only.
 
 ## 22 October — additive trained subconscious feeds implemented (review only)
 
@@ -4791,14 +4791,6 @@ AUTH-01 remains **one proposal for Gloria, not applied**: default-secret rotatio
 
 Post-merge validation: 22/22 focused suites passed, including the inherited route inventory (9/9). The upstream voice caller guard is identical, precedes provider/private-context work, and the credential assignment and named client files are unchanged from the alarm candidate. Full repository tests and Aegis commissioning remain open.
 
-## 22 October — AUTH-01 prepared for coordinated approval
-
-Required random environment identity, telemetry/events admission, private GET/HEAD guard, named Python/mobile/native-background clients and scoped Watch media are prepared on `codex/security-alarms`. Funnel and independent Watch identity stay. Existing voice-token guard is inherited unchanged. See `docs/security-auth-rollout.md` and the 168-declaration GET inventory. No production secret generation, configuration changes, restarts or deployment occurred. Native installation/background enrollment, physical Watch media, full deployment suites and actual rollback acceptance remain pending Gloria's approval.
-
-## 22 October — split review, alarm first
-
-`codex/security-alarms` is the standalone fail-open alarm/paid transport/pause release, with no authentication/client cutover dependency. This branch, `codex/security-auth-cutover`, restores the coordinated identity/private-read/stream/client proposal on top of that release for a separate later approval. Companion app stays at review commit `6056939`. No production actions were taken. Full isolated-suite results are recorded separately for both branches; do not treat focused tests as the full matrix.
-
 ## 22 October — review revision: split releases, fail-open accounting, full suite
 
 `codex/security-alarms` is now the standalone alarm/paid_http/pause release. The identity/private-read/stream/client cutover is on `codex/security-auth-cutover`, based on the standalone release, for a separate later approval. Deploy (a) first with the unchanged standard owner command; it needs no client enrollment or cutover environment.
@@ -4816,5 +4808,3 @@ Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full 
   `6056939`. Merging it makes every deploy refuse until the cutover is prepared, so it is merged on the evening she
   does it: prepare on Aegis, deploy, finalize, enrol the rebuilt phone app (Xcode on the Mac), the Pi if active.
   Steps: docs/security-auth-rollout.md on that branch. Until then the house on Funnel :8443 accepts the default secret.
-
-Cutover branch final validation: all 468 OS-isolated broker suites invoked, 464 passed; only the four reproduced deploy-baseline failures remain. The 20 auth tests and 33 alarm tests pass. Companion client stub checks pass. Evidence: `audit/security-auth-full-suite.json`. This source branch is the second release, not a dependency of deploying the standalone alarm.

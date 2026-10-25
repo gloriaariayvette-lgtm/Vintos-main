@@ -9,8 +9,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 LM_STUDIO_API = os.environ.get("GROK_API_BASE", "http://127.0.0.1:8599/v1")
 LLM_API_KEY = os.environ.get("XAI_API_KEY", "")
 LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
-from house_auth import configured_secret as _house_secret, matches as _house_matches
-APP_SECRET = _house_secret(log=False)   # "" when unconfigured: every check below then refuses
+APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
 router = APIRouter()
 
 # Shared with cron writers; scope includes the read and mutation, not just replace.
@@ -84,7 +83,7 @@ async def scene_upload_page():
 @router.post("/api/upload/scene-image/base64")
 async def upload_scene_image_b64(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _house_matches(auth, APP_SECRET):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import os, base64
     body = await request.json()
@@ -109,7 +108,7 @@ async def upload_scene_image(
     filename: str = Form(...)
 ):
     auth = request.headers.get("X-Vintos-Secret", "")
-    if not _house_matches(auth, APP_SECRET):
+    if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import os
     dest, filename = _scene_dest(activity, filename)   # astra-server-c-p7
@@ -122,7 +121,7 @@ async def upload_scene_image(
 @router.get("/api/wants")
 async def get_wants(request: Request):
     """Get unfulfilled wants for Gloria to review."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -146,7 +145,7 @@ async def get_wants(request: Request):
 @router.post("/api/avatar/presence")
 async def avatar_presence(request: Request):
     """Gloria is present with Vintos's avatar — log the interaction."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -196,7 +195,7 @@ async def avatar_presence(request: Request):
 @router.get("/api/wants/dismissed")
 async def get_dismissed_wants(request: Request):
     """Get dismissed (failed attempt) wants."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -222,7 +221,7 @@ async def get_dismissed_wants(request: Request):
 @router.patch("/api/wants/{want_id}")
 async def patch_want(want_id: str, request: Request):
     """Set capability and/or manually_routed on a want."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -278,7 +277,7 @@ async def patch_want(want_id: str, request: Request):
 @router.get("/api/wants/{want_id}/discussion")
 async def get_want_discussion(want_id: str, request: Request):
     """Get the discussion thread for a want."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -294,7 +293,7 @@ async def get_want_discussion(want_id: str, request: Request):
 @router.post("/api/wants/{want_id}/discussion")
 async def post_want_discussion(want_id: str, request: Request):
     """Add a message to a want discussion thread."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -336,7 +335,7 @@ async def post_want_discussion(want_id: str, request: Request):
 @router.post("/api/wants/{want_id}/respond")
 async def respond_to_want(want_id: str, request: Request):
     """Gloria responds to a want — marks fulfilled and appends response."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -411,7 +410,7 @@ async def respond_to_want(want_id: str, request: Request):
 @router.delete("/api/wants/{want_id}")
 async def dismiss_want(want_id: str, request: Request):
     """Gloria dismisses a want."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -452,7 +451,7 @@ async def dismiss_want(want_id: str, request: Request):
 @router.patch("/api/wants/{want_id}/multistep")
 async def set_multistep(want_id: str, request: Request):
     """Enable multistep mode on a want and optionally set initial steps."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -481,7 +480,7 @@ async def set_multistep(want_id: str, request: Request):
 @router.post("/api/wants/{want_id}/steps")
 async def add_want_step(want_id: str, request: Request):
     """Add a step to a multistep want."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -513,7 +512,7 @@ async def add_want_step(want_id: str, request: Request):
 @router.delete("/api/wants/{want_id}/steps/{step_index}")
 async def remove_want_step(want_id: str, step_index: int, request: Request):
     """Remove a step from a multistep want."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -538,7 +537,7 @@ async def remove_want_step(want_id: str, step_index: int, request: Request):
 @router.post("/api/wants/{want_id}/advance")
 async def advance_want_step(want_id: str, request: Request):
     """Mark current step reviewed and advance to next. Fulfills want if all steps done."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -578,7 +577,7 @@ async def advance_want_step(want_id: str, request: Request):
 @router.get("/api/screen")
 async def describe_screen(request: Request):
     """Take a screenshot of the Playwright browser and have Vintos describe what he sees."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         import httpx
@@ -615,7 +614,7 @@ async def describe_screen(request: Request):
 @router.get("/api/threads")
 async def get_threads(request: Request):
     """Get unresolved threads for the Threads tab."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -633,7 +632,7 @@ async def get_threads(request: Request):
 @router.delete("/api/threads/{thread_id}")
 async def delete_thread(thread_id: str, request: Request):
     """Delete a thread by id."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -651,7 +650,7 @@ async def delete_thread(thread_id: str, request: Request):
 @router.post("/api/threads/{thread_id}/system-route")
 async def system_route_thread(thread_id: str, request: Request):
     """Manually route a thread to dream, mirror, or therapy on next run."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -681,7 +680,7 @@ async def system_route_thread(thread_id: str, request: Request):
 @router.post("/api/threads/weave-now")
 async def weave_threads_now(request: Request):
     """Immediately trigger a manual weave of specific threads."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -718,7 +717,7 @@ async def weave_threads_now(request: Request):
 @router.post("/api/threads/weave-groups")
 async def save_weave_groups(request: Request):
     """Save manual weave groups for thread-weaver.py to process."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
@@ -734,7 +733,7 @@ async def save_weave_groups(request: Request):
 @router.get("/api/threads/weave-groups")
 async def get_weave_groups(request: Request):
     """Get current manual weave groups."""
-    if not _house_matches(request.headers.get("X-Vintos-Secret"), APP_SECRET):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:

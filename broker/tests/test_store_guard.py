@@ -93,7 +93,6 @@ for node in tree.body:
             if isinstance(block, ast.With) and any("transactions" in ast.unparse(i.context_expr) for i in block.items):
                 assert not any(isinstance(x, ast.Await) for x in ast.walk(block)), node.name
 namespace = dict(os=os, json=json, MEMORY=MEM, APP_SECRET="fixture", Request=object,
-                 _house_matches=lambda v, s: bool(v) and bool(s) and __import__("hmac").compare_digest(str(v), s),
                  transactions=SG.transactions, write_json=SG.write_json, _want_event=lambda *a: None)
 exec(compile(ast.Module(body=selected, type_ignores=[]), "domain-fixture", "exec"), namespace)
 wants_path = os.path.join(MEM, "current-wants.json")

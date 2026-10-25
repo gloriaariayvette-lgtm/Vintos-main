@@ -32,7 +32,7 @@ def routes(server_path=None):
     out = []
     for dm in re.finditer(r'^@app\.(get|post|put|delete|patch)\("([^"]+)"[^\n]*\n(.*?)(?=^@app\.|\Z)', src, re.S | re.M):
         head = dm.group(3)[:2500]
-        guarded = ("_require_secret(" in head) or ("_secret_ok(" in head) or ("X-Vintos-Secret" in head and "APP_SECRET" in head)
+        guarded = ("_require_secret(" in head) or ("X-Vintos-Secret" in head and "APP_SECRET" in head)
         out.append({"method": dm.group(1).upper(), "path": dm.group(2), "guarded": guarded})
     return out
 

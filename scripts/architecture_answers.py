@@ -20,18 +20,9 @@ STORE = os.path.join(WS, "memory", "architecture-questions.json")
 PUBLIC_BASE = os.environ.get("VINTOS_PUBLIC_BASE", "http://100.72.225.119:8500").rstrip("/")
 
 
-def _signed(url):
-    """A link to her phone carries a ticket for exactly that path (house_auth.link); never fatal."""
-    try:
-        import house_auth
-        return house_auth.link(url)
-    except Exception:
-        return url
-
-
 def answer_url(qid):
     """Phone-safe link to the one question carried by an ntfy receipt."""
-    return _signed("%s/aq?qid=%s" % (PUBLIC_BASE, quote(str(qid or ""), safe="")))
+    return "%s/aq?qid=%s" % (PUBLIC_BASE, quote(str(qid or ""), safe=""))
 
 
 def ntfy_headers(qid):

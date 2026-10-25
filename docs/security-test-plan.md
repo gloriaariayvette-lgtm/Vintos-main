@@ -1,5 +1,3 @@
-> AUTH-01 review update (22 October): source implementation and companion clients are prepared for approval, not deployed. Funnel stays on. Exact commands and rollback: [security-auth-rollout.md](security-auth-rollout.md). Complete public GET inventory: [security-public-get-routes.md](security-public-get-routes.md). Existing snapshot evidence below remains dated; source fixes do not imply live enforcement.
-
 # Security validation and regression plan
 
 22 October 2026. Tests must never contact providers, devices, Slack, ntfy or personal apps. Repoint **every** writable store and stub **every** sender; enforce a socket deny in the interpreter as defense in depth. Do not import live service entry points just to see what happens. No model is needed to validate a security gate.
@@ -51,9 +49,9 @@ Saved collectors in `audit/aegis/` inspect configuration/process metadata and sa
 
 ## AUTH-01 and existing voice-token guard
 
-The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not rewritten. Rerun the route inventory offline alongside alarm regressions after merging. Source tests are not evidence of production deployment. Default-secret rotation, telemetry/events token admission and private reads are one **unapplied-to-production** AUTH-01 source proposal with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, and `clients/mobile/`; validate all consumers and a joint rollback before production cutover approval.
+The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not rewritten. Rerun the route inventory offline alongside alarm regressions after merging. Source tests are not evidence of production deployment. Default-secret rotation and telemetry token admission remain one **unapplied** AUTH-01 proposal with `vintos-app` index.html/outreach.js, `scripts/robot_bridge.py`, `bin/wants-router.py`, `bin/server_domains/humor_wants.py`, and `clients/mobile/`; validate all consumers and a joint rollback before implementation/cutover approval.
 
-## Further remediation tests and acceptance boundaries
+## Proposed remediation tests, not implemented yet
 
 | Control | Offline regression that must fail before the repair | Acceptance boundary |
 |---|---|---|
@@ -68,25 +66,8 @@ The deploy branch's `a6e28e9e` guard and `test_house_routes.py` are merged, not 
 
 The audit's production gate checks are bounded observations, not a complete endpoint authorization matrix. Expand that matrix in isolation and commission with ordinary-use evidence after approval.
 
-## Prepared AUTH-01 offline regressions
-
-`broker/tests/test_house_auth.py` has 20 tests: 16 standard-library admission/cutover tests and 4 in-process HTTP/WebSocket compatibility tests requiring the existing FastAPI/test-client dependencies. It uses scratch homes and a stubbed systemctl runner. No sockets or production stores are used. The optional HTTP dependency skip must be reported; this review also ran all 20 using test-only dependencies under `/tmp`.
-
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 broker/tests/test_house_auth.py
-node clients/mobile/tests/house_auth_client.test.cjs /path/to/vintos-app/src/runners/outreach.js
-```
-
-The companion repo has `vintos-app/tests/house-auth.cjs`, runnable directly from its app directory. Fetch, WebSocket, CapacitorKV and notifications are stubs; its tests never send. HTML inline scripts are syntax-checked separately. The standard isolated runner sets an explicit synthetic identity inside the child; production environment credentials are never test inputs.
-
-30 pre-existing focused suites passed after merging the deploy branch; see `audit/regression-results.json`. The complete Aegis deployment suite and physical/native/background acceptance remain pending approval. No approved rollout is inferred from these offline results.
-
 ## Full-suite review revision
 
 On `codex/security-alarms`, every **467** `broker/tests/test_*.py` suite was run through `scripts/run_isolated_test.py`: **463 passed, 4 failed**. No suite was excluded by the driver. The unchanged `test_outreach_his_words` (13/13), `test_video_share` (25/25, optional audio backend checks skipped by the suite) and `test_avatar_dryrun_argon` (30/30) pass. The alarm suite passes **33 tests**.
 
 All four remaining failures were reproduced using the identical runner/interpreter against deploy snapshot `0913106c`: `test_latent_stream_linear` (local-date boundary assertion), `test_mail_attachments` (local pdftotext absent), `test_media_embed` (macOS sandbox refuses another localhost bind), `test_study_reading` (BSD grep lacks PCRE). Their tests were not changed. This is **not an all-green full-suite claim**, nor proof of Aegis deployment acceptance. See `audit/security-alarm-full-suite.json` for every suite/result and baseline evidence. The source comparison found no branch-specific failure in that completed matrix.
-
-## Complete cutover-branch matrix
-
-Every **468** broker suite on `codex/security-auth-cutover` was invoked through `scripts/run_isolated_test.py`: **464 passed, 4 failed**, with exactly the same four deploy-baseline failures listed above and no additional branch-specific failures. `test_house_auth` passed all **20** tests, including the in-process HTTP/WebSocket checks; `test_security_alarm` passed all **33**. The unchanged three reported suites pass. Offline browser/native-runner checks also pass. Exact suite names, results and baseline comparisons are in `audit/security-auth-full-suite.json`; full Aegis deployment/physical client acceptance remain unperformed.

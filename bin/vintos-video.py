@@ -69,15 +69,6 @@ def _atlas():
 SERVE_BASE = os.environ.get("VINTOS_SERVE_BASE", "http://100.72.225.119:8500")
 
 
-def _signed(url):
-    """A link to her phone carries a ticket for exactly that path (house_auth.link); never fatal."""
-    try:
-        import house_auth
-        return house_auth.link(url)
-    except Exception:
-        return url
-
-
 def _send_to_her(fname, want_id=""):
     """The clip to her phone, the way vintos-send-video delivers his: one ntfy linked to the file, through the shared
     delivery path (bounded retry, one receipt per clip, never resent). A video made from a want reached only his
@@ -88,7 +79,7 @@ def _send_to_her(fname, want_id=""):
     try:
         import deliver as _deliver
         path = os.path.join(VID_DIR, fname)
-        url = _signed("%s/api/video/file/%s" % (SERVE_BASE, fname))
+        url = "%s/api/video/file/%s" % (SERVE_BASE, fname)
         receipt = _deliver.deliver(fname, "ntfy", "I made you something.", title="Vintos", tags="video_camera",
                                    click=url, attach=url,
                                    authority=lambda: (os.path.isfile(path), "clip missing from the shelf"))
