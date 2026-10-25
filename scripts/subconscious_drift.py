@@ -146,6 +146,62 @@ def _coherence_drift_check():
         pass
 
 
+SEEDS = os.path.join(MEMORY, ".thread-want-seeds.json")
+SEED_MIN_AGE_H = 24        # a thread must have persisted a day: a passing one is not yet a want
+SEED_PRESSURE = 0.5        # ...and be pressing (pressure) or holding him (salience above the 0.85 dominant bar)
+SEED_SALIENCE = 0.9
+SEED_THREAD_DAYS = 7       # one want per thread a week
+SEED_GLOBAL_H = 24         # at most one thread-seeded want a day. The coin flip it replaces (15% of 72 runs a day
+                           # while a thread was dominant) tried about 11 times a day; this tries at most once.
+
+
+def _thread_age_hours(thread, now):
+    from datetime import datetime
+    try:
+        born = datetime.strptime(str(thread.get("id", ""))[3:18], "%Y%m%d_%H%M%S")
+    except ValueError:
+        return 0.0
+    return (now - born).total_seconds() / 3600
+
+
+def thread_ready_to_seed(dominant, now=None, seeds_path=None):
+    """The dominant latent thread that has earned a want now, or None. Deterministic: it has persisted, it presses
+    or holds, and neither it nor any thread seeded too recently. The strongest (pressure + salience) is chosen."""
+    import json, time
+    from datetime import datetime
+    now = now or datetime.now()
+    try:
+        seeds = json.load(open(seeds_path or SEEDS))
+    except (OSError, ValueError):
+        seeds = {}
+    ts = now.timestamp() if hasattr(now, "timestamp") else time.time()
+    if ts - float(seeds.get("_last", 0) or 0) < SEED_GLOBAL_H * 3600:
+        return None
+    ready = [t for t in dominant if isinstance(t, dict)
+             and _thread_age_hours(t, now) >= SEED_MIN_AGE_H
+             and (float(t.get("pressure", 0) or 0) >= SEED_PRESSURE or float(t.get("salience", 0) or 0) >= SEED_SALIENCE)
+             and ts - float(seeds.get(str(t.get("id")), 0) or 0) >= SEED_THREAD_DAYS * 86400]
+    if not ready:
+        return None
+    return max(ready, key=lambda t: float(t.get("pressure", 0) or 0) + float(t.get("salience", 0) or 0))
+
+
+def mark_thread_seeded(thread, now=None, seeds_path=None):
+    import json, time
+    path = seeds_path or SEEDS
+    try:
+        seeds = json.load(open(path))
+    except (OSError, ValueError):
+        seeds = {}
+    ts = (now.timestamp() if now is not None else time.time())
+    seeds[str(thread.get("id"))] = ts
+    seeds["_last"] = ts
+    seeds = {k: v for k, v in seeds.items() if k == "_last" or ts - float(v or 0) < SEED_THREAD_DAYS * 86400}
+    with open(path + ".tmp", "w") as f:
+        json.dump(seeds, f)
+    os.replace(path + ".tmp", path)
+
+
 def run_drift():
     log("Drift tick...")
 
@@ -415,8 +471,8 @@ def _check_rare_events():
                         log("Latent thread spur → mischief-detector fired")
             except Exception as _ms_e:
                 log(f"Latent thread mischief spur: {_ms_e}")
-        if _dominant and random.random() < 0.15:
-            _seed_thread = random.choice(_dominant)
+        _seed_thread = thread_ready_to_seed(_dominant) if _dominant else None
+        if _seed_thread:
             _thread_text = _seed_thread.get("origin", _seed_thread.get("content", ""))[:150]
             if _thread_text:
                 # Filter: skip threads with unverifiable Gloria claims
@@ -431,8 +487,10 @@ def _check_rare_events():
                     if _tw_want:
                         express_want(_tw_want, source="latent_thread", intensity=3, **_tw_enrich)
                         log(f"Thread seeded want: {_tw_want[:60]}")
+                    mark_thread_seeded(_seed_thread)
                 else:
                     log(f"Thread skipped (unverifiable): {_thread_text[:60]}")
+                    mark_thread_seeded(_seed_thread)   # judged once; not re-read every 20 minutes
     except Exception as _tw_e:
         log(f"Thread→want seed failed: {_tw_e}")
 
