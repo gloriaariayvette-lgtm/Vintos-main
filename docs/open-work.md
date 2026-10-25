@@ -23,9 +23,10 @@ From the 25 October reviews (Claude whole-system review; Codex comprehensive aud
   - "Your last reply" and the already-said list read the live history (they read August files).
   - "Messages today" is real (it was always 0).
 - **Devices:** the toy keepalive and the scenes server come into the repo and the deploy.
-  - Keepalive: re-asserts a hold only within the gate's 30-minute lease ceiling, then ends it.
+  - Keepalive: behaviour unchanged (his steady holds re-sent for up to two hours after his last command; Gloria,
+    25 October: holds are in use for hours).
   - Scenes server: serves a media file by its path, never a listing.
-  - Somatic replay: refused when the effect gate cannot answer.
+  - Somatic auto-resume: unchanged.
 
 **Hers to do, not code:**
 - Rotate the xAI key, which a review agent printed into its local transcript.

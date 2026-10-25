@@ -1,5 +1,5 @@
 [Unit]
-Description=Vintos toy keepalive (re-assert steady holds within the lease ceiling)
+Description=Vintos toy keepalive (re-assert steady holds)
 
 [Service]
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/toy_keepalive.py

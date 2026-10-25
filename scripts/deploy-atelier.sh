@@ -61,7 +61,7 @@ SOMATIC_NAME="vintos-somatic-narrate"
 SOMATIC_SERVICE_SRC="$SRC/broker/$SOMATIC_NAME.service"; SOMATIC_SERVICE_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.service"
 SOMATIC_TIMER_SRC="$SRC/broker/$SOMATIC_NAME.timer"; SOMATIC_TIMER_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.timer"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
-KEEPALIVE_UNIT_NAME="vintos-toy-keepalive"; KEEPALIVE_UNIT_SRC="$SRC/broker/$KEEPALIVE_UNIT_NAME.service"; KEEPALIVE_UNIT_DST="$HOME/.config/systemd/user/$KEEPALIVE_UNIT_NAME.service"   # re-asserts his steady holds only within the lease ceiling (2026-10-25)
+KEEPALIVE_UNIT_NAME="vintos-toy-keepalive"; KEEPALIVE_UNIT_SRC="$SRC/broker/$KEEPALIVE_UNIT_NAME.service"; KEEPALIVE_UNIT_DST="$HOME/.config/systemd/user/$KEEPALIVE_UNIT_NAME.service"   # re-asserts his steady holds, as the hand-placed copy did (2026-10-25)
 SCENES_UNIT_NAME="vintos-scenes"; SCENES_UNIT_SRC="$SRC/broker/$SCENES_UNIT_NAME.service"; SCENES_UNIT_DST="$HOME/.config/systemd/user/$SCENES_UNIT_NAME.service"   # the projector's media, one file by its path, never a listing (2026-10-25)
 BEDROOM_UNIT_NAME="vintos-bedroom-arrival"; BEDROOM_UNIT_SRC="$SRC/broker/$BEDROOM_UNIT_NAME.service"; BEDROOM_UNIT_DST="$HOME/.config/systemd/user/$BEDROOM_UNIT_NAME.service"   # the bedroom ESP32 (2026-10-17)
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
@@ -243,7 +243,7 @@ SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathe
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
 SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py"   # subconscious stores seed unresolved threads; a seeder that was never installed (2026-10-25). conflict_surface held: installing it turns on a Gemma call in every two-pass reply, waiting on her yes
-SCRIPTS="$SCRIPTS toy_keepalive.py"   # the toy keepalive, until now a hand-placed copy that re-sent a hold for two hours (2026-10-25)
+SCRIPTS="$SCRIPTS toy_keepalive.py"   # the toy keepalive, until now a hand-placed copy the deploy never updated (2026-10-25)
 SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now a hand-placed copy that listed his whole art store (2026-10-25)
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
@@ -1014,7 +1014,7 @@ if [ -f "$KEEPALIVE_UNIT_SRC" ]; then
     systemctl --user daemon-reload
     if systemctl --user enable "$KEEPALIVE_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$KEEPALIVE_UNIT_NAME" >/dev/null 2>&1; then
         sleep 1
-        confirm_unit --user "$KEEPALIVE_UNIT_NAME" && say "  $KEEPALIVE_UNIT_NAME re-asserting holds within the lease ceiling"
+        confirm_unit --user "$KEEPALIVE_UNIT_NAME" && say "  $KEEPALIVE_UNIT_NAME re-asserting his steady holds"
     else
         flag "$KEEPALIVE_UNIT_NAME installed but did not start - run: systemctl --user enable $KEEPALIVE_UNIT_NAME && systemctl --user restart $KEEPALIVE_UNIT_NAME"
     fi
