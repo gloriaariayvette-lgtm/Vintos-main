@@ -27,7 +27,7 @@ check("the avatar route appends each turn to the lossless record", "_canon_appen
 check("only when the turn is not a test", body.count("if not _test_turn:\n                # The lossless record") == 1)
 check("her row carries her own words and both rows the turn id", "original_text" in block and "turn_id=_cv_tid" in block)
 check("ReelRoom is included (it is not behind the avatar-history save's reelroom exclusion)",
-      body.index("The lossless record") < body.index('if _surface != "reelroom" and not _test_turn:\n                with open(av_chat_log'))
+      body.index("The lossless record") < body.index('_append_avatar_history(av_chat_log'))
 
 # what the server writes, the head reads
 now = time.time()

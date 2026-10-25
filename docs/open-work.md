@@ -1,3 +1,49 @@
+## 25 October — handoff repairs (Claude Code; on the deploy branch, not yet deployed)
+
+From the 25 October reviews (Claude whole-system review; Codex comprehensive audit on the Mac). In this deploy:
+- **Codex's seven Mac repairs, reviewed:**
+  - Lab citation and reader normalization
+  - sensor-reaction locking
+  - parked planner retries
+  - frontier rotation (Codex's version replaces `51c3a67`: a faulted lens is retried after the others, not benched for the day)
+  - architecture answers marked delivered only when admitted (they had errored in every prompt selection)
+  - thread-temperature compare-and-swap
+  - invalid want parameters held until the step changes
+- **The house credential cutover** (next entry).
+- **Thread pool:** resolution and triage merge their changes onto the pool as it is when they save. They no longer
+  overwrite threads or fields another writer changed during their model calls.
+- **Lab investigations:** a repeat of the investigation's own step is handed that step's retained output and does not
+  count toward the five-failure close; a source cooldown is a wait; reuse across investigations needs exactly the
+  same identifiers; a stalled close names its dominant cause. Replay of the live store: 124 recorded closes would
+  no longer have happened at that step. Judge by answered investigations and `findings.jsonl` after the deploy.
+- **Paid accounting:** shim calls reserve against the daily paid budget (most Claude and x.ai calls had none). A
+  spent budget moves the chain on; a stage model_router already reserved is not counted twice.
+- **What reaches him each turn:**
+  - The avatar history keeps 40 rows (it was held at 14), with appends under a lock.
+  - "Your last reply" and the already-said list read the live history (they read August files).
+  - "Messages today" is real (it was always 0).
+- **Devices:** the toy keepalive and the scenes server come into the repo and the deploy.
+  - Keepalive: re-asserts a hold only within the gate's 30-minute lease ceiling, then ends it.
+  - Scenes server: serves a media file by its path, never a listing.
+  - Somatic replay: refused when the effect gate cannot answer.
+
+**Hers to do, not code:**
+- Rotate the xAI key, which a review agent printed into its local transcript.
+- Restart the Buzz relay, whose container has been stopped since 15 Oct on a DNS failure at start. Then the four
+  workers (failed since 14 Oct). Correct `buzz-claude` first: it is configured for a Fable model.
+- Firewall rules for :8500/:8501 to the Private profile.
+- Recover the lost Workbench win: reopen thread `39a8be12` and type `!success`.
+
+**Still open:**
+- `build_merged_chat.py` still mixes the August chat file into what temporal/rhythm/predictors read.
+- The sealed latent-memory artifacts sit in `/tmp`, which is cleared at boot; a persistent copy needs her yes before 30 Oct.
+- Semantic recall still serves the legacy index (deleted and dream rows).
+- Present-moment stream: late text never enters it.
+- Gloria forecasts: pending ones are wiped by ordinary thread changes.
+- Fault detection does not see cron exits.
+
+The full ranked review is kept off this public repository until the cutover is live.
+
 ## 25 October — house credential cutover (built and tested; not deployed)
 
 `claude/house-auth-cutover-2026-10-25` completes `codex/security-auth-cutover`: the credential comes only from
