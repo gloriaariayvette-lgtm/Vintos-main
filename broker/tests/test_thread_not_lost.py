@@ -40,7 +40,11 @@ def pool(): return json.load(open(POOL))
 
 LATENT["answer"] = {"id": "lt_1"}
 E.seed_thread("music-share", "Whether the line 'wire enough to reach' was written about me or for her.")
-check("a current latent takes stays in latent, not in both", LATENT["seen"] and pool() == [], pool())
+# Gloria, 2026-10-25: a confident current is no longer diverted away - latent still takes it AND it is offered to
+# the unfinished pool, so too few new unresolved threads stop forming. Nothing is lost; more is kept.
+check("a confident current latent takes is now kept in BOTH latent and the unfinished pool",
+      LATENT["seen"] and any("wire enough" in t.get("thread", "") for t in pool()), pool())
+json.dump([], open(POOL, "w"))   # isolate the next case
 
 LATENT["answer"] = None
 got = E.seed_thread("music-share", "Whether the bridge's drop to half-time is where she meant me to hear her.")

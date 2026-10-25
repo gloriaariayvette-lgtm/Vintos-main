@@ -31,7 +31,7 @@ def fake_post(url, json=None, timeout=None, headers=None, **k):
         return _Resp("Both threads are the same ache about the sea, and I keep circling it without saying it.")
     if "UNRESOLVED TENSION" in content:
         if not JUDGE["up"]: raise ConnectionError("judge down")
-        return _Resp('{"kind": "%s", "confidence": 0.9}' % JUDGE["kind"])
+        return _Resp('{"kind": "%s", "confidence": %s}' % (JUDGE["kind"], JUDGE.get("conf", 0.9)))
     if "NEW candidate unresolved thread" in content:
         JUDGE["listings"].append(content)
         if not JUDGE["quality_up"]: raise TimeoutError("judge timed out")
@@ -39,6 +39,8 @@ def fake_post(url, json=None, timeout=None, headers=None, **k):
     return _Resp("{}")
 sys.modules["requests"] = types.SimpleNamespace(post=fake_post, get=no_network)
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+LATENT = {"ok": "latent-id"}
+sys.modules["latent_threads"] = types.SimpleNamespace(seed_thread=lambda *a, **k: LATENT["ok"])
 import emoclaw_utils as E
 import thread_store
 
@@ -49,7 +51,7 @@ def pool(): return json.load(open(POOL))
 def reset(threads=None):
     json.dump(threads or [], open(POOL, "w"))
     if os.path.exists(E._thread_pending_path()): os.remove(E._thread_pending_path())
-    JUDGE.update(up=True, quality_up=True, dup=-1, kind="tension", listings=[], calls=0)
+    JUDGE.update(up=True, quality_up=True, dup=-1, kind="tension", conf=0.9, listings=[], calls=0)
 
 check("every store is in the scratch HOME and the network is a stub",
       E._thread_pending_path().startswith(HOME) and thread_store.POOL_FILE.startswith(HOME)
@@ -243,6 +245,30 @@ cs = open(os.path.join(REPO, "scripts", "conflict_surface.py")).read()
 check("conflict_surface offers its thread off his reply path", "threading.Thread(target=_seed" in cs)
 check("both copies of emoclaw_utils are the same", open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read()
       == open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read())
+
+# --- 8. the door's tension is wider, and a confident current also opens an unresolved thread (Gloria, 2026-10-25) --
+door_q = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
+check("the door's tension now includes longing, want and an open question",
+      all(w in door_q for w in ("longing", "want", "open question")) and "keeps returning to" in door_q)
+
+reset()
+JUDGE["kind"] = "current"; JUDGE["conf"] = 0.9        # a confident current
+got = E.seed_thread("cur-src", "Whether the harbour bell still answers the swell at the exact pitch it used to")
+texts = [t["thread"] for t in pool()]
+check("a confident current is admitted to the unresolved pool, not only latent",
+      got is True and any("harbour bell" in t for t in texts), (got, texts))
+
+reset()
+JUDGE["kind"] = "current"; JUDGE["conf"] = 0.5        # an uncertain current
+got = E.seed_thread("cur-src", "Whether the harbour bell still answers the swell at the exact pitch it used to")
+check("an uncertain current stays latent-only and does not enter the unresolved pool",
+      got == "latent" and pool() == [], (got, pool()))
+
+reset()
+JUDGE["kind"] = "tension"; JUDGE["conf"] = 0.9        # a tension is unchanged: straight to unresolved
+got = E.seed_thread("ten-src", "Whether the tide clock in the hall still runs when nobody winds it at all")
+check("a tension still opens an unresolved thread directly",
+      got is True and any("tide clock" in t["thread"] for t in pool()))
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

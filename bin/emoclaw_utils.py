@@ -566,8 +566,10 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
             "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 60,
             "messages": [{"role": "user", "content":
                 "Thread candidate: " + _judge[:300] + "\n\n"
-                "Is this an UNRESOLVED TENSION (a conflict, gap, pressure, or unfinished becoming that needs processing) "
-                "or a THEMATIC CURRENT (a topic, interest, or encounter being explored)?\n"
+                "Is this an UNRESOLVED TENSION (a conflict, gap, pressure, longing, want, open question, "
+                "or unfinished becoming \u2014 anything that pulls at him or that he keeps returning to and has not "
+                "settled yet) or a THEMATIC CURRENT (a settled topic or passing encounter he is merely exploring, "
+                "with nothing unresolved pulling at him)?\n"
                 'Return ONLY JSON: {"kind": "tension" or "current", "confidence": 0.0-1.0}'}]}, timeout=15)
         _fd_raw = _fd_resp.json()["choices"][0]["message"]["content"]
         _fd_d = _fd_j.loads(_fd_raw[_fd_raw.find("{"):_fd_raw.rfind("}")+1])
@@ -594,7 +596,12 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
                    classification_basis=_door["classification_basis"])
             if _fd_got:
                 print("[formation door] -> latent-current (%s %s): %s" % (_door["classification_basis"], _door["classification_confidence"], str(thread_text)[:60]), file=__import__("sys").stderr)
-                return "latent", _judged
+                # A current the classifier is confident about also goes to the unfinished pool, where the
+                # quality bar, dedup and per-source cap below decide; an uncertain one stays latent-only
+                # (Gloria, 2026-10-25: too few new unresolved threads were forming - confident currents were diverted).
+                if _door["classification_basis"] != "classified":
+                    return "latent", _judged
+                print("[formation door] confident current - also offered to unfinished: %s" % str(thread_text)[:60], file=__import__("sys").stderr)
             # Latent refused it (its own gate). A thread its source judged worth opening is not lost between the two
             # pools: it is offered to the unfinished pool, whose own bar decides (21 October: a music share he judged
             # BOTH was sent to latent, refused as vague, and the door had already returned - neither pool held it).
