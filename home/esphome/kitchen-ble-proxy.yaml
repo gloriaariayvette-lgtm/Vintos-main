@@ -13,6 +13,13 @@ esp32:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # If it cannot join that network it opens its own hotspot, "Kitchen BLE Proxy": join it from a phone, a page
+  # lists the networks it can see, pick the house Wi-Fi and type its password. The bedroom ESP32 (ESPresense) is set
+  # up the same way. No network name or password has to be known in advance (25 October).
+  ap:
+    ssid: "Kitchen BLE Proxy"
+
+captive_portal:
 
 api:
   encryption:
