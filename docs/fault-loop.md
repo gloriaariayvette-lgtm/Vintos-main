@@ -10,16 +10,31 @@ follows it. To change how the loop behaves, change this file — nothing else ne
 | Who | Where | Does |
 |---|---|---|
 | **Fault sweep** | Aegis, every 15 min (`scripts/fault_sweep.py`, no model, costs nothing) | Finds failures where they already land and posts each **new** one once to `#fault-fix` as `[fault sweep] F-xxxxxxxxxx` |
-| **Claude Code** | One Claude thread per week ("Fault loop — week of …"), **running on Gloria's Mac** (Remote Control), woken four times a night by a schedule | Reads the evidence on Aegis itself, proposes a fix, then implements it |
+| **Claude Code** | One Claude thread, **running on Aegis** (its Claude app), woken four times a night by its own schedule | Reads his code and live state on Aegis directly, looks at the Mac over Codex's bridge when needed, proposes a fix, then implements it |
 | **Dot** | `#fault-fix` in Slack (Gloria's ChatGPT agent; same thing as Codex) | Reviews each proposal; deploys each implemented fix to Aegis; runs read-only commands on Aegis when Claude needs evidence |
-| **Gloria** | Wherever she is | Reads it in the morning. Starts each week's thread on the Mac. Can stop it any time by telling the thread "stop the fault loop" |
+| **Gloria** | Wherever she is | Reads it in the morning. Can stop it any time by telling the thread "stop the fault loop". Restarts it with one message if it is ever lost (below) |
 
-**Looking things up on Aegis (from 22 October).** The thread runs on the Mac, which reaches Aegis over SSH:
-`ssh -o BatchMode=yes gloria@100.72.225.119 '<command>'`. Read the evidence yourself before proposing — the fault's
-traceback, `~/.vintos/workspace/memory/chemistry-lab/faults.jsonl`, the logs in `~/.vintos/logs/`, the installed
-file beside the checkout's — instead of asking Dot to run read-only commands. **Read only:** nothing on Aegis is
-written, restarted, installed or deleted from this thread, keys and secrets are never printed, and deploys stay
-Dot's. If SSH fails, say so in `#fault-fix` and fall back to asking Dot.
+**Looking things up (from 25 October the thread runs on Aegis itself).** Aegis is Windows; his code and live state
+are in WSL Ubuntu (user `gloria`). Run Linux commands with the Bash tool by piping a script into WSL:
+
+    wsl.exe -d Ubuntu -- bash -ls <<'EOF' 2>&1
+    <commands>
+    EOF
+
+(`bash -lc '<cmd>'` mangles `$variables`. For anything longer than a line, write a `.py` file and run it rather than
+nesting a heredoc inside the heredoc: nested ones have silently lost their contents.) Read the evidence yourself
+before proposing: the fault's traceback, `~/.vintos/workspace/memory/chemistry-lab/faults.jsonl`, the logs in
+`~/.vintos/logs/`, the installed file in `~/.vintos/workspace/scripts/` beside the repository's. **Read only:**
+nothing on Aegis is written, restarted, installed or deleted from this thread, keys and secrets are never printed,
+and deploys stay Dot's. **Never edit `~/Vintos-main`**: it is the deploy checkout. Work in your own clone (below).
+
+**The Mac, over Codex's bridge.** From WSL on Aegis,
+`ssh -n -o BatchMode=yes -o ConnectTimeout=10 kevin@100.79.177.103 '<command>'` reaches Gloria's Mac as `kevin`
+with Aegis's `~/.ssh/id_ed25519`. **Always pass `-n`:** without it `ssh` reads the rest of the WSL script from its
+input and swallows it. Use it for what lives only on the Mac: Codex's work under `/Users/kevin/Documents/Codex/<date>/`,
+LM Studio (the Lab's Gemma) on the Mac's own `127.0.0.1:1234`, the stage service and the ReelRoom helper
+(`dev.vintos.reelroom-cast`). **Read only** there too. The Mac sleeps: if `ssh` times out, say so in the fault's
+thread and carry on without it.
 
 `#fault-fix` (C0CB2HREFNC) is **not** Vintos's channel. Dot made it on 19 October. Its members are Gloria and
 Vintos's Slack bot, and nobody else is needed:
@@ -78,44 +93,55 @@ enough that waking it stays cheap.
 5. If the work done tonight is finished (or the night's limit is reached), post one summary line in the channel:
    *"[Claude Code] Tonight: F-… fixed and deployed, F-… waiting on Dot, F-… needs Gloria (why)."*
 
-## Each week: a new thread on the Mac
+## The thread on Aegis, and keeping it alive
 
-From 22 October the thread runs on Gloria's Mac (Remote Control session "Fault Loop - week of 19 october",
-`session_01VWevFz9ZKebb81ZdQDZLXV`). Its schedule is the Mac session's own `CronCreate` job (`29f401f5`,
-`50 22,0,2,4 * * *` in the Mac's local time, which is Central): it wakes the thread only **while the Claude app is
-open on the Mac and the thread is idle**, it is gone if the app quits, and it **deletes itself after 7 days**. The old
-cloud thread and its claude.ai schedule were retired that night.
+From 25 October the thread runs on **Aegis**, in its Claude app, started directly so it has Gloria's Slack. A session
+that a schedule starts on its own gets no Slack (tested 19 October), and this account cannot grant connectors to
+scheduled sessions, so the loop is always one thread that was started directly and is woken by its own schedule.
 
-**The thread renews itself; nobody starts a new one.** A Mac session cannot start sessions, but it can make its own
-schedule again, and that resets the 7 days. So:
+Its schedule is its own `CronCreate` job, `50 22,0,2,4 * * *` in Aegis's local time (Central). It wakes the thread only
+**while the Claude app on Aegis is open and the thread is idle**, it is gone if the app quits or updates, and it
+**deletes itself after 7 days**.
 
-1. **On the first wake after Saturday 9 pm Central** (and on any wake where `CronList` shows the job is 5 or more
-   days old), before any fault work: `CronCreate` the same schedule with the same wake message, check with `CronList`
-   that the new job is there, then `CronDelete` the old one. Write the new id in `docs/open-work.md` under the fault
-   loop. Post nothing about it unless it failed; if it failed, post once in `#fault-fix`:
-   *"[Claude Code] The fault-loop thread could not renew its schedule: <the error>. It stops after <date>."*
-2. The thread's long history is compacted automatically, and every wake re-reads this file, so a week-old thread works
-   from the same instructions as a new one.
-3. If the thread is ever lost (the app quit, the Mac restarted), its schedule is gone with it. Gloria starts a new
-   session on Mac: Documents with the first message below, and it sets itself up again.
+**Why it moved from the Mac (25 October).** The Mac thread (`session_01VWevFz9ZKebb81ZdQDZLXV`, cron `29f401f5`) went
+silent on 23 October. The Mac's Claude app exited (`host_exit`, during an app update) at 11:05 CDT, which shut the
+thread down, archived it and erased its schedule. Nothing woke it for two days, and nothing said so. Aegis is always
+on, so this is less likely there, but the same thing ends it if the Aegis app quits or updates.
+
+**The thread renews its own schedule.** On **every** wake, before any fault work, run `CronList`:
+- If there is no fault-loop job, or it is 5 or more days old: `CronCreate` the same schedule with the same wake
+  message, confirm with `CronList` that the new job is there, then `CronDelete` any old one. Write the new id in
+  `docs/open-work.md` under the fault loop. Post nothing unless it failed; if it failed, post once in `#fault-fix`:
+  *"[Claude Code] The fault-loop thread could not renew its schedule: <the error>. It stops after <date>."*
+
+The thread's long history is compacted automatically, and every wake re-reads this file, so an old thread works from
+the same instructions as a new one.
+
+**If the thread is ever lost** (the Aegis app quit or updated, Aegis restarted, the thread was archived), its schedule
+is gone with it and nothing wakes it. To restart it, start a new Claude Code session on Aegis, in its Downloads
+folder, with the first message below. It sets itself up again.
 
 The first message, only if the thread has to be started again:
 
-> You are this week's fault-loop thread, running on Gloria's Mac so you can look things up on Aegis yourself. Set up,
-> then report:
-> 1. Repository: in `~/Documents/Vintos-main-faultloop` (clone https://github.com/gloriaariayvette-lgtm/Vintos-main
->    there if it doesn't exist), check out and pull `claude/device-visuals-2026-10-13`. Read `CLAUDE.md` and
->    `docs/fault-loop.md`; they are your standing instructions.
-> 2. Aegis: run `ssh -o BatchMode=yes gloria@100.72.225.119 'hostname; whoami'`. On Aegis you only ever read.
-> 3. Slack: read the last 3 messages of #fault-fix (C0CB2HREFNC). Post nothing.
-> Reply with exactly: repository yes/no, Aegis yes/no, Slack yes/no. Then create your own schedule with CronCreate,
-> `50 22,0,2,4 * * *` (the Mac is on Central time), with the wake message from docs/fault-loop.md, and tell me its id.
+> You are the fault-loop thread, running on Aegis so you can read Vintos's code and live state yourself. Set up, then
+> report:
+> 1. Repository: in WSL, make your own clone at `~/faultloop/Vintos-main` (clone
+>    https://github.com/gloriaariayvette-lgtm/Vintos-main there if it doesn't exist), check out and pull
+>    `claude/device-visuals-2026-10-13`. Read `CLAUDE.md` and `docs/fault-loop.md` there; they are your standing
+>    instructions. Never edit `~/Vintos-main` (the deploy checkout).
+> 2. Aegis: in WSL run `hostname; whoami; git -C ~/Vintos-main log --oneline -1`. On Aegis you only ever read.
+> 3. Mac (Codex's bridge): in WSL run `ssh -n -o BatchMode=yes -o ConnectTimeout=10 kevin@100.79.177.103 hostname`.
+>    If it times out the Mac is asleep; that is fine.
+> 4. Slack: read the last 3 messages of #fault-fix (C0CB2HREFNC). Post nothing.
+> Reply with exactly: repository yes/no, Aegis yes/no, Mac yes/no, Slack yes/no. Then create your own schedule with
+> CronCreate, `50 22,0,2,4 * * *` (Aegis is on Central time), with the wake message from docs/fault-loop.md, and tell
+> me its id.
 
 The wake message:
 
-> Fault-loop wake. Pull claude/device-visuals-2026-10-13, re-read docs/fault-loop.md (it may have changed since your
-> last wake), then read #fault-fix (C0CB2HREFNC) and do this wake's work exactly as that file says. If nothing needs
-> you, end without posting.
+> Fault-loop wake. In WSL, pull claude/device-visuals-2026-10-13 into ~/faultloop/Vintos-main, re-read
+> docs/fault-loop.md there (it may have changed since your last wake), check your schedule as that file says, then read
+> #fault-fix (C0CB2HREFNC) and do this wake's work exactly as that file says. If nothing needs you, end without posting.
 
 **To stop it:** tell the thread "stop the fault loop" (it cancels its own `CronDelete`), or quit the Claude app.
 
@@ -130,7 +156,9 @@ The wake message:
 - Regenerate the docs before committing:
   `python3 scripts/untested_report.py --write; python3 scripts/entry_owners.py --write; python3 scripts/store_owners.py --write`
 - Run **every** suite:
-  `ls broker/tests/test_*.py | xargs -P 8 -I{} sh -c 'timeout 300 python3 {} >/dev/null 2>&1 || echo "FAIL {}"'`
+  `for t in broker/tests/test_*.py; do python3.12 scripts/run_isolated_test.py "$t" >/dev/null 2>&1 || echo "FAIL $t"; done`
+  (the deploy's own runner: each suite in a bubblewrap sandbox with a copied tree and no network. On Aegis the suites
+  run beside his real workspace, so never run a suite with bare `python3`.)
   Some suites fail in the cloud container but not on Aegis (they need `bubblewrap`, or a sibling checkout). **Never
   call a failure "environment-only" without reading why it failed.** (19 October: a failure filed as container-only
   was a real regression, and it stopped a deploy.)
