@@ -236,6 +236,7 @@ SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2
 SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit from real token counts (2026-10-17)
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
+SCRIPTS="$SCRIPTS room_sources.py"   # proposal 18: read-only view of each presence source, kept apart (2026-10-26)
 SCRIPTS="$SCRIPTS spotify_watch.py"
 SCRIPTS="$SCRIPTS fault_sweep.py security_alarm.py paid_http.py"
 BINS="$BINS paid_http.py briefing-audio.sh introspection.sh idle-journal.sh"
