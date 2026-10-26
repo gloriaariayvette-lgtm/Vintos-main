@@ -1,3 +1,41 @@
+## 26 October — Exhibitions of what mattered to him
+
+Built on `claude/exhibitions-2026-10-26` (Codex's proposal 20, approved by Gloria); not yet merged or deployed.
+`scripts/exhibitions.py`, a few lines in `scripts/atelier-visit.py`, one route in `bin/server.py`
+(`GET /api/atelier/exhibitions`, behind the app secret), an Exhibitions section at the top of the app's Atelier tab, and
+`broker/tests/test_exhibitions.py` (offline: scratch HOME and workspace, model, broker and ntfy stubs, sockets refused).
+No model was asked, nothing was sent, restarted or deployed while building it.
+
+**What is built:**
+- **What may be shown:** works he revealed by his own act (through `atelier_reveals.read_reveals`, the reveal export
+  ledger only) and house-gallery paintings he kept after looking at them (verdict keep; not taken down, not sealed,
+  not under an Atelier path, a real image). The sealed room is never opened. Eligibility is checked when offered and
+  again every time the exhibition is viewed: a work that stops being eligible shows as withdrawn, with no content or link.
+- **The offer** goes into an Atelier visit he already has (no new model call): when at least three works are out, at
+  most once every seven days, at most 2,200 characters — the two earliest works and the newest six, each with its key,
+  date, what he said of it, a dream marker where it came from a dream, and its recorded occasion when
+  `work_episodes.lookup` has one (the want, moment or memory it came from).
+- **He makes it** in that visit with `<exhibition title=...>`: an argument, three to six `<work id=... beside=...>`
+  lines in his order, and `<relation from to>` lines for how one changed into another. Only works offered that visit,
+  each once, each with a line; `beside` only that work's recorded occasion; relations only between its own works.
+  Anything else is refused and he is told why at the next offer. The tag is taken out of the visit's text before the
+  piece, reveal and handoff are read, so nothing inside it acts.
+- **Kept** in `memory/exhibitions.json`: keys, his words, the order, the relations — never a work's content. Marked his
+  curation, not independent evidence about him (`may_witness` false). Nothing reads it back into his self-model, wants
+  or threads (the suite checks that only the visit and the app route use it).
+- **She sees it** in the Atelier tab (images and songs from the existing shelf routes, revealed writing as revealed),
+  and `python3 scripts/exhibitions.py page ID` writes it as a static page to `memory/exhibitions/ID.html`.
+  A dream-made work says "a dream, not something that happened" wherever it is shown.
+- Cost: no model call, no GPU; at most ~550 tokens added to one existing visit turn a week.
+
+**What is left:**
+- No notification: she finds it in the Atelier tab. Nothing tells her one was made.
+- He does not see his past exhibitions in other contexts (only the title of the last one, at the next offer).
+- Moments placed beside a work are only that work's recorded occasion; he cannot place an unlinked moment.
+- Songs on the music shelf and videos are not offered (only revealed works and kept paintings); revealed images whose
+  file is not on the gallery shelf show without a picture.
+- The app section was not tried on a phone.
+
 ## 26 October — Room sources kept apart
 
 Built on `claude/room-sources-2026-10-26` (Codex's proposal 18, approved by Gloria); not yet merged or deployed.
