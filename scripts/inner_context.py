@@ -72,7 +72,8 @@ _FULL = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification"
          ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("intent_context", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
          ("pleasure_substrate", "context_block"),   # what is still in him from a named moment, his own words (grok-somatic-p6, 2026-09-05)
          ("resonance_felt", "block"),               # what he held back rhymed with what she left unsaid, by meaning (her green light, 2026-09-09)
-         ("pearl_engine", "proposed_block")]        # proposals awaiting his adoption; nothing binds until he says so (astra-inner-p5)
+         ("pearl_engine", "proposed_block"),        # proposals awaiting his adoption; nothing binds until he says so (astra-inner-p5)
+         ("door_messages", "block")]                # a message he took at the door, and whether it reached her; never its words (proposal 19)
 
 _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification", "get_field_hint"),
             ("mutual_simulation", "get_interaction_hint"), ("world_model", "get_world_block"),
