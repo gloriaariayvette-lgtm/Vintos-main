@@ -80,7 +80,9 @@ def disagreements_path(): return lab_root() / DISAGREEMENTS_NAME
 def verdicts_path(): return lab_root() / VERDICTS_NAME
 
 
-def append_ledger(path, row):
+def append_ledger(name, row):
+    """Append one row to one of this module's two stores, named by its file name in the Lab."""
+    path = lab_root() / name
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -275,7 +277,7 @@ def declare(raw, *, by="hand", today=None, now=None):
                supports="the measured value with its uncertainty lies inside one prediction and outside the other",
                opposes="it lies outside both (supports neither); inside both is impossible by construction",
                truth_status=TRUTH)
-    append_ledger(disagreements_path(), out)
+    append_ledger(DISAGREEMENTS_NAME, out)
     return out
 
 
@@ -407,7 +409,7 @@ def settle():
                 if state(ident) != "open":
                     break
                 verdict = adjudicate(dis, row, results[key], divergence.get(dis.get("divergence"), {}))
-                append_ledger(verdicts_path(), verdict)
+                append_ledger(VERDICTS_NAME, verdict)
                 out.append(verdict)
     return out
 
