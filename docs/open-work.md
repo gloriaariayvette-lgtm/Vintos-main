@@ -1,3 +1,62 @@
+## 26 October — An atlas of useful negative results
+
+Built on `claude/negative-atlas-2026-10-26` (Codex's proposal 12, approved by Gloria); not yet merged or deployed.
+`scripts/lab_negative_atlas.py`, two small hooks in `scripts/lab_measurement.py`, and
+`broker/tests/test_negative_atlas.py` (56 checks, offline: scratch workspace, results made by the Lab's own freeze and
+evaluate on invented outputs, panel and verdict rows written by hand, sockets closed, the paid ledger stubbed to
+refuse). No model was asked, nothing was folded, fetched, run on the GPU or deployed while building it.
+`lab_investigations.py` was not touched (another change is in progress there), and the commissioning gate is untouched.
+
+**What is built:**
+- **Three classes, kept apart.** Every retained result that did not support its prediction becomes one atlas entry:
+  `refuted` (a clean measurement contradicted it under its frozen terms), `inconclusive` (measured, undecided — shown
+  as "undecided, not negative"), or `failed_execution` (no measurement of the claim was made: `failure: tool` when
+  the tool did not produce the output, `failure: measurement` when the output could not be measured under the frozen
+  terms — a missing field, other units, another cohort). A failed execution "says nothing about it either way" and
+  is never shown to the planner as a negative. Sources: `measurement-results.jsonl` with its contracts
+  (lab_measurement), `family-results.jsonl` (lab_family_panel: refuted / inconclusive panels), and
+  `disagreement-verdicts.jsonl` (lab_disagreement: supports_neither is a refuted pair of predictions).
+- **Scoped, with limits in words.** Each entry carries the claim, the conditions it was measured under (evaluator,
+  variable, units, experimental unit, comparator, tools, threshold or effect size, cohort, output digests), why it
+  came out as it did, the estimate, whether it was confirmatory, and its limits: "holds only for …", "does not test
+  other tools, other cohorts, other thresholds or other units, and is not biological proof: the subject is not
+  closed by it". A refuted result measured on outputs that existed before its contract is marked exploratory. A
+  result whose contract was revised since is marked superseded and no longer offered. Derived on read; the id is
+  a digest of its source, so the same result is always the same entry. `show`, `search <words>`, `entry <id>`,
+  `reuses` from the command line.
+- **A later plan reuses one exact negative, not reruns it.** The planner's existing measurement view
+  (`lab_measurement.planner_view`, local Gemma, only where it fits) now shows at most two refuted or inconclusive
+  entries that share words with its question — never its own, never a failed execution — each with what it holds
+  for and which conditions can be varied, kept short. It may return `builds_on_negative: {id, varies, to, why}` with
+  its plan; `lab_measurement.from_planner` hands it to the atlas, which records it in `negative-reuses.jsonl` with
+  the entry's limits copied in. Refused, and recorded as refused, with nothing blocked: a condition the entry was not
+  measured under, an unchanged value (a rerun), a failed execution (it can only be retried), the investigation that
+  produced it, no reason, or a reason that writes the subject off ("impossible", "dead end", "rules out the whole").
+  One reuse per investigation per entry, three a day; the same refusal on the next planning step is kept once.
+- **A rerun is named.** When the investigation's own frozen contract would measure exactly what a refuted one
+  measured (same evaluator, prediction, variable, units, thresholds, cohort and tools), the planner view says so and
+  asks it to vary a condition or say why it is a replication. A warning, not a gate.
+
+**Acceptance to watch for:** on Aegis, `python3 scripts/lab_negative_atlas.py show` once measurement contracts have
+settled there. Today it prints `{"refuted": 0, "inconclusive": 0, "failed_execution": 0}` — read-only check on 26
+October: none of the measurement, family-panel or disagreement stores exists in her workspace yet, because those
+builds are not deployed. The proof is three retained cases classified (one of each class), then one later
+investigation's `builds_on_negative` recorded as `reused`, and its own result read beside it.
+
+**What is left:**
+- No real case has been classified: the stores it reads are empty on Aegis. The three-case proof is shown only on the
+  suite's fixtures until contracts settle in her Lab.
+- Older retained negatives — investigations whose review said the outputs did not answer, failed steps, spent dead
+  ends — are not indexed. They carry no frozen prediction, so nothing could separate a refuted claim from a broken
+  run in them; the atlas starts with the measurement semantics of proposal 04, as the proposal said it depends on.
+- Relevance is shared words with the question, not meaning. A negative phrased differently from the next question
+  will not be shown; a word in common can show an unrelated one (its limits are shown with it).
+- The planner sees the atlas only through the measurement view, which `lab_investigations._plan` drops entirely when
+  the prompt is at its limit, and the investigation prompt's example JSON does not mention `builds_on_negative`. A
+  dedicated, separately trimmed atlas line in the planner task would need a hook in `lab_investigations.py`.
+- The finding appraisal (`lab_findings`) and the paid frontier plan are not shown the atlas; nothing was added to a
+  paid prompt.
+
 ## 26 October — A disagreement between two readings, turned into the next measurement
 
 Built on `claude/disagreement-next-2026-10-26` (Codex's proposal 11, approved by Gloria); not yet merged or deployed.
