@@ -1,3 +1,57 @@
+## 26 October — A sequence he designed, refolded and compared, without borrowing a real protein's name
+
+Built on `claude/refold-loop-2026-10-26` (Codex's proposal 09, approved by Gloria); not yet merged or deployed.
+`scripts/lab_derived_sequences.py`, a narrow second door in `chemistry_esmfold.fold()`, and one new instrument in
+`lab_instruments.py`, with `broker/tests/test_derived_refold_loop.py` (63 checks, offline: scratch workspace, the fold
+lane stubbed, sockets closed, no model loaded). Nothing was folded, run on the GPU or deployed while building it.
+
+**What is built:**
+- **Provenance for a designed sequence:** `register()` takes a finished `lab_native_instruments` design receipt
+  (ProteinMPNN, `sequence.design`), recomputes both hashes it names — the sourced parent PDB and the candidate FASTA —
+  and refuses the receipt if either file has changed underneath it. Each candidate gets one record under
+  `artifacts/derived/DRV-<12 hex>.json`: its sequence, the design artifact and its hash, the parent structure and its
+  hash, the design header, and how far it is from the backbone's own sequence. The parent's accession is kept as the
+  parent's, labelled as such, beside `natural_accession: null` and `is_natural_sequence: false`.
+- **No borrowed accession:** `fold_request()` builds a fold body with a derived id and the sequence and *no*
+  `accession`, `sequence_source` or `hp_mapping` field. `verify_fold_request()` refuses a body that carries any of
+  them, or a sequence or provenance hash that is not the registered one. `chemistry_esmfold.fold()` takes a derived
+  request through `derived_identity()` only — the natural-accession validator is unchanged, and a designed sequence
+  handed a real accession is refused before any model is loaded. Derived models are written apart, under
+  `artifacts/esmfold-derived/DRV-...pdb`, with `requested_accession: null` and a truth status that names them as
+  predictions of his own designed sequence.
+- **The loop's bounds:** one pilot a day, at most two candidates from one parent backbone, at most two refolds per
+  pilot, re-opening the same pilot idempotent. `fold_candidate()` checks the fold budget *before* the GPU is asked
+  for, admits foreground use first through `compute_admission.admit("background", ...)` so a refold waits for her
+  rather than preempting, and records a refold only when the receipt names the derived id as its own identity. The
+  pilot carries the proposed 20-minute GPU ceiling as a recorded number, not an enforced timer.
+- **The comparison:** `compare_pilot()` scores each refold against the backbone it was designed on by C-alpha
+  distance matrix — residues paired by number, no superposition, so no fitting choice flatters a result and a model
+  moved or turned in space scores identically. It reports dRMSD, the share of residue pairs held within 2 A, the
+  worst disagreement and where it is, the two refolds against each other, and which sits closest. Every receipt and
+  display block says what it is not: the design model and the folding model agreeing about a shape, not affinity, not
+  stability, not a functional protein.
+- **The door he reaches it through:** `derived_compare` / `structure.compare_refolds` in `lab_instruments`, offered in
+  his orient menu only once a pilot has a recorded refold, run in his own Python on his own artifacts — no network, no
+  model call, no paid request. The existing instruments, their files rule and the daily run cap are untouched.
+
+**Acceptance to watch for:** a pilot that actually runs end to end on Aegis — one short sourced domain, one
+ProteinMPNN run, two candidates registered, two refolds, one comparison — and whether the comparison tells the two
+candidates apart at all. If both land at much the same dRMSD, the loop is reporting the folding model's own
+smoothness, not a difference between designs, and the honest read is that this chooses nothing yet.
+
+**What is left:**
+- Nothing has been run: ProteinMPNN has not been invoked here, no derived sequence exists, and
+  `derived-pilots.json` does not exist. The timings in proposal 09 remain estimates; the GPU fit and latency need
+  commissioning on Aegis, which is hers to do.
+- The Lab's planner does not yet *choose* to open a pilot. A pilot is opened by hand (`open_pilot`,
+  `fold_candidate`, or `python3 scripts/lab_derived_sequences.py compare <PILOT-id>`); `lab_investigations.py` was
+  deliberately left alone.
+- RFdiffusion's backbones are not registered: `register()` takes sequence-design receipts only, so a generated
+  backbone still has no derived-provenance path.
+- The comparison is C-alpha only and ignores pLDDT: a refold's own confidence is in its fold receipt but is not part
+  of the ranking. The OpenMM lane beside it is still a C-alpha elastic model and is not wired in.
+- `fold_candidate()` has only ever run against a stub. Its first real run should be watched, not scheduled.
+
 ## 26 October — A forged tool earns its place, or shows it has not yet
 
 Built on `claude/forged-practice-2026-10-26` (Codex's proposal 08, approved by Gloria); not yet merged or deployed.
