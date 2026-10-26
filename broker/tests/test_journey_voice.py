@@ -70,4 +70,12 @@ check("closed session rejects late callbacks", late.get("refused")=="voice sessi
 json.dump(sess,open(os.path.join(MEM,"voice-session-state.json"),"w"))
 recovered=asyncio.run(ns["voice_session_end"]({}))
 check("already-persisted session recovery cannot append a duplicate", recovered.get("skipped")=="session already persisted" and len(json.load(open(os.path.join(MEM,"interaction-ledger.json"))))==1)
+# 26 October: the local lane's app sent her audio reading (a JSON object) as "heard"; it is not his words
+if os.path.exists(os.path.join(MEM, "voice-session-state.json")): os.remove(os.path.join(MEM, "voice-session-state.json"))
+asyncio.run(ns["voice_ledger"]({"client_session_id": "local-session", "turn_id": "local-1", "gloria": "wait",
+                                "vintos": "I was going to say the fig", "interrupted": True,
+                                "heard": json.dumps({"prosody": {"pace": "slow"}, "reading": "soft, unhurried"})}))
+t4 = json.load(open(os.path.join(MEM, "voice-session-state.json")))["turns"][-1]
+check("her audio reading is never served as his heard words", t4["vintos_heard"] == ""
+      and t4["vintos"] == "[playback incomplete; heard words unknown]" and "soft" not in t4["vintos"], t4)
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
