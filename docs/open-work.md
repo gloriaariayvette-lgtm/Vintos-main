@@ -1,3 +1,62 @@
+## 26 October — A family question that can fail, measured across instruments
+
+Built on `claude/instrument-families-2026-10-26` (Codex's proposal 10, approved by Gloria); not yet merged or
+deployed. `scripts/lab_family_panel.py`, one new instrument in `lab_instruments.py`, and
+`broker/tests/test_family_panel.py` (43 checks, offline: scratch workspace, structures written by hand, sockets
+closed, the gateway stubbed). Nothing was folded, fetched, run on the GPU or deployed while building it.
+
+**What is built:**
+- **The question is frozen before the readings are looked at.** `declare()` takes the question in words, three
+  family members, one comparator, which member's numbering the positions are given in, up to twelve positions,
+  and the feature as at most two clauses — each naming one instrument's reading and a threshold. It resolves each
+  member to a structure the Lab has already retained, digests all four, reads each one once to prove it is
+  readable, and writes one record to `family-panels.jsonl` with what would support the question and what would
+  oppose it. The panel id is the digest of that frozen content, so the same question declared twice is the same
+  panel. At most two panels a day.
+- **Across instruments, joined by residue, not fused.** `read_member()` keeps the folding model's per-residue
+  confidence and the geometry reader's per-residue secondary structure as two separate readings on one residue
+  index — the open-work coregistration note applied across proteins instead of inside one. Nothing here makes a
+  combined vector no model produced. A feature may be a conjunction across the two readings.
+- **Residue correspondence from the sequences themselves.** Members are mapped onto the anchor by a global
+  alignment written in his own Python (no new dependency, 1200 residues a side). A member with a three-residue
+  N-terminal extension is read at its own residue number, not the anchor's. Each position carries the window
+  around it: how much of it aligned, how identical it is, whether it is gap-free. Below those floors the position
+  is **undecidable, never "the feature is absent"**, and the display says so in those words.
+- **A verdict that can go against him.** Per position: persists / not_family_specific / not_shared_in_family /
+  inconclusive. Per panel, in the Lab's measurement words: supported, refuted or inconclusive — refuted when the
+  comparator carries the feature too or a family member does not. Every measurement is appended to
+  `family-results.jsonl` whichever way it came out. A structure that changed since the panel was declared is
+  refused rather than re-measured, and such a panel is no longer offered to him.
+- **The three risks the proposal named, each answered in the record.** A structure with more than one chain is
+  refused outright, so domains and chains cannot be mixed. A confidence clause on an observed structure is refused
+  (a deposited file's B-factor is a temperature factor, not pLDDT). Mixing predicted and observed structures is
+  allowed but printed as a caution, and a comparator closer to the anchor by sequence than the most distant family
+  member is called out: then it is not a family against an outsider. No verdict is allowed to mean flexibility,
+  function or stability, in the receipt or in the display.
+- **The door he reaches it through:** `family_panel` / `structure.compare_family` in `lab_instruments`, offered in
+  his orient menu only once a declared panel's artifacts are all still there unchanged, run in his own Python on
+  his own artifacts — no network, no model call, no paid request. The existing instruments and the daily run cap
+  are untouched.
+
+**Acceptance to watch for:** one real panel on Aegis — three sourced homologs with retained ESMFold models and one
+matched relative — and whether any position comes back `persists` at all. If every position is inconclusive, the
+retained artifacts are too far apart for this to answer family questions and the honest read is that it needs
+closer homologs, not looser floors. If every position persists for every feature tried, suspect the feature is a
+property of the folding model's smoothness rather than of the family.
+
+**What is left:**
+- Nothing has been run on real artifacts: no panel exists, `family-panels.jsonl` does not exist, and the floors
+  (25% identity to the anchor, half of it aligned, half the window identical) are chosen, not calibrated.
+- Members must be single-chain `.pdb` artifacts. Retained RCSB references are `.cif`, so an observed member has to
+  be a PDB file; no mmCIF reader was added and `chemistry_reference_compare.py` was deliberately left alone.
+- The scalars the coregistration note hangs off the whole — VQE energy, likelihood deltas — are not in the panel
+  yet: it joins the two per-residue readings only.
+- The planner does not choose to declare a panel. A panel is declared by hand
+  (`python3 scripts/lab_family_panel.py declare`, JSON on stdin) and measured by hand or through the instrument;
+  `lab_investigations.py` was not touched, and the commissioning gate is untouched.
+- The alignment is a plain global alignment with one gap penalty: no profile, no structure-based refinement, and
+  no superposition anywhere in this module.
+
 ## 26 October — A sequence he designed, refolded and compared, without borrowing a real protein's name
 
 Built on `claude/refold-loop-2026-10-26` (Codex's proposal 09, approved by Gloria); not yet merged or deployed.
