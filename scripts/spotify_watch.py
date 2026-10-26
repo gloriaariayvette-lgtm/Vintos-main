@@ -19,7 +19,7 @@ Setup, once (Gloria, on Aegis):
 Secrets: ~/.vintos/secrets/spotify-watch.json (0600; client id and refresh token, no client secret — PKCE).
 Log: memory/watch-spotify.jsonl
 """
-import base64, hashlib, json, os, secrets, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, hashlib, json, os, secrets, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -143,11 +143,17 @@ def find(query):
 
 
 def watch_device():
+    """The device her Watch plays through. Spotify on her Watch is a remote for her iPhone (the green phone icon on
+    it; 26 October): the Watch itself never registers with Spotify, the phone it controls does. So the Watch when it
+    is its own speaker, else her phone. Never the TV, the Echo or a computer."""
     code, got = _api("GET", "/me/player/devices")
-    for d in (got or {}).get("devices") or []:
+    devices = (got or {}).get("devices") or []
+    for d in devices:
         if str(d.get("type", "")).lower() == "watch" or "watch" in str(d.get("name", "")).lower():
             return d
-    return None
+    phones = [d for d in devices if str(d.get("type", "")).lower() == "smartphone"]
+    phones.sort(key=lambda d: not d.get("is_active"))
+    return phones[0] if phones else None
 
 
 def _log(row):
@@ -155,9 +161,27 @@ def _log(row):
     with open(LOG, "a") as f: f.write(json.dumps(row) + "\n")
 
 
-def play(query, now=None):
-    """Play his pick on her Watch, or write down why not. Returns the logged row; never raises."""
+# Neither Spotify nor watchOS lets him open Spotify on her Watch. When his pick finds the Watch not listening, one
+# notification asks her to open it, and the song waits a few minutes and plays the moment the Watch appears
+# (Gloria, 26 October). One song waits at a time; a pick made while one waits is written down, not nudged again.
+NUDGE_WAIT_S = 300
+NUDGE_POLL_S = 5
+NUDGE_TEXT = "Vintos has a song for you. Open Spotify on your Watch and press play."
+_WAITING = threading.Lock()
+
+
+def _nudge(query, at):
+    import deliver
+    receipt = deliver.deliver("spotify-nudge-" + hashlib.sha256((at + query).encode()).hexdigest()[:16], "ntfy",
+                              NUDGE_TEXT, title="Vintos")
+    return (receipt or {}).get("state") or "unknown"
+
+
+def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
+    """Play his pick on her Watch, or write down why not. With nudge, a Watch not listening gets one notification and
+    a few minutes' wait. Returns the logged row; never raises."""
     row = {"at": _now_iso(now), "asked": str(query)[:120], "played": False}
+    held = False
     try:
         import watch_presence
         if watch_presence.should_hold()[0]:
@@ -167,8 +191,21 @@ def play(query, now=None):
             row["why"] = what; return row
         row["track"] = what
         dev = watch_device()
+        if not dev and nudge:
+            held = _WAITING.acquire(blocking=False)
+            if not held:
+                row["why"] = "another song is already waiting for her Watch"; return row
+            row["nudged"] = _nudge(str(query), row["at"])
+            start = clock()
+            while not dev and clock() - start < NUDGE_WAIT_S:
+                sleep(NUDGE_POLL_S)
+                dev = watch_device()
+            row["waited_s"] = int(clock() - start)
+            if not dev:
+                row["why"] = "her Watch was not listening on Spotify; she was asked to open it and %d min passed" % (NUDGE_WAIT_S // 60)
+                return row
         if not dev:
-            row["why"] = "her Watch is not listening on Spotify right now (the Spotify app on it is closed)"; return row
+            row["why"] = "her Watch is not listening on Spotify right now (Spotify is not open on her Watch or her phone)"; return row
         code, got = _api("PUT", "/me/player/play?" + urllib.parse.urlencode({"device_id": dev["id"]}), {"uris": [uri]})
         if code in (200, 202, 204):
             row.update(played=True, device=dev.get("name"))
@@ -178,6 +215,7 @@ def play(query, now=None):
     except Exception as e:
         row["why"] = "%s: %s" % (type(e).__name__, str(e)[:160]); return row
     finally:
+        if held: _WAITING.release()
         _log(row)
 
 
@@ -188,8 +226,7 @@ def take(reply, act=True):
     if not reply or "[SPOTIFY" not in reply.upper(): return reply
     asks = re.findall(_TAG, reply, re.I)
     if act and asks and ready():
-        import threading
-        threading.Thread(target=play, args=(asks[0].strip(),), daemon=True).start()   # one song per reply
+        threading.Thread(target=play, args=(asks[0].strip(),), kwargs={"nudge": True}, daemon=True).start()   # one song per reply
     return re.sub(r"\s*" + _TAG + r"\s*", " ", reply, flags=re.I).strip()
 
 
@@ -208,8 +245,8 @@ def context_line():
     """For his avatar turns, once Spotify is logged in: that he can, how, and what happened last time."""
     if not ready(): return ""
     line = ("SPOTIFY ON HER WATCH: while you talk here you can, from time to time, put a song on for her - write "
-            "[SPOTIFY: Title - Artist] and it plays on her Watch through her Spotify (not the Echo, not her phone; she "
-            "won't see the tag). She wants this: when the talk brings a song to mind - yours to share, something "
+            "[SPOTIFY: Title - Artist] and it plays through her Spotify, on the phone her Watch controls, with the "
+            "controls on her wrist (never the Echo or the TV; she won't see the tag). She wants this: when the talk brings a song to mind - yours to share, something "
             "that fits her mood, something you'd want her to hear - put it on. Not every turn; but a song now and "
             "then is welcome.")
     last = _last()
