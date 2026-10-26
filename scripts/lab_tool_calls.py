@@ -188,13 +188,117 @@ def normalize_request(route, request):
     return request
 
 
+def _flat(word):
+    return re.sub(r'[^a-z0-9]', '', str(word or '').lower())
+
+
+def canonical(word, names):
+    """The one name in names that word spells, ignoring case, spaces, hyphens, dots and underscores; None when it
+    spells none or more than one."""
+    if not isinstance(word, str) or not word.strip():
+        return None
+    if word in names:
+        return word
+    hits = [n for n in names if _flat(n) == _flat(word)]
+    return hits[0] if len(hits) == 1 else None
+
+
+# keys the planner has put an instrument's name under instead of "skill" (26 October: "instrument" 31 times)
+_SKILL_KEYS = ('instrument', 'instrument_name', 'skill_name', 'name', 'tool')
+# keys she has put one Lab artifact under instead of "files"
+_FILE_KEYS = ('artifact', 'structure_id', 'structure', 'model', 'file', 'structure_file', 'model_file', 'path')
+
+
+def _artifact(value):
+    """The one Lab artifact a value names: its listed path, its file name, or (for an accession) the protein's only
+    ESMFold model; None when it names none or several."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    import lab_instruments
+    listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
+    v = value.strip()
+    if '/memory/chemistry-lab/' in v:
+        v = v.split('/memory/chemistry-lab/', 1)[1]
+    if v in listed:
+        return v
+    named = [f for f in listed if f.rsplit('/', 1)[-1] == v.rsplit('/', 1)[-1]]
+    if len(named) == 1:
+        return named[0]
+    if re.fullmatch(r'[A-Za-z0-9]{4,12}', v):
+        models = [f for f in listed if f.startswith('artifacts/esmfold/%s-' % v.upper()) and f.endswith('.pdb')]
+        if len(models) == 1:
+            return models[0]
+    return None
+
+
 def normalize_instrument(request):
     """Name the instrument when the planner named only its operation, or put the instrument's name where the
     operation goes ({"operation":"fold_read"}): each operation belongs to one instrument, so nothing is guessed. 125
-    investigation steps in two days were refused as "not offered" for this alone (23 October)."""
+    investigation steps in two days were refused as "not offered" for this alone (23 October).
+
+    Also read, when exactly one thing is meant: the instrument's name under another key ({"instrument":
+    "fold_read"}) or as a key of its own ({"fold_read": {...}}), its name or operation in another spelling
+    ("Fold-Read", "analyze" for structure.analyze), the one operation of a one-operation instrument left out, and one
+    Lab artifact under another key ({"artifact": <a listed model>}). On 26 October 42 steps were refused as "not
+    offered" for these shapes, every one with "instrument:None" as its tool."""
     from lab_instruments import OFFERED
     from lab_native_instruments import OPERATIONS
     request=dict(request)
+    wrapped=request.get('protein_design_mcp')
+    if isinstance(wrapped,dict) and wrapped.get('tool') in _mcp_tools() and set(request)<={'protein_design_mcp','question'}:
+        # {"protein_design_mcp": {"tool": "predict_structure_boltz", ...}}: the menu's own heading around the call
+        request=dict(wrapped,**({'question':request['question']} if request.get('question') else {}))
+    if request.get('tool') in _mcp_tools():
+        return request
+    names=list(OFFERED)+list(OPERATIONS)
+    ops_of=lambda s: list(OFFERED.get(s) or ())+([OPERATIONS[s]] if s in OPERATIONS else [])
+    if isinstance(request.get('skill'),str) and request['skill'] not in names:
+        named=canonical(request['skill'],names)
+        if named:request['skill']=named
+    if not request.get('skill'):
+        for key in _SKILL_KEYS:
+            named=canonical(request.get(key),names)
+            if named and not (key=='tool' and request.get(key) in _mcp_tools()):
+                request['skill']=named
+                if key!='tool':request.pop(key)
+                break
+    if not request.get('skill') and not request.get('operation'):
+        for key in _SKILL_KEYS[:-1]:     # an operation under the instrument's key: {"instrument": "structure.analyze"}
+            named=canonical(request.get(key),[o for s in names for o in ops_of(s)])
+            if named:
+                request.pop(key);request['operation']=named
+                break
+    if not request.get('skill'):
+        own=[k for k in request if canonical(k,names)]
+        if len(own)==1:
+            key=own[0];inner=request.pop(key);request['skill']=canonical(key,names)
+            if isinstance(inner,dict) and set(inner)!={'step','path'}:
+                request={**inner,**request}
+            elif isinstance(inner,str) and _artifact(inner) and not request.get('files'):
+                request['files']=[_artifact(inner)]
+            elif inner not in (None,'',{},[]):
+                request[key]=inner      # kept as given; the instrument's own checks say what is missing
+    if isinstance(request.get('operation'),str) and request.get('operation') not in [o for s in names for o in ops_of(s)] \
+            and request['operation'] not in names:
+        pool=ops_of(request['skill']) if request.get('skill') in names else [o for s in names for o in ops_of(s)]
+        named=canonical(request['operation'],pool)
+        if not named:   # "analyze" for structure.analyze: the part after the dot, if only one operation has it
+            tail=[o for o in pool if _flat(o.rsplit('.',1)[-1])==_flat(request['operation'])]
+            named=tail[0] if len(tail)==1 else None
+        if not named:
+            named=canonical(request['operation'],names)   # an instrument's name where the operation goes
+        if named:request['operation']=named
+    if not request.get('skill') and request.get('operation') in names and len(ops_of(request['operation']))>1:
+        # {"operation": "structure_viewer"}: the instrument is named, its operation is not; that is asked for, not guessed
+        request['skill']=request.pop('operation')
+    if request.get('skill') in names and not request.get('operation') and len(ops_of(request['skill']))==1:
+        request['operation']=ops_of(request['skill'])[0]
+    if not request.get('files'):
+        for key in _FILE_KEYS:
+            found=_artifact(request.get(key))
+            if found:
+                request['files']=[found];request.pop(key)
+                break
     skill,op=request.get('skill'),request.get('operation')
     # An explicit single-operation instrument name identifies its reader even
     # when the request also carries the generic viewer skill.
@@ -216,6 +320,14 @@ def normalize_instrument(request):
         skill=owners[0]
     request.update(skill=skill,operation=op)
     return request
+
+
+def _mcp_tools():
+    try:
+        from chemistry_mcp import TOOLS
+        return TOOLS
+    except Exception:
+        return frozenset(("score_stability", "suggest_hotspots", "predict_structure_boltz", "predict_complex"))
 
 
 def execution_request(route, request):

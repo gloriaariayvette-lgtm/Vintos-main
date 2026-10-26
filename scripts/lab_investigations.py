@@ -308,7 +308,7 @@ def _menu():
         'connectors': {k:{'tools':v['tools'], 'tool_prefixes':v['tool_prefixes'], 'limits':v['limits']}
                        for k,v in instructions('lab')['connectors'].items() if v.get('enabled') is not False},
         'account_connectors': claude_connector_catalog.instructions('lab'),
-        'instruments': lab_instruments.menu_block(),
+        'instruments': lab_instruments.planner_menu(),
         'protein_design_mcp': chemistry_mcp.instructions(),
         'native': lab_native_instruments.menu(),
         'experiments': {'protein': 'Exact sourced target_accession, protein_name, optional region. Fold on this host.',
@@ -397,6 +397,9 @@ def _plan(investigation, context, ask, note=None):
         'tools': _menu(),
         'available_routes':list(ROUTES),
         'request_examples': {'source':{'source':'ncbi','operation':'protein','organism':'a sourced organism','term':'one protein family'},
+                             'instrument':{'skill':'fold_read','operation':'structure.read',
+                                           'files':['<a file listed under tools.instruments.skills.fold_read.files>'],
+                                           'range':[1, 120],'question':'what the read should answer'},
                              'representation':{'records':{'step':'prior-id','path':['normalized_records']}}},
         # route first: a reply that copied the task's own fields in order (question, prediction, plan, then the
         # turn's context) ran out of room before any route; 47 turns since 24 October were refused for that
@@ -461,6 +464,10 @@ def _plan(investigation, context, ask, note=None):
         task['tools'] = {'routes':list(menu), 'connectors':sorted(menu.get('connectors') or {}),
                          'account_connectors':sorted(k for k, v in __import__('claude_connector_catalog').PLUGINS.items()
                                                      if v.get('enabled') is not False and 'lab' in v.get('surfaces', ())),
+                         # the exact instrument names stay in front of her when the full menu does not fit
+                         'instruments':{'runs_left_today':lab_instruments.runs_left(),
+                                        'request':'{skill,operation,files,question}',
+                                        'skills':lab_instruments.skill_operations()},
                          'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
                          'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
         prompt = json.dumps(task, ensure_ascii=False)
@@ -953,6 +960,7 @@ def _route_word(word, request):
     experiment by its own name. None for anything else, a menu of several among them."""
     import lab_instruments
     from lab_native_instruments import OPERATIONS
+    from lab_tool_calls import canonical
     w = str(word or '').strip()
     low = w.lower()
     if low in ROUTES or low in SOURCE_ROUTES:
@@ -962,12 +970,92 @@ def _route_word(word, request):
         head, tail = m.groups()
         field = {'instrument': 'skill', 'native': 'skill', 'source': 'source', 'experiment': 'experiment'}.get(head)
         return head, (dict(request, **{field: request.get(field) or tail}) if field else request)
-    if w in lab_instruments.OFFERED:
-        return 'instrument', dict(request, skill=request.get('skill') or w)
-    if w in OPERATIONS:
-        return 'native', dict(request, skill=request.get('skill') or w)
+    # a route or source in another spelling: "Source", "sources", "read-output", "NCBI" (26 October: "sources" 10 times)
+    named = canonical(low, ROUTES) or (canonical(low[:-1], ROUTES) if low.endswith('s') else None)
+    if named:
+        return named, request
+    named = canonical(low, SOURCE_ROUTES)
+    if named:
+        return named, request
+    named = canonical(w, list(lab_instruments.OFFERED))
+    if named:
+        return 'instrument', dict(request, skill=request.get('skill') or named)
+    named = canonical(w, list(OPERATIONS))
+    if named:
+        return 'native', dict(request, skill=request.get('skill') or named)
     if low in EXPERIMENTS:
         return 'experiment', dict(request, experiment=request.get('experiment') or low)
+    # a connector named as the route ("boltz", "genomic_intelligence", "nvidia_nim"), or a route word that is none of
+    # these with the request naming its connector's tool as "plugin.tool": a plugin call when exactly one tool is meant
+    # (26 October: 14 steps refused as an unknown route for this)
+    plugin = canonical(w, _lab_plugins())
+    call = _plugin_call(plugin, request) if plugin else None
+    if call is None and isinstance(request.get('tool'), str) and '.' in request['tool']:
+        head = canonical(request['tool'].split('.', 1)[0], _lab_plugins())
+        call = _plugin_call(head, request) if head else None
+    if call:
+        return 'plugin', call
+    return None
+
+
+def _plugin_tools(plugin, enabled_only=True):
+    """The full tool names ("plugin.tool") a Lab connector offers; [] for one whose tools go by prefix; None when the
+    Lab has no such connector (or, with enabled_only, none switched on)."""
+    try:
+        from plugin_catalog import instructions
+        con = (instructions('lab').get('connectors') or {}).get(plugin)
+        if con is not None and (con.get('enabled') is not False or not enabled_only):
+            return [str(t) for t in con.get('tools') or []]
+    except Exception:
+        pass
+    try:
+        import claude_connector_catalog
+        entry = claude_connector_catalog.PLUGINS.get(plugin)
+        if entry and 'lab' in entry.get('surfaces', ()) and (entry.get('enabled') is not False or not enabled_only):
+            return [plugin + '.' + str(t) for t in list(entry.get('read') or ()) + list(entry.get('action') or ())]
+    except Exception:
+        pass
+    return None
+
+
+def _lab_plugins():
+    names = set()
+    try:
+        from plugin_catalog import instructions
+        names |= {k for k, v in (instructions('lab').get('connectors') or {}).items() if v.get('enabled') is not False}
+    except Exception:
+        pass
+    try:
+        import claude_connector_catalog
+        names |= {k for k, v in claude_connector_catalog.PLUGINS.items()
+                  if 'lab' in v.get('surfaces', ()) and v.get('enabled') is not False}
+    except Exception:
+        pass
+    return sorted(names)
+
+
+def _plugin_call(plugin, request):
+    """{plugin, tool, arguments} for a request meant for this connector when it names exactly one of its tools: under
+    "tool" or "operation", with or without the connector's prefix, or as the request's one key holding the arguments.
+    None otherwise."""
+    from lab_tool_calls import canonical
+    tools = _plugin_tools(plugin)
+    if not tools or not isinstance(request, dict):
+        return None
+    bare = {t.split('.', 1)[1] if t.startswith(plugin + '.') else t: t for t in tools}
+    def full(word):
+        hit = canonical(word, tools) or canonical(word, list(bare))
+        return bare.get(hit, hit) if hit else None
+    for key in ('tool', 'operation'):
+        tool = full(request.get(key))
+        if tool:
+            args = request.get('arguments')
+            if not isinstance(args, dict):
+                args = {k: v for k, v in request.items() if k not in (key, 'plugin', 'arguments')}
+            return {'plugin': plugin, 'tool': tool, 'arguments': args}
+    own = [k for k in request if full(k)]
+    if len(own) == 1 and isinstance(request[own[0]], dict):
+        return {'plugin': plugin, 'tool': full(own[0]), 'arguments': dict(request[own[0]])}
     return None
 
 
@@ -1245,6 +1333,26 @@ def _reference_input(request, steps):
     return request, ''
 
 
+def _other_door(request):
+    """(route, request) for an instrument request that names no instrument but exactly one other door: a Lab source
+    ({"source": "pdb", "operation": "structure_evidence", ...}) or an experiment ({"experiment": "protein"}). None
+    otherwise."""
+    from lab_tool_calls import normalize_instrument, canonical
+    import lab_instruments
+    if not isinstance(request, dict):
+        return None
+    probe = normalize_instrument(request)
+    if probe.get('tool') or probe.get('skill') in lab_instruments.skill_operations():
+        return None
+    source = canonical(request.get('source'), SOURCE_ROUTES)
+    experiment = canonical(request.get('experiment'), EXPERIMENTS)
+    if source and not experiment:
+        return 'source', dict(request, source=source)
+    if experiment and not source:
+        return 'experiment', dict(request, experiment=experiment)
+    return None
+
+
 def _again(investigation, data, context, ask, note, kind):
     """One re-plan within this turn, counted against MAX_REPLANS; the reply, or None when it could not be had."""
     investigation['replans'] = int(investigation.get('replans', 0)) + 1
@@ -1266,6 +1374,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
     route, request = value.get('route'), value.get('request') or {}
     if not isinstance(request,dict): raise ValueError('operation request must be an object')
     authored_route = None
+    inferred = value.get('_route_inferred')
+    if route in ('instrument', 'native'):
+        door = _other_door(request)
+        if door:
+            route, request = door
+            inferred = 'an instrument request naming only a %s' % route
     if route in SOURCE_ROUTES:
         # a source named as the route ("pubmed", "ncbi") is that source's query: 250 steps in two days were refused
         # as an unknown route for this alone (23 October)
@@ -1302,7 +1416,7 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
             'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
             **({'plan_ref':plan_ref} if plan_ref else {}),
-            **({'route_inferred':value['_route_inferred']} if value.get('_route_inferred') else {})}
+            **({'route_inferred':inferred} if inferred else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
     # are not retried automatically (especially hosted inference).
     step['state'] = 'started'

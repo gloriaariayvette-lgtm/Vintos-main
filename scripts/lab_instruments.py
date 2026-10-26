@@ -169,6 +169,73 @@ def menu_block():
     return "\n".join(lines)
 
 
+def runs_left():
+    return max(0, DAILY_RUNS - len(_runs_today()["runs"]))
+
+
+def skill_operations():
+    """Every instrument the Lab has, with its exact operation names: the offered ones and the native ones."""
+    from lab_native_instruments import OPERATIONS
+    out = {k: list(v) for k, v in OFFERED.items()}
+    out.update({k: [v] for k, v in OPERATIONS.items()})
+    return out
+
+
+def planner_menu():
+    """The instrument route as the investigation planner must write it: the exact skill and operation names, the
+    files each one takes, and the runs left today. It is there also when no run is left, saying so.
+
+    On 26 October the day's 25th run was at 15:33 UTC; from then on menu_block() was empty, the investigation planner
+    was shown no instrument at all, and 42 of her instrument requests that evening named one from memory under keys
+    of her own ({"instrument": "structure_viewer"}, {"artifact": <a model>}), each refused as "not offered"."""
+    from lab_native_instruments import OPERATIONS
+    left = runs_left()
+    if left <= 0:
+        return {"runs_left_today": 0,
+                "state": ("No instrument run is left today: routes instrument and native are not run until tomorrow. "
+                          "Choose a source, plugin, experiment, representation, read_output or finish."),
+                "skills": {k: v for k, v in skill_operations().items()}}
+    structures, sequences = artifacts("structure"), artifacts("sequence")
+    models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
+    skills = {}
+    if structures:
+        skills["structure_viewer"] = {"operations": list(OFFERED["structure_viewer"]), "files": structures}
+    if sequences:
+        skills["sequence_viewer"] = {"operations": list(OFFERED["sequence_viewer"]), "files": sequences}
+    if models:
+        skills["reference_compare"] = {
+            "operations": list(OFFERED["reference_compare"]), "files": models,
+            "also": {"reference": "four-character PDB entry id of a deposited structure (from a pdb source step), never "
+                                  "a protein name or accession", "chain": "A", "ref_span": "[first, last] in the entry's numbering"},
+            "gives": "TM-score, RMSD, the entry's helices and strands in your numbering"}
+        skills["fold_read"] = {"operations": list(OFFERED["fold_read"]), "files": models,
+                               "also": {"range": "[first, last] in your protein's numbering"},
+                               "gives": "helix and strand ranges and confidence per stretch of a model you have"}
+    try:
+        import lab_derived_sequences as derived
+        ready = [p["pilot_id"] for p in derived.pilots() if p.get("folds")]
+    except Exception:
+        ready = []
+    if ready:
+        skills["derived_compare"] = {"operations": list(OFFERED["derived_compare"]), "files": [],
+                                     "also": {"pilot": "one of " + ", ".join(ready)}}
+    try:
+        import lab_family_panel as family
+        declared = [p["panel_id"] for p in family.ready()]
+    except Exception:
+        declared = []
+    if declared:
+        skills["family_panel"] = {"operations": list(OFFERED["family_panel"]), "files": [],
+                                  "also": {"panel": "one of " + ", ".join(declared)}}
+    skills["biohub_esm"] = {"operations": list(OFFERED["biohub_esm"]), "files": [],
+                            "note": "a sourced UniProt accession or sequence named in the question"}
+    native = {k: {"operations": [v], "route": "native"} for k, v in OPERATIONS.items()}
+    return {"runs_left_today": left,
+            "request": {"skill": "<one name from skills, under the key skill>", "operation": "<one of its operations>",
+                        "files": ["<one of its files>"], "question": "<what it should answer>"},
+            "skills": skills, "native_skills": native}
+
+
 def validate(req):
     """(skill, operation, files, question) or ValueError."""
     if not isinstance(req, dict):
