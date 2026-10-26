@@ -131,6 +131,8 @@ def candidates(now=None):
         if made is None or not link or _manifest().sha256_file(link[0]) != sha:
             continue
         about = "%s you revealed from the Atelier" % WORD[medium]
+        if row.get("from_dream"):   # proposal 07: it stays marked as a dream's object, never as something that happened
+            about += ", made from a dream you had (a dream, not something that happened)"
         if _one_line(row.get("disclosure")):
             about += "; what you said of it then: “%s”" % _one_line(row.get("disclosure"))
         out.append((made, "r:" + sha[:16], medium, link[0], link[1], about))

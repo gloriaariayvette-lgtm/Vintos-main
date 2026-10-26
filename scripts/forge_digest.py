@@ -81,10 +81,12 @@ def _reveal_lines(reveals):
         for row in reveals[:3]:
             disclosure = _clip(row.get("disclosure") or row.get("disclosure_sentence"))
             medium = _clip(row.get("medium"), 20)
+            # a piece made from a dream stays marked as one (proposal 07)
+            dreamt = "  [made from a dream he had, not something that happened]" if row.get("from_dream") else ""
             if disclosure:
-                out.append("- " + disclosure + (f"  [{medium}]" if medium else ""))
+                out.append("- " + disclosure + (f"  [{medium}]" if medium else "") + dreamt)
             elif medium:
-                out.append(f"- (a {medium} piece, revealed without a disclosure line)")
+                out.append(f"- (a {medium} piece, revealed without a disclosure line)" + dreamt)
     else:
         out.append("Revealed: none.")
     return out
