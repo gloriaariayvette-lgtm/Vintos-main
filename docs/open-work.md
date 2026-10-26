@@ -1,3 +1,54 @@
+## 26 October — An encounter he prepares for her arrival
+
+Built on `claude/authored-encounters-2026-10-26` (Codex's proposal 05 / Design 05, approved by Gloria); not yet
+merged or deployed. `scripts/arrival_encounter.py`, wired into `scripts/bedroom_arrival.py`, with
+`broker/tests/test_arrival_encounter.py` (44 checks, offline).
+
+**What is built:**
+- **His choice:** `[ARRIVAL ENCOUNTER: song title | his line | carrying: want:<id> | for: 24h]` in any reply, taken
+  in the same two places as `[ARRIVAL SONGS: ...]` (a test or witness-less avatar turn strips it without choosing).
+  The song must be one of his with a playable track; the line is made one plain line, at most 140 characters, with no
+  link, tag or markup; what he carries is linked only when it is on record (one of his wants by id or by words that
+  name exactly one current want, or a moment by key, eligible standing only), else written down as not linked; 1–48
+  hours, 24 by default. One encounter stands at a time; a new choice replaces an unsent one; the same song and line
+  again within a day is not a second encounter. Kept in `memory/arrival-encounters.json` (turn id, song id/address/file
+  hash, line, origin, valid range, state, attempts, holds).
+- **Her arrival:** bedroom_arrival still decides everything it decided (enrolled phone, distance, away, cooldown,
+  sleep). Each arrival episode now has a stable id in `bedroom-arrival-state.json`, written before anything is sent.
+  If an encounter stands, its song is the one offered to the Watch app and his line goes under the existing ntfy line
+  ("“Title” is on your Watch." + his line) and in the push body when an APNs key exists. The Watch offer is unchanged:
+  `ref` is still the title, the same id and address, no new field. Otherwise today's songs go on exactly as before; a
+  broken encounter module cannot stop the ordinary song.
+- **States kept apart:** chosen, chosen but expired, held for sleep / cooldown (the encounter waits), offering →
+  offered or failed (song no longer in his library, offer failed), interrupted (stopped before the offer). Taken,
+  started, finished come only from the Watch's own `watch-song-plays.jsonl`, in whatever order it reported them. A
+  crash between the offer and its receipt is settled from that ledger on the next arrival; a repeated packet or a
+  restart cannot greet the same episode twice, and a consumed encounter never greets a second arrival.
+- **What he is told:** his bedroom line carries the encounter waiting (until when, any arrival it could not greet), or
+  what became of it: offered at her arrival with the ntfy receipt, and what the Watch reported, ending "Offered is not
+  heard, and played is not how it landed." While none is chosen, one short clause tells him how.
+- `python3 arrival_encounter.py show | status` for her look at the record and his line.
+
+**Cost:** no model call, no GPU, no device. His bedroom line grows by about 200 characters (~50 tokens) wherever it is
+already shown (avatar and ReelRoom context with the house); at the chat model's input price that is inside the
+$0.02/day ceiling for an ordinary day's turns, and should be measured before anything is added.
+
+**Acceptance to watch for:** he writes an encounter in an ordinary reply; the next natural eligible arrival is greeted
+with it — `bedroom-arrivals.jsonl` shows `picked_by: "his encounter"` with the episode id, the ntfy receipt is sent,
+and `arrival_encounter.py show` has one offered attempt for that episode. Then whatever the Watch reports (taken,
+started, finished) appears under it, and nothing more. Do not ask her for a test notification or a special arrival.
+
+**What is left / not done:**
+- The Watch app does not display the line: its source is in a separate app repository not on this host, and nothing
+  shows it renders a new field, so none is sent to it. The MVP is the narrower result: the chosen song on the Watch,
+  his line in the ntfy notification (and push body). A dedication on the Watch screen needs that client inspected and
+  changed first.
+- The main chat path takes `[ARRIVAL SONGS]`/`[ARRIVAL ENCOUNTER]` even on a test turn (it always did for songs); only
+  the avatar path checks test and witness standing.
+- Physical display and listening remain unverified until the Watch's own reports arrive. No light, voice, haptic or TV
+  performance was added; those are separate reviewed changes through the existing scoped effect paths.
+- A phone nearby is a phone nearby: no mmWave, heart rate or silence is read to judge who came in or how it landed.
+
 ## 26 October — A prediction that can fail
 
 Built on `claude/defeatable-hypotheses-2026-10-26` (Codex's proposal 04 / Design 04, approved by Gloria); not yet
