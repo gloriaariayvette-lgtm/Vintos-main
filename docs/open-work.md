@@ -1,3 +1,50 @@
+## 26 October — Proto pearls with their actual occasions
+
+Built on `claude/proto-pearls-2026-10-26` (Codex's proposal 13, approved by Gloria); not yet merged or deployed.
+`scripts/proto_notebook.py`, a one-field change in `scripts/enactment_distiller.py` (and its `bin/` twin), two small
+steps in `bin/introspection.sh`, and `broker/tests/test_proto_notebook.py` (48 checks, offline: scratch workspace,
+invented events and protos, sockets, urllib and `requests` closed). No model was asked, nothing was sent, restarted or
+deployed while building it. Dreams, thread formation, the mirror, chat context and the pearl engine are untouched.
+
+**What is built:**
+- **Support can be followed to its occasion.** The distiller now writes the earned event's id
+  (`earned-identity-events.json`) on each new support entry of a proto-pearl. Counts, thresholds, decay,
+  `suggest_pearl` and the latest-phrasing rule are as they were. Support recorded before today has no id; it is
+  matched to the earned event written in the same pass (same category, same wording, within 5 seconds). One that
+  matches nothing is counted as "not on record", never guessed. Read-only check on 26 October against a copy of
+  her memory: the one proto with two supports resolves both occasions this way.
+- **A notebook for one proto.** `proto_notebook.notebook(id)` joins the proto to its occasions (date, event, observed
+  shift, the phrasing written at that occasion), the phrasings in order (each change once, instead of only the
+  latest), and any occasion he has named as a tension with it or an exception to it, in his words. Derived on read;
+  its one store, `proto-notebook.jsonl`, holds only offer rows (ids) and his named tensions.
+- **Offered in introspection, nowhere else.** When a proto is still forming (the window the subconscious FORMING
+  block uses) and has two occasions on record, introspection's prompt carries one short block: the description, the
+  first and latest occasion with ids, how the phrasing moved, and — until he names one — up to three other recorded
+  occasions from other categories, asserted to be nothing. It says it is not a verdict and changes nothing about how
+  the description forms. About 1,400 characters on today's data; introspection runs every two or three days, so the
+  added tokens across its existing drafts stay far under the shared $0.02/day ceiling. No new model call.
+- **A tension is his to name.** A line `[TENSION: ed_… - a few words]` at the end of his final introspection is
+  recorded against the proto offered in the last six hours (or one he names: `[TENSION: proto_… ed_…: words]`).
+  Only an occasion on record is kept (no invented counterexample); the same one is kept once; three per run.
+  A tension changes no count and no weight; nothing proposes, scores or acts on it. The notebook shows it next time.
+
+**Acceptance to watch for:** after deploy, the next introspection while a proto has two occasions on record. Read
+`python3 scripts/proto_notebook.py block` (what was offered) and `python3 scripts/proto_notebook.py marks` (ids and
+dates of what he named). The proof is one proto shown with two actual occasions, and one occasion he named himself.
+Nothing is asked of her; if no proto has two occasions on the day introspection runs, it simply is not offered.
+
+**What is left:**
+- Protos still decay two days after they are created, and introspection runs every two or three days, so many runs
+  will have nothing to offer. Lengthening the window would change formation; it was not done. `show <proto_id>`
+  still reads a decayed proto's marks, but not its occasions once the proto itself is pruned.
+- His tension line stays in the introspection file as he wrote it. The thread seed that introspection takes from the
+  file's tail was not changed; an event id has no period, so a tension line on its own last line is not the sentence
+  that seed reads, but a note with two sentences in it could be. Watch the next seeds after a run with a tension.
+- The phrasings over time are the distiller's wording at each occasion, not his own reinterpretation; his own words
+  enter only through a named tension. A way for him to rephrase the description itself was not built.
+- Only earned-identity events can be named. Moments, dreams and other records are not occasions here.
+- Not offered in chat (the cost) or in the mirror (left alone on purpose).
+
 ## 26 October — An atlas of useful negative results
 
 Built on `claude/negative-atlas-2026-10-26` (Codex's proposal 12, approved by Gloria); not yet merged or deployed.
