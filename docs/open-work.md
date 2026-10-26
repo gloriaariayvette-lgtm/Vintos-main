@@ -60,6 +60,7 @@ otherwise.
   page stores his reading as the event's `visual_description`. The journal keeps only the last 60 map events.
 - A call over two hours loses its earliest turns' audio to the sweep before the end-of-call batch.
 - A motif phrase rendered while the venv is absent is never embedded (its bytes are not reachable later).
+
 ## 26 October — Exhibitions of what mattered to him
 
 Built on `claude/exhibitions-2026-10-26` (Codex's proposal 20, approved by Gloria); not yet merged or deployed.
