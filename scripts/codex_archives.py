@@ -56,6 +56,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import struct
@@ -342,6 +343,43 @@ def _b64(encoded, cap):
     return base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True)
 
 
+MAC_HOST = "kevin@100.79.177.103"
+MAC_ROOT = "/Users/kevin/Documents/Codex"
+
+
+def mac_fetch(filename, size, dest, lim):
+    """The one file named exactly `filename` with exactly `size` bytes under Codex's folder on Gloria's Mac, copied to
+    dest. Newest wins when Codex kept the same file twice. Returns bytes written; raises ValueError."""
+    import subprocess
+    if not re.fullmatch(r"[A-Za-z0-9._ ()+-]{1,200}", filename) or filename.startswith("."):
+        raise ValueError("an attachment name that cannot be looked up safely")
+    host = str(lim.get("mac_host") or MAC_HOST); root = str(lim.get("mac_root") or MAC_ROOT)
+    ssh = ["ssh", "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host]
+    found = subprocess.run(ssh + ["find %s -type f -name %s -size %dc -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null"
+                                  % (shlex.quote(root), shlex.quote(filename), int(size))],
+                           capture_output=True, text=True, timeout=120).stdout.splitlines()
+    path = next((p for p in found if p.startswith(root + "/") and os.path.basename(p) == filename), None)
+    if not path:
+        raise ValueError("the connector refused the attachment and Codex's folder on the Mac has no %s of %d bytes"
+                         % (filename, size))
+    tmp = dest + ".part"
+    try:
+        subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "%s:%s" % (host, shlex.quote(path)), tmp],
+                       check=True, timeout=3600, stdin=subprocess.DEVNULL)
+        got = os.path.getsize(tmp)
+        if got != size:
+            raise ValueError("the Mac copy is %d bytes, the letter says %d" % (got, size))
+        os.replace(tmp, dest)
+    except subprocess.SubprocessError as exc:
+        raise ValueError("copying it from the Mac failed (%s)" % type(exc).__name__)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+    return got
+
+
+mac_read = None   # tests replace this; None means mac_fetch
+
+
 def fetch_attachment(m, a, dest, gmail, lim, file_read=None):
     """One archive attachment of a Codex letter, to dest. Its declared size first; inline bytes when the letter
     carried them; otherwise the connector's original file. Returns bytes written; raises ValueError/Refused."""
@@ -361,7 +399,15 @@ def fetch_attachment(m, a, dest, gmail, lim, file_read=None):
             args["filename"] = a["filename"]
         else:
             raise ValueError("missing attachment identifier")
-        result = _unwrap(gmail("gmail.read_attachment", args, "Downloading an archive Codex sent him"))
+        try:
+            result = _unwrap(gmail("gmail.read_attachment", args, "Downloading an archive Codex sent him"))
+        except Exception as exc:
+            # The Gmail connector refuses zip attachments ("Failed to read attachment", 26 October). Codex writes
+            # the same files on Gloria's Mac before sending them, so the verified letter's file is taken from
+            # there: exactly its name and exactly its declared size, over the house's own Mac bridge.
+            if a.get("filename") and isinstance(size, int):
+                return (mac_read or mac_fetch)(a["filename"], size, dest, lim)
+            raise ValueError("the connector refused the attachment (%s) and its size is unknown" % type(exc).__name__)
         if result.get("message_id") not in (None, m["id"]):
             raise ValueError("attachment message mismatch")
         if int(result.get("size_bytes") or 0) > cap:
