@@ -648,6 +648,59 @@ def uniprot_relaxations(query):
 _PUBMED_FILLER = frozenset('the of in and or not for with from to a an by on at as its their this that vs versus '
                            'specific specifically role roles protein proteins'.split())
 
+# A source that did not answer this time, as opposed to one that answered "no". A TLS connection closed mid-handshake
+# stopped a whole Lab run on 26 October ("TLS/SSL connection has been closed (EOF)" from UniProt). These are worth a
+# short, bounded retry and then a wait; a 404, a 400 or a bad accession is the source's answer and is never retried.
+TRANSIENT_HTTP = frozenset((408, 425, 429, 500, 502, 503, 504))
+
+
+def transient_source_error(exc):
+    """True when exc (or what it wraps) is a transport failure that may pass by itself: TLS EOF/reset, a reset or
+    refused connection, a timeout, a temporary DNS failure, or HTTP 408/425/429/5xx. Certificate failures and every
+    other HTTP status are the source's answer, not a passing fault."""
+    import http.client, socket, ssl
+    from urllib.error import URLError
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, HTTPError):
+            return exc.code in TRANSIENT_HTTP
+        if isinstance(exc, ssl.SSLCertVerificationError):
+            return False
+        if isinstance(exc, (ssl.SSLEOFError, ssl.SSLZeroReturnError, ssl.SSLSyscallError)):
+            return True
+        if isinstance(exc, ssl.SSLError):
+            text = str(exc).lower()
+            return any(t in text for t in ('eof', 'closed', 'reset', 'timed out'))
+        if isinstance(exc, socket.gaierror):
+            return exc.errno == getattr(socket, 'EAI_AGAIN', -3)
+        if isinstance(exc, (TimeoutError, socket.timeout, ConnectionError,
+                            http.client.RemoteDisconnected, http.client.IncompleteRead)):
+            return True
+        if isinstance(exc, URLError):
+            reason = exc.reason
+            if isinstance(reason, BaseException):
+                exc = reason
+                continue
+            text = str(reason).lower()
+            return any(t in text for t in ('temporary failure in name resolution', 'timed out',
+                                           'connection reset', 'eof', 'has been closed'))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def with_transient_retry(call, *, delays=(2, 6), sleep=time.sleep):
+    """call() again after each delay while it fails transiently; a permanent failure is raised at once. Bounded:
+    len(delays) + 1 attempts in all. The last transient failure is raised for the caller to turn into a wait."""
+    for delay in tuple(delays) + (None,):
+        try:
+            return call()
+        except Exception as exc:
+            if delay is None or not transient_source_error(exc):
+                raise
+            sleep(delay)
+
+
 def fetch_json(url, *, transport=None):
     # URLs are constructed by the clients, never accepted from a model.
     request = Request(url, headers={'Accept': 'application/json', 'User-Agent': 'Vintos-Lab/2.0'})

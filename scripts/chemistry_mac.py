@@ -34,6 +34,9 @@ ESMFOLD_PARAMETERS = {"target_accession", "requested_accession", "accession", "p
                       "gene", "target_gene", "sequence", "sequence_source", "protein_backend", "fragment", "region",
                       "region_label"}
 ESMFOLD_MAX = 911       # chemistry_esmfold.MAX_LENGTH: the longest length measured on Aegis
+SOURCE_RETRY_DELAYS = (3, 10)   # seconds between the three tries of a UniProt read that failed in transport
+SOURCE_WAIT_SECONDS = 1800      # then a wait, not a fault: the run is held this long and tried again
+_sleep = time.sleep
 # "41-149", "41–149", "residues 41 to 149", or [41, 149]: one-based, inclusive, in UniProt's numbering
 _REGION = re.compile(r"^\D*?(\d{1,5})\s*(?:-|–|—|to|\.\.)\s*(\d{1,5})\D*$")
 AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
@@ -238,10 +241,21 @@ def prepare_protein(parameters, resolver=None):
         region = _region(parameters)
     except ValueError as exc:
         return {"ok": False, "refused": "region_unreadable", "requested_accession": accession, "error": str(exc)}
+    from lab_sources import transient_source_error, with_transient_retry
     try:
-        record, provenance = (resolver or _resolve_uniprot)(accession)
+        # A transport failure (TLS EOF, reset, timeout, temporary DNS, HTTP 429/5xx) is asked again, boundedly; a
+        # wrong accession or a missing record is UniProt's answer and is not (26 October: one TLS EOF stopped the run).
+        record, provenance = with_transient_retry(lambda: (resolver or _resolve_uniprot)(accession),
+                                                  delays=SOURCE_RETRY_DELAYS, sleep=_sleep)
         sequence = _record_sequence(record, accession)
     except Exception as exc:
+        if transient_source_error(exc):
+            # Still unreachable: nothing was sent to the bench and nothing is wrong with the request. A wait, not a
+            # fault: the caller holds the run (and its plan) until retry_at.
+            return {"ok": False, "refused": "source_waiting", "waiting": True, "requested_accession": accession,
+                    "retry_at": time.time() + SOURCE_WAIT_SECONDS,
+                    "error": "UniProt did not answer for %s (transient, %d tries): %s; nothing was sent, waiting"
+                             % (accession, len(SOURCE_RETRY_DELAYS) + 1, str(exc)[:200])}
         return {"ok": False, "refused": "sequence_unavailable", "requested_accession": accession,
                 "error": "could not source %s from UniProt: %s" % (accession, str(exc)[:240])}
     full_length = len(sequence)

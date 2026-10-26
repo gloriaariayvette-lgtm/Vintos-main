@@ -551,6 +551,9 @@ def dispatch(route, request, question, steps):
         _gate({'question':question, 'instrument_query':{'skill':'house_experiment_'+request['experiment'], 'operation':request['experiment'],
                                                        'arguments':request}})
         result = chemistry_mac.run(request['experiment'], request.get('parameters') or {}, request.get('shots', 4096))
+        if not result.get('ok') and result.get('waiting'):
+            # its source did not answer in transport (after bounded retries): nothing was sent, so a wait
+            raise SourceWaiting(float(result.get('retry_at') or time.time() + 60))
         if result.get('ok') and result.get('run_id'):
             chemistry_probe.record_run_attestation(result['run_id'], result)
             import chemistry_grade

@@ -226,6 +226,16 @@ def _protein_has_target(parameters):
                ("target_accession", "requested_accession", "accession", "fragment", "sequence"))
 
 
+MAX_SOURCE_WAITS = 3   # holds of one plan for a source that does not answer, before it is a fault
+
+
+class SourceWait(Exception):
+    """A source did not answer in transport (after bounded retries): a wait, not a fault."""
+    def __init__(self, result, extra_context=""):
+        super().__init__(str((result or {}).get("error") or "source waiting"))
+        self.result, self.extra_context = dict(result or {}), str(extra_context or "")
+
+
 def _operator_plan(experiments):
     """One explicitly requested accession rerun, selected through the service environment."""
     accession = str(os.environ.get("VINTOS_CHEMISTRY_TARGET_ACCESSION") or "").strip().upper()
@@ -646,6 +656,17 @@ def run():
             lab._append(SESSIONS, row)
             # The lens does not advance: it never got its turn.
             return row
+        # A run held for a source that did not answer (26 October: one TLS EOF from UniProt stopped the day's run as
+        # a fault). Its plan is kept; until the wait is over nothing is planned or spent, and after it the same plan
+        # is tried again rather than planned anew.
+        carried = state.get("waiting_plan") if isinstance(state.get("waiting_plan"), dict) else None
+        if carried and time.time() < float(carried.get("retry_at") or 0):
+            row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "waiting_for_source",
+                   "waiting_since": carried.get("since"), "retry_at": carried.get("retry_at"),
+                   "detail": "still waiting for the source; nothing planned or sent",
+                   "truth_status": "no_experiment_run_while_its_source_is_unreachable"}
+            lab._append(SESSIONS, row)
+            return row
         # Refresh only the instrument receipts that have actually expired. A passing
         # receipt holds a month, so this is a real monthly measurement rather than a daily
         # one, and it runs inside the background slot so it yields like everything else.
@@ -672,8 +693,16 @@ def run():
                    "owed_reading": settled.get("outcome"),
                    "detail": str(remote.get("error", "no experiments offered"))[:300]}
             lab._append(SESSIONS, row); return row
+        carried_plan = None
+        if carried:
+            state.pop("waiting_plan", None)   # put back below only if it has to wait again
+            if isinstance(carried.get("plan"), dict) and carried["plan"].get("experiment") in experiments:
+                carried_plan = dict(carried["plan"], carried_from=carried.get("since"))
         context, receipt = frontier_context()
-        context, receipt, offered_interest = bridge.add_to_context(context, receipt)
+        if carried_plan is None:
+            context, receipt, offered_interest = bridge.add_to_context(context, receipt)
+        else:
+            offered_interest = None   # the carried plan answered the interest it was offered, on its first try
         try:
             import atelier_lab_lean
             lean = atelier_lab_lean.today()
@@ -684,11 +713,12 @@ def run():
         except Exception: channel_lean = None
         instruments = lab.tools_status()
         plan = None; result = None; grade = None; delivery_recorded = not bool(offered_interest)
+        base_context = len(context)
         try:
             from compute_admission import admit
             with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="frontier", stage="plan"):
-                plan = _operator_plan(experiments)
+                plan = _operator_plan(experiments) or carried_plan
                 if plan is None:
                     leans = dict(({"lean": lean} if lean else {}), **({"channel_lean": channel_lean} if channel_lean else {}))
                     plan = _plan(context, experiments, lens, instruments, offered_interest, **leans)
@@ -697,7 +727,10 @@ def run():
                         except Exception: pass
                 selected = [key for key in ("source_query", "plugin_query", "instrument_query") if plan.get(key)]
                 if len(selected) > 1: raise ValueError("Lab plan selected more than one extra call")
-                if selected and selected[0] != "instrument_query":
+                if carried_plan is not None and plan is carried_plan:
+                    # what its extra call returned the first time comes with it; the call is not made again
+                    context += str(carried.get("extra_context") or "")
+                elif selected and selected[0] != "instrument_query":
                     import chemistry_sources
                     if plan.get("plugin_query"):
                         pq = plan["plugin_query"]
@@ -710,7 +743,7 @@ def run():
                         source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
                         plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]
                     context += "\nADDITIONAL SOURCE (not validation):\n" + json.dumps(source_result)[:12000]
-            if plan.get("instrument_query"):
+            if plan.get("instrument_query") and plan is not carried_plan:
                 import chemistry_sources
                 with admit("background", organ="chemistry-protein-design-mcp",
                            wait_s=float(lab.config()["turn_wait_seconds"]),
@@ -724,6 +757,8 @@ def run():
                                        plan.get("addressed_entry_ids", []), state="responded")
                 delivery_recorded = True
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
+            if not result.get("ok") and result.get("waiting"):
+                raise SourceWait(result, context[base_context:])
             if not result.get("ok"):
                 # A mismatched remote run has an identity verdict even though it must not
                 # proceed to interpretation. Preserve that named verdict beside the failed
@@ -801,6 +836,24 @@ def run():
         except PlanRefused as exc:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "refused_before_execution",
                    "refused": str(exc)[:300]}
+        except SourceWait as exc:
+            # The source did not answer in transport, after its bounded retries: nothing reached the bench. The plan
+            # is kept and tried again after retry_at, by a later fire, without planning anew. Waiting is bounded too:
+            # a source still unreachable after MAX_SOURCE_WAITS holds is a fault, said as one.
+            tries = int((carried or {}).get("tries", 0)) + 1 if carried_plan is not None else 1
+            detail = str(exc.result.get("error") or "")[:300]
+            result = None
+            if tries <= MAX_SOURCE_WAITS:
+                row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "waiting_for_source",
+                       "retry_at": exc.result.get("retry_at"), "waits": tries, "detail": detail,
+                       "truth_status": "no_experiment_run_while_its_source_is_unreachable"}
+                state["waiting_plan"] = {"plan": {k: v for k, v in plan.items() if k != "carried_from"},
+                                         "since": (carried or {}).get("since") if carried_plan is not None else session_id,
+                                         "retry_at": exc.result.get("retry_at"), "tries": tries,
+                                         "extra_context": exc.extra_context[:13000]}
+            else:
+                row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_fault",
+                       "error": "SourceWait", "detail": ("source unreachable after %d waits: " % (tries - 1) + detail)[:300]}
         except Exception as exc:
             held = bool(result and result.get("ok"))
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens,
@@ -822,10 +875,13 @@ def run():
         row["context_receipt"] = receipt["context_sha256"]
         row["truth_status"] = "recorded_session_outcome_not_biological_evidence"
         lab._append(SESSIONS, row)
-        state.update({"lens_index": (LENSES.index(lens) + 1) % len(LENSES),
-                      "offered": int(state.get("offered", 0)) + 1,
-                      "last_session_id": session_id, "last_state": row["state"],
-                      "last_at": row["at"], "last_mode": "experiment"})
+        if row["state"] == "waiting_for_source":   # the lens keeps its turn: its plan is the one waiting
+            state.update({"last_session_id": session_id, "last_state": row["state"], "last_at": row["at"]})
+        else:
+            state.update({"lens_index": (LENSES.index(lens) + 1) % len(LENSES),
+                          "offered": int(state.get("offered", 0)) + 1,
+                          "last_session_id": session_id, "last_state": row["state"],
+                          "last_at": row["at"], "last_mode": "experiment"})
         lab._atomic(SESSION_STATE, state)
         return row
 
