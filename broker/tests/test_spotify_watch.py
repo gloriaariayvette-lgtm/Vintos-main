@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """His Spotify pick on her Watch (Gloria, 18 October): in the avatar chat he writes [SPOTIFY: Title - Artist] and the
-track plays through Spotify Connect: on the Watch when it is its own speaker, else on the iPhone her Watch controls
-(26 October: Spotify on her Watch is a remote for the phone). Never the Echo or the TV. Asleep, nothing.
+track plays on her Watch through Spotify Connect. Only the Watch - never her phone, not the Echo. Asleep, nothing.
 
 Scratch HOME (the secrets and the log live only there); Spotify is a fake behind urlopen; every socket is refused."""
 import io, json, os, socket, sys, tempfile, time, urllib.error, urllib.parse
@@ -69,27 +68,21 @@ with patch("builtins.input", side_effect=lambda *_: "127.0.0.1:8765/callback?cod
 check("the token is kept private (0600) and the pending login is gone",
       oct(os.stat(S.SECRETS).st_mode & 0o777) == "0o600" and not os.path.exists(S.PENDING))
 check("he is told he can, and how, once she is logged in", "[SPOTIFY: Title - Artist]" in S.context_line()
-      and "phone her Watch controls" in S.context_line() and "never the Echo or the TV" in S.context_line())
+      and "not her phone" in S.context_line())
 
 row = S.play("Enjoy the Silence - Depeche Mode")
 put = [c for c in CALLS if c[0] == "PUT"]
-check("when her Watch is its own speaker, his pick plays there", row["played"] and row["device"] == "Gloria's Apple Watch"
+check("his pick plays on her Watch, and only there", row["played"] and row["device"] == "Gloria's Apple Watch"
       and len(put) == 1 and "device_id=w1" in put[0][1] and json.loads(put[0][2]) == {"uris": ["spotify:track:enjoy"]}, row)
+check("the phone is never the device, even when it is the active one", not any("device_id=ph1" in c[1] for c in CALLS))
 
-# 26 October: Spotify on her Watch is a remote for her iPhone; the Watch never registers, the phone it controls does
-DEVICES[:] = [d for d in DEVICES if d["type"] != "Watch"] + [{"id": "tv1", "type": "TV", "name": "Living Room TV"}]; n = len(CALLS)
+DEVICES[:] = [d for d in DEVICES if d["type"] != "Watch"]; n = len(CALLS)
 row = S.play("Enjoy the Silence - Depeche Mode")
-check("her Watch as a remote: his pick plays on the phone it controls, never the TV", row["played"]
-      and row["device"] == "Gloria's iPhone" and any("device_id=ph1" in c[1] for c in CALLS[n:])
-      and not any("device_id=tv1" in c[1] for c in CALLS[n:]), row)
-DEVICES[:] = [d for d in DEVICES if d["type"] == "TV"]; n = len(CALLS)
-row = S.play("Enjoy the Silence - Depeche Mode")
-check("Spotify open on neither: nothing plays anywhere (not the TV), and why is written down", not row["played"]
+check("Spotify closed on her Watch: nothing plays anywhere, and why is written down", not row["played"]
       and "Watch is not listening" in row["why"] and not any(c[0] == "PUT" for c in CALLS[n:]), row)
 check("he hears next turn that it did not play, and why", "did not play" in S.context_line()
       and "Watch is not listening" in S.context_line())
-DEVICES[:] = [{"id": "ph1", "type": "Smartphone", "name": "Gloria's iPhone", "is_active": True},
-              {"id": "w1", "type": "Watch", "name": "Gloria's Apple Watch"}]
+DEVICES.append({"id": "w1", "type": "Watch", "name": "Gloria's Apple Watch"})
 _t0 = S.time.time; S.time.time = lambda: _t0() + 25 * 3600
 check("a miss from more than a day ago is not repeated to him", "did not play" not in S.context_line()
       and "[SPOTIFY: Title - Artist]" in S.context_line())
@@ -127,35 +120,6 @@ check("the tag is taken out of his words and plays in the background", said == "
 n = len(CALLS)
 check("a test or witness-less turn only strips the tag", S.take("x [SPOTIFY: a - b]", act=False) == "x" and len(CALLS) == n)
 check("a reply without the tag is untouched", S.take("plain [HOME: spotify a - b]") == "plain [HOME: spotify a - b]")
-
-# 26 October: Spotify open on neither -> one notification asks her to open it on her Watch and press play; the song
-# plays the moment her phone appears, or is written down after the wait. Nothing is sent for real.
-import types
-NUDGES = []
-sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, msg, title=None, **k: (NUDGES.append((aid, ch, msg)), {"state": "sent"})[1])
-PHONE = {"id": "ph1", "type": "Smartphone", "name": "Gloria's iPhone", "is_active": True}
-DEVICES[:] = [{"id": "tv1", "type": "TV", "name": "Living Room TV"}]
-T = [0.0]; polls = []
-def fake_sleep(s):
-    T[0] += s; polls.append(s)
-    if len(polls) == 3: DEVICES.append(PHONE)
-row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=fake_sleep, clock=lambda: T[0])
-check("Spotify open on neither: she gets one notification to open it on her Watch and press play", len(NUDGES) == 1
-      and NUDGES[0][1] == "ntfy" and "Open Spotify on your Watch" in NUDGES[0][2] and row.get("nudged") == "sent", NUDGES)
-check("the song plays the moment her phone appears", row["played"] and row["device"] == "Gloria's iPhone"
-      and row["waited_s"] == 15, row)
-DEVICES[:] = [{"id": "tv1", "type": "TV", "name": "Living Room TV"}]; T[0] = 0.0
-row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=lambda s: T.__setitem__(0, T[0] + s), clock=lambda: T[0])
-check("nothing appears: written down after the wait, nothing played", not row["played"]
-      and "5 min passed" in row["why"] and len(NUDGES) == 2, row)
-S._WAITING.acquire()
-row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=lambda s: None)
-S._WAITING.release()
-check("while one song waits, another pick is not nudged again", len(NUDGES) == 2 and "already waiting" in row["why"], row)
-row = S.play("Enjoy the Silence - Depeche Mode")
-check("without nudge (the command line) nothing is sent and nothing waits", len(NUDGES) == 2 and "not listening" in row["why"])
-check("his avatar pick nudges and waits", 'kwargs={"nudge": True}' in open(S.__file__).read())
-DEVICES[:] = [PHONE, {"id": "w1", "type": "Watch", "name": "Gloria's Apple Watch"}]
 
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("it is in his avatar chat: the line in his context, the tag taken from his reply, guarded like his home tags",
