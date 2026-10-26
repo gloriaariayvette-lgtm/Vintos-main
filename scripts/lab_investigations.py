@@ -324,6 +324,23 @@ def _menu():
     }
 
 
+def _measurement_line(view):
+    """lab_measurement.planner_view in one line, for a prompt with no room for the whole view."""
+    parts = []
+    c = view.get('contract') or {}
+    if c:
+        parts.append('frozen contract rev %s (%s): %s' % (c.get('revision'), c.get('status'), str(c.get('hypothesis') or '')[:160]))
+    if view.get('result'):
+        parts.append('its result: ' + json.dumps(view['result'], ensure_ascii=False, default=str)[:160])
+    if view.get('disagreements'):
+        parts.append('%d open disagreement(s) between your readings to measure between' % len(view['disagreements']))
+    if view.get('your_negative_results'):
+        parts.append('%d recent negative result(s)' % len(view['your_negative_results']))
+    if view.get('how') and not c:
+        parts.append('no contract yet: state one as "measurement" with your prediction')
+    return '; '.join(parts)[:600]
+
+
 def line_summary(line, steps_kept=3, cap=300):
     """What a line of inquiry tells the planner: its question, why, next step and its last few steps - not its whole
     history (21 October: a Cystatin C line carried about 116 KB of steps and quotes into every planner prompt, which
@@ -463,6 +480,11 @@ def _plan(investigation, context, ask, note=None):
         trial = json.dumps(dict(task, measurement=view), ensure_ascii=False) if view else ''
         if trial and len(trial.encode('utf-8')) <= limit:
             task['measurement'], prompt = view, trial
+        elif view:   # a full prompt still carries one line of it: the contract, its result, open disagreements
+            line = _measurement_line(view)
+            trial = json.dumps(dict(task, measurement=line), ensure_ascii=False)
+            if len(trial.encode('utf-8')) <= limit:
+                task['measurement'], prompt = line, trial
     except Exception:
         pass
     prompt += ('\nReturn one operation now as actual JSON data. For example the shape is '

@@ -161,6 +161,19 @@ class NoRoute(Base):
         self.assertIs(I._coerce_route(plain), plain)
 
 
+class MeasurementView(Base):
+    def test_a_full_prompt_still_carries_one_line_of_the_measurement_view(self):
+        import lab_measurement
+        view = {'contract': {'revision': 2, 'status': 'frozen', 'hypothesis': 'STAS helix 700-712 persists'},
+                'disagreements': [{'a': 1}, {'b': 2}], 'big': 'x' * 400000}
+        sent = []
+        with patch.object(lab_measurement, 'planner_view', return_value=view):
+            I._plan({'id': 'I-x', 'question': 'q', 'steps': []}, '', lambda s, p, **k: sent.append(p) or '{}')
+        task = json.JSONDecoder().raw_decode(sent[0])[0]
+        self.assertEqual(task['measurement'], 'frozen contract rev 2 (frozen): STAS helix 700-712 persists; '
+                                              '2 open disagreement(s) between your readings to measure between')
+
+
 class PlannedSteps(Base):
     def test_an_instrument_named_with_its_operation_is_the_planned_step(self):
         req = {'skill': 'fold_read', 'operation': 'structure.read', 'files': [MODEL]}
