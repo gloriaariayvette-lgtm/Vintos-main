@@ -75,6 +75,37 @@ def serve_entries(index):
     return out
 
 
+def _is_dream(entry):
+    """A dream row, whichever index served it. The v2 projection carries source=='dreams' and a `path`;
+    the legacy embeddings.jsonl carries only `file`/`title`, so '/dreams/' never matched `path` there and
+    ~600 dream rows reached him without the marker — told to him as things that happened. Read file and
+    filename too (review 109, legacy fix)."""
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("source") == "dreams":
+        return True
+    for k in ("path", "file", "filename"):
+        if "/dreams/" in str(entry.get(k, "")):
+            return True
+    return False
+
+
+def _source_present(entry):
+    """Tombstone-on-read for the legacy index. The v2 projection tombstones a chunk whose source file is
+    gone; the append-only embeddings.jsonl never did, so it still points at deleted/superseded files. A row
+    whose source file no longer exists is not served. Rows with no file reference (already revision-checked
+    v2 chunks) are left alone."""
+    if not isinstance(entry, dict):
+        return False
+    f = entry.get("file") or entry.get("path")
+    if not f:
+        return True
+    try:
+        return os.path.exists(f)
+    except Exception:
+        return True
+
+
 class EmbeddingError(RuntimeError):
     """The embedding service did not give a usable embedding. Says what went wrong, never the reply body or a key."""
 
@@ -136,12 +167,17 @@ def search(query, limit=5):
     for entry in entries:
         if not entry.get("embedding"):
             continue
+        # tombstone-on-read: a legacy row pointing at a deleted/superseded source file is not his
+        # to recall any more. (The v2 projection already revision-checks; this covers embeddings.jsonl.)
+        if not _source_present(entry):
+            continue
         score = cosine_similarity(query_embedding, entry["embedding"])
         _src = entry.get("source", entry.get("file", ""))
         _txt = entry.get("chunk", entry.get("text", ""))
         # review 109: a dream that comes back is still a dream. The text he receives says so on its
         # face, so a retrieved dream can never be recounted as something that happened.
-        if _src == "dreams" or "/dreams/" in str(entry.get("path", "")):
+        _dream = _is_dream(entry)
+        if _dream:
             _txt = "[A DREAM he had - not something that happened] " + _txt
         results.append({
             "score": float(score),
@@ -149,7 +185,7 @@ def search(query, limit=5):
             "filename": entry.get("filename", entry.get("file", "")),
             "text": _txt,
             "kind": entry.get("kind", ""),
-            "is_dream": _src == "dreams" or "/dreams/" in str(entry.get("path", "")),
+            "is_dream": _dream,
             "revision": entry.get("revision", ""),
         })
 
