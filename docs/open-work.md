@@ -1,3 +1,19 @@
+## 25 October — musical motif notebook
+
+Built on `claude/motif-notebook-2026-10-25` (Codex's proposal 02, approved by Gloria); not yet merged or deployed.
+- **What he has:** a motif notebook in every Atelier visit. `<motif ...>` writes a phrase of actual notes (one voice,
+  the house piano tone, at most 8 bars, 64 notes, 29 s); `<motif_vary of="ID" op="...">` makes a variation of a phrase
+  already in the notebook (transpose, invert, retrograde, augment, diminish, fragment, retempo, answer, rewrite). One
+  per visit, rendered after the piece by the existing `midi_check.py` verifier and CPU renderer (2-minute cap).
+- **What is kept, in the project:** the WAV (a music artifact) and one record (score, MIDI, timing report, his
+  operation and the exact note diff from the parent). The parent is never rewritten. A variation that changes
+  nothing is labelled unchanged. A sealed project's phrases stay in it; only phrases he has revealed can be varied
+  from later projects.
+- **Costs:** no new paid calls and no follow-up turn. The notebook block adds roughly 350 tokens to each visit's
+  context, more when it lists phrases. It is separate from the paid song path; `song_memory.py` is unchanged.
+- **Acceptance (not yet observed):** he makes a phrase on his own; on a later ordinary visit, with nobody pointing him
+  at it, he chooses it and varies it; both render and both stay in the project. Liking it is not part of the test.
+
 ## 25 October — handoff repairs (Claude Code; on the deploy branch)
 
 From the 25 October reviews (Claude whole-system review; Codex comprehensive audit on the Mac). In this deploy:
