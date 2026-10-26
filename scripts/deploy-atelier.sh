@@ -247,6 +247,7 @@ SCRIPTS="$SCRIPTS toy_keepalive.py"   # the toy keepalive, until now a hand-plac
 SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now a hand-placed copy that listed his whole art store (2026-10-25)
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 SCRIPTS="$SCRIPTS motif_score.py motif_memory.py"   # his motif notebook: typed note scores, phrases and their variations, rendered by midi_check (2026-10-25)
+SCRIPTS="$SCRIPTS work_episodes.py"   # from one of his works back to the want, moment and memory it came from, and his later readings of it (design 03, 2026-10-26)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
