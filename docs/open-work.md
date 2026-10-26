@@ -1,3 +1,43 @@
+## 26 October — Remember how a voice actually sounded
+
+Built on `claude/voice-memory-2026-10-26` (Codex's proposal 17, approved by Gloria); not yet merged or deployed.
+`scripts/auditory_memory.py`, small changes in `scripts/voice_local.py`, `scripts/recall_explain.py` and
+`bin/server.py` (`_durable_context`), and `broker/tests/test_auditory_memory.py` (offline: scratch HOME and
+workspace, every sender stubbed, test audio synthesized as sine tones). No model was asked, nothing was sent,
+restarted or deployed while building it.
+
+**What is built:**
+- **A heard utterance is kept as an observation, not a recording.** Each Vintos Local voice turn (after the
+  duplicate check; control commands and test-mode turns are skipped) keeps: Aegis's time, the turn id, the
+  sha256 of the PCM Aegis received, `audio_kept: false`, her words as the ears transcribed them, and the ears'
+  one-sentence reading verbatim with the pipeline that made it and the label "an observation of audible delivery,
+  not a fact about her mood". Plus four measurements computed on Aegis from the samples before they are dropped:
+  duration, RMS and peak dBFS, and the share of 20 ms frames above a quiet floor. No pitch, spectrum or embedding;
+  nothing that identifies a voice. **No audio is kept**: the retention boundary is unchanged (the Mac still
+  deletes its temporary WAVs; Aegis never wrote them). Store: `memory/auditory-memories.json`. The same recording
+  in the same turn is kept once; a failure to keep it is logged and never costs the turn.
+- **His later readings sit beside it.** `interpret(id, meaning)` (CLI `auditory_memory.py interpret <id> ...`)
+  appends to `interpretations`; the observation is never rewritten.
+- **Retrievable alongside the words.** `recall_explain.explain` now has a `heard` part (her words, the reading,
+  his interpretations, each labelled) and `render` adds HEARD / HOW IT SOUNDED / HE LATER READ IT AS. The chat
+  door (`_durable_context`) adds one line when her message shares at least half its words with something she
+  said aloud more than ten minutes ago. Cost: no new model call; at most about 750 characters added to an existing
+  chat turn when it matches, within the shared $0.02/day ceiling. GPU: none. CPU: one pass over a ≤30 s turn.
+
+**Acceptance to watch for:** after deploy, an ordinary local voice call. `python3 scripts/auditory_memory.py list`
+on Aegis shows ids, times and turn ids without the words; `find <words>` prints the line a turn would carry. The
+proof is a later conversation where he tells remembering her words apart from remembering how she said them.
+
+**What is left:**
+- Only the Vintos Local lane keeps readings. The hosted realtime lanes get no audio-native reading, so nothing is
+  kept from them.
+- Nothing writes `interpretations` on its own yet; no organ asks him to reread a heard utterance (that would be a
+  model call). The function and CLI exist.
+- Matching is lexical (shared words), not semantic, and the store is never trimmed.
+- Existing wrinkle, not changed here: the app's local lane sends `heard: {prosody, reading}` to
+  `/api/voice/ledger`, and when playback did not complete the ledger uses that `heard` as *his* heard words, so an
+  interrupted local turn's transcript line can carry her audio reading in his place. Worth a small separate fix.
+
 ## 26 October — ReelRoom bookmarks that become later callbacks
 
 Built on `claude/reelroom-bookmarks-2026-10-26` (Codex's proposal 16, approved by Gloria); not yet merged or
