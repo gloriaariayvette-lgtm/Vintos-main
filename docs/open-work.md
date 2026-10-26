@@ -1,3 +1,109 @@
+## 26 October — Proto pearls with their actual occasions
+
+Built on `claude/proto-pearls-2026-10-26` (Codex's proposal 13, approved by Gloria); not yet merged or deployed.
+`scripts/proto_notebook.py`, a one-field change in `scripts/enactment_distiller.py` (and its `bin/` twin), two small
+steps in `bin/introspection.sh`, and `broker/tests/test_proto_notebook.py` (48 checks, offline: scratch workspace,
+invented events and protos, sockets, urllib and `requests` closed). No model was asked, nothing was sent, restarted or
+deployed while building it. Dreams, thread formation, the mirror, chat context and the pearl engine are untouched.
+
+**What is built:**
+- **Support can be followed to its occasion.** The distiller now writes the earned event's id
+  (`earned-identity-events.json`) on each new support entry of a proto-pearl. Counts, thresholds, decay,
+  `suggest_pearl` and the latest-phrasing rule are as they were. Support recorded before today has no id; it is
+  matched to the earned event written in the same pass (same category, same wording, within 5 seconds). One that
+  matches nothing is counted as "not on record", never guessed. Read-only check on 26 October against a copy of
+  her memory: the one proto with two supports resolves both occasions this way.
+- **A notebook for one proto.** `proto_notebook.notebook(id)` joins the proto to its occasions (date, event, observed
+  shift, the phrasing written at that occasion), the phrasings in order (each change once, instead of only the
+  latest), and any occasion he has named as a tension with it or an exception to it, in his words. Derived on read;
+  its one store, `proto-notebook.jsonl`, holds only offer rows (ids) and his named tensions.
+- **Offered in introspection, nowhere else.** When a proto is still forming (the window the subconscious FORMING
+  block uses) and has two occasions on record, introspection's prompt carries one short block: the description, the
+  first and latest occasion with ids, how the phrasing moved, and — until he names one — up to three other recorded
+  occasions from other categories, asserted to be nothing. It says it is not a verdict and changes nothing about how
+  the description forms. About 1,400 characters on today's data; introspection runs every two or three days, so the
+  added tokens across its existing drafts stay far under the shared $0.02/day ceiling. No new model call.
+- **A tension is his to name.** A line `[TENSION: ed_… - a few words]` at the end of his final introspection is
+  recorded against the proto offered in the last six hours (or one he names: `[TENSION: proto_… ed_…: words]`).
+  Only an occasion on record is kept (no invented counterexample); the same one is kept once; three per run.
+  A tension changes no count and no weight; nothing proposes, scores or acts on it. The notebook shows it next time.
+
+**Acceptance to watch for:** after deploy, the next introspection while a proto has two occasions on record. Read
+`python3 scripts/proto_notebook.py block` (what was offered) and `python3 scripts/proto_notebook.py marks` (ids and
+dates of what he named). The proof is one proto shown with two actual occasions, and one occasion he named himself.
+Nothing is asked of her; if no proto has two occasions on the day introspection runs, it simply is not offered.
+
+**What is left:**
+- Protos still decay two days after they are created, and introspection runs every two or three days, so many runs
+  will have nothing to offer. Lengthening the window would change formation; it was not done. `show <proto_id>`
+  still reads a decayed proto's marks, but not its occasions once the proto itself is pruned.
+- His tension line stays in the introspection file as he wrote it. The thread seed that introspection takes from the
+  file's tail was not changed; an event id has no period, so a tension line on its own last line is not the sentence
+  that seed reads, but a note with two sentences in it could be. Watch the next seeds after a run with a tension.
+- The phrasings over time are the distiller's wording at each occasion, not his own reinterpretation; his own words
+  enter only through a named tension. A way for him to rephrase the description itself was not built.
+- Only earned-identity events can be named. Moments, dreams and other records are not occasions here.
+- Not offered in chat (the cost) or in the mirror (left alone on purpose).
+
+## 26 October — An atlas of useful negative results
+
+Built on `claude/negative-atlas-2026-10-26` (Codex's proposal 12, approved by Gloria); not yet merged or deployed.
+`scripts/lab_negative_atlas.py`, two small hooks in `scripts/lab_measurement.py`, and
+`broker/tests/test_negative_atlas.py` (56 checks, offline: scratch workspace, results made by the Lab's own freeze and
+evaluate on invented outputs, panel and verdict rows written by hand, sockets closed, the paid ledger stubbed to
+refuse). No model was asked, nothing was folded, fetched, run on the GPU or deployed while building it.
+`lab_investigations.py` was not touched (another change is in progress there), and the commissioning gate is untouched.
+
+**What is built:**
+- **Three classes, kept apart.** Every retained result that did not support its prediction becomes one atlas entry:
+  `refuted` (a clean measurement contradicted it under its frozen terms), `inconclusive` (measured, undecided — shown
+  as "undecided, not negative"), or `failed_execution` (no measurement of the claim was made: `failure: tool` when
+  the tool did not produce the output, `failure: measurement` when the output could not be measured under the frozen
+  terms — a missing field, other units, another cohort). A failed execution "says nothing about it either way" and
+  is never shown to the planner as a negative. Sources: `measurement-results.jsonl` with its contracts
+  (lab_measurement), `family-results.jsonl` (lab_family_panel: refuted / inconclusive panels), and
+  `disagreement-verdicts.jsonl` (lab_disagreement: supports_neither is a refuted pair of predictions).
+- **Scoped, with limits in words.** Each entry carries the claim, the conditions it was measured under (evaluator,
+  variable, units, experimental unit, comparator, tools, threshold or effect size, cohort, output digests), why it
+  came out as it did, the estimate, whether it was confirmatory, and its limits: "holds only for …", "does not test
+  other tools, other cohorts, other thresholds or other units, and is not biological proof: the subject is not
+  closed by it". A refuted result measured on outputs that existed before its contract is marked exploratory. A
+  result whose contract was revised since is marked superseded and no longer offered. Derived on read; the id is
+  a digest of its source, so the same result is always the same entry. `show`, `search <words>`, `entry <id>`,
+  `reuses` from the command line.
+- **A later plan reuses one exact negative, not reruns it.** The planner's existing measurement view
+  (`lab_measurement.planner_view`, local Gemma, only where it fits) now shows at most two refuted or inconclusive
+  entries that share words with its question — never its own, never a failed execution — each with what it holds
+  for and which conditions can be varied, kept short. It may return `builds_on_negative: {id, varies, to, why}` with
+  its plan; `lab_measurement.from_planner` hands it to the atlas, which records it in `negative-reuses.jsonl` with
+  the entry's limits copied in. Refused, and recorded as refused, with nothing blocked: a condition the entry was not
+  measured under, an unchanged value (a rerun), a failed execution (it can only be retried), the investigation that
+  produced it, no reason, or a reason that writes the subject off ("impossible", "dead end", "rules out the whole").
+  One reuse per investigation per entry, three a day; the same refusal on the next planning step is kept once.
+- **A rerun is named.** When the investigation's own frozen contract would measure exactly what a refuted one
+  measured (same evaluator, prediction, variable, units, thresholds, cohort and tools), the planner view says so and
+  asks it to vary a condition or say why it is a replication. A warning, not a gate.
+
+**Acceptance to watch for:** on Aegis, `python3 scripts/lab_negative_atlas.py show` once measurement contracts have
+settled there. Today it prints `{"refuted": 0, "inconclusive": 0, "failed_execution": 0}` — read-only check on 26
+October: none of the measurement, family-panel or disagreement stores exists in her workspace yet, because those
+builds are not deployed. The proof is three retained cases classified (one of each class), then one later
+investigation's `builds_on_negative` recorded as `reused`, and its own result read beside it.
+
+**What is left:**
+- No real case has been classified: the stores it reads are empty on Aegis. The three-case proof is shown only on the
+  suite's fixtures until contracts settle in her Lab.
+- Older retained negatives — investigations whose review said the outputs did not answer, failed steps, spent dead
+  ends — are not indexed. They carry no frozen prediction, so nothing could separate a refuted claim from a broken
+  run in them; the atlas starts with the measurement semantics of proposal 04, as the proposal said it depends on.
+- Relevance is shared words with the question, not meaning. A negative phrased differently from the next question
+  will not be shown; a word in common can show an unrelated one (its limits are shown with it).
+- The planner sees the atlas only through the measurement view, which `lab_investigations._plan` drops entirely when
+  the prompt is at its limit, and the investigation prompt's example JSON does not mention `builds_on_negative`. A
+  dedicated, separately trimmed atlas line in the planner task would need a hook in `lab_investigations.py`.
+- The finding appraisal (`lab_findings`) and the paid frontier plan are not shown the atlas; nothing was added to a
+  paid prompt.
+
 ## 26 October — A disagreement between two readings, turned into the next measurement
 
 Built on `claude/disagreement-next-2026-10-26` (Codex's proposal 11, approved by Gloria); not yet merged or deployed.
@@ -50,6 +156,25 @@ honest read is a better-separated variable, not wider ranges.
   `lab_investigations.py`; today the "no fold" limit is an instruction, not enforced.
 - Only one measured value (`structural_measure`, `reproducibility`) can adjudicate; a proportion against a control
   cannot.
+
+## 26 October, night — the fault loop: a false security alarm at the end of a deploy
+
+- **F-ca5ce6a8b3, F-4acbfe3925, F-489e848014 (one fault) — fixed (fault loop, Dot reviewed twice), not deployed.**
+  At 22:49:31 on 25 October the security alarm reported `deployed_code_changed` for memory_search.py,
+  memory-search.py and build_merged_chat.py against release 20261025-211836. The 22:40 deploy wrote its receipt
+  (20261025-224932) one second later, naming exactly the hashes installed; all three match the repository. The 23:38
+  and 00:35 deploys raised nothing. A demonstrated path, not a captured trace: `host_snapshot()` listed the receipts
+  first and asked about the install lock last, so a deploy finishing in between looked like tampering.
+  Now the whole snapshot sits between two lock checks and two receipt *generations* (every receipt's name, inode,
+  size and mtime_ns). A lock at either end, or receipts that changed, defer the snapshot: only authorized_keys is
+  compared, the baseline is not advanced, and after 15 minutes it says why it is still deferred. Receipts unreadable
+  at both ends (or one receipt unreadable while nothing changed) are `monitor_blind` at once. +14 checks in
+  `test_security_alarm.py`; every behavior check fails on the old logic.
+- **Not detected, by design:** a receipt replaced with identical inode, size and mtime_ns. A deploy that dies after
+  installing and before its receipt shows as drift afterwards. The newest receipt is still chosen by name, so a clock
+  rollback can still pick the wrong one. **Deploying it waits for Gloria** (a security-alarm change; not Dot's).
+- **F-261d00a2d5, F-04358288fa:** single Lab network failures (an SSL EOF at 03:19, DNS at 04:48), each once. Nothing to fix.
+
 
 ## 26 October — A family question that can fail, measured across instruments
 
@@ -1104,6 +1229,8 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
+- **The thread (from 25 October, on Aegis):** its own CronCreate job 75fffe48 (created 25 October, about 21:00
+  Central; renew by 1 November). The Mac thread below went silent on 23 October.
 - **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
   woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
   renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until

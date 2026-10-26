@@ -190,9 +190,40 @@ def deploying():
     return False
 
 
+def _phase(name):
+    """Test seam between snapshot phases; does nothing in service."""
+
+
+def receipt_generation(h):
+    """(rows, error): every receipt's (name, inode, size, mtime_ns), sorted, or why they could not be listed.
+
+    Any completed deploy writes a receipt, so a deploy that finishes inside a snapshot changes this, including a
+    same-name rewrite or a receipt sorting below the newest. Not detected: a replacement keeping inode, size and
+    mtime_ns identical. A deploy that dies after installing and before its receipt is reported as drift afterwards.
+    """
+    d = h/'.vintos/deploy/releases'
+    try:
+        rows = []
+        for p in d.glob('*.json'):
+            try: st = p.stat()
+            except FileNotFoundError: return None, 'receipt vanished while listed'
+            rows.append((p.name, st.st_ino, st.st_size, st.st_mtime_ns))
+        return tuple(sorted(rows)), None
+    except OSError as e: return None, 'receipts unlistable: '+type(e).__name__
+
+
 def host_snapshot(runner=run):
-    """Only hashes and names; never persist a key, cron command, or unit body."""
+    """Only hashes and names; never persist a key, cron command, or unit body.
+
+    The whole snapshot sits between two lock checks and two receipt generations. If a deploy held the lock at either
+    end, or the receipts changed in between, the snapshot is deferred ('deploying': True, 'deferred': why): only
+    authorized_keys is compared and the baseline is not advanced. Receipts that stay unreadable defer it too, but
+    say so at once ('blind'), so coverage never goes quietly missing (25 October, 22:49: a deploy finishing between
+    reading the old receipt and checking the lock alarmed on every file it had just installed).
+    """
     h = Path.home()
+    lock0, (gen0, err0) = deploying(), receipt_generation(h)
+    _phase('start')
     files = {}
     for base, patterns in [(h/'.config/systemd/user', ['*.service','*.timer','*.socket','*.path','*.target','*.d/*.conf']),
                            (Path('/usr/lib/systemd/system'), ['*.service','*.timer','*.socket','*.path','*.target','*.d/*.conf']),
@@ -212,8 +243,17 @@ def host_snapshot(runner=run):
         if 'Permission denied' in str(e): files['user-crontab'] = cron_from_digest(str(e))
         elif (h/'.vintos').exists(): raise
         else: files['user-crontab'] = hashlib.sha256(b'').hexdigest()
-    releases = sorted((h/'.vintos/deploy/releases').glob('*.json'))
-    receipt = load(releases[-1], {}) if releases else {}
+    _phase('files')
+    # The newest receipt is still chosen by name (timestamp first). The generation check finds a receipt that
+    # appears during a snapshot, but does not make the name order right after a clock rollback.
+    releases = sorted(n for n, *_ in gen0) if gen0 else []
+    receipt, receipt_err = {}, None
+    if releases:
+        try:
+            receipt = json.loads((h/'.vintos/deploy/releases'/releases[-1]).read_text())
+            if not isinstance(receipt, dict): raise ValueError('receipt is not an object')
+        except (OSError, ValueError) as e: receipt, receipt_err = {}, 'receipt unreadable: '+type(e).__name__
+    _phase('receipt')
     deployed = {}
     for row in receipt.get('files', []):
         p = Path(row.get('installed_at', ''))
@@ -225,7 +265,18 @@ def host_snapshot(runner=run):
         actual = digest(p)
         deployed[str(p)] = {'actual': actual, 'expected': expected,
                             'matches_release': bool(expected) and actual.startswith(expected)}
-    return {'files': files, 'deployed': deployed, 'release': releases[-1].name if releases else None, 'deploying': deploying()}
+    _phase('end')
+    lock1, (gen1, err1) = deploying(), receipt_generation(h)
+    snap = {'files': files, 'deployed': deployed, 'release': releases[-1] if releases else None, 'deploying': False}
+    if lock0 or lock1: why = 'install lock held'
+    elif err0 or err1 or gen0 != gen1: why = 'receipts changed during snapshot' if not (err0 and err1) else err1
+    elif receipt_err: why = receipt_err
+    else: return snap
+    snap.update(deploying=True, deferred=why)
+    # The same failure at both ends with no deploy running is not a race: it is blindness, and is said now.
+    if not (lock0 or lock1) and ((err0 and err1) or (receipt_err and gen0 == gen1 and not err0)):
+        snap['blind'] = 'Deployment receipts unreadable ('+why+'); deployed-code coverage unavailable'
+    return snap
 
 
 def ssh_logins(since, runner=run):
@@ -246,6 +297,7 @@ def ssh_logins(since, runner=run):
 def host_events(previous, current):
     out = []
     if current.get('deploying'):
+        if current.get('blind'): out.append(('receipts-unreadable', 'monitor_blind', current['blind']))
         if previous:
             for p, value in current['files'].items():
                 if p.endswith('/.ssh/authorized_keys') and previous['files'].get(p) != value:
@@ -324,7 +376,7 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
         if current is not None and current.get('deploying'):
             state.setdefault('deploy_started', now)
             if now - state['deploy_started'] > 900:
-                remember(state, 'deploy-stalled', 'monitor_blind', 'Installation lock held more than 15 minutes; deployment drift monitoring deferred', now)
+                remember(state, 'deploy-stalled', 'monitor_blind', 'Host snapshot deferred more than 15 minutes ('+str(current.get('deferred') or 'install lock held')+'); deployment drift monitoring deferred', now)
         else: state.pop('deploy_started', None)
         state['checked_at'] = now
         # Persist pending before sending. Crash after send is deduplicated by deliver's receipt.
