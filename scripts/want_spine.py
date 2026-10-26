@@ -86,7 +86,8 @@ def run_step(capability, note, want=None):
         installed = any(x.get("capability") == capability and x.get("state") in ("installed", "resumed") for x in skill_forge._load())
         if installed:
             from forge_build import invoke
-            fn = lambda text: invoke(capability, text, asking=False)
+            fn = lambda text: invoke(capability, text, asking=False, chooser="ordinary", want=want,
+                                      step=(want or {}).get("current_step_index") if (want or {}).get("steps") else None)
     if not callable(fn):
         res["result"] = "BLOCKED"
         res["block"] = {"block_type": "CAPABILITY_ABSENT",
