@@ -1,3 +1,55 @@
+## 26 October — A prediction that can fail
+
+Built on `claude/defeatable-hypotheses-2026-10-26` (Codex's proposal 04 / Design 04, approved by Gloria); not yet
+merged or deployed. `scripts/lab_measurement.py`, with `broker/tests/test_lab_measurement.py` (62 checks, offline).
+
+**What is built:**
+- **The contract** (`lab_measurement.freeze()`): hypothesis, experimental unit, measured variable and units, the
+  comparator, independence (`records` or `one_per_unit` with a unit key), missingness (`not_evaluated` or `exclude`),
+  optional cohort digest, what would support and what would oppose. Revision, freeze time, the digest of the contract,
+  and the ids of the steps that already existed. Append-only in `memory/chemistry-lab/measurement-contracts.jsonl`. A
+  contract that fails validation is stored as refused with its reasons and judges nothing; an invalid restatement never
+  displaces a valid frozen one; at most three revisions. `exploratory` is stored as an honest mode, never evaluated.
+- **Three deterministic evaluators**, no code and no model-written expression ever run: `proportion_vs_control`
+  (counts, or records with a positive rule; Newcombe 95% interval on the difference, Fisher exact p),
+  `structural_measure` (a value against a threshold with its uncertainty), `reproducibility` (against a rerun or a
+  cited value, within a tolerance). Every criterion names an exact output path and what it means.
+- **Separate facts** on each result (`measurement-results.jsonl`): `execution_state`, `measurement_state` (supported /
+  refuted / inconclusive / not_evaluated), `novelty_state` (reproduced_known_result, candidate_computational_finding,
+  negative_result, source_retrieval, not_assessed) and `truth_status` (never biological validation). Bound to each
+  output's digest, the plan id and the contract revision and digest. A failed tool is not_evaluated, never refuted; a
+  changed output, unit mismatch, other cohort, invalid number or missing field is not_evaluated with the reason. Outputs
+  that existed at the freeze are not selected, and named explicitly they cannot confirm; a revision after a result is
+  marked `post_hoc` and waits for a fresh holdout.
+- **Where it reaches him:** the investigation planner is shown, only when it fits its context, how to state a contract
+  (first three steps of an investigation without one), or its frozen contract and measured result, and up to two of his
+  recent refuted predictions from other investigations. The contract he returns beside `prediction` is frozen before the
+  step runs. A frontier plan step may carry a contract (`lab_lines._clean_plan`); it is frozen with the plan, bound to
+  that plan id and step. `done` still means only that the operation completed.
+- **Finding appraisal:** `provenance` counts each completed step as source retrieval, new computation, inspection or a
+  connector call; `new_result` is now true only when a step computed something (a lookup alone used to make it true).
+  `novelty_record` lists what was searched and read, with `certificate: false`. `measurements` carries the contract
+  results, and the appraisal is told a cleanly refuted prediction is a result. Nothing is removed from the notebook.
+- `python3 lab_measurement.py show | negatives | settle` for her 15-minute look at a contract and its result.
+
+**Cost:** no new model call, no GPU. Gemma's planner prompt grows by about 1,100 characters on an investigation's
+first three steps only, and is left out when it does not fit. The frontier alignment prompt grows by about 1,150
+characters (~290 tokens) per review, four a day: roughly 1,200 input tokens a day, well under the $0.02/day ceiling.
+
+**Acceptance to watch for:** an ordinary investigation (not a commissioning run) freezes a contract, its own instrument
+measures it, and the result decides the next step. The strongest case: he narrows or drops a favoured explanation
+because his own measurement refuted it, and that refuted result stays retrievable (`lab_measurement.py negatives`).
+No positive or novel result is required.
+
+**What is left:**
+- `scripts/lab_investigations.py` got two small hooks (planner view where it fits; freezing what the planner returns).
+  Merge with care beside the finishing work.
+- Gemma has not yet been seen writing a contract with real output paths; the first ones may name fields the output
+  does not have and come back not_evaluated. Watching that is part of the acceptance.
+- Known-explanation exclusion is still not built: `known_explanations_excluded` is always empty, and novelty stays
+  provisional. Screening campaigns (`lab_campaign.py`) do not yet carry contracts. The IMG/VR cohort digest is
+  accepted by a contract but no cohort output has been measured by one.
+
 ## 26 October — From a work back to its occasion
 
 Built on `claude/work-episodes-2026-10-26` (Codex's proposal 03 / Design 03, approved by Gloria); not yet merged
