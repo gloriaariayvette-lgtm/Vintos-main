@@ -9082,6 +9082,10 @@ async def _voice_ledger_owned(payload: dict):
             # everything after the cut is unheard and never enters the transcript as if she heard it.
             if payload.get("interrupted"):
                 _heard = str(payload.get("heard") or "")[:600]
+                # The local lane's app sent her own audio reading (a JSON object) in this field, so his transcript
+                # line carried her delivery in place of his words (26 October). Only words are his heard words.
+                if _heard.lstrip().startswith("{"):
+                    _heard = ""
                 _turn["interrupted"] = True; _turn["vintos_composed"] = v; _turn["vintos_heard"] = _heard
                 _turn["vintos"] = (_heard + " [cut off]") if _heard else "[playback incomplete; heard words unknown]"
                 v = _turn["vintos"]
