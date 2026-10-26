@@ -397,15 +397,21 @@ def query(spec, *, db=DB, nucleotide=NUCLEOTIDES, mmseqs=MMSEQS, mmseqs_db=MMSEQ
                 temporary=Path(temporary); query_fasta=temporary/'query.faa'; output=temporary/'hits.tsv'; work=temporary/'work'
                 query_fasta.write_text('>sourced_query\n'+sequence+'\n')
                 command=[str(mmseqs),'easy-search',str(query_fasta),str(mmseqs_db),str(output),str(work),
-                         '--format-output','target,pident,alnlen,evalue,bits,qlen,tlen','--max-seqs',str(limit),
+                         # tseq last: a hit's own sequence is what the locus join needs to place it on
+                         # its contig, and an older receipt without that column still parses.
+                         '--format-output','target,pident,alnlen,evalue,bits,qlen,tlen,tseq','--max-seqs',str(limit),
                          '--split-memory-limit','12G','--threads',str(max(1,min(8,os.cpu_count() or 1)))]
                 runner(command,check=True,capture_output=True,text=True,timeout=600)
                 rows=[]
                 if output.is_file():
                     for line in output.read_text().splitlines()[:limit]:
                         values=line.split('\t'); target=values[0]; uvig=target.split('|',1)[0]
-                        rows.append({'target':target,'uvig':uvig,'percent_identity':float(values[1]),'alignment_length':int(values[2]),
-                                     'evalue':float(values[3]),'bits':float(values[4]),'query_length':int(values[5]),'target_length':int(values[6])})
+                        row={'target':target,'uvig':uvig,'percent_identity':float(values[1]),'alignment_length':int(values[2]),
+                             'evalue':float(values[3]),'bits':float(values[4]),'query_length':int(values[5]),'target_length':int(values[6])}
+                        if len(values)>7 and re.fullmatch(r'[A-Za-z*]{1,20000}',values[7]):
+                            row['target_sequence']=values[7].upper()
+                        row['target_protein_id']=target.split('|')[-1]
+                        rows.append(row)
                 return {'records':rows,'coverage':'bounded_mmseqs_local_high_confidence_release'}
         raise ValueError('unsupported IMG/VR operation')
     finally: connection.close()
