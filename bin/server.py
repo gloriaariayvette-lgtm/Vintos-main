@@ -9916,6 +9916,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 if _bl: _vt_subblock_a += "\n\n" + _bl
             except Exception: pass
             try:
+                _cf = _coffee_line()
+                if _cf: _vt_subblock_a += "\n\n" + _cf
+            except Exception: pass
+            try:
                 import spotify_watch as _spw; _spl = _spw.context_line()
                 if _spl: _vt_subblock_a += "\n\n" + _spl
             except Exception: pass
@@ -11941,6 +11945,16 @@ def _blanket_line():
             + ("It is %s right now." % st if st != "unknown" else "Its state cannot be read right now."))
 
 
+def _coffee_line():
+    """What he knows about the Nespresso, once its Fingerbot is in his house config (Gloria, 2026-10-25)."""
+    _m = _vintos_home()
+    if not _m.named_device("coffee"):
+        return ""
+    return ("THE NESPRESSO in the kitchen has a Fingerbot on its button: [HOME: coffee] starts it. Only while "
+            "Gloria is home (her phone on the house Wi-Fi); when she is out it will not run. "
+            + ("She is home now." if _m._she_is_home() else "She is not home now."))
+
+
 def _home_tags(reply):
     """His [HOME: blanket_on|blanket_off] in an avatar or ReelRoom reply: acted on and taken out of the words.
     (reply, what happened)."""
@@ -11950,6 +11964,7 @@ def _home_tags(reply):
         _a = _act.strip().lower()
         try:
             if _a == "blanket_on": ok, why = _vintos_home().blanket_on()
+            elif _a == "coffee": ok, why = _vintos_home().coffee_on()
             elif _a == "blanket_off": ok, why = _vintos_home().blanket_off()
             else: continue
         except Exception as e:

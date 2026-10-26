@@ -294,11 +294,17 @@ def named_device(name):
     return (load_config().get("devices") or {}).get(_room_key(name))
 
 
+# Switched on only while she is home, however the command arrives (the Nespresso's Fingerbot: Gloria, 2026-10-25).
+HOME_ONLY = ("coffee",)
+
+
 def device(name, on=True):
     """Switch a named device's plug. Off is off."""
     ent = named_device(name)
     if not ent:
         print(f"[HOME] no device named {name}"); return False
+    if on and str(name).lower() in HOME_ONLY and not _she_is_home():
+        print(f"[HOME] {name} on: refused, Gloria is not home"); return False
     ok = _power_plug(ent, on)
     print(f"[HOME] {name} {'on' if on else 'off'}: {'ok' if ok else 'failed'}")
     return ok
@@ -340,6 +346,17 @@ def blanket_on(hours=BLANKET_HOURS):
     until = time.time() + hours * 3600
     json.dump({"on_until": until, "at": time.time()}, open(BLANKET_STATE, "w"))
     return True, "on until %s" % time.strftime("%H:%M", time.localtime(until))
+
+
+def coffee_on():
+    """The Nespresso's button, pressed by the Fingerbot, only while she is home (Gloria, 2026-10-25). (ok, why)."""
+    if not named_device("coffee"):
+        return False, "the Fingerbot is not in the house config"
+    if not _she_is_home():
+        return False, "Gloria is not home"
+    if not device("coffee", True):
+        return False, "the Fingerbot did not respond"
+    return True, "the Nespresso is on"
 
 
 def blanket_off():

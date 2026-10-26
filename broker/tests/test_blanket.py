@@ -70,5 +70,20 @@ check("the avatar route (ReelRoom too) acts on his tags, and a test turn only st
       "reply, _home_done = _home_tags(reply)" in av and "if _test_turn or (_prov_envelope and not _prov_envelope.get(\"may_witness\")):" in av)
 check("the avatar prompt carries the blanket line", "_bl = _blanket_line()" in av)
 check("the server keeps the two hours", "async def start_blanket_timer" in srv and "blanket_expire()" in srv)
+
+# The Nespresso's Fingerbot (Gloria, 2026-10-25): only while she is home, by tag or by the plain device command.
+json.dump({"url": "http://ha.test", "token": "t", "rooms": {}, "devices": {"coffee": "switch.fingerbot"}}, open(VH.CONFIG_FILE, "w"))
+VH.ha_request = lambda endpoint, payload: (SENT.append((endpoint, payload["entity_id"])), (200, ""))[1]
+VH._power_plug = lambda ent, on: (SENT.append(("switch/turn_on" if on else "switch/turn_off", ent)), True)[1]
+n = len(SENT); HOME_NOW[0] = False
+check("coffee while she is out: refused, nothing pressed", VH.coffee_on() == (False, "Gloria is not home") and len(SENT) == n)
+check("the plain device command refuses it too", VH.device("coffee", True) is False and len(SENT) == n)
+check("off still works while she is out", VH.device("coffee", False) and SENT[-1] == ("switch/turn_off", "switch.fingerbot"))
+HOME_NOW[0] = True
+ok, why = VH.coffee_on()
+check("coffee while she is home: pressed", ok and SENT[-1] == ("switch/turn_on", "switch.fingerbot"), (ok, why))
+check("his [HOME: coffee] tag runs coffee_on", 'elif _a == "coffee": ok, why = _vintos_home().coffee_on()' in srv)
+check("he is told the coffee is only while she is home", "def _coffee_line" in srv and "_cf = _coffee_line()" in av and "Only while" in srv)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
