@@ -12118,6 +12118,18 @@ async def reelroom_chat(request: Request):
                        extra={"session_map": body.get("session_map") or [],
                               "planned_actions": body.get("planned_actions") or []})
         except Exception as _je0: print("[reelroom] journal(activity):", _je0, flush=True)
+        if mode == "look" and image:
+            # the frame his reading was made from, to the media index (EmbeddingGemma 2, 26 October): held in a
+            # private directory until a batch embeds it, then deleted. No image is kept; his reading is kept only
+            # as a digest, for joining a bookmark that carries this scene.
+            try:
+                import sys as _rrme_s; _rrme_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                import media_embed as _rr_me
+                _smap = body.get("session_map") if isinstance(body.get("session_map"), list) else []
+                if _rr_me.hold_frame(image, str(rr.journal_payload().get("session_id") or ""),
+                                     scene_index=len(_smap), elapsed_min=body.get("elapsed_min"), reading=reply):
+                    _rr_me.kick(420)      # stays a few minutes for the next frame, then exits
+            except Exception as _rrme: print("[reelroom] frame embed:", str(_rrme)[:160], flush=True)
         if mode == "decide":
             try:
                 _decision = json.loads(reply)
