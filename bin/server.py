@@ -1101,9 +1101,16 @@ def _durable_context(message):
         _dmsys.path.insert(0, _dmos.path.expanduser("~/.vintos/workspace/scripts"))
         from durable_memory import context_block as _dm_cb
         _blk = _dm_cb(str(message or "")[:400])
-        return ("\n" + _blk) if _blk else ""
     except Exception:
-        return ""
+        _blk = ""
+    try:   # proposal 17: when her words match something she once said aloud, how it sounded comes too
+        from auditory_memory import context_line as _am_line
+        _heard = _am_line(str(message or "")[:400])
+        if _heard:
+            _blk = (_blk + "\n" + _heard) if _blk else _heard
+    except Exception:
+        pass
+    return ("\n" + _blk) if _blk else ""
 
 def _avatar_scene_admit(turn, tc):
     """Admission for a live avatar scene: the same effect gate the avatar route
