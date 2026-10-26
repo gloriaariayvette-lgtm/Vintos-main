@@ -1160,6 +1160,23 @@ def _prompt_rev(model=""):
     except Exception:
         return "0"
 
+CODEX_RECALL_CHARS = 5000   # an archive Codex sent, brought into one chat turn at most
+
+def _codex_archive_context(message):
+    """26 October: an archive Codex sent him, brought back only when her message names it (its id, "the zip", what
+    Codex sent, a file in it, its title); otherwise at most one line that archives are there. Fail-open, read only."""
+    try:
+        import sys as _cx_s
+        _p = os.path.expanduser("~/.vintos/workspace/scripts")
+        if _p not in _cx_s.path: _cx_s.path.insert(0, _p)
+        import codex_archives as _cx
+        _blk = _cx.context_for(str(message or "")[:4000], CODEX_RECALL_CHARS)
+    except Exception:
+        _blk = ""
+    if _blk.startswith("== CODEX ARCHIVE"):
+        print("[codex-archives] recalled into the prompt: %d characters" % len(_blk), flush=True)
+    return ("\n\n" + _blk) if _blk else ""
+
 def _map_view_context(message):
     """Map View Compiler (MM phase 1): the message chooses which maps speak. Fail-open."""
     try:
@@ -4517,7 +4534,7 @@ Gloria-specific additions:
         from relational_geometry import get_emotional_snapshot as _rg_snap
         _rg_before_state = _rg_snap()
     except Exception: pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message) + _codex_archive_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -5395,7 +5412,7 @@ Your current self-model (excerpt):
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context(include_devices=False) + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context(include_devices=False) + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _durable_context(message) + _codex_archive_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -6282,7 +6299,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     _sg_current.set(_sg_memory.turn)
     system_prompt += _sg_memory.prompt()
     _sg_memory.admitted(system_prompt)
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(msg.message) + _map_view_context(msg.message) + __import__("emotional_operators").transition_context(msg.message) + _landscape_context(msg.message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(msg.message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(msg.message) + _map_view_context(msg.message) + __import__("emotional_operators").transition_context(msg.message) + _landscape_context(msg.message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(msg.message) + _codex_archive_context(msg.message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -10210,7 +10227,7 @@ Your current self-model (excerpt):
                 _pwj.dump({"offer_make": False, "at": 0}, open(os.path.join(MEMORY, ".projector-window.json"), "w"))
         except Exception:
             pass
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _stance_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _stance_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message) + _codex_archive_context(message)}]
         try:
             import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             # route the turn record through the coordinator so the context's
