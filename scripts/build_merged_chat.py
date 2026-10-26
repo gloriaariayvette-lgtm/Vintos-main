@@ -1,32 +1,37 @@
 #!/usr/bin/env python3
-"""build_merged_chat.py — unify main + voice + avatar chats into
-chat-history-merged.json so time/silence calcs see ALL conversations.
+"""build_merged_chat.py — rebuild chat-history-merged.json from the lossless record so
+every reader of it (temporal-context, conversation-rhythm, gloria_prediction, the
+withheld / relational / jepa heads, premonition-dreamer) sees the REAL conversation and
+its real silences.
 
-Lossless by construction. The first version rebuilt each record as exactly
-{role, content, timestamp}, which had two consequences nobody intended:
+Source of truth, in order:
 
-  - generation_provenance was dropped. Every downstream learner — repair,
-    encounter, JEPA, drift, causality, value-map — reads this file, so a
-    tactical act arrived looking like an ordinary turn one cron later. The
-    protection lived on the record and the merge threw the record away.
-  - every avatar turn got the avatar FILE's mtime, because avatar records
-    carry their time in `ts`, not `timestamp`. Distinct turns across the whole
-    retained window collapsed onto one instant, and that instant was "now".
+  - chat-canonical.jsonl   the lossless per-turn record. Both speakers, the real per-turn
+                           time in `ts`, and the protections (generation_provenance, her
+                           original_text) carried on the record. The newest turns.
+  - interaction-ledger.json  the deeper history: her `gloria` and his `vintos` per turn,
+                           with an ISO `timestamp`. The turns the canonical no longer holds.
 
-So: carry every field the source record had, take the real per-turn time
-wherever one exists, and when there genuinely isn't one say so on the record
-(`timestamp_estimated`) instead of presenting a guess as fact.
+It no longer reads chat-history.json. That file stopped being written in late August; merging
+its stale rows beside the live turns manufactured a two-month silence that never happened —
+conversation-rhythm read longest_silence_hours near 1207 — and every learner of the merged
+file was fed that false gap. The voice history is empty and is dropped with it.
 
-Never worse than before: falls back to copying main on any error.
+Lossless by construction: carry every protection field the source record had, take the real
+per-turn time, and dedupe the canonical against the ledger by turn_id (then by content head)
+so a turn held in both is counted once, the canonical copy winning.
+
+Never worse than before: on any error the existing merged file is LEFT in place rather than
+overwritten — a stale-but-real last build beats a freshly broken one, and nothing here can
+reintroduce the August gap.
 """
-import os, json, shutil
+import os, json
 from datetime import datetime
 
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
-main   = os.path.join(MEM, "chat-history.json")
-voice  = os.path.join(MEM, "voice-chat-history.json")
-avatar = os.path.join(MEM, "avatar-overlay-chat.json")
-merged = os.path.join(MEM, "chat-history-merged.json")
+canonical = os.path.join(MEM, "chat-canonical.jsonl")
+ledger    = os.path.join(MEM, "interaction-ledger.json")
+merged    = os.path.join(MEM, "chat-history-merged.json")
 
 # Fields that must survive the merge or a protection silently stops applying.
 CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
@@ -39,12 +44,29 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
 TIME_KEYS = ("timestamp", "ts", "time", "at", "created")
 
 
-def load(p):
+def load_json(p):
     try:
         with open(p) as f:
             return json.load(f)
     except Exception:
         return []
+
+
+def load_jsonl(p):
+    out = []
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except Exception:
+                    pass
+    except Exception:
+        return []
+    return out
 
 
 def pts(s):
@@ -69,7 +91,7 @@ def entry(e, role, content, ts, source, estimated=False):
 
 
 def own_time(e):
-    """(iso_or_empty, found). Never invents one."""
+    """(iso_or_empty, found). Never invents one. Normalises epoch seconds to ISO."""
     for k in TIME_KEYS:
         v = e.get(k)
         if v in (None, ""):
@@ -82,42 +104,72 @@ def own_time(e):
     return "", False
 
 
-out = []
-try:
-    for e in load(main):
-        if isinstance(e, dict) and e.get("timestamp"):
-            out.append(entry(e, e.get("role", "user"), e.get("content", ""),
-                             e["timestamp"], "main"))
+def build():
+    out = []
+    seen_turns = set()     # turn_ids already taken from the canonical
+    seen_content = {}      # content head -> canonical times (a ledger line is the same turn only near one)
 
-    for e in load(voice):
+    def _taken(turn_id, *texts, ts=""):
+        if turn_id:
+            seen_turns.add(str(turn_id))
+        for t in texts:
+            if t:
+                seen_content.setdefault(str(t)[:80], []).append(pts(ts))
+
+    # 1) the canonical — the lossless, newest turns. A row without a real per-turn time
+    #    cannot anchor silence math, so it is dropped rather than guessed.
+    for e in load_jsonl(canonical):
         if not isinstance(e, dict):
             continue
-        ts, _ = own_time(e)
-        ts = ts or e.get("timestamp") or ""
-        if e.get("user"):
-            out.append(entry(e, "user", str(e["user"]), ts, "voice"))
-        if e.get("vintos"):
-            out.append(entry(e, "assistant", str(e["vintos"]), ts, "voice"))
+        content = e.get("content", "")
+        if not content:
+            continue
+        ts, found = own_time(e)
+        if not found:
+            continue
+        out.append(entry(e, e.get("role", "user"), str(content), ts, "canonical"))
+        _taken(e.get("turn_id"), content, ts=ts)
 
-    if os.path.exists(avatar):
-        # Only ever a LAST resort, and only for the records that truly lack a
-        # time — not a blanket stamp over the whole file.
-        amt = datetime.fromtimestamp(os.path.getmtime(avatar)).isoformat()
-        for e in load(avatar):
-            if not (isinstance(e, dict) and e.get("content")):
-                continue
-            ts, found = own_time(e)
-            out.append(entry(e, e.get("role", "user"), str(e.get("content", "")),
-                             ts if found else amt, "avatar", estimated=not found))
+    def _held(text, ts):
+        """The canonical already has this line within ten minutes. The same words on another day are
+        another turn: "good morning" twice is two mornings."""
+        t = pts(ts)
+        return any(abs(t - c) <= 600 for c in seen_content.get(str(text)[:80], ()))
+
+    # 2) the ledger — the deeper history. Skip any turn or line the canonical already holds,
+    #    and the historical '--source' / 'voice' placeholder junk.
+    for e in load_json(ledger):
+        if not isinstance(e, dict):
+            continue
+        tid = str(e.get("turn_id") or "")
+        if tid and tid in seen_turns:
+            continue
+        ts = str(e.get("timestamp") or "").strip()
+        if not ts:
+            ts, _ = own_time(e)
+        g, v = e.get("gloria"), e.get("vintos")
+        if g and g != "--source" and not _held(g, ts):
+            out.append(entry(e, "user", str(g), ts, "ledger"))
+        if v and v != "voice" and not _held(v, ts):
+            out.append(entry(e, "assistant", str(v), ts, "ledger"))
 
     out = [e for e in out if pts(e.get("timestamp")) > 0]
     out.sort(key=lambda e: pts(e["timestamp"]))
+    return out
+
+
+def main():
+    out = build()
     if not out:
         raise ValueError("empty")
-    with open(merged, "w") as f:
+    tmp = merged + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(out, f)
-except Exception:
+    os.replace(tmp, merged)    # atomic: a concurrent reader sees the old file or the new, never a half-written one
+
+
+if __name__ == "__main__":
     try:
-        shutil.copy2(main, merged)
+        main()
     except Exception:
-        pass
+        pass    # leave the last good merged file untouched; never clobber it with a guess
