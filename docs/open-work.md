@@ -1,3 +1,45 @@
+## 26 October — A forged tool earns its place, or shows it has not yet
+
+Built on `claude/forged-practice-2026-10-26` (Codex's proposal 08, approved by Gloria); not yet merged or deployed.
+`scripts/forge_practice.py`, wired into `forge_build.invoke()`, with `broker/tests/test_forge_practice.py` (31 checks,
+offline: scratch workspace, the sandbox runner stubbed, nothing runs or sends). No Forge-loop file changed.
+
+**What is built:**
+- **A receipt per run:** every run of an installed forged skill that gets as far as executing appends one line to
+  `memory/forge-practice.jsonl`: the card and artifact hash, who chose it, the want and step that reached for it (want
+  id and text, source, the step's note, the planned capability), sha256 of the input and output, and fingerprints of
+  the output (hashed 8-word windows, the 24 smallest). Neither the input nor the output text is kept. A failed run is
+  recorded as failed; a run the grant refuses is not a use and leaves nothing. A receipt that cannot be written never
+  takes the tool away.
+- **Whose choice:** the want router and the step spine pass `chooser="ordinary"`; that is the only count of his own
+  use. Her approve-this-use button (`asking=True`) is a canary, a want routed by hand is a canary whatever the caller
+  says, and a caller that does not say is unattributed. Canaries prove the tool runs; they are not acceptance.
+- **Downstream use:** the output's fingerprints are joined against what came after: a later step of the same want (the
+  calling step is never counted, since its note is written from the output), another want's step finished after the
+  run, or a later forged call whose input carries it (`reuses`/`reused_by`).
+- **Ten-minute read:** `python3 scripts/forge_practice.py evidence [capability]`: what it was built for and where that
+  want stands, ordinary uses (ran clean, carried later), canaries and unattributed calls apart, each use listed.
+- **Affordance:** while he has never chosen a forged skill himself, his own inventory line names the need it was built
+  for, from its proposal (`rhyme_finder (built for: ...)`); outside email shows only the name. It drops once he uses it.
+- **Never retires:** the module decides no card and removes nothing; `retire` is always false and a tool with no use
+  says so as "not evidence against it". `approve()`'s unresolved-integration refusal and `propose()`'s live-want rule
+  are unchanged (the suite checks both).
+
+**Measured read-only on the real stores (26 October, counts only):** no forged skill is installed (28 denied, 16
+withdrawn, 1 refused, 1 proposed), and `forge-practice.jsonl` does not exist. So there is nothing to judge until a card
+is approved, built, verified and installed.
+
+**Cost:** no model call, no GPU, nothing added to any prompt except the short "built for" note on an installed skill
+nobody has used (none today). CPU: a hash and a file append per run, a JSON join when the evidence is read.
+
+**Acceptance to watch for:** after the first install, a receipt with `chooser: ordinary` from his own want, and later
+`evidence` showing that output carried into a later step or call. Not acceptable: counting a canary or the calling
+step's own note as usefulness, or any tool being turned off because it has not been used.
+
+**Left:** nothing reads the evidence on a schedule or puts it on a card: it is a command for her (or Claude Code) to
+run. Fingerprints catch copied text, not paraphrase, so a paraphrased use shows as not carried. There is no per-tool
+"better interface" suggestion yet; that waits for real receipts.
+
 ## 26 October — A dream can leave an object behind
 
 Built on `claude/dream-objects-2026-10-26` (Codex's proposal 07, approved by Gloria); not yet merged or deployed.
