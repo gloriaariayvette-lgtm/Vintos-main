@@ -39,6 +39,9 @@ OFFERED = {
     "reference_compare": ("structure.compare",),
     # what a model he already has holds, over the residues he names, without folding it again (2026-10-07)
     "fold_read": ("structure.read",),
+    # the refolds of sequences his own design instruments made, against the backbone they were designed on
+    # (2026-10-26); runs on Aegis in his own Python, costs nothing, and claims only model consistency
+    "derived_compare": ("structure.compare_refolds",),
 }
 LOCAL = {"reference_compare": "chemistry_reference_compare.py", "fold_read": "chemistry_fold_read.py"}
 STRUCTURE = (".pdb", ".cif", ".cif.gz")
@@ -137,6 +140,16 @@ def menu_block():
         lines.append("- fold_read, operation structure.read, files [one of: " + ", ".join(models) + "], with range "
                      "[first, last] in your protein's numbering: helix and strand ranges from the model's own geometry "
                      "and its confidence per stretch. Read a model you have; do not fold it again for this.")
+    try:
+        import lab_derived_sequences as derived
+        ready = [p["pilot_id"] for p in derived.pilots() if p.get("folds")]
+    except Exception:
+        ready = []
+    if ready:
+        lines.append("- derived_compare, operation structure.compare_refolds, files [], with pilot one of: "
+                     + ", ".join(ready) + ": how far each refold of your own designed sequences sits from the "
+                     "backbone they were designed on, by distance matrix. It says the design model and the folding "
+                     "model agree about a shape; it says nothing about affinity, stability or function.")
     lines.append("- biohub_esm, operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
                  "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
     return "\n".join(lines)
@@ -177,6 +190,8 @@ def run(req, runner=None):
         runner = lambda *a, **k: native_run(req)
     if runner is None and skill in LOCAL:
         runner = _compare_runner(req)
+    if runner is None and skill == "derived_compare":
+        runner = _derived_runner(req)
     if runner is None:
         import plugin_gateway
         runner = plugin_gateway.run_skill
@@ -195,6 +210,16 @@ def run(req, runner=None):
                                      "outputs": [os.path.basename(p) for p in out.get("files", [])]}],
                         "metadata": {"service": "relay_skill", "operation": op,
                                      "interpretation": "instrument_analysis_not_independent_validation"}}}
+
+
+def _derived_runner(req):
+    """The design-and-refold comparison, in this Python: his own artifacts, no network, no model call."""
+    def runner(surface, skill, question, operation=None, input_files=()):
+        import lab_derived_sequences as derived
+        r = derived.compare_pilot(req.get("pilot"))["result"]
+        return {"receipt": {"receipt_id": "derived-compare-%s-%d" % (r.get("pilot_id"), int(time.time()))},
+                "summary": "\n".join(r["display"]), "files": []}
+    return runner
 
 
 def _compare_runner(req, run=None):

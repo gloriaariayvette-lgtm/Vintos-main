@@ -41,6 +41,9 @@ AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 ACCESSION = re.compile(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?")
 WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser().resolve()
 ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold"
+# A sequence his own design instruments made is not a natural protein and is never filed under one: its models
+# live apart, named by their derived id, and its provenance is its parent artifact's hashes (2026-10-26).
+DERIVED_ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold-derived"
 ELIOT_LOG = WS / "memory" / "chemistry-lab" / "diagnostics" / "eliot-esmfold.log"
 
 
@@ -82,6 +85,19 @@ def _validate(body):
     return accession, sequence, source, mapping
 
 
+def derived_identity(body):
+    """The registered record for a derived fold request, or None when this is an ordinary natural fold.
+
+    The two doors stay apart. A body carrying a derived id is checked by the provenance adapter, which
+    refuses an accession, a sequence_source or an HP mapping beside it: a designed sequence may not be
+    folded under a real protein's identity to get through this validator.
+    """
+    if not isinstance(body, dict) or not str(body.get("derived_id") or "").strip():
+        return None
+    import lab_derived_sequences as derived
+    return derived.verify_fold_request(body)
+
+
 def per_residue_mean(structure_read, fallback):
     """Mean pLDDT over residues (CA), from the model's own read; the fallback when the model could not be read."""
     values = (structure_read or {}).get("plddt_by_residue") or []
@@ -111,7 +127,11 @@ def renumber(pdb, first):
 
 
 def fold(body):
-    accession, sequence, source, mapping = _validate(body)
+    derived = derived_identity(body)
+    if derived is None:
+        accession, sequence, source, mapping = _validate(body)
+    else:
+        accession, sequence, source, mapping = derived["derived_id"], derived["sequence"], {}, []
     import torch
     from transformers import AutoTokenizer, EsmForProteinFolding
     if not torch.cuda.is_available(): raise RuntimeError("ESMFold requires the commissioned CUDA instrument")
@@ -127,8 +147,9 @@ def fold(body):
         pdb = renumber(model.output_to_pdb(output)[0], first_residue(source))
     if "ATOM" not in pdb: raise RuntimeError("ESMFold returned no PDB atoms")
     digest = hashlib.sha256(pdb.encode()).hexdigest()
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    destination = ARTIFACTS / (accession + "-" + digest[:12] + ".pdb")
+    folder = ARTIFACTS if derived is None else DERIVED_ARTIFACTS
+    folder.mkdir(parents=True, exist_ok=True)
+    destination = folder / (accession + "-" + digest[:12] + ".pdb")
     temporary = destination.with_suffix(".tmp")
     temporary.write_text(pdb, encoding="utf-8")
     os.replace(temporary, destination)
@@ -151,10 +172,13 @@ def fold(body):
     # CA B-factors; that mean is the one reported. The all-slot figure is kept beside it, named for what it is.
     all_slots, mean_plddt = mean_plddt, per_residue_mean(structure_read, mean_plddt)
     title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
+    if derived is not None:
+        title = "Refolding designed sequence %s (%d aa, from %s on %s): %s" % (
+            accession, len(sequence), derived["instrument"], derived["parent_structure"], sequence)
     if first_residue(source) != 1:
         title += " [residues %d-%d of %s, numbered as in the protein]" % (
             first_residue(source), first_residue(source) + len(sequence) - 1, accession)
-    result = {"title": title, "requested_accession": accession,
+    result = {"title": title, "requested_accession": accession if derived is None else None,
               "modeled_sequence": sequence, "real_sequence": sequence,
               "modeled_sequence_length": len(sequence), "sequence_source": source,
               "hp_mapping": mapping, "mean_plddt": mean_plddt, "mean_plddt_all_atom_slots": all_slots,
@@ -165,6 +189,22 @@ def fold(body):
                           "ESMFold mean pLDDT: %.3f" % mean_plddt] + list(structure_read.get("display") or []) + [
                           "structure: " + str(destination.relative_to(WS))],
               "truth_status": "computational_structure_prediction_not_biological_fact"}
+    if derived is not None:
+        # named for what it is: his own designed sequence, whose identity is its parent's hashes
+        result.update({"derived_id": derived["derived_id"], "is_natural_sequence": False,
+                       "real_sequence": None, "designed_sequence": sequence,
+                       "parent_structure": derived["parent_structure"], "parent_sha256": derived["parent_sha256"],
+                       "parent_accession": derived["parent_accession"],
+                       "design_artifact": derived["design_artifact"], "design_sha256": derived["design_sha256"],
+                       "design_instrument": derived["instrument"],
+                       "truth_status": "structure_prediction_of_his_own_designed_sequence_not_a_natural_protein"})
+        result["display"] = [title, "", "designed amino-acid sequence (no natural accession):", sequence, "",
+                             "parent backbone: %s (sha256 %s)" % (derived["parent_structure"],
+                                                                  derived["parent_sha256"][:12]),
+                             "design artifact: %s (%s)" % (derived["design_artifact"], derived["instrument"]),
+                             "ESMFold mean pLDDT: %.3f" % mean_plddt] + list(
+                             structure_read.get("display") or []) + [
+                             "structure: " + str(destination.relative_to(WS))]
     return {"ok": True, "result": result}
 
 
