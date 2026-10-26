@@ -111,6 +111,9 @@ def plan_step_matches(plan_ref, route, request):
     r = request if isinstance(request, dict) else {}
     seen = [tool_name(route, r)] + [r.get(k) for k in ('source', 'operation', 'skill', 'tool', 'plugin', 'experiment')]
     seen += [str(r.get('source') or '') + str(r.get('operation') or ''), str(r.get('plugin') or '') + str(r.get('tool') or '')]
+    # an instrument named with its operation, as the menu lists them ("fold_read.structure.read"): 4 steps of the
+    # first frontier plan were refused for the very request it asked for (26 October)
+    seen += [str(r.get('skill') or '') + str(r.get('operation') or '')]
     return any(want_tool in norm(x) for x in seen if x)
 
 
@@ -321,6 +324,23 @@ def _menu():
     }
 
 
+def _measurement_line(view):
+    """lab_measurement.planner_view in one line, for a prompt with no room for the whole view."""
+    parts = []
+    c = view.get('contract') or {}
+    if c:
+        parts.append('frozen contract rev %s (%s): %s' % (c.get('revision'), c.get('status'), str(c.get('hypothesis') or '')[:160]))
+    if view.get('result'):
+        parts.append('its result: ' + json.dumps(view['result'], ensure_ascii=False, default=str)[:160])
+    if view.get('disagreements'):
+        parts.append('%d open disagreement(s) between your readings to measure between' % len(view['disagreements']))
+    if view.get('your_negative_results'):
+        parts.append('%d recent negative result(s)' % len(view['your_negative_results']))
+    if view.get('how') and not c:
+        parts.append('no contract yet: state one as "measurement" with your prediction')
+    return '; '.join(parts)[:600]
+
+
 def line_summary(line, steps_kept=3, cap=300):
     """What a line of inquiry tells the planner: its question, why, next step and its last few steps - not its whole
     history (21 October: a Cystatin C line carried about 116 KB of steps and quotes into every planner prompt, which
@@ -337,7 +357,9 @@ def line_summary(line, steps_kept=3, cap=300):
     return out
 
 
-def _plan(investigation, context, ask):
+def _plan(investigation, context, ask, note=None):
+    """The planner's next operation. note, on a re-plan within the same turn, says why the last proposal was not
+    run; the turn's context is left out then, since the task is the same and its copy is what crowded out a route."""
     import lab_instruments
     steps = investigation.get('steps') or []
     # a repeat handed its earlier output is shown as an attempt, not as a result: it must not push real results out
@@ -373,17 +395,19 @@ def _plan(investigation, context, ask):
         'available_inputs': {'structures': lab_instruments.artifacts('structure', 8),
                              'sequences': lab_instruments.artifacts('sequence', 8)},
         'tools': _menu(),
-        'available_routes':['source','plugin','instrument','experiment','genome','representation','regulatory_genome','campaign','schema','native','read_output','finish'],
+        'available_routes':list(ROUTES),
         'request_examples': {'source':{'source':'ncbi','operation':'protein','organism':'a sourced organism','term':'one protein family'},
                              'representation':{'records':{'step':'prior-id','path':['normalized_records']}}},
-        'return': {'question':'Keep the investigation question; set it on the first turn.',
+        # route first: a reply that copied the task's own fields in order (question, prediction, plan, then the
+        # turn's context) ran out of room before any route; 47 turns since 24 October were refused for that
+        'return': {'route':'ONE route name from available_routes, never a pipe-separated menu. Write it first.',
+                   'request':'Exact selected source_query/plugin_query/instrument_query; experiment: {experiment,parameters,shots}; schema: {plugin}',
+                   'step_question':'One bounded measurement or input needed by the investigation.',
+                   'why':'How this output changes the next step; finish as soon as the outputs could answer the question.',
+                   'question':'Keep the investigation question; set it on the first turn.',
                    'prediction':'Concrete prediction before measuring, including what could refute it.',
                    'plan':['Intended steps; revise as the results warrant.'],
-                   'route':'ONE route name from available_routes, never a pipe-separated menu.',
-                   'step_question':'One bounded measurement or input needed by the investigation.',
-                   'request':'Exact selected source_query/plugin_query/instrument_query; experiment: {experiment,parameters,shots}; schema: {plugin}',
-                   'input_refs':[{'step':'prior step id','path':['receipt','records',0,'sequence']}],
-                   'why':'How this output changes the next step; finish as soon as the outputs could answer the question.'},
+                   'input_refs':[{'step':'prior step id','path':['receipt','records',0,'sequence']}]},
         'reference_example': {'route':'representation','request':{'records':{'step':'S-prior','path':['normalized_records']}}},
         'input_reference_contract': ('read_output request {reference:{step,path}} inspects a prior output before choosing its next use. Inside request use {step:<prior id>,path:[exact field keys/indices]} '
                                     'to consume stored outputs without retyping sequences or identifiers. '
@@ -400,6 +424,8 @@ def _plan(investigation, context, ask):
     }
     # Advice, not a refusal: the same tool four times running (fold_read x14, pubmed x14 on 25-26 October) already
     # has its kind of output in hand. Nothing is removed from the menu or gated.
+    if note:
+        task = {'replanning': note, **task, 'context': ''}
     recent = [s.get('tool') for s in steps if s.get('state') == 'completed'][-4:]
     if len(recent) == 4 and len(set(recent)) == 1 and recent[0]:
         task['same_tool'] = ('Your last 4 completed steps all used %s: its kind of output is already in hand. Another '
@@ -454,14 +480,19 @@ def _plan(investigation, context, ask):
         trial = json.dumps(dict(task, measurement=view), ensure_ascii=False) if view else ''
         if trial and len(trial.encode('utf-8')) <= limit:
             task['measurement'], prompt = view, trial
+        elif view:   # a full prompt still carries one line of it: the contract, its result, open disagreements
+            line = _measurement_line(view)
+            trial = json.dumps(dict(task, measurement=line), ensure_ascii=False)
+            if len(trial.encode('utf-8')) <= limit:
+                task['measurement'], prompt = line, trial
     except Exception:
         pass
     prompt += ('\nReturn one operation now as actual JSON data. For example the shape is '
-               '{"question":"the unchanged investigation question","prediction":"a falsifiable prediction",'
-               '"plan":["next measurements"],"route":"source",'
-               '"step_question":"one input needed","request":{"source":"ncbi",'
+               '{"route":"source","request":{"source":"ncbi",'
                '"operation":"protein","organism":"Caudoviricetes","term":"reverse transcriptase"},'
-               '"why":"how the next tool will use the result"}. '
+               '"step_question":"one input needed","why":"how the next tool will use the result",'
+               '"question":"the unchanged investigation question","prediction":"a falsifiable prediction",'
+               '"plan":["next measurements"]}. Begin with "route"; never copy the task\'s context into the reply. '
                'For source queries, source is mandatory. A UniProt accession lookup is '
                '{"source":"uniprot","query":"accession:the_exact_accession"}. '
                'Completed outputs remain available even when recent attempts failed. '
@@ -631,11 +662,12 @@ MAX_UNANSWERED_REVIEWS = 3   # finishes whose review said the outputs do not ans
 
 
 # Outcomes that are neither progress nor failure. Nothing was sent (a source still cooling down, a send set aside
-# to wait for it), or the step repeated an operation this investigation had already completed and was handed that
+# to wait for it, a request refused for its inputs before it ran), or the step repeated an operation this
+# investigation had already completed and was handed that
 # step's retained output. They do not count toward MAX_FAILED_RUN and do not interrupt a run of real failures
 # either; MAX_STEPS still counts them, so a planner that only repeats or only waits is still closed. On 24-25 October
 # 47 of 85 failed steps were a repeat of the investigation's own earlier step, and every one closed "stalled".
-NOT_SENT = ('waiting_not_sent', 'superseded_not_sent')
+NOT_SENT = ('waiting_not_sent', 'superseded_not_sent', 'refused_not_sent')
 FAILED = ('failed', 'outcome_unknown')
 COOLDOWN = 'source_cooldown_active'
 
@@ -689,11 +721,13 @@ def _budget_spent(investigation):
         failed = [s for s in steps if s.get('state') in FAILED]
         done = [s for s in steps if s.get('state') == 'completed' and not s.get('repeat_within')]
         repeats = [s for s in steps if s.get('repeat_within')]
-        waits = [s for s in steps if s.get('state') in NOT_SENT]
+        waits = [s for s in steps if s.get('state') in NOT_SENT and s.get('state') != 'refused_not_sent']
+        shaped = [s for s in steps if s.get('state') == 'refused_not_sent']
         return ('step budget spent (%d operations) without a finish: %d new outputs, %d repeats given their earlier '
-                'output, %d not sent while a source cooled down, %d failed%s'
+                'output, %d not sent while a source cooled down, %d failed%s%s'
                 % (len(steps), len(done), len(repeats), len(waits), len(failed),
-                   ('; failures ' + _mostly(failed)) if failed else ''))
+                   ('; failures ' + _mostly(failed)) if failed else '',
+                   ('; %d refused for their inputs before sending' % len(shaped)) if shaped else ''))
     run = []
     for s in reversed(steps):
         if _neutral(s): continue
@@ -873,6 +907,87 @@ def _retained_read(refusal, route, request, question):
 SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
                            'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea',
                            'quickgo','imgvr','bvbrc'))
+ROUTES = ('source', 'plugin', 'instrument', 'experiment', 'genome', 'representation', 'regulatory_genome', 'campaign',
+          'schema', 'native', 'read_output', 'finish')
+EXPERIMENTS = ('protein', 'fold', 'molecule', 'titrate')
+_ROUTE_KEYS = ('route_name', 'next_route', 'selected_route', 'chosen_route', 'operation_route', 'action', 'tool')
+_NESTED = ('next_operation', 'operation', 'next_step', 'step', 'action')
+_WRAPPERS = (('source_query', 'source'), ('instrument_query', 'instrument'), ('plugin_query', 'plugin'))
+
+
+def _route_word(word, request):
+    """(route, request) for one word that names a single route: a route, a source, "route:tool", an instrument or an
+    experiment by its own name. None for anything else, a menu of several among them."""
+    import lab_instruments
+    from lab_native_instruments import OPERATIONS
+    w = str(word or '').strip()
+    low = w.lower()
+    if low in ROUTES or low in SOURCE_ROUTES:
+        return low, request
+    m = re.fullmatch(r'([a-z_]+)[:./]([a-z0-9_.]+)', low)
+    if m and m.group(1) in ROUTES:
+        head, tail = m.groups()
+        field = {'instrument': 'skill', 'native': 'skill', 'source': 'source', 'experiment': 'experiment'}.get(head)
+        return head, (dict(request, **{field: request.get(field) or tail}) if field else request)
+    if w in lab_instruments.OFFERED:
+        return 'instrument', dict(request, skill=request.get('skill') or w)
+    if w in OPERATIONS:
+        return 'native', dict(request, skill=request.get('skill') or w)
+    if low in EXPERIMENTS:
+        return 'experiment', dict(request, experiment=request.get('experiment') or low)
+    return None
+
+
+def _coerce_route(value):
+    """The planner's reply with its route read from the shapes it really returns, when exactly one route is meant.
+    A reply already naming a route is returned as it is. What was inferred is kept on the reply as _route_inferred."""
+    if not isinstance(value, dict):
+        return value
+    route = value.get('route')
+    if isinstance(route, str) and route.strip().lower() in ROUTES:
+        return value
+    request = value.get('request') if isinstance(value.get('request'), dict) else {}
+    found = None
+    if isinstance(route, list):                       # ["instrument"]: one route given as a list
+        words = {str(r).strip() for r in route if isinstance(r, str) and r.strip()}
+        found = _route_word(words.pop(), request) if len(words) == 1 else None
+        how = 'route given as a list'
+    elif isinstance(route, str) and route.strip():    # "instrument:fold_read", "fold_read", "titrate"
+        found, how = _route_word(route, request), 'route named by its tool'
+    else:
+        for key in _ROUTE_KEYS:                       # the route under another key
+            if isinstance(value.get(key), str) and _route_word(value[key], request):
+                found, how = _route_word(value[key], request), 'route given as ' + key
+                break
+        for key in _NESTED if found is None else ():  # the operation nested one level down
+            inner = value.get(key)
+            if isinstance(inner, dict) and inner.get('route'):
+                lifted = _coerce_route(dict(inner))
+                if isinstance(lifted.get('route'), str) and lifted['route'].strip():
+                    out = dict(value, **lifted)
+                    out['_route_inferred'] = 'operation nested under ' + key
+                    return out
+        for key, name in _WRAPPERS if found is None and not request else ():
+            if isinstance(value.get(key), dict):      # {"instrument_query": {...}} with no route or request
+                found, how = (name, dict(value[key])), key + ' with no route'
+                break
+        if found is None and request:                 # the request itself names the door
+            if isinstance(request.get('source'), str) and request['source']:
+                found = ('source', request)
+            elif request.get('skill') or (request.get('operation') and request.get('files') is not None):
+                found = _route_word(request.get('skill'), request) if request.get('skill') else ('instrument', request)
+            elif isinstance(request.get('experiment'), str):
+                found = ('experiment', request)
+            elif set(request) == {'reference'}:
+                found = ('read_output', request)
+            elif request.get('plugin') and request.get('tool'):
+                found = ('plugin', request)
+            how = 'route implied by the request'
+    if not found:
+        return value
+    return dict(value, route=found[0], request=found[1], _route_inferred=how)
+
+
 MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the investigation is closed, not retried
 # When set, the frontier's executable plan for a line directs each step (objective, tool, dependency, success
 # criterion); the local model fills in the exact request rather than choosing the operation. Off by default:
@@ -954,17 +1069,35 @@ def _turn(context, *, ask=None, execute=None):
     _save(data)
     if waiting and waiting.get('retry_at',0)>time.time():
         return {'kind':'investigation_wait','investigation':investigation['id'],'state':'waiting_not_sent','retry_at':waiting['retry_at']}
+    may_replan = not waiting and int(investigation.get('replans', 0)) < MAX_REPLANS
     if waiting:
         value={'route':waiting['route'],'request':waiting['request'],'step_question':waiting['question'],'why':waiting.get('why','')}
         if waiting.get('plan_ref'): value['_planned'] = waiting['plan_ref']
         waiting['state']='superseded_not_sent'
     else:
-        value = _plan(investigation, context, ask)
+        try:
+            value = _plan(investigation, context, ask)
+        except lab.ModelJSONError:
+            # the reply could not be read: Gemma had copied the task and its context and ran out of room (24-26
+            # October). Asked once more, with the note and without the context; unreadable again, it fails as before.
+            again = _again(investigation, data, context, ask, NOTE_UNREADABLE, 'unreadable_reply') if may_replan else None
+            if again is None:
+                raise
+            value, may_replan = again, False
+    value = _coerce_route(value)
+    if may_replan and (not isinstance(value, dict) or not str(value.get('route') or '')):
+        keys = sorted(map(str, value))[:12] if isinstance(value, dict) else []
+        again = _again(investigation, data, context, ask, NOTE_NO_ROUTE % ', '.join(keys), 'no_route')
+        may_replan = False
+        if again is not None:
+            value = _coerce_route(again)
     planned = value.pop('_planned', None) if isinstance(value, dict) else None
     plan_ref = ({k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
                 if FRONTIER_PLANS and isinstance(planned, dict) else None)
     if not isinstance(value, dict) or not str(value.get('route') or ''):
-        return _refuse(data, investigation, 'investigation planner returned no route')
+        keys = sorted(map(str, value))[:12] if isinstance(value, dict) else []
+        return _refuse(data, investigation, 'investigation planner returned no route'
+                       + (' (its reply had only: %s)' % ', '.join(keys) if keys else ''))
     investigation['planning_failures'] = 0
     investigation.pop('deferred_until', None)
     if not investigation.get('question'):
@@ -981,6 +1114,122 @@ def _turn(context, *, ask=None, execute=None):
     if not investigation.get('prediction'):investigation['prediction']=str(value.get('prediction') or '')
     __import__('lab_measurement').from_planner(investigation, value)   # freezes a returned contract; never raises
     investigation['plan'] = value.get('plan') or investigation.get('plan') or []
+    try:
+        return _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_replan)
+    except _Replan as stop:
+        again = _again(investigation, data, context, ask, stop.note, stop.kind)
+        again = _coerce_route(again) if again is not None else None
+        if not isinstance(again, dict) or not str(again.get('route') or ''):
+            again = value     # the re-plan gave nothing usable: the proposal is carried out as it always was
+        planned = again.pop('_planned', None)
+        if FRONTIER_PLANS and isinstance(planned, dict):
+            plan_ref = {k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
+        if again is not value and again.get('plan'):
+            investigation['plan'] = again['plan']
+        return _carry_out(data, investigation, again, plan_ref, context, ask, execute, False)
+
+
+MAX_REPLANS = 8   # re-plans one investigation may take in all; past them a proposal is carried out as it always was
+NOTE_UNREADABLE = ('Your last reply could not be read as one JSON object: it copied the task and ran out of room. '
+                   'Return only the operation, beginning with "route", then "request", "step_question" and "why".')
+NOTE_NO_ROUTE = ('Your last reply named no route (it had only: %s). Return the one operation, beginning with "route", '
+                 'then "request", "step_question" and "why". Do not copy the task.')
+
+
+class _Replan(Exception):
+    """A proposed step that is not run and takes no step: the planner is asked once more in the same turn, with the
+    reason. Raised only before anything is sent, and only while the turn and the investigation have a re-plan left."""
+    def __init__(self, note, kind):
+        super().__init__(kind)
+        self.note, self.kind = note, kind
+
+
+class _InputShape(ValueError):
+    """A request refused for its shape before anything ran: nothing was sent, so it is not a failure."""
+
+
+_REFUSED_REPEAT = re.compile(r'you already asked this|you already ran this exact lookup|already done in this '
+                             r'investigation|prior model read already includes')
+
+
+def _repeat_note(earlier):
+    """What the planner is told when it proposes its own completed step again: that step, and its output."""
+    return {'why_not_run': ("it repeats this investigation's own completed step %s (%s). Its output is already yours: "
+                            'summarized here, and in full as {"step":"%s","path":[...]}. Do not ask for it again. '
+                            'Choose a different operation that uses it or measures something new, or finish if the '
+                            'outputs so far could answer the question.') % (earlier['id'], earlier.get('tool'), earlier['id']),
+            'earlier_output': str(earlier.get('summary') or '')[:800],
+            'earlier_output_index': (earlier.get('output_index') or [])[:12]}
+
+
+def _reference_input(request, steps):
+    """(request, why) for a reference_compare request: its reference taken from what this investigation already holds
+    when the planner gave none or gave a protein's name or accession, else why it cannot run, before anything runs.
+    On 26 October every compare named no PDB entry at all, each was refused inside the instrument after taking one of
+    the day's runs, and five in a row closed an investigation. A reference is filled in only when exactly one entry
+    is meant: the entry this investigation already read for the model's protein, or that protein's only PDB entry in
+    its UniProt record here."""
+    import chemistry_reference_compare as compare
+    files = [f for f in (request.get('files') or []) if isinstance(f, str)]
+    actual = resolve(request, steps)
+    ref = str(actual.get('reference') or '').strip()
+    resolved = re.fullmatch(r'[0-9][A-Za-z0-9]{3}(?:[ _-]?[A-Za-z0-9])?', ref)
+    if not resolved:
+        protein = Path(files[0]).name.split('-')[0].upper() if files else ''
+        wanted = {protein, ref.upper()} - {''}
+        held, read = [], []
+        for s in steps:
+            if s.get('state') != 'completed' or not s.get('output_file'):
+                continue
+            try:
+                out = resolve({'step': s['id'], 'path': []}, steps)
+            except Exception:
+                continue
+            if not isinstance(out, dict):
+                continue
+            for rec in out.get('normalized_records') or []:
+                if isinstance(rec, dict) and str(rec.get('accession') or '').upper() in wanted:
+                    held += [str(p).upper() for p in rec.get('pdb_ids') or [] if compare.PDB_ID.fullmatch(str(p))]
+            receipt = out.get('receipt') or out.get('source_receipt') or {}
+            if receipt.get('source') == 'pdb':
+                read += [str(r.get('entry_id')).upper() for r in receipt.get('records') or []
+                         if isinstance(r, dict) and r.get('entry_id')]
+        held = list(dict.fromkeys(held))
+        chosen = [p for p in dict.fromkeys(read) if p in held] or held
+        if len(chosen) != 1:
+            return request, ('reference must be a four-character PDB entry id of a deposited structure; got %r. %s'
+                             % (ref[:40], ('This investigation holds these entries for %s: %s. Name one as reference, '
+                                           'with chain and ref_span read from a pdb source step on it.'
+                                           % (protein, ', '.join(held[:8]))) if held else
+                                ('This investigation holds no PDB entry for %s: take one from its UniProt record '
+                                 '(pdb_ids) or a pdb source step first, or use another instrument.' % (protein or 'it'))))
+        request = dict(request, reference=chosen[0])
+        actual = dict(actual, reference=chosen[0])
+    try:
+        compare.validate(dict(actual, model=files[0] if files else ''))
+    except ValueError as exc:
+        return request, str(exc)
+    return request, ''
+
+
+def _again(investigation, data, context, ask, note, kind):
+    """One re-plan within this turn, counted against MAX_REPLANS; the reply, or None when it could not be had."""
+    investigation['replans'] = int(investigation.get('replans', 0)) + 1
+    _save(data)
+    lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_replan', 'investigation': investigation['id'],
+                               'why': kind, 'replans': investigation['replans'],
+                               'truth_status': 'proposal_not_run_nothing_sent'})
+    try:
+        value = _plan(investigation, context, ask, note=note)
+    except Exception:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_replan):
+    """One proposed operation, as a step. With may_replan, a proposal that would only repeat this investigation's own
+    step, is not the planned step, is refused as a repeat before sending, or is malformed for its instrument raises
+    _Replan instead, before anything is sent, and leaves no step behind."""
     route, request = value.get('route'), value.get('request') or {}
     if not isinstance(request,dict): raise ValueError('operation request must be an object')
     authored_route = None
@@ -1019,12 +1268,20 @@ def _turn(context, *, ask=None, execute=None):
             'question':str(value.get('step_question') or investigation['question']),
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
             'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
-            **({'plan_ref':plan_ref} if plan_ref else {})}
+            **({'plan_ref':plan_ref} if plan_ref else {}),
+            **({'route_inferred':value['_route_inferred']} if value.get('_route_inferred') else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
     # are not retried automatically (especially hosted inference).
     step['state'] = 'started'
     investigation['steps'].append(step)
     _save(data)
+
+    def replan(note, kind):
+        # nothing was sent: the proposal leaves no step behind, and the planner is told why, once, in this turn
+        investigation['steps'] = [s for s in investigation['steps'] if s is not step]
+        _save(data)
+        return _Replan(dict(note, proposed=step.get('tool')), kind)
+
     try:
         from lab_tool_calls import normalize_request
         authored_request = request
@@ -1035,8 +1292,19 @@ def _turn(context, *, ask=None, execute=None):
         step['reference_origin'] = 'explicit_or_exact_equal_returned_value' if step['input_refs'] else None
         step['tool'] = tool_name(route, request)
         if plan_ref and not plan_step_matches(plan_ref, route, request):
-            raise ValueError('planned step %s requires %s/%s; the request was %s, so it was not run'
-                             % (plan_ref.get('step_number'), plan_ref.get('route'), plan_ref.get('tool') or '*', step['tool']))
+            why = ('planned step %s requires %s/%s; the request was %s, so it was not run'
+                   % (plan_ref.get('step_number'), plan_ref.get('route'), plan_ref.get('tool') or '*', step['tool']))
+            if may_replan:
+                raise replan({'why_not_run': why + '. Return that planned operation now, as planned_step says.'},
+                             'not_the_planned_step')
+            raise ValueError(why)
+        if route == 'instrument' and request.get('skill') == 'reference_compare':
+            request, why = _reference_input(request, investigation['steps'][:-1])
+            step['executed_request'] = request
+            if why and may_replan:
+                raise replan({'why_not_run': 'nothing was sent: ' + why}, 'reference_compare_input')
+            if why:
+                raise _InputShape(why)
         from lab_tool_calls import execution_request
         resolved = execution_request(route,resolve(request, investigation['steps'][:-1]))
         step['request_sha256'] = hashlib.sha256(json.dumps([route,resolved],sort_keys=True).encode()).hexdigest()
@@ -1047,6 +1315,15 @@ def _turn(context, *, ask=None, execute=None):
         # a repeat's copy is never the source: point back to the step that actually ran
         done = [s for s in same if s.get('state') == 'completed' and s.get('output_file') and not s.get('repeat_within')]
         mine = [s for s in done if any(s is t for t in investigation['steps'])]
+        if may_replan and route == 'read_output':
+            # reading the same stored field again returns what it returned: the same as any other repeat
+            mine = [s for s in prior if s.get('request_sha256') == step['request_sha256'] and s.get('state') == 'completed'
+                    and any(s is t for t in investigation['steps'])]
+        if may_replan and mine:
+            # This investigation's own completed step again (8 of 14 steps of two investigations on 26 October, each
+            # handed its earlier output and each spending a step). It is handed that output again, in the note, and
+            # asked once for something new; a second repeat in the same turn is carried out as before.
+            raise replan(_repeat_note(mine[-1]), 'repeat_within')
         if done:
             # The same operation already completed: its retained output is this step's output, and nothing is sent
             # again. Another investigation's: refusing it closed 478 investigations in two days on "5 operations in
@@ -1067,6 +1344,14 @@ def _turn(context, *, ask=None, execute=None):
                 result = execute(route, request, step['question'], investigation['steps'][:-1])
             except ValueError as exc:
                 earlier = _answered_before(str(exc), step, data)
+                own = earlier is not None and any(earlier is t for t in investigation['steps'])
+                if may_replan and (own or (earlier is None and _REFUSED_REPEAT.search(str(exc)))):
+                    # refused before sending as a repeat: of this investigation's own step, or of a lookup made before
+                    # with nothing retained to stand in (most of the closures on 26 October). Asked once for another.
+                    raise replan(_repeat_note(earlier) if own else
+                                 {'why_not_run': 'refused before sending, as a repeat of a lookup already made: %s. '
+                                  'Ask something not asked before: another tool on what you hold, or finish.'
+                                  % str(exc)[:240]}, 'refused_repeat')
                 if earlier is None:
                     raise
                 payload = lab._load(_path(earlier['output_file']), None)
@@ -1081,8 +1366,12 @@ def _turn(context, *, ask=None, execute=None):
                 _store_result(step, payload)
             else:
                 _store_result(step, normalize_result(result))
+    except _Replan:
+        raise
     except SourceWaiting as exc:
         step.update(state='waiting_not_sent',retry_at=exc.until,error=str(exc))
+    except _InputShape as exc:
+        step.update(state='refused_not_sent', error=str(exc)[:300])
     except Exception as exc:
         if str(exc) == COOLDOWN:
             # the source door itself found the source cooling down: nothing was sent, so this is a wait, not a failure

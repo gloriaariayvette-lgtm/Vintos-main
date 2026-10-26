@@ -186,6 +186,11 @@ def validate(req):
         raise ValueError("this instrument needs a Lab artifact")
     if skill in LOCAL and (len(files) != 1 or not files[0].startswith("artifacts/esmfold/")):
         raise ValueError("%s takes one ESMFold model the Lab made" % skill)
+    if skill == "reference_compare":
+        # the compare's own input checks, here, before a run is spent: on 26 October 10 of the day's 11 instrument
+        # runs were compares refused inside the instrument for naming no PDB entry, each taking one of DAILY_RUNS
+        import chemistry_reference_compare
+        chemistry_reference_compare.validate(dict(req, model=files[0]))
     question = str(req.get("question") or "")[:600]
     if len(question) < 10:
         raise ValueError("say what the instrument should answer")
