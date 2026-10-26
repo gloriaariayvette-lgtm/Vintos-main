@@ -252,6 +252,7 @@ SCRIPTS="$SCRIPTS work_episodes.py"   # from one of his works back to the want, 
 SCRIPTS="$SCRIPTS arrival_encounter.py"   # a song and a line he prepares for her next bedroom arrival, greeted once through the existing Watch offer and ntfy line (design 05, 2026-10-26)
 SCRIPTS="$SCRIPTS outreach_postcards.py"   # an outreach may carry one piece he kept or revealed, when he chooses it in that turn (proposal 06, 2026-10-26)
 SCRIPTS="$SCRIPTS dream_objects.py"   # last night's dream offered as material in an Atelier visit; a work made from it keeps its link back, always as a dream (proposal 07, 2026-10-26)
+SCRIPTS="$SCRIPTS exhibitions.py"   # an exhibition he makes her of works already out of the room, in an Atelier visit; shown only in her app (proposal 20, 2026-10-26)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
