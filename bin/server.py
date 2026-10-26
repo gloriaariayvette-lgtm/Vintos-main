@@ -4170,7 +4170,7 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                 except Exception as _pue:
                     print("[pursuit/tag]", _pue, flush=True)
                 try:
-                    import bedroom_arrival as _ba; reply = _ba.take_picks(reply)   # his [ARRIVAL SONGS: ...]
+                    import bedroom_arrival as _ba; reply = _ba.take_picks(reply, turn_id=getattr(locals().get("_turn"), "turn_id", "") or "")   # his [ARRIVAL SONGS: ...] and [ARRIVAL ENCOUNTER: ...]
                 except Exception as _bae: print("[bedroom/picks]", _bae, flush=True)
                 import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
 
@@ -10485,7 +10485,8 @@ Your current self-model (excerpt):
             except Exception as _hte: print("[avatar/home]", _hte, flush=True)
             try:
                 import bedroom_arrival as _ba
-                reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
+                reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))),
+                                       turn_id=(_turn.turn_id if _turn is not None else ""))
             except Exception as _bae: print("[avatar/bedroom-picks]", _bae, flush=True)
             try:
                 import spotify_watch as _spw   # his [SPOTIFY: Title - Artist]: on her Watch, avatar chat only
