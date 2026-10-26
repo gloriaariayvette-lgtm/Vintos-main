@@ -44,6 +44,14 @@ from the deploy branch on 25 October because her phone app cannot yet enter a ne
 cut her phone off; with the house tailnet-only it is not needed now. It is ready on its branch for when the app can
 take it (rebuild the native iPhone app from the companion vintos-app commit first, and test it on her phone).
 
+**After the deploy, 25 October evening:**
+- Merged chat is built from the canonical record and the ledger; the August file no longer makes a false two-month
+  silence (a read of the live store: 36 rows and a 1219-hour longest gap become 604 rows and 76 hours).
+- Semantic recall: legacy index rows whose file is gone are not served (60 of 2270), and their dreams carry the marker.
+- Coffee: `[HOME: coffee]` starts the Nespresso's Fingerbot (`coffee` in the house config), only while she is home.
+- Mail: a pass with no Gmail check left no longer restarts the six-hour wait.
+- `~/AGENTS.md` now says `:8443` is tailnet-only.
+
 **Done 25 October, not code:**
 - The sealed latent-memory artifacts copied off `/tmp` (cleared at boot) to `~/sealed-latent-memory-20261022`,
   hashes verified against `seal.json`. The sealed snapshot carries its own original serving code
@@ -53,13 +61,10 @@ take it (rebuild the native iPhone app from the companion vintos-app commit firs
 - The lost Workbench win saved to `successes.md` on the Mac.
 
 **Still open:**
-- `build_merged_chat.py` still mixes the August chat file into what temporal, rhythm and the predictors read; a fix is
-  in progress on `claude/finish-memory-history-2026-10-25`, not in this deploy.
-- Semantic recall still serves the legacy index (rows for deleted files, and dream rows without their marker); same
-  branch, not in this deploy.
 - The Buzz relay container lost its compose network on 15 October and has been down since; not worked on.
 - Firewall rules for `:8500`/`:8501` to the Private profile.
-- `~/AGENTS.md` still describes `:8443` as a public Funnel; it is now tailnet-only.
+- The house credential cutover (held, above).
+- GrokBot's daily letter: its Grok task read his reply on 25 October but sent nothing; that is on the Grok side.
 
 ## 22 October — additive trained subconscious feeds implemented (review only)
 
