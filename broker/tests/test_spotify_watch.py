@@ -39,11 +39,21 @@ def fake(req, timeout=None):
     assert url.startswith(S.API), url
     if "/search" in url: return Resp({"tracks": {"items": TRACKS}})
     if url.endswith("/me/player/devices"): return Resp({"devices": DEVICES})
+    # Her real Watch (26 October): ignores play-with-uris, honours queue then skip; queue/skip answer with a bare id.
     if "/me/player/play" in url:
+        return Resp(None, 204)
+    if "/me/player/queue" in url:
         if PLAY_CODE[0] != 204:
             raise urllib.error.HTTPError(url, PLAY_CODE[0], "no", {}, io.BytesIO(b'{"error":{"message":"Device not found"}}'))
-        return Resp(None, 204)
+        QUEUED[:] = [urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["uri"][0]]
+        r = Resp(None, 200); r.write(b"0f3e2a"); r.seek(0); return r
+    if "/me/player/next" in url:
+        if QUEUED and SKIPS_WORK[0]: NOW[0] = QUEUED.pop(0)
+        r = Resp(None, 200); r.write(b"0f3e2a"); r.seek(0); return r
+    if url.endswith("/me/player"):
+        return Resp({"is_playing": True, "device": {"name": "Gloria's Apple Watch"}, "item": {"uri": NOW[0]}})
     raise AssertionError(url)
+QUEUED, NOW, SKIPS_WORK = [], ["spotify:track:her-own"], [True]
 patch("urllib.request.urlopen", fake).start()
 
 check("every store is throwaway and Spotify is a fake", all(p.startswith(HOME) for p in (S.SECRETS, S.PENDING, S.LOG))
@@ -71,10 +81,16 @@ check("he is told he can, and how, once she is logged in", "[SPOTIFY: Title - Ar
       and "not her phone" in S.context_line())
 
 row = S.play("Enjoy the Silence - Depeche Mode")
-put = [c for c in CALLS if c[0] == "PUT"]
-check("his pick plays on her Watch, and only there", row["played"] and row["device"] == "Gloria's Apple Watch"
-      and len(put) == 1 and "device_id=w1" in put[0][1] and json.loads(put[0][2]) == {"uris": ["spotify:track:enjoy"]}, row)
+queued = [c for c in CALLS if "/me/player/queue" in c[1]]
+check("his pick is queued on her Watch and skipped to, and only played once Spotify reports it playing there",
+      row["played"] and row["device"] == "Gloria's Apple Watch" and len(queued) == 1 and "device_id=w1" in queued[0][1]
+      and "spotify%3Atrack%3Aenjoy" in queued[0][1] and any("/me/player/next" in c[1] and "device_id=w1" in c[1] for c in CALLS), row)
 check("the phone is never the device, even when it is the active one", not any("device_id=ph1" in c[1] for c in CALLS))
+SKIPS_WORK[0] = False; NOW[0] = "spotify:track:her-own"
+row = S.play("Enjoy the Silence - Depeche Mode")
+check("Spotify says yes but her Watch plays on: not counted as played", not row["played"]
+      and "did not start it" in row["why"], row)
+SKIPS_WORK[0] = True
 
 DEVICES[:] = [d for d in DEVICES if d["type"] != "Watch"]; n = len(CALLS)
 row = S.play("Enjoy the Silence - Depeche Mode")
@@ -136,7 +152,7 @@ n = len(CALLS)
 row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=fake_sleep, clock=lambda: T[0])
 check("Watch closed: she gets one notification asking her to open Spotify on it", len(NUDGES) == 1
       and NUDGES[0][1] == "ntfy" and "Open Spotify on your Watch" in NUDGES[0][2] and row.get("nudged") == "sent", NUDGES)
-check("the song plays on the Watch the moment it appears, never the phone", row["played"] and row["device"] == "Apple Watch"
+check("the song plays on the Watch the moment it appears, never the phone", row["played"] and "Apple Watch" in row["device"]
       and row["waited_s"] == 15 and not any("device_id=ph1" in c[1] for c in CALLS[n:]), row)
 DEVICES[:] = [d for d in DEVICES if d is not WATCH]; T[0] = 0.0
 row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=lambda s: T.__setitem__(0, T[0] + s), clock=lambda: T[0])

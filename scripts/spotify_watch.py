@@ -109,7 +109,9 @@ def _api(method, path, body=None):
                                  headers={"Authorization": "Bearer " + _token(), "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
-            raw = r.read(); return r.status, (json.loads(raw) if raw else {})
+            raw = r.read()
+            try: return r.status, (json.loads(raw) if raw else {})
+            except ValueError: return r.status, {}   # the queue and skip endpoints answer with a bare id, not JSON
     except urllib.error.HTTPError as e:
         try: return e.code, json.loads(e.read() or b"{}")
         except Exception: return e.code, {}
@@ -200,11 +202,23 @@ def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
                 return row
         if not dev:
             row["why"] = "her Watch is not listening on Spotify right now (the Spotify app on it is closed)"; return row
-        code, got = _api("PUT", "/me/player/play?" + urllib.parse.urlencode({"device_id": dev["id"]}), {"uris": [uri]})
-        if code in (200, 202, 204):
-            row.update(played=True, device=dev.get("name"))
-        else:
+        # Her Watch accepts "play this track" and goes on playing what it had (26 October: Spotify said yes, her Watch
+        # played on). It does honour queue-then-skip. Played means Spotify reports this track playing on her Watch.
+        dq = urllib.parse.urlencode({"device_id": dev["id"]})
+        code, got = _api("POST", "/me/player/queue?" + urllib.parse.urlencode({"uri": uri, "device_id": dev["id"]}))
+        if code not in (200, 202, 204):
             row["why"] = "Spotify refused (%s): %s" % (code, str(((got or {}).get("error") or {}).get("message") or got)[:120])
+            return row
+        sleep(1)
+        _api("POST", "/me/player/next?" + dq)
+        for _ in range(5):
+            sleep(2)
+            c, now_playing = _api("GET", "/me/player")
+            item = (now_playing or {}).get("item") or {}
+            if item.get("uri") == uri and (now_playing or {}).get("is_playing"):
+                row.update(played=True, device=((now_playing or {}).get("device") or {}).get("name") or dev.get("name"))
+                return row
+        row["why"] = "Spotify took the song, but her Watch did not start it"
         return row
     except Exception as e:
         row["why"] = "%s: %s" % (type(e).__name__, str(e)[:160]); return row
