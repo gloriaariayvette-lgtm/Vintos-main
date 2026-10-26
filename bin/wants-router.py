@@ -2722,9 +2722,11 @@ def main():
                             from moment_index import create_moment, get_recent_moments
                             _prev = get_recent_moments(1, source="want-fulfilled")
                             _prev_id = _prev[0]["moment_id"] if _prev else None
-                            create_moment("want-fulfilled", text[:200],
-                                        links={"previous_moment_id": _prev_id} if _prev_id else {},
-                                        intensity=0.6)
+                            # the want's own id in the moment's links, so a work made for this want can find the
+                            # moment it was fulfilled by id, not by its words (work_episodes.py, design 03)
+                            _mlinks = {"previous_moment_id": _prev_id} if _prev_id else {}
+                            if want.get("id"): _mlinks["want_id"] = str(want.get("id"))
+                            create_moment("want-fulfilled", text[:200], links=_mlinks, intensity=0.6)
                         except: pass
                         try:
                             from reality_anchor import record_event
