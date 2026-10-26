@@ -157,6 +157,25 @@ honest read is a better-separated variable, not wider ranges.
 - Only one measured value (`structural_measure`, `reproducibility`) can adjudicate; a proportion against a control
   cannot.
 
+## 26 October, night — the fault loop: a false security alarm at the end of a deploy
+
+- **F-ca5ce6a8b3, F-4acbfe3925, F-489e848014 (one fault) — fixed (fault loop, Dot reviewed twice), not deployed.**
+  At 22:49:31 on 25 October the security alarm reported `deployed_code_changed` for memory_search.py,
+  memory-search.py and build_merged_chat.py against release 20261025-211836. The 22:40 deploy wrote its receipt
+  (20261025-224932) one second later, naming exactly the hashes installed; all three match the repository. The 23:38
+  and 00:35 deploys raised nothing. A demonstrated path, not a captured trace: `host_snapshot()` listed the receipts
+  first and asked about the install lock last, so a deploy finishing in between looked like tampering.
+  Now the whole snapshot sits between two lock checks and two receipt *generations* (every receipt's name, inode,
+  size and mtime_ns). A lock at either end, or receipts that changed, defer the snapshot: only authorized_keys is
+  compared, the baseline is not advanced, and after 15 minutes it says why it is still deferred. Receipts unreadable
+  at both ends (or one receipt unreadable while nothing changed) are `monitor_blind` at once. +14 checks in
+  `test_security_alarm.py`; every behavior check fails on the old logic.
+- **Not detected, by design:** a receipt replaced with identical inode, size and mtime_ns. A deploy that dies after
+  installing and before its receipt shows as drift afterwards. The newest receipt is still chosen by name, so a clock
+  rollback can still pick the wrong one. **Deploying it waits for Gloria** (a security-alarm change; not Dot's).
+- **F-261d00a2d5, F-04358288fa:** single Lab network failures (an SSL EOF at 03:19, DNS at 04:48), each once. Nothing to fix.
+
+
 ## 26 October — A family question that can fail, measured across instruments
 
 Built on `claude/instrument-families-2026-10-26` (Codex's proposal 10, approved by Gloria); not yet merged or
@@ -1210,6 +1229,8 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
+- **The thread (from 25 October, on Aegis):** its own CronCreate job 75fffe48 (created 25 October, about 21:00
+  Central; renew by 1 November). The Mac thread below went silent on 23 October.
 - **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
   woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
   renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until
