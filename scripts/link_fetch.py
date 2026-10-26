@@ -234,12 +234,14 @@ def _pinned_socket(connection, addresses):
     raise NewConnectionError(connection, "Could not connect to validated addresses: %s" % last) from last
 
 
-def _transport(url, headers, timeout, max_bytes, addresses=None):
+def _transport(url, headers, timeout, max_bytes, addresses=None, sink=None):
     """One direct, pinned hop. Ambient proxies/netrc/cookies never participate.
 
     A proxy may resolve the hostname remotely, defeating local DNS validation.
     Use a dedicated direct pool rather than requests' environment proxy settings.
     Requests' CA bundle overrides remain supported; verification is always required.
+    With a sink (a binary file), a 200's body is streamed into it and never held in memory: the body returned is
+    empty, and the sink holds at most max_bytes of it (26 October: Codex's archives run to hundreds of MB).
     """
     import os
     import ssl
@@ -273,7 +275,14 @@ def _transport(url, headers, timeout, max_bytes, addresses=None):
                          preload_content=False)
         try:
             body, over = b"", False
-            if r.status not in (301, 302, 303, 307, 308):
+            if sink is not None and r.status == 200:
+                written = 0
+                for chunk in r.stream(1 << 20, decode_content=True):
+                    if written + len(chunk) > max_bytes:
+                        sink.write(chunk[:max_bytes - written]); over = True
+                        break
+                    sink.write(chunk); written += len(chunk)
+            elif r.status not in (301, 302, 303, 307, 308):
                 for chunk in r.stream(65536, decode_content=True):
                     body += chunk
                     if len(body) > max_bytes:
@@ -676,14 +685,20 @@ def _meta_refresh(body, ctype):
 
 
 def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT, transport=None, resolve=None,
-          pdf=None, min_text=1, keep_raw=False, article_route=True, _x_inner=False):
+          pdf=None, min_text=1, keep_raw=False, article_route=True, _x_inner=False, sink=None):
     """One receipt for one link; see the module text. Never raises.
 
     A link that names a journal article (a PMC, PubMed, Europe PMC or doi.org address) is read first from Europe
     PMC's open-access full text, through this same door (europepmc.read): publisher pages answered with browser
     verification walls and unreadable PDFs (12-13 October, Gantsova et al.). When that read does not happen the link
-    is fetched as before, and the receipt carries why Europe PMC could not give it ("europepmc")."""
+    is fetched as before, and the receipt carries why Europe PMC could not give it ("europepmc").
+
+    With a sink (a binary file opened for writing), the file a link names is streamed into it through the same hops,
+    checks and byte cap, and nothing is read from it: "bytes" says how much was written, and a body cut at the cap
+    is "truncated". No article route and no X route: a download is the file at that address, or nothing."""
     transport = transport or _transport
+    if sink is not None:
+        article_route, _x_inner = False, True
     if article_route:
         try:
             import os as _o, sys as _s
@@ -736,7 +751,11 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
             return done("refused", why)
         out["hops"].append(here)
         try:
-            if transport is _transport:
+            if sink is not None:
+                sink.seek(0); sink.truncate()          # only the last hop's body is ever kept
+                kw = {"addresses": addresses} if transport is _transport else {}
+                status, rh, body, over = transport(here, dict(headers), timeout, max_bytes, sink=sink, **kw)
+            elif transport is _transport:
                 status, rh, body, over = transport(here, dict(headers), timeout, max_bytes, addresses=addresses)
             else:
                 status, rh, body, over = transport(here, dict(headers), timeout, max_bytes)
@@ -754,7 +773,14 @@ def fetch(url, max_bytes=MAX_BYTES, max_redirects=MAX_REDIRECTS, timeout=TIMEOUT
             continue
         out["final_url"] = here
         if status != 200:
+            if sink is not None:
+                sink.seek(0); sink.truncate()
             return done("http_failure", "HTTP %s from %s" % (status, urlsplit(here).hostname))
+        if sink is not None:
+            sink.flush()
+            out["bytes"] = sink.tell()
+            out["truncated"] = bool(over)
+            return done("truncated", "only the first %d bytes were written" % max_bytes) if over else done("fetched")
         out["bytes"] = len(body)
         if over:                                   # said even when what was read cannot be extracted
             out["truncated"] = True

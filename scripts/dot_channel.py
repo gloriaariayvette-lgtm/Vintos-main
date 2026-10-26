@@ -1474,6 +1474,20 @@ def recall_block():
             % (d.get("intent", ""), str(d.get("state", "")).lower(), d.get("handoff") or "(none)", works or "(none yet)"))
 
 
+CODEX_RECALL_CHARS = 3500     # an archive brought into one Slack prompt, at most
+
+
+def codex_archive_block(*texts):
+    """An archive Codex sent him, when these words (what he is answering, and its thread) refer to one: its id,
+    "the zip", what Codex sent, a file in it, its title. Otherwise at most one line that archives are there; ''
+    when there are none. Read only."""
+    try:
+        import codex_archives
+        return codex_archives.context_for("\n".join(t for t in texts if t), CODEX_RECALL_CHARS)
+    except Exception:
+        return ""
+
+
 def forge_line():
     """His open Forge requests: what, where it stands, and what the Study found."""
     try:
@@ -3480,6 +3494,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         rotated = lens is not None
         if lab_turn: lines.append("a Lab/Study/Forge turn: Gemma passed by")
     sb = study_block(state, today)
+    # an archive Codex sent, brought back only when what he is answering names it (26 October); otherwise one line
+    cx = codex_archive_block(last["text"], thread[-1500:]) if last else codex_archive_block()
+    if cx.startswith("== CODEX ARCHIVE"):
+        lines.append("a Codex archive brought into his prompt: %d characters" % len(cx))
+    sb = ((sb + "\n\n") if sb else "") + cx if cx else sb
     try:   # what he promised in email, owed here as work (2026-10-08: the PyDSSP and torn-read promises of 7 October)
         import email_commitments
         owed_mail = email_commitments.block()
