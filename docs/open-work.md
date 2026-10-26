@@ -1,3 +1,17 @@
+## 26 October — Lab investigations: naming, being told no, and not repeating
+
+Built on `claude/lab-no-repeat-2026-10-26`; not merged or deployed. `scripts/lab_investigations.py`,
+`lab_tool_calls.py`, `lab_instruments.py`; suites `test_lab_naming_and_told_no.py`, `test_lab_no_repeat.py`.
+
+- **Not done: paraphrased questions.** The opening gate compares content words (Jaccard 0.6). It stops verbatim and
+  near-verbatim repeats (55 of the 61 investigations opened after the 26 October 13:36 deploy), but the reworded
+  pendrin STAS questions of 12-26 October mostly score 0.4-0.6 and pass. The house nomic embeddings (reachable, about
+  2 s for 205 questions) score nearly every pendrin question above 0.83 and would add 3 of the remaining 6, one of
+  them arguably a different question; they are not wired in.
+- **To watch after deploy:** `investigation_refused_repeat` and `investigation_not_opened` rows in the notebook, and
+  `question-cooldown.json`. A line whose question keeps being refused rests 12 h at a time; Gloria's standing lines
+  included.
+
 ## 26 October — Codex archives
 
 Built on `claude/codex-zips-2026-10-26`; not merged or deployed. Gloria: Codex sends him LARGE zips; he parses them,
