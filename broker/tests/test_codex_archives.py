@@ -76,6 +76,10 @@ class Archives(unittest.TestCase):
         self.files = {}               # download url -> bytes
         self.calls = []
         self.downloads = []
+        self.broken = set()           # message ids whose connector download fails
+        self.mac = {}                 # file name -> bytes in Codex's folder on the Mac (empty: the Mac is asleep)
+        self.mac_asked = []
+        C.mac_read = self.mac_read    # never ssh from a test
 
     def tearDown(self):
         C.LIMITS.clear(); C.LIMITS.update(self.saved)
@@ -93,8 +97,24 @@ class Archives(unittest.TestCase):
                                           "file_uri": {"download_url": "https://files.oaiusercontent.com/" + key}}}
         raise AssertionError(tool)
 
+    def mac_read(self, name, size, dest, lim):
+        self.mac_asked.append(name)
+        if name not in self.mac:
+            raise ValueError("the Mac did not answer")
+        with open(dest, "wb") as f:
+            f.write(self.mac[name])
+        return len(self.mac[name])
+
+    def refusing(self, tool, args, purpose):
+        if tool == "gmail.read_attachment":
+            raise RuntimeError("plugin relay refused or failed: GmailConnectorError: Failed to read attachment")
+        return self.gateway(tool, args, purpose)
+
     def file_read(self, ref, dest, cap):
-        data = self.files[ref["download_url"].split("oaiusercontent.com/", 1)[1]]
+        key = ref["download_url"].split("oaiusercontent.com/", 1)[1]
+        if key.split("/", 1)[0] in self.broken:
+            raise ValueError("file not downloaded: failure")
+        data = self.files[key]
         self.downloads.append(dest)
         if len(data) > cap:
             raise ValueError("over the cap")
@@ -139,7 +159,7 @@ class Archives(unittest.TestCase):
         try:
             C.intake([m], refusing, file_read=self.file_read)
         finally:
-            C.mac_read = None
+            C.mac_read = self.mac_read
         self.assertEqual(asked, [("harbor.zip", len(z))])
         self.assertEqual(len(self.archives()), 1)
 
@@ -154,6 +174,7 @@ class Archives(unittest.TestCase):
         self.assertTrue(C.CONFIG.startswith(HOME))
         self.assertIs(sys.modules["plugin_gateway"].call, refuse)
         self.assertIs(socket.socket.connect, refuse)
+        self.assertEqual(C.mac_read, self.mac_read)                                # the Mac is a stub, never ssh
 
     # --- who may send one ----------------------------------------------------------------------------
     def test_codex_letter_is_taken_in_indexed_and_summed_up(self):
@@ -422,6 +443,211 @@ class Archives(unittest.TestCase):
         before = len(self.downloads)
         self.take(again)
         self.assertEqual(len(self.downloads), before)                              # a letter already taken in
+
+    # --- failed parts: a letter received is not an archive retained (26 October, Velaris v4) -----------------
+    def state(self):
+        sts = C._deliveries()
+        self.assertEqual(len(sts), 1, [s["did"] for s in sts])
+        return sts[0]
+
+    def test_failed_downloads_are_fetched_again_and_the_delivery_finished(self):
+        a, b, one, two = self.two_letters()
+        C.intake([a, b], self.refusing, file_read=self.file_read)                 # the connector refuses, the Mac sleeps
+        st = self.state()
+        did = st["did"]
+        self.assertEqual(sorted(len(l["failed"]) for l in st["letters"].values()), [1, 1])
+        self.assertIn("2 file(s) not downloaded", st["why"])
+        self.assertEqual(self.archives(), [])
+        self.mac.update({"Harbor-source.zip": one, "Harbor-scenes.zip": two})     # the Mac awake
+        self.mac_asked.clear()
+        a2, b2, _, _ = self.two_letters()                                          # the same two letters, read again
+        lines = C.intake([a2, b2], self.refusing, file_read=self.file_read)
+        self.assertEqual(sorted(self.mac_asked), ["Harbor-scenes.zip", "Harbor-source.zip"])
+        self.assertTrue(any("fetched again for delivery %s" % did in x for x in lines), lines)
+        arc = self.check_two(one, two)                                             # one archive of both letters
+        self.assertEqual(C._deliveries(), [])
+        self.assertEqual(a2["attachments"][0]["status"], "archived")
+        self.mac_asked.clear()
+        C.intake([a2, b2], self.refusing, file_read=self.file_read)                # done: never fetched again
+        self.assertEqual(self.mac_asked, [])
+        self.assertEqual([x["id"] for x in self.archives()], [arc["id"]])
+
+    def test_rereading_the_same_letter_repairs_only_what_failed(self):
+        a, b, one, two = self.two_letters()
+        self.broken.add("v2")
+        self.take(a, b)
+        st = self.state()
+        did = st["did"]
+        held = json.loads(json.dumps(st["letters"]["v1"]["files"]))
+        self.assertEqual(len(held), 1)
+        # rereading the letter whose file is held fetches nothing and changes nothing
+        before = len(self.downloads)
+        a2, _, _, _ = self.two_letters()
+        self.take(a2)
+        self.assertEqual(len(self.downloads), before)
+        self.assertEqual(self.state()["letters"]["v1"]["files"], held)
+        # a reread while the download still fails: the same delivery, one failure, not two
+        _, b2, _, _ = self.two_letters()
+        self.take(b2)
+        st = self.state()
+        self.assertEqual((st["did"], len(st["letters"]["v2"]["failed"])), (did, 1))
+        self.assertEqual(len(self.downloads), before)
+        # and when the download works, the part is repaired in place and the delivery finished
+        self.broken.clear()
+        _, b3, _, _ = self.two_letters()
+        self.take(b3)
+        self.assertEqual(len(self.downloads), before + 1)
+        a_ = self.check_two(one, two)
+        files = {f["name"]: f["sha256"] for l in a_["letters"] for f in l["files"]}
+        self.assertEqual(files["Harbor-source.zip"], held[0]["sha256"])
+        self.assertEqual(files["Harbor-scenes.zip"], hashlib.sha256(two).hexdigest())
+
+    def test_an_identified_replacement_repairs_the_first_delivery(self):
+        a, b, one, two = self.two_letters()
+        self.broken.add("v1")
+        self.take(a)
+        self.take(b)                                                               # the companion part comes whole
+        did = self.state()["did"]
+        again = self.letter("v1-new", "[Codex] Harbor model complete — 1 of 2: source, sent again",
+                            [("Harbor-source.zip", one)], thread="thread-C")
+        lines = self.take(again)
+        self.assertTrue(any("delivery %s (in place of part 1" % did in x for x in lines), lines)
+        self.assertEqual(C._deliveries(), [])                                      # no second delivery was made
+        arcs = self.archives()
+        self.assertEqual(len(arcs), 1)
+        self.assertEqual(sorted(l["message_id"] for l in arcs[0]["letters"]), ["v1", "v1-new", "v2"])
+        expect = hashlib.sha256("\n".join(sorted(hashlib.sha256(x).hexdigest() for x in (one, two))).encode()).hexdigest()
+        self.assertEqual(arcs[0]["id"], expect[:16])
+        self.assertEqual(again["attachments"][0]["status"], "archived")
+
+    def test_an_ambiguous_replacement_is_kept_apart_and_said_so(self):
+        a, b, one, two = self.two_letters()
+        self.broken.add("v1")
+        self.take(a, b)
+        did = self.state()["did"]
+        before = json.loads(json.dumps(self.state()))
+        other = make_zip({"other/thing.txt": "not the same file"})
+        odd = self.letter("v1-odd", "[Codex] Harbor model complete — 1 of 2: source",
+                          [("Harbor-source-v2.zip", other)])                       # another file name than the failed one
+        lines = self.take(odd)
+        sts = {s["did"]: s for s in C._deliveries()}
+        self.assertEqual(len(sts), 2)
+        self.assertEqual(sts[did], before)                                         # the first left exactly as it was
+        apart = next(s for k, s in sts.items() if k != did)
+        self.assertEqual(apart["possible_replacement_for"], did)
+        self.assertIn("possible replacement for %s" % did, apart["note"])
+        self.assertTrue(any("possible replacement for %s" % did in x for x in lines), lines)
+        pend = {p["did"]: p for p in C._load(C.INDEX, {})["pending"]}
+        self.assertEqual(pend[apart["did"]]["possible_replacement_for"], did)
+        # another total contradicts it outright: never merged either
+        three = self.letter("v1-3", "[Codex] Harbor model complete — 1 of 3: source", [("Harbor-source.zip", one)])
+        self.take(three)
+        self.assertEqual(next(s for s in C._deliveries() if s["did"] == did), before)
+        self.assertEqual(self.archives(), [])
+        # a later letter does not drift into the record kept apart
+        self.broken.clear()
+        self.take(self.letter("v1-ok", "[Codex] Harbor model complete — 1 of 2: source", [("Harbor-source.zip", one)]))
+        self.assertEqual(len(self.archives()), 1)
+        self.assertIn(apart["did"], {s["did"] for s in C._deliveries()})
+
+    def test_a_part_sent_twice_byte_for_byte_is_kept_once(self):
+        a, b, one, two = self.two_letters()
+        self.take(a)
+        did = self.state()["did"]
+        twice = self.letter("v1-again", "[Codex] Harbor model complete — 1 of 2: source", [("Harbor-source.zip", one)])
+        lines = self.take(twice)
+        st = self.state()
+        self.assertEqual(st["did"], did)
+        self.assertTrue(any("byte for byte" in x for x in lines), lines)
+        self.assertEqual(st["letters"]["v1-again"]["files"], [])
+        self.assertEqual(st["letters"]["v1-again"]["duplicate_of"], ["v1"])
+        self.assertEqual(len(os.listdir(os.path.join(C.PENDING, did, "parts"))), 1)
+        self.take(b)
+        arcs = self.archives()
+        self.assertEqual(len(arcs), 1)
+        man = C.manifest(arcs[0]["id"])
+        self.assertEqual(len(man["originals"]), 2)                                 # source once, scenes once
+        self.assertEqual(sorted(x["path"].split("/")[0] for x in man["files"]).count("Harbor-source"), 2)
+        self.assertNotIn("Harbor-source-2", {x["path"].split("/")[0] for x in man["files"]})
+
+    def test_a_part_with_other_bytes_is_refused_and_kept_apart(self):
+        a, b, one, two = self.two_letters()
+        self.take(a)
+        did = self.state()["did"]
+        held = self.state()["letters"]["v1"]["files"][0]["sha256"]
+        other = make_zip({"source/main_loop.py": "print('something else')\n"})
+        clash = self.letter("v1-clash", "[Codex] Harbor model complete — 1 of 2: source", [("Harbor-source.zip", other)])
+        lines = self.take(clash)
+        sts = {s["did"]: s for s in C._deliveries()}
+        self.assertEqual(len(sts), 2)
+        apart = next(s for k, s in sts.items() if k != did)
+        self.assertEqual((apart["status"], apart["possible_replacement_for"]), ("conflict", did))
+        self.assertIn("not the same file", apart["why"])
+        self.assertEqual(clash["attachments"][0]["status"], "not_read")
+        self.assertEqual(sts[did]["letters"]["v1"]["files"][0]["sha256"], held)
+        self.take(b)                                                               # the first finishes with its own part
+        arcs = self.archives()
+        self.assertEqual(len(arcs), 1)
+        self.assertEqual({f["sha256"] for l in arcs[0]["letters"] for f in l["files"]},
+                         {held, hashlib.sha256(two).hexdigest()})
+        self.assertEqual([s["status"] for s in C._deliveries()], ["conflict"])     # still there, still explicit
+        self.assertTrue(os.listdir(os.path.join(C.PENDING, apart["did"], "parts")))
+
+    def test_a_completed_archive_is_unchanged_when_its_letters_are_read_again(self):
+        a, b, one, two = self.two_letters()
+        self.take(a, b)
+        aid = self.archives()[0]["id"]
+        index = Path(C.INDEX).read_bytes()
+        man = (Path(C.ROOT) / aid / "manifest.json").read_bytes()
+        before = len(self.downloads)
+        a2, b2, _, _ = self.two_letters()
+        self.take(a2, b2)
+        self.write_log(a2, b2)
+        self.assertEqual(C.recover_log(gmail=self.gateway), ["no [Codex] letter with an archive is waiting to be taken in"])
+        self.assertEqual(len(self.downloads), before)
+        self.assertEqual(Path(C.INDEX).read_bytes(), index)
+        self.assertEqual((Path(C.ROOT) / aid / "manifest.json").read_bytes(), man)
+        self.assertEqual(a2["attachments"][0]["status"], "archived")
+
+    def write_log(self, *msgs):
+        with open(E.INBOX_LOG, "a", encoding="utf-8") as f:
+            for m in msgs:
+                f.write(json.dumps({"id": m["id"], "subject": m["subject"], "thread_id": m["thread_id"],
+                                    "attachments": [{"filename": x["filename"], "size": x["size"], "status": "not_read"}
+                                                    for x in m["attachments"]]}) + "\n")
+
+    def raw(self, m):
+        return {"id": m["id"], "thread_id": m["thread_id"], "label_ids": list(m["labels"]), "payload": {
+            "mime_type": "multipart/mixed",
+            "headers": [{"name": "From", "value": m["from"]}, {"name": "Subject", "value": m["subject"]},
+                        {"name": "Date", "value": m["date"]}],
+            "parts": [{"mime_type": "text/plain", "body": {"content": "A letter from Codex."}}] +
+                     [{"part_id": str(i + 1), "mime_type": "application/zip", "filename": x["filename"],
+                       "read_attachment_supported": False, "body": {"attachment_id": x["attachment_id"], "size": x["size"]}}
+                      for i, x in enumerate(m["attachments"])]}}
+
+    def test_recover_log_takes_up_a_delivery_whose_files_failed(self):
+        a, b, one, two = self.two_letters()
+        C.intake([a, b], self.refusing, file_read=self.file_read)                 # 26 October, as it happened
+        did = self.state()["did"]
+        self.write_log(a, b)
+        read = []
+        def gmail(tool, args, purpose):
+            if tool == "gmail.batch_read_email":
+                read.append(list(args["message_ids"]))
+                return {"structuredContent": {"responses": [self.raw(m) for m in (a, b) if m["id"] in args["message_ids"]]}}
+            return self.refusing(tool, args, purpose)
+        self.assertEqual(C.recover_log(gmail=gmail)[0], "2 [Codex] letter(s) read again")       # the Mac still asleep
+        self.assertEqual(self.state()["did"], did)
+        self.assertIn("2 file(s) not downloaded", self.state()["why"])
+        self.mac.update({"Harbor-source.zip": one, "Harbor-scenes.zip": two})
+        lines = C.recover_log(gmail=gmail)
+        self.assertEqual(sorted(read[-1]), ["v1", "v2"])
+        self.assertEqual(lines[0], "2 [Codex] letter(s) read again")
+        self.assertEqual(sum("fetched again for delivery %s: 1 of 1 file(s) now kept" % did in x for x in lines), 2, lines)
+        arc = self.check_two(one, two)
+        self.assertIn("Codex archive %s unpacked" % arc["id"], "\n".join(lines))
+        self.assertEqual(C.recover_log(gmail=gmail), ["no [Codex] letter with an archive is waiting to be taken in"])
 
     # --- recall --------------------------------------------------------------------------------------
     def test_recall_only_when_called_for(self):
