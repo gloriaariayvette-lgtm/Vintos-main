@@ -135,6 +135,40 @@ class InvestigationSplit(Perimeter):
         self.assertGreater(result['coverage_split']['piece_bytes'], result['coverage_split']['part_spare_bytes'])
         self.assertFalse(self.sent, 'nothing over the budget is sent, and nothing is cut to make it fit')
 
+    def test_a_numeric_table_is_never_divided_and_is_named_down_to_itself(self):
+        obs = observations(3)
+        table = {format(i, '012b'): 1.0 / (i + 7) for i in range(4096)}
+        obs['additional_source']['receipt']['records'][1]['result'] = {
+            'experiment_result': {'run': {'result': {'distribution': {'exact_full_state_probabilities': table,
+                                                                      'shots': 4096}}}}}
+        result = C._coverage_check(INQUIRY, obs)
+        self.assertTrue(result.get('coverage_deferred'))
+        self.assertTrue(result['coverage_split']['piece'].endswith('distribution.exact_full_state_probabilities'),
+                        result['coverage_split'])
+        self.assertFalse(self.sent, 'no part is handed some of a distribution')
+
+    def test_the_split_with_fewer_parts_is_used(self):
+        obs = observations(2)
+        obs['LITERATURE'] = [{'pmid': str(n), 'abstract': 'article %d ' % n + 'a' * 1500} for n in range(40)]
+        prepared = C._coverage_request(INQUIRY, obs)
+        shallow, deep = C._coverage_shallow_parts(prepared), C._coverage_deep_parts(prepared)
+        self.assertIsNotNone(shallow); self.assertIsNotNone(deep)
+        self.assertLess(len(deep), len(shallow), 'the shallow split repeats the step results in every part')
+        self.assertEqual(len(C._coverage_parts(prepared)), len(deep))
+
+    def test_parts_are_filled_before_another_is_opened(self):
+        # Step results of about 20 and 35 KB in turn, against about 50 KB a part: closing a part at the first unit
+        # that did not fit gave every step a part of its own.
+        obs = observations(0)
+        obs['additional_source']['receipt']['records'] = [
+            {'step': 'S-%04d' % n, 'question': 'step %d' % n,
+             'result': {'value': 'step %d says ' % n + ('s' if n % 2 == 0 else 'b') * (20000 if n % 2 == 0 else 35000)}}
+            for n in range(8)]
+        prepared = C._coverage_request(INQUIRY, obs)
+        parts = C._coverage_parts(prepared)
+        self.assertIsNotNone(parts)
+        self.assertLessEqual(len(parts), 6, [len(p[1]) for p in parts])
+
 
 if __name__ == '__main__':
     unittest.main()

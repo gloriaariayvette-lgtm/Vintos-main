@@ -3941,8 +3941,9 @@ def _coverage_preflight(inquiry, observations, prepared):
 
 
 # A 14-step investigation's outputs came to 73-156 KB on 26 October, against about 50 KB a part: three or four parts.
-# Sixteen leaves room for longer outputs; each part is one checker call on the local model.
-COVERAGE_SPLIT_MAX_PARTS = 16
+# Of the 27 investigations then at the step budget with two new outputs, the largest that can be split (human AQP5,
+# its UniProt search run nine times, 750 KB) takes 16. Each part is one checker call on the local model.
+COVERAGE_SPLIT_MAX_PARTS = 24
 
 
 def _coverage_parts(prepared):
@@ -3950,9 +3951,14 @@ def _coverage_parts(prepared):
 
     The shallow split (every top-level list item its own unit, everything else shared) is tried first and is what
     the existing suites pin. When it cannot divide the weight - an instrument result is a dict, not a list - the
-    deeper split takes its place (_coverage_deep_parts)."""
+    deeper split takes its place (_coverage_deep_parts). When both can, the one with fewer parts is used: the shallow
+    split copies everything that is not a top-level list into every part, so an investigation with 26 KB of articles
+    beside 49 KB of step results was sent as sixteen near-identical parts where the deeper split needs two
+    (26 October). Each part is one checker call."""
     shallow = _coverage_shallow_parts(prepared)
-    return shallow if shallow is not None else _coverage_deep_parts(prepared)
+    deep = _coverage_deep_parts(prepared)
+    if shallow is None: return deep
+    return deep if deep is not None and len(deep) < len(shallow) else shallow
 
 
 def _coverage_shallow_parts(prepared):
@@ -4005,8 +4011,12 @@ _IDENTITY_BYTES = 600
 
 def _named_section(value):
     """A dict of named fields that may be opened. An addressed leaf ({address, text}) is one piece of source text and
-    is never parted from its address."""
-    return isinstance(value, dict) and len(value) >= 2 and set(value) != {'address', 'text'}
+    is never parted from its address, and a dict whose every value is a number is a table (a probability
+    distribution over 4096 states, a count per residue): it is carried whole, like a list of rows. A dict of one
+    field is opened too, so a piece too large for a part is named down to what actually is too large, not by the
+    wrapper around it (26 October: two step results named as `result` were one quantum run's 161 KB distribution)."""
+    if not isinstance(value, dict) or not value or set(value) == {'address', 'text'}: return False
+    return not (len(value) >= 2 and all(isinstance(v, (int, float, bool)) or v is None for v in value.values()))
 
 
 def _place(part, path, value):
@@ -4141,12 +4151,18 @@ def _coverage_deep_parts(prepared, why=None):
             continue
         if len(units) < 2:
             continue
-        parts, current = [], []
+        # Each unit goes into the first part it fits beside, in the original order within every part. Closing a part
+        # at the first unit that did not fit left parts half full: one AQP5 investigation came to 19 parts, nine of
+        # them under 36 KB of a 50 KB room (26 October).
+        parts, carried = [], []
         for unit in units:
-            if current and not fits(_built(empty, current + [unit])):
-                parts.append(current); current = []
-            current.append(unit)
-        parts.append(current)
+            weight = size(unit[1]) + sum(size(v) for _p, v in unit[2])
+            for at, part in enumerate(parts):
+                if carried[at] + weight <= spare + 256 and fits(_built(empty, part + [unit])):
+                    part.append(unit); carried[at] += weight
+                    break
+            else:
+                parts.append([unit]); carried.append(weight)
         built = [_built(empty, part) for part in parts]
         why['parts'] = len(built)
         if not all(fits(part) for part in built):
