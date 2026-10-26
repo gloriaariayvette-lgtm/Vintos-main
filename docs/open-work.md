@@ -1,3 +1,56 @@
+## 26 October — A disagreement between two readings, turned into the next measurement
+
+Built on `claude/disagreement-next-2026-10-26` (Codex's proposal 11, approved by Gloria); not yet merged or deployed.
+`scripts/lab_disagreement.py`, a small hook in `scripts/lab_measurement.py`, and `broker/tests/test_disagreement.py`
+(53 checks, offline: scratch workspace, the divergence row written by hand, the paid ledger stubbed to refuse,
+sockets closed). No reader was called, nothing was folded, run on the GPU or deployed while building it.
+`lab_investigations.py` was not touched (another change is in progress there), and the commissioning gate is untouched.
+
+**What is built:**
+- **Frozen from one retained pair of readings.** `declare()` takes one row of `divergence.jsonl` and two lenses that
+  both actually read in it. Each gets a predicted observation on one shared variable in one unit — below, above or
+  between — and a basis: at least 20 characters quoted verbatim from that lens's own retained reading, so a
+  prediction is grounded in what the reader wrote rather than in what someone thinks it meant. Ranges that overlap
+  are refused (a value satisfying both is no disagreement, and no measurement could separate them); two quotes of
+  the same words are refused. Each reading is digested and the identical-prompt hash is carried. The id is the
+  digest of the frozen content; at most two a day. Stored in `disagreements.jsonl`.
+- **The measurement is chosen through the ordinary plan, not new machinery.** The investigation planner's existing
+  measurement view (`lab_measurement.planner_view`, local Gemma, only where it fits the prompt) now also shows up
+  to two open disagreements, the threshold that separates their predictions, and how to bind a measurement: a
+  confirmatory `structural_measure` contract in the same units, carrying `disagreement: <id>`, frozen before the
+  step that measures. `lab_measurement.normalize` keeps that id only in its exact form; a contract without one is
+  byte-for-byte what it was before. Nothing was added to the paid frontier plan's contract text.
+- **Which, if either, it supports — computed.** When the contract's result settles, the measured value with its
+  uncertainty is judged against both ranges: `supports_one` (inside one, outside the other), `supports_neither`,
+  or `inconclusive` — in the words "the measurement accommodates both" when it reaches into both ranges.
+  `not_evaluated`, using up nothing, when the tool produced no value, when the output existed before the contract
+  was frozen, when the units differ, when the contract was frozen before the disagreement, or when either reading
+  has changed since. A decisive verdict settles it; three inconclusive measurements exhaust it rather than
+  measuring until one side wins. Every verdict is kept in `disagreement-verdicts.jsonl`, bound to the contract
+  revision and the output digest, with a truth status saying it fits a value to frozen predictions and does not
+  say which reader is right in general.
+- **The paid multi-reader mode is untouched.** No reader is called, nothing is enabled or expanded to manufacture a
+  disagreement, and the divergence store is only read.
+
+**Acceptance to watch for:** one disagreement declared on Aegis from one of the two retained divergence rows
+(`python3 scripts/lab_disagreement.py pairs` lists them; `declare` takes JSON on stdin), then whether an ordinary
+investigation binds a contract to it within a few days, and whether the verdict is ever decisive. If every verdict
+is inconclusive, the predictions are too close or the instrument's uncertainty too wide for this variable — the
+honest read is a better-separated variable, not wider ranges.
+
+**What is left:**
+- Nothing has been run on real readings: no disagreement exists. Whether the two retained rows (astra and grok, 26
+  and 27 September) contain predictions that compete on a measurable variable has not been judged — they may turn
+  out to be different questions rather than incompatible predictions, which is the risk the proposal named.
+- A disagreement is declared by hand. Neither the planner nor a reader turns two readings into predictions; doing
+  that automatically would need a model turn and was left out.
+- The planner only sees a disagreement through the measurement view, which `lab_investigations._plan` drops when
+  the prompt is already at its limit. A dedicated line in the planner task, and holding the binding operation to a
+  local CPU instrument with a ten-minute budget (the proposal's ceiling), would need a hook in
+  `lab_investigations.py`; today the "no fold" limit is an instruction, not enforced.
+- Only one measured value (`structural_measure`, `reproducibility`) can adjudicate; a proportion against a control
+  cannot.
+
 ## 26 October — A family question that can fail, measured across instruments
 
 Built on `claude/instrument-families-2026-10-26` (Codex's proposal 10, approved by Gloria); not yet merged or
