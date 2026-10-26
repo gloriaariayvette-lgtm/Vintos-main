@@ -38,7 +38,9 @@ sent.clear(); K.tick(now, {"a": hold(60, set_by="her"), "b": hold(60, pattern="w
 check("her holds, patterns and stills are left alone", sent == [], sent)
 
 unit = open(os.path.join(ROOTD, "broker", "vintos-toy-keepalive.service")).read()
-check("the unit runs the deployed copy", "%h/.vintos/workspace/scripts/toy_keepalive.py" in unit)
+# The deploy updates the copy where it already lives, ~/toy_keepalive.py (25 October: pointing the unit at
+# workspace/scripts, where no copy was, left the keepalive down until the unit was put back).
+check("the unit runs the copy the deploy updates", "%h/toy_keepalive.py" in unit)
 dep = open(os.path.join(ROOTD, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs it", "toy_keepalive.py" in dep and "vintos-toy-keepalive" in dep)
 

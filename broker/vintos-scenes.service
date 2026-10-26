@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/scenes_server.py
+ExecStart=/usr/bin/python3 %h/scenes_server.py
 Restart=on-failure
 RestartSec=10
 

@@ -56,7 +56,9 @@ for path, why in (("/", "the root is not listed"), ("/video/", "a directory is n
     check(why, " 404 " in s and b"wall.mp4" not in body, s)
 
 src = open(os.path.join(ROOTD, "broker", "vintos-scenes.service")).read()
-check("the unit runs the deployed copy, not a hand-placed one", "%h/.vintos/workspace/scripts/scenes_server.py" in src)
+# The deploy updates the copy where it already lives, ~/scenes_server.py (25 October: pointing the unit at
+# workspace/scripts, where no copy was, left the scenes server down until the unit was put back).
+check("the unit runs the copy the deploy updates", "%h/scenes_server.py" in src)
 dep = open(os.path.join(ROOTD, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs it", "scenes_server.py" in dep and "vintos-scenes" in dep)
 
