@@ -780,9 +780,10 @@ def receipt(source, query, records, *, metadata=None):
 
 class Sources:
     def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record,
-                 imgvr=None, fetch_structure=fetch_structure):
+                 imgvr=None, fetch_structure=fetch_structure, imgvr_loci=None):
         self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
         self.imgvr = imgvr
+        self.imgvr_loci = imgvr_loci
         self.fetch_structure = fetch_structure
 
     def _taxon(self, spec):
@@ -1243,9 +1244,19 @@ class Sources:
                 'interpretation':'known_family_and_domain_annotations_not_novelty'})
         if source == 'imgvr':
             operation = spec.get('operation')
-            if operation not in ('metadata','uvig','protein_similarity'):
+            # The locus operations answer where a sourced protein sits on its own sourced contig,
+            # so the genes and repeats beside it can be read. They are a separate module because
+            # they establish identity rather than retrieve a record.
+            locus_operations = ('locus_join', 'neighborhood', 'cohort_freeze')
+            if operation not in ('metadata', 'uvig', 'protein_similarity') + locus_operations:
                 raise ValueError('unknown IMG/VR operation')
-            if self.imgvr is None:
+            if operation in locus_operations:
+                if self.imgvr_loci is None:
+                    from imgvr_loci import query as local_loci
+                    local = local_loci(spec)
+                else:
+                    local = self.imgvr_loci(spec)
+            elif self.imgvr is None:
                 from imgvr_store import query as local_imgvr
                 local = local_imgvr(spec)
             else:
@@ -1256,7 +1267,9 @@ class Sources:
                 'service':'local_IMG_VR_v4.1_high_confidence',
                 'release':'IMG_VR_2022-12-19_7.1',
                 'coverage':local.get('coverage','bounded_local_query'),
-                'interpretation':'sequence_similarity_and_annotations_not_novelty_or_function'})
+                'interpretation':('verified_coordinates_and_annotations_not_novelty_or_function'
+                                  if operation in locus_operations else
+                                  'sequence_similarity_and_annotations_not_novelty_or_function')})
         if source == 'bvbrc':
             operation = spec.get('operation')
             if operation == 'genomes':

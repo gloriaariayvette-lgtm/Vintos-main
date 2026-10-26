@@ -139,6 +139,22 @@ def campaign_instructions():
                 "{source:imgvr,operation:protein_similarity,sequence:sourced 20..2000-residue protein,limit:1..8}. "
                 "Use exact UViG identifiers and sourced protein sequences from receipts. Similarity hits and "
                 "database annotations do not establish novelty or function."
+                " A similarity hit names a UViG but not where on it the protein sits, so these three establish "
+                "that before anything is compared: "
+                "{source:imgvr,operation:locus_join,uvig:exact sourced UViG,sequence:that hit's own sourced protein,"
+                "protein_id:the hit's target identifier,segment:exact returned header when the UViG has multiple "
+                "segments} returns ONE verified locus -- one-based inclusive coordinates on the UViG contig as "
+                "served, strand, frame, translated-match check -- by translating that one contig in six frames. A "
+                "protein matching nowhere, or in more than one place, stays unjoined with its reason; an unjoined "
+                "protein is not a locus and cannot carry a neighborhood. "
+                "{source:imgvr,operation:neighborhood,uvig:...,sequence:the anchor protein,"
+                "proteins:[{protein_id,sequence} sourced records of that same UViG],window:200..24000} returns the "
+                "neighbours it can place, each with orientation and distance to the anchor, plus the window hash. A "
+                "protein it cannot place, or one you did not supply, is missing annotation -- never an absent gene. "
+                "{source:imgvr,operation:cohort_freeze,uvigs:[sourced identifiers],selection_rule:'your criteria',"
+                "eligible_population:'what you sampled from',pilot_size:N,holdout_size:M} freezes at most 24 "
+                "neighborhoods in total, keeps one representative per declared vOTU, and reports what relatedness "
+                "that removes and what it does not. Eight top similarity hits are not eight independent replicates."
             )
     except Exception:
         pass
