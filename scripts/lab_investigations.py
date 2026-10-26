@@ -111,6 +111,9 @@ def plan_step_matches(plan_ref, route, request):
     r = request if isinstance(request, dict) else {}
     seen = [tool_name(route, r)] + [r.get(k) for k in ('source', 'operation', 'skill', 'tool', 'plugin', 'experiment')]
     seen += [str(r.get('source') or '') + str(r.get('operation') or ''), str(r.get('plugin') or '') + str(r.get('tool') or '')]
+    # an instrument named with its operation, as the menu lists them ("fold_read.structure.read"): 4 steps of the
+    # first frontier plan were refused for the very request it asked for (26 October)
+    seen += [str(r.get('skill') or '') + str(r.get('operation') or '')]
     return any(want_tool in norm(x) for x in seen if x)
 
 
