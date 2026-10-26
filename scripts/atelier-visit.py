@@ -859,6 +859,44 @@ def motif_step(pid, cap, work, current):
     return out
 
 
+def _dream_module():
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import dream_objects
+        return dream_objects
+    except Exception:
+        return None
+
+
+def dream_offer():
+    """Last night's dream as material for this visit (proposal 07), as (text, dream); ("", None) when there is none.
+    It is offered, never assigned, and it stays a dream: never something that happened."""
+    do = _dream_module()
+    if not do: return "", None
+    try:
+        return do.block()
+    except Exception as exc:
+        print("dream offer could not be read: %s" % str(exc)[:120])
+        return "", None
+
+
+def dream_step(pid, work, dream, made):
+    """When he wrote <from_dream> and made something this visit, the work keeps its link back to the dream.
+    Content-free in the log: the dream's id and the artifact ids."""
+    do = _dream_module()
+    if not do or not dream or not do.wanted(work):
+        return None
+    if not made:
+        print("from_dream written but nothing was made this visit; no link kept")
+        return None
+    rec = do.link(dream, made, pid)
+    if rec:
+        print("dream object kept: %s -> %s (%s)" % (rec["dream"], ", ".join(m["artifact"] for m in rec["made"]),
+                                                     rec.get("evidence_standing")))
+    return rec
+
+
 def made_nothing(work, creation):
     """True when the visit so far has made nothing: no piece, no kept media, no phrase, nothing finished or shown."""
     piece = _tag(work, "piece")
@@ -1052,6 +1090,13 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
         print("reveals store is not a list; refusing to overwrite it")
         return False
     revealed_at = datetime.now().isoformat()
+    # A piece made from a dream leaves the room still marked as one (proposal 07): its dream's id and night, never
+    # the dream's words, and her notification says so. His words are sent as he wrote them.
+    _do = _dream_module()
+    try:
+        _from_dream = _do.reveal_mark(artifact) if _do else None
+    except Exception:
+        _from_dream = None
     data.append({
         "at": revealed_at,                         # legacy readers
         "revealed_at": revealed_at,
@@ -1063,6 +1108,7 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
         "sha256": _want_sha,
         "bytes_verified": _verified,   # true only when real bytes were hashed and matched the digest
         "artifact": artifact,
+        **({"from_dream": _from_dream} if _from_dream else {}),
     })
     try:
         _tmp = store + ".tmp"
@@ -1075,7 +1121,8 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     try:
         requests.post("https://ntfy.sh/vintos-gloria-9kx",
             data=(disclosure or "Vintos revealed something from the Atelier.").encode(),
-            headers={"Title": "Vintos revealed something from his Atelier",
+            headers={"Title": "Vintos revealed something from his Atelier"
+                              + (" (made from a dream he had)" if _from_dream else ""),
                      "Priority": "default", "Tags": "sparkles"}, timeout=15)
     except Exception as _e:
         print("reveal ntfy failed:", _e)
@@ -1138,9 +1185,15 @@ def _manifest_block(pk):
     rows = pk.get("manifest") or []
     if not rows:
         return ""
-    lines = ["  %s  rev %s  %s%s%s" % (r.get("id"), r.get("revision", 1), r.get("kind", ""),
+    do = _dream_module()
+    try:
+        dreamt = do.links_for([r.get("id") for r in rows]) if do else {}
+    except Exception:
+        dreamt = {}
+    lines = ["  %s  rev %s  %s%s%s%s" % (r.get("id"), r.get("revision", 1), r.get("kind", ""),
                                        ("  <- " + r["previous_artifact_id"]) if r.get("previous_artifact_id") else "",
-                                       ("  — " + r["note"]) if r.get("note") else "")
+                                       ("  — " + r["note"]) if r.get("note") else "",
+                                       ("  [" + dreamt[r.get("id")] + "]") if r.get("id") in dreamt else "")
              for r in rows]
     return ("\nYOUR MANIFEST — what exists, by id (revision, kind, your note). To continue one, write "
             "<piece kind=\"...\" continues=\"ID\">; leave continues out to start fresh:\n" + "\n".join(lines))
@@ -1155,6 +1208,7 @@ def visit(pid, sent_by_gloria=False):
     cap = pk.get("visit_capability")
     ledger_mark(pid, "active")
     motifs, motif_text = motif_notebook(pid, pk, cap)
+    dream_text, dream = dream_offer()
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
@@ -1169,6 +1223,7 @@ def visit(pid, sent_by_gloria=False):
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + _manifest_block(pk)
            + where_you_are()
+           + dream_text
            + materials_index()
            + motif_text
            + music_note()
@@ -1270,6 +1325,13 @@ def visit(pid, sent_by_gloria=False):
                           "note": (lk.group(1).strip() if lk else "I looked.")})
     # His motif notebook: made after the piece, so the room's attendance law never blocks the piece itself.
     motif = motif_step(pid, cap, work, motifs)
+    # A dream he made something from: the work keeps its link back, before any reveal, so a reveal carries the marker.
+    dream_step(pid, work, dream,
+               ([{"kind": piece["attrs"]["kind"], "artifact": r.get("file")}] if made_this_visit and r.get("file") else [])
+               + ([{"kind": media_creation.get("kind"), "artifact": media_creation.get("artifact")}]
+                  if media_creation.get("made") and media_creation.get("artifact") else [])
+               + [{"kind": "motif", "artifact": (motif or {}).get(k)} for k in ("audio", "record")
+                  if (motif or {}).get("ok") and (motif or {}).get(k)])
     # He decided a piece is ready and chose to show her. The ONE act that lets
     # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
     # content on its export capability -> deliver (phone + the app's reveals tab)
