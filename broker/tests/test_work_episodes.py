@@ -148,6 +148,9 @@ def encode(item):
     v = [1.0 if c in text else 0.0 for c in CONCEPTS] + [0.0] * (M.DIM - len(CONCEPTS))
     return v if any(v) else [0.0] * (M.DIM - 1) + [1.0]
 M._excerpts = lambda path, tmp: []
+# the media index reads the reveal ledger itself, for revealed Atelier works (its own suite,
+# test_media_embed_places); this suite is about work_episodes, so the index is pointed at an empty ledger
+M.REVEALS = os.path.join(os.path.dirname(MEM), "no-reveals-here.json")
 M.index(encode=encode)
 hits = M.search("that lantern", k=3, encode=encode)
 check("a search result carries the revision's sha256 and an episode handle",

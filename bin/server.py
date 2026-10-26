@@ -8991,7 +8991,8 @@ async def voice_local_end(request: Request):
         result = await __import__("asyncio").to_thread(_vl.models, False)
         try: os.unlink(os.path.join(MEMORY, ".voice-live"))
         except OSError: pass
-        _vl.end_call()   # the batch that embeds this call's held audio, then deletes it (media_embed.py)
+        try: _vl.end_call()   # the batch that embeds this call's held audio, then deletes it (media_embed.py)
+        except Exception as _vle: print("[voice-local-end] media index:", str(_vle)[:160], flush=True)
         return result
     except Exception as exc: return {"ok":False,"error":str(exc)[:240]}
 
