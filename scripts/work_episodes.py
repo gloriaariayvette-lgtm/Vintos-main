@@ -25,7 +25,7 @@ source file changes (size or mtime), so a withdrawn want or an invalidated durab
 Records go through evidence_view.standing(); HELD and ineligible records are listed, never rendered into his context.
 Everything here is a record of his own life and his own creations; none of it is offered as independent evidence.
 
-Never read: Landings notes or ratings (her private wording has its own path, landing_understanding.py), and any
+Never read: Landings notes or ratings (her private wording has its own path: the weekly Gloria-model pass), and any
 Atelier store or sealed artifact (atelier-*.json, a shelf record marked sealed, a path under an atelier directory).
 The sources are named in SOURCES and nothing else is opened.
 

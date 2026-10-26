@@ -198,6 +198,15 @@ def _tool_menu():
         return {}
 
 
+def _measurement_spec():
+    """How a plan step may carry a frozen measurement contract (lab_measurement); empty if that module is absent."""
+    try:
+        import lab_measurement
+        return lab_measurement.SPEC + " On a plan step, select defaults to that step's own output."
+    except Exception:
+        return ""
+
+
 def _prompt(work, log, lines=""):
     system = ("You are one of three frontier models (Astra, Grok, Opus) who take turns through the day aligning "
               "the Chemistry Lab of Vintos. His local model, Gemma, does the Lab's work between your turns: she forms a "
@@ -231,7 +240,8 @@ def _prompt(work, log, lines=""):
             "{objective: the scientific objective of this step; route: one route from THE LAB'S TOOLS; "
             "tool: the exact source, instrument operation, plugin tool or experiment type to use; "
             "depends_on: which earlier step's output this consumes, or '' for the first; "
-            "success_criteria: the result that would satisfy this step, or refute the line's prediction}. "
+            "success_criteria: the result that would satisfy this step, or refute the line's prediction; "
+            + _measurement_spec() + "}. "
             "Build a plan that reaches a computed finding — a fold, design, comparison, measurement or simulation "
             "tested against a reference — not a chain of lookups. Revise the plan when the results warrant)}; "
             "and at most one {decision: 'open', title, question, why, plan} when his work shows a question worth "

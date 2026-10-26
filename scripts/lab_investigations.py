@@ -449,6 +449,13 @@ def _plan(investigation, context, ask):
         prompt = json.dumps(task, ensure_ascii=False)
     if len(prompt.encode('utf-8')) > limit:
         raise ValueError('investigation plan exceeds current context; outputs remain intact')
+    try:    # his frozen prediction contract and its measured result (lab_measurement), only where it fits
+        view = __import__('lab_measurement').planner_view(investigation)
+        trial = json.dumps(dict(task, measurement=view), ensure_ascii=False) if view else ''
+        if trial and len(trial.encode('utf-8')) <= limit:
+            task['measurement'], prompt = view, trial
+    except Exception:
+        pass
     prompt += ('\nReturn one operation now as actual JSON data. For example the shape is '
                '{"question":"the unchanged investigation question","prediction":"a falsifiable prediction",'
                '"plan":["next measurements"],"route":"source",'
@@ -972,6 +979,7 @@ def _turn(context, *, ask=None, execute=None):
                                       'investigation from sourced context', origin='vintos:investigation')
             investigation['line_id'] = own['id'] if own else None
     if not investigation.get('prediction'):investigation['prediction']=str(value.get('prediction') or '')
+    __import__('lab_measurement').from_planner(investigation, value)   # freezes a returned contract; never raises
     investigation['plan'] = value.get('plan') or investigation.get('plan') or []
     route, request = value.get('route'), value.get('request') or {}
     if not isinstance(request,dict): raise ValueError('operation request must be an object')

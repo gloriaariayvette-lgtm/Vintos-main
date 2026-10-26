@@ -18,6 +18,12 @@ When an investigation's review says its outputs answered its question:
 
 Gemma is the only model asked (twice, locally). Nothing here weakens a check: the review that decides "answered" is
 the Lab's own.
+
+What a finding is made of is kept apart (26 October, measurement contracts): `provenance` counts each completed step
+as source retrieval, new computation, inspection or a connector call, and `new_result` is true only when a step
+computed something; a lookup alone no longer makes one. `novelty_record` lists what was actually searched and read;
+it is never a novelty certificate. `measurements` carries the investigation's frozen-contract results
+(lab_measurement): a refuted prediction is a kept result, not a failed run.
 """
 from __future__ import annotations
 import json
@@ -116,18 +122,47 @@ def literature(sources, terms):
         return {"query": query, "unavailable": str(exc)[:160]}
 
 
-def appraise(ask, question, prediction, result, tools, lit):
+def provenance(steps):
+    """Each completed step as what it was: retrieval, new computation, inspection or a connector call."""
+    import lab_measurement
+    kinds = {s.get("id"): lab_measurement._route_kind(s) for s in steps if s.get("state") == "completed"}
+    counts = {}
+    for k in kinds.values():
+        counts[k] = counts.get(k, 0) + 1
+    return {"counts": counts, "steps": kinds}
+
+
+def novelty_record(lit):
+    """What was actually searched and read for this finding. Not a certificate of anything."""
+    searched = ([{"where": "Europe PMC titles", "query": lit.get("query"), "hits": lit.get("hits"),
+                  "titles_read": len(lit.get("titles") or [])}] if lit.get("query") and "hits" in lit
+                else [{"where": "Europe PMC titles", "unavailable": lit.get("unavailable")}])
+    return {"searched": searched, "known_explanations_excluded": [], "certificate": False,
+            "note": "a title search, however few its hits, is not a novelty certificate; no known explanation "
+                    "has been excluded here"}
+
+
+def _measured_line(measured):
+    if not measured:
+        return ""
+    return "\nMeasured against your frozen contract(s): %s" % "; ".join(
+        "%s -> %s (%s)" % (str(m.get("hypothesis") or "")[:120], m.get("measurement_state"), str(m.get("why") or "")[:120])
+        for m in measured[-3:])
+
+
+def appraise(ask, question, prediction, result, tools, lit, measured=None):
     system = ("You judge a result your own lab tools produced. Be honest and hard to impress: a documented fact "
               "retrieved, a tiny sample, or a well-known relationship is not a discovery.")
     prompt = ("Question: %s\nYour prediction before measuring: %s\nTools used, in order: %s\nResult: %s\n"
-              "Published (Europe PMC, first titles of %s hits): %s\n"
-              "Is this result already reported in these titles, and how much does it matter?\n"
+              "Published (Europe PMC, first titles of %s hits): %s%s\n"
+              "A refuted prediction measured cleanly is a real result, not a failure. Is this result already reported in these titles, and how much does it matter?\n"
               'ONLY JSON: {"novelty": "reported" or "not in these titles" or "unclear", "value": 1-5 (5 = worth a '
               'scientist\'s attention; 1 = expected, retrieved, or too thin), "why": "one sentence", "keep": true/false, '
               '"tell_gloria": true/false, "message": "if telling her: one or two plain sentences in your own voice, '
               'with the numbers"}'
               % (question[:400], (prediction or "(none stated)")[:300], " -> ".join(tools) or "(none)", result[:900],
-                 lit.get("hits", "?"), json.dumps(lit.get("titles") or lit.get("unavailable") or [])))
+                 lit.get("hits", "?"), json.dumps(lit.get("titles") or lit.get("unavailable") or []),
+                 _measured_line(measured)))
     try:
         d = _json(ask(system, prompt))
         value = max(0, min(5, int(d.get("value") or 0)))
@@ -190,8 +225,17 @@ def record(investigation, reflection, ask, sources=None, now=None, express=None)
                "reading": str(reflection.get("speculative_reading") or "")[:600],
                "next_question": str(reflection.get("next_question") or "")[:300],
                "evidence": [s.get("id") for s in steps if s.get("state") == "completed"],
-               "literature": lit, "new_result": len(set(tools)) >= 1, "truth_status": TRUTH}
-        row["appraisal"] = appraise(ask, question, row["prediction"], result, tools, lit)
+               "literature": lit, "truth_status": TRUTH}
+        row["provenance"] = provenance(steps)
+        row["new_result"] = row["provenance"]["counts"].get("new_computation", 0) >= 1
+        row["novelty_record"] = novelty_record(lit)
+        try:
+            import lab_measurement
+            lab_measurement.settle(investigation, now)
+            row["measurements"] = [lab_measurement._brief(m) for m in lab_measurement.for_investigation(investigation)]
+        except Exception:
+            row["measurements"] = []
+        row["appraisal"] = appraise(ask, question, row["prediction"], result, tools, lit, row["measurements"])
         if row["appraisal"].get("keep"):
             kept = keep(row)
             row["kept"] = kept.get("id") if kept else None

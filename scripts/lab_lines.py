@@ -343,7 +343,10 @@ def _clean_plan(plan):
                     "depends_on": depends,
                     "requires": sorted({int(n) - 1 for n in _STEP_REF.findall(depends) if 0 < int(n) <= len(out)}),
                     "success_criteria": str(st.get("success_criteria") or st.get("success") or "").strip()[:300],
-                    "state": "pending", "fails": 0})
+                    "state": "pending", "fails": 0,
+                    # a frozen measurement contract for this step's output (lab_measurement), kept as written
+                    **({"measurement": st["measurement"]} if isinstance(st.get("measurement"), dict)
+                       and len(json.dumps(st["measurement"], default=str)) <= 3000 else {})})
         if len(out) >= PLAN_MAX_STEPS:
             break
     return out
@@ -352,6 +355,12 @@ def _clean_plan(plan):
 def _new_plan(line, plan, by):
     line["plan"], line["plan_cursor"], line["plan_by"], line["plan_at"] = plan, 0, by, _now()
     line["plan_id"] = "P-" + uuid.uuid4().hex[:10]
+    if any("measurement" in st for st in plan):
+        try:    # each contract is frozen now, before any step of this plan has run, bound to this plan and step
+            import lab_measurement
+            lab_measurement.from_plan(line.get("id"), line["plan_id"], plan, by)
+        except Exception:
+            pass
 
 
 def set_plan(line_id, plan, by):
