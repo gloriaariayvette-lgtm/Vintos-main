@@ -220,4 +220,144 @@ class Stalls(unittest.TestCase):
         self.assertNotEqual(I._identity(ref('S-x'), shas), I._identity(ref('S-z'), shas))
 
 
+class BudgetReview(unittest.TestCase):
+    """Of 715 investigations one was ever reviewed; after the 25 October deploy four spent all 14 steps, every one
+    completed, and closed unread. The planner is told the budget and what finish is, and at the budget the evidence is
+    reviewed once. The review is stubbed; nothing is sent."""
+    Q = 'Is the RT beside the array?'
+
+    def setUp(self):
+        self.assertTrue(Path(I._path('investigations.json')).is_relative_to(sandbox.SCRATCH))
+        self.assertTrue(Path(C.NOTEBOOK).is_relative_to(sandbox.SCRATCH))
+        self.assertIs(sandbox.socket.socket.connect, sandbox.SEND)
+        C._atomic(I._path('source-throttle.json'), {})
+        self.ask = Mock(return_value=choice('source', {'source': 'pubchem', 'name': 'last'}, question=self.Q))
+        self.lines = patch.multiple(lab_lines, pick=Mock(return_value=None), opened_by=Mock(return_value=None),
+                                    record_step=Mock(), advance_plan=Mock(return_value='stale'))
+        self.lines.start()
+        import lab_findings
+        self.record = patch.object(lab_findings, 'record', Mock(return_value={'kind': 'finding', 'kept': True,
+                                                                              'told_gloria': False, 'appraisal': 'ok'}))
+        self.record.start()
+
+    def tearDown(self):
+        self.record.stop()
+        self.lines.stop()
+        sandbox.SEND.assert_not_called()
+
+    def seed(self, n=I.MAX_STEPS - 1, state=lambda k: 'completed', repeat=lambda k: False, tool='source:pubchem'):
+        steps = []
+        for k in range(n):
+            step = {'id': 'S-%02d' % k, 'at': '2026-10-26T00:%02d' % k, 'route': 'source', 'tool': tool,
+                    'question': 'step %d' % k, 'request': {'source': 'pubchem', 'name': 'fixture-%d' % k}}
+            I._store_result(step, {'receipt': {'source': 'pubchem', 'records': [{'cid': k}]}})
+            step['state'] = state(k)
+            if repeat(k): step.update(repeat_within=True, reused_from='S-00')
+            steps.append(step)
+        C._atomic(I._path('investigations.json'), {'investigations': [
+            {'id': 'I-b', 'opened_at': '2026-10-26T00:00', 'state': 'open', 'line_id': None, 'question': self.Q,
+             'prediction': 'within 2 kb', 'plan': [], 'steps': steps}]})
+        return steps
+
+    def last_turn(self, verdict, execute=None):
+        execute = execute or (lambda *a: {'receipt': {'source': 'pubchem', 'records': [{'cid': 99}]}})
+        with patch.object(C, '_reflect', return_value={'answers_question': verdict}) as reflect:
+            I.turn('', ask=self.ask, execute=execute)
+        return reflect, store()['investigations'][0]
+
+    def test_planner_is_told_the_budget_and_what_finish_is(self):
+        self.seed(n=3)
+        sent = []
+        I._plan(store()['investigations'][0], '', lambda s, p, **k: sent.append(p) or '{}')
+        task, _ = json.JSONDecoder().raw_decode(sent[0])
+        self.assertEqual(task['step_budget']['steps_used'], 3)
+        self.assertEqual(task['step_budget']['steps_left'], I.MAX_STEPS - 3)
+        self.assertEqual(task['step_budget']['new_completed_outputs'], 3)
+        for words in ('finish asks for a review of the evidence so far', 'as soon as these outputs could answer',
+                      'At the budget the evidence is reviewed anyway'):
+            self.assertIn(words, task['step_budget']['finish'])
+        self.assertNotIn('same_tool', task)                       # three in a row is not yet four
+
+    def test_same_tool_four_times_is_named_as_advice_and_nothing_is_removed(self):
+        self.seed(n=5, tool='instrument:fold_read')
+        sent = []
+        I._plan(store()['investigations'][0], '', lambda s, p, **k: sent.append(p) or '{}')
+        task, _ = json.JSONDecoder().raw_decode(sent[0])
+        self.assertIn('last 4 completed steps all used instrument:fold_read', task['same_tool'])
+        self.assertIn('read_output', task['same_tool'])
+        self.assertIn('finish', task['available_routes'])
+        self.assertIn('instrument', task['available_routes'])     # advice only: every route is still offered
+        data = store(); data['investigations'][0]['steps'][-1]['tool'] = 'source:pubmed'
+        C._atomic(I._path('investigations.json'), data)
+        sent.clear()
+        I._plan(store()['investigations'][0], '', lambda s, p, **k: sent.append(p) or '{}')
+        self.assertNotIn('same_tool', json.JSONDecoder().raw_decode(sent[0])[0])
+
+    def test_answered_review_at_the_budget_answers_it(self):
+        self.seed()
+        reflect, inv = self.last_turn('yes: the outputs settle it')
+        reflect.assert_called_once()
+        self.assertIn('additional_source', reflect.call_args.args[2])
+        self.assertEqual(inv['state'], 'answered')
+        self.assertEqual(inv['finding'], {'kind': 'finding', 'kept': True, 'told_gloria': False, 'appraisal': 'ok'})
+        self.assertNotIn('closed_reason', inv)
+        self.assertEqual(len(inv['steps']), I.MAX_STEPS)
+        rows = C._tail_jsonl(C.NOTEBOOK, nbytes=1024 * 1024)
+        self.assertEqual((rows[-1]['kind'], rows[-1]['at_step_budget']), ('investigation_review', True))
+        self.assertEqual(rows[-2]['kind'], 'investigation_step')
+
+    def test_unanswered_review_at_the_budget_stays_stalled_with_the_review_attached(self):
+        self.seed()
+        reflect, inv = self.last_turn('no: the distance to the array was never measured')
+        reflect.assert_called_once()
+        self.assertEqual(inv['state'], 'stalled')
+        self.assertTrue(inv['closed_reason'].startswith('step budget spent (14 operations) without a finish: 14 new'))
+        self.assertTrue(inv['closed_reason'].endswith('; a review at the budget found the outputs did not answer it'))
+        self.assertEqual(inv['budget_review']['answers_question'], 'no: the distance to the array was never measured')
+        self.assertNotIn('finding', inv)
+
+    def test_no_review_with_fewer_than_two_new_outputs(self):
+        self.seed(repeat=lambda k: k > 0)          # one new output and twelve repeats of it
+        reflect, inv = self.last_turn('yes: never asked', execute=Mock(side_effect=ValueError('unsupported Lab source')))
+        reflect.assert_not_called()
+        self.assertEqual(inv['state'], 'stalled')
+        self.assertEqual(inv['closed_reason'], I._budget_spent(inv))
+        self.assertNotIn('budget_review', inv)
+
+    def test_no_review_with_an_unreconciled_outcome(self):
+        self.seed(state=lambda k: 'outcome_unknown' if k == 3 else 'completed')
+        reflect, inv = self.last_turn('yes: never asked')
+        reflect.assert_not_called()
+        self.assertEqual(inv['state'], 'stalled')
+        self.assertNotIn('review', inv['closed_reason'])
+
+    def test_failure_runs_still_close_without_a_review(self):
+        self.seed(n=4, state=lambda k: 'failed')
+        reflect, inv = self.last_turn('yes: never asked', execute=Mock(side_effect=ValueError('unsupported Lab source')))
+        reflect.assert_not_called()
+        self.assertTrue(inv['closed_reason'].startswith('5 operations in a row produced nothing'))
+
+
+class ReferenceCompareGuidance(unittest.TestCase):
+    """instrument:reference_compare failed 10 of 10 on 25 October: given a name or UniProt accession, not a PDB id."""
+
+    def test_the_menu_says_what_reference_is_and_where_to_get_one(self):
+        import lab_instruments
+        with patch.object(lab_instruments, '_runs_today', return_value={'runs': []}), \
+             patch.object(lab_instruments, 'artifacts', return_value=['artifacts/esmfold/O43511-ac5611395a4c.pdb']):
+            block = lab_instruments.menu_block()
+        line = next(l for l in block.splitlines() if l.startswith('- reference_compare'))
+        for words in ('four-character PDB entry id', '1ABC', "pdb source step's records", "structure's receipt"):
+            self.assertIn(words, line)
+
+    def test_the_refusal_names_the_bad_value_and_the_hint(self):
+        import chemistry_reference_compare as R
+        with self.assertRaises(ValueError) as caught:
+            R.validate({'reference': 'O43511', 'chain': 'A', 'ref_span': [1, 10], 'model': 'O43511'})
+        text = str(caught.exception)
+        for words in ('four-character PDB entry id', '1ABC', "'O43511'", "pdb source step's records"):
+            self.assertIn(words, text)
+        self.assertEqual(I._cause({'error': text}), 'operation not offered or malformed as requested')
+
+
 if __name__ == '__main__': unittest.main(verbosity=2)

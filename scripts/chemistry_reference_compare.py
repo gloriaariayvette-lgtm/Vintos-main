@@ -84,8 +84,12 @@ def validate(req):
             if not req.get("chain"):
                 chain = m.group(2)
     if not PDB_ID.fullmatch(ref):
-        raise ValueError("reference must be a four-character PDB entry id (a deposited structure to compare the model "
-                         "against, not a UniProt accession)")
+        # name what was given and where a real id comes from: on 25 October all 10 compares were refused here, each
+        # given a protein name or UniProt accession, and the bare refusal never said what to fetch instead
+        raise ValueError("reference must be a four-character PDB entry id such as 1ABC (a deposited structure to "
+                         "compare the model against, not a protein name or UniProt accession); got %r. Take the id "
+                         "from a pdb source step's records or the structure's receipt"
+                         % str(req.get("reference") or "")[:40])
     if not CHAIN.fullmatch(chain):
         raise ValueError("chain must be a chain id")
     if not (isinstance(span, list) and len(span) == 2 and all(isinstance(x, int) for x in span)

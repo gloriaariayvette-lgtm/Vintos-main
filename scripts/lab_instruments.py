@@ -128,7 +128,9 @@ def menu_block():
     models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
     if models:
         lines.append("- reference_compare, operation structure.compare, files [one of: " + ", ".join(models) + "], "
-                     "with reference (a PDB id you have a source for), chain, ref_span [first, last] in the entry's "
+                     "with reference (a four-character PDB entry id of a deposited structure, e.g. 1ABC, never a "
+                     "protein name or UniProt accession: take it from a pdb source step's records or the structure's "
+                     "receipt), chain, ref_span [first, last] in the entry's "
                      "numbering; offset is worked out from the alignment (give it only to check it: a wrong one is refused). Lines your model up "
                      "with the real structure by sequence and gives TM-score, RMSD, and the entry's helices and strands "
                      "in your numbering.")

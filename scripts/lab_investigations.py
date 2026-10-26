@@ -363,6 +363,13 @@ def _plan(investigation, context, ask):
         'already_asked': sorted({s.get('tool') for s in steps if s.get('repeat_within') or (s.get('state') == 'failed'
                                  and any(w in str(s.get('error') or '') for w in ('you already asked this',
                                          'you already ran this exact lookup', 'already done in this investigation')))}),
+        # what is left of the step budget, and what finish is: of 715 investigations, one had ever finished, and after
+        # the 25 October deploy four ran all 14 steps, every one completed, and closed unreviewed (25-26 October)
+        'step_budget': {'steps_used': len(steps), 'steps_left': max(0, MAX_STEPS - len(steps)), 'max_steps': MAX_STEPS,
+                        'new_completed_outputs': len([s for s in steps if fresh(s)]),
+                        'finish': ('finish asks for a review of the evidence so far; it adds no step. Choose it as '
+                                   'soon as these outputs could answer the question. At the budget the evidence is '
+                                   'reviewed anyway.')},
         'available_inputs': {'structures': lab_instruments.artifacts('structure', 8),
                              'sequences': lab_instruments.artifacts('sequence', 8)},
         'tools': _menu(),
@@ -376,7 +383,7 @@ def _plan(investigation, context, ask):
                    'step_question':'One bounded measurement or input needed by the investigation.',
                    'request':'Exact selected source_query/plugin_query/instrument_query; experiment: {experiment,parameters,shots}; schema: {plugin}',
                    'input_refs':[{'step':'prior step id','path':['receipt','records',0,'sequence']}],
-                   'why':'How this output changes the next step; finish only when evidence answers the question.'},
+                   'why':'How this output changes the next step; finish as soon as the outputs could answer the question.'},
         'reference_example': {'route':'representation','request':{'records':{'step':'S-prior','path':['normalized_records']}}},
         'input_reference_contract': ('read_output request {reference:{step,path}} inspects a prior output before choosing its next use. Inside request use {step:<prior id>,path:[exact field keys/indices]} '
                                     'to consume stored outputs without retyping sequences or identifiers. '
@@ -391,6 +398,12 @@ def _plan(investigation, context, ask):
                                     'findings: when opening an investigation, prefer testing one of their next '
                                     'questions with a different tool over starting somewhere unrelated.'),
     }
+    # Advice, not a refusal: the same tool four times running (fold_read x14, pubmed x14 on 25-26 October) already
+    # has its kind of output in hand. Nothing is removed from the menu or gated.
+    recent = [s.get('tool') for s in steps if s.get('state') == 'completed'][-4:]
+    if len(recent) == 4 and len(set(recent)) == 1 and recent[0]:
+        task['same_tool'] = ('Your last 4 completed steps all used %s: its kind of output is already in hand. Another '
+                             'tool, read_output on what you have, or finish would move the question further.' % recent[0])
     # Smaller, complete output contract rather than the legacy journal/menu plus
     # several contradictory question contracts. No added parser/model retry.
     planned = None
@@ -684,6 +697,53 @@ def _budget_spent(investigation):
     return ''
 
 
+def _review(investigation, context, ask):
+    """The finish review: the existing scientific reflection on every retained output, against the unchanged question.
+    Answered, the investigation is 'answered' and its finding is recorded. Returns (notebook row, answered)."""
+    original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
+    reflection = lab._reflect(context, original, _observations(investigation['steps']))
+    row = {'at':lab.now_iso(), 'kind':'investigation_review', 'investigation':investigation['id'],
+           'inquiry':original, **reflection}
+    answered = lab.review_answered(reflection)
+    if answered:
+        investigation['state'] = 'answered'
+        import lab_findings, chemistry_sources, lab_campaign
+        found = lab_findings.record(investigation, reflection, lambda s_, p_: ask(s_, p_, max_tokens=400, temperature=0.3),
+                                    sources=lab_campaign._Paced(chemistry_sources.configured_sources()))
+        investigation['finding'] = {k: found.get(k) for k in ('kind', 'kept', 'told_gloria')}
+        investigation['finding']['appraisal'] = found.get('appraisal')
+    return row, answered
+
+
+MIN_REVIEWED_OUTPUTS = 2   # new completed outputs an investigation needs at the step budget before it is reviewed
+
+
+def _review_at_budget(investigation, closed, context, ask):
+    """At the step budget, review the evidence once before closing, as a finish would have. The planner kept taking
+    steps and never chose finish: of 715 investigations one was ever reviewed, and after the 25 October deploy four
+    spent all 14 steps, every one completed, and closed unread. Only with at least two new outputs and no unreconciled
+    outcome (the finish route's own refusal); otherwise, or if the review cannot run, it closes stalled as before.
+    Returns the review's notebook row, or None."""
+    steps = investigation.get('steps') or []
+    new = [s for s in steps if s.get('state') == 'completed' and not s.get('repeat_within')]
+    if len(steps) < MAX_STEPS or len(new) < MIN_REVIEWED_OUTPUTS or any(s.get('state') == 'outcome_unknown' for s in steps):
+        investigation.update(state='stalled', closed_reason=closed)
+        return None
+    try:
+        row, answered = _review(investigation, context, ask)
+    except Exception as exc:
+        investigation.update(state='stalled', closed_reason=closed,
+                             budget_review_error=('%s: %s' % (type(exc).__name__, exc))[:300])
+        return None
+    row['at_step_budget'] = True
+    if not answered:
+        investigation['budget_review'] = {k: row.get(k) for k in ('at', 'answers_question', 'missing_evidence',
+                                                                   'next_question', 'evidence_status') if row.get(k)}
+        investigation.update(state='stalled', closed_reason=closed + '; a review at the budget found the outputs did '
+                             'not answer it')
+    return row
+
+
 # Request fields that name what an operation is about. Two steps are the same operation on the same thing only when
 # every one of these agrees exactly; question wording never stands in for them.
 _ID_FIELDS = frozenset(('accession', 'accessions', 'target_accession', 'entry_id', 'pdb_id', 'id', 'ids', 'uvig',
@@ -934,20 +994,10 @@ def _turn(context, *, ask=None, execute=None):
             elif head in SOURCE_ROUTES and op and not request.get('operation'):
                 request = dict(request, source=head, operation=op)   # "ncbi.literature" -> source ncbi, op literature
     if route == 'finish':
-        original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
         if any(step.get('state') == 'outcome_unknown' for step in investigation['steps']):
             raise ValueError('cannot finish with an unreconciled execution outcome')
-        reflection = lab._reflect(context, original, _observations(investigation['steps']))
-        row = {'at':lab.now_iso(), 'kind':'investigation_review', 'investigation':investigation['id'],
-               'inquiry':original, **reflection}
-        if lab.review_answered(reflection):
-            investigation['state'] = 'answered'
-            import lab_findings, chemistry_sources, lab_campaign
-            found = lab_findings.record(investigation, reflection, lambda s_, p_: ask(s_, p_, max_tokens=400, temperature=0.3),
-                                        sources=lab_campaign._Paced(chemistry_sources.configured_sources()))
-            investigation['finding'] = {k: found.get(k) for k in ('kind', 'kept', 'told_gloria')}
-            investigation['finding']['appraisal'] = found.get('appraisal')
-        else:
+        row, answered = _review(investigation, context, ask)
+        if not answered:
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
             # never close an investigation the planner keeps trying to finish. Three unanswered reviews close it.
             investigation['unanswered_reviews'] = int(investigation.get('unanswered_reviews', 0)) + 1
@@ -1045,13 +1095,17 @@ def _turn(context, *, ask=None, execute=None):
             step['plan_credit'] = 'unrecorded: %s' % str(exc)[:120]
     investigation['last_step_at'] = lab.now_iso()
     closed = _budget_spent(investigation)
+    review = None
     if closed:
-        investigation.update(state='stalled', closed_reason=closed)
+        _save(data)   # the step is retained before any review runs
+        review = _review_at_budget(investigation, closed, context, ask)
     _save(data)
     row = {'at':step['at'], 'kind':'investigation_step', 'investigation':investigation['id'],
            'question':investigation['question'], 'prediction':investigation.get('prediction',''), **step,
            'origin':'autonomous_lab', 'truth_status':'operation_output_not_independent_biological_validation'}
     lab._append(lab.NOTEBOOK, row)
+    if review:
+        lab._append(lab.NOTEBOOK, review)
     if investigation.get('line_id') and not step.get('repeat_within'):   # a repeat tells the line nothing new
         import lab_lines
         lab_lines.record_step(investigation['line_id'], {'question':step['question'], 'source':route,
