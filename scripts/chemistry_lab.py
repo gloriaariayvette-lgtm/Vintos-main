@@ -3902,6 +3902,13 @@ def _coverage_preflight(inquiry, observations, prepared):
                 (stage, item['conservative_total'], item['output_reservation'], item['context_budget'])
                 for stage,item in budgets.items() if not item['fits']]
     reason = 'coverage deferred: full original question and evidence exceed context budget; ' + '; '.join(failures)
+    split = {}
+    _coverage_deep_parts(prepared, split)
+    if split.get('obstacle'):
+        # Said with its numbers, so a deferral that is not the budget's fault is seen as such rather than guessed at.
+        reason += '; not split: ' + split['obstacle'] + (
+            ' (%s is %d bytes whole; a part has %d bytes beside what every part carries)'
+            % (split['piece'], split['piece_bytes'], split['part_spare_bytes']) if split.get('piece') else '')
     payload = {'original_question':inquiry['question'], 'inquiry':inquiry,
                'observations':observations, 'coverage_evidence':evidence}
     digest = hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
@@ -3928,12 +3935,14 @@ def _coverage_preflight(inquiry, observations, prepared):
             'original_question':inquiry['question'], 'factual_observation':'',
             'speculative_reading':'', 'next_question':'', 'instrument_gap':'',
             'line_status':'continue', 'evidence_status':'deferred',
-            'coverage_deferred':True, 'coverage_budget':budgets,
+            'coverage_deferred':True, 'coverage_budget':budgets, 'coverage_split':split,
             'coverage_snapshot':path, 'coverage_snapshot_sha256':digest,
             'truth_status':'incomplete_context_budget_no_scientific_adjudication'}
 
 
-COVERAGE_SPLIT_MAX_PARTS = 8
+# A 14-step investigation's outputs came to 73-156 KB on 26 October, against about 50 KB a part: three or four parts.
+# Sixteen leaves room for longer outputs; each part is one checker call on the local model.
+COVERAGE_SPLIT_MAX_PARTS = 16
 
 
 def _coverage_parts(prepared):
@@ -3979,7 +3988,54 @@ def _coverage_shallow_parts(prepared):
     return [request(part) for part in parts]
 
 
-def _coverage_deep_parts(prepared):
+def _record_list(value):
+    """A list of named records (every item a dict): its items may go to different parts, each whole. A list of rows
+    or of scalars is a table and is never opened. One record alone is a list of records too: 21 of the 30 snapshots
+    still deferred on 26 October were a single UniProt record of 52-82 KB, carried as one piece because a one-item
+    list was not opened."""
+    return isinstance(value, list) and len(value) >= 1 and all(isinstance(item, dict) for item in value)
+
+
+# A record opened into its fields sends these with every field, so no part reads a feature list without knowing
+# whose it is. They are copied, never moved: each also stays where it is.
+_IDENTITY_FIELDS = ('accession', 'id', 'entry_id', 'uid', 'pmid', 'pmcid', 'protein_name', 'gene', 'geneName',
+                    'organism', 'taxon_id', 'name', 'title', 'source', 'step', 'question')
+_IDENTITY_BYTES = 600
+
+
+def _named_section(value):
+    """A dict of named fields that may be opened. An addressed leaf ({address, text}) is one piece of source text and
+    is never parted from its address."""
+    return isinstance(value, dict) and len(value) >= 2 and set(value) != {'address', 'text'}
+
+
+def _place(part, path, value):
+    """Put one unit into a part under its original path. An int step names the list item the unit came from; the
+    part's list holds only the items it carries, in their original order, and no placeholder stands for the rest."""
+    node, items = part, part.setdefault('\0items', {})
+    for at, step in enumerate(path[:-1]):
+        fresh = [] if isinstance(path[at + 1], int) else {}
+        if isinstance(step, int):
+            key = path[:at + 1]
+            if key not in items:
+                items[key] = fresh; node.append(fresh)
+            node = items[key]
+        else:
+            node = node.setdefault(step, fresh)
+    if isinstance(path[-1], int): node.append(value)
+    else: node[path[-1]] = value
+
+
+def _built(shared, units):
+    part = copy.deepcopy(shared)
+    for path, value, companions in units:
+        for where, what in companions: _place(part, where, what)
+        _place(part, path, value)
+    part.pop('\0items', None)
+    return part
+
+
+def _coverage_deep_parts(prepared, why=None):
     """The same split, one or more levels in, for evidence whose weight sits in a value that is not a list.
 
     An instrument result is a dict of records, not a list, so the shallow split copied all of it into every part and
@@ -3988,9 +4044,17 @@ def _coverage_deep_parts(prepared):
     one part is opened and its records become the units, each whole and under its own original path, so every
     address still resolves exactly where the checker is told it is.
 
-    Two things are deliberately not done. A table is never divided: only dicts of named records are opened, and a
-    list deeper than the top level is carried whole or not at all, so no part is handed half a table. And nothing
-    is dropped or shortened: when the pieces cannot be packed whole, this returns None and the review defers."""
+    A finished investigation's outputs are a list of step results one level in (`additional_source.records`), and
+    only top-level lists used to be opened, so that whole list was one unit: on 26 October four reviews of 11- and
+    12-step investigations (73-156 KB; about 50 KB fits one part) were deferred whole, though no step was over 16 KB.
+    A list of records is now opened at any depth, each item whole; a record still too large for a part is opened in
+    turn into its own fields and records.
+
+    Two things are deliberately not done. A table is never divided: a list of rows or of scalars is carried whole or
+    not at all, so no part is handed half a table. And nothing is dropped or shortened: when one piece is still too
+    large for a part, this returns None, the review defers, and `why` (a dict, when given) names the piece and both
+    sizes."""
+    why = why if isinstance(why, dict) else {}
     if not prepared: return None
     _evidence, _strings, _addresses, (system, prompt, out) = prepared
     head, marker, body = prompt.partition('\nEVIDENCE:\n')
@@ -4013,7 +4077,14 @@ def _coverage_deep_parts(prepared):
         if fits({'_': 'x' * middle}): low = middle
         else: high = middle
     room = low
-    if room <= 1024: return None
+    why.update(part_room_bytes=room, evidence_bytes=size(addressed))
+    if room <= 1024:
+        why['obstacle'] = 'the question and instructions leave no room for evidence'
+        return None
+
+    def children(value, path):
+        if isinstance(value, list): return [(path + (index,), item) for index, item in enumerate(value)]
+        return [(path + (key,), item) for key, item in value.items()]
 
     # The shared skeleton is carried by every part, so when the units cannot be packed beside it, less is shared and
     # more becomes a unit. Reducing the room instead would shrink the parts, which is the wrong direction.
@@ -4026,15 +4097,16 @@ def _coverage_deep_parts(prepared):
             for step in path[:-1]: node = node.setdefault(step, {})
             node[path[-1]] = value
 
-        def divide(value, path, depth=0):
-            """Units a part can carry alone; everything small enough is kept shared in every part instead."""
+        def divide(value, path):
+            """Units a part can carry alone; small named sections are kept shared in every part instead. What is
+            inside a list of records belongs to its record and goes where the record goes, never to every part."""
             if size(value) <= share:
                 keep(path, value); return []
-            if isinstance(value, list) and len(value) >= 2 and depth == 0:
-                keep(path, []); return [(path, item, True) for item in value]
-            if isinstance(value, dict) and len(value) >= 2 and not isinstance(value, list):
-                return [u for key in value for u in divide(value[key], path + (key,), depth + 1)]
-            return [(path, value, False)]
+            if _record_list(value):
+                return children(value, path)
+            if _named_section(value):
+                return [u for p, v in children(value, path) for u in divide(v, p)]
+            return [(path, value)]
 
         for key in addressed:
             found += divide(addressed[key], (key,))
@@ -4043,19 +4115,49 @@ def _coverage_deep_parts(prepared):
         # source field is missing evidence, and "data": null would read as an empty field rather than as elsewhere.
         empty = copy.deepcopy(shared)
         spare = room - size(empty)
-        if len(found) >= 2 and spare > 0 and fits(empty) and all(size(i) <= spare for _p, i, _l in found):
-            parts, current, carried = [], copy.deepcopy(empty), 0
-            for path, item, listed in found:
-                if carried and carried + size(item) > spare:
-                    parts.append(current); current, carried = copy.deepcopy(empty), 0
-                node = current
-                for step in path[:-1]: node = node.setdefault(step, {})
-                if listed: node.setdefault(path[-1], []).append(item)
-                else: node[path[-1]] = item
-                carried += size(item)
-            parts.append(current)
-            if 2 <= len(parts) <= COVERAGE_SPLIT_MAX_PARTS and all(fits(part) for part in parts):
-                return [request(part) for part in parts]
+        if spare <= 0 or not fits(empty):
+            why['obstacle'] = 'the shared skeleton alone fills a part'
+            continue
+        # A record over what a part can carry beside the skeleton is opened into its own fields and records; a piece
+        # that cannot be opened (one long text, one table) and is still over is never cut: the split fails on it.
+        units, stuck = [], None
+        found = [(path, value, ()) for path, value in found]
+        while found:
+            path, value, companions = found.pop(0)
+            if size(value) + sum(size(v) for _p, v in companions) <= spare:
+                units.append((path, value, companions))
+            elif _record_list(value):
+                found[0:0] = [(p, v, companions) for p, v in children(value, path)]
+            elif _named_section(value):
+                ident = tuple((path + (key,), value[key]) for key in _IDENTITY_FIELDS
+                              if key in value and size(value[key]) <= _IDENTITY_BYTES)
+                within = companions + ident
+                found[0:0] = [(p, v, tuple(c for c in within if c[0] != p)) for p, v in children(value, path)]
+            else:
+                stuck = (path, value); break
+        if stuck:
+            why.update(obstacle='one piece is larger than a part', piece='.'.join(map(str, stuck[0])),
+                       piece_bytes=size(stuck[1]), part_spare_bytes=spare)
+            continue
+        if len(units) < 2:
+            continue
+        parts, current = [], []
+        for unit in units:
+            if current and not fits(_built(empty, current + [unit])):
+                parts.append(current); current = []
+            current.append(unit)
+        parts.append(current)
+        built = [_built(empty, part) for part in parts]
+        why['parts'] = len(built)
+        if not all(fits(part) for part in built):
+            why['obstacle'] = 'a packed part did not fit'
+            continue
+        if len(built) > COVERAGE_SPLIT_MAX_PARTS:
+            why['obstacle'] = 'it takes %d parts, more than %d' % (len(built), COVERAGE_SPLIT_MAX_PARTS)
+            continue
+        if len(built) >= 2:
+            why.pop('obstacle', None)
+            return [request(part) for part in built]
     return None
 
 
