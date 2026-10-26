@@ -656,6 +656,35 @@ def _observations(steps):
     return observations
 
 
+def _with_named_records(question, steps, observations):
+    """The Lab's own sourced UniProt record of an accession the question names, when the investigation worked on that
+    accession (its model, its sequence, its entry) but never fetched the entry itself.
+
+    A structure investigation reads the Lab's model of the protein and never searches UniProt: on 26 October two
+    pendrin (O43511) investigations read O43511's ESMFold model and the deposited 8SGW and were refused at review
+    because "no retrieved record establishes the requested target". The record the model was folded from was
+    retrieved, with its receipt, before the investigation began; it is that record that is added, marked as such,
+    and the entity check then holds it to everything it holds a fetched record to. Nothing is added for an accession
+    no step touched, and nothing is added when the investigation already carries a record of it."""
+    from lab_repeats import _ACCESSION
+    named = list(dict.fromkeys(_ACCESSION.findall(str(question or ''))))
+    held = {str(r.get('accession')) for r in observations.get('records') or [] if isinstance(r, dict)}
+    worked = json.dumps([s.get('request') for s in steps if s.get('state') == 'completed'], sort_keys=True)
+    added = []
+    for accession in named:
+        if accession in held or not re.search(r'(?<![A-Z0-9])' + re.escape(accession) + r'(?![A-Z0-9])', worked):
+            continue
+        try:
+            record = lab._sourced_record(accession)
+        except Exception:
+            record = None
+        if isinstance(record, dict) and record.get('accession') == accession:
+            added.append(dict(record, identity_basis='lab_sourced_uniprot_record_not_fetched_by_this_investigation'))
+    if not added:
+        return observations
+    return dict(observations, records=list(observations.get('records') or []) + added)
+
+
 MAX_STEPS = 14           # operations one investigation may take before it is closed and the next one starts
 MAX_FAILED_RUN = 5       # consecutive steps that produced nothing: the investigation is stuck, not deliberate
 MAX_UNANSWERED_REVIEWS = 3   # finishes whose review said the outputs do not answer it
@@ -742,7 +771,8 @@ def _review(investigation, context, ask):
     """The finish review: the existing scientific reflection on every retained output, against the unchanged question.
     Answered, the investigation is 'answered' and its finding is recorded. Returns (notebook row, answered)."""
     original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
-    reflection = lab._reflect(context, original, _observations(investigation['steps']))
+    observations = _with_named_records(investigation['question'], investigation['steps'], _observations(investigation['steps']))
+    reflection = lab._reflect(context, original, observations)
     row = {'at':lab.now_iso(), 'kind':'investigation_review', 'investigation':investigation['id'],
            'inquiry':original, **reflection}
     answered = lab.review_answered(reflection)

@@ -2365,6 +2365,15 @@ def _set_aside_sourced(accession):
         _atomic(SOURCED_SET_ASIDE, sorted(held | {accession}))
 
 
+def _sourced_record(accession):
+    """The Lab's saved UniProt record of exactly this accession, whether or not a free pass already asked about it.
+    For establishing what an accession is; _sourced_record_snapshot is the one that picks unread records."""
+    for item in _sourced_record_index():
+        if item.get('accession') == accession and isinstance(item.get('record'), dict):
+            return item['record']
+    return None
+
+
 def _sourced_record_snapshot(accession):
     for item in _sourced_record_index():
         if item.get('accession') == accession and not item.get('reviewed') and isinstance(item.get('record'), dict):
@@ -3283,6 +3292,18 @@ def topology_summary(features):
         '. Evidence qualifiers remain in the topology records; annotation count is not a count of helices in the deposited structure.') if groups else ''
 
 
+def _protein_aliases(description):
+    """Every other name UniProt gives the protein: alternative full names, then the short names of the recommended
+    and alternative names (UniProt's own, e.g. "PDS"), each once. The recommended full name is protein_name."""
+    names = []
+    alternatives = [n for n in description.get('alternativeNames') or [] if isinstance(n, dict)]
+    for name in alternatives:
+        names.append((name.get('fullName') or {}).get('value'))
+    for name in [description.get('recommendedName') or {}] + alternatives:
+        names += [(short or {}).get('value') for short in name.get('shortNames') or [] if isinstance(short, dict)]
+    return list(dict.fromkeys(str(n) for n in names if n))
+
+
 def normalize_protein_records(items, relaxed=None, sequence_limit=SEQUENCE_KEPT):
     """One record shape for browse, investigations, identity and coverage review."""
     rows = []
@@ -3300,9 +3321,7 @@ def normalize_protein_records(items, relaxed=None, sequence_limit=SEQUENCE_KEPT)
                      "organism_lineage": [name for name in (item.get("organism") or {}).get("lineage", [])
                                           if isinstance(name, str)],
                      "genes": item.get("genes") or [],
-                     "protein_aliases": [str((name.get('fullName') or {}).get('value')) for name in
-                                         (item.get('proteinDescription') or {}).get('alternativeNames', [])
-                                         if (name.get('fullName') or {}).get('value')],
+                     "protein_aliases": _protein_aliases(item.get('proteinDescription') or {}),
                      "organism_aliases": [str((item.get('organism') or {})[key]) for key in ('commonName',)
                                           if (item.get('organism') or {}).get(key)],
                      "length": (item.get("sequence") or {}).get("length"),

@@ -422,6 +422,24 @@ def question_entity_context(inquiry, records, *, literature_only=False):
                 and (not organism_names or organism_names <= organisms)):
             candidates.append(row)
     if candidates: matches = candidates
+    # The same entry fetched again is one target, not several: an investigation that repeated its UniProt search
+    # nine times carried P55064 nine times, and that alone read as "multiple retrieved targets" (26 October).
+    unique = {}
+    for row in matches: unique.setdefault((row.get('accession'), row.get('isoform')), row)
+    matches = list(unique.values())
+    mapping, set_aside = {}, []
+    requested = symbols | gene_symbols
+    if (candidates and len(matches) > 1 and not accessions and not isoforms and len(requested) <= 1
+            and (requested or protein_names) and not (discovery and not accessions)):
+        # One named target, several records that each establish it in the requested taxon (26 October: human AQP5
+        # as Swiss-Prot P55064 and as unreviewed A0ACI8R740). When exactly one of them is UniProt's curated entry,
+        # that entry is the mapping and the others are named as set aside. Two curated entries, or none, stay
+        # "multiple retrieved targets"; a record of the wrong name, taxon or organism never reached this list.
+        curated = [row for row in matches if curated_entry(row)]
+        if len(curated) == 1:
+            set_aside = sorted(str(row.get('accession')) for row in matches if row is not curated[0])
+            matches = curated
+            mapping = {next(iter(requested)) if requested else sorted(protein_names)[0]: curated[0].get('accession')}
     if not matches: issues.append('no retrieved record establishes the requested target')
     if len(matches)>1 and not (discovery and not accessions):
         issues.append('multiple retrieved targets require an explicit expectation mapping')
@@ -444,7 +462,20 @@ def question_entity_context(inquiry, records, *, literature_only=False):
             'accessions':sorted(accessions),'symbols':sorted(symbols),'taxa':sorted(taxa),'isoforms':sorted(isoforms),
             'context_current':context_current,'selected_accessions':[r.get('accession') for r in matches],
             'question_species':['Escherichia coli'] if ecoli_question else [],
+            **({'target_mapping':mapping, 'set_aside_accessions':set_aside,
+                'mapping_basis':'the one curated (Swiss-Prot) entry among records establishing the named target'}
+               if mapping else {}),
             'scope':'explicit query constraints and recognized question symbols/species; full prose scope needs independent assessment'}
+
+
+def curated_entry(row):
+    """A UniProt Swiss-Prot (reviewed) entry. Said outright when the source kept it; otherwise read from the entry
+    name, which for an unreviewed TrEMBL entry is always its own accession and a species code (A0ACI8R740_HUMAN) and
+    for a reviewed one never is (AQP5_HUMAN)."""
+    if isinstance(row.get('curated'), bool):
+        return row['curated']
+    entry, accession = str(row.get('id') or ''), str(row.get('accession') or '')
+    return bool(entry and accession and '_' in entry and not entry.upper().startswith(accession.upper() + '_'))
 
 
 
