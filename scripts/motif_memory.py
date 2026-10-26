@@ -377,6 +377,22 @@ def lookup(ref, current, reveals=None):
                   "phrases stay in that project" % ref)
 
 
+def _hold_for_index(pid, rec, rendered):
+    """The rendered phrase, to his media index (EmbeddingGemma 2, 26 October), while its bytes are still in hand:
+    once kept, the WAV is reachable only through the broker on this visit's capability. The bytes wait in a
+    private directory until a batch embeds and deletes them; the row names the phrase and its project, and no
+    search finds it until he reveals the phrase. Never raises into the visit."""
+    try:
+        import media_embed
+        held = media_embed.hold("motif", rendered["wav"], ".wav",
+                                {"variation_id": rec.get("variation_id"), "motif_id": rec.get("motif_id"),
+                                 "parent": rec.get("parent"), "project": pid, "title": str(rec.get("title") or "")[:160]})
+        if held:
+            media_embed.kick(0)
+    except Exception as exc:
+        print("motif phrase not held for the media index: %s" % str(exc)[:160])
+
+
 # ----------------------------------------------------------------------------------------------- his request
 
 
@@ -495,6 +511,7 @@ def step(pid, capability, work, current, post, reveals=None, base=None):
             out.update({"parent": rec["parent"], "op": rec["operation"]["op"], "unchanged": rec["unchanged"]})
         rendered = render(rec, base=base)
         kept = Notebook(pid, capability, post).keep(rec, rendered)
+        _hold_for_index(pid, rec, rendered)
         out.update({"ok": True, "variation_id": rec["variation_id"], **kept,
                     "audio_seconds": rendered["audio_seconds"], "render_seconds": rendered["render_seconds"]})
     except MotifError as exc:
