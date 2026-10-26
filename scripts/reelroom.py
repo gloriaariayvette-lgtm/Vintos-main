@@ -139,11 +139,24 @@ def surface_context(film_context: str = "", elapsed_min: Optional[int] = None,
         pass
     if film_context:
         parts.append("THE FILM AND THIS SESSION:\n" + str(film_context)[:7000])
-    if not title:                       # still choosing: what his mail suggested, offered with who suggested it
+    parts.extend(_bookmark_parts())
+    if not title:                      # still choosing: what his mail suggested, offered with who suggested it
         offer = suggestions_block()
         if offer:
             parts.append(offer)
     return "\n\n".join(parts)
+
+
+def _bookmark_parts() -> List[str]:
+    """Proposal 16: moments kept from earlier nights, quoted exactly, and how he keeps one of tonight's.
+    Earlier nights only: tonight's own turns are already in the history. Nothing when the module or its store
+    is unavailable."""
+    try:
+        import reelroom_bookmarks as RB
+        tonight = str(_load_journal().get("session_id") or "")
+        return [p for p in (RB.callback_block(exclude_session=tonight), RB.keep_line()) if p]
+    except Exception:
+        return []
 
 
 def suggestions(limit: int = 8) -> List[Dict[str, Any]]:
@@ -465,11 +478,21 @@ def _journal_unlocked(message: str, reply: str, history: Optional[List[Dict[str,
     # the app's history is authoritative when it is longer than ours (it saw turns we did not); ours when the
     # app sent a short window
     if len(hist) > len(j["chat_history"]):
-        j["chat_history"] = [{"role": m["role"], "content": str(m["content"])} for m in hist]
+        old = j["chat_history"]
+        fresh = [{"role": m["role"], "content": str(m["content"])} for m in hist]
+        # a turn the server already journaled keeps its id and time when the app's copy is the same words
+        for i, m in enumerate(fresh):
+            if i < len(old) and isinstance(old[i], dict) and old[i].get("role") == m["role"] \
+                    and old[i].get("content") == m["content"]:
+                for k in ("id", "at"):
+                    if old[i].get(k) is not None:
+                        m[k] = old[i][k]
+        j["chat_history"] = fresh
     if message:
-        j["chat_history"].append({"role": "user", "content": str(message)})
+        j["chat_history"].append({"role": "user", "content": str(message), "at": now})
     if reply:
-        j["chat_history"].append({"role": "assistant", "content": str(reply)})
+        j["chat_history"].append({"role": "assistant", "content": str(reply), "at": now})
+    _number_turns(j)
     if elapsed_min is not None:
         try: j["elapsed_seconds"] = max(int(j.get("elapsed_seconds") or 0), int(elapsed_min) * 60)
         except Exception: pass
@@ -483,6 +506,20 @@ def _journal_unlocked(message: str, reply: str, history: Optional[List[Dict[str,
         json.dump(j, f, indent=1)
     os.replace(tmp, JOURNAL)
     return j
+
+
+def _number_turns(j: Dict[str, Any]) -> None:
+    """Give every journaled turn a stable id within its session (``<session>:t<n>``), so a bookmark can name the
+    exact remark rather than a position that shifts when the app sends a longer history. Ids are never reused.
+    ``at`` is the wall-clock time the server journaled the turn; a turn that arrived only in the app's history
+    has no such time and gets none (proposal 16: no false precision)."""
+    seq = int(j.get("turn_seq") or 0)
+    sid = str(j.get("session_id") or "rr")
+    for m in j.get("chat_history") or []:
+        if isinstance(m, dict) and not m.get("id"):
+            seq += 1
+            m["id"] = "%s:t%d" % (sid, seq)
+    j["turn_seq"] = seq
 
 
 def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = None, film_title: str = "",
