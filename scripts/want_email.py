@@ -1245,9 +1245,15 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
             r = fetch(l["original"])
         except Exception as exc:
             r = {"original_url": l["original"], "url": l["url"], "fetched": False, "kind": "error", "why": str(exc)[:160]}
+        text = ""
+        if r.get("fetched"):
+            # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
+            # line and what was shown of the whole survive it; the file itself is not kept with the letter
+            text = link_fetch.structure_view(r["structure"], chars) if r.get("structure") \
+                else str(r.get("text") or "")[:chars]
         out.append({"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
                     "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
-                    "why": str(r.get("why") or "")[:200], "text": str(r.get("text") or "")[:chars] if r.get("fetched") else ""})
+                    "why": str(r.get("why") or "")[:200], "text": text})
     return out
 
 
