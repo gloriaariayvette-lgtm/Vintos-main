@@ -1,3 +1,88 @@
+## 25 October — IMG/VR controlled discovery
+
+Built on `claude/imgvr-discovery-2026-10-25` (Codex's proposal 01 / Design 01, approved by Gloria); not yet
+merged or deployed. `scripts/imgvr_loci.py`, with `broker/tests/test_imgvr_loci.py` (29 tests, all offline).
+
+**The release has no gene map.** Checked against the installed release on 25 October: the file set is README,
+host information, sequence information, nucleotides, proteins — no GFF or equivalent. Protein headers are
+`UViG|taxon_oid|provider gene id` and carry no coordinates; nucleotide headers are
+`UViG|taxon_oid|scaffold_oid|start-end`, where that range is the provirus's span on its **host scaffold**, not a
+gene coordinate. The contig served under that header is the UViG itself and its length matches the metadata
+`Length` column. So every locus record here has `annotation_source: translated_match`, and coordinates are
+one-based inclusive **on the UViG contig as served**. The two conventions must never be mixed; a test asserts
+the join never reports the scaffold range. If a later release ships a map, prefer it and record it as the source.
+
+**What is built (design steps 1-3, plus parts of 4 and 5):**
+- **Step 1, inventory** (`inventory()`): release id, the files actually on disk with the provider manifest's own
+  sizes and digests, and the counts the sqlite index already holds — measured on the real store: 5,433,589 UViG
+  records, 5,478,381 indexed segments, 2,025 multi-segment UViGs. The protein record count is reported as
+  unmeasured with its reason rather than guessed (counting 109 million records needs a full streaming pass).
+- **Step 2, the exact identity join** (`join_locus()`): the protein's own header names its UViG, so the search is
+  that one contig — read through the existing byte-offset index, translated in six frames, matched exactly. A
+  locus record carries release, target protein id, amino-acid hash, UViG, segment, coordinate convention,
+  start/end, strand, frame, translated-match check, annotation source and hashes. Exactly one match joins; zero
+  or more than one stay **unjoined with the reason**. An annotated M over a non-ATG start is matched on its
+  remainder with the preceding codon required to be a recognized alternative start, and the record says so.
+  Bounded: one contig per protein, a 2 Mb contig cap, a 120 s time cap. No global scan.
+- **Step 3, the bounded neighborhood** (`neighborhood()`): neighbours of the same UViG joined the same way
+  within a window (200..24,000 bases), each with coordinates, strand, orientation and the gap to the anchor;
+  plus the window hash, a neighborhood digest, contig-edge truncation flags, and the proteins it could **not**
+  place listed as missingness. The store's multi-segment safeguard is kept: a multi-segment UViG will not join
+  or carry a neighborhood until the segment is named. `window_sequence()` hands a ≤12 kb window to the existing
+  repeat screen.
+- **Step 4 (part), the frozen cohort** (`freeze_cohort()`): a declared selection rule and eligible population, one
+  representative per declared vOTU, matched backgrounds by topology, length band, top-level ecosystem and
+  completeness band, a cohort digest that changes when any input changes, and the 24-neighborhood cap with the
+  pilot/holdout split declared in advance. It reports what the vOTU reduction removes **and what it does not**:
+  UViGs in different vOTUs may still be related, so independence is not established by this step. Too few
+  representatives is reported as a sampling limitation, never relaxed.
+- **Step 5 (part), a null** (`repeat_null()`): the existing repeat screen against composition-preserving shuffles
+  of the same window, seeded and deterministic. It answers one narrow question — how often this screen fires on
+  sequence of this composition — and says so; it is not a significance test for a biological claim.
+- `cohort_proteins()`: one bounded streaming pass over the release proteins keeping only a frozen cohort's UViGs.
+  The release has no per-UViG protein index and building a general one would mean a full pass and tens of
+  gigabytes; a cohort is at most 24 neighborhoods, so one pass per frozen cohort is the smaller honest option.
+  **This has not been run against the real 15.7 GB protein file** — it reads the release and writes nothing, but
+  it is a ~15 GB read and should be run deliberately, once, per cohort.
+- Lab exposure: `locus_join`, `neighborhood` and `cohort_freeze` are offered through the existing `imgvr` source
+  door in `lab_sources.py` and described in `lab_genome_mining.campaign_instructions()`, inside the same
+  readiness gate as `protein_similarity` — the planner does not see them until the local index is ready. Nothing
+  is enabled by stealth and the commissioning gate is untouched.
+- `protein_similarity` now also returns the hit's own sequence (`tseq`) and target protein id, so a receipt can
+  be joined without anything being retyped. An older receipt without that column still parses.
+
+**What remains of steps 4-7:**
+- **Step 4:** the cohort route is built but has never been run on real candidates. The vOTU reduction and matched
+  backgrounds need a judgement on the real distribution — whether enough matched backgrounds exist at the bands
+  chosen (topology, 2 kb length band, top-level ecosystem, 25-point completeness band), and whether those are the
+  right bands. Assembly/completeness matching uses only the fields the release has.
+- **Step 5:** repeat architecture and the shuffle null are in place; **accessory-family co-occurrence and
+  orientation statistics across a cohort are not built.** That needs the cohort protein pass to have run, and a
+  family assignment (the existing HMM/CRT screens are the candidates — `lab_hmm.py`, `lab_crt.py`). Matched-loci
+  enrichment is not built. Known positive/negative fixtures beyond the join's own are not built.
+- **Step 6:** the pilot/holdout **cap and split are enforced**, but the workflow that freezes a candidate claim
+  after the pilot and then tests it against the holdout is not built. That is campaign runtime, not a single
+  operation, and it belongs with `lab_campaign.py`. Estimates, uncertainty, exclusions and the list of examined
+  hypotheses and failures are not yet assembled into a report.
+- **Step 7:** eliminating known explanations is **not built**. It needs synonym and family-name search, sequence
+  similarity to published systems, and full texts; the existing six-title check (`lab_findings.py`) stays a lead
+  finder. ART must be carried as a known positive and an exclusion family, and no fixture for that exists yet.
+  "Not in these titles" must never become "nobody has answered this."
+
+**Acceptance to watch for:** the Lab must choose a comparative operation in **ordinary work** — not a
+commissioning run — execute it, keep the actual table, and use it to decide a next measurement or to reject a
+claim. A manual run proves the adapter only. A valid negative result counts as proof of the instrument. Novelty
+stays provisional until the literature and known-family exclusions of step 7 are reviewed; function stays
+unvalidated without an appropriate independent experiment.
+
+**Stop condition already in force:** if a release-consistent locus join cannot be established for a candidate,
+it stays unjoined and the campaign stops there for that candidate. Do not compensate with more model calls and
+do not relax the identity rules.
+
+**Costs:** no new paid calls. The planner menu grows by roughly 330 tokens on genome-mining returns only. The
+join is CPU-only and reads one contig (a few kilobases) per protein; a cohort protein pass is one ~15 GB
+sequential read. No new disk is written by any operation here.
+
 ## 25 October — musical motif notebook
 
 Built on `claude/motif-notebook-2026-10-25` (Codex's proposal 02, approved by Gloria); not yet merged or deployed.
