@@ -57,6 +57,12 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     interaction = Interaction(heard["transcript"], "voice")
     if interaction.turn.duplicate_event:
         return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
+    try:   # proposal 17: how it sounded, kept as an attributed observation; the audio itself is not kept
+        from auditory_memory import record as _remember_heard
+        _remember_heard(audio_b64, sample_rate, heard, turn_id=interaction.turn.turn_id,
+                        test_mode=bool(getattr(interaction.turn, "test_mode", False)))
+    except Exception as exc:
+        print("[voice-local/auditory-memory]", str(exc)[:200], flush=True)
     from intent_engine import note_response
     note_response(heard["transcript"])
     from intent_context import admit_voice_lead
