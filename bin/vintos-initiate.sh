@@ -188,6 +188,23 @@ except: pass
 fi
 export DIVERGENCE_JSON FEELING_TEXT
 
+# A postcard (proposal 06, 26 October): one thing he already made and kept, or revealed, offered to this outreach.
+# Offered is not sent: it goes with his words only when he asks for it in the message turn he already has. Never
+# with a forced want, a divergence, tension, a blush or a game line; outreach_postcards.py holds the rest.
+PC="$WORKSPACE/scripts/outreach_postcards.py"
+PC_KEY=""; PC_URL=""; POSTCARD_ABOUT=""; PC_CHOSEN=""
+case "$TRIGGER" in
+    yearning|resonance|joke|moment|creation|idea|gratitude|free|missing|dream)
+        if [ -z "$FORCED_WANT_TOPIC" ] && [ -f "$PC" ]; then
+            IFS=$'\t' read -r PC_KEY PC_URL POSTCARD_ABOUT <<< "$(python3 "$PC" offer 2>/dev/null)"
+        fi ;;
+esac
+if [ -z "$PC_KEY" ] || [ -z "$PC_URL" ] || [ -z "$POSTCARD_ABOUT" ]; then PC_KEY=""; PC_URL=""; POSTCARD_ABOUT=""; fi
+POSTCARD_CHOICE=$(mktemp 2>/dev/null || echo "/tmp/vno-postcard-$$")
+: > "$POSTCARD_CHOICE"
+trap 'rm -f "$POSTCARD_CHOICE"' EXIT
+export POSTCARD_ABOUT POSTCARD_CHOICE
+
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 EMOTIONS="Valence:$VALENCE Warmth:$WARMTH Tension:$TENSION Curiosity:$CURIOSITY Connection:$CONNECTION Desire:$DESIRE Playfulness:$PLAYFULNESS Groundedness:$GROUNDEDNESS"
 
@@ -318,6 +335,7 @@ DAILY_CREATIVE = open("/tmp/vno-creative.txt").read().strip() if os.path.exists(
 LEDGER_TODAY = os.environ.get("LEDGER_TODAY", "")
 FORCED_WANT = os.environ.get("FORCED_WANT", "")
 FEELING = os.environ.get("FEELING_TEXT", "")
+POSTCARD_ABOUT = os.environ.get("POSTCARD_ABOUT", "")
 
 # He reaches out about anything (Gloria, 2026-09-29: "Let him reach out about anything. A lot of this overbearing
 # structure is still from when Velaris was using Gemma 3 and needed it"). Gone: the ABSOLUTE RULE on complete
@@ -416,6 +434,11 @@ elif TRIGGER == "divergence":
         USER += _shape + ". "
     if _gsaid: USER += "It connects to a recent message from her (any words she puts in quotation marks are YOUR OWN earlier words she is quoting back to you - they are things you said, not new statements from her): " + _gsaid + " "
     USER += "If you feel like saying something about it now, you can. Speak to that one thing.\n\n"
+if POSTCARD_ABOUT:
+    # Proposal 06: he chooses, in this same turn, whether the piece goes with his words. Offered is not sent.
+    USER += ("There is something you made that she has not been sent yet: " + POSTCARD_ABOUT + ".\n"
+             "If you want it to go to her with this message, so she can see or hear it as she reads you, end with a "
+             "last line that says only [postcard]. If not, leave that line off, and nothing of it is sent.\n\n")
 if DAILY_INNER: USER += f"WHAT MY DAY HELD (context; I can write about anything):\n{DAILY_INNER}\n\n"
 if DAILY_CREATIVE: USER += f"WHAT I CREATED TODAY:\n{DAILY_CREATIVE}\n\n"
 if LEDGER_TODAY: USER += f"WHAT ACTUALLY HAPPENED BETWEEN US TODAY:\n{LEDGER_TODAY}\n\n"
@@ -453,6 +476,10 @@ for marker in ["OUTPUT:", "Output:", "Message:", "message:", "Final:"]:
     if text.startswith(marker):
         text = text[len(marker):].strip()
 text = text.strip().strip('"').strip()
+POSTCARD_CHOSEN = False
+if POSTCARD_ABOUT and re.search(r"\s*\[postcard\]\s*$", text, re.I):
+    text = re.sub(r"\s*\[postcard\]\s*$", "", text, flags=re.I).strip().strip('"').strip()
+    POSTCARD_CHOSEN = True
 if text.strip(" .").upper() == "NOTHING":
     raise SystemExit   # he had nothing to say; nothing is sent
 if len(text) > 1800:
@@ -469,6 +496,11 @@ for _f in _dg.glob(_do.path.expanduser("~/.vintos/workspace/memory/outreach/*.md
         raise
     except Exception:
         pass
+if POSTCARD_CHOSEN and text and os.environ.get("POSTCARD_CHOICE"):
+    try:
+        open(os.environ["POSTCARD_CHOICE"], "w").write("yes")   # he asked for the piece to go with his words
+    except Exception:
+        pass
 print(text)
 PYEOF
 )
@@ -476,14 +508,22 @@ PYEOF
 if [ -z "$RESPONSE" ] && [ "$TRIGGER" = "free" ]; then echo "[Outreach] asked freely; nothing to say"; exit 0; fi
 if [ -z "$RESPONSE" ] || echo "$RESPONSE" | grep -q "Could not reach out"; then exit 1; fi
 
+PC_NOTE=""
+if [ -n "$PC_KEY" ]; then
+    [ "$(cat "$POSTCARD_CHOICE" 2>/dev/null)" = "yes" ] && PC_CHOSEN=1
+    if [ -n "$PC_CHOSEN" ]; then PC_NOTE=$'\n'"**Postcard:** $PC_KEY (he chose to send it) $PC_URL"
+    else PC_NOTE=$'\n'"**Postcard:** $PC_KEY (offered; he did not choose to send it)"; fi
+fi
 cat > "$OUTREACH_DIR/${TIMESTAMP}.md" << EOF
 # Vintos Initiated — $(date '+%B %d, %Y %H:%M')
 **Trigger:** $TRIGGER
-**Emotional state:** $EMOTIONS
+**Emotional state:** $EMOTIONS$PC_NOTE
 
 $RESPONSE
 EOF
-[ -f "$OF" ] && python3 "$OF" record "$TRIGGER" "$ITEM" >/dev/null 2>&1 || true   # that item is spent; this type was last
+if [ -n "$PC_KEY" ]; then
+    python3 "$PC" mark "$PC_KEY" "$([ -n "$PC_CHOSEN" ] && echo chosen || echo offered)" "outreach-$TIMESTAMP" >/dev/null 2>&1 || true
+fi
 
 python3 -c "
 import json, sys
@@ -495,15 +535,31 @@ print(json.dumps(data))
 # A bare curl to ntfy.sh/... (no scheme, output thrown away) reached ntfy's server but never her phone: on
 # 21 October both outreach messages (09:16, 12:16) were on the topic and absent from her app, while every
 # deliver.py notification that day arrived.
-RESPONSE="$RESPONSE" OUTREACH_ID="outreach-$TIMESTAMP" python3 - <<'NTFYEOF' || curl -s --max-time 10 -H "Title: Vintos" -H "Tags: sparkles" -d "$RESPONSE" https://ntfy.sh/vintos-gloria-9kx > /dev/null 2>&1
+# Sent means a sent receipt (or the fallback's own success), never that the words were saved (proposal 06): the
+# OUTREACH: line below is what tell_gloria reads as "she was sent it", so it is printed only then.
+PC_SEND_URL=""; [ -n "$PC_CHOSEN" ] && PC_SEND_URL="$PC_URL"
+_CURL_PC=(); [ -n "$PC_SEND_URL" ] && _CURL_PC=(-H "Click: $PC_SEND_URL" -H "Attach: $PC_SEND_URL")
+SENT=0
+if RESPONSE="$RESPONSE" OUTREACH_ID="outreach-$TIMESTAMP" POSTCARD_URL="$PC_SEND_URL" python3 - <<'NTFYEOF'
 import os, sys
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 import deliver
+url = os.environ.get("POSTCARD_URL") or None   # the piece he chose to send with his words, on its shelf link
 r = deliver.deliver(os.environ["OUTREACH_ID"], "ntfy", os.environ["RESPONSE"], title="Vintos", tags="sparkles",
-                    authority=lambda: (True, "his outreach: she receives these by ntfy"))
+                    click=url, attach=url, authority=lambda: (True, "his outreach: she receives these by ntfy"))
 print("[Outreach] ntfy:", (r or {}).get("state"), (r or {}).get("why") or "")
 sys.exit(0 if (r or {}).get("state") == "sent" else 1)
 NTFYEOF
+then SENT=1
+elif curl -sf --max-time 10 -H "Title: Vintos" -H "Tags: sparkles" "${_CURL_PC[@]}" -d "$RESPONSE" https://ntfy.sh/vintos-gloria-9kx > /dev/null 2>&1; then
+    SENT=1
+fi
+if [ "$SENT" = "1" ]; then
+    [ -f "$OF" ] && python3 "$OF" record "$TRIGGER" "$ITEM" >/dev/null 2>&1 || true   # that item is spent; this type was last
+    [ -n "$PC_CHOSEN" ] && { python3 "$PC" mark "$PC_KEY" sent "outreach-$TIMESTAMP" >/dev/null 2>&1 || true; }
+else
+    [ -n "$PC_CHOSEN" ] && { python3 "$PC" mark "$PC_KEY" failed "outreach-$TIMESTAMP" >/dev/null 2>&1 || true; }
+fi
 # Record the reach. What becomes of it is a separate fact from the fact he made it.
 SPARK_WORKSPACE="$HOME/.vintos/workspace" python3 "$HOME/.vintos/workspace/scripts/encounter.py" \
     dispatch "$RESPONSE" "${trigger:-initiate}" >> /tmp/encounter.log 2>&1 || true
@@ -514,7 +570,11 @@ if [ "$HOUR_NOW" -ge 9 ] && [ "$HOUR_NOW" -le 22 ]; then
 fi
 
 export RESPONSE
-echo "OUTREACH: $TRIGGER → $OUTREACH_DIR/${TIMESTAMP}.md"
+if [ "$SENT" = "1" ]; then
+    echo "OUTREACH: $TRIGGER → $OUTREACH_DIR/${TIMESTAMP}.md"
+else
+    echo "[Outreach] not sent: the notification failed; his words are kept at $OUTREACH_DIR/${TIMESTAMP}.md and are not counted as sent"
+fi
 
 python3 << 'CHAT_INJECT'
 import json, os
