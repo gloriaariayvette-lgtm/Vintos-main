@@ -171,7 +171,9 @@ class Investigations(unittest.TestCase):
         first=I.turn('',ask=self.ask,execute=execute)
         data=C._load(I._path('investigations.json'),{})
         data['investigations'][0]['state']='stalled'; C._atomic(I._path('investigations.json'),data)
-        second=I.turn('',ask=self.ask,execute=execute)
+        # the same question reopened is refused before it opens (test_lab_no_repeat); this is the lookup's reuse
+        with patch.object(I,'_same_question',return_value=[]):
+            second=I.turn('',ask=self.ask,execute=execute)
         execute.assert_called_once()
         self.assertNotEqual(first['investigation'],second['investigation'])
         self.assertEqual((second['state'],second['reused_from']),('completed',first['id']))

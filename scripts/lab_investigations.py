@@ -308,7 +308,7 @@ def _menu():
         'connectors': {k:{'tools':v['tools'], 'tool_prefixes':v['tool_prefixes'], 'limits':v['limits']}
                        for k,v in instructions('lab')['connectors'].items() if v.get('enabled') is not False},
         'account_connectors': claude_connector_catalog.instructions('lab'),
-        'instruments': lab_instruments.menu_block(),
+        'instruments': lab_instruments.planner_menu(),
         'protein_design_mcp': chemistry_mcp.instructions(),
         'native': lab_native_instruments.menu(),
         'experiments': {'protein': 'Exact sourced target_accession, protein_name, optional region. Fold on this host.',
@@ -397,6 +397,9 @@ def _plan(investigation, context, ask, note=None):
         'tools': _menu(),
         'available_routes':list(ROUTES),
         'request_examples': {'source':{'source':'ncbi','operation':'protein','organism':'a sourced organism','term':'one protein family'},
+                             'instrument':{'skill':'fold_read','operation':'structure.read',
+                                           'files':['<a file listed under tools.instruments.skills.fold_read.files>'],
+                                           'range':[1, 120],'question':'what the read should answer'},
                              'representation':{'records':{'step':'prior-id','path':['normalized_records']}}},
         # route first: a reply that copied the task's own fields in order (question, prediction, plan, then the
         # turn's context) ran out of room before any route; 47 turns since 24 October were refused for that
@@ -424,8 +427,12 @@ def _plan(investigation, context, ask, note=None):
     }
     # Advice, not a refusal: the same tool four times running (fold_read x14, pubmed x14 on 25-26 October) already
     # has its kind of output in hand. Nothing is removed from the menu or gated.
+    tail = _not_again(note, steps) if note else ''
     if note:
         task = {'replanning': note, **task, 'context': ''}
+        # her own plan from the turn before named the very step just refused, and she followed it: after a re-plan on
+        # 26 October her next proposal was a repeat again 158 times in 243, and something new 21 times
+        task.pop('plan', None)
     recent = [s.get('tool') for s in steps if s.get('state') == 'completed'][-4:]
     if len(recent) == 4 and len(set(recent)) == 1 and recent[0]:
         task['same_tool'] = ('Your last 4 completed steps all used %s: its kind of output is already in hand. Another '
@@ -450,7 +457,7 @@ def _plan(investigation, context, ask, note=None):
         row['summary'] = str(row.get('summary') or '')[:800]
         row['output_index'] = (row.get('output_index') or [])[:24]
     prompt = json.dumps(task, ensure_ascii=False)
-    limit = lab._plan_chars(system, max_tokens=800)
+    limit = lab._plan_chars(system, max_tokens=800) - len(tail.encode('utf-8'))
     if len(prompt) > limit:
         task['context'] = ''
         for result in task['results_so_far']:
@@ -461,6 +468,10 @@ def _plan(investigation, context, ask, note=None):
         task['tools'] = {'routes':list(menu), 'connectors':sorted(menu.get('connectors') or {}),
                          'account_connectors':sorted(k for k, v in __import__('claude_connector_catalog').PLUGINS.items()
                                                      if v.get('enabled') is not False and 'lab' in v.get('surfaces', ())),
+                         # the exact instrument names stay in front of her when the full menu does not fit
+                         'instruments':{'runs_left_today':lab_instruments.runs_left(),
+                                        'request':'{skill,operation,files,question}',
+                                        'skills':lab_instruments.skill_operations()},
                          'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
                          'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
         prompt = json.dumps(task, ensure_ascii=False)
@@ -498,11 +509,48 @@ def _plan(investigation, context, ask, note=None):
                'Completed outputs remain available even when recent attempts failed. '
                'Choose your own operation from the available tools; route is a single word. '
                'Use {"step":"id","path":["field",0]} inside request to consume stored output.')
-    value = lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.35))
+    # a re-plan says why again at the very end, where she reads last, with the exact operations not to return, and is
+    # asked a little less deterministically: at 0.35 the same prompt gave her the same proposal back
+    prompt += tail
+    value = lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.7 if note else 0.35))
     if planned and isinstance(value, dict):
         value['_planned'] = planned
     return value
 
+
+
+def _short(value, cap=120):
+    """A request as it is shown back to her: every string cut to cap characters (a sequence is not repeated whole)."""
+    if isinstance(value, dict):
+        return {k: _short(v, cap) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_short(v, cap) for v in value[:8]]
+    if isinstance(value, str) and len(value) > cap:
+        return value[:cap] + '...'
+    return value
+
+
+def _not_again(note, steps):
+    """The end of a re-plan's prompt: why the last proposal was not run, the operation not to return, the operations
+    this investigation already completed, and the exact choices when there are any."""
+    if not isinstance(note, dict):
+        return '\nYOUR LAST REPLY WAS NOT RUN: ' + str(note)[:600]
+    lines = ['', 'YOUR LAST PROPOSAL WAS NOT RUN: ' + str(note.get('why_not_run') or '')[:700]]
+    if note.get('earlier_result'):
+        lines.append('What that earlier asking already got: ' + json.dumps(note['earlier_result'], ensure_ascii=False)[:900])
+    if note.get('proposed_request') is not None:
+        lines.append('Do NOT return this operation again: ' + json.dumps(
+            {'route': note.get('proposed_route'), 'request': note.get('proposed_request')}, ensure_ascii=False)[:500])
+    done = [{'route': s.get('route'), 'request': _short(s.get('executed_request') or s.get('request') or {}, 60)}
+            for s in steps if s.get('state') == 'completed' and not s.get('repeat_within')
+            and s.get('origin') == 'autonomous_lab']
+    if done:
+        lines.append('Already done in this investigation; their outputs are yours, do not return these either: '
+                     + json.dumps(done[-8:], ensure_ascii=False)[:1600])
+    if note.get('valid_choices'):
+        lines.append('Valid choices: ' + json.dumps(note['valid_choices'], ensure_ascii=False)[:1600])
+    lines.append('Return ONE different operation now, as JSON beginning with "route", or finish.')
+    return '\n'.join(lines)
 
 
 class SourceWaiting(RuntimeError):
@@ -919,6 +967,41 @@ def _answered_before(refusal, step, data):
     return best
 
 
+def _asked_before(refusal, step, data):
+    """The step that asked what the repeat check just refused, in any investigation, and what it got: its question
+    quoted in the refusal ("in other words: ..."), else the step of the same route that ran at the minute the refusal
+    names. None when neither is found."""
+    found = None
+    quoted = re.search(r'in other words: (.+)$', refusal, re.S)
+    steps = [(inv, s) for inv in data.get('investigations', []) for s in inv.get('steps', [])
+             if s is not step and s.get('id') != step.get('id')]
+    if quoted:
+        q = ' '.join(quoted.group(1).split())[:200]
+        same = [(inv, s) for inv, s in steps if q and ' '.join(str(s.get('question') or '').split())[:200] == q]
+        done = [(inv, s) for inv, s in same if s.get('state') == 'completed' and not s.get('repeat_within')]
+        found = (done or same or [None])[-1]
+    if found is None:
+        when = re.search(r'on (\d{4}-\d\d-\d\d \d\d:\d\d)', refusal)
+        if when:
+            at = when.group(1).replace(' ', 'T')
+            near = [(inv, s) for inv, s in steps if str(s.get('at') or '')[:16] <= at and s.get('route') == step.get('route')
+                    and s.get('state') == 'completed' and not s.get('repeat_within')
+                    and str(s.get('at') or '')[:13] >= at[:13]]
+            found = near[-1] if near else None
+    if found is None:
+        return None
+    inv, s = found
+    out = {'investigation': inv.get('id'), 'step': s.get('id'), 'tool': s.get('tool'), 'state': s.get('state'),
+           'request': _short(s.get('executed_request') or s.get('request') or {}, 80)}
+    if s.get('state') == 'completed':
+        out['its_output'] = str(s.get('summary') or '')[:600]
+    else:
+        out['its_error'] = str(s.get('error') or '')[:200]
+    if inv.get('state') != 'open':
+        out['that_investigation_closed'] = '%s: %s' % (inv.get('state'), str(inv.get('closed_reason') or '')[:160])
+    return out
+
+
 def _retained_read(refusal, route, request, question):
     """(step id, retained output) of the completed step that answers one model's read refused as a repeat, under the
     same rules and digest check as a refused step's reuse in _turn; None when there is none."""
@@ -953,6 +1036,7 @@ def _route_word(word, request):
     experiment by its own name. None for anything else, a menu of several among them."""
     import lab_instruments
     from lab_native_instruments import OPERATIONS
+    from lab_tool_calls import canonical
     w = str(word or '').strip()
     low = w.lower()
     if low in ROUTES or low in SOURCE_ROUTES:
@@ -962,12 +1046,92 @@ def _route_word(word, request):
         head, tail = m.groups()
         field = {'instrument': 'skill', 'native': 'skill', 'source': 'source', 'experiment': 'experiment'}.get(head)
         return head, (dict(request, **{field: request.get(field) or tail}) if field else request)
-    if w in lab_instruments.OFFERED:
-        return 'instrument', dict(request, skill=request.get('skill') or w)
-    if w in OPERATIONS:
-        return 'native', dict(request, skill=request.get('skill') or w)
+    # a route or source in another spelling: "Source", "sources", "read-output", "NCBI" (26 October: "sources" 10 times)
+    named = canonical(low, ROUTES) or (canonical(low[:-1], ROUTES) if low.endswith('s') else None)
+    if named:
+        return named, request
+    named = canonical(low, SOURCE_ROUTES)
+    if named:
+        return named, request
+    named = canonical(w, list(lab_instruments.OFFERED))
+    if named:
+        return 'instrument', dict(request, skill=request.get('skill') or named)
+    named = canonical(w, list(OPERATIONS))
+    if named:
+        return 'native', dict(request, skill=request.get('skill') or named)
     if low in EXPERIMENTS:
         return 'experiment', dict(request, experiment=request.get('experiment') or low)
+    # a connector named as the route ("boltz", "genomic_intelligence", "nvidia_nim"), or a route word that is none of
+    # these with the request naming its connector's tool as "plugin.tool": a plugin call when exactly one tool is meant
+    # (26 October: 14 steps refused as an unknown route for this)
+    plugin = canonical(w, _lab_plugins())
+    call = _plugin_call(plugin, request) if plugin else None
+    if call is None and isinstance(request.get('tool'), str) and '.' in request['tool']:
+        head = canonical(request['tool'].split('.', 1)[0], _lab_plugins())
+        call = _plugin_call(head, request) if head else None
+    if call:
+        return 'plugin', call
+    return None
+
+
+def _plugin_tools(plugin, enabled_only=True):
+    """The full tool names ("plugin.tool") a Lab connector offers; [] for one whose tools go by prefix; None when the
+    Lab has no such connector (or, with enabled_only, none switched on)."""
+    try:
+        from plugin_catalog import instructions
+        con = (instructions('lab').get('connectors') or {}).get(plugin)
+        if con is not None and (con.get('enabled') is not False or not enabled_only):
+            return [str(t) for t in con.get('tools') or []]
+    except Exception:
+        pass
+    try:
+        import claude_connector_catalog
+        entry = claude_connector_catalog.PLUGINS.get(plugin)
+        if entry and 'lab' in entry.get('surfaces', ()) and (entry.get('enabled') is not False or not enabled_only):
+            return [plugin + '.' + str(t) for t in list(entry.get('read') or ()) + list(entry.get('action') or ())]
+    except Exception:
+        pass
+    return None
+
+
+def _lab_plugins():
+    names = set()
+    try:
+        from plugin_catalog import instructions
+        names |= {k for k, v in (instructions('lab').get('connectors') or {}).items() if v.get('enabled') is not False}
+    except Exception:
+        pass
+    try:
+        import claude_connector_catalog
+        names |= {k for k, v in claude_connector_catalog.PLUGINS.items()
+                  if 'lab' in v.get('surfaces', ()) and v.get('enabled') is not False}
+    except Exception:
+        pass
+    return sorted(names)
+
+
+def _plugin_call(plugin, request):
+    """{plugin, tool, arguments} for a request meant for this connector when it names exactly one of its tools: under
+    "tool" or "operation", with or without the connector's prefix, or as the request's one key holding the arguments.
+    None otherwise."""
+    from lab_tool_calls import canonical
+    tools = _plugin_tools(plugin)
+    if not tools or not isinstance(request, dict):
+        return None
+    bare = {t.split('.', 1)[1] if t.startswith(plugin + '.') else t: t for t in tools}
+    def full(word):
+        hit = canonical(word, tools) or canonical(word, list(bare))
+        return bare.get(hit, hit) if hit else None
+    for key in ('tool', 'operation'):
+        tool = full(request.get(key))
+        if tool:
+            args = request.get('arguments')
+            if not isinstance(args, dict):
+                args = {k: v for k, v in request.items() if k not in (key, 'plugin', 'arguments')}
+            return {'plugin': plugin, 'tool': tool, 'arguments': args}
+    own = [k for k in request if full(k)]
+    if len(own) == 1 and isinstance(request[own[0]], dict):
+        return {'plugin': plugin, 'tool': full(own[0]), 'arguments': dict(request[own[0]])}
     return None
 
 
@@ -1019,6 +1183,167 @@ def _coerce_route(value):
     if not found:
         return value
     return dict(value, route=found[0], request=found[1], _route_inferred=how)
+
+
+# ---- the same question again --------------------------------------------------------------------------------------
+# On 26 October 53 of the 58 investigations opened were, word for word, a question an earlier investigation had
+# already closed on (answered, unanswered or stalled): the phage reverse-transcriptase-beside-CRISPR question alone 25
+# times. Before a new investigation opens, its question is compared with those of the last REPEAT_WINDOW_DAYS; the
+# same question is asked once more, with what came of it before, for a different question or a narrower variant that
+# names what changes; the same again is refused and the question rests REPEAT_COOLDOWN_SECONDS.
+REPEAT_WINDOW_DAYS = 14
+SAME_QUESTION = 0.6            # share of content words two questions have in common (Jaccard) to be the same question
+REPEAT_COOLDOWN_SECONDS = 12 * 3600
+CLOSED = ('answered', 'unanswered', 'stalled')
+NARROWER = ('tool', 'source', 'accession', 'cohort')
+
+
+def _qwords(text):
+    import lab_repeats
+    return lab_repeats._words(text)
+
+
+def _alike(a, b):
+    """Whether two questions are the same question: their content words agree by SAME_QUESTION, and they do not name
+    disjoint identifiers (the same wording about O43511 and about Q8ECH7 are two questions)."""
+    wa, wb = _qwords(a), _qwords(b)
+    if not wa or not wb or len(wa & wb) / len(wa | wb) < SAME_QUESTION:
+        return False
+    ta, tb = _tokens(a), _tokens(b)
+    return not (ta and tb and ta.isdisjoint(tb))
+
+
+def _same_narrower(a, b):
+    if not a and not b:
+        return True
+    if not a or not b or a.get('changes') != b.get('changes'):
+        return False
+    wa, wb = set(re.findall(r'[a-z0-9]{2,}', str(a.get('what')).lower())), set(re.findall(r'[a-z0-9]{2,}', str(b.get('what')).lower()))
+    return bool(wa and wb) and len(wa & wb) / len(wa | wb) >= SAME_QUESTION
+
+
+def _same_question(question, narrower, data, now=None):
+    """Recent closed investigations asking this question (with the same narrowing, if any), newest first."""
+    from datetime import datetime, timedelta, timezone
+    since = ((now or datetime.now(timezone.utc)) - timedelta(days=REPEAT_WINDOW_DAYS)).isoformat()[:19]
+    out = []
+    for inv in data.get('investigations', []):
+        if inv.get('state') not in CLOSED or str(inv.get('opened_at') or '')[:19] < since:
+            continue
+        if _alike(question, inv.get('base_question') or inv.get('question')) and _same_narrower(narrower, inv.get('narrower')):
+            out.append(inv)
+    return sorted(out, key=lambda i: str(i.get('opened_at') or ''), reverse=True)
+
+
+def _tools_used(inv):
+    return sorted({str(s.get('tool')) for s in inv.get('steps') or [] if s.get('state') == 'completed' and s.get('tool')})
+
+
+def _question_note(earlier):
+    """What the planner is told when the question it is about to open was investigated already."""
+    shown = []
+    for inv in earlier[:3]:
+        review = inv.get('last_review') or inv.get('budget_review') or {}
+        shown.append({'investigation': inv['id'], 'question': str(inv.get('question') or '')[:300],
+                      'outcome': '%s: %s' % (inv.get('state'), str(inv.get('closed_reason') or '')[:160]),
+                      'missing_evidence': review.get('missing_evidence') or review.get('answers_question'),
+                      'next_question': review.get('next_question'), 'tools_used': _tools_used(inv)})
+    return {'why_not_run': ('this question was investigated %d time(s) in the last %d days and closed each time; opening '
+                            'it again repeats them. Return a different question as "question", or keep it and add '
+                            '"narrower": {"changes": one of %s, "what": the tool, source, accession or cohort that is new '
+                            'here (not one already used)}. Return your first operation with it.'
+                            % (len(earlier), REPEAT_WINDOW_DAYS, '|'.join(NARROWER))),
+            'earlier': shown}
+
+
+def _valid_narrower(narrower, earlier):
+    """The narrowing as given, when it names a real change from the latest earlier investigation; None otherwise."""
+    from lab_tool_calls import canonical
+    if not isinstance(narrower, dict) or narrower.get('changes') not in NARROWER:
+        return None
+    what = str(narrower.get('what') or '').strip()[:200]
+    if len(what) < 3:
+        return None
+    last = earlier[0] if earlier else {}
+    used = ' '.join(_tools_used(last)).lower()
+    asked = str(last.get('question') or '')
+    kind = narrower['changes']
+    if kind in ('tool', 'source'):
+        import lab_instruments
+        names = list(ROUTES) + sorted(SOURCE_ROUTES) + list(lab_instruments.skill_operations()) + list(EXPERIMENTS) + _lab_plugins()
+        name = canonical(what.split()[0].split(':')[-1], names) or canonical(what, names)
+        if not name or (kind == 'source' and name not in SOURCE_ROUTES) or name.lower() in used:
+            return None
+        what = name
+    elif kind == 'accession':
+        ids = _tokens(what) - _tokens(asked)
+        if not ids:
+            return None
+    else:   # cohort: words the earlier question did not have
+        if len(_qwords(what) - _qwords(asked)) < 2:
+            return None
+    return {'changes': kind, 'what': what}
+
+
+def _on_cooldown(question, now=None):
+    ledger = lab._load(_path('question-cooldown.json'), {}) or {}
+    now = now or time.time()
+    return any(float(row.get('until') or 0) > now and _alike(question, row.get('question'))
+               for row in ledger.get('questions', []))
+
+
+def _refuse_repeat(data, investigation, question, note):
+    """The question is not opened: the investigation is dropped before any step, the refusal is written down, and the
+    question rests on the cooldown ledger. Returns None, so the Lab's ordinary turn runs instead."""
+    data['investigations'] = [i for i in data['investigations'] if i is not investigation]
+    _save(data)
+    ledger = lab._load(_path('question-cooldown.json'), {}) or {}
+    rows = [r for r in ledger.get('questions', []) if float(r.get('until') or 0) > time.time()][-50:]
+    rows.append({'at': lab.now_iso(), 'question': str(question)[:400], 'until': time.time() + REPEAT_COOLDOWN_SECONDS,
+                 'like': [e['investigation'] for e in (note or {}).get('earlier', [])]})
+    lab._atomic(_path('question-cooldown.json'), {'questions': rows})
+    lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_refused_repeat', 'line_id':
+                               investigation.get('line_id'), 'question': str(question)[:400],
+                               'like': [e['investigation'] for e in (note or {}).get('earlier', [])],
+                               'cooldown_until': rows[-1]['until'], 'truth_status': 'refused_before_any_execution'})
+    _CURRENT.clear()
+    return None
+
+
+def _settle_question(investigation, value, data, context, ask, note):
+    """(value, refused): the opening proposal with its question settled, or refused=True when it repeats a closed
+    investigation's question and the investigation was not opened. A question already investigated is asked once more
+    (with note given, the proposal was already asked with it)."""
+    had = investigation.get('question') or ''
+    for attempt in (0, 1):
+        given = str(value.get('question') or '').strip()
+        question = had if (note and had and not given) else (given or had)
+        earlier = _same_question(question, None, data) if question else []
+        if not earlier:
+            if had and question != had:
+                investigation.update(question=question, prediction=str(value.get('prediction') or ''),
+                                     reopened_as='a different question')
+            return dict(value, question=question), False
+        narrower = _valid_narrower(value.get('narrower'), earlier)
+        if narrower and not _same_question(question, narrower, data):
+            composite = '%s Narrowed: a new %s, %s.' % (question.rstrip(), narrower['changes'], narrower['what'])
+            investigation.update(base_question=question, narrower=narrower, reopened_as='a narrower variant')
+            if had:
+                investigation['question'] = composite
+            return dict(value, question=composite), False
+        if attempt or note:
+            _refuse_repeat(data, investigation, question, note or _question_note(earlier))
+            return None, True
+        note = _question_note(earlier)
+        again = _again(investigation, data, context, ask, note, 'repeat_question')
+        if again is None:
+            _refuse_repeat(data, investigation, question, note)
+            return None, True
+        value = _coerce_route(again)
+        if not isinstance(value, dict):
+            _refuse_repeat(data, investigation, question, note)
+            return None, True
+    return None, True
 
 
 MAX_PLANNING_FAILURES = 3   # turns in a row that failed before any step: the investigation is closed, not retried
@@ -1088,6 +1413,7 @@ def _turn(context, *, ask=None, execute=None):
     active = [i for i in opened if float(i.get('deferred_until') or 0) <= time.time()]
     if opened and not active:
         return None   # every open one is set aside after a refusal: the ordinary turn runs, and none is opened over it
+    fresh, repeat_note = False, None
     if active:
         investigation = min(active, key=lambda i:i.get('last_step_at', i['opened_at']))
     else:
@@ -1096,6 +1422,16 @@ def _turn(context, *, ask=None, execute=None):
         investigation = {'id':'I-'+uuid.uuid4().hex[:12], 'opened_at':lab.now_iso(), 'state':'open',
                          'line_id':(line or {}).get('id'), 'line_context':line_summary(line), 'question':(line or {}).get('question',''),
                          'prediction':'', 'plan':[], 'steps':[]}
+        if investigation['question'] and _on_cooldown(investigation['question']):
+            # refused as a repeat a short while ago: not asked again until the cooldown ends; the Lab's other work runs
+            lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_not_opened', 'line_id':
+                                       investigation['line_id'], 'why': 'question on the repeat cooldown',
+                                       'truth_status': 'refused_before_any_execution'})
+            return None
+        fresh = True
+        earlier = _same_question(investigation['question'], None, data) if investigation['question'] else []
+        if earlier:
+            repeat_note = _question_note(earlier)
         data['investigations'].append(investigation)
     waiting = next((s for s in investigation.get('steps',[]) if s.get('state')=='waiting_not_sent'),None)
     _CURRENT['id'] = investigation['id']
@@ -1107,6 +1443,11 @@ def _turn(context, *, ask=None, execute=None):
         value={'route':waiting['route'],'request':waiting['request'],'step_question':waiting['question'],'why':waiting.get('why','')}
         if waiting.get('plan_ref'): value['_planned'] = waiting['plan_ref']
         waiting['state']='superseded_not_sent'
+    elif repeat_note:
+        # the line's question was investigated already: the opening proposal is asked with that said, at once
+        value = _again(investigation, data, context, ask, repeat_note, 'repeat_question')
+        if value is None:
+            return _refuse_repeat(data, investigation, investigation['question'], repeat_note)
     else:
         try:
             value = _plan(investigation, context, ask)
@@ -1124,6 +1465,10 @@ def _turn(context, *, ask=None, execute=None):
         may_replan = False
         if again is not None:
             value = _coerce_route(again)
+    if fresh and isinstance(value, dict):
+        value, refused = _settle_question(investigation, value, data, context, ask, repeat_note)
+        if refused:
+            return None     # not opened: the Lab's ordinary turn runs instead
     planned = value.pop('_planned', None) if isinstance(value, dict) else None
     plan_ref = ({k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
                 if FRONTIER_PLANS and isinstance(planned, dict) else None)
@@ -1162,7 +1507,11 @@ def _turn(context, *, ask=None, execute=None):
         return _carry_out(data, investigation, again, plan_ref, context, ask, execute, False)
 
 
-MAX_REPLANS = 8   # re-plans one investigation may take in all; past them a proposal is carried out as it always was
+# Re-plans one investigation may take in all; past them a proposal is carried out as it always was. A turn re-plans at
+# most once, so this bounds only the extra local calls. At 8, 17 of 57 investigations on 26 October spent them all and
+# every refusal after that was a step again, untold: a refusal is a step only when the answer to being told no is not
+# a real operation either (Gloria, 26 October).
+MAX_REPLANS = 40
 NOTE_UNREADABLE = ('Your last reply could not be read as one JSON object: it copied the task and ran out of room. '
                    'Return only the operation, beginning with "route", then "request", "step_question" and "why".')
 NOTE_NO_ROUTE = ('Your last reply named no route (it had only: %s). Return the one operation, beginning with "route", '
@@ -1245,6 +1594,91 @@ def _reference_input(request, steps):
     return request, ''
 
 
+def _other_door(request):
+    """(route, request) for an instrument request that names no instrument but exactly one other door: a Lab source
+    ({"source": "pdb", "operation": "structure_evidence", ...}) or an experiment ({"experiment": "protein"}). None
+    otherwise."""
+    from lab_tool_calls import normalize_instrument, canonical
+    import lab_instruments
+    if not isinstance(request, dict):
+        return None
+    probe = normalize_instrument(request)
+    if probe.get('tool') or probe.get('skill') in lab_instruments.skill_operations():
+        return None
+    source = canonical(request.get('source'), SOURCE_ROUTES)
+    experiment = canonical(request.get('experiment'), EXPERIMENTS)
+    if source and not experiment:
+        return 'source', dict(request, source=source)
+    if experiment and not source:
+        return 'experiment', dict(request, experiment=experiment)
+    return None
+
+
+_PUBLIC_PLUGINS = ('uniprot', 'uniprotkb', 'atlas', 'alphagenome', 'pdb', 'rcsb', 'ncbi', 'entrez')
+
+
+def _offer_problem(route, request):
+    """(why, the exact valid choices) when the Lab has no such operation as named (a route, source, instrument,
+    operation, protein-design tool, experiment or connector tool it does not have, or an instrument when no run is left
+    today); None when it has. Only names are checked here; every other check stays with the door that owns it."""
+    import lab_instruments
+    from lab_tool_calls import _mcp_tools, normalize_plugin
+    request = request if isinstance(request, dict) else {}
+    if route not in ROUTES:
+        return ('there is no route %r' % str(route)[:40],
+                {'routes': list(ROUTES), 'source': 'route "source" with {"source": one of %s}' % ', '.join(sorted(SOURCE_ROUTES)),
+                 'plugin': 'route "plugin" with {"plugin": one of %s, "tool", "arguments"}' % ', '.join(_lab_plugins())})
+    if route == 'source':
+        if request.get('source') not in SOURCE_ROUTES | {'pubmed_abstracts'}:
+            return ('there is no source %r' % str(request.get('source'))[:40], {'sources': _menu()['sources']})
+    if route in ('instrument', 'native'):
+        if request.get('tool'):
+            if request['tool'] not in _mcp_tools():
+                return ('there is no protein-design tool %r' % str(request['tool'])[:40],
+                        {'protein_design_mcp': sorted(_mcp_tools()), 'shapes': __import__('chemistry_mcp').instructions()})
+            return None
+        offered = lab_instruments.skill_operations()
+        skill, op = request.get('skill'), request.get('operation')
+        shape = {'skill': '<name>', 'operation': '<one of its operations>', 'files': ['<one of its files>'],
+                 'question': '<what it should answer>'}
+        if skill not in offered:
+            return ('no instrument is named under "skill"' if not skill else 'there is no instrument %r' % str(skill)[:40],
+                    {'skills': offered, 'request': shape})
+        if op not in offered[skill]:
+            return ('%s has no operation %r' % (skill, str(op)[:40]) if op else '%s needs its operation named' % skill,
+                    {'operations': offered[skill], 'request': dict(shape, skill=skill)})
+        if lab_instruments.runs_left() <= 0:
+            return ('no instrument run is left today', {'routes': [r for r in ROUTES if r not in ('instrument', 'native')]})
+        raw = request.get('files')
+        if isinstance(raw, dict) or (isinstance(raw, list) and any(not isinstance(f, str) for f in raw)):
+            return None     # a stored output named as the file: resolved, and checked, at the instrument's door
+        files = [raw] if isinstance(raw, str) else [f for f in raw or [] if isinstance(f, str)]
+        needs = skill in ('structure_viewer', 'sequence_viewer') + tuple(lab_instruments.LOCAL)
+        listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
+        if any(f not in listed for f in files) or (needs and not files):
+            menu = (lab_instruments.planner_menu().get('skills') or {}).get(skill) or {}
+            return ('%s takes its files from the Lab\'s list, and %s' % (skill, 'none was given' if not files else
+                    'these are not on it: ' + ', '.join(f[:80] for f in files if f not in listed)),
+                    {'files': menu.get('files') or listed[:8], 'request': dict(shape, skill=skill, operation=op)})
+    if route == 'experiment' and request.get('experiment') not in EXPERIMENTS:
+        return ('there is no experiment %r' % str(request.get('experiment'))[:40], {'experiments': _menu()['experiments']})
+    if route == 'plugin':
+        public, connector = normalize_plugin(request)
+        if public or not isinstance(connector, dict):
+            return None
+        plugin = str(connector.get('plugin') or '')
+        if plugin.lower() in _PUBLIC_PLUGINS:
+            return None
+        tools = _plugin_tools(plugin, enabled_only=False)   # one switched off is refused by its own gateway
+        if tools is None:
+            return ('there is no connector %r' % plugin[:40], {'plugins': _lab_plugins(),
+                    'request': {'plugin': '<name>', 'tool': '<plugin.tool>', 'arguments': {}}})
+        tool = str(connector.get('tool') or '')
+        if tools and tool not in tools and plugin + '.' + tool not in tools:
+            return ('%s has no tool %r' % (plugin, tool[:60]), {'tools': tools})
+    return None
+
+
 def _again(investigation, data, context, ask, note, kind):
     """One re-plan within this turn, counted against MAX_REPLANS; the reply, or None when it could not be had."""
     investigation['replans'] = int(investigation.get('replans', 0)) + 1
@@ -1266,6 +1700,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
     route, request = value.get('route'), value.get('request') or {}
     if not isinstance(request,dict): raise ValueError('operation request must be an object')
     authored_route = None
+    inferred = value.get('_route_inferred')
+    if route in ('instrument', 'native'):
+        door = _other_door(request)
+        if door:
+            route, request = door
+            inferred = 'an instrument request naming only a %s' % route
     if route in SOURCE_ROUTES:
         # a source named as the route ("pubmed", "ncbi") is that source's query: 250 steps in two days were refused
         # as an unknown route for this alone (23 October)
@@ -1290,6 +1730,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         if not answered:
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
             # never close an investigation the planner keeps trying to finish. Three unanswered reviews close it.
+            investigation['last_review'] = {k: row.get(k) for k in ('at', 'answers_question', 'missing_evidence',
+                                                                    'next_question', 'evidence_status') if row.get(k)}
             investigation['unanswered_reviews'] = int(investigation.get('unanswered_reviews', 0)) + 1
             if investigation['unanswered_reviews'] >= MAX_UNANSWERED_REVIEWS:
                 investigation.update(state='unanswered', closed_reason='%d reviews found the outputs did not answer it'
@@ -1302,7 +1744,7 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
             'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
             **({'plan_ref':plan_ref} if plan_ref else {}),
-            **({'route_inferred':value['_route_inferred']} if value.get('_route_inferred') else {})}
+            **({'route_inferred':inferred} if inferred else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
     # are not retried automatically (especially hosted inference).
     step['state'] = 'started'
@@ -1313,7 +1755,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         # nothing was sent: the proposal leaves no step behind, and the planner is told why, once, in this turn
         investigation['steps'] = [s for s in investigation['steps'] if s is not step]
         _save(data)
-        return _Replan(dict(note, proposed=step.get('tool')), kind)
+        return _Replan(dict(note, proposed=step.get('tool'), proposed_route=route,
+                            proposed_request=_short(step.get('executed_request') or step.get('request') or {})), kind)
 
     try:
         from lab_tool_calls import normalize_request
@@ -1331,6 +1774,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 raise replan({'why_not_run': why + '. Return that planned operation now, as planned_step says.'},
                              'not_the_planned_step')
             raise ValueError(why)
+        problem = _offer_problem(route, request) if may_replan else None
+        if problem:
+            # Told no, and asked again at once with the exact names it may choose from: it is a step only if the
+            # answer to that is not a real operation either, and then it is carried out (and refused) as before
+            raise replan({'why_not_run': 'nothing was sent: %s. Choose from these exact names, in this shape.'
+                          % problem[0], 'valid_choices': problem[1]}, 'not_offered')
         if route == 'instrument' and request.get('skill') == 'reference_compare':
             request, why = _reference_input(request, investigation['steps'][:-1])
             step['executed_request'] = request
@@ -1381,10 +1830,15 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 if may_replan and (own or (earlier is None and _REFUSED_REPEAT.search(str(exc)))):
                     # refused before sending as a repeat: of this investigation's own step, or of a lookup made before
                     # with nothing retained to stand in (most of the closures on 26 October). Asked once for another.
-                    raise replan(_repeat_note(earlier) if own else
-                                 {'why_not_run': 'refused before sending, as a repeat of a lookup already made: %s. '
+                    if own:
+                        raise replan(_repeat_note(earlier), 'refused_repeat')
+                    # what that earlier asking got, from whichever investigation asked it, so the repeat is not a
+                    # question back into the dark (26 October: after this refusal she asked the same again 90 times
+                    # in 120, told only that it had been asked)
+                    before = _asked_before(str(exc), step, data)
+                    raise replan({'why_not_run': 'refused before sending, as a repeat of a lookup already made: %s. '
                                   'Ask something not asked before: another tool on what you hold, or finish.'
-                                  % str(exc)[:240]}, 'refused_repeat')
+                                  % str(exc)[:240], **({'earlier_result': before} if before else {})}, 'refused_repeat')
                 if earlier is None:
                     raise
                 payload = lab._load(_path(earlier['output_file']), None)

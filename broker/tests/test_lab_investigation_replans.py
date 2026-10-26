@@ -77,9 +77,10 @@ class Repeats(Base):
         self.assertEqual(inv['state'], 'stalled')
         self.assertEqual(len(inv['steps']), I.MAX_STEPS)
         self.assertTrue(inv['closed_reason'].startswith('step budget spent (14 operations)'))
-        self.assertEqual(inv['replans'], I.MAX_REPLANS)          # a separate, small allowance
+        replans = min(I.MAX_REPLANS, I.MAX_STEPS - 1)            # each repeat told once, within the allowance
+        self.assertEqual(inv['replans'], replans)
         execute.assert_called_once()                             # never re-sent
-        self.assertEqual(ask.call_count, I.MAX_STEPS + I.MAX_REPLANS)   # at most one re-plan a turn
+        self.assertEqual(ask.call_count, I.MAX_STEPS + replans)  # at most one re-plan a turn
 
     def test_a_repeat_refused_before_sending_with_nothing_retained_is_replanned_not_failed(self):
         ask = Mock(side_effect=[choice('source', {'source': 'ncbi', 'operation': 'protein', 'term': 'RT'}),

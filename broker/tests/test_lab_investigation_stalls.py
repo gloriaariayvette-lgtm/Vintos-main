@@ -160,7 +160,8 @@ class Stalls(unittest.TestCase):
         data = store(); data['investigations'][0]['state'] = 'stalled'; C._atomic(I._path('investigations.json'), data)
         def refuse(*a): raise ValueError('no eligible saved step: you already asked this on 2026-10-25 04:00')
         self.ask.return_value = choice('source', {'source': 'uniprot', 'query': 'accession:Q8ECH7'}, q % 'Q8ECH7')
-        row = I.turn('', ask=self.ask, execute=refuse)
+        with patch.object(I, '_same_question', return_value=[]):   # the reopening gate: test_lab_no_repeat
+            row = I.turn('', ask=self.ask, execute=refuse)
         self.assertEqual(row['state'], 'failed')
         self.assertNotIn('reused_from', row)
         # same identifiers, but the retained output does not carry the accession asked for: not handed over
