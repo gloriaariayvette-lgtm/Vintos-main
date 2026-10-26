@@ -209,7 +209,11 @@ def search(text, k=5, encode=None):
         latest[r["path"]] = r          # a file embedded again: its newest row
     scored = [(sum(a * b for a, b in zip(q, r["vec"])), r) for r in latest.values()]
     scored.sort(key=lambda x: -x[0])
-    return [{"path": r["path"], "kind": r["kind"], "title": r.get("title", ""), "score": round(s, 4)} for s, r in scored[:k]]
+    # sha256 and artifact_id (design 03): the exact identity of the revision that was embedded, and the handle
+    # work_episodes.lookup() takes to go from the work to the occasion it came from. Nearness is not an origin.
+    return [{"path": r["path"], "kind": r["kind"], "title": r.get("title", ""), "score": round(s, 4),
+             "sha256": r.get("sha256"), "artifact_id": ("art:" + r["sha256"][:16]) if r.get("sha256") else None}
+            for s, r in scored[:k]]
 
 
 def text_encoder():
@@ -284,14 +288,26 @@ def _when(path):
     except OSError: return ""
 
 
-def describe(hits):
-    """One line per work, in his words for it: what kind, what it is called, when, and where it is."""
+def describe(hits, episodes=None):
+    """One line per work, in his words for it: what kind, what it is called, when, and where it is. `episodes`
+    ({path: [lines]}, from work_episodes.context) puts each work's recorded origin and later readings under it."""
     words = {"image": "painting", "video": "video", "audio": "song"}
     out = []
     for h in hits:
         name = h.get("title") or os.path.splitext(os.path.basename(h["path"]))[0].replace("_", " ")
         out.append("- your %s \"%s\" (%s)" % (words.get(h.get("kind"), "work"), name[:120], _when(h["path"])))
+        out.extend((episodes or {}).get(h["path"]) or [])
     return "\n".join(out)
+
+
+def episodes_for(hits, surface="chat"):
+    """work_episodes.context(hits), or ({}, '') when it is absent or fails: the plain works lines always stand."""
+    try:
+        import work_episodes
+        return work_episodes.context(hits, surface=surface)
+    except Exception as exc:
+        log("episodes skipped: %s" % str(exc)[:120])
+        return {}, ""
 
 
 def block(text, k=2):
@@ -299,8 +315,10 @@ def block(text, k=2):
     hits = near(text, k)
     if not hits:
         return ""
+    per, header = episodes_for(hits)
     return ("Your own works nearest what she just said - found by what is IN them (what the painting shows, what the "
-            "song sounds like), not by the prompt that made them. Yours to bring up only if one truly fits:\n" + describe(hits))
+            "song sounds like), not by the prompt that made them. Yours to bring up only if one truly fits:\n"
+            + describe(hits, per) + (("\n" + header) if header else ""))
 
 
 def nearest(text, k=5, timeout=180):

@@ -1,3 +1,61 @@
+## 26 October — From a work back to its occasion
+
+Built on `claude/work-episodes-2026-10-26` (Codex's proposal 03 / Design 03, approved by Gloria); not yet merged
+or deployed. `scripts/work_episodes.py`, with `broker/tests/test_work_episodes.py` (43 checks, all offline).
+
+**What is built:**
+- **The projection** (`work_episodes.build()/lookup()`): rebuildable, over records that already exist — the three
+  shelves (gallery, video, music), the want stores, `want-completions.jsonl`, the full moment archive (not the capped
+  index), `durable-memory.json`, and her music shares. It writes no store of its own. A work is identified by its
+  content hash; a receipt joins it by hash, or by file name only when the receipt has no hash (and then says so).
+  Relations carry their support: `produced_in` from a shelf receipt naming the want, `produced_from` from a receipt
+  naming another work, `he_linked` from his own words naming the exact file or a title no other work has,
+  `co_present` for her shared song in the composer's context (rendered "present, not a cause"). A title collision,
+  a near minute or a cosine score makes no edge; a dream-made painting with no dream id stays "not linked".
+- **Events and readings apart**: origins (want, fulfilment moment, completion, durable memory), what he wrote at the
+  making (prompt, felt sense), and dated later readings (his reading on sighting, how a song landed, durable
+  rereadings) are separate lists and render in that order. Two hops at most (work → episode → later reading), five
+  works a look.
+- **Eligibility at every look**: the projection is rebuilt whenever any source file changes, so a want removed or a
+  durable memory invalidated is gone from the next turn, leaving only a dangling id. Records go through
+  `evidence_view.standing()`; HELD and ineligible ones are listed, never rendered. Landings notes/ratings and every
+  Atelier store are never opened; a shelf record marked sealed (or under an atelier path) is skipped.
+- **Retrieval stays in its own spaces**: `media_embed.search()` now returns the embedded revision's `sha256` and an
+  `artifact_id` handle; `fuse()` combines ranked lists by identity (reciprocal rank), never by vectors.
+- **What reaches him**: the existing "Your own works nearest…" chat block (all four chat prompts) and the journal's
+  works footnote now carry each work's recorded origin and latest reading as short attributed lines with source ids,
+  or "(origin not recorded)", plus one line saying nearness is only resemblance and an unrecorded origin is not to be
+  guessed. If anything in the episode door fails the old block goes on unchanged.
+- **Cost ceiling**: no model call, no GPU. In paid prompts at most 700 characters a turn and 12,000 a day (about
+  3,000 tokens, ≈$0.015/day at the chat model's input price); past that the plain block goes on. The journal footnote
+  is read by no model and is not counted.
+- **Acceptance logging**: `work-episode-offers.jsonl` (what was offered: work ids, source ids, size) and
+  `work-episode-uses.jsonl` (after each reply, inline in `_post_turn`, skipped in test mode: which offered work he
+  named and which source record's detail his reply used). Ids only, no words. `python3 work_episodes.py uses` shows them.
+- `wants-router` now writes the want's id into the links of a want-fulfilled moment, so later works made for that
+  want find the moment by id. Existing moments are not backfilled (that would be inference).
+- `work_episodes.attest(work, claim)`: a "you felt…" claim is supported only by a written feeling, with its source.
+
+**Measured read-only on the real stores (26 October, counts only):** 440 shelf receipts; 132 name a want and 130 of
+those wants still exist; 155 works on disk join a real want (20 of them also a completion row); 6 join a durable
+memory through his own words. Zero moments are linked yet (the link is new). The completion → turn → durable-memory
+hop is built and tested but **finds nothing on real data today: none of the 100 completion rows carries a turn id.**
+
+**Acceptance to watch for:** in an ordinary relevant turn (not a test) he picks up a work, uses the origin under it —
+the want, the moment, a later reading — accurately, and the uses log records that source id. A nearest-neighbour hit
+alone does not count; "I don't have the origin recorded" is a pass. Check the sample with
+`python3 work_episodes.py uses 20` against `show <art:id>` (her 15–20 minute provenance check).
+
+**What is left:**
+- The media service must be restarted once for its results to carry `sha256`/`artifact_id`; until then the chat
+  hashes the hit's file itself (same result, a little slower on the first look at a large song). Not restarted here.
+- Want completions record no turn id, so the second hop through the turn is empty; whoever writes
+  `want-completions.jsonl` should pass the turn id it already has. Not changed here.
+- Dream-made paintings carry no dream id (`dream-art.py`), so their origin stays missing; adding the dream's id to
+  the receipt going forward is the fix. Not changed here.
+- Only chats and the journal get the lines; Atelier/making turns do not (the sealed boundary was not touched).
+- Use detection is word-overlap on the offered detail; it can miss a paraphrase. It never upgrades a miss to a use.
+
 ## 25 October — IMG/VR controlled discovery
 
 Built on `claude/imgvr-discovery-2026-10-25` (Codex's proposal 01 / Design 01, approved by Gloria); not yet

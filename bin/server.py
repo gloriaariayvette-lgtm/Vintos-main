@@ -1395,6 +1395,12 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         joke_fermentation.maybe_seed_from_humor()
     _inline("questions", _questions)
     _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
+    def _work_use():
+        # design 03: which works and origin records offered under "Your own works nearest..." the reply actually used.
+        # Ids only, no model call; a nearest-work hit he left alone is recorded as offered, not used.
+        import work_episodes as _we
+        _we.note_use(reply, surface, turn_id)
+    _inline("work_episodes", _work_use)
     def _desktop():
         if _desktop_agent is not None and "[DESKTOP:" in (reply or "").upper():
             _desktop_agent.extract_and_start(reply, surface)
