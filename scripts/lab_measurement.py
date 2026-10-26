@@ -22,7 +22,9 @@ kept whichever way it came out.
                with execution completed, and it is kept: `negatives()` returns it and the planner is shown it.
 
 Stores (beside the Lab's other records): measurement-contracts.jsonl (append-only revisions) and
-measurement-results.jsonl. No model is asked here, nothing is sent, nothing is gated.
+measurement-results.jsonl. No model is asked here, nothing is sent, nothing is gated. The results that did not support
+a prediction are classified and scoped in lab_negative_atlas (refuted / inconclusive / failed execution), which the
+planner view shows and from_planner records reuses of.
 
     python3 lab_measurement.py [show [N] | negatives [N] | settle]
 """
@@ -836,6 +838,13 @@ def planner_view(investigation, now=None):
                     view["how"] = SPEC
         except Exception:
             pass
+        try:    # his earlier negatives that share words with this question, each with the conditions it holds under
+            import lab_negative_atlas
+            atlas = lab_negative_atlas.for_planner(investigation, (mine[-1].get("contract") if mine else None))
+            if atlas:
+                view["negative_atlas"] = atlas
+        except Exception:
+            pass
         return view or None
     except Exception:
         return None
@@ -843,6 +852,11 @@ def planner_view(investigation, now=None):
 
 def from_planner(investigation, value, now=None):
     """Freeze the contract the planner returned with its prediction, if any. Never raises."""
+    try:    # a plan that builds on one of his earlier negatives (lab_negative_atlas) is recorded with its limits
+        import lab_negative_atlas
+        lab_negative_atlas.from_planner(investigation, value, now=now)
+    except Exception:
+        pass
     try:
         raw = (value or {}).get("measurement") if isinstance(value, dict) else None
         if not isinstance(raw, dict) or not raw:
