@@ -1,3 +1,66 @@
+## 26 October — EmbeddingGemma 2 beside nomic in four more places
+
+Built on `claude/gemma-embed-more-2026-10-26`; not merged or deployed. Gloria approved each place ("Gemma 2 is fine
+on those places"; for calls, both voices: "It's all local, what's the issue with adding my voice?"). Same store
+(`memory/media-embeddings.jsonl`), same venv, same model; nomic's stores are not touched. Offline suite:
+`broker/tests/test_media_embed_places.py` (stub encoder, the batch process never started, synthesized audio and
+images). No model was loaded, nothing was sent, restarted, installed or deployed while building it.
+
+**What is embedded, when, and what is kept:**
+- **Live calls, Vintos Local lane only** (`voice_local.turn`). Her utterance (the PCM Aegis received) and his
+  spoken reply (the WAV she hears, only once it is cleared for playback) are held at the turn — a file write, no
+  model — and embedded by a batch **when the call ends** (`/api/voice/local/end` and the Watch's
+  `/api/watch/voice/local/end` call `voice_local.end_call()`, which starts `media_embed.py drain` in the venv,
+  `nice 15`). Row: `kind call_audio`, speaker `gloria|vintos`, `turn_id`, `session_id` (a per-call `lc-…` label),
+  sha256 (hers equals `auditory_memory`'s `source_hash`), `auditory_memory_id` when that turn has one, the vector.
+  No audio, no transcript. The hosted realtime lanes are unchanged (text only). Test mode holds nothing.
+- **Motif phrases** (`motif_memory.step`). The kept WAV lives in the Atelier project through the broker and
+  `media_embed` cannot (and must not) reach it, so a phrase's WAV is handed over right after the room keeps it,
+  and a batch starts. Row: `kind motif`, variation/motif ids, parent, project, sha256. **It is found by no search
+  until he reveals that phrase** (the reveal ledger's `write` record names its variation id).
+- **Revealed Atelier works**: reveal-ledger rows marked revealed with `bytes_verified`, whose file is on a public
+  shelf under `memory/art` with the same digest (the rule `outreach_postcards.py` offers by). Row: `kind atelier`,
+  reusing the shelf image's own vector when it is already embedded. `memory/atelier` is never opened. Kept paintings
+  that postcards offer are already under `memory/art` and were already embedded as `image`.
+- **ReelRoom frames**: the `look` mode of `/api/game/reelroom/chat` (his frame reading; the image arrives in the
+  request body from the page, which takes it from `/api/game/screenshot` — ADB or her cast). After the reading the
+  frame is held and a batch starts that lingers 7 minutes for the next frame, then exits. Row: `kind film_frame`,
+  session id (the night's journal id), `scene_index` (the position this reading takes in the page's session map:
+  the length of the map sent with the look), `elapsed_min`, sha256 of the frame, `reading_sha256` (a digest of his
+  reading, never its words). A search hit lists the bookmarks of that night whose scene has that index (bookmarks
+  now record `scene.index`) or the same reading.
+
+**No audio or image is kept.** Held bytes wait in a private directory — `$XDG_RUNTIME_DIR` or `/run/user/<uid>`
+(RAM, so they never reach the disk), else `/tmp` — 0700, files 0600, created exclusively, never through a link.
+Each file is deleted right after it is embedded and on any error; every run (hold, drain, ensure) deletes anything
+held over two hours, unembedded. A live call's audio waits until its heartbeat marker is gone or 15 minutes stale.
+Nothing is held when the venv is not installed. The 8627 service still holds only the text half; the audio and
+vision halves are loaded only in the batch process (about 3 GB while it runs; on a film night it stays up for the
+night, in 7-minute lingers).
+
+**Search:** `search`/`near` keep to his works (image, video, audio, motif, atelier) unless asked:
+`media_embed.py search "a line" --kind call_audio,film_frame [--speaker gloria] [--session ID]`, `/near?kinds=…`.
+The chat block (`_works_near` -> `block`) is unchanged in scope and filters to his works even if a service answers
+otherwise.
+
+**What Gloria must do after deploying it (no new cron line):**
+- The ten-minute `media_embed.py ensure` cron (already installed by `install-embedgemma.sh`) is the short timer:
+  it now also starts a drain when anything held is due (a call that ended without its end route, a missed batch).
+  The two-hourly `index` cron also drains what is held.
+- The running 8627 service keeps the old code until it is restarted. Until then search behaves as before (call,
+  frame and motif rows are invisible to it, since they have no path). To pick up `kinds=`, she runs
+  `pkill -f "media_embed.py serve"` and the next `ensure` (within ten minutes) starts the new one.
+
+**What is left / not proven:**
+- Never run against the real model: the stub proves the plumbing. A call WAV at 24 kHz (and an 8–16 kHz window)
+  goes to the model as a path, the way music falls back today; the first real drain should be watched in
+  `/tmp/media-embed.log`.
+- `scene_index` assumes the page appends this frame's reading as the next session-map event; the Plithra page is
+  not in this repository, so that is unverified. The reading digest is the second join and holds whenever the
+  page stores his reading as the event's `visual_description`. The journal keeps only the last 60 map events.
+- A call over two hours loses its earliest turns' audio to the sweep before the end-of-call batch.
+- A motif phrase rendered while the venv is absent is never embedded (its bytes are not reachable later).
+
 ## 26 October — Room sources kept apart
 
 Built on `claude/room-sources-2026-10-26` (Codex's proposal 18, approved by Gloria); not yet merged or deployed.
