@@ -897,6 +897,45 @@ def dream_step(pid, work, dream, made):
     return rec
 
 
+def _exhibition_module():
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import exhibitions
+        return exhibitions
+    except Exception:
+        return None
+
+
+def exhibition_offer():
+    """His works already out of the room, offered for an exhibition for her (proposal 20), as (text, works);
+    ("", None) when too few are out, or one was offered this week."""
+    ex = _exhibition_module()
+    if not ex: return "", None
+    try:
+        return ex.block()
+    except Exception as exc:
+        print("exhibition offer could not be read: %s" % str(exc)[:120])
+        return "", None
+
+
+def exhibition_step(pid, work, offered):
+    """When he wrote <exhibition>, keep it if it holds. Content-free in the log: its id, or why it was refused."""
+    ex = _exhibition_module()
+    if not ex or not re.search(r'<exhibition\b', work or "", re.I):
+        return None
+    try:
+        rec, why = ex.make(offered, work, pid)
+    except Exception as exc:
+        print("exhibition not kept: %s" % str(exc)[:120]); return None
+    _chose("exhibition", "made" if rec else "refused")
+    if rec:
+        print("exhibition kept: %s (%d works, %d relations)" % (rec["id"], len(rec["works"]), len(rec["relations"])))
+    else:
+        print("exhibition not kept: %s" % why)
+    return rec
+
+
 def made_nothing(work, creation):
     """True when the visit so far has made nothing: no piece, no kept media, no phrase, nothing finished or shown."""
     piece = _tag(work, "piece")
@@ -1209,7 +1248,8 @@ def visit(pid, sent_by_gloria=False):
     ledger_mark(pid, "active")
     motifs, motif_text = motif_notebook(pid, pk, cap)
     dream_text, dream = dream_offer()
-    ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
+    exhibit_text, exhibit_works = exhibition_offer()
+    ctx =(voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
            + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap)
@@ -1224,6 +1264,7 @@ def visit(pid, sent_by_gloria=False):
            + _manifest_block(pk)
            + where_you_are()
            + dream_text
+           + exhibit_text
            + materials_index()
            + motif_text
            + music_note()
@@ -1267,6 +1308,10 @@ def visit(pid, sent_by_gloria=False):
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     forged = record_forge_choice(pid, pk, work)
     if forged: print("Forge proposal:", forged)
+    # An exhibition of works already out of the room (proposal 20): kept or refused here, then taken out of the
+    # visit's text so nothing inside it is read as a piece, reveal or handoff.
+    exhibition_step(pid, work, exhibit_works)
+    work = re.sub(r'<exhibition\b.*?</exhibition>', '', work, flags=re.S | re.I)
     media_choice = (_media_request(work) or {}).get("kind", "none")
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
