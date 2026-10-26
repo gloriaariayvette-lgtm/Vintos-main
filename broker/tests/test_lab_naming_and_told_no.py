@@ -141,4 +141,49 @@ class NearMisses(Base):
         self.assertIsNone(I._other_door({'source': 'local', 'operation': 'structure_viewer'}))
 
 
+class ToldNo(Base):
+    def test_a_name_the_lab_lacks_is_told_with_the_choices_and_takes_no_step_when_the_reask_is_real(self):
+        out = {'receipt': {'source': 'instrument:fold_read', 'records': [{'summary': 'helix 540-560'}]}}
+        execute = Mock(return_value=out)
+        ask = Mock(side_effect=[choice('instrument', {'instrument': 'structure_viewer', 'files': [MODEL]}),
+                                choice('instrument', {'skill': 'structure_viewer', 'operation': 'structure.analyze',
+                                                      'files': [MODEL]})])
+        row = I.turn('', ask=ask, execute=execute)
+        self.assertEqual((row['state'], row['tool']), ('completed', 'instrument:structure_viewer'))
+        replanning = task_of(ask)['replanning']
+        self.assertIn('structure_viewer needs its operation named', replanning['why_not_run'])
+        self.assertEqual(replanning['valid_choices']['operations'], list(lab_instruments.OFFERED['structure_viewer']))
+        self.assertEqual(len(store()['investigations'][0]['steps']), 1)
+        self.assertEqual(notebook('investigation_replan')[-1]['why'], 'not_offered')
+        execute.assert_called_once()
+
+    def test_told_no_twice_it_is_a_step_stored_the_old_way(self):
+        ask = Mock(return_value=choice('reflect', {}))
+        execute = Mock(side_effect=ValueError('unknown investigation route'))
+        row = I.turn('', ask=ask, execute=execute)
+        self.assertEqual(ask.call_count, 2)
+        self.assertIn('routes', task_of(ask)['replanning']['valid_choices'])
+        self.assertEqual((row['state'], row['error']), ('failed', 'unknown investigation route'))
+        self.assertEqual(len(store()['investigations'][0]['steps']), 1)
+
+    def test_an_unknown_source_and_no_run_left_are_told_too(self):
+        self.assertIn('no source', I._offer_problem('source', {'source': 'genbank'})[0])
+        self.assertIsNone(I._offer_problem('source', {'source': 'pubmed', 'query': 'x'}))
+        self.assertIsNone(I._offer_problem('instrument', {'skill': 'fold_read', 'operation': 'structure.read',
+                                                          'files': [MODEL]}))
+        self.assertIn('not on it', I._offer_problem('instrument', {'skill': 'fold_read', 'operation': 'structure.read',
+                                                                   'files': ['artifacts/x.pdb']})[0])
+        self.assertIn('no protein-design tool', I._offer_problem('instrument', {'tool': 'design_binder'})[0])
+        self.assertIn('no tool', I._offer_problem('plugin', {'plugin': 'boltz', 'tool': 'boltz_run_now'})[0])
+        self.assertIsNone(I._offer_problem('plugin', {'plugin': 'pdb', 'tool': 'x', 'arguments': {'entry_id': '8SGW'}}))
+        self.use_up_runs()
+        why, choices = I._offer_problem('instrument', {'skill': 'fold_read', 'operation': 'structure.read',
+                                                       'files': [MODEL]})
+        self.assertEqual(why, 'no instrument run is left today')
+        self.assertNotIn('instrument', choices['routes'])
+
+    def test_replans_are_no_longer_spent_after_eight(self):
+        self.assertGreaterEqual(I.MAX_REPLANS, 2 * I.MAX_STEPS)
+
+
 if __name__ == '__main__': unittest.main(verbosity=2)

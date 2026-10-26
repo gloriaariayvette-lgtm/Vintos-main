@@ -1250,7 +1250,11 @@ def _turn(context, *, ask=None, execute=None):
         return _carry_out(data, investigation, again, plan_ref, context, ask, execute, False)
 
 
-MAX_REPLANS = 8   # re-plans one investigation may take in all; past them a proposal is carried out as it always was
+# Re-plans one investigation may take in all; past them a proposal is carried out as it always was. A turn re-plans at
+# most once, so this bounds only the extra local calls. At 8, 17 of 57 investigations on 26 October spent them all and
+# every refusal after that was a step again, untold: a refusal is a step only when the answer to being told no is not
+# a real operation either (Gloria, 26 October).
+MAX_REPLANS = 40
 NOTE_UNREADABLE = ('Your last reply could not be read as one JSON object: it copied the task and ran out of room. '
                    'Return only the operation, beginning with "route", then "request", "step_question" and "why".')
 NOTE_NO_ROUTE = ('Your last reply named no route (it had only: %s). Return the one operation, beginning with "route", '
@@ -1353,6 +1357,71 @@ def _other_door(request):
     return None
 
 
+_PUBLIC_PLUGINS = ('uniprot', 'uniprotkb', 'atlas', 'alphagenome', 'pdb', 'rcsb', 'ncbi', 'entrez')
+
+
+def _offer_problem(route, request):
+    """(why, the exact valid choices) when the Lab has no such operation as named (a route, source, instrument,
+    operation, protein-design tool, experiment or connector tool it does not have, or an instrument when no run is left
+    today); None when it has. Only names are checked here; every other check stays with the door that owns it."""
+    import lab_instruments
+    from lab_tool_calls import _mcp_tools, normalize_plugin
+    request = request if isinstance(request, dict) else {}
+    if route not in ROUTES:
+        return ('there is no route %r' % str(route)[:40],
+                {'routes': list(ROUTES), 'source': 'route "source" with {"source": one of %s}' % ', '.join(sorted(SOURCE_ROUTES)),
+                 'plugin': 'route "plugin" with {"plugin": one of %s, "tool", "arguments"}' % ', '.join(_lab_plugins())})
+    if route == 'source':
+        if request.get('source') not in SOURCE_ROUTES | {'pubmed_abstracts'}:
+            return ('there is no source %r' % str(request.get('source'))[:40], {'sources': _menu()['sources']})
+    if route in ('instrument', 'native'):
+        if request.get('tool'):
+            if request['tool'] not in _mcp_tools():
+                return ('there is no protein-design tool %r' % str(request['tool'])[:40],
+                        {'protein_design_mcp': sorted(_mcp_tools()), 'shapes': __import__('chemistry_mcp').instructions()})
+            return None
+        offered = lab_instruments.skill_operations()
+        skill, op = request.get('skill'), request.get('operation')
+        shape = {'skill': '<name>', 'operation': '<one of its operations>', 'files': ['<one of its files>'],
+                 'question': '<what it should answer>'}
+        if skill not in offered:
+            return ('no instrument is named under "skill"' if not skill else 'there is no instrument %r' % str(skill)[:40],
+                    {'skills': offered, 'request': shape})
+        if op not in offered[skill]:
+            return ('%s has no operation %r' % (skill, str(op)[:40]) if op else '%s needs its operation named' % skill,
+                    {'operations': offered[skill], 'request': dict(shape, skill=skill)})
+        if lab_instruments.runs_left() <= 0:
+            return ('no instrument run is left today', {'routes': [r for r in ROUTES if r not in ('instrument', 'native')]})
+        raw = request.get('files')
+        if isinstance(raw, dict) or (isinstance(raw, list) and any(not isinstance(f, str) for f in raw)):
+            return None     # a stored output named as the file: resolved, and checked, at the instrument's door
+        files = [raw] if isinstance(raw, str) else [f for f in raw or [] if isinstance(f, str)]
+        needs = skill in ('structure_viewer', 'sequence_viewer') + tuple(lab_instruments.LOCAL)
+        listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
+        if any(f not in listed for f in files) or (needs and not files):
+            menu = (lab_instruments.planner_menu().get('skills') or {}).get(skill) or {}
+            return ('%s takes its files from the Lab\'s list, and %s' % (skill, 'none was given' if not files else
+                    'these are not on it: ' + ', '.join(f[:80] for f in files if f not in listed)),
+                    {'files': menu.get('files') or listed[:8], 'request': dict(shape, skill=skill, operation=op)})
+    if route == 'experiment' and request.get('experiment') not in EXPERIMENTS:
+        return ('there is no experiment %r' % str(request.get('experiment'))[:40], {'experiments': _menu()['experiments']})
+    if route == 'plugin':
+        public, connector = normalize_plugin(request)
+        if public or not isinstance(connector, dict):
+            return None
+        plugin = str(connector.get('plugin') or '')
+        if plugin.lower() in _PUBLIC_PLUGINS:
+            return None
+        tools = _plugin_tools(plugin, enabled_only=False)   # one switched off is refused by its own gateway
+        if tools is None:
+            return ('there is no connector %r' % plugin[:40], {'plugins': _lab_plugins(),
+                    'request': {'plugin': '<name>', 'tool': '<plugin.tool>', 'arguments': {}}})
+        tool = str(connector.get('tool') or '')
+        if tools and tool not in tools and plugin + '.' + tool not in tools:
+            return ('%s has no tool %r' % (plugin, tool[:60]), {'tools': tools})
+    return None
+
+
 def _again(investigation, data, context, ask, note, kind):
     """One re-plan within this turn, counted against MAX_REPLANS; the reply, or None when it could not be had."""
     investigation['replans'] = int(investigation.get('replans', 0)) + 1
@@ -1445,6 +1514,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 raise replan({'why_not_run': why + '. Return that planned operation now, as planned_step says.'},
                              'not_the_planned_step')
             raise ValueError(why)
+        problem = _offer_problem(route, request) if may_replan else None
+        if problem:
+            # Told no, and asked again at once with the exact names it may choose from: it is a step only if the
+            # answer to that is not a real operation either, and then it is carried out (and refused) as before
+            raise replan({'why_not_run': 'nothing was sent: %s. Choose from these exact names, in this shape.'
+                          % problem[0], 'valid_choices': problem[1]}, 'not_offered')
         if route == 'instrument' and request.get('skill') == 'reference_compare':
             request, why = _reference_input(request, investigation['steps'][:-1])
             step['executed_request'] = request
