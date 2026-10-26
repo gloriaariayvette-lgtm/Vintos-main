@@ -223,6 +223,11 @@ def _role(value, kind, errors, name):
     return role
 
 
+def _disagreement_id(value):
+    """DIS- and ten lowercase hex digits: the id lab_disagreement.declare gives."""
+    return len(value) == 14 and value.startswith("DIS-") and all(ch in "0123456789abcdef" for ch in value[4:])
+
+
 def normalize(raw):
     """(contract, errors). The contract holds only typed, bounded fields; anything else is dropped."""
     errors = []
@@ -239,6 +244,12 @@ def normalize(raw):
          "supports": _text(raw.get("supports"), 300), "opposes": _text(raw.get("opposes"), 300)}
     if not c["hypothesis"]:
         errors.append("a contract states its hypothesis")
+    # a measurement chosen to separate two readers' frozen predictions (lab_disagreement) names that disagreement;
+    # it is kept only in its exact form, so a contract without it is byte-for-byte what it was before
+    dis = _text(raw.get("disagreement"), 20)
+    if dis:
+        if _disagreement_id(dis): c["disagreement"] = dis
+        else: errors.append("disagreement must be a declared id like DIS-0123456789")
     if mode == "exploratory":
         return c, errors
     for key in ("unit", "variable", "units", "supports", "opposes"):
@@ -618,7 +629,8 @@ def evaluate(row, steps, *, final=False, load=None, now=None):
             "step_index": row.get("step_index"), "hypothesis": contract.get("hypothesis"),
             "evaluator": contract.get("evaluator"), "predicts": contract.get("predicts"),
             "execution_state": "not_run", "measurement_state": "not_evaluated", "novelty_state": "not_assessed",
-            "truth_status": TRUTH, "confirmatory": False, "bound": []}
+            "truth_status": TRUTH, "confirmatory": False, "bound": [],
+            **({"disagreement": contract["disagreement"]} if contract.get("disagreement") else {})}
 
     def done(state, why, **extra):
         return dict(base, measurement_state=state, why=str(why)[:400], **extra)
@@ -738,6 +750,12 @@ def settle(investigation, now=None):
                 res["investigation"] = res.get("investigation") or investigation.get("id")
                 _append(results_path(), res)
                 out.append(res)
+    if any(r.get("disagreement") for r in out):
+        try:    # a measurement that was chosen to separate two predictions is judged against them now
+            import lab_disagreement
+            lab_disagreement.settle()
+        except Exception:
+            pass
     return out
 
 
@@ -808,6 +826,16 @@ def planner_view(investigation, now=None):
         neg = [_brief(r) for r in negatives(4) if r.get("investigation") != investigation.get("id")][-2:]
         if neg:
             view["your_negative_results"] = neg
+        try:    # two of his readings that predicted incompatible values, and how to measure between them
+            import lab_disagreement
+            lab_disagreement.settle()
+            dis = lab_disagreement.for_planner()
+            if dis:
+                view["disagreements"] = dis
+                if "how" not in view and "contract" not in view:
+                    view["how"] = SPEC
+        except Exception:
+            pass
         return view or None
     except Exception:
         return None
