@@ -119,7 +119,7 @@ def mark(turn_id: str = "latest", by: str = "gloria", scene_index: Optional[int]
     if any(not m.get("id") for m in pair):
         return {"ok": False, "reason": "the turn has no journal id"}
     turns = [_turn(m) for m in pair]
-    scene = None
+    scene, scene_at = None, None
     events = [e for e in (j.get("session_map") or []) if isinstance(e, dict)]
     if scene_index is not None:
         try:
@@ -129,10 +129,11 @@ def mark(turn_id: str = "latest", by: str = "gloria", scene_index: Optional[int]
         desc = str(ev.get("visual_description") or "").strip()
         if not desc:
             return {"ok": False, "reason": "that event has no frame reading"}
-        scene = desc
+        scene, scene_at = desc, int(scene_index)
     elif latest_scene:
-        scene = next((str(e.get("visual_description")).strip() for e in reversed(events)
-                      if str(e.get("visual_description") or "").strip()), None)
+        scene_at = next((i for i in range(len(events) - 1, -1, -1)
+                         if str(events[i].get("visual_description") or "").strip()), None)
+        scene = str(events[scene_at].get("visual_description")).strip() if scene_at is not None else None
     row: Dict[str, Any] = {
         "id": "bm-%d" % int(now * 1000),
         "session_id": sid,
@@ -148,6 +149,8 @@ def mark(turn_id: str = "latest", by: str = "gloria", scene_index: Optional[int]
         row["player_seconds"] = ps
     if scene:
         row["scene"] = {"reading": scene[:SCENE_CHARS], "whose": "his reading of a frame"}
+        if scene_at is not None:
+            row["scene"]["index"] = scene_at     # its place in the night's map: joins the frame's media-index row
     os.makedirs(ROOM_DIR, exist_ok=True)
     with transaction(STORE):
         rows = bookmarks()

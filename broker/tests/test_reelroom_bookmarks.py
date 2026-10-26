@@ -67,7 +67,7 @@ check("the words are exactly as said, with speaker and journal time",
       b1["turns"][0] == {"id": "%s:t1" % sid, "speaker": "gloria", "words": "is that the same staircase", "at": t0}
       and b1["turns"][1]["words"] == "it is, and she knows it" and b1["turns"][1]["speaker"] == "vintos", b1["turns"])
 check("no player time when none was given (not taken from the app's film clock)", "player_seconds" not in b1, b1)
-check("the scene is his reading, labelled as his", b1["scene"] == {"reading": "a bell tower from below, grey light", "whose": "his reading of a frame"}, b1.get("scene"))
+check("the scene is his reading, labelled as his", b1["scene"] == {"reading": "a bell tower from below, grey light", "whose": "his reading of a frame", "index": 0}, b1.get("scene"))   # index: its place in the night map, for the media-index join
 check("session id, film and who kept it", b1["session_id"] == sid and b1["film"] == "Vertigo" and b1["by"] == "gloria", b1)
 check("no frame or screen material is kept", set(b1) <= {"id", "session_id", "film", "year", "turn_ids", "turns", "by", "kept_at", "player_seconds", "scene"}
       and "base64" not in json.dumps(b1) and "jpg" not in json.dumps(b1), sorted(b1))

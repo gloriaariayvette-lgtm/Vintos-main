@@ -151,6 +151,8 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
             result = await __import__("asyncio").to_thread(voice_local.models, False)
             try: os.unlink(voice_live_path)
             except OSError: pass
+            try: voice_local.end_call()   # embed this call's held audio in a batch, then delete it (media_embed.py)
+            except Exception as exc: print("[watch/voice-end] media index:", str(exc)[:160], flush=True)
             return result
         except Exception as exc:
             return {"ok": False, "error": str(exc)[:240]}

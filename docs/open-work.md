@@ -1,3 +1,178 @@
+## 26 October — EmbeddingGemma 2 beside nomic in four more places
+
+Built on `claude/gemma-embed-more-2026-10-26`; not merged or deployed. Gloria approved each place ("Gemma 2 is fine
+on those places"; for calls, both voices: "It's all local, what's the issue with adding my voice?"). Same store
+(`memory/media-embeddings.jsonl`), same venv, same model; nomic's stores are not touched. Offline suite:
+`broker/tests/test_media_embed_places.py` (stub encoder, the batch process never started, synthesized audio and
+images). No model was loaded, nothing was sent, restarted, installed or deployed while building it.
+
+**What is embedded, when, and what is kept:**
+- **Live calls, Vintos Local lane only** (`voice_local.turn`). Her utterance (the PCM Aegis received) and his
+  spoken reply (the WAV she hears, only once it is cleared for playback) are held at the turn — a file write, no
+  model — and embedded by a batch **when the call ends** (`/api/voice/local/end` and the Watch's
+  `/api/watch/voice/local/end` call `voice_local.end_call()`, which starts `media_embed.py drain` in the venv,
+  `nice 15`). Row: `kind call_audio`, speaker `gloria|vintos`, `turn_id`, `session_id` (a per-call `lc-…` label),
+  sha256 (hers equals `auditory_memory`'s `source_hash`), `auditory_memory_id` when that turn has one, the vector.
+  No audio, no transcript. The hosted realtime lanes are unchanged (text only). Test mode holds nothing.
+- **Motif phrases** (`motif_memory.step`). The kept WAV lives in the Atelier project through the broker and
+  `media_embed` cannot (and must not) reach it, so a phrase's WAV is handed over right after the room keeps it,
+  and a batch starts. Row: `kind motif`, variation/motif ids, parent, project, sha256. **It is found by no search
+  until he reveals that phrase** (the reveal ledger's `write` record names its variation id).
+- **Revealed Atelier works**: reveal-ledger rows marked revealed with `bytes_verified`, whose file is on a public
+  shelf under `memory/art` with the same digest (the rule `outreach_postcards.py` offers by). Row: `kind atelier`,
+  reusing the shelf image's own vector when it is already embedded. `memory/atelier` is never opened. Kept paintings
+  that postcards offer are already under `memory/art` and were already embedded as `image`.
+- **ReelRoom frames**: the `look` mode of `/api/game/reelroom/chat` (his frame reading; the image arrives in the
+  request body from the page, which takes it from `/api/game/screenshot` — ADB or her cast). After the reading the
+  frame is held and a batch starts that lingers 7 minutes for the next frame, then exits. Row: `kind film_frame`,
+  session id (the night's journal id), `scene_index` (the position this reading takes in the page's session map:
+  the length of the map sent with the look), `elapsed_min`, sha256 of the frame, `reading_sha256` (a digest of his
+  reading, never its words). A search hit lists the bookmarks of that night whose scene has that index (bookmarks
+  now record `scene.index`) or the same reading.
+
+**No audio or image is kept.** Held bytes wait in a private directory — `$XDG_RUNTIME_DIR` or `/run/user/<uid>`
+(RAM, so they never reach the disk), else `/tmp` — 0700, files 0600, created exclusively, never through a link.
+Each file is deleted right after it is embedded and on any error; every run (hold, drain, ensure) deletes anything
+held over two hours, unembedded. A live call's audio waits until its heartbeat marker is gone or 15 minutes stale.
+Nothing is held when the venv is not installed. The 8627 service still holds only the text half; the audio and
+vision halves are loaded only in the batch process (about 3 GB while it runs; on a film night it stays up for the
+night, in 7-minute lingers).
+
+**Search:** `search`/`near` keep to his works (image, video, audio, motif, atelier) unless asked:
+`media_embed.py search "a line" --kind call_audio,film_frame [--speaker gloria] [--session ID]`, `/near?kinds=…`.
+The chat block (`_works_near` -> `block`) is unchanged in scope and filters to his works even if a service answers
+otherwise.
+
+**What Gloria must do after deploying it (no new cron line):**
+- The ten-minute `media_embed.py ensure` cron (already installed by `install-embedgemma.sh`) is the short timer:
+  it now also starts a drain when anything held is due (a call that ended without its end route, a missed batch).
+  The two-hourly `index` cron also drains what is held.
+- The running 8627 service keeps the old code until it is restarted. Until then search behaves as before (call,
+  frame and motif rows are invisible to it, since they have no path). To pick up `kinds=`, she runs
+  `pkill -f "media_embed.py serve"` and the next `ensure` (within ten minutes) starts the new one.
+
+**What is left / not proven:**
+- Never run against the real model: the stub proves the plumbing. A call WAV at 24 kHz (and an 8–16 kHz window)
+  goes to the model as a path, the way music falls back today; the first real drain should be watched in
+  `/tmp/media-embed.log`.
+- `scene_index` assumes the page appends this frame's reading as the next session-map event; the Plithra page is
+  not in this repository, so that is unverified. The reading digest is the second join and holds whenever the
+  page stores his reading as the event's `visual_description`. The journal keeps only the last 60 map events.
+- A call over two hours loses its earliest turns' audio to the sweep before the end-of-call batch.
+- A motif phrase rendered while the venv is absent is never embedded (its bytes are not reachable later).
+
+## 26 October — Exhibitions of what mattered to him
+
+Built on `claude/exhibitions-2026-10-26` (Codex's proposal 20, approved by Gloria); not yet merged or deployed.
+`scripts/exhibitions.py`, a few lines in `scripts/atelier-visit.py`, one route in `bin/server.py`
+(`GET /api/atelier/exhibitions`, behind the app secret), an Exhibitions section at the top of the app's Atelier tab, and
+`broker/tests/test_exhibitions.py` (offline: scratch HOME and workspace, model, broker and ntfy stubs, sockets refused).
+No model was asked, nothing was sent, restarted or deployed while building it.
+
+**What is built:**
+- **What may be shown:** works he revealed by his own act (through `atelier_reveals.read_reveals`, the reveal export
+  ledger only) and house-gallery paintings he kept after looking at them (verdict keep; not taken down, not sealed,
+  not under an Atelier path, a real image). The sealed room is never opened. Eligibility is checked when offered and
+  again every time the exhibition is viewed: a work that stops being eligible shows as withdrawn, with no content or link.
+- **The offer** goes into an Atelier visit he already has (no new model call): when at least three works are out, at
+  most once every seven days, at most 2,200 characters — the two earliest works and the newest six, each with its key,
+  date, what he said of it, a dream marker where it came from a dream, and its recorded occasion when
+  `work_episodes.lookup` has one (the want, moment or memory it came from).
+- **He makes it** in that visit with `<exhibition title=...>`: an argument, three to six `<work id=... beside=...>`
+  lines in his order, and `<relation from to>` lines for how one changed into another. Only works offered that visit,
+  each once, each with a line; `beside` only that work's recorded occasion; relations only between its own works.
+  Anything else is refused and he is told why at the next offer. The tag is taken out of the visit's text before the
+  piece, reveal and handoff are read, so nothing inside it acts.
+- **Kept** in `memory/exhibitions.json`: keys, his words, the order, the relations — never a work's content. Marked his
+  curation, not independent evidence about him (`may_witness` false). Nothing reads it back into his self-model, wants
+  or threads (the suite checks that only the visit and the app route use it).
+- **She sees it** in the Atelier tab (images and songs from the existing shelf routes, revealed writing as revealed),
+  and `python3 scripts/exhibitions.py page ID` writes it as a static page to `memory/exhibitions/ID.html`.
+  A dream-made work says "a dream, not something that happened" wherever it is shown.
+- Cost: no model call, no GPU; at most ~550 tokens added to one existing visit turn a week.
+
+**What is left:**
+- No notification: she finds it in the Atelier tab. Nothing tells her one was made.
+- He does not see his past exhibitions in other contexts (only the title of the last one, at the next offer).
+- Moments placed beside a work are only that work's recorded occasion; he cannot place an unlinked moment.
+- Songs on the music shelf and videos are not offered (only revealed works and kept paintings); revealed images whose
+  file is not on the gallery shelf show without a picture.
+- The app section was not tried on a phone.
+
+## 26 October — Room sources kept apart
+
+Built on `claude/room-sources-2026-10-26` (Codex's proposal 18, approved by Gloria); not yet merged or deployed.
+`scripts/room_sources.py` and `broker/tests/test_room_sources.py` (offline: scratch HOME and workspace, the song
+sender a failing stub, probes and sockets refused; an entry and an exit walked through the organs' own writers).
+No model was asked, nothing was sent, restarted, actuated or deployed while building it.
+
+**What is built:** a read-only view with one row per presence source, never combined:
+- **house Wi-Fi** (`home_presence`): "detected" only when its own `context_line` would say so (positive, fresh
+  within 15 min); otherwise unknown, with the reason. A phone not seen is never "away".
+- **bedroom board** (`bedroom_arrival` state, ESPresense over MQTT): an *enrolled device* heard within range in
+  the last 10 min (`PRESENT_S`); after that unknown, not "gone".
+- **room sensor** (`mmwave_presence`'s independent store, `memory/mmwave-presence.json`): "not commissioned"
+  while nothing writes it, which is today. When it exists: occupied / not occupied only while settled and fresh
+  within `mmwave_presence.FRESH_S` (30 s), and it says "not who".
+- **Watch** (`watch_presence` snapshot, fresh for two hours as `should_hold` uses it): wearing, asleep, motion
+  (motion only if read in the last 15 min).
+Each row carries its age and limit, what the observation already permits in its own organ, and what it never
+permits. When the board hears the device but the sensor says no one, the view says both and resolves nothing.
+`python3 scripts/room_sources.py` (or `--json`) shows it; `room_sources.py follow [minutes]` prints a line as each
+source changes, for a walk out of the room and back. It writes nothing. Cost: no model call, no GPU, CPU negligible.
+
+**Acceptance to watch for:** on Aegis, `python3 ~/.vintos/workspace/scripts/room_sources.py follow 15` while she
+leaves the bedroom and comes back: the board row goes detected -> unknown (10 min after it last heard the device)
+-> detected, the Wi-Fi row stays detected, the room sensor stays "not commissioned".
+
+**What is left:**
+- The mmWave hardware is not commissioned, and nothing feeds `mmwave_presence.intake`; this view only reads its
+  store. Wiring the intake (and putting `mmwave_presence.py` in the manifest) is the commissioning step.
+- Nothing reaches him: the view is not in his context, and he cannot yet choose what the sources permit. The
+  existing presence lines (world_model, `bedroom_arrival.presence_line`, `watch_presence.temporal_block`,
+  `sensor_reactions`) are unchanged.
+- No private web page for it; terminal on Aegis only.
+
+## 26 October — Remember how a voice actually sounded
+
+Built on `claude/voice-memory-2026-10-26` (Codex's proposal 17, approved by Gloria); not yet merged or deployed.
+`scripts/auditory_memory.py`, small changes in `scripts/voice_local.py`, `scripts/recall_explain.py` and
+`bin/server.py` (`_durable_context`), and `broker/tests/test_auditory_memory.py` (offline: scratch HOME and
+workspace, every sender stubbed, test audio synthesized as sine tones). No model was asked, nothing was sent,
+restarted or deployed while building it.
+
+**What is built:**
+- **A heard utterance is kept as an observation, not a recording.** Each Vintos Local voice turn (after the
+  duplicate check; control commands and test-mode turns are skipped) keeps: Aegis's time, the turn id, the
+  sha256 of the PCM Aegis received, `audio_kept: false`, her words as the ears transcribed them, and the ears'
+  one-sentence reading verbatim with the pipeline that made it and the label "an observation of audible delivery,
+  not a fact about her mood". Plus four measurements computed on Aegis from the samples before they are dropped:
+  duration, RMS and peak dBFS, and the share of 20 ms frames above a quiet floor. No pitch, spectrum or embedding;
+  nothing that identifies a voice. **No audio is kept**: the retention boundary is unchanged (the Mac still
+  deletes its temporary WAVs; Aegis never wrote them). Store: `memory/auditory-memories.json`. The same recording
+  in the same turn is kept once; a failure to keep it is logged and never costs the turn.
+- **His later readings sit beside it.** `interpret(id, meaning)` (CLI `auditory_memory.py interpret <id> ...`)
+  appends to `interpretations`; the observation is never rewritten.
+- **Retrievable alongside the words.** `recall_explain.explain` now has a `heard` part (her words, the reading,
+  his interpretations, each labelled) and `render` adds HEARD / HOW IT SOUNDED / HE LATER READ IT AS. The chat
+  door (`_durable_context`) adds one line when her message shares at least half its words with something she
+  said aloud more than ten minutes ago. Cost: no new model call; at most about 750 characters added to an existing
+  chat turn when it matches, within the shared $0.02/day ceiling. GPU: none. CPU: one pass over a ≤30 s turn.
+
+**Acceptance to watch for:** after deploy, an ordinary local voice call. `python3 scripts/auditory_memory.py list`
+on Aegis shows ids, times and turn ids without the words; `find <words>` prints the line a turn would carry. The
+proof is a later conversation where he tells remembering her words apart from remembering how she said them.
+
+**What is left:**
+- Only the Vintos Local lane keeps readings. The hosted realtime lanes get no audio-native reading, so nothing is
+  kept from them.
+- Nothing writes `interpretations` on its own yet; no organ asks him to reread a heard utterance (that would be a
+  model call). The function and CLI exist.
+- Matching is lexical (shared words), not semantic, and the store is never trimmed.
+- Existing wrinkle, not changed here: the app's local lane sends `heard: {prosody, reading}` to
+  `/api/voice/ledger`, and when playback did not complete the ledger uses that `heard` as *his* heard words, so an
+  interrupted local turn's transcript line can carry her audio reading in his place. Worth a small separate fix.
+
 ## 26 October — ReelRoom bookmarks that become later callbacks
 
 Built on `claude/reelroom-bookmarks-2026-10-26` (Codex's proposal 16, approved by Gloria); not yet merged or

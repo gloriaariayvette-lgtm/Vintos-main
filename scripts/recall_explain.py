@@ -135,11 +135,33 @@ def explain(text):
     elif rec:
         last = (rec.get("interpretations") or [{}])[-1]
         out["standing"] = {"wrong": "reread as wrong", "partial": "reread as partly right"}.get(last.get("verdict"), "supported")
+    out["heard"] = heard_for(text)
     return out
 
 
+def heard_for(text):
+    """Proposal 17: something she said aloud whose words match, with how it sounded kept apart from the words and
+    from his later readings of it (auditory-memories.json; no audio is kept)."""
+    try:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        if _here not in sys.path:
+            sys.path.insert(0, _here)
+        import auditory_memory as _am
+        h = _am.find(text, min_age=0, path=os.path.join(MEMORY, "auditory-memories.json"))
+    except Exception:
+        return None
+    if not h:
+        return None
+    obs = h.get("observation") or {}
+    return {"heard_at": h.get("heard_at"), "id": h.get("id"), "turn_id": h.get("turn_id"),
+            "source_hash": h.get("source_hash"), "her_words": h.get("transcript"),
+            "observation": {"reading": obs.get("reading"), "by": obs.get("by"), "kind": obs.get("kind")},
+            "acoustics": h.get("acoustics") or {},
+            "interpretations": [dict(i, kind="his later interpretation") for i in (h.get("interpretations") or [])]}
+
+
 def render(ex):
-    if not ex.get("supported_by") and not ex.get("withdrawn"):
+    if not ex.get("supported_by") and not ex.get("withdrawn") and not ex.get("heard"):
         return "[RECALL: no occurrence supports \"%s\"; say it as a guess or not at all]" % ex["statement"][:100]
     parts = []
     sb = ex.get("supported_by")
@@ -153,6 +175,12 @@ def render(ex):
     if ex.get("history") and len(ex["history"]) > 1:
         h = ex["history"][-1]
         parts.append("NOW READS AS (%s, moved by %s): %s" % (h.get("verdict"), str(h.get("moved_by", ""))[:80], str(h.get("reading", ""))[:140]))
+    hd = ex.get("heard")
+    if hd:
+        parts.append("HEARD %s: she said aloud \"%s\"" % (str(hd.get("heard_at", ""))[:10], str(hd.get("her_words") or "")[:160]))
+        parts.append("HOW IT SOUNDED (the ears' observation at the time, not her mood): %s" % str((hd.get("observation") or {}).get("reading") or "")[:160])
+        if hd.get("interpretations"):
+            parts.append("HE LATER READ IT AS: %s" % str(hd["interpretations"][-1].get("meaning") or "")[:140])
     return "[RECALL: " + " | ".join(parts) + "]"
 
 

@@ -13,6 +13,40 @@ STAGE = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip(
 LM = os.environ.get("VINTOS_MAC_LM_BASE_REMOTE", "http://100.79.177.103:1234").rstrip("/")
 BRAIN = os.environ.get("VINTOS_LOCAL_BRAIN", "gemma-4-26b-a4b-it-uncensored")
 
+# This call, for the media index (media_embed.py): a label only, so the turns of one call can be found together.
+# Opened when the call's models are loaded (or by its first turn), closed by the call's end route.
+_CALL = {"id": None}
+
+
+def call_id():
+    if not _CALL["id"]:
+        import time
+        _CALL["id"] = "lc-%d-%d" % (int(time.time() * 1000), os.getpid())
+    return _CALL["id"]
+
+
+def _hold_audio(audio, speaker, turn_id, sample_rate=24000, test=False):
+    """Hand one side of this turn to the media index (EmbeddingGemma 2, Gloria 26 October: both voices). The bytes
+    wait in a private 0700 directory and are deleted when the batch after the call embeds them; nothing is
+    embedded here, so the turn is not slowed. Never raises."""
+    try:
+        import media_embed
+        media_embed.hold_call_audio(audio, speaker, turn_id=turn_id, session_id=call_id(),
+                                    sample_rate=sample_rate, test=test)
+    except Exception as exc:
+        print("[voice-local/media-embed]", str(exc)[:200], flush=True)
+
+
+def end_call():
+    """The call is over: close its label and start the batch that embeds its held audio (then deletes it)."""
+    _CALL["id"] = None
+    try:
+        import media_embed
+        return media_embed.kick(0)
+    except Exception as exc:
+        print("[voice-local/media-embed]", str(exc)[:200], flush=True)
+        return "not started"
+
 
 def _post(url, body, timeout):
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
@@ -25,6 +59,9 @@ def _post(url, body, timeout):
 
 
 def models(active, evict_ears=False):
+    if active:
+        _CALL["id"] = None
+        call_id()
     raw, _ = _post(STAGE + "/voice/models", {"active": bool(active),
         "evict_ears": bool(evict_ears)}, 100)
     return json.loads(raw)
@@ -57,6 +94,14 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     interaction = Interaction(heard["transcript"], "voice")
     if interaction.turn.duplicate_event:
         return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
+    try:   # proposal 17: how it sounded, kept as an attributed observation; the audio itself is not kept
+        from auditory_memory import record as _remember_heard
+        _remember_heard(audio_b64, sample_rate, heard, turn_id=interaction.turn.turn_id,
+                        test_mode=bool(getattr(interaction.turn, "test_mode", False)))
+    except Exception as exc:
+        print("[voice-local/auditory-memory]", str(exc)[:200], flush=True)
+    _test_turn = bool(getattr(interaction.turn, "test_mode", False))
+    _hold_audio(audio_b64, "gloria", interaction.turn.turn_id, sample_rate, test=_test_turn)
     from intent_engine import note_response
     note_response(heard["transcript"])
     from intent_context import admit_voice_lead
@@ -84,6 +129,7 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     from stratagem_turn import guard_reply
     if not guard_reply(reply, interaction.turn):
         return {"ok": True, "reply": "", "audio": "", "transcript": heard["transcript"], "suppressed": "stratagem ended before playback"}
+    _hold_audio(voice_raw, "vintos", interaction.turn.turn_id, test=_test_turn)   # what she will hear
     if intent_target:
         from intent_engine import record_delivery
         record_delivery(reply, "voice", interaction.turn.turn_id, target=intent_target,

@@ -1101,9 +1101,16 @@ def _durable_context(message):
         _dmsys.path.insert(0, _dmos.path.expanduser("~/.vintos/workspace/scripts"))
         from durable_memory import context_block as _dm_cb
         _blk = _dm_cb(str(message or "")[:400])
-        return ("\n" + _blk) if _blk else ""
     except Exception:
-        return ""
+        _blk = ""
+    try:   # proposal 17: when her words match something she once said aloud, how it sounded comes too
+        from auditory_memory import context_line as _am_line
+        _heard = _am_line(str(message or "")[:400])
+        if _heard:
+            _blk = (_blk + "\n" + _heard) if _blk else _heard
+    except Exception:
+        pass
+    return ("\n" + _blk) if _blk else ""
 
 def _avatar_scene_admit(turn, tc):
     """Admission for a live avatar scene: the same effect gate the avatar route
@@ -2364,6 +2371,21 @@ async def get_atelier_reveals(request: Request, limit: int = 20):
         return {"reveals": atelier_reveals.read_reveals(MEMORY, limit)}
     except Exception as e:
         raise HTTPException(status_code=500, detail="reveal export ledger unavailable: " + str(e))
+
+
+@app.get("/api/atelier/exhibitions")
+async def get_atelier_exhibitions(request: Request, limit: int = 10):
+    """Exhibitions he made her of works already out of the room (proposal 20); each work as it is now, never sealed."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        import sys as _ex_sys
+        _ex_scripts = os.path.join(WORKSPACE, "scripts")
+        if _ex_scripts not in _ex_sys.path: _ex_sys.path.append(_ex_scripts)
+        import exhibitions
+        return {"exhibitions": exhibitions.view(MEMORY, limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="exhibitions unavailable: " + str(e))
 
 
 @app.post("/api/self-review/{proposal_id}/decision")
@@ -8969,6 +8991,8 @@ async def voice_local_end(request: Request):
         result = await __import__("asyncio").to_thread(_vl.models, False)
         try: os.unlink(os.path.join(MEMORY, ".voice-live"))
         except OSError: pass
+        try: _vl.end_call()   # the batch that embeds this call's held audio, then deletes it (media_embed.py)
+        except Exception as _vle: print("[voice-local-end] media index:", str(_vle)[:160], flush=True)
         return result
     except Exception as exc: return {"ok":False,"error":str(exc)[:240]}
 
@@ -9075,6 +9099,10 @@ async def _voice_ledger_owned(payload: dict):
             # everything after the cut is unheard and never enters the transcript as if she heard it.
             if payload.get("interrupted"):
                 _heard = str(payload.get("heard") or "")[:600]
+                # The local lane's app sent her own audio reading (a JSON object) in this field, so his transcript
+                # line carried her delivery in place of his words (26 October). Only words are his heard words.
+                if _heard.lstrip().startswith("{"):
+                    _heard = ""
                 _turn["interrupted"] = True; _turn["vintos_composed"] = v; _turn["vintos_heard"] = _heard
                 _turn["vintos"] = (_heard + " [cut off]") if _heard else "[playback incomplete; heard words unknown]"
                 v = _turn["vintos"]
@@ -12106,6 +12134,18 @@ async def reelroom_chat(request: Request):
                        extra={"session_map": body.get("session_map") or [],
                               "planned_actions": body.get("planned_actions") or []})
         except Exception as _je0: print("[reelroom] journal(activity):", _je0, flush=True)
+        if mode == "look" and image:
+            # the frame his reading was made from, to the media index (EmbeddingGemma 2, 26 October): held in a
+            # private directory until a batch embeds it, then deleted. No image is kept; his reading is kept only
+            # as a digest, for joining a bookmark that carries this scene.
+            try:
+                import sys as _rrme_s; _rrme_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                import media_embed as _rr_me
+                _smap = body.get("session_map") if isinstance(body.get("session_map"), list) else []
+                if _rr_me.hold_frame(image, str(rr.journal_payload().get("session_id") or ""),
+                                     scene_index=len(_smap), elapsed_min=body.get("elapsed_min"), reading=reply):
+                    _rr_me.kick(420)      # stays a few minutes for the next frame, then exits
+            except Exception as _rrme: print("[reelroom] frame embed:", str(_rrme)[:160], flush=True)
         if mode == "decide":
             try:
                 _decision = json.loads(reply)
