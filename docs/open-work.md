@@ -1,3 +1,44 @@
+## 26 October — ReelRoom bookmarks that become later callbacks
+
+Built on `claude/reelroom-bookmarks-2026-10-26` (Codex's proposal 16, approved by Gloria); not yet merged or
+deployed. `scripts/reelroom_bookmarks.py`, small changes in `scripts/reelroom.py` and `bin/server.py`, and
+`broker/tests/test_reelroom_bookmarks.py` (43 checks, offline: scratch HOME and workspace, `robot_core` and every
+sender stubbed). No model was asked, nothing was sent, cast, restarted or deployed while building it.
+
+**What is built:**
+- **Every journaled turn has an id.** The night's journal (`memory/reelroom/live-session.json`) now gives each turn
+  `<session>:t<n>` and the wall-clock time the server journaled it. When the app sends a longer history, a turn
+  with the same words at the same place keeps its id and time; a turn only the app saw gets a new id and no time.
+  Ids are never reused. The ledger row's transcript is unchanged in shape.
+- **A bookmark is a pointer, not a recording.** Session id, the journal ids of the remark and its answer, their
+  words copied exactly (cut at 1,200 characters and marked when longer), who said each, the journal time, who kept
+  it, and the player's position **only when the caller supplies `player_seconds`** (never taken from the app's film
+  timer). A scene is at most his own frame reading's text, stored as "his reading of a frame"; no image, frame or
+  screen material is kept. Three a night at most; the same exchange twice is one bookmark; nothing is ever trimmed.
+  Store: `memory/reelroom/bookmarks.json`.
+- **Who keeps one.** He does, by writing `[KEEP]` in a ReelRoom reply (told how in the ReelRoom prompt). It is
+  stripped in the ReelRoom reply path before history and the ledger, so she never sees or hears it; once the turn
+  is journaled, that exchange is kept with the newest frame reading. She can keep one through
+  `POST /api/game/reelroom/bookmark` (`turn_id` or latest, optional `scene_index`, optional `player_seconds`);
+  `GET /api/game/reelroom/bookmarks` lists them.
+- **A later night calls back.** The ReelRoom surface context carries at most two bookmarks from earlier nights,
+  newest first, the words quoted exactly with who said them, player time only where it was given, and any scene
+  labelled "your own reading of a frame, not a record of the film". Tonight's own are left out (they are already in
+  the history). Cost: no new model call; at most about 1,200 characters added to existing ReelRoom turns, within
+  the shared $0.02/day ceiling. GPU: none. CPU: a JSON read per turn.
+
+**Acceptance to watch for:** after deploy, an ordinary film night where he writes `[KEEP]` (or nothing happens:
+he may not choose to). `python3 scripts/reelroom_bookmarks.py list` on Aegis shows ids, film, who kept it and turn
+ids without the words; `block` prints what a later night would be shown. The proof is a later night where he
+returns to the right remark, quoted as it was said.
+
+**What is left:**
+- The Plithra app has no bookmark button yet; the route exists, the page does not call it, and it does not send
+  `player_seconds`, so until it does no bookmark carries player time.
+- His unprompted mid-film lines (the decide path) are not offered `[KEEP]`; only his replies to her turns are.
+- Callbacks are offered only in ReelRoom. Ordinary chat does not see them.
+- Earlier nights already committed have no turn ids and cannot be bookmarked; only nights journaled after deploy.
+
 ## 26 October — Scientific correspondence with something earned to say
 
 Built on `claude/earned-correspondence-2026-10-26` (Codex's proposal 14, approved by Gloria); not yet merged or
