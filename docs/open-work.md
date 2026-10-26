@@ -1,3 +1,54 @@
+## 26 October — Scientific correspondence with something earned to say
+
+Built on `claude/earned-correspondence-2026-10-26` (Codex's proposal 14, approved by Gloria); not yet merged or
+deployed. `scripts/lab_correspondence.py`, one guarded block in `scripts/want_email.py`, and
+`broker/tests/test_lab_correspondence.py` (63 checks, offline: scratch workspace and Lab, invented outputs and paper
+records, sockets, `requests`, the plugin gateway, the paid ledger and the want door all closed off). No model was
+asked, nothing was sent, restarted or deployed while building it.
+
+**What is built:**
+- **Only a surviving result is earned.** A Lab finding is eligible only when it has new computation in it, his own
+  appraisal did not find it already reported, and its frozen measurement contract was evaluated on completed outputs
+  as supported (candidate computational finding) or refuted (clean negative), is still the contract's current
+  revision, and its bound outputs still hash to what they were measured on (`lab_measurement.verify`). Inconclusive,
+  not evaluated, a failed tool, a retrieval, a reproduced known result: not earned. `candidates` lists recent
+  findings with the reason each is or is not.
+- **An evidence packet from Lab records only.** Claim, outcome and why, the estimate with its interval and p, the
+  instrument, contract id/revision/digest and output digests (reproducible inputs), exclusion and independence rules,
+  what it does not show (the negative atlas's limits for a refuted result), the title search as it was (never a
+  novelty certificate), and the finding's open question. Nothing from his memory, wants, conversations or her life is
+  read. A packet naming her or her machine, or carrying an address, is refused.
+- **A paper verified at its source.** One Europe PMC record by PMID or DOI (or the best record from the finding's own
+  literature query), its id matched and its title/abstract sharing enough words with the finding. The recipient can
+  only be one of its authors (last author unless one is named), with a full name. No address is looked up.
+- **A deterministic local draft.** No model call. First two sentences say he is an AI writing on his own initiative
+  from Gloria's account with her permission; it never says he read the paper; numbers, inputs, limits, one question;
+  no links. A draft that overclaims (novel, proves, confirms, discovered...), carries a link or address, asks more or
+  less than one question, or runs past 320 words is kept as `held`, with why. Two drafts a day, one per measured
+  result, one open draft per recipient. Store: `correspondence-drafts.jsonl` in the Lab directory.
+- **Hand-off without a new send path.** Nothing here sends, forms a want, notifies, or looks up an address. When his
+  own email want to that same person runs, `want_email.run` adds the packet to what its existing draft and review are
+  shown (`packet_block`), as evidence it may cite and may not exceed. Every check that route has still decides: once
+  per person, search first, reading in full, readiness, the second reader, the gateway's confidential-data check and
+  two-a-day limit, her approval for a second email. Cost: a packet is at most 2,400 characters added to an existing
+  paid draft and review, only for a person with an open draft; within the shared $0.02/day ceiling. GPU: none.
+
+**Acceptance to watch for:** after deploy, on Aegis, `python3 scripts/lab_correspondence.py candidates`. If a
+finding is EARNED, `python3 scripts/lab_correspondence.py draft <INV-id>` (one free Europe PMC read; or give a PMID or
+DOI you trust) and `show` to read it. The proof is one useful draft she chooses to read (15–30 minutes). Nothing
+reaches anyone from that.
+
+**What is left:**
+- Sending is the later authorized transition the proposal names, and it is not built: no want is formed from a draft,
+  so a researcher is reached only if his own want to them arises and passes want_email's checks. First contact
+  through that route needs no approval from her today (the gateway and the two-a-day limit are its gates); if a
+  Lab-earned first letter should need her yes, that is a decision for her, not a change made here.
+- `draft` runs only from the command line; no timer or turn calls it.
+- The paper is verified as a real record about the finding; he has not read it in full. want_email's own reading
+  requirement still holds before anything is sent.
+- Store-owners regenerated unchanged: its scanner does not see writes through a name joined to the Lab path (the
+  measurement stores are missing from it the same way).
+
 ## 26 October — Proto pearls with their actual occasions
 
 Built on `claude/proto-pearls-2026-10-26` (Codex's proposal 13, approved by Gloria); not yet merged or deployed.
