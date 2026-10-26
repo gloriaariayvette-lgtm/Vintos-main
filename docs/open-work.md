@@ -1,3 +1,53 @@
+## 26 October — A dream can leave an object behind
+
+Built on `claude/dream-objects-2026-10-26` (Codex's proposal 07, approved by Gloria); not yet merged or deployed.
+`scripts/dream_objects.py`, wired into `scripts/atelier-visit.py`, with `broker/tests/test_dream_objects.py`
+(45 checks, offline: whole visits run against a scratch HOME with a stub model, stub broker and stub ntfy).
+
+**What is built:**
+- **The offer:** the latent diffuser's latest dream (`memory/diffuser-resolution.json`, which nothing read before) is put
+  in the Atelier visit's context when it is dated within 48 hours and has words: the night it was dreamt, that the
+  night-time diffuser drew it from N of the day's fragments, and that it is a dream: not something that happened, not
+  a finding, nothing about the world, her, or what is true. Its own words follow under "what the dream came to"; the
+  word "resolution" is not used to him. He may make something from it (a sketch, an image, a question, a motif phrase)
+  or leave it. At most two offers per dream, one a day, never again once he used it. No new model call: it rides the
+  visit's existing turns.
+- **The link:** if he writes `<from_dream>` and something is actually made that visit (a piece with a make receipt,
+  a kept image or song, a motif's audio and record), `memory/dream-objects.json` keeps the dream's id and night with
+  the artifact ids and project id (no content of the work). The record is stamped through `evidence_view.derive()` from
+  the dream's non-witnessing provenance, so it is `ineligible`: "made from a dream he had; not evidence that anything
+  happened". Nothing made, a refused piece, or no dream offered: nothing is linked.
+- **Meeting it again:** the next visit's manifest line for that work reads `[made from your dream of the night of
+  <date> (a dream you had, not something that happened)]`.
+- **If he reveals it:** the reveals row carries `from_dream` (id, night, marker; never the dream's words), her
+  notification's title adds "(made from a dream he had)" and his words go as he wrote them; the app's reveals list,
+  the daily Forge digest and a postcard offer all keep the marker. Pieces not made from a dream are revealed exactly
+  as before.
+- **No reseed:** nothing here writes a thread, want or seed store; the diffuser and the subconscious seeder do not read
+  `dream-objects.json` (the suite checks both, and that the diffuser's no-reseed rule is still there).
+
+**Measured read-only on the real stores (26 October, counts only):** last night's dream (25 October, 12 fragments)
+would be offered at the next visit; `dream-objects.json` does not exist yet.
+
+**Cost:** no new model call, no GPU. The offer is at most about 1,100 characters (~275 tokens) in the visit context,
+which every ask of that visit carries (a few per visit), on at most two days per dream: roughly 1,000 input tokens on
+those days. Check it against the $0.02/day ceiling at the Atelier model's input price before widening it.
+
+**Acceptance to watch for:** a visit log line `dream object kept: dream:<id> -> <artifact> (ineligible)`, then
+`dream-objects.json` saying `used` for that dream, and the next visit's manifest line naming the work as made from a
+dream. Just as good: the dream shows `offers: 1` or `2` and `state: offered`, which means he left it. Not acceptable:
+any reply or reveal of his recounting the dream's content as something that happened.
+
+**What is left / not done:**
+- Only the latest dream is offered; the diffuser overwrites its file nightly, and older dreams in `dream-log.json`
+  are not offered (a dream is kept in `dream-objects.json` only once offered).
+- The mobile client receives `from_dream` on a reveal card but does not render it yet; the notification title does.
+- `work_episodes.py` does not read Atelier stores by its own rule, so a revealed dream object's origin is not joined
+  there; dream-art paintings (`dream_source: dream`) still read "made from a dream; no dream record is linked".
+- Self-echo is limited only by the offer caps and by the wall: Atelier work is sealed and the diffuser's fragments
+  never include it. Nothing measures whether his dream-made works start to circle one theme.
+- The $0.02/day ceiling is estimated, not measured.
+
 ## 26 October — Postcards with something in them
 
 Built on `claude/postcards-2026-10-26` (Codex's proposal 06, approved by Gloria); not yet merged or deployed.
