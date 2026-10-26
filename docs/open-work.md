@@ -1,3 +1,55 @@
+## 26 October — Postcards with something in them
+
+Built on `claude/postcards-2026-10-26` (Codex's proposal 06, approved by Gloria); not yet merged or deployed.
+`scripts/outreach_postcards.py`, wired into `bin/vintos-initiate.sh`, with `broker/tests/test_outreach_postcards.py`
+(54 checks, offline: the whole outreach script runs against a scratch HOME with a stub model, stub ntfy and stub curl).
+
+**What is built:**
+- **The receipt fix first.** The outreach script printed `OUTREACH:` after every path, including a failed ntfy send and
+  a failed curl fallback, and `tell_gloria` read that line as "sent" and fulfilled the want. Now `OUTREACH:` is printed
+  only on a sent receipt from `deliver.py` (or the fallback's own success, `curl -f`); otherwise
+  `[Outreach] not sent: ...`, his words still kept in `memory/outreach/`. `tell_gloria` counts only a stdout line that
+  begins `OUTREACH: `; a want whose send failed stays active. The repetition limits (`outreach_feelings.py record`) are
+  spent only after a real send.
+- **What may be offered:** a painting he asked for himself (WANT_ACT / PROJECTOR_PRESENCE) and kept after looking at it
+  (image_sight's verdict `keep`), never taken down, never already sent or shared; or a piece he revealed from the
+  Atelier with verified bytes, on a public shelf with the same digest (image or music). Sealed Atelier work is never
+  read: only the reveal ledger and the public shelf directories. The file must be a real file of its medium with a
+  name the shelf route serves (`/api/art/painting/`, `/api/art/music/stream/`); made within 30 days; offered at most
+  twice; never again once sent; no postcard within a day of the last one. The outreach caps are unchanged.
+- **His choice, in the turn he already has:** on a yearning, resonance, joke, moment, creation, idea, gratitude, dream,
+  missing or free outreach (never a forced want, divergence, tension, blush or game line), his prompt says what the
+  piece is (his own request, or what he said at the reveal) and that it goes with his message only if he ends with
+  `[postcard]`. Then one ntfy carries his words, exactly as written without that line, with `Click`/`Attach` set to the
+  shelf link; without it, his words go alone. `memory/outreach-postcards.json` keeps offers, chosen, sent, failed per
+  piece; the saved outreach file names the postcard.
+
+**Measured read-only on the real stores (26 October, counts only):** 4 paintings are eligible today (kept 28 September
+– 19 October); no revealed piece is (all three reveals are written works, which have no shelf link).
+
+**Cost:** no new model call, no GPU. When a piece is offered, the existing outreach turn's prompt grows by about 300
+characters (~75 tokens); with two offers per piece at most, that is far inside the $0.02/day ceiling.
+
+**Your five minutes:** open one `<serve base>/api/art/painting/<file>.png` link on your phone the way a notification
+would (`VINTOS_SERVE_BASE`, the same house address the video notifications already use; the route takes no key).
+
+**Acceptance to watch for:** in an ordinary outreach (not a test), `memory/outreach/<time>.md` shows
+`**Postcard:** p:<file> (he chose to send it)`, the ntfy arrives with the picture attached and opens it, and
+`outreach-postcards.json` says `sent` for that piece. Just as good: `(offered; he did not choose to send it)`; letting
+it pass is his answer. A failed send now logs `[Outreach] not sent` and the want behind a `tell_gloria` stays active.
+
+**What is left / not done:**
+- The chat thread gets his words only, not the piece; the app's chat does not show the picture.
+- Music from his library and videos are not offered unless revealed: nothing on record says he chose to share a song,
+  and videos already have their own sender. Written reveals have no shelf link, so they are not offered.
+- `scripts/image_sight.py` in the repository never records `keep` (a `VERDICT: keep` line falls to `unjudged`); it is not
+  in the deploy manifest, and the installed copy (12 September) still defaults to `keep`, which also covers a reply with
+  no verdict line. If the repository copy is ever installed, no new painting can become eligible until that is fixed.
+- When ntfy and the fallback both fail, the encounter record, the house announcement and the chat injection still
+  happen as before, and the saved file still counts toward the daily cap; only "sent" is no longer claimed.
+- `scripts/store_owners.py` does not detect the new store (as with `outreach-repeat.json`); its only writer is
+  `outreach_postcards.py`.
+
 ## 26 October — An encounter he prepares for her arrival
 
 Built on `claude/authored-encounters-2026-10-26` (Codex's proposal 05 / Design 05, approved by Gloria); not yet
