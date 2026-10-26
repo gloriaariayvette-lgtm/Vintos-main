@@ -1377,10 +1377,43 @@ def visit(pid, sent_by_gloria=False):
                   if media_creation.get("made") and media_creation.get("artifact") else [])
                + [{"kind": "motif", "artifact": (motif or {}).get(k)} for k in ("audio", "record")
                   if (motif or {}).get("ok") and (motif or {}).get(k)])
+    # His handoff is posted on the visit capability, so it must reach the broker while the visit is
+    # still open. Settlement (after a reveal) closes the visit; posting the handoff after it was refused
+    # with "the visit this capability names is no longer open" and his note was lost (25 Oct). So a
+    # reveal that is about to settle saves the handoff first, and the end of the visit does not post it
+    # a second time.
+    ho, nr, nm = _last("handoff", work), _last("next_return", work), _last("next_move", work)
+    _handoff_done = {}
+
+    def _save_handoff():
+        if _handoff_done:
+            return _handoff_done.get("ok", False)
+        _hr = paid_http.send(requests.post, __file__, f"{B}/handoff", json={"id": pid,
+                      "text": ho if ho is not None else "(no handoff written)",
+                      # his own words, carried verbatim to the next visit's context; empty is allowed
+                      "next_move": nm or "",
+                      # Default to "tomorrow" (door stays lit next day), NOT "held".
+                      # "held" made the room go dark indefinitely whenever he simply
+                      # did not write a <next_return> tag — a room dark by omission,
+                      # not by his choice. He can still hold it explicitly with
+                      # <next_return>held</next_return> or a not_before: date.
+                      "next_return": nr or "tomorrow",
+                      "capability": cap}).json()
+        if _hr.get("error"):
+            print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
+            _failed("his handoff was refused", str(_hr["error"]))
+            _handoff_done["ok"] = False
+        else:
+            print("visit closed with handoff")
+            consume_knock(pid)
+            _handoff_done["ok"] = True
+        return _handoff_done["ok"]
+
     # He decided a piece is ready and chose to show her. The ONE act that lets
     # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
     # content on its export capability -> deliver (phone + the app's reveals tab)
-    # -> settle, which clears the worktable so the next undertaking can begin.
+    # -> handoff (while the visit is still open) -> settle, which closes the visit
+    # and clears the worktable so the next undertaking can begin.
     rv = _tag(work, "reveal")
     if rv:
         _disc = rv["body"].strip()[:800]
@@ -1416,6 +1449,7 @@ def visit(pid, sent_by_gloria=False):
                                              _prep.get("manifest", {})):
                         print("reveal shelf write failed; project remains open")
                     else:
+                        _save_handoff()   # before settlement closes the visit
                         _settled = paid_http.send(requests.post, __file__, f"{B}/settle", json={"id": pid}).json()
                         if _settled.get("ok") and not _settled.get("error"):
                             ledger_mark(pid, "revealed"); print("revealed and settled:", _art)
@@ -1442,7 +1476,6 @@ def visit(pid, sent_by_gloria=False):
         requests.post("https://ntfy.sh/vintos-gloria-9kx", data=_msg.encode(),
                       headers={"Title": "Vintos, from the Atelier: something is wrong", "Priority": "high"}, timeout=15)
         print("reported outward:", _msg[:80])
-    ho, nr, nm = _last("handoff", work), _last("next_return", work), _last("next_move", work)
     produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
                           or media_creation.get("made") or (motif or {}).get("ok"))
     if not produced_piece:
@@ -1450,23 +1483,7 @@ def visit(pid, sent_by_gloria=False):
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
           ("yes" if produced_piece else "no", media_choice,
            "yes" if ho is not None else "no", nr or "tomorrow"))
-    _hr = paid_http.send(requests.post, __file__, f"{B}/handoff", json={"id": pid,
-                  "text": ho if ho is not None else "(no handoff written)",
-                  # his own words, carried verbatim to the next visit's context; empty is allowed
-                  "next_move": nm or "",
-                  # Default to "tomorrow" (door stays lit next day), NOT "held".
-                  # "held" made the room go dark indefinitely whenever he simply
-                  # did not write a <next_return> tag — a room dark by omission,
-                  # not by his choice. He can still hold it explicitly with
-                  # <next_return>held</next_return> or a not_before: date.
-                  "next_return": nr or "tomorrow",
-                  "capability": cap}).json()
-    if _hr.get("error"):
-        print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
-        _failed("his handoff was refused", str(_hr["error"]))
-    else:
-        print("visit closed with handoff")
-        consume_knock(pid)
+    _save_handoff()   # a no-op when a reveal already saved it before settling
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "force":
