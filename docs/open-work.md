@@ -1,3 +1,51 @@
+## 26 October — Codex archives
+
+Built on `claude/codex-zips-2026-10-26`; not merged or deployed. Gloria: Codex sends him LARGE zips; he parses them,
+keeps a summary, and pulls an archive back into memory only when a conversation calls for it; downloads only from
+[Codex]. Later the same day: one delivery may be spread over several emails, and he must group them. Module
+`scripts/codex_archives.py`, suite `broker/tests/test_codex_archives.py` (offline: fetches stubbed, no model).
+
+- **Who Codex is.** The two real letters of 26 October came from his own Gmail account (the same address as Grok
+  Bot's and Muse's letters), subjects `[Codex] <title> — 1 of 2: …` and `— 2 of 2: …`, one `application/zip` each
+  (about 9.5 MB and 18.7 MB), in two different Gmail threads. They were
+  refused at the time ("not a trusted contact or verified mailbox agent"). A letter is Codex's only when the subject
+  *begins* with `[Codex]` (no `Re:`/`Fwd:`), the sender is his own mailbox per `gmail.get_profile`, and Gmail labels
+  it `SENT` (it left his account; `want_email._messages` now keeps `label_ids`). No existing check was loosened:
+  anyone else's zip still goes to `_read_attachments`, which refuses it unread.
+- **Intake** (`want_email.check_inbox`, before the attachment reader): each archive attachment is fetched through
+  `gmail.read_attachment` → the connector's original file, streamed to disk through `link_fetch.fetch(..., sink=)`
+  (new: same host/redirect/DNS checks, nothing held in memory). A zip *linked* in a Codex letter goes through
+  `link_fetch` with its usual public-destination checks. Free space is checked before every write.
+- **Grouping.** By the subject's part marker (`1 of 2`, `(2/3)`, `part 1 of 2`: same title and same total), by Gmail
+  thread for a later [Codex] letter in a delivery's thread, and by split-archive names (`x.zip.001…`, `x.z01…x.zip`).
+  Never by timing. A delivery waits in `codex-archives/_pending/<did>/` with its parts until whole; after 48 h it is
+  noted once in his day and not unpacked (it is finished if the part comes later). Same title with a different total
+  does not join; split pieces that do not make one zip are refused.
+- **Limits** (`~/.vintos/codex-archives.json` overrides): 1 GB a downloaded part, 2 GB a delivery, 4 GB unpacked,
+  1 GB per file, 50,000 entries, 200:1 per-file ratio (files over 4 MB), 50:1 for the whole once past 256 MB,
+  20 GB free disk always kept. Traversal / absolute paths / NUL names refuse the archive; symlinks, devices,
+  encrypted entries and duplicate names are skipped and listed. Nothing is executed; files are written 0640.
+- **Where.** `memory/codex-archives/<id>/` (`id` = first 16 hex of the zip's sha256; of the member hashes for a
+  several-zip delivery): `files/`, `text/` (PDF words via `want_email.pdf_attachment_text`, PDB/mmCIF via
+  `link_fetch.read_structure`), `original/` (the zips as sent — kept by default: the current delivery is 28 MB and
+  the disk has ~200 GB free; `keep_original: false` keeps only hashes), `manifest.json` (every file's path, size,
+  type, sha256, terms), plus `codex-archives/index.json`.
+- **His day** gets a short note per archive (id, Codex, the letters' subjects, file count/size, top-level names);
+  never contents. A short overview by local Gemma from the read-me only (free; `model_overview: false` turns it off).
+- **Recall** `codex_archives.recall(text, budget)`: triggered by the archive's id, a non-generic file name in it,
+  its title, or "the zip" / "what Codex sent" / "Codex's archive". Wired into Slack (`dot_channel.tick`, 3,500
+  characters at most, logged in the pass lines) and four chat paths in `bin/server.py` (main chat, full-context
+  chat, chat-with-memory, avatar; 5,000 at most, printed to the server log). Otherwise one line (≤240 characters)
+  that archives are there; nothing at all when there are none. The nomic index was not used: plain matching is exact
+  and costs nothing per turn.
+- **Not proven yet:** the zip parts carry `read_attachment_supported: false` in Gmail's metadata. Whether
+  `gmail.read_attachment` still returns the original file for a zip is unverified until a real run. If it does not,
+  the letter is recorded "the connector gave no original file", and Codex should send a link instead.
+- **Gloria, after deploy:** tell Codex to keep `[Codex]` at the very start of the subject and, for a split delivery,
+  `— N of M` with the same title in every letter. To take in the two letters already read:
+  `python3 ~/.vintos/workspace/scripts/codex_archives.py --recover-log` (one Gmail batch read; `--list` shows the
+  result).
+
 ## 26 October — EmbeddingGemma 2 beside nomic in four more places
 
 Built on `claude/gemma-embed-more-2026-10-26`; not merged or deployed. Gloria approved each place ("Gemma 2 is fine

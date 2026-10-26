@@ -939,6 +939,11 @@ def attachments_view(attachments):
             text = a["text"]
             out.append(text[:1500] + "\n[ATTACHMENT EXCERPT: %d of %d characters shown; complete text stored, sha256 %s]" %
                        (min(1500, len(text)), len(text), a["sha256"]))
+        elif a.get("status") == "archived":
+            out.append("ARCHIVED: %s; its contents are not shown here, and come back when a conversation names it"
+                       % str(a.get("why") or "kept as a Codex archive"))
+        elif a.get("status") == "archive_part":
+            out.append("HELD: %s" % str(a.get("why") or "part of a Codex delivery still incomplete"))
         else: out.append("NOT READ: " + str(a.get("why") or "unknown failure"))
     return "\n".join(out)
 
@@ -1073,6 +1078,10 @@ def _messages(result):
                     # whole only when the text is the message's own body; a search result's snippet is a preview
                     # however long it is (2026-10-07: "shorter than 400 characters" was the only test of it)
                     "whole": bool(whole), "snippet_only": not (whole or own),
+                    # Gmail's labels, when the read gives them: SENT is how a Codex letter is known to have left
+                    # his own account (codex_archives.is_codex); None when the connector did not say
+                    "labels": [str(x) for x in g["label_ids"]] if isinstance(g.get("label_ids"), list) else
+                              [str(x) for x in g["labelids"]] if isinstance(g.get("labelids"), list) else None,
                     "attachments": _attachment_metadata(g)})
     return out
 
@@ -1172,6 +1181,7 @@ def _read_whole(msgs, gmail):
         if w and not w.get("snippet_only") and w["body"].strip():     # a full read, unless all it gave was the snippet
             m["body"], m["whole"] = w["body"], True
             m["attachments"] = w.get("attachments", [])
+            m["labels"] = w.get("labels")
             for key in ("from", "subject", "date", "thread_id"):
                 if w.get(key): m[key] = w[key]
         else:
@@ -1245,9 +1255,15 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
             r = fetch(l["original"])
         except Exception as exc:
             r = {"original_url": l["original"], "url": l["url"], "fetched": False, "kind": "error", "why": str(exc)[:160]}
+        text = ""
+        if r.get("fetched"):
+            # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
+            # line and what was shown of the whole survive it; the file itself is not kept with the letter
+            text = link_fetch.structure_view(r["structure"], chars) if r.get("structure") \
+                else str(r.get("text") or "")[:chars]
         out.append({"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
                     "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
-                    "why": str(r.get("why") or "")[:200], "text": str(r.get("text") or "")[:chars] if r.get("fetched") else ""})
+                    "why": str(r.get("why") or "")[:200], "text": text})
     return out
 
 
@@ -1339,6 +1355,14 @@ def check_inbox(contacts, gmail=None, now=None, others=None, notes=None):
         for addr in open_)]
     candidates = list({m["id"]: m for m in fresh + replies}.values())[:READ_PER_CHECK]
     _read_whole(candidates, gmail)
+    # Codex's archives first (26 October): a verified [Codex] letter's zips are downloaded, kept and unpacked by
+    # codex_archives, which marks each one so the reader below passes it by; anyone else's zip goes on to that
+    # reader, which refuses it unread.
+    try:
+        import codex_archives
+        notes.extend(codex_archives.intake(candidates, gmail))
+    except Exception as exc:
+        notes.append("Codex archive intake failed: %s" % type(exc).__name__)
     _read_attachments(candidates, gmail, trusted=set(contacts))
     if others is not None: others.extend(fresh)
     for addr in open_:

@@ -80,8 +80,19 @@ check("coffee while she is out: refused, nothing pressed", VH.coffee_on() == (Fa
 check("the plain device command refuses it too", VH.device("coffee", True) is False and len(SENT) == n)
 check("off still works while she is out", VH.device("coffee", False) and SENT[-1] == ("switch/turn_off", "switch.fingerbot"))
 HOME_NOW[0] = True
-ok, why = VH.coffee_on()
-check("coffee while she is home: pressed", ok and SENT[-1] == ("switch/turn_on", "switch.fingerbot"), (ok, why))
+# 26 October: two presses, one to turn the machine on and one to start the cup after it warms
+n = len(SENT); slept = []
+ok, why = VH.coffee_on(sleep=slept.append, background=False)
+check("coffee while she is home: pressed twice, the gap between", ok and SENT[n:] == [("switch/toggle", "switch.fingerbot")] * 2
+      and slept == [VH.COFFEE_PRESS_GAP_S] and "starts in 30 seconds" in why, (ok, why, SENT[n:], slept))
+json.dump({"url": "http://ha.test", "token": "t", "rooms": {}, "devices": {"coffee": "switch.fingerbot"}, "coffee_press_gap_s": 45},
+          open(VH.CONFIG_FILE, "w"))
+n = len(SENT); slept = []
+def _leave(s): slept.append(s); HOME_NOW[0] = False
+ok, why = VH.coffee_on(sleep=_leave, background=False)
+check("the gap comes from the house config, and she leaving in between stops the second press",
+      ok and slept == [45] and SENT[n:] == [("switch/toggle", "switch.fingerbot")], (SENT[n:], slept))
+HOME_NOW[0] = True
 check("his [HOME: coffee] tag runs coffee_on", 'elif _a == "coffee": ok, why = _vintos_home().coffee_on()' in srv)
 check("he is told the coffee is only while she is home", "def _coffee_line" in srv and "_cf = _coffee_line()" in av and "Only while" in srv)
 
