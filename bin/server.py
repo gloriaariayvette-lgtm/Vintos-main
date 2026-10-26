@@ -2373,6 +2373,21 @@ async def get_atelier_reveals(request: Request, limit: int = 20):
         raise HTTPException(status_code=500, detail="reveal export ledger unavailable: " + str(e))
 
 
+@app.get("/api/atelier/exhibitions")
+async def get_atelier_exhibitions(request: Request, limit: int = 10):
+    """Exhibitions he made her of works already out of the room (proposal 20); each work as it is now, never sealed."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        import sys as _ex_sys
+        _ex_scripts = os.path.join(WORKSPACE, "scripts")
+        if _ex_scripts not in _ex_sys.path: _ex_sys.path.append(_ex_scripts)
+        import exhibitions
+        return {"exhibitions": exhibitions.view(MEMORY, limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="exhibitions unavailable: " + str(e))
+
+
 @app.post("/api/self-review/{proposal_id}/decision")
 async def decide_self_review(proposal_id: str, request: Request):
     """Record Gloria's explicit decision for a protected-effect proposal."""
