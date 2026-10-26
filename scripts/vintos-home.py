@@ -348,15 +348,39 @@ def blanket_on(hours=BLANKET_HOURS):
     return True, "on until %s" % time.strftime("%H:%M", time.localtime(until))
 
 
-def coffee_on():
-    """The Nespresso's button, pressed by the Fingerbot, only while she is home (Gloria, 2026-10-25). (ok, why)."""
+# Two presses: one turns the Nespresso on, the second starts the cup once it has warmed (Gloria, 26 October). The
+# Fingerbot presses on any command, so each press flips its switch. The gap is "coffee_press_gap_s" in the house
+# config; the second press runs in the background so his reply does not wait for the machine to warm.
+COFFEE_PRESS_GAP_S = 30
+
+
+def _press(name):
+    ent = named_device(name)
+    code, _ = ha_request("switch/toggle", {"entity_id": ent})
+    return code == 200
+
+
+def coffee_on(sleep=time.sleep, background=True):
+    """The Nespresso's button, pressed twice by the Fingerbot, only while she is home (Gloria, 2026-10-25/26). (ok, why)."""
     if not named_device("coffee"):
         return False, "the Fingerbot is not in the house config"
     if not _she_is_home():
         return False, "Gloria is not home"
-    if not device("coffee", True):
+    if not _press("coffee"):
         return False, "the Fingerbot did not respond"
-    return True, "the Nespresso is on"
+    try: gap = max(5, min(120, int(load_config().get("coffee_press_gap_s") or COFFEE_PRESS_GAP_S)))
+    except (TypeError, ValueError): gap = COFFEE_PRESS_GAP_S
+    def _second():
+        sleep(gap)
+        if _she_is_home():
+            ok = _press("coffee")
+            print("[HOME] coffee start press: %s" % ("ok" if ok else "failed"), flush=True)
+    if background:
+        import threading
+        threading.Thread(target=_second, daemon=True).start()
+    else:
+        _second()
+    return True, "the Nespresso is on; the cup starts in %d seconds" % gap
 
 
 def blanket_off():
