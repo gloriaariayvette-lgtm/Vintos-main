@@ -122,6 +122,32 @@ class Archives(unittest.TestCase):
         p = Path(E.MEMORY) / ("daily-inner-life-%s.md" % datetime.now().date().isoformat())
         return p.read_text() if p.exists() else ""
 
+    # --- the connector refuses zips (26 October): the same file from Codex's folder on the Mac ----------
+    def test_connector_refusal_takes_the_same_file_from_the_mac(self):
+        z = make_zip(PROJECT)
+        m = self.letter("m9", "[Codex] Harbor model complete", [("harbor.zip", z)])
+        def refusing(tool, args, purpose):
+            if tool == "gmail.read_attachment":
+                raise RuntimeError("plugin relay refused or failed: GmailConnectorError: Failed to read attachment")
+            return self.gateway(tool, args, purpose)
+        asked = []
+        def mac(name, size, dest, lim):
+            asked.append((name, size))
+            with open(dest, "wb") as f: f.write(z)
+            return len(z)
+        C.mac_read = mac
+        try:
+            C.intake([m], refusing, file_read=self.file_read)
+        finally:
+            C.mac_read = None
+        self.assertEqual(asked, [("harbor.zip", len(z))])
+        self.assertEqual(len(self.archives()), 1)
+
+    def test_mac_lookup_refuses_unsafe_names(self):
+        for bad in ("../x.zip", "a/b.zip", ".hidden.zip", "x.zip; rm -rf ~", "x`id`.zip"):
+            with self.assertRaises(ValueError):
+                C.mac_fetch(bad, 10, os.path.join(HOME, "never"), C.limits())
+
     # --- isolation -----------------------------------------------------------------------------------
     def test_isolation(self):
         self.assertTrue(C.ROOT.startswith(HOME) and E.MEMORY.startswith(HOME))
