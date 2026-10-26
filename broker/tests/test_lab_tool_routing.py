@@ -148,7 +148,12 @@ class Tools(unittest.TestCase):
                                  # 22 October: the Lab asked this way and failed "PDB entry ID required" each time
                                  ({'source':'pdb','query':'entry_id:6V7X'},{'source':'pdb','entry_id':'6V7X'}),
                                  ({'source':'pdb','pdb_id':'6v7x'},{'source':'pdb','entry_id':'6V7X'}),
-                                 ({'source':'pdb','query':'reverse transcriptase'},{'source':'pdb','query':'reverse transcriptase'})]:
+                                 ({'source':'pdb','query':'reverse transcriptase'},{'source':'pdb','query':'reverse transcriptase'}),
+                                 # 26 October: an accession or one id among words still failed "PDB entry ID required"
+                                 ({'source':'pdb','query':'O43511'},{'source':'pdb','operation':'search_accession','accession':'O43511'}),
+                                 ({'source':'pdb','query':'structure 6v7x of the transporter'},{'source':'pdb','entry_id':'6V7X'}),
+                                 ({'source':'pdb','query':'compare 6V7X with 1ABC'},{'source':'pdb','query':'compare 6V7X with 1ABC'}),
+                                 ({'source':'pdb','query':'models from 2024 onward'},{'source':'pdb','query':'models from 2024 onward'})]:
             self.assertEqual(T.normalize_request('source',request),expected)
 
     def test_pubmed_shorthand_reads_the_named_citation_without_a_search(self):
