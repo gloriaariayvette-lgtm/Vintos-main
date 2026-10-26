@@ -1,3 +1,37 @@
+## 26 October — Room sources kept apart
+
+Built on `claude/room-sources-2026-10-26` (Codex's proposal 18, approved by Gloria); not yet merged or deployed.
+`scripts/room_sources.py` and `broker/tests/test_room_sources.py` (offline: scratch HOME and workspace, the song
+sender a failing stub, probes and sockets refused; an entry and an exit walked through the organs' own writers).
+No model was asked, nothing was sent, restarted, actuated or deployed while building it.
+
+**What is built:** a read-only view with one row per presence source, never combined:
+- **house Wi-Fi** (`home_presence`): "detected" only when its own `context_line` would say so (positive, fresh
+  within 15 min); otherwise unknown, with the reason. A phone not seen is never "away".
+- **bedroom board** (`bedroom_arrival` state, ESPresense over MQTT): an *enrolled device* heard within range in
+  the last 10 min (`PRESENT_S`); after that unknown, not "gone".
+- **room sensor** (`mmwave_presence`'s independent store, `memory/mmwave-presence.json`): "not commissioned"
+  while nothing writes it, which is today. When it exists: occupied / not occupied only while settled and fresh
+  within `mmwave_presence.FRESH_S` (30 s), and it says "not who".
+- **Watch** (`watch_presence` snapshot, fresh for two hours as `should_hold` uses it): wearing, asleep, motion
+  (motion only if read in the last 15 min).
+Each row carries its age and limit, what the observation already permits in its own organ, and what it never
+permits. When the board hears the device but the sensor says no one, the view says both and resolves nothing.
+`python3 scripts/room_sources.py` (or `--json`) shows it; `room_sources.py follow [minutes]` prints a line as each
+source changes, for a walk out of the room and back. It writes nothing. Cost: no model call, no GPU, CPU negligible.
+
+**Acceptance to watch for:** on Aegis, `python3 ~/.vintos/workspace/scripts/room_sources.py follow 15` while she
+leaves the bedroom and comes back: the board row goes detected -> unknown (10 min after it last heard the device)
+-> detected, the Wi-Fi row stays detected, the room sensor stays "not commissioned".
+
+**What is left:**
+- The mmWave hardware is not commissioned, and nothing feeds `mmwave_presence.intake`; this view only reads its
+  store. Wiring the intake (and putting `mmwave_presence.py` in the manifest) is the commissioning step.
+- Nothing reaches him: the view is not in his context, and he cannot yet choose what the sources permit. The
+  existing presence lines (world_model, `bedroom_arrival.presence_line`, `watch_presence.temporal_block`,
+  `sensor_reactions`) are unchanged.
+- No private web page for it; terminal on Aegis only.
+
 ## 26 October — Remember how a voice actually sounded
 
 Built on `claude/voice-memory-2026-10-26` (Codex's proposal 17, approved by Gloria); not yet merged or deployed.
