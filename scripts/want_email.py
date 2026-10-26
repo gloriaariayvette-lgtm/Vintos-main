@@ -1735,7 +1735,10 @@ def tend(force=False, gmail=None, think=None, want=None, **kw):
             return []
         if now < morning and gmail_checks_left(now) <= 1:
             return []          # the last of today's checks is kept for the morning
-    state["at"] = time.time()
+    # A pass with no check left searches nothing, so it does not restart the wait: a letter that comes after the
+    # day's last check is read on the first pass of the new day (25 October: Grok Bot's waited until 04:02).
+    if force or morning_due or gmail_checks_left(now) > 0:
+        state["at"] = time.time()
     if morning_due:
         state["morning_day"] = now.date().isoformat()
     _save(TEND_STATE, state)

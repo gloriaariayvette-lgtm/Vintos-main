@@ -227,6 +227,11 @@ c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
 check("a request to stop ends the thread for good, with no answer", c["status"] == "closed" and not sent, c.get("status"))
 # Gloria, 2026-10-01: "Let's max him at 4 gmail checks per day"
 check("four Gmail checks today, and none left", len([t for t, _ in gmail_calls if t == "gmail.search_emails"]) == 4 and E.gmail_checks_left() == 0, gmail_calls)
+_old_at = __import__("time").time() - 7 * 3600
+_st = json.load(open(E.TEND_STATE)); _st.update(at=_old_at, morning_day=E.datetime.now().date().isoformat())
+json.dump(_st, open(E.TEND_STATE, "w"))
+E.tend(gmail=gmail)
+check("a pass with no check left does not restart the six-hour wait", json.load(open(E.TEND_STATE))["at"] == _old_at)
 n_calls = len(gmail_calls)
 E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
 E.check_inbox(json.load(open(E.CONTACTS)), gmail=gmail)
