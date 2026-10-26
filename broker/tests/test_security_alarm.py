@@ -327,6 +327,129 @@ class SecurityTests(unittest.TestCase):
             self.assertTrue(A.deploying())
         self.assertFalse(A.deploying())
 
+    # --- a snapshot taken while a deploy finishes (25 October, 22:49) ---------------------------------------------
+    def receipt(self, name, body=None):
+        d=Path.home()/'.vintos/deploy/releases';d.mkdir(parents=True,exist_ok=True)
+        p=d/name
+        if body is None:
+            import hashlib
+            body=json.dumps({'files':[{'file':'x.py','installed_at':str(self.code),
+                                       'sha256':hashlib.sha256(self.code.read_bytes()).hexdigest()[:16]}]})
+        p.write_text(body);return p
+
+    def snap(self, hooks=None):
+        hooks=hooks or {}
+        old=A._phase;A._phase=lambda name:hooks.get(name,lambda:None)()
+        try:return A.host_snapshot(runner=lambda args:'')
+        finally:A._phase=old
+
+    def install(self, text):
+        self.code.parent.mkdir(parents=True,exist_ok=True);self.code.write_text(text)
+
+    def deployed_alarms(self, previous, snap):
+        return [e for e in A.host_events(previous,snap) if e[1]=='deployed_code_changed']
+
+    @property
+    def code(self): return Path.home()/'.vintos/workspace/scripts/x.py'
+
+    def test_isolation_of_snapshot_cases(self):
+        self.assertTrue(str(Path.home()).startswith(SCRATCH.name));self.assertTrue(str(self.code).startswith(SCRATCH.name))
+
+    def test_settled_snapshot_unchanged(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        s=self.snap();self.assertFalse(s['deploying']);self.assertNotIn('deferred',s)
+        self.assertEqual(s['release'],'20261025-211836-aaaa.json');self.assertEqual(self.deployed_alarms(None,s),[])
+
+    def test_deploy_completing_between_lock_checks_is_deferred(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        # installed before the snapshot; receipt written and lock released before it ends: neither lock check sees it
+        self.install('v2')
+        s=self.snap({'receipt':lambda:self.receipt('20261025-224932-bbbb.json')})
+        self.assertTrue(s['deploying']);self.assertEqual(s['deferred'],'receipts changed during snapshot')
+        self.assertNotIn('blind',s);self.assertEqual(self.deployed_alarms(None,s),[])
+
+    def test_deploy_starting_during_schedule_capture_is_deferred_without_advancing(self):
+        import fcntl
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        base=self.snap();self.tick(snapshot=base)
+        lock=Path.home()/'.vintos/deploy/security-install.lock'
+        with lock.open('w') as f:
+            s=self.snap({'start':lambda:(fcntl.flock(f,fcntl.LOCK_EX),self.install('v2'))})
+            fcntl.flock(f,fcntl.LOCK_UN)
+        self.assertTrue(s['deploying']);self.assertEqual(s['deferred'],'install lock held')
+        self.assertEqual(A.host_events(base,s),[])
+        self.tick(now=self.now+15,snapshot=s);self.assertEqual(self.sent,[])
+        saved=json.loads(A.paths()[0].read_text());self.assertEqual(saved['host'],json.loads(json.dumps(base)))
+
+    def test_receipt_appearing_vanishing_rewritten_or_unreadable_mid_snapshot_is_deferred(self):
+        cases={'absent_to_present':(False,'files',lambda:self.receipt('20261025-224932-bbbb.json')),
+               'vanishing':(True,'start',lambda:(Path.home()/'.vintos/deploy/releases/20261025-211836-aaaa.json').unlink()),
+               'unreadable':(True,'start',lambda:self.receipt('20261025-211836-aaaa.json','{"files": [')),
+               'same_name':(True,'receipt',lambda:self.receipt('20261025-211836-aaaa.json',json.dumps({'files':[],'pad':'x'*64})))}
+        for name,(first,phase,act) in cases.items():
+            with self.subTest(name):
+                self.setUp();self.install('v1')
+                if first:self.receipt('20261025-211836-aaaa.json')
+                self.install('v2')
+                s=self.snap({phase:act})
+                self.assertTrue(s['deploying'],name);self.assertNotIn('blind',s,name)
+                self.assertEqual(self.deployed_alarms(None,s),[],name)
+
+    def test_lower_sorting_receipt_appearing_is_deferred(self):
+        self.install('v1');self.receipt('20261025-224932-bbbb.json')
+        s=self.snap({'receipt':lambda:self.receipt('20261025-000000-cccc.json')})
+        self.assertTrue(s['deploying'])
+
+    def test_stable_unreadable_receipt_is_blind_at_once_and_keeps_baseline(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        base=self.snap();self.tick(snapshot=base)
+        self.receipt('20261025-224932-bbbb.json','not json')
+        s=self.snap()
+        self.assertTrue(s['deploying']);self.assertIn('Deployment receipts unreadable',s['blind'])
+        self.tick(now=self.now+15,snapshot=s)
+        self.assertEqual(len(self.sent),1);self.assertIn('Deployment receipts unreadable',self.sent[0][1]['message'])
+        saved=json.loads(A.paths()[0].read_text());self.assertEqual(saved['host'],json.loads(json.dumps(base)))
+
+    def test_unlistable_receipts_blind_and_keys_still_alarm(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        base=self.snap();self.tick(snapshot=base)
+        keys=Path.home()/'.ssh/authorized_keys';keys.parent.mkdir(parents=True,exist_ok=True);keys.write_text('ssh-ed25519 TEST')
+        old=A.receipt_generation;A.receipt_generation=lambda h:(None,'receipts unlistable: PermissionError')
+        try:s=self.snap()
+        finally:A.receipt_generation=old
+        self.assertTrue(s['deploying']);self.assertIn('unlistable',s['blind'])
+        kinds=sorted(e[1] for e in A.host_events(base,s))
+        self.assertEqual(kinds,['authorized_keys_changed','monitor_blind'])
+        self.assertNotIn('TEST',json.dumps(s))
+
+    def test_listing_failure_at_one_end_only_defers_quietly(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        real=A.receipt_generation;calls=[]
+        def flaky(h):
+            calls.append(1);return (None,'receipt vanished while listed') if len(calls)==1 else real(h)
+        A.receipt_generation=flaky
+        try:s=self.snap()
+        finally:A.receipt_generation=real
+        self.assertTrue(s['deploying']);self.assertNotIn('blind',s)
+
+    def test_deferred_then_persistent_drift_still_alarms(self):
+        self.install('v1');self.receipt('20261025-211836-aaaa.json')
+        base=self.snap();self.tick(snapshot=base)
+        self.install('tampered')
+        stray=Path.home()/'.vintos/deploy/releases/20261025-224932-bbbb.json'
+        s=self.snap({'receipt':lambda:self.receipt(stray.name,json.dumps({'files':[]}))})
+        self.assertTrue(s['deploying'])
+        stray.unlink()   # no deploy answers for the change: the next settled snapshot must still alarm
+        s2=self.snap();self.assertFalse(s2['deploying'])
+        self.assertEqual(len(self.deployed_alarms(base,s2)),1)
+
+    def test_prolonged_deferral_names_its_reason(self):
+        s=json.loads(json.dumps(self.host));s.update(deploying=True,deferred='receipts changed during snapshot')
+        self.tick(snapshot=s);self.tick(now=self.now+901,snapshot=s)
+        msg=self.sent[-1][1]['message']
+        self.assertIn('deferred more than 15 minutes',msg);self.assertIn('receipts changed during snapshot',msg)
+        self.assertNotIn('Installation lock held',msg)
+
     def test_receipt_covers_new_unit(self):
         current=json.loads(json.dumps(self.host));current['release']='next.json'
         p='/etc/systemd/system/new.service';current['files'][p]='new'
