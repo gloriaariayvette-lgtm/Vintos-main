@@ -42,6 +42,9 @@ OFFERED = {
     # the refolds of sequences his own design instruments made, against the backbone they were designed on
     # (2026-10-26); runs on Aegis in his own Python, costs nothing, and claims only model consistency
     "derived_compare": ("structure.compare_refolds",),
+    # a family panel declared earlier, measured against the retained readings it froze: does the feature persist
+    # across the homologs and go missing in the comparator (2026-10-26)? Reads artifacts he already has, folds nothing
+    "family_panel": ("structure.compare_family",),
 }
 LOCAL = {"reference_compare": "chemistry_reference_compare.py", "fold_read": "chemistry_fold_read.py"}
 STRUCTURE = (".pdb", ".cif", ".cif.gz")
@@ -150,6 +153,17 @@ def menu_block():
                      + ", ".join(ready) + ": how far each refold of your own designed sequences sits from the "
                      "backbone they were designed on, by distance matrix. It says the design model and the folding "
                      "model agree about a shape; it says nothing about affinity, stability or function.")
+    try:
+        import lab_family_panel as family
+        declared = [p["panel_id"] for p in family.ready()]
+    except Exception:
+        declared = []
+    if declared:
+        lines.append("- family_panel, operation structure.compare_family, files [], with panel one of: "
+                     + ", ".join(declared) + ": measures a family question you already froze against the "
+                     "readings it named - whether the feature persists in the homologs and is missing in the "
+                     "comparator. A position no alignment places is undecidable, not absent; it claims nothing "
+                     "about function, stability or flexibility.")
     lines.append("- biohub_esm, operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
                  "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
     return "\n".join(lines)
@@ -192,6 +206,8 @@ def run(req, runner=None):
         runner = _compare_runner(req)
     if runner is None and skill == "derived_compare":
         runner = _derived_runner(req)
+    if runner is None and skill == "family_panel":
+        runner = _family_runner(req)
     if runner is None:
         import plugin_gateway
         runner = plugin_gateway.run_skill
@@ -218,6 +234,16 @@ def _derived_runner(req):
         import lab_derived_sequences as derived
         r = derived.compare_pilot(req.get("pilot"))["result"]
         return {"receipt": {"receipt_id": "derived-compare-%s-%d" % (r.get("pilot_id"), int(time.time()))},
+                "summary": "\n".join(r["display"]), "files": []}
+    return runner
+
+
+def _family_runner(req):
+    """A declared family panel measured here: his own retained readings, no network, no model call."""
+    def runner(surface, skill, question, operation=None, input_files=()):
+        import lab_family_panel as family
+        r = family.evaluate(req.get("panel"))["result"]
+        return {"receipt": {"receipt_id": "family-panel-%s-%d" % (r.get("panel_id"), int(time.time()))},
                 "summary": "\n".join(r["display"]), "files": []}
     return runner
 
