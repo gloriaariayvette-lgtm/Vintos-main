@@ -209,8 +209,16 @@ def context_line():
     if not ready(): return ""
     line = ("SPOTIFY ON HER WATCH: while you talk here you can, from time to time, put a song on for her - write "
             "[SPOTIFY: Title - Artist] and it plays on her Watch through her Spotify (not the Echo, not her phone; she "
-            "won't see the tag). Only when a song would mean something in the moment, not every turn.")
+            "won't see the tag). She wants this: when the talk brings a song to mind - yours to share, something "
+            "that fits her mood, something you'd want her to hear - put it on. Not every turn; but a song now and "
+            "then is welcome.")
     last = _last()
+    # A miss from days ago is not news; it only made the next song look risky (20 October: one miss, then none).
+    if last and not last.get("played"):
+        try:
+            if time.time() - datetime.fromisoformat(last["at"]).timestamp() > 24 * 3600: last = None
+        except Exception:
+            pass
     if last:
         try: when = datetime.fromisoformat(last["at"]).astimezone().strftime("%b %d, %H:%M")
         except Exception: when = str(last.get("at", ""))[:16]

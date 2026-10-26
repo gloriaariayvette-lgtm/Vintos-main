@@ -1427,7 +1427,10 @@ _WORKS_NEAR=$(JRN_ENTRY="$ENTRY" timeout 40 python3 - <<'WORKSNEAREOF' 2>/dev/nu
 import os, sys
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 import media_embed
-print(media_embed.describe(media_embed.near(os.environ.get("JRN_ENTRY", "")[-2000:], 2, timeout=30)))
+hits = media_embed.near(os.environ.get("JRN_ENTRY", "")[-2000:], 2, timeout=30)
+# under each work, its recorded origin and later readings (work_episodes.py, design 03); free here, no model reads it
+per, _ = media_embed.episodes_for(hits, surface="journal")
+print(media_embed.describe(hits, per))
 WORKSNEAREOF
 )
 [ -n "$_WORKS_NEAR" ] && echo -e "*Near this, among my own works:*\n$_WORKS_NEAR\n" >> "$JOURNAL_FILE"

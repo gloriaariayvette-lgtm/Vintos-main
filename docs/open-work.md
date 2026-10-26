@@ -1,3 +1,162 @@
+## 26 October — From a work back to its occasion
+
+Built on `claude/work-episodes-2026-10-26` (Codex's proposal 03 / Design 03, approved by Gloria); not yet merged
+or deployed. `scripts/work_episodes.py`, with `broker/tests/test_work_episodes.py` (43 checks, all offline).
+
+**What is built:**
+- **The projection** (`work_episodes.build()/lookup()`): rebuildable, over records that already exist — the three
+  shelves (gallery, video, music), the want stores, `want-completions.jsonl`, the full moment archive (not the capped
+  index), `durable-memory.json`, and her music shares. It writes no store of its own. A work is identified by its
+  content hash; a receipt joins it by hash, or by file name only when the receipt has no hash (and then says so).
+  Relations carry their support: `produced_in` from a shelf receipt naming the want, `produced_from` from a receipt
+  naming another work, `he_linked` from his own words naming the exact file or a title no other work has,
+  `co_present` for her shared song in the composer's context (rendered "present, not a cause"). A title collision,
+  a near minute or a cosine score makes no edge; a dream-made painting with no dream id stays "not linked".
+- **Events and readings apart**: origins (want, fulfilment moment, completion, durable memory), what he wrote at the
+  making (prompt, felt sense), and dated later readings (his reading on sighting, how a song landed, durable
+  rereadings) are separate lists and render in that order. Two hops at most (work → episode → later reading), five
+  works a look.
+- **Eligibility at every look**: the projection is rebuilt whenever any source file changes, so a want removed or a
+  durable memory invalidated is gone from the next turn, leaving only a dangling id. Records go through
+  `evidence_view.standing()`; HELD and ineligible ones are listed, never rendered. Landings notes/ratings and every
+  Atelier store are never opened; a shelf record marked sealed (or under an atelier path) is skipped.
+- **Retrieval stays in its own spaces**: `media_embed.search()` now returns the embedded revision's `sha256` and an
+  `artifact_id` handle; `fuse()` combines ranked lists by identity (reciprocal rank), never by vectors.
+- **What reaches him**: the existing "Your own works nearest…" chat block (all four chat prompts) and the journal's
+  works footnote now carry each work's recorded origin and latest reading as short attributed lines with source ids,
+  or "(origin not recorded)", plus one line saying nearness is only resemblance and an unrecorded origin is not to be
+  guessed. If anything in the episode door fails the old block goes on unchanged.
+- **Cost ceiling**: no model call, no GPU. In paid prompts at most 700 characters a turn and 12,000 a day (about
+  3,000 tokens, ≈$0.015/day at the chat model's input price); past that the plain block goes on. The journal footnote
+  is read by no model and is not counted.
+- **Acceptance logging**: `work-episode-offers.jsonl` (what was offered: work ids, source ids, size) and
+  `work-episode-uses.jsonl` (after each reply, inline in `_post_turn`, skipped in test mode: which offered work he
+  named and which source record's detail his reply used). Ids only, no words. `python3 work_episodes.py uses` shows them.
+- `wants-router` now writes the want's id into the links of a want-fulfilled moment, so later works made for that
+  want find the moment by id. Existing moments are not backfilled (that would be inference).
+- `work_episodes.attest(work, claim)`: a "you felt…" claim is supported only by a written feeling, with its source.
+
+**Measured read-only on the real stores (26 October, counts only):** 440 shelf receipts; 132 name a want and 130 of
+those wants still exist; 155 works on disk join a real want (20 of them also a completion row); 6 join a durable
+memory through his own words. Zero moments are linked yet (the link is new). The completion → turn → durable-memory
+hop is built and tested but **finds nothing on real data today: none of the 100 completion rows carries a turn id.**
+
+**Acceptance to watch for:** in an ordinary relevant turn (not a test) he picks up a work, uses the origin under it —
+the want, the moment, a later reading — accurately, and the uses log records that source id. A nearest-neighbour hit
+alone does not count; "I don't have the origin recorded" is a pass. Check the sample with
+`python3 work_episodes.py uses 20` against `show <art:id>` (her 15–20 minute provenance check).
+
+**What is left:**
+- The media service must be restarted once for its results to carry `sha256`/`artifact_id`; until then the chat
+  hashes the hit's file itself (same result, a little slower on the first look at a large song). Not restarted here.
+- Want completions record no turn id, so the second hop through the turn is empty; whoever writes
+  `want-completions.jsonl` should pass the turn id it already has. Not changed here.
+- Dream-made paintings carry no dream id (`dream-art.py`), so their origin stays missing; adding the dream's id to
+  the receipt going forward is the fix. Not changed here.
+- Only chats and the journal get the lines; Atelier/making turns do not (the sealed boundary was not touched).
+- Use detection is word-overlap on the offered detail; it can miss a paraphrase. It never upgrades a miss to a use.
+
+## 25 October — IMG/VR controlled discovery
+
+Built on `claude/imgvr-discovery-2026-10-25` (Codex's proposal 01 / Design 01, approved by Gloria); not yet
+merged or deployed. `scripts/imgvr_loci.py`, with `broker/tests/test_imgvr_loci.py` (29 tests, all offline).
+
+**The release has no gene map.** Checked against the installed release on 25 October: the file set is README,
+host information, sequence information, nucleotides, proteins — no GFF or equivalent. Protein headers are
+`UViG|taxon_oid|provider gene id` and carry no coordinates; nucleotide headers are
+`UViG|taxon_oid|scaffold_oid|start-end`, where that range is the provirus's span on its **host scaffold**, not a
+gene coordinate. The contig served under that header is the UViG itself and its length matches the metadata
+`Length` column. So every locus record here has `annotation_source: translated_match`, and coordinates are
+one-based inclusive **on the UViG contig as served**. The two conventions must never be mixed; a test asserts
+the join never reports the scaffold range. If a later release ships a map, prefer it and record it as the source.
+
+**What is built (design steps 1-3, plus parts of 4 and 5):**
+- **Step 1, inventory** (`inventory()`): release id, the files actually on disk with the provider manifest's own
+  sizes and digests, and the counts the sqlite index already holds — measured on the real store: 5,433,589 UViG
+  records, 5,478,381 indexed segments, 2,025 multi-segment UViGs. The protein record count is reported as
+  unmeasured with its reason rather than guessed (counting 109 million records needs a full streaming pass).
+- **Step 2, the exact identity join** (`join_locus()`): the protein's own header names its UViG, so the search is
+  that one contig — read through the existing byte-offset index, translated in six frames, matched exactly. A
+  locus record carries release, target protein id, amino-acid hash, UViG, segment, coordinate convention,
+  start/end, strand, frame, translated-match check, annotation source and hashes. Exactly one match joins; zero
+  or more than one stay **unjoined with the reason**. An annotated M over a non-ATG start is matched on its
+  remainder with the preceding codon required to be a recognized alternative start, and the record says so.
+  Bounded: one contig per protein, a 2 Mb contig cap, a 120 s time cap. No global scan.
+- **Step 3, the bounded neighborhood** (`neighborhood()`): neighbours of the same UViG joined the same way
+  within a window (200..24,000 bases), each with coordinates, strand, orientation and the gap to the anchor;
+  plus the window hash, a neighborhood digest, contig-edge truncation flags, and the proteins it could **not**
+  place listed as missingness. The store's multi-segment safeguard is kept: a multi-segment UViG will not join
+  or carry a neighborhood until the segment is named. `window_sequence()` hands a ≤12 kb window to the existing
+  repeat screen.
+- **Step 4 (part), the frozen cohort** (`freeze_cohort()`): a declared selection rule and eligible population, one
+  representative per declared vOTU, matched backgrounds by topology, length band, top-level ecosystem and
+  completeness band, a cohort digest that changes when any input changes, and the 24-neighborhood cap with the
+  pilot/holdout split declared in advance. It reports what the vOTU reduction removes **and what it does not**:
+  UViGs in different vOTUs may still be related, so independence is not established by this step. Too few
+  representatives is reported as a sampling limitation, never relaxed.
+- **Step 5 (part), a null** (`repeat_null()`): the existing repeat screen against composition-preserving shuffles
+  of the same window, seeded and deterministic. It answers one narrow question — how often this screen fires on
+  sequence of this composition — and says so; it is not a significance test for a biological claim.
+- `cohort_proteins()`: one bounded streaming pass over the release proteins keeping only a frozen cohort's UViGs.
+  The release has no per-UViG protein index and building a general one would mean a full pass and tens of
+  gigabytes; a cohort is at most 24 neighborhoods, so one pass per frozen cohort is the smaller honest option.
+  **This has not been run against the real 15.7 GB protein file** — it reads the release and writes nothing, but
+  it is a ~15 GB read and should be run deliberately, once, per cohort.
+- Lab exposure: `locus_join`, `neighborhood` and `cohort_freeze` are offered through the existing `imgvr` source
+  door in `lab_sources.py` and described in `lab_genome_mining.campaign_instructions()`, inside the same
+  readiness gate as `protein_similarity` — the planner does not see them until the local index is ready. Nothing
+  is enabled by stealth and the commissioning gate is untouched.
+- `protein_similarity` now also returns the hit's own sequence (`tseq`) and target protein id, so a receipt can
+  be joined without anything being retyped. An older receipt without that column still parses.
+
+**What remains of steps 4-7:**
+- **Step 4:** the cohort route is built but has never been run on real candidates. The vOTU reduction and matched
+  backgrounds need a judgement on the real distribution — whether enough matched backgrounds exist at the bands
+  chosen (topology, 2 kb length band, top-level ecosystem, 25-point completeness band), and whether those are the
+  right bands. Assembly/completeness matching uses only the fields the release has.
+- **Step 5:** repeat architecture and the shuffle null are in place; **accessory-family co-occurrence and
+  orientation statistics across a cohort are not built.** That needs the cohort protein pass to have run, and a
+  family assignment (the existing HMM/CRT screens are the candidates — `lab_hmm.py`, `lab_crt.py`). Matched-loci
+  enrichment is not built. Known positive/negative fixtures beyond the join's own are not built.
+- **Step 6:** the pilot/holdout **cap and split are enforced**, but the workflow that freezes a candidate claim
+  after the pilot and then tests it against the holdout is not built. That is campaign runtime, not a single
+  operation, and it belongs with `lab_campaign.py`. Estimates, uncertainty, exclusions and the list of examined
+  hypotheses and failures are not yet assembled into a report.
+- **Step 7:** eliminating known explanations is **not built**. It needs synonym and family-name search, sequence
+  similarity to published systems, and full texts; the existing six-title check (`lab_findings.py`) stays a lead
+  finder. ART must be carried as a known positive and an exclusion family, and no fixture for that exists yet.
+  "Not in these titles" must never become "nobody has answered this."
+
+**Acceptance to watch for:** the Lab must choose a comparative operation in **ordinary work** — not a
+commissioning run — execute it, keep the actual table, and use it to decide a next measurement or to reject a
+claim. A manual run proves the adapter only. A valid negative result counts as proof of the instrument. Novelty
+stays provisional until the literature and known-family exclusions of step 7 are reviewed; function stays
+unvalidated without an appropriate independent experiment.
+
+**Stop condition already in force:** if a release-consistent locus join cannot be established for a candidate,
+it stays unjoined and the campaign stops there for that candidate. Do not compensate with more model calls and
+do not relax the identity rules.
+
+**Costs:** no new paid calls. The planner menu grows by roughly 330 tokens on genome-mining returns only. The
+join is CPU-only and reads one contig (a few kilobases) per protein; a cohort protein pass is one ~15 GB
+sequential read. No new disk is written by any operation here.
+
+## 25 October — musical motif notebook
+
+Built on `claude/motif-notebook-2026-10-25` (Codex's proposal 02, approved by Gloria); not yet merged or deployed.
+- **What he has:** a motif notebook in every Atelier visit. `<motif ...>` writes a phrase of actual notes (one voice,
+  the house piano tone, at most 8 bars, 64 notes, 29 s); `<motif_vary of="ID" op="...">` makes a variation of a phrase
+  already in the notebook (transpose, invert, retrograde, augment, diminish, fragment, retempo, answer, rewrite). One
+  per visit, rendered after the piece by the existing `midi_check.py` verifier and CPU renderer (2-minute cap).
+- **What is kept, in the project:** the WAV (a music artifact) and one record (score, MIDI, timing report, his
+  operation and the exact note diff from the parent). The parent is never rewritten. A variation that changes
+  nothing is labelled unchanged. A sealed project's phrases stay in it; only phrases he has revealed can be varied
+  from later projects.
+- **Costs:** no new paid calls and no follow-up turn. The notebook block adds roughly 350 tokens to each visit's
+  context, more when it lists phrases. It is separate from the paid song path; `song_memory.py` is unchanged.
+- **Acceptance (not yet observed):** he makes a phrase on his own; on a later ordinary visit, with nobody pointing him
+  at it, he chooses it and varies it; both render and both stay in the project. Liking it is not part of the test.
+
 ## 25 October — handoff repairs (Claude Code; on the deploy branch)
 
 From the 25 October reviews (Claude whole-system review; Codex comprehensive audit on the Mac). In this deploy:

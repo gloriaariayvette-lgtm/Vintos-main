@@ -83,6 +83,11 @@ check("Spotify closed on her Watch: nothing plays anywhere, and why is written d
 check("he hears next turn that it did not play, and why", "did not play" in S.context_line()
       and "Watch is not listening" in S.context_line())
 DEVICES.append({"id": "w1", "type": "Watch", "name": "Gloria's Apple Watch"})
+_t0 = S.time.time; S.time.time = lambda: _t0() + 25 * 3600
+check("a miss from more than a day ago is not repeated to him", "did not play" not in S.context_line()
+      and "[SPOTIFY: Title - Artist]" in S.context_line())
+S.time.time = _t0
+check("he is told a song now and then is welcome", "welcome" in S.context_line())
 
 TRACKS[:] = [{"uri": "spotify:track:other", "name": "Something Else", "artists": [{"name": "Nobody"}]}]
 row = S.play("Enjoy the Silence - Depeche Mode")

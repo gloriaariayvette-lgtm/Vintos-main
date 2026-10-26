@@ -805,11 +805,66 @@ def music_note(today=None):
     return ("\n\n" + MUSIC_LOST) if (today or datetime.now().date().isoformat()) <= MUSIC_LOST_UNTIL else ""
 
 
+def _motif_module():
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import motif_memory
+        return motif_memory
+    except Exception:
+        return None
+
+
+def _broker_post(url, **kw):
+    return paid_http.send(requests.post, __file__, url, **kw)
+
+
+MOTIF_REVEALS = os.path.join(WSP, "memory", "atelier-reveals.json")   # the store _deliver_reveal writes
+
+
+def motif_notebook(pid, pk, cap):
+    """His motif notebook for this visit: (this project's phrase records, the block he reads). Read through the
+    broker on the visit capability; a phrase from another project is reachable only if he revealed it."""
+    mm = _motif_module()
+    if not mm: return [], ""
+    try:
+        current = mm.Notebook(pid, cap, _broker_post, broker=B).records(list((pk.get("artifacts") or {}).keys()))
+        return current, mm.block(current, mm.last_outcome(pid), reveals=MOTIF_REVEALS)
+    except Exception as exc:
+        print("motif notebook could not be read: %s" % str(exc)[:160])
+        return [], ""
+
+
+def _motif_wanted(work):
+    mm = _motif_module()
+    wanted = mm.request(work) if mm else None
+    return wanted if wanted and not wanted.get("invalid") else None
+
+
+def motif_step(pid, cap, work, current):
+    """The one phrase or variation he wrote this visit: rendered on the house CPU piano, kept in this project.
+    Content-free in the log: ids, operation, outcome."""
+    mm = _motif_module()
+    if not mm or not mm.request(work): return None
+    out = mm.step(pid, cap, work, current, _broker_post, reveals=MOTIF_REVEALS)
+    _chose("motif", (out or {}).get("kind", "phrase"))
+    if out.get("ok"):
+        print("motif kept: %s%s, audio %s, record %s (%.1f s of audio, rendered in %.1f s)" % (
+            out.get("variation_id"), (" from %s by %s%s" % (out.get("parent"), out.get("op"),
+                                       ", unchanged" if out.get("unchanged") else "")) if out.get("parent") else "",
+            out.get("audio"), out.get("record"), out.get("audio_seconds", 0), out.get("render_seconds", 0)))
+    else:
+        print("motif NOT made: %s" % str(out.get("error"))[:200])
+        _failed("a phrase he wrote was not made", str(out.get("error")))
+    return out
+
+
 def made_nothing(work, creation):
-    """True when the visit so far has made nothing: no piece, no kept media, nothing finished or shown."""
+    """True when the visit so far has made nothing: no piece, no kept media, no phrase, nothing finished or shown."""
     piece = _tag(work, "piece")
     return not ((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
-                or (creation or {}).get("made") or re.search(r'<kept>|<reveal\b', work or ""))
+                or (creation or {}).get("made") or re.search(r'<kept>|<reveal\b', work or "")
+                or _motif_wanted(work))
 
 
 def make_pass(pid, ctx, work, capability, creation):
@@ -827,6 +882,8 @@ def make_pass(pid, ctx, work, capability, creation):
                 "- <piece kind=\"write\">prose, a lyric, a score written out, a plan, a letter, a question</piece>\n"
                 "- <image prompt=\"what the image should hold\">title</image>\n"
                 "- <music title=\"...\" style=\"...\" duration=\"120\">description or lyrics</music>\n"
+                "- <motif title=\"...\" tempo=\"72\" meter=\"4/4\" origin=\"unlinked\">[[pitch, onset, duration, "
+                "velocity], ...]</motif> (a phrase for your motif notebook)\n"
                 "It may be small, rough or wrong. Then write a fresh <handoff>, <next_move> and <next_return>.",
                 max_tokens=4000)
     print("make pass: he had made nothing, asked once more")
@@ -1097,6 +1154,7 @@ def visit(pid, sent_by_gloria=False):
     pk = paid_http.send(requests.post, __file__, f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
     ledger_mark(pid, "active")
+    motifs, motif_text = motif_notebook(pid, pk, cap)
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
@@ -1112,6 +1170,7 @@ def visit(pid, sent_by_gloria=False):
            + _manifest_block(pk)
            + where_you_are()
            + materials_index()
+           + motif_text
            + music_note()
            + (GLORIA_SENT if sent_by_gloria else "")
            + choices_line())
@@ -1209,6 +1268,8 @@ def visit(pid, sent_by_gloria=False):
             paid_http.send(requests.post, __file__, f"{B}/inspect", json={"id": pid, "kind": piece["attrs"]["kind"],
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
+    # His motif notebook: made after the piece, so the room's attendance law never blocks the piece itself.
+    motif = motif_step(pid, cap, work, motifs)
     # He decided a piece is ready and chose to show her. The ONE act that lets
     # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
     # content on its export capability -> deliver (phone + the app's reveals tab)
@@ -1276,7 +1337,7 @@ def visit(pid, sent_by_gloria=False):
         print("reported outward:", _msg[:80])
     ho, nr, nm = _last("handoff", work), _last("next_return", work), _last("next_move", work)
     produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
-                          or media_creation.get("made"))
+                          or media_creation.get("made") or (motif or {}).get("ok"))
     if not produced_piece:
         _failed("a visit made nothing")
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
