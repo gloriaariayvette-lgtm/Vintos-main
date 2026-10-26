@@ -116,6 +116,17 @@ def normalize_source(spec):
             if re.fullmatch(r'[0-9][A-Za-z0-9]{3}', value):
                 out.pop(key); out['entry_id'] = value.upper()
                 break
+    if out['source'] == 'pdb' and not out.get('entry_id') and not out.get('operation') and isinstance(out.get('query'), str):
+        # 26 October: a pdb query holding a UniProt accession, or one entry id inside words, still failed "PDB entry ID
+        # required". An accession is the archive's accession search; one id among words is that entry. Anything else
+        # (free text, two ids) is left for the source to refuse.
+        q = out['query'].strip()
+        if re.fullmatch(r'[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2}', q):
+            out.pop('query'); out.update(operation='search_accession', accession=q)
+        else:
+            ids = set(m.upper() for m in re.findall(r'\b([1-9](?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{3})\b', q))
+            if len(ids) == 1:
+                out.pop('query'); out['entry_id'] = ids.pop()
     if out['source'] == 'ncbi':
         op = str(out.get('operation') or out.get('database') or out.get('db') or '').lower()
         # Remove a transport prefix, not any scientific qualifier.

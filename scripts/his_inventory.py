@@ -82,12 +82,25 @@ def _connected_tools():
         return []
 
 
-def _installed_skills():
+def _installed_skills(private=True):
+    """Names of the skills the Forge built. While he has never chosen one himself, his own prompts also carry
+    the need it was built for, from its proposal (forge_practice.affordance); an outside email does not."""
     try:
         import skill_forge
-        return sorted({r.get("capability") for r in skill_forge._load() if r.get("state") in ("installed", "resumed")} - {None})
+        names = sorted({r.get("capability") for r in skill_forge._load() if r.get("state") in ("installed", "resumed")} - {None})
     except Exception:
         return []
+    if not private:
+        return names
+    try:
+        import forge_practice
+        out = []
+        for n in names:
+            example = forge_practice.affordance(n)
+            out.append(n + (" (%s)" % example if example else ""))
+        return out
+    except Exception:
+        return names
 
 
 def block(actions=(), roots=ROOTS, max_chars=3500, private=True):
@@ -99,7 +112,7 @@ def block(actions=(), roots=ROOTS, max_chars=3500, private=True):
     tools = _connected_tools()
     if tools:
         lines.append("- connected tools: " + ", ".join(tools) + ".")
-    skills = _installed_skills()
+    skills = _installed_skills(private=private)
     if skills:
         lines.append("- abilities the Forge built for you: " + ", ".join(skills) + ".")
     lines.append("Want what you want. If it needs one of these, reach for it; if it needs one a want cannot take as a "

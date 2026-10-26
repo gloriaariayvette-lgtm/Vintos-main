@@ -157,9 +157,17 @@ def choose(titles, now=None):
 _TAG = r"\[ARRIVAL SONGS?:\s*([^\]]*)\]"
 
 
-def take_picks(reply, now=None, act=True):
-    """His [ARRIVAL SONGS: a | b | c] in a reply: chosen (unless act is False) and taken out of the words."""
+def take_picks(reply, now=None, act=True, turn_id=""):
+    """His [ARRIVAL SONGS: a | b | c] in a reply: chosen (unless act is False) and taken out of the words. His
+    [ARRIVAL ENCOUNTER: ...] (arrival_encounter.py) is taken the same way, in the same two places."""
     import re
+    if reply and "[ARRIVAL ENCOUNTER" in reply.upper():
+        try:
+            import arrival_encounter
+            reply = arrival_encounter.take(reply, now, act=act, turn_id=turn_id)
+        except Exception as e:
+            print("[bedroom/encounter]", e, flush=True)
+            reply = re.sub(r"\s*\[ARRIVAL ENCOUNTER:[^\]]*\]\s*", " ", reply, flags=re.I).strip()
     if not reply or "[ARRIVAL SONG" not in reply.upper(): return reply
     if act:
         for body in re.findall(_TAG, reply, re.I):
@@ -211,6 +219,30 @@ def _log(row):
     with open(ARRIVALS, "a") as f: f.write(json.dumps(row) + "\n")
 
 
+def episode_id(device, since_ts):
+    import hashlib
+    return "arr-" + hashlib.sha256(("%s|%.3f" % (device, float(since_ts))).encode()).hexdigest()[:12]
+
+
+def _encounter_held(state, why, now):
+    """An arrival that could not be greeted is written beside his chosen encounter, which keeps waiting."""
+    try:
+        import arrival_encounter
+        arrival_encounter.held(state.get("episode_id"), why, now)
+    except Exception as e:
+        print("[bedroom/encounter]", e, flush=True)
+
+
+def _encounter(state, now, lib):
+    """His encounter for this arrival, if one is chosen and standing; never in the way of the ordinary song."""
+    try:
+        import arrival_encounter
+        return arrival_encounter.for_arrival(state.get("episode_id"), now, [u for _, u in lib])
+    except Exception as e:
+        print("[bedroom/encounter]", e, flush=True)
+        return None
+
+
 def observe(device, distance, now=None, cfg=None):
     """Called for every bedroom message. Returns what happened on an arrival, else None."""
     now = time.time() if now is None else now
@@ -225,6 +257,8 @@ def observe(device, distance, now=None, cfg=None):
     last_here = float(state.get("last_here_ts") or 0)
     if now - last_here >= float(cfg["away_minutes"]) * 60:
         state["here_since_ts"] = now           # this visit began now; presence_line says since when
+        # one stable id for this arrival, written down before anything is sent: an encounter greets an episode once
+        state["episode_id"] = episode_id(device, now)
     state["last_here_ts"] = now
     state["last_here_distance"] = round(float(distance), 1)
     _atomic(STATE, state)
@@ -236,21 +270,35 @@ def observe(device, distance, now=None, cfg=None):
 
 def _arrived(state, now, device, distance, why):
     row = {"at": _now_iso(now), "device": device, "distance": round(distance, 2), "sent": False}
+    if state.get("episode_id"): row["episode"] = state["episode_id"]
+    enc, settled = None, False
     try:
         if why:
-            row["why"] = why; return row
+            row["why"] = why; _encounter_held(state, why, now); return row
         import watch_presence
         asleep, _ = watch_presence.should_hold()
         if asleep:
-            row["why"] = "asleep"; return row
-        if not library():
+            row["why"] = "asleep"; _encounter_held(state, "asleep", now); return row
+        lib = library()
+        if not lib:
             row["why"] = "no song with a track yet"; return row
-        song = next_song(now)
-        if not song:
-            row["why"] = "today's three have all played"; return row
-        title, url = song
-        row.update(song=title, url=url, picked_by=today_picks(now).get("by"))
-        got = _send(title, url, title, now)
+        enc = _encounter(state, now, lib)    # his prepared encounter greets this arrival, once; else today's next
+        if enc:
+            title, url = enc["title"], enc["url"]
+            row.update(song=title, url=url, picked_by="his encounter", encounter=enc["encounter_id"])
+        else:
+            song = next_song(now)
+            if not song:
+                row["why"] = "today's three have all played"; return row
+            title, url = song
+            row.update(song=title, url=url, picked_by=today_picks(now).get("by"))
+        got = _send(title, url, title, now, line=(enc or {}).get("dedication", ""))
+        if enc:
+            try:
+                import arrival_encounter
+                settled = arrival_encounter.settle(enc["encounter_id"], enc["episode_id"], got, now)
+            except Exception as e:
+                row["encounter_error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
         sent = got.get("state") in ("sent", "acknowledged")
         row.update({k: got[k] for k in ("push", "song_id", "ntfy") if k in got})
         row.update(sent=sent, delivery=got.get("state"), channel=got.get("channel"),
@@ -268,12 +316,18 @@ def _arrived(state, now, device, distance, why):
         return row
     except Exception as e:
         row.update(delivery="failed", why="%s: %s" % (type(e).__name__, str(e)[:160]))
+        if enc and not settled:
+            try:
+                import arrival_encounter   # an attempt left "offering" is settled from the Watch's ledger
+                arrival_encounter.reconcile(now)
+            except Exception:
+                pass
         return row
     finally:
         _log(row)
 
 
-def _send(title, url, ref="", now=None):
+def _send(title, url, ref="", now=None, line=""):
     """The song itself goes to the Vintos Watch app and nowhere else (watch_presence.offer_song): the next time the
     Watch checks in it puts the song first in its list, raises its own notification with Play, and plays it at once if
     the app is open. The APNs push goes out too when a key is installed.
@@ -282,6 +336,10 @@ def _send(title, url, ref="", now=None):
     19 October), because Apple accepts the push and nothing appears. It is a notification only: no audio, no media,
     no link, and the song still plays in his Watch app. It reaches her wrist the way every other ntfy line does,
     through her phone's notifications, so it shows on the phone too.
+
+    His encounter's line (arrival_encounter.py), when there is one, goes in that same ntfy line and the push body. The
+    Watch offer is unchanged: its `ref` is still the title, and no new field is sent to the Watch app, whose client
+    has not been shown to display one.
 
     A failure is returned, never raised, so every arrival is written down."""
     try:
@@ -293,23 +351,33 @@ def _send(title, url, ref="", now=None):
     try:
         import watch_apns
         if os.path.exists(watch_apns.CONFIG):
-            push = watch_apns.send(title, "His song, for when you came in.", kind="song", media_url=url,
+            push = watch_apns.send(title, _inert(line) or "His song, for when you came in.", kind="song", media_url=url,
                                    message_id=song["id"], force=True)   # sleep was checked above
             got["push"] = (push or {}).get("state")
     except Exception as e:
         got["push"] = "failed: %s" % str(e)[:120]
-    got["ntfy"] = _telling_her(song["id"], title)
+    got["ntfy"] = _telling_her(song["id"], title, line)
     return got
 
 
-def _telling_her(song_id, title):
-    """One ntfy line so she knows a song is waiting on her Watch. Never the song, never a link to it."""
+def _inert(line):
+    try:
+        import arrival_encounter
+        return arrival_encounter.inert(line)
+    except Exception:
+        return ""
+
+
+def _telling_her(song_id, title, line=""):
+    """One ntfy line so she knows a song is waiting on her Watch. Never the song, never a link to it. With his
+    encounter, his line under it, as plain words."""
     try:
         import deliver
+        said = _inert(line)
         # The outward lane takes a callable that answers for this send, not a name: a string here raised inside the
         # gate and the line would have failed on Aegis every time while the suite's stub passed.
         receipt = deliver.deliver("bedroom-song-" + str(song_id), "ntfy",
-                                  "\u201c%s\u201d is on your Watch." % str(title)[:80],
+                                  "\u201c%s\u201d is on your Watch." % str(title)[:80] + ("\n" + said if said else ""),
                                   title="Vintos is sharing a song", tags="musical_note",
                                   authority=lambda: (True, "she asked to be told when he shares a song (19 October)"))
         return (receipt or {}).get("state") or "unknown"
@@ -380,6 +448,12 @@ def context_line(now=None):
                 line += " (standing in: %s)" % "; ".join("\u201c%s\u201d" % str(s.get("title"))[:50]
                                                        for s in picks["songs"])
             line += ". Your library: %s." % "; ".join("\u201c%s\u201d" % t[:50] for t in titles)
+    try:   # his prepared encounter and what became of it, or how to make one (design 05, 26 October)
+        if library():
+            import arrival_encounter
+            line += arrival_encounter.context_line(now)
+    except Exception:
+        pass
     return line + "]"
 
 

@@ -4170,7 +4170,7 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                 except Exception as _pue:
                     print("[pursuit/tag]", _pue, flush=True)
                 try:
-                    import bedroom_arrival as _ba; reply = _ba.take_picks(reply)   # his [ARRIVAL SONGS: ...]
+                    import bedroom_arrival as _ba; reply = _ba.take_picks(reply, turn_id=getattr(locals().get("_turn"), "turn_id", "") or "")   # his [ARRIVAL SONGS: ...] and [ARRIVAL ENCOUNTER: ...]
                 except Exception as _bae: print("[bedroom/picks]", _bae, flush=True)
                 import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
 
@@ -9710,6 +9710,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     _note_task, _note = None, ""     # Gemma's note of a picture she sent, for his memory (2026-10-01)
     _defer_session_ledger = bool(_surface == "reelroom" and getattr(msg, "defer_session_ledger", False))
     _turn_marks = ""   # this turn's device pictures, drawn once his tags have fired
+    _rr_keep = False   # ReelRoom only: he wrote [KEEP] - keep this exchange as a bookmark (proposal 16)
     # A room event may be part of the model input, but evidence writers receive
     # only Gloria's actual words. Never turn a scheduler instruction into her
     # quote or into evidence about her.
@@ -10485,7 +10486,8 @@ Your current self-model (excerpt):
             except Exception as _hte: print("[avatar/home]", _hte, flush=True)
             try:
                 import bedroom_arrival as _ba
-                reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
+                reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))),
+                                       turn_id=(_turn.turn_id if _turn is not None else ""))
             except Exception as _bae: print("[avatar/bedroom-picks]", _bae, flush=True)
             try:
                 import spotify_watch as _spw   # his [SPOTIFY: Title - Artist]: on her Watch, avatar chat only
@@ -10526,6 +10528,13 @@ Your current self-model (excerpt):
                     reply = _tagre.sub(r"\s*\[(?:SCENE|RENDER):[^\]]*\]\s*", " ",
                                        reply or "", flags=_tagre.I).strip()
             except Exception: pass
+            # His [KEEP] in ReelRoom: a bookmark of this exchange, taken by reelroom_chat once the turn is
+            # journaled. Stripped here, before history and the ledger, so she never sees or hears it.
+            if _surface == "reelroom":
+                try:
+                    import reelroom_bookmarks as _rr_bm
+                    reply, _rr_keep = _rr_bm.take_keep_tag(reply)
+                except Exception as _rr_bme: print("[reelroom] keep tag:", _rr_bme, flush=True)
             # His last [SCENE:] is where the app opens next time. Server-side, so
             # his choice survives the app closing; the app already opens on the
             # manifest default and needs no change.
@@ -10817,7 +10826,8 @@ Your current self-model (excerpt):
         reply = _sg_guard(reply, _turn)
         return {"reply": reply, "model": _model_used, "reasoning": ("" if _turn is not None and _turn.carries_capsule else (_claude_reasoning or "")),
                 "live_slot": (_turn.turn_id if _turn is not None else ""),
-                **({"image_description": _note} if _note_task is not None else {})}
+                **({"image_description": _note} if _note_task is not None else {}),
+                **({"keep": True} if _rr_keep else {})}
     except Exception as e:
         return {"reply": "", "error": str(e)}
     finally:
@@ -12075,6 +12085,13 @@ async def reelroom_chat(request: Request):
                            film_year=str(body.get("film_year") or ""), elapsed_min=body.get("elapsed_min"),
                            extra={"session_map": body.get("session_map") or [], "planned_actions": body.get("planned_actions") or []})
             except Exception as _je: print("[reelroom] journal:", _je, flush=True)
+            # he wrote [KEEP]: this exchange, now journaled with its turn ids, becomes a bookmark (proposal 16)
+            if (_out or {}).get("keep"):
+                try:
+                    import reelroom_bookmarks as _rr_bm2
+                    _kept = _rr_bm2.mark("latest", by="vintos", latest_scene=True)
+                    if not _kept.get("ok"): print("[reelroom] keep:", _kept.get("reason"), flush=True)
+                except Exception as _kbe: print("[reelroom] keep:", _kbe, flush=True)
             return {"reply": str((_out or {}).get("reply") or ""), "mode": mode,
                     "model": (_out or {}).get("model"), "error": (_out or {}).get("error")}
         reply = await _a.get_event_loop().run_in_executor(None, fn)
@@ -12440,6 +12457,34 @@ async def reelroom_last_reply(request: Request, message: str = ""):
         return {"ok": True, "found": False}
     except Exception as e:
         return {"ok": False, "found": False, "error": str(e)[:200]}
+
+
+@app.post("/api/game/reelroom/bookmark")
+async def reelroom_bookmark(request: Request):
+    """Gloria keeps a moment of tonight (proposal 16): {turn_id?: journal turn id or "latest", scene_index?: a
+    session_map event whose frame reading goes with it, player_seconds?: the player's position, only if the app
+    actually has it}. A pointer into tonight's journal with the words copied exactly; no frame is stored."""
+    _require_secret(request)
+    body = await request.json()
+    try:
+        _reelroom_mod()   # the scripts path
+        import reelroom_bookmarks as _rb
+        return _rb.mark(str(body.get("turn_id") or "latest"), by="gloria", scene_index=body.get("scene_index"),
+                        player_seconds=body.get("player_seconds"))
+    except Exception as e:
+        return {"ok": False, "reason": str(e)[:200]}
+
+
+@app.get("/api/game/reelroom/bookmarks")
+async def reelroom_bookmarks(request: Request):
+    """The kept moments, newest last. Read-only."""
+    _require_secret(request)
+    try:
+        _reelroom_mod()
+        import reelroom_bookmarks as _rb
+        return {"ok": True, "bookmarks": _rb.bookmarks()}
+    except Exception as e:
+        return {"ok": False, "bookmarks": [], "error": str(e)[:200]}
 
 
 @app.get("/api/game/reelroom/sessions")

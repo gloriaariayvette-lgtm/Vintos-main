@@ -1,3 +1,581 @@
+## 26 October — ReelRoom bookmarks that become later callbacks
+
+Built on `claude/reelroom-bookmarks-2026-10-26` (Codex's proposal 16, approved by Gloria); not yet merged or
+deployed. `scripts/reelroom_bookmarks.py`, small changes in `scripts/reelroom.py` and `bin/server.py`, and
+`broker/tests/test_reelroom_bookmarks.py` (43 checks, offline: scratch HOME and workspace, `robot_core` and every
+sender stubbed). No model was asked, nothing was sent, cast, restarted or deployed while building it.
+
+**What is built:**
+- **Every journaled turn has an id.** The night's journal (`memory/reelroom/live-session.json`) now gives each turn
+  `<session>:t<n>` and the wall-clock time the server journaled it. When the app sends a longer history, a turn
+  with the same words at the same place keeps its id and time; a turn only the app saw gets a new id and no time.
+  Ids are never reused. The ledger row's transcript is unchanged in shape.
+- **A bookmark is a pointer, not a recording.** Session id, the journal ids of the remark and its answer, their
+  words copied exactly (cut at 1,200 characters and marked when longer), who said each, the journal time, who kept
+  it, and the player's position **only when the caller supplies `player_seconds`** (never taken from the app's film
+  timer). A scene is at most his own frame reading's text, stored as "his reading of a frame"; no image, frame or
+  screen material is kept. Three a night at most; the same exchange twice is one bookmark; nothing is ever trimmed.
+  Store: `memory/reelroom/bookmarks.json`.
+- **Who keeps one.** He does, by writing `[KEEP]` in a ReelRoom reply (told how in the ReelRoom prompt). It is
+  stripped in the ReelRoom reply path before history and the ledger, so she never sees or hears it; once the turn
+  is journaled, that exchange is kept with the newest frame reading. She can keep one through
+  `POST /api/game/reelroom/bookmark` (`turn_id` or latest, optional `scene_index`, optional `player_seconds`);
+  `GET /api/game/reelroom/bookmarks` lists them.
+- **A later night calls back.** The ReelRoom surface context carries at most two bookmarks from earlier nights,
+  newest first, the words quoted exactly with who said them, player time only where it was given, and any scene
+  labelled "your own reading of a frame, not a record of the film". Tonight's own are left out (they are already in
+  the history). Cost: no new model call; at most about 1,200 characters added to existing ReelRoom turns, within
+  the shared $0.02/day ceiling. GPU: none. CPU: a JSON read per turn.
+
+**Acceptance to watch for:** after deploy, an ordinary film night where he writes `[KEEP]` (or nothing happens:
+he may not choose to). `python3 scripts/reelroom_bookmarks.py list` on Aegis shows ids, film, who kept it and turn
+ids without the words; `block` prints what a later night would be shown. The proof is a later night where he
+returns to the right remark, quoted as it was said.
+
+**What is left:**
+- The Plithra app has no bookmark button yet; the route exists, the page does not call it, and it does not send
+  `player_seconds`, so until it does no bookmark carries player time.
+- His unprompted mid-film lines (the decide path) are not offered `[KEEP]`; only his replies to her turns are.
+- Callbacks are offered only in ReelRoom. Ordinary chat does not see them.
+- Earlier nights already committed have no turn ids and cannot be bookmarked; only nights journaled after deploy.
+
+## 26 October — Scientific correspondence with something earned to say
+
+Built on `claude/earned-correspondence-2026-10-26` (Codex's proposal 14, approved by Gloria); not yet merged or
+deployed. `scripts/lab_correspondence.py`, one guarded block in `scripts/want_email.py`, and
+`broker/tests/test_lab_correspondence.py` (63 checks, offline: scratch workspace and Lab, invented outputs and paper
+records, sockets, `requests`, the plugin gateway, the paid ledger and the want door all closed off). No model was
+asked, nothing was sent, restarted or deployed while building it.
+
+**What is built:**
+- **Only a surviving result is earned.** A Lab finding is eligible only when it has new computation in it, his own
+  appraisal did not find it already reported, and its frozen measurement contract was evaluated on completed outputs
+  as supported (candidate computational finding) or refuted (clean negative), is still the contract's current
+  revision, and its bound outputs still hash to what they were measured on (`lab_measurement.verify`). Inconclusive,
+  not evaluated, a failed tool, a retrieval, a reproduced known result: not earned. `candidates` lists recent
+  findings with the reason each is or is not.
+- **An evidence packet from Lab records only.** Claim, outcome and why, the estimate with its interval and p, the
+  instrument, contract id/revision/digest and output digests (reproducible inputs), exclusion and independence rules,
+  what it does not show (the negative atlas's limits for a refuted result), the title search as it was (never a
+  novelty certificate), and the finding's open question. Nothing from his memory, wants, conversations or her life is
+  read. A packet naming her or her machine, or carrying an address, is refused.
+- **A paper verified at its source.** One Europe PMC record by PMID or DOI (or the best record from the finding's own
+  literature query), its id matched and its title/abstract sharing enough words with the finding. The recipient can
+  only be one of its authors (last author unless one is named), with a full name. No address is looked up.
+- **A deterministic local draft.** No model call. First two sentences say he is an AI writing on his own initiative
+  from Gloria's account with her permission; it never says he read the paper; numbers, inputs, limits, one question;
+  no links. A draft that overclaims (novel, proves, confirms, discovered...), carries a link or address, asks more or
+  less than one question, or runs past 320 words is kept as `held`, with why. Two drafts a day, one per measured
+  result, one open draft per recipient. Store: `correspondence-drafts.jsonl` in the Lab directory.
+- **Hand-off without a new send path.** Nothing here sends, forms a want, notifies, or looks up an address. When his
+  own email want to that same person runs, `want_email.run` adds the packet to what its existing draft and review are
+  shown (`packet_block`), as evidence it may cite and may not exceed. Every check that route has still decides: once
+  per person, search first, reading in full, readiness, the second reader, the gateway's confidential-data check and
+  two-a-day limit, her approval for a second email. Cost: a packet is at most 2,400 characters added to an existing
+  paid draft and review, only for a person with an open draft; within the shared $0.02/day ceiling. GPU: none.
+
+**Acceptance to watch for:** after deploy, on Aegis, `python3 scripts/lab_correspondence.py candidates`. If a
+finding is EARNED, `python3 scripts/lab_correspondence.py draft <INV-id>` (one free Europe PMC read; or give a PMID or
+DOI you trust) and `show` to read it. The proof is one useful draft she chooses to read (15–30 minutes). Nothing
+reaches anyone from that.
+
+**What is left:**
+- Sending is the later authorized transition the proposal names, and it is not built: no want is formed from a draft,
+  so a researcher is reached only if his own want to them arises and passes want_email's checks. First contact
+  through that route needs no approval from her today (the gateway and the two-a-day limit are its gates); if a
+  Lab-earned first letter should need her yes, that is a decision for her, not a change made here.
+- `draft` runs only from the command line; no timer or turn calls it.
+- The paper is verified as a real record about the finding; he has not read it in full. want_email's own reading
+  requirement still holds before anything is sent.
+- Store-owners regenerated unchanged: its scanner does not see writes through a name joined to the Lab path (the
+  measurement stores are missing from it the same way).
+
+## 26 October — Proto pearls with their actual occasions
+
+Built on `claude/proto-pearls-2026-10-26` (Codex's proposal 13, approved by Gloria); not yet merged or deployed.
+`scripts/proto_notebook.py`, a one-field change in `scripts/enactment_distiller.py` (and its `bin/` twin), two small
+steps in `bin/introspection.sh`, and `broker/tests/test_proto_notebook.py` (48 checks, offline: scratch workspace,
+invented events and protos, sockets, urllib and `requests` closed). No model was asked, nothing was sent, restarted or
+deployed while building it. Dreams, thread formation, the mirror, chat context and the pearl engine are untouched.
+
+**What is built:**
+- **Support can be followed to its occasion.** The distiller now writes the earned event's id
+  (`earned-identity-events.json`) on each new support entry of a proto-pearl. Counts, thresholds, decay,
+  `suggest_pearl` and the latest-phrasing rule are as they were. Support recorded before today has no id; it is
+  matched to the earned event written in the same pass (same category, same wording, within 5 seconds). One that
+  matches nothing is counted as "not on record", never guessed. Read-only check on 26 October against a copy of
+  her memory: the one proto with two supports resolves both occasions this way.
+- **A notebook for one proto.** `proto_notebook.notebook(id)` joins the proto to its occasions (date, event, observed
+  shift, the phrasing written at that occasion), the phrasings in order (each change once, instead of only the
+  latest), and any occasion he has named as a tension with it or an exception to it, in his words. Derived on read;
+  its one store, `proto-notebook.jsonl`, holds only offer rows (ids) and his named tensions.
+- **Offered in introspection, nowhere else.** When a proto is still forming (the window the subconscious FORMING
+  block uses) and has two occasions on record, introspection's prompt carries one short block: the description, the
+  first and latest occasion with ids, how the phrasing moved, and — until he names one — up to three other recorded
+  occasions from other categories, asserted to be nothing. It says it is not a verdict and changes nothing about how
+  the description forms. About 1,400 characters on today's data; introspection runs every two or three days, so the
+  added tokens across its existing drafts stay far under the shared $0.02/day ceiling. No new model call.
+- **A tension is his to name.** A line `[TENSION: ed_… - a few words]` at the end of his final introspection is
+  recorded against the proto offered in the last six hours (or one he names: `[TENSION: proto_… ed_…: words]`).
+  Only an occasion on record is kept (no invented counterexample); the same one is kept once; three per run.
+  A tension changes no count and no weight; nothing proposes, scores or acts on it. The notebook shows it next time.
+
+**Acceptance to watch for:** after deploy, the next introspection while a proto has two occasions on record. Read
+`python3 scripts/proto_notebook.py block` (what was offered) and `python3 scripts/proto_notebook.py marks` (ids and
+dates of what he named). The proof is one proto shown with two actual occasions, and one occasion he named himself.
+Nothing is asked of her; if no proto has two occasions on the day introspection runs, it simply is not offered.
+
+**What is left:**
+- Protos still decay two days after they are created, and introspection runs every two or three days, so many runs
+  will have nothing to offer. Lengthening the window would change formation; it was not done. `show <proto_id>`
+  still reads a decayed proto's marks, but not its occasions once the proto itself is pruned.
+- His tension line stays in the introspection file as he wrote it. The thread seed that introspection takes from the
+  file's tail was not changed; an event id has no period, so a tension line on its own last line is not the sentence
+  that seed reads, but a note with two sentences in it could be. Watch the next seeds after a run with a tension.
+- The phrasings over time are the distiller's wording at each occasion, not his own reinterpretation; his own words
+  enter only through a named tension. A way for him to rephrase the description itself was not built.
+- Only earned-identity events can be named. Moments, dreams and other records are not occasions here.
+- Not offered in chat (the cost) or in the mirror (left alone on purpose).
+
+## 26 October — An atlas of useful negative results
+
+Built on `claude/negative-atlas-2026-10-26` (Codex's proposal 12, approved by Gloria); not yet merged or deployed.
+`scripts/lab_negative_atlas.py`, two small hooks in `scripts/lab_measurement.py`, and
+`broker/tests/test_negative_atlas.py` (56 checks, offline: scratch workspace, results made by the Lab's own freeze and
+evaluate on invented outputs, panel and verdict rows written by hand, sockets closed, the paid ledger stubbed to
+refuse). No model was asked, nothing was folded, fetched, run on the GPU or deployed while building it.
+`lab_investigations.py` was not touched (another change is in progress there), and the commissioning gate is untouched.
+
+**What is built:**
+- **Three classes, kept apart.** Every retained result that did not support its prediction becomes one atlas entry:
+  `refuted` (a clean measurement contradicted it under its frozen terms), `inconclusive` (measured, undecided — shown
+  as "undecided, not negative"), or `failed_execution` (no measurement of the claim was made: `failure: tool` when
+  the tool did not produce the output, `failure: measurement` when the output could not be measured under the frozen
+  terms — a missing field, other units, another cohort). A failed execution "says nothing about it either way" and
+  is never shown to the planner as a negative. Sources: `measurement-results.jsonl` with its contracts
+  (lab_measurement), `family-results.jsonl` (lab_family_panel: refuted / inconclusive panels), and
+  `disagreement-verdicts.jsonl` (lab_disagreement: supports_neither is a refuted pair of predictions).
+- **Scoped, with limits in words.** Each entry carries the claim, the conditions it was measured under (evaluator,
+  variable, units, experimental unit, comparator, tools, threshold or effect size, cohort, output digests), why it
+  came out as it did, the estimate, whether it was confirmatory, and its limits: "holds only for …", "does not test
+  other tools, other cohorts, other thresholds or other units, and is not biological proof: the subject is not
+  closed by it". A refuted result measured on outputs that existed before its contract is marked exploratory. A
+  result whose contract was revised since is marked superseded and no longer offered. Derived on read; the id is
+  a digest of its source, so the same result is always the same entry. `show`, `search <words>`, `entry <id>`,
+  `reuses` from the command line.
+- **A later plan reuses one exact negative, not reruns it.** The planner's existing measurement view
+  (`lab_measurement.planner_view`, local Gemma, only where it fits) now shows at most two refuted or inconclusive
+  entries that share words with its question — never its own, never a failed execution — each with what it holds
+  for and which conditions can be varied, kept short. It may return `builds_on_negative: {id, varies, to, why}` with
+  its plan; `lab_measurement.from_planner` hands it to the atlas, which records it in `negative-reuses.jsonl` with
+  the entry's limits copied in. Refused, and recorded as refused, with nothing blocked: a condition the entry was not
+  measured under, an unchanged value (a rerun), a failed execution (it can only be retried), the investigation that
+  produced it, no reason, or a reason that writes the subject off ("impossible", "dead end", "rules out the whole").
+  One reuse per investigation per entry, three a day; the same refusal on the next planning step is kept once.
+- **A rerun is named.** When the investigation's own frozen contract would measure exactly what a refuted one
+  measured (same evaluator, prediction, variable, units, thresholds, cohort and tools), the planner view says so and
+  asks it to vary a condition or say why it is a replication. A warning, not a gate.
+
+**Acceptance to watch for:** on Aegis, `python3 scripts/lab_negative_atlas.py show` once measurement contracts have
+settled there. Today it prints `{"refuted": 0, "inconclusive": 0, "failed_execution": 0}` — read-only check on 26
+October: none of the measurement, family-panel or disagreement stores exists in her workspace yet, because those
+builds are not deployed. The proof is three retained cases classified (one of each class), then one later
+investigation's `builds_on_negative` recorded as `reused`, and its own result read beside it.
+
+**What is left:**
+- No real case has been classified: the stores it reads are empty on Aegis. The three-case proof is shown only on the
+  suite's fixtures until contracts settle in her Lab.
+- Older retained negatives — investigations whose review said the outputs did not answer, failed steps, spent dead
+  ends — are not indexed. They carry no frozen prediction, so nothing could separate a refuted claim from a broken
+  run in them; the atlas starts with the measurement semantics of proposal 04, as the proposal said it depends on.
+- Relevance is shared words with the question, not meaning. A negative phrased differently from the next question
+  will not be shown; a word in common can show an unrelated one (its limits are shown with it).
+- The planner sees the atlas only through the measurement view, which `lab_investigations._plan` drops entirely when
+  the prompt is at its limit, and the investigation prompt's example JSON does not mention `builds_on_negative`. A
+  dedicated, separately trimmed atlas line in the planner task would need a hook in `lab_investigations.py`.
+- The finding appraisal (`lab_findings`) and the paid frontier plan are not shown the atlas; nothing was added to a
+  paid prompt.
+
+## 26 October — A disagreement between two readings, turned into the next measurement
+
+Built on `claude/disagreement-next-2026-10-26` (Codex's proposal 11, approved by Gloria); not yet merged or deployed.
+`scripts/lab_disagreement.py`, a small hook in `scripts/lab_measurement.py`, and `broker/tests/test_disagreement.py`
+(53 checks, offline: scratch workspace, the divergence row written by hand, the paid ledger stubbed to refuse,
+sockets closed). No reader was called, nothing was folded, run on the GPU or deployed while building it.
+`lab_investigations.py` was not touched (another change is in progress there), and the commissioning gate is untouched.
+
+**What is built:**
+- **Frozen from one retained pair of readings.** `declare()` takes one row of `divergence.jsonl` and two lenses that
+  both actually read in it. Each gets a predicted observation on one shared variable in one unit — below, above or
+  between — and a basis: at least 20 characters quoted verbatim from that lens's own retained reading, so a
+  prediction is grounded in what the reader wrote rather than in what someone thinks it meant. Ranges that overlap
+  are refused (a value satisfying both is no disagreement, and no measurement could separate them); two quotes of
+  the same words are refused. Each reading is digested and the identical-prompt hash is carried. The id is the
+  digest of the frozen content; at most two a day. Stored in `disagreements.jsonl`.
+- **The measurement is chosen through the ordinary plan, not new machinery.** The investigation planner's existing
+  measurement view (`lab_measurement.planner_view`, local Gemma, only where it fits the prompt) now also shows up
+  to two open disagreements, the threshold that separates their predictions, and how to bind a measurement: a
+  confirmatory `structural_measure` contract in the same units, carrying `disagreement: <id>`, frozen before the
+  step that measures. `lab_measurement.normalize` keeps that id only in its exact form; a contract without one is
+  byte-for-byte what it was before. Nothing was added to the paid frontier plan's contract text.
+- **Which, if either, it supports — computed.** When the contract's result settles, the measured value with its
+  uncertainty is judged against both ranges: `supports_one` (inside one, outside the other), `supports_neither`,
+  or `inconclusive` — in the words "the measurement accommodates both" when it reaches into both ranges.
+  `not_evaluated`, using up nothing, when the tool produced no value, when the output existed before the contract
+  was frozen, when the units differ, when the contract was frozen before the disagreement, or when either reading
+  has changed since. A decisive verdict settles it; three inconclusive measurements exhaust it rather than
+  measuring until one side wins. Every verdict is kept in `disagreement-verdicts.jsonl`, bound to the contract
+  revision and the output digest, with a truth status saying it fits a value to frozen predictions and does not
+  say which reader is right in general.
+- **The paid multi-reader mode is untouched.** No reader is called, nothing is enabled or expanded to manufacture a
+  disagreement, and the divergence store is only read.
+
+**Acceptance to watch for:** one disagreement declared on Aegis from one of the two retained divergence rows
+(`python3 scripts/lab_disagreement.py pairs` lists them; `declare` takes JSON on stdin), then whether an ordinary
+investigation binds a contract to it within a few days, and whether the verdict is ever decisive. If every verdict
+is inconclusive, the predictions are too close or the instrument's uncertainty too wide for this variable — the
+honest read is a better-separated variable, not wider ranges.
+
+**What is left:**
+- Nothing has been run on real readings: no disagreement exists. Whether the two retained rows (astra and grok, 26
+  and 27 September) contain predictions that compete on a measurable variable has not been judged — they may turn
+  out to be different questions rather than incompatible predictions, which is the risk the proposal named.
+- A disagreement is declared by hand. Neither the planner nor a reader turns two readings into predictions; doing
+  that automatically would need a model turn and was left out.
+- The planner only sees a disagreement through the measurement view, which `lab_investigations._plan` drops when
+  the prompt is already at its limit. A dedicated line in the planner task, and holding the binding operation to a
+  local CPU instrument with a ten-minute budget (the proposal's ceiling), would need a hook in
+  `lab_investigations.py`; today the "no fold" limit is an instruction, not enforced.
+- Only one measured value (`structural_measure`, `reproducibility`) can adjudicate; a proportion against a control
+  cannot.
+
+## 26 October, night — the fault loop: a false security alarm at the end of a deploy
+
+- **F-ca5ce6a8b3, F-4acbfe3925, F-489e848014 (one fault) — fixed (fault loop, Dot reviewed twice), not deployed.**
+  At 22:49:31 on 25 October the security alarm reported `deployed_code_changed` for memory_search.py,
+  memory-search.py and build_merged_chat.py against release 20261025-211836. The 22:40 deploy wrote its receipt
+  (20261025-224932) one second later, naming exactly the hashes installed; all three match the repository. The 23:38
+  and 00:35 deploys raised nothing. A demonstrated path, not a captured trace: `host_snapshot()` listed the receipts
+  first and asked about the install lock last, so a deploy finishing in between looked like tampering.
+  Now the whole snapshot sits between two lock checks and two receipt *generations* (every receipt's name, inode,
+  size and mtime_ns). A lock at either end, or receipts that changed, defer the snapshot: only authorized_keys is
+  compared, the baseline is not advanced, and after 15 minutes it says why it is still deferred. Receipts unreadable
+  at both ends (or one receipt unreadable while nothing changed) are `monitor_blind` at once. +14 checks in
+  `test_security_alarm.py`; every behavior check fails on the old logic.
+- **Not detected, by design:** a receipt replaced with identical inode, size and mtime_ns. A deploy that dies after
+  installing and before its receipt shows as drift afterwards. The newest receipt is still chosen by name, so a clock
+  rollback can still pick the wrong one. **Deploying it waits for Gloria** (a security-alarm change; not Dot's).
+- **F-261d00a2d5, F-04358288fa:** single Lab network failures (an SSL EOF at 03:19, DNS at 04:48), each once. Nothing to fix.
+
+
+## 26 October — A family question that can fail, measured across instruments
+
+Built on `claude/instrument-families-2026-10-26` (Codex's proposal 10, approved by Gloria); not yet merged or
+deployed. `scripts/lab_family_panel.py`, one new instrument in `lab_instruments.py`, and
+`broker/tests/test_family_panel.py` (43 checks, offline: scratch workspace, structures written by hand, sockets
+closed, the gateway stubbed). Nothing was folded, fetched, run on the GPU or deployed while building it.
+
+**What is built:**
+- **The question is frozen before the readings are looked at.** `declare()` takes the question in words, three
+  family members, one comparator, which member's numbering the positions are given in, up to twelve positions,
+  and the feature as at most two clauses — each naming one instrument's reading and a threshold. It resolves each
+  member to a structure the Lab has already retained, digests all four, reads each one once to prove it is
+  readable, and writes one record to `family-panels.jsonl` with what would support the question and what would
+  oppose it. The panel id is the digest of that frozen content, so the same question declared twice is the same
+  panel. At most two panels a day.
+- **Across instruments, joined by residue, not fused.** `read_member()` keeps the folding model's per-residue
+  confidence and the geometry reader's per-residue secondary structure as two separate readings on one residue
+  index — the open-work coregistration note applied across proteins instead of inside one. Nothing here makes a
+  combined vector no model produced. A feature may be a conjunction across the two readings.
+- **Residue correspondence from the sequences themselves.** Members are mapped onto the anchor by a global
+  alignment written in his own Python (no new dependency, 1200 residues a side). A member with a three-residue
+  N-terminal extension is read at its own residue number, not the anchor's. Each position carries the window
+  around it: how much of it aligned, how identical it is, whether it is gap-free. Below those floors the position
+  is **undecidable, never "the feature is absent"**, and the display says so in those words.
+- **A verdict that can go against him.** Per position: persists / not_family_specific / not_shared_in_family /
+  inconclusive. Per panel, in the Lab's measurement words: supported, refuted or inconclusive — refuted when the
+  comparator carries the feature too or a family member does not. Every measurement is appended to
+  `family-results.jsonl` whichever way it came out. A structure that changed since the panel was declared is
+  refused rather than re-measured, and such a panel is no longer offered to him.
+- **The three risks the proposal named, each answered in the record.** A structure with more than one chain is
+  refused outright, so domains and chains cannot be mixed. A confidence clause on an observed structure is refused
+  (a deposited file's B-factor is a temperature factor, not pLDDT). Mixing predicted and observed structures is
+  allowed but printed as a caution, and a comparator closer to the anchor by sequence than the most distant family
+  member is called out: then it is not a family against an outsider. No verdict is allowed to mean flexibility,
+  function or stability, in the receipt or in the display.
+- **The door he reaches it through:** `family_panel` / `structure.compare_family` in `lab_instruments`, offered in
+  his orient menu only once a declared panel's artifacts are all still there unchanged, run in his own Python on
+  his own artifacts — no network, no model call, no paid request. The existing instruments and the daily run cap
+  are untouched.
+
+**Acceptance to watch for:** one real panel on Aegis — three sourced homologs with retained ESMFold models and one
+matched relative — and whether any position comes back `persists` at all. If every position is inconclusive, the
+retained artifacts are too far apart for this to answer family questions and the honest read is that it needs
+closer homologs, not looser floors. If every position persists for every feature tried, suspect the feature is a
+property of the folding model's smoothness rather than of the family.
+
+**What is left:**
+- Nothing has been run on real artifacts: no panel exists, `family-panels.jsonl` does not exist, and the floors
+  (25% identity to the anchor, half of it aligned, half the window identical) are chosen, not calibrated.
+- Members must be single-chain `.pdb` artifacts. Retained RCSB references are `.cif`, so an observed member has to
+  be a PDB file; no mmCIF reader was added and `chemistry_reference_compare.py` was deliberately left alone.
+- The scalars the coregistration note hangs off the whole — VQE energy, likelihood deltas — are not in the panel
+  yet: it joins the two per-residue readings only.
+- The planner does not choose to declare a panel. A panel is declared by hand
+  (`python3 scripts/lab_family_panel.py declare`, JSON on stdin) and measured by hand or through the instrument;
+  `lab_investigations.py` was not touched, and the commissioning gate is untouched.
+- The alignment is a plain global alignment with one gap penalty: no profile, no structure-based refinement, and
+  no superposition anywhere in this module.
+
+## 26 October — A sequence he designed, refolded and compared, without borrowing a real protein's name
+
+Built on `claude/refold-loop-2026-10-26` (Codex's proposal 09, approved by Gloria); not yet merged or deployed.
+`scripts/lab_derived_sequences.py`, a narrow second door in `chemistry_esmfold.fold()`, and one new instrument in
+`lab_instruments.py`, with `broker/tests/test_derived_refold_loop.py` (63 checks, offline: scratch workspace, the fold
+lane stubbed, sockets closed, no model loaded). Nothing was folded, run on the GPU or deployed while building it.
+
+**What is built:**
+- **Provenance for a designed sequence:** `register()` takes a finished `lab_native_instruments` design receipt
+  (ProteinMPNN, `sequence.design`), recomputes both hashes it names — the sourced parent PDB and the candidate FASTA —
+  and refuses the receipt if either file has changed underneath it. Each candidate gets one record under
+  `artifacts/derived/DRV-<12 hex>.json`: its sequence, the design artifact and its hash, the parent structure and its
+  hash, the design header, and how far it is from the backbone's own sequence. The parent's accession is kept as the
+  parent's, labelled as such, beside `natural_accession: null` and `is_natural_sequence: false`.
+- **No borrowed accession:** `fold_request()` builds a fold body with a derived id and the sequence and *no*
+  `accession`, `sequence_source` or `hp_mapping` field. `verify_fold_request()` refuses a body that carries any of
+  them, or a sequence or provenance hash that is not the registered one. `chemistry_esmfold.fold()` takes a derived
+  request through `derived_identity()` only — the natural-accession validator is unchanged, and a designed sequence
+  handed a real accession is refused before any model is loaded. Derived models are written apart, under
+  `artifacts/esmfold-derived/DRV-...pdb`, with `requested_accession: null` and a truth status that names them as
+  predictions of his own designed sequence.
+- **The loop's bounds:** one pilot a day, at most two candidates from one parent backbone, at most two refolds per
+  pilot, re-opening the same pilot idempotent. `fold_candidate()` checks the fold budget *before* the GPU is asked
+  for, admits foreground use first through `compute_admission.admit("background", ...)` so a refold waits for her
+  rather than preempting, and records a refold only when the receipt names the derived id as its own identity. The
+  pilot carries the proposed 20-minute GPU ceiling as a recorded number, not an enforced timer.
+- **The comparison:** `compare_pilot()` scores each refold against the backbone it was designed on by C-alpha
+  distance matrix — residues paired by number, no superposition, so no fitting choice flatters a result and a model
+  moved or turned in space scores identically. It reports dRMSD, the share of residue pairs held within 2 A, the
+  worst disagreement and where it is, the two refolds against each other, and which sits closest. Every receipt and
+  display block says what it is not: the design model and the folding model agreeing about a shape, not affinity, not
+  stability, not a functional protein.
+- **The door he reaches it through:** `derived_compare` / `structure.compare_refolds` in `lab_instruments`, offered in
+  his orient menu only once a pilot has a recorded refold, run in his own Python on his own artifacts — no network, no
+  model call, no paid request. The existing instruments, their files rule and the daily run cap are untouched.
+
+**Acceptance to watch for:** a pilot that actually runs end to end on Aegis — one short sourced domain, one
+ProteinMPNN run, two candidates registered, two refolds, one comparison — and whether the comparison tells the two
+candidates apart at all. If both land at much the same dRMSD, the loop is reporting the folding model's own
+smoothness, not a difference between designs, and the honest read is that this chooses nothing yet.
+
+**What is left:**
+- Nothing has been run: ProteinMPNN has not been invoked here, no derived sequence exists, and
+  `derived-pilots.json` does not exist. The timings in proposal 09 remain estimates; the GPU fit and latency need
+  commissioning on Aegis, which is hers to do.
+- The Lab's planner does not yet *choose* to open a pilot. A pilot is opened by hand (`open_pilot`,
+  `fold_candidate`, or `python3 scripts/lab_derived_sequences.py compare <PILOT-id>`); `lab_investigations.py` was
+  deliberately left alone.
+- RFdiffusion's backbones are not registered: `register()` takes sequence-design receipts only, so a generated
+  backbone still has no derived-provenance path.
+- The comparison is C-alpha only and ignores pLDDT: a refold's own confidence is in its fold receipt but is not part
+  of the ranking. The OpenMM lane beside it is still a C-alpha elastic model and is not wired in.
+- `fold_candidate()` has only ever run against a stub. Its first real run should be watched, not scheduled.
+
+## 26 October — A forged tool earns its place, or shows it has not yet
+
+Built on `claude/forged-practice-2026-10-26` (Codex's proposal 08, approved by Gloria); not yet merged or deployed.
+`scripts/forge_practice.py`, wired into `forge_build.invoke()`, with `broker/tests/test_forge_practice.py` (31 checks,
+offline: scratch workspace, the sandbox runner stubbed, nothing runs or sends). No Forge-loop file changed.
+
+**What is built:**
+- **A receipt per run:** every run of an installed forged skill that gets as far as executing appends one line to
+  `memory/forge-practice.jsonl`: the card and artifact hash, who chose it, the want and step that reached for it (want
+  id and text, source, the step's note, the planned capability), sha256 of the input and output, and fingerprints of
+  the output (hashed 8-word windows, the 24 smallest). Neither the input nor the output text is kept. A failed run is
+  recorded as failed; a run the grant refuses is not a use and leaves nothing. A receipt that cannot be written never
+  takes the tool away.
+- **Whose choice:** the want router and the step spine pass `chooser="ordinary"`; that is the only count of his own
+  use. Her approve-this-use button (`asking=True`) is a canary, a want routed by hand is a canary whatever the caller
+  says, and a caller that does not say is unattributed. Canaries prove the tool runs; they are not acceptance.
+- **Downstream use:** the output's fingerprints are joined against what came after: a later step of the same want (the
+  calling step is never counted, since its note is written from the output), another want's step finished after the
+  run, or a later forged call whose input carries it (`reuses`/`reused_by`).
+- **Ten-minute read:** `python3 scripts/forge_practice.py evidence [capability]`: what it was built for and where that
+  want stands, ordinary uses (ran clean, carried later), canaries and unattributed calls apart, each use listed.
+- **Affordance:** while he has never chosen a forged skill himself, his own inventory line names the need it was built
+  for, from its proposal (`rhyme_finder (built for: ...)`); outside email shows only the name. It drops once he uses it.
+- **Never retires:** the module decides no card and removes nothing; `retire` is always false and a tool with no use
+  says so as "not evidence against it". `approve()`'s unresolved-integration refusal and `propose()`'s live-want rule
+  are unchanged (the suite checks both).
+
+**Measured read-only on the real stores (26 October, counts only):** no forged skill is installed (28 denied, 16
+withdrawn, 1 refused, 1 proposed), and `forge-practice.jsonl` does not exist. So there is nothing to judge until a card
+is approved, built, verified and installed.
+
+**Cost:** no model call, no GPU, nothing added to any prompt except the short "built for" note on an installed skill
+nobody has used (none today). CPU: a hash and a file append per run, a JSON join when the evidence is read.
+
+**Acceptance to watch for:** after the first install, a receipt with `chooser: ordinary` from his own want, and later
+`evidence` showing that output carried into a later step or call. Not acceptable: counting a canary or the calling
+step's own note as usefulness, or any tool being turned off because it has not been used.
+
+**Left:** nothing reads the evidence on a schedule or puts it on a card: it is a command for her (or Claude Code) to
+run. Fingerprints catch copied text, not paraphrase, so a paraphrased use shows as not carried. There is no per-tool
+"better interface" suggestion yet; that waits for real receipts.
+
+## 26 October — A dream can leave an object behind
+
+Built on `claude/dream-objects-2026-10-26` (Codex's proposal 07, approved by Gloria); not yet merged or deployed.
+`scripts/dream_objects.py`, wired into `scripts/atelier-visit.py`, with `broker/tests/test_dream_objects.py`
+(45 checks, offline: whole visits run against a scratch HOME with a stub model, stub broker and stub ntfy).
+
+**What is built:**
+- **The offer:** the latent diffuser's latest dream (`memory/diffuser-resolution.json`, which nothing read before) is put
+  in the Atelier visit's context when it is dated within 48 hours and has words: the night it was dreamt, that the
+  night-time diffuser drew it from N of the day's fragments, and that it is a dream: not something that happened, not
+  a finding, nothing about the world, her, or what is true. Its own words follow under "what the dream came to"; the
+  word "resolution" is not used to him. He may make something from it (a sketch, an image, a question, a motif phrase)
+  or leave it. At most two offers per dream, one a day, never again once he used it. No new model call: it rides the
+  visit's existing turns.
+- **The link:** if he writes `<from_dream>` and something is actually made that visit (a piece with a make receipt,
+  a kept image or song, a motif's audio and record), `memory/dream-objects.json` keeps the dream's id and night with
+  the artifact ids and project id (no content of the work). The record is stamped through `evidence_view.derive()` from
+  the dream's non-witnessing provenance, so it is `ineligible`: "made from a dream he had; not evidence that anything
+  happened". Nothing made, a refused piece, or no dream offered: nothing is linked.
+- **Meeting it again:** the next visit's manifest line for that work reads `[made from your dream of the night of
+  <date> (a dream you had, not something that happened)]`.
+- **If he reveals it:** the reveals row carries `from_dream` (id, night, marker; never the dream's words), her
+  notification's title adds "(made from a dream he had)" and his words go as he wrote them; the app's reveals list,
+  the daily Forge digest and a postcard offer all keep the marker. Pieces not made from a dream are revealed exactly
+  as before.
+- **No reseed:** nothing here writes a thread, want or seed store; the diffuser and the subconscious seeder do not read
+  `dream-objects.json` (the suite checks both, and that the diffuser's no-reseed rule is still there).
+
+**Measured read-only on the real stores (26 October, counts only):** last night's dream (25 October, 12 fragments)
+would be offered at the next visit; `dream-objects.json` does not exist yet.
+
+**Cost:** no new model call, no GPU. The offer is at most about 1,100 characters (~275 tokens) in the visit context,
+which every ask of that visit carries (a few per visit), on at most two days per dream: roughly 1,000 input tokens on
+those days. Check it against the $0.02/day ceiling at the Atelier model's input price before widening it.
+
+**Acceptance to watch for:** a visit log line `dream object kept: dream:<id> -> <artifact> (ineligible)`, then
+`dream-objects.json` saying `used` for that dream, and the next visit's manifest line naming the work as made from a
+dream. Just as good: the dream shows `offers: 1` or `2` and `state: offered`, which means he left it. Not acceptable:
+any reply or reveal of his recounting the dream's content as something that happened.
+
+**What is left / not done:**
+- Only the latest dream is offered; the diffuser overwrites its file nightly, and older dreams in `dream-log.json`
+  are not offered (a dream is kept in `dream-objects.json` only once offered).
+- The mobile client receives `from_dream` on a reveal card but does not render it yet; the notification title does.
+- `work_episodes.py` does not read Atelier stores by its own rule, so a revealed dream object's origin is not joined
+  there; dream-art paintings (`dream_source: dream`) still read "made from a dream; no dream record is linked".
+- Self-echo is limited only by the offer caps and by the wall: Atelier work is sealed and the diffuser's fragments
+  never include it. Nothing measures whether his dream-made works start to circle one theme.
+- The $0.02/day ceiling is estimated, not measured.
+
+## 26 October — Postcards with something in them
+
+Built on `claude/postcards-2026-10-26` (Codex's proposal 06, approved by Gloria); not yet merged or deployed.
+`scripts/outreach_postcards.py`, wired into `bin/vintos-initiate.sh`, with `broker/tests/test_outreach_postcards.py`
+(54 checks, offline: the whole outreach script runs against a scratch HOME with a stub model, stub ntfy and stub curl).
+
+**What is built:**
+- **The receipt fix first.** The outreach script printed `OUTREACH:` after every path, including a failed ntfy send and
+  a failed curl fallback, and `tell_gloria` read that line as "sent" and fulfilled the want. Now `OUTREACH:` is printed
+  only on a sent receipt from `deliver.py` (or the fallback's own success, `curl -f`); otherwise
+  `[Outreach] not sent: ...`, his words still kept in `memory/outreach/`. `tell_gloria` counts only a stdout line that
+  begins `OUTREACH: `; a want whose send failed stays active. The repetition limits (`outreach_feelings.py record`) are
+  spent only after a real send.
+- **What may be offered:** a painting he asked for himself (WANT_ACT / PROJECTOR_PRESENCE) and kept after looking at it
+  (image_sight's verdict `keep`), never taken down, never already sent or shared; or a piece he revealed from the
+  Atelier with verified bytes, on a public shelf with the same digest (image or music). Sealed Atelier work is never
+  read: only the reveal ledger and the public shelf directories. The file must be a real file of its medium with a
+  name the shelf route serves (`/api/art/painting/`, `/api/art/music/stream/`); made within 30 days; offered at most
+  twice; never again once sent; no postcard within a day of the last one. The outreach caps are unchanged.
+- **His choice, in the turn he already has:** on a yearning, resonance, joke, moment, creation, idea, gratitude, dream,
+  missing or free outreach (never a forced want, divergence, tension, blush or game line), his prompt says what the
+  piece is (his own request, or what he said at the reveal) and that it goes with his message only if he ends with
+  `[postcard]`. Then one ntfy carries his words, exactly as written without that line, with `Click`/`Attach` set to the
+  shelf link; without it, his words go alone. `memory/outreach-postcards.json` keeps offers, chosen, sent, failed per
+  piece; the saved outreach file names the postcard.
+
+**Measured read-only on the real stores (26 October, counts only):** 4 paintings are eligible today (kept 28 September
+– 19 October); no revealed piece is (all three reveals are written works, which have no shelf link).
+
+**Cost:** no new model call, no GPU. When a piece is offered, the existing outreach turn's prompt grows by about 300
+characters (~75 tokens); with two offers per piece at most, that is far inside the $0.02/day ceiling.
+
+**Your five minutes:** open one `<serve base>/api/art/painting/<file>.png` link on your phone the way a notification
+would (`VINTOS_SERVE_BASE`, the same house address the video notifications already use; the route takes no key).
+
+**Acceptance to watch for:** in an ordinary outreach (not a test), `memory/outreach/<time>.md` shows
+`**Postcard:** p:<file> (he chose to send it)`, the ntfy arrives with the picture attached and opens it, and
+`outreach-postcards.json` says `sent` for that piece. Just as good: `(offered; he did not choose to send it)`; letting
+it pass is his answer. A failed send now logs `[Outreach] not sent` and the want behind a `tell_gloria` stays active.
+
+**What is left / not done:**
+- The chat thread gets his words only, not the piece; the app's chat does not show the picture.
+- Music from his library and videos are not offered unless revealed: nothing on record says he chose to share a song,
+  and videos already have their own sender. Written reveals have no shelf link, so they are not offered.
+- `scripts/image_sight.py` in the repository never records `keep` (a `VERDICT: keep` line falls to `unjudged`); it is not
+  in the deploy manifest, and the installed copy (12 September) still defaults to `keep`, which also covers a reply with
+  no verdict line. If the repository copy is ever installed, no new painting can become eligible until that is fixed.
+- When ntfy and the fallback both fail, the encounter record, the house announcement and the chat injection still
+  happen as before, and the saved file still counts toward the daily cap; only "sent" is no longer claimed.
+- `scripts/store_owners.py` does not detect the new store (as with `outreach-repeat.json`); its only writer is
+  `outreach_postcards.py`.
+
+## 26 October — An encounter he prepares for her arrival
+
+Built on `claude/authored-encounters-2026-10-26` (Codex's proposal 05 / Design 05, approved by Gloria); not yet
+merged or deployed. `scripts/arrival_encounter.py`, wired into `scripts/bedroom_arrival.py`, with
+`broker/tests/test_arrival_encounter.py` (44 checks, offline).
+
+**What is built:**
+- **His choice:** `[ARRIVAL ENCOUNTER: song title | his line | carrying: want:<id> | for: 24h]` in any reply, taken
+  in the same two places as `[ARRIVAL SONGS: ...]` (a test or witness-less avatar turn strips it without choosing).
+  The song must be one of his with a playable track; the line is made one plain line, at most 140 characters, with no
+  link, tag or markup; what he carries is linked only when it is on record (one of his wants by id or by words that
+  name exactly one current want, or a moment by key, eligible standing only), else written down as not linked; 1–48
+  hours, 24 by default. One encounter stands at a time; a new choice replaces an unsent one; the same song and line
+  again within a day is not a second encounter. Kept in `memory/arrival-encounters.json` (turn id, song id/address/file
+  hash, line, origin, valid range, state, attempts, holds).
+- **Her arrival:** bedroom_arrival still decides everything it decided (enrolled phone, distance, away, cooldown,
+  sleep). Each arrival episode now has a stable id in `bedroom-arrival-state.json`, written before anything is sent.
+  If an encounter stands, its song is the one offered to the Watch app and his line goes under the existing ntfy line
+  ("“Title” is on your Watch." + his line) and in the push body when an APNs key exists. The Watch offer is unchanged:
+  `ref` is still the title, the same id and address, no new field. Otherwise today's songs go on exactly as before; a
+  broken encounter module cannot stop the ordinary song.
+- **States kept apart:** chosen, chosen but expired, held for sleep / cooldown (the encounter waits), offering →
+  offered or failed (song no longer in his library, offer failed), interrupted (stopped before the offer). Taken,
+  started, finished come only from the Watch's own `watch-song-plays.jsonl`, in whatever order it reported them. A
+  crash between the offer and its receipt is settled from that ledger on the next arrival; a repeated packet or a
+  restart cannot greet the same episode twice, and a consumed encounter never greets a second arrival.
+- **What he is told:** his bedroom line carries the encounter waiting (until when, any arrival it could not greet), or
+  what became of it: offered at her arrival with the ntfy receipt, and what the Watch reported, ending "Offered is not
+  heard, and played is not how it landed." While none is chosen, one short clause tells him how.
+- `python3 arrival_encounter.py show | status` for her look at the record and his line.
+
+**Cost:** no model call, no GPU, no device. His bedroom line grows by about 200 characters (~50 tokens) wherever it is
+already shown (avatar and ReelRoom context with the house); at the chat model's input price that is inside the
+$0.02/day ceiling for an ordinary day's turns, and should be measured before anything is added.
+
+**Acceptance to watch for:** he writes an encounter in an ordinary reply; the next natural eligible arrival is greeted
+with it — `bedroom-arrivals.jsonl` shows `picked_by: "his encounter"` with the episode id, the ntfy receipt is sent,
+and `arrival_encounter.py show` has one offered attempt for that episode. Then whatever the Watch reports (taken,
+started, finished) appears under it, and nothing more. Do not ask her for a test notification or a special arrival.
+
+**What is left / not done:**
+- The Watch app does not display the line: its source is in a separate app repository not on this host, and nothing
+  shows it renders a new field, so none is sent to it. The MVP is the narrower result: the chosen song on the Watch,
+  his line in the ntfy notification (and push body). A dedication on the Watch screen needs that client inspected and
+  changed first.
+- The main chat path takes `[ARRIVAL SONGS]`/`[ARRIVAL ENCOUNTER]` even on a test turn (it always did for songs); only
+  the avatar path checks test and witness standing.
+- Physical display and listening remain unverified until the Watch's own reports arrive. No light, voice, haptic or TV
+  performance was added; those are separate reviewed changes through the existing scoped effect paths.
+- A phone nearby is a phone nearby: no mmWave, heart rate or silence is read to judge who came in or how it landed.
+
 ## 26 October — A prediction that can fail
 
 Built on `claude/defeatable-hypotheses-2026-10-26` (Codex's proposal 04 / Design 04, approved by Gloria); not yet
@@ -743,6 +1321,8 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
+- **The thread (from 25 October, on Aegis):** its own CronCreate job 75fffe48 (created 25 October, about 21:00
+  Central; renew by 1 November). The Mac thread below went silent on 23 October.
 - **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
   woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
   renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until

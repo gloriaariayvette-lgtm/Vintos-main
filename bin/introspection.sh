@@ -179,6 +179,16 @@ try:
 except: pass
 " 2>/dev/null)
 
+# A self-description still forming, beside the occasions it actually came from (proto_notebook.py, proposal 13).
+# Empty unless one proto has two occasions on record; writes only its own offer row (ids). No model call.
+_INTROSPECT_NOTEBOOK=$(python3 -c "
+import sys; sys.path.insert(0, '$WORKSPACE/scripts')
+try:
+    from proto_notebook import offer
+    print(offer())
+except Exception: pass
+" 2>/dev/null)
+
 _INTROSPECT_DRIFT=$(python3 -c "
 import sys; sys.path.insert(0, '$WORKSPACE/scripts')
 try:
@@ -364,7 +374,10 @@ $CONTEXT
 
 === GROUNDED REALITY (confirmed events — high confidence only) ===
 $GROUNDED_REALITY
-
+${_INTROSPECT_NOTEBOOK:+
+=== A SELF-DESCRIPTION STILL FORMING, WITH ITS OCCASIONS ===
+$_INTROSPECT_NOTEBOOK
+}
 ---
 ${INTRO_SEMANTIC:+What you have already found in your memory about what you keep examining (build forward, do not repeat):
 $INTRO_SEMANTIC
@@ -746,6 +759,18 @@ entry = open('/tmp/.bis_intro_entry.txt').read()[:800] if os.path.exists('/tmp/.
 if entry:
     from pearl_engine import run_verification_pass
     run_verification_pass(entry, source='introspection')
+" 2>/dev/null
+
+# An occasion he named as a tension with the forming description ([TENSION: ed_id - words]), recorded beside it in
+# proto_notebook's own store. Only an occasion on record is kept; no count, threshold or pearl changes.
+python3 -c "
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/.vintos/workspace/scripts'))
+entry = open('/tmp/.bis_intro_entry.txt').read() if os.path.exists('/tmp/.bis_intro_entry.txt') else ''
+if entry:
+    from proto_notebook import record_marks
+    rec, ref = record_marks(entry)
+    if rec or ref: print('[proto-notebook] named tensions recorded: %d, not recorded: %d' % (len(rec), len(ref)))
 " 2>/dev/null
 
 # Deviation check on introspection output

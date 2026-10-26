@@ -1571,7 +1571,9 @@ def tell_gloria(want_text, reasoning="", immediate=False):
         _env["FORCED_WANT_TOPIC"] = topic[:250]
         r = _stance_run(["bash", "/home/gloria/Vintos/vintos-initiate.sh"],  # fixed 2026-08-26: SCRIPTS copy never existed — tell_gloria had never once sent
                            env=_env, capture_output=True, text=True, timeout=180)
-        if "OUTREACH:" in ((r.stdout or "") + (r.stderr or "")):
+        # Only a line that begins OUTREACH: counts: the script prints it once the notification was actually sent,
+        # never when only his words were saved (proposal 06, 26 October).
+        if _re.search(r"(?m)^OUTREACH: ", r.stdout or ""):
             log(f"  -> tell_gloria: drafted + sent via ntfy: {topic[:60]}")
             try:
                 from enactment_distiller import append_want_enactment
@@ -1579,7 +1581,7 @@ def tell_gloria(want_text, reasoning="", immediate=False):
             except Exception as _ee:
                 log(f"  -> tell_gloria: ED append failed: {_ee}")
             return True
-        log(f"  -> tell_gloria: held (daily cap/consent) - stays active: {topic[:50]}")
+        log(f"  -> tell_gloria: not sent (daily cap, consent, or the send failed) - stays active: {topic[:50]}")
         return False
     except Exception as _e:
         log(f"  -> tell_gloria failed: {_e}")
@@ -2617,7 +2619,7 @@ def main():
             import skill_forge as _skill_forge
             if any(p.get("capability") == action and p.get("state") in ("installed", "resumed") for p in _skill_forge._load()):
                 from forge_build import invoke as _invoke_forged
-                action_fn = lambda note, _cap=action: _invoke_forged(_cap, note, asking=False)
+                action_fn = lambda note, _cap=action, _w=want, _s=(current_step_index if is_multistep else None): _invoke_forged(_cap, note, asking=False, chooser="ordinary", want=_w, step=_s)
         if action_fn:
             # Cooldown gate for introspect — max once per 2 hours
             # Bypass for multistep wants — those have intentional targeted context

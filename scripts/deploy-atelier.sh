@@ -121,7 +121,7 @@ SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
 SCRIPTS="$SCRIPTS self_model_evidence.py self_model_read.py protected_paths.py"  # created 2026-09-04, never in the manifest (review P01)
-SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py want_spine.py pleasure_substrate.py"
+SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py proto_notebook.py want_spine.py pleasure_substrate.py"
 SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat_seed.py mirror.sh"   # thread lifecycle, 2026-09-10
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
 SCRIPTS="$SCRIPTS food_order.py"   # DoorDash discovery/cart proposal; exact quote remains Gloria-approved
@@ -145,7 +145,7 @@ SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_c
 SCRIPTS="$SCRIPTS vintos_calendar.py"   # his own calendar: "do X on Y day" fires autonomously via the wants loop (Google Calendar connector can't OAuth headless), 2026-09-22
 SCRIPTS="$SCRIPTS consent_gate.py"   # consent gate: logs Gloria's y/n on morning poems + music, announces the activity, 2026-09-23
 SCRIPTS="$SCRIPTS inkbox_guard.py"   # fail-closed policy for his own Inkbox comms identity (email + iMessage), 2026-09-21
-SCRIPTS="$SCRIPTS want_email.py outward_wants.py outside_views.py scholar.py email_approvals.py lab_instruments.py lab_tool_calls.py lab_investigations.py lab_native_instruments.py lab_usage_report.py"   # his own emails and his outward wants, 2026-09-28
+SCRIPTS="$SCRIPTS want_email.py outward_wants.py outside_views.py scholar.py email_approvals.py lab_instruments.py lab_tool_calls.py lab_investigations.py lab_native_instruments.py lab_derived_sequences.py lab_family_panel.py lab_disagreement.py lab_negative_atlas.py lab_correspondence.py lab_usage_report.py"   # his own emails and his outward wants, 2026-09-28
 SCRIPTS="$SCRIPTS received_mail.py"   # what his received mail carries, put where it is used: a want's next step, ReelRoom, his context, 2026-10-16
 SCRIPTS="$SCRIPTS daily_inner_guard.py"   # door and house entries reach daily-inner only when someone spoke, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the Lab a day, one shared log, 2026-09-28
@@ -177,9 +177,9 @@ SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py
 SCRIPTS="$SCRIPTS house_hands.py room_reach.py make_thing.py line_prospect.py song_memory.py creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py tension_promotion.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
-SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
+SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py reelroom_bookmarks.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py trial_extractor.py"
-SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py dot_lounge.py eve_depth.py lounge_field.py room_work.py awaiting_evidence.py evidence_delivery.py want_board.py gloria_asks.py grok_reach.py midi_check.py citation_trace.py claude_cache.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
+SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py forge_practice.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py dot_lounge.py eve_depth.py lounge_field.py room_work.py awaiting_evidence.py evidence_delivery.py want_board.py gloria_asks.py grok_reach.py midi_check.py citation_trace.py claude_cache.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
 SCRIPTS="$SCRIPTS conversation_pressure.py curiosity_scan.py metacognitive_weather.py moves.py similarity_gate.py social_calibration.py value_lineage.py voice_session_ledger.py voice_somatic_loop.py want_checkpoints.py"   # checkout ahead of the host (manifest_gap, 2026-10-16)
 SCRIPTS="$SCRIPTS pressure_gemma.py pressure_consumer.py pressure_calibration.py relationship_pressure.py"   # in no list: their fixes reached no host (2026-10-16)
 SCRIPTS="$SCRIPTS cause_head.py living_trajectory.py"   # subconscious review fixes; in no list, so never installed (2026-10-16)
@@ -248,6 +248,9 @@ SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now 
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
 SCRIPTS="$SCRIPTS motif_score.py motif_memory.py"   # his motif notebook: typed note scores, phrases and their variations, rendered by midi_check (2026-10-25)
 SCRIPTS="$SCRIPTS work_episodes.py"   # from one of his works back to the want, moment and memory it came from, and his later readings of it (design 03, 2026-10-26)
+SCRIPTS="$SCRIPTS arrival_encounter.py"   # a song and a line he prepares for her next bedroom arrival, greeted once through the existing Watch offer and ntfy line (design 05, 2026-10-26)
+SCRIPTS="$SCRIPTS outreach_postcards.py"   # an outreach may carry one piece he kept or revealed, when he chooses it in that turn (proposal 06, 2026-10-26)
+SCRIPTS="$SCRIPTS dream_objects.py"   # last night's dream offered as material in an Atelier visit; a work made from it keeps its link back, always as a dream (proposal 07, 2026-10-26)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
@@ -483,6 +486,16 @@ for spec in $(printf 'scripts/%s\n' $SCRIPTS) $(printf 'bin/%s\n' $BINS); do
     else
         ambiguous=1
     fi
+done
+# The dreaming skill's entry points run from the workspace's skills tree (cron calls them there). They were in
+# the manifest, staged and validated, but no loop installed them: the 22 October fix that stops a dream consuming
+# a thread it only explored never reached Aegis, whose copy was still the 10 August one (26 October).
+for spec in $SKILLFILES; do
+    d="$HOME/.vintos/workspace/$spec"
+    [ -e "$d" ] && mark="replace" || mark="NEW"
+    printf '  %-7s %-26s -> %s\n' "$mark" "$(basename -- "$spec")" "$d"
+    PLAN="$PLAN$SRC/$spec|$d
+"
 done
 # Domain modules belong beside the actual server, not beside an unrelated music.py.
 if server_dst="$(dest bin/server.py)"; then

@@ -78,7 +78,8 @@ check("the ledger floor applies to him too", [x["turn_id"] for x in SH.exchanges
 os.remove(JP.LEDGER_FLOOR_FILE)
 
 print("--- pairs are forecast-time views ---")
-start = datetime.now() - timedelta(hours=11)
+# A fixed past morning, so the ten hours of exchanges never cross midnight (now - 11h failed before 11:00).
+start = (datetime.now() - timedelta(days=2)).replace(hour=1, minute=0, second=0, microsecond=0)
 def ledger(n, offset_days=0, tag="T"):
     out = []
     for k in range(n):

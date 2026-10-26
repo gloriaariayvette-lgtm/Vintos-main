@@ -645,6 +645,14 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         if _between: found += "\n\n" + _between
     except Exception:
         pass
+    # A result of his own Lab with a local draft to this person (lab_correspondence, 26 October): evidence the draft
+    # may cite and may not exceed. It adds to what the draft is shown; every check below still decides.
+    try:
+        import lab_correspondence
+        _earned = lab_correspondence.packet_block(recipient, to)
+        if _earned: found += "\n\n" + _earned
+    except Exception:
+        pass
     if not str(reading or "").strip():
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
         return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (

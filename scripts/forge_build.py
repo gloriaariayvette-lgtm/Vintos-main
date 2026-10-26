@@ -348,8 +348,34 @@ def install(proposal_id):
     with transaction(_forge().PROPOSALS): return _install(proposal_id)
 
 
-def invoke(capability, note, asking=False):
-    """Registered forged functions execute in isolation, never imported into the house."""
+def invoke(capability, note, asking=False, chooser=None, want=None, step=None):
+    """Registered forged functions execute in isolation, never imported into the house.
+
+    Each run that gets as far as executing leaves a practice receipt (forge_practice): who chose the tool,
+    for which want and step, and hashes of what went in and came out. A caller that does not say it is his
+    own work is not counted as his own work: asking=True is a person making it run (a canary)."""
+    if chooser is None:
+        chooser = "canary" if asking else "unattributed"
+    try:
+        _p, output = _invoke(capability, note, asking)
+    except RuntimeError as exc:      # it ran and failed; a refusal to run (PermissionError) is not a use
+        _practice(capability, note, None, exc, chooser, want, step)
+        raise
+    _practice(capability, note, output, None, chooser, want, step)
+    return output
+
+
+def _practice(capability, note, output, error, chooser, want, step):
+    try:
+        import forge_practice
+        p = next((r for r in _forge()._load() if r.get("capability") == capability
+                  and r.get("state") in ("installed", "resumed")), None)
+        forge_practice.record(p, capability, note, output=output, error=error, chooser=chooser, want=want, step=step)
+    except Exception:
+        pass
+
+
+def _invoke(capability, note, asking=False):
     sf = _forge()
     ok, why = sf.may_invoke(capability, asking=asking)
     if not ok: raise PermissionError(why)
@@ -369,7 +395,7 @@ def invoke(capability, note, asking=False):
         open(runner,"w").write("import %s as m\nresult=m.%s(%r)\nassert isinstance(result,str) and result.strip(), 'capability returned no result string'\nprint(result)\n" % (name,name,str(note)))
         result = isolated_run([sys.executable, runner], d, timeout=60)
         if result.returncode: raise RuntimeError(result.stderr[-1000:])
-        return result.stdout.strip()
+        return p, result.stdout.strip()
 
 
 def process_approved(limit=1):

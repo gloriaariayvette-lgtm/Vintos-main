@@ -188,8 +188,9 @@ def prune_proto_pearls(db):
         print(f"[ED] Pruned {before - len(db['protos'])} expired proto-pearls.", flush=True)
 
 
-def update_proto_pearl(event, proto_db):
-    """Add support to existing proto-pearl or create new one."""
+def update_proto_pearl(event, proto_db, event_id=None):
+    """Add support to existing proto-pearl or create new one. event_id is the earned-identity-events.json entry this
+    support came from, so the occasion can be followed back (proto_notebook.py); it changes no count or threshold."""
     category = event.get("category", "")
     identity_candidate = event.get("identity_candidate", "")
 
@@ -200,7 +201,8 @@ def update_proto_pearl(event, proto_db):
         existing["support_count"] = existing.get("support_count", 1) + 1
         existing["support_events"].append({
             "event": event.get("event",""),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            **({"event_id": event_id} if event_id else {})
         })
         existing["identity_candidate"] = identity_candidate  # update to latest
         print(f"[ED] Proto-pearl reinforced: {category} ({existing['support_count']} support)", flush=True)
@@ -214,7 +216,8 @@ def update_proto_pearl(event, proto_db):
             "category": category,
             "identity_candidate": identity_candidate,
             "support_count": 1,
-            "support_events": [{"event": event.get("event",""), "timestamp": datetime.now().isoformat()}],
+            "support_events": [{"event": event.get("event",""), "timestamp": datetime.now().isoformat(),
+                                **({"event_id": event_id} if event_id else {})}],
             "created": datetime.now().isoformat(),
             "decays_at": (date.today() + timedelta(days=PROTO_DECAY_DAYS)).isoformat(),
             "suggest_pearl": False
@@ -368,8 +371,8 @@ def process(response_text, gloria_msg="", context="chat"):
     prune_proto_pearls(proto_db)
 
     for event in events:
-        tag_for_causality(event)
-        update_proto_pearl(event, proto_db)
+        _entry = tag_for_causality(event)
+        update_proto_pearl(event, proto_db, event_id=(_entry or {}).get("id"))
 
         if event.get("exceeded_self_model") and event.get("confidence", 0) >= SELF_STMT_MIN_CONF:
             add_self_statement(event)

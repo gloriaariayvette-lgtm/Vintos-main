@@ -14,7 +14,9 @@ class RevealStoreError(RuntimeError):
     pass
 
 
-FIELDS = ("artifact", "revealed_at", "disclosure", "disclosure_sentence", "content")
+# from_dream: a piece made from a dream carries its dream marker (id, night, "not something that happened"), never
+# the dream itself (proposal 07).
+FIELDS = ("artifact", "revealed_at", "disclosure", "disclosure_sentence", "content", "from_dream")
 
 
 def read_reveals(memory, limit=20):
