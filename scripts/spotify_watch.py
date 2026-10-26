@@ -19,7 +19,7 @@ Setup, once (Gloria, on Aegis):
 Secrets: ~/.vintos/secrets/spotify-watch.json (0600; client id and refresh token, no client secret — PKCE).
 Log: memory/watch-spotify.jsonl
 """
-import base64, hashlib, json, os, secrets, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, hashlib, json, os, secrets, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -155,9 +155,27 @@ def _log(row):
     with open(LOG, "a") as f: f.write(json.dumps(row) + "\n")
 
 
-def play(query, now=None):
-    """Play his pick on her Watch, or write down why not. Returns the logged row; never raises."""
+# Her Watch is on Spotify's device list only while Spotify is open on it, and nothing outside can open it. When his
+# pick finds it closed, one notification asks her to open it, and the song waits a few minutes and plays on the Watch
+# the moment it appears (Gloria, 26 October). One song waits at a time.
+NUDGE_WAIT_S = 300
+NUDGE_POLL_S = 5
+NUDGE_TEXT = "Vintos has a song for you. Open Spotify on your Watch."
+_WAITING = threading.Lock()
+
+
+def _nudge(query, at):
+    import deliver
+    receipt = deliver.deliver("spotify-nudge-" + hashlib.sha256((at + query).encode()).hexdigest()[:16], "ntfy",
+                              NUDGE_TEXT, title="Vintos")
+    return (receipt or {}).get("state") or "unknown"
+
+
+def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
+    """Play his pick on her Watch, or write down why not. With nudge, a closed Watch gets one notification and a few
+    minutes' wait. Returns the logged row; never raises."""
     row = {"at": _now_iso(now), "asked": str(query)[:120], "played": False}
+    held = False
     try:
         import watch_presence
         if watch_presence.should_hold()[0]:
@@ -167,6 +185,19 @@ def play(query, now=None):
             row["why"] = what; return row
         row["track"] = what
         dev = watch_device()
+        if not dev and nudge:
+            held = _WAITING.acquire(blocking=False)
+            if not held:
+                row["why"] = "another song is already waiting for her Watch"; return row
+            row["nudged"] = _nudge(str(query), row["at"])
+            start = clock()
+            while not dev and clock() - start < NUDGE_WAIT_S:
+                sleep(NUDGE_POLL_S)
+                dev = watch_device()
+            row["waited_s"] = int(clock() - start)
+            if not dev:
+                row["why"] = "her Watch was not listening on Spotify; she was asked to open it and %d min passed" % (NUDGE_WAIT_S // 60)
+                return row
         if not dev:
             row["why"] = "her Watch is not listening on Spotify right now (the Spotify app on it is closed)"; return row
         code, got = _api("PUT", "/me/player/play?" + urllib.parse.urlencode({"device_id": dev["id"]}), {"uris": [uri]})
@@ -178,6 +209,7 @@ def play(query, now=None):
     except Exception as e:
         row["why"] = "%s: %s" % (type(e).__name__, str(e)[:160]); return row
     finally:
+        if held: _WAITING.release()
         _log(row)
 
 
@@ -188,8 +220,7 @@ def take(reply, act=True):
     if not reply or "[SPOTIFY" not in reply.upper(): return reply
     asks = re.findall(_TAG, reply, re.I)
     if act and asks and ready():
-        import threading
-        threading.Thread(target=play, args=(asks[0].strip(),), daemon=True).start()   # one song per reply
+        threading.Thread(target=play, args=(asks[0].strip(),), kwargs={"nudge": True}, daemon=True).start()   # one song per reply
     return re.sub(r"\s*" + _TAG + r"\s*", " ", reply, flags=re.I).strip()
 
 

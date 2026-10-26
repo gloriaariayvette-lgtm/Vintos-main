@@ -121,6 +121,36 @@ n = len(CALLS)
 check("a test or witness-less turn only strips the tag", S.take("x [SPOTIFY: a - b]", act=False) == "x" and len(CALLS) == n)
 check("a reply without the tag is untouched", S.take("plain [HOME: spotify a - b]") == "plain [HOME: spotify a - b]")
 
+# 26 October: Spotify closed on her Watch -> one notification asks her to open it, and the song plays on the Watch the
+# moment it appears, or is written down after the wait. Never the phone. Nothing is sent for real.
+import types
+NUDGES = []
+sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, msg, title=None, **k: (NUDGES.append((aid, ch, msg)), {"state": "sent"})[1])
+WATCH = {"id": "w1", "type": "Smartwatch", "name": "Apple Watch", "is_active": True}
+DEVICES[:] = [d for d in DEVICES if d["type"] != "Watch"]
+T = [0.0]; polls = []
+def fake_sleep(s):
+    T[0] += s; polls.append(s)
+    if len(polls) == 3: DEVICES.append(WATCH)
+n = len(CALLS)
+row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=fake_sleep, clock=lambda: T[0])
+check("Watch closed: she gets one notification asking her to open Spotify on it", len(NUDGES) == 1
+      and NUDGES[0][1] == "ntfy" and "Open Spotify on your Watch" in NUDGES[0][2] and row.get("nudged") == "sent", NUDGES)
+check("the song plays on the Watch the moment it appears, never the phone", row["played"] and row["device"] == "Apple Watch"
+      and row["waited_s"] == 15 and not any("device_id=ph1" in c[1] for c in CALLS[n:]), row)
+DEVICES[:] = [d for d in DEVICES if d is not WATCH]; T[0] = 0.0
+row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=lambda s: T.__setitem__(0, T[0] + s), clock=lambda: T[0])
+check("the Watch never appears: written down after the wait, nothing played", not row["played"]
+      and "5 min passed" in row["why"] and len(NUDGES) == 2, row)
+S._WAITING.acquire()
+row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=lambda s: None)
+S._WAITING.release()
+check("while one song waits, another pick is not nudged again", len(NUDGES) == 2 and "already waiting" in row["why"], row)
+row = S.play("Enjoy the Silence - Depeche Mode")
+check("without nudge (the command line) nothing is sent and nothing waits", len(NUDGES) == 2 and "not listening" in row["why"])
+check("his avatar pick nudges and waits", 'kwargs={"nudge": True}' in open(S.__file__).read())
+DEVICES.append(WATCH)
+
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("it is in his avatar chat: the line in his context, the tag taken from his reply, guarded like his home tags",
       "_spw.context_line()" in srv and "_spw.take(reply, act=not (_test_turn" in srv)
