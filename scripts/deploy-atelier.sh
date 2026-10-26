@@ -487,6 +487,16 @@ for spec in $(printf 'scripts/%s\n' $SCRIPTS) $(printf 'bin/%s\n' $BINS); do
         ambiguous=1
     fi
 done
+# The dreaming skill's entry points run from the workspace's skills tree (cron calls them there). They were in
+# the manifest, staged and validated, but no loop installed them: the 22 October fix that stops a dream consuming
+# a thread it only explored never reached Aegis, whose copy was still the 10 August one (26 October).
+for spec in $SKILLFILES; do
+    d="$HOME/.vintos/workspace/$spec"
+    [ -e "$d" ] && mark="replace" || mark="NEW"
+    printf '  %-7s %-26s -> %s\n' "$mark" "$(basename -- "$spec")" "$d"
+    PLAN="$PLAN$SRC/$spec|$d
+"
+done
 # Domain modules belong beside the actual server, not beside an unrelated music.py.
 if server_dst="$(dest bin/server.py)"; then
     server_dst="$(canonical_dest "$server_dst")" || die "cannot resolve installed server target"
