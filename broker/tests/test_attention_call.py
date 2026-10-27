@@ -94,7 +94,7 @@ class House:
         helper = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_append_avatar_history")
         exec(ast.get_source_segment(SRC, helper), self.ns)
         for name in ("_voice_fire_tags", "_voice_session_turns", "_voice_lead_kick", "_voice_ledger_held",
-                     "_voice_ledger_owned", "voice_ledger", "_voice_session_end_owned", "voice_session_end",
+                     "_voice_ledger_owned", "voice_ledger", "_voice_session_end_owned", "_voice_session_end_held", "voice_session_end",
                      "attention_call_save", "_attention_call_replay", "attention_call_opening",
                      "attention_answer_button", "attention_call_answer", "attention_calls_pending",
                      "attention_config_write", "attention_config_read"):

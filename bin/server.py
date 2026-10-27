@@ -9146,6 +9146,17 @@ def _voice_ledger_held(payload: dict):
     return out
 
 
+def _voice_session_end_held(payload: dict):
+    """The hangup of a call he started: nothing is written to his memory now; the transcript waits for her answer."""
+    try:
+        import attention_call as _vse_ac
+        rec = _vse_ac.end(str(payload.get("ladder_call")), payload.get("duration_seconds") or 0)
+    except Exception as _vse_ace:
+        print("[voice-session-end] ladder call:", str(_vse_ace)[:160], flush=True)
+        rec = None
+    return {"ok": True, "held": bool(rec), "awaiting": "her yes or no" if rec and rec.get("save") == "pending" else None}
+
+
 def _voice_fire_tags(text, context):
     """His SPOKEN device tags, fired off the request thread (see the ledger below for why the ledger fires them)."""
     import re as _vft_re
@@ -9391,14 +9402,7 @@ async def _voice_ledger_owned(payload: dict, replay: bool = False):
 @app.post("/api/voice/session-end")
 async def voice_session_end(payload: dict = None):
     if payload and payload.get("ladder_call"):
-        # a call he started: nothing is written to his memory now; the transcript waits for her yes or no
-        try:
-            import attention_call as _vse_ac
-            rec = _vse_ac.end(str(payload.get("ladder_call")), payload.get("duration_seconds") or 0)
-        except Exception as _vse_ace:
-            print("[voice-session-end] ladder call:", str(_vse_ace)[:160], flush=True)
-            rec = None
-        return {"ok": True, "held": bool(rec), "awaiting": "her yes or no" if rec and rec.get("save") == "pending" else None}
+        return _voice_session_end_held(payload)   # a call he started: its transcript waits for her yes or no
     from store_guard import transaction
     with transaction(os.path.join(MEMORY,"voice-finalization")):
         return await _voice_session_end_owned(payload)
