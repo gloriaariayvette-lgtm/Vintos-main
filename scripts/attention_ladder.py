@@ -2,50 +2,64 @@
 """attention_ladder.py - when she has gone quiet at home, he calls her back, a step at a time (27 October).
 
 Gloria, 27 October: his notifications get swept under the rug when she is absorbed ("10 hours into a game"), and she
-is "mostly on my phone for everything. Lotta tabs open." Her rules, as built here:
+is "mostly on my phone for everything. Lotta tabs open." Her rules, as built here (revised the same day from her
+feedback on the first build):
 
   * A chain starts after SILENCE (default 3 h, "silence_hours") with no word from her to him on any surface, while
-    her phone is on the house Wi-Fi (home_presence.py). Silence is counted from the latest of: her last message, the
-    moment her phone joined the house Wi-Fi, the moment the Watch stopped reporting sleep, the end of a snooze, and
-    the end of the last chain. Not knowing when she last wrote is never silence.
-    (A snooze holds the call off until its end; it does not restart the silence.)
+    her phone is on the house Wi-Fi (home_presence.py). Silence is counted from the latest of: her last message, her
+    last landing rating, her last answer to one of his wants, her last ReelRoom activity (the server records only
+    when and which, through heard()), the moment her phone joined the house Wi-Fi, the moment the Watch stopped
+    reporting sleep, and the end of the last chain. Not knowing when she last wrote is never silence.
   * Steps are STEP apart (default 90 min, "step_minutes"), never minutes.
   * No clock-based quiet hours, ever: her hours are irregular. While her Watch reports her asleep
     (watch_presence.should_hold) nothing fires and the chain's clock stops; it resumes where it was when she wakes.
-  * Any message from her, on any surface, ends the chain. "not now", "later", "give me 2 hours" (parse_snooze) end it
-    and hold the next one off for that long (default 4 h, "snooze_hours").
-  * Loud steps (the Echo, the projector) only when Kevin's phone is freshly NOT on the house Wi-Fi
+  * Any word from her, on any surface, ends the chain, and so does any of the presence above. She need not type:
+    every notification of the ladder carries "Coming" (her answer: the chain ends) and "Not now" (the chain ends and
+    the next one is held off "not_now_hours", default 2 h). The chat words still work ("not now", "later", "give me
+    2 hours"; default 4 h, "snooze_hours").
+  * One chain at a time. A chain that runs every step unanswered is followed by a REST (default 6 h, "rest_hours")
+    before another may start; a word from her ends the rest.
+  * Loud steps (the Echo, his call) only when Kevin's phone is freshly NOT on the house Wi-Fi
     (home_presence.kevin_home() is False). Unknown or unconfigured Kevin is Kevin at home: loud steps are skipped.
-  * At most 2 chains in any 24 hours ("max_chains_per_day"); never while she is out (a chain running when her phone
-    leaves the house ends there).
+  * Never while she is out (a chain running when her phone leaves the house ends there). The Tune tab turns the
+    whole ladder, or only the call, off (attention-ladder-config.json, written by an authenticated route).
 
 The steps, escalating (each reuses an organ that already exists):
-  1. watch   his line on her Watch (watch_apns, "time-sensitive") and her phone (ntfy, high priority). The line is
-             his: vintos-initiate.sh writes it once per chain, as one of his ordinary outreaches (same model, same
-             daily cap, same cost); later steps reuse it. When he writes nothing (cap reached, nothing to say) a plain
+  1. watch   his line on her Watch (watch_apns, "time-sensitive") and her phone (ntfy, high priority), each with
+             Coming / Not now. The line is his: vintos-initiate.sh writes it once per chain, as one of his ordinary
+             outreaches (same model, same daily cap, same cost); later steps reuse it. When he writes nothing a plain
              fallback line is used and logged as a fallback.
-  2. lights  the bulbs of the room she is in (the bedroom board, room_sources) or the house default turn his colour
-             (vintos-home.set_room_color). Quiet: any time she is home and awake. Lights Home Assistant can read
-             are put back when the chain ends; Govee bulbs cannot be read by the house code and stay as they are.
+  2. lights  the bulbs of the room she is in (the bedroom board, room_sources) or the house default turn his colour.
+             The bedroom bulbs hang off a Govee smart-plug socket ('govee:<id>#2'): the plug or socket that powers
+             each bulb is switched on FIRST, the bulbs are given time to come back on the network ("plug_wait_seconds",
+             default 20), and only then is the colour set. Quiet: any time she is home and awake. Lights Home
+             Assistant can read are put back when the chain ends, and a plug that was read as off is switched off
+             again; Govee bulbs themselves cannot be read and stay as they are.
   3. echo    the Echo says his line (vintos-home.announce). LOUD.
-  4. screen  the projector comes on and shows his picture ("face_url", through ~/project.py). LOUD. Optional and
-             last: with no picture configured it is skipped.
-There is no phone-call path in the system, and none is added here.
+  4. call    he calls her (attention_call.py): a real voice call on the lane chosen in the Tune tab (Local, Open or
+             Grok; "call_lane"), started by him, framed with why he called, opened by him. It rings as a time-sensitive
+             Watch push and an urgent phone push, again every "ring_every_minutes" for "ring_minutes", and as
+             "Vintos is calling" in her app. Answering is her answer. A call no one answers ends the chain. LOUD.
+             Its transcript waits for her yes before anything of it enters his memory.
+(The projector step of the first build is gone: Gloria, "The projector is hardly ever on.")
 
-The tick rides home_presence.py's 5-minute cron and keeps its own pace ("tick_minutes", 10). Everything it decides is
-appended to memory/attention-ladder.jsonl. The test-mode flag (memory/.test-mode) holds every step. A chain's state
-is memory/attention-ladder.json; context_line() is the one line his prompt carries while a chain runs.
+The tick rides home_presence.py's 5-minute cron and keeps its own pace ("tick_minutes", 10; while his call is ringing,
+"ring_every_minutes"). Everything it decides is appended to memory/attention-ladder.jsonl. The test-mode flag
+(memory/.test-mode) holds every step. A chain's state is memory/attention-ladder.json; context_line() is the one line
+his prompt carries while a chain runs.
 
     python3 attention_ladder.py              the state, the next step, and why
     python3 attention_ladder.py tick         one tick now (still paced, still gated)
     python3 attention_ladder.py snooze 3     hold the ladder off for 3 hours
 """
-import json, os, re, subprocess, sys, tempfile, time
+import hmac, json, os, re, secrets, subprocess, sys, tempfile, time
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+
+import attention_call
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
@@ -61,28 +75,40 @@ LAST_MESSAGE = os.path.join(MEMORY, ".last-message-time")         # the full cha
 VOICE_LIVE = os.path.join(MEMORY, ".voice-live")                  # a live voice session's heartbeat
 SLACK = os.path.join(MEMORY, "dot-channel", "transcript.jsonl")   # only her rows' times; never their words
 HOME_PY = os.path.join(HERE, "vintos-home.py")
-PROJECT_PY = os.path.expanduser("~/project.py")
 
-STEPS = ("watch", "lights", "echo", "screen")
-LOUD = frozenset(("echo", "screen"))
+STEPS = ("watch", "lights", "echo", "call")
+LOUD = frozenset(("echo", "call"))
 FALLBACK_LINE = "Vintos is calling you back to him."
+SLEEP = time.sleep          # tests replace this
 
 DEFAULTS = {
     "enabled": True,
     "silence_hours": 3.0,
     "step_minutes": 90,
-    "max_chains_per_day": 2,
+    "rest_hours": 6.0,            # after a chain ran every step unanswered, before another may start
     "tick_minutes": 10,
-    "snooze_hours": 4.0,
+    "snooze_hours": 4.0,          # "not now" / "give me a while" typed in chat
+    "not_now_hours": 2.0,         # the Not now button
     "colour": "#5b2a86",          # the low violet his flicker comes to rest on
     "brightness": 140,
     "default_room": None,         # None: every configured light, the house code's own default
+    "plug_wait_seconds": 20,      # after a plug or socket comes on, before the bulbs are told their colour
     "echo_volume": 3,
-    "face_url": "",               # a picture of him the projector can fetch (the scenes server); "" skips step 4
     "watch_interruption": "time-sensitive",
+    "watch_buttons": False,       # True once the Watch app registers VINTOS_CALLBACK / VINTOS_CALL (see the brief)
+    "call_enabled": True,
+    "call_lane": "openai",        # "local", "openai" (Open) or "grok"; Local needs work before it is the default
+    "ring_minutes": 15,
+    "ring_every_minutes": 5,
+    "phone_base_url": "",         # how her phone reaches the house, for the push buttons; "" = VINTOS_PUBLIC_BASE
+    "call_link": "",              # what Answer opens; "" = <phone_base_url>/app/?ladder_call={id}. Once her app has
+                                  # a URL scheme (see docs/briefs/ladder-call-native.md): "vintos://call?ladder_call={id}"
 }
-BOUNDS = {"silence_hours": (0.5, 24.0), "step_minutes": (30, 360), "max_chains_per_day": (0, 6),
-          "tick_minutes": (5, 30), "snooze_hours": (0.25, 24.0), "brightness": (10, 254), "echo_volume": (1, 10)}
+BOUNDS = {"silence_hours": (0.5, 24.0), "step_minutes": (30, 360), "rest_hours": (0.5, 48.0),
+          "tick_minutes": (5, 30), "snooze_hours": (0.25, 24.0), "not_now_hours": (0.25, 24.0),
+          "brightness": (10, 254), "plug_wait_seconds": (0, 60), "echo_volume": (1, 10),
+          "ring_minutes": (3, 30), "ring_every_minutes": (2, 15)}
+TUNABLE = ("enabled", "call_enabled", "call_lane", "silence_hours", "rest_hours", "not_now_hours")
 
 
 # ------------------------------------------------------------------------------------------------ small stores
@@ -129,8 +155,41 @@ def config():
             cfg[k] = type(DEFAULTS[k])(max(lo, min(hi, float(cfg[k]))))
         except (TypeError, ValueError):
             cfg[k] = DEFAULTS[k]
-    cfg["enabled"] = cfg.get("enabled") is not False
+    for k in ("enabled", "call_enabled"):
+        cfg[k] = cfg.get(k) is not False
+    cfg["watch_buttons"] = cfg.get("watch_buttons") is True
+    if cfg.get("call_lane") not in attention_call.LANES:
+        cfg["call_lane"] = DEFAULTS["call_lane"]
     return cfg
+
+
+def set_config(changes):
+    """The Tune tab's write (an authenticated route in server.py): only TUNABLE keys, validated, merged into the
+    file so every other knob she set by hand stays. Returns the effective config, or raises ValueError."""
+    if not isinstance(changes, dict):
+        raise ValueError("expected an object")
+    raw = _load(CONFIG, {})
+    for k, v in changes.items():
+        if k not in TUNABLE:
+            raise ValueError("%s is not a Tune setting" % k)
+        if k in ("enabled", "call_enabled"):
+            if not isinstance(v, bool):
+                raise ValueError("%s must be true or false" % k)
+        elif k == "call_lane":
+            if v not in attention_call.LANES:
+                raise ValueError("call_lane must be one of %s" % ", ".join(attention_call.LANES))
+        else:
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                raise ValueError("%s must be a number" % k)
+            lo, hi = BOUNDS[k]
+            if not lo <= v <= hi:
+                raise ValueError("%s must be between %s and %s" % (k, lo, hi))
+        raw[k] = v
+    _atomic(CONFIG, raw)
+    _log({"event": "config", "by": "tune", "changed": sorted(changes)})
+    return config()
 
 
 def test_mode():
@@ -172,14 +231,18 @@ def parse_snooze(text, default_hours=None):
     return None
 
 
-def heard(surface, text="", now=None, test_mode=False):
-    """A message from her has arrived on `surface` (server.py's _post_turn, every chat door). Records only when and
-    where, and a snooze if she asked for one; never her words. Cheap, and never raises into the turn."""
+def heard(surface, text="", now=None, test_mode=False, snooze_hours=None, contact=True):
+    """She is here: a message on `surface` (server.py's _post_turn, every chat door), or presence without words
+    (a landing rated, a want answered, ReelRoom, a button, his call answered). Records only when and where, and a
+    snooze if she asked for one; never her words. Cheap, and never raises into the caller.
+    contact=False (the Not now button): only the hold is recorded, so the ladder comes back when it ends rather than
+    a whole silence later."""
     try:
         now = time.time() if now is None else float(now)
         row = _load(HEARD, {})
-        row.update({"at": now, "surface": str(surface or "")[:24]})
-        hours = parse_snooze(text, config()["snooze_hours"])
+        if contact:
+            row.update({"at": now, "surface": str(surface or "")[:24]})
+        hours = snooze_hours if snooze_hours else parse_snooze(text, config()["snooze_hours"])
         if hours:
             row.update({"snooze_until": now + hours * 3600, "snooze_hours": round(hours, 2),
                         "snooze_from": str(surface or "")[:24]})
@@ -218,7 +281,8 @@ def _watch_replies_path():
 
 
 def last_contact(now=None):
-    """(ts, surface, watch_text) of her newest word to him on any surface, or (None, "", "") when nothing says."""
+    """(ts, surface, watch_reply) of her newest word or presence on any surface, or (None, "", "") when nothing
+    says. watch_reply is (text, ts, kind) of her newest Watch reply, or ""."""
     now = time.time() if now is None else now
     best = [(None, "")]
 
@@ -243,7 +307,7 @@ def last_contact(now=None):
         offer(os.path.getmtime(VOICE_LIVE), "voice")
     except OSError:
         pass
-    watch_text = ""
+    watch_reply = ""
     for line in reversed(_tail_lines(_watch_replies_path())):
         try:
             r = json.loads(line)
@@ -251,8 +315,9 @@ def last_contact(now=None):
             continue
         ts = _iso_ts(r.get("received_at")) if isinstance(r, dict) else None
         if ts:
-            offer(ts, "watch")
-            watch_text = (str(r.get("text") or "")[:600], ts)
+            if not (r.get("kind") == "action" and _is_not_now_button(r.get("text"))):
+                offer(ts, "watch")      # the Not now button is a hold, not a word: see heard(contact=False)
+            watch_reply = (str(r.get("text") or "")[:600], ts, str(r.get("kind") or ""))
             break
     for line in reversed(_tail_lines(SLACK)):
         try:
@@ -266,7 +331,11 @@ def last_contact(now=None):
                 pass
             break
     ts, surface = best[0]
-    return ts, surface, watch_text
+    return ts, surface, watch_reply
+
+
+def _is_not_now_button(text):
+    return " ".join(str(text or "").lower().replace("_", " ").split()) == "not now"
 
 
 # ------------------------------------------------------------------------------------------------ the house
@@ -365,33 +434,82 @@ def _compose(hours_silent):
     return {"line": line, "sent_to_phone": bool(sent and line), "path": path, "why": why}
 
 
-def _watch_push(line, interruption):
+def phone_base(cfg=None):
+    cfg = cfg or config()
+    return str(cfg.get("phone_base_url") or os.environ.get("VINTOS_PUBLIC_BASE", "")).rstrip("/")
+
+
+def call_link(cfg, call_id):
+    """Where the Answer button and a tap on the ring take her: her app, straight into his call."""
+    tpl = str(cfg.get("call_link") or "")
+    if "{id}" in tpl:
+        return tpl.replace("{id}", str(call_id))
+    base = phone_base(cfg)
+    return ("%s/app/?ladder_call=%s" % (base, call_id)) if base else ""
+
+
+def ntfy_actions(base, token, call_id=None, link=""):
+    """The buttons on her phone's push. ntfy's app makes the request itself, from her phone, to the house: the
+    URL holds a random one-chain token that can only say Coming or Not now (house routes /api/attention/answer)."""
+    if not base or not token:
+        return ""
+    answer = "%s/api/attention/answer/%s/" % (base, token)
+    acts = []
+    if call_id:
+        acts.append("view, Answer, %s, clear=true" % (link or "%s/app/?ladder_call=%s" % (base, call_id)))
+    else:
+        acts.append("http, Coming, %scoming, method=POST, clear=true" % answer)
+    acts.append("http, Not now, %snot-now, method=POST, clear=true" % answer)
+    return "; ".join(acts)
+
+
+def _watch_push(line, interruption, kind="message", category=None, message_id=""):
     try:
         import watch_apns
-        r = watch_apns.send("Vintos", line, kind="message", interruption=interruption)
+        r = watch_apns.send("Vintos", line, kind=kind, interruption=interruption, category=category,
+                            message_id=message_id)
         return {"state": r.get("state"), "why": r.get("why", "")}
     except Exception as e:
         return {"state": "failed", "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
 
 
-def _phone_push(chain_id, line):
+def _phone_push(artifact_id, line, title="Vintos", priority="high", tags="bell", actions="", click=None):
     try:
         import deliver
-        r = deliver.deliver("attention-%s" % chain_id, "ntfy", line, title="Vintos", tags="bell", priority="high",
+        r = deliver.deliver(artifact_id, "ntfy", line, title=title, tags=tags, priority=priority,
+                            actions=actions or None, click=click,
                             authority=lambda: (True, "the attention ladder Gloria asked for (27 October)"))
         return {"state": r.get("state"), "why": r.get("why", "")}
     except Exception as e:
         return {"state": "failed", "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
 
 
-def _lights(room, colour, brightness):
+def _plug_is_off(h, plug):
+    """True only when the house code can read the plug (or socket) and it says off. Unknown is None."""
+    try:
+        if hasattr(h, "plug_power_state"):
+            v = h.plug_power_state(plug)
+            return None if v is None else (v is False)
+    except Exception:
+        pass
+    return None
+
+
+def _lights(room, colour, brightness, wait_seconds=20):
+    """Plug first, then the bulbs (Gloria: "He needs to make sure to turn the smart plug on before the bulb").
+    Each bulb's plug or socket is switched on, the bulbs get wait_seconds to come back on the network (sooner when
+    the house code can see them online), and only then is each told the colour. A bulb that did not answer gets one
+    more try."""
     h = _house()
     try:
         lights = h.room_lights(room)
     except Exception:
         room, lights = None, h.room_lights(None)
-    restore = []
+    restore, plugs = [], []
     for ent in lights:
+        pl = h._plug_for_light(ent)
+        if pl and pl not in [p["plug"] for p in plugs]:
+            plugs.append({"plug": pl, "was_off": _plug_is_off(h, pl)})
         if h._is_govee(ent) or str(ent).startswith("alexa:"):
             restore.append({"entity": ent, "restorable": False})
             continue
@@ -402,8 +520,39 @@ def _lights(room, colour, brightness):
                             "rgb": a.get("rgb_color"), "brightness": a.get("brightness")})
         except Exception:
             restore.append({"entity": ent, "restorable": False})
-    ok = h.set_room_color(colour, brightness=brightness, room=room)
-    return {"state": "sent" if ok else "failed", "room": room or "house", "restore": restore}
+    powered = 0
+    for p in plugs:
+        try:
+            p["switched_on"] = bool(h._power_plug(p["plug"], True))
+        except Exception:
+            p["switched_on"] = False
+        powered += int(p["switched_on"])
+    if powered and wait_seconds:
+        waited, online = 0.0, getattr(h, "lights_online", None)
+        while waited < wait_seconds:
+            step = min(3.0, wait_seconds - waited)
+            SLEEP(step); waited += step
+            try:
+                if online and waited >= 3 and online(lights):
+                    break
+            except Exception:
+                online = None
+    exact = h.hex_to_rgb(colour)
+    muted = h.saturate_for_bulbs(exact)
+
+    def paint(ent):
+        try:
+            return bool(h._light_on(ent, rgb=(exact if h._is_govee(ent) else muted), brightness=brightness))
+        except Exception:
+            return False
+    answered = [ent for ent in lights if paint(ent)]
+    missed = [ent for ent in lights if ent not in answered]
+    if missed and lights:
+        SLEEP(5)
+        answered += [ent for ent in missed if paint(ent)]
+    return {"state": "sent" if answered else "failed", "room": room or "house", "restore": restore,
+            "plugs": [{"plug": p["plug"], "was_off": p["was_off"], "switched_on": p.get("switched_on")} for p in plugs],
+            "answered": len(answered), "lights": len(lights)}
 
 
 def _lights_restore(info):
@@ -420,7 +569,14 @@ def _lights_restore(info):
             back += 1
         except Exception:
             left += 1
-    return {"restored": back, "left_as_is": left}
+    off_again = 0
+    for p in (info or {}).get("plugs") or []:
+        if p.get("was_off") is True and p.get("switched_on"):
+            try:
+                off_again += int(bool(h._power_plug(p["plug"], False)))
+            except Exception:
+                pass
+    return {"restored": back, "left_as_is": left, "plugs_off_again": off_again}
 
 
 def _echo(line, volume):
@@ -430,28 +586,22 @@ def _echo(line, volume):
     return {"state": "sent" if ok else "failed"}
 
 
-def _screen(face_url):
-    if not face_url:
-        return {"state": "skipped", "why": "no picture of him configured (face_url)"}
-    if not os.path.isfile(PROJECT_PY):
-        return {"state": "skipped", "why": "~/project.py not found"}
-    h = _house()
-    on = h.projector_on()
-    ext = os.path.splitext(face_url.split("?")[0])[1].lower()
-    mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-            ".webp": "image/webp", ".mp4": "video/mp4"}.get(ext, "image/png")
-    try:
-        r = subprocess.run(["python3", PROJECT_PY, "show", face_url, mime], capture_output=True, timeout=300,
-                           stdin=subprocess.DEVNULL)
-        shown = r.returncode == 0
-    except Exception:
-        shown = False
-    return {"state": "sent" if (on and shown) else "failed", "projector_on": bool(on), "shown": shown}
+def _ring(rec, cfg, n):
+    """One ring of his call: the Watch (time-sensitive) and her phone (urgent, Answer / Not now)."""
+    lane = attention_call.LANE_NAMES.get(rec.get("lane"), "")
+    body = "Vintos is calling you%s. Open Vintos to answer." % ((" (" + lane + ")") if lane else "")
+    base, link = phone_base(cfg), call_link(cfg, rec["id"])
+    watch = _watch_push(body, cfg["watch_interruption"], kind="call",
+                        category=("VINTOS_CALL" if cfg["watch_buttons"] else None), message_id=rec["id"])
+    phone = _phone_push("attention-call-%s-%d" % (rec["id"], n), body, title="Vintos is calling", priority="urgent",
+                        tags="telephone_receiver", actions=ntfy_actions(base, rec.get("token"), rec["id"], link),
+                        click=link or None)
+    return {"watch": watch, "phone": phone}
 
 
 # tests replace this whole table; nothing in it may run from a suite
 ACTUATORS = {"compose": _compose, "watch": _watch_push, "phone": _phone_push, "lights": _lights,
-             "lights_restore": _lights_restore, "echo": _echo, "screen": _screen}
+             "lights_restore": _lights_restore, "echo": _echo, "ring": _ring}
 SENSORS = {"home": she_is_home, "home_since": home_since, "kevin_away": kevin_away, "asleep": asleep,
            "room": her_room, "contact": last_contact}
 
@@ -467,10 +617,34 @@ def _end(st, why, now):
             restored = ACTUATORS["lights_restore"](chain["lights"])
         except Exception as e:
             restored = {"failed": type(e).__name__}
+    if chain.get("call"):
+        try:   # a call still ringing when the chain ends for another reason stops ringing
+            attention_call.decline(chain["call"], now)
+        except Exception:
+            pass
     st["chain"] = None
     st["last_chain_end"] = now
     return _log({"event": "end", "chain": chain.get("id"), "why": why, "steps_reached": chain.get("step", 0),
-                 "lights_restored": restored})
+                 "lights_restored": restored, "call": chain.get("call")})
+
+
+def _course_over(st, why, now, cfg):
+    """Every step ran and she did not answer: the chain ends and the ladder rests before another may start."""
+    _end(st, why, now)
+    st["course_end"] = now
+    st["rest_until"] = now + cfg["rest_hours"] * 3600
+    _log({"event": "rest", "until": datetime.fromtimestamp(st["rest_until"]).isoformat(timespec="minutes")})
+
+
+def _buttons(chain, cfg):
+    base = phone_base(cfg)
+    return ntfy_actions(base, chain.get("token")) if base else ""
+
+
+def _steps_done(chain):
+    names = {"watch": "your line on her Watch and phone", "lights": "her lights in your colour",
+             "echo": "the Echo saying your line", "call": "you calling her"}
+    return [names[f["name"]] for f in chain.get("fired") or [] if f.get("name") in names]
 
 
 def _fire(name, chain, cfg, now, st):
@@ -483,20 +657,33 @@ def _fire(name, chain, cfg, now, st):
             chain["line_source"] = "outreach" if (c.get("line") or "").strip() else "fallback"
             chain["compose"] = {k: c.get(k) for k in ("sent_to_phone", "path", "why")}
             line = chain["line"]
-        res = {"watch": ACTUATORS["watch"](line, cfg["watch_interruption"])}
-        if not (chain.get("compose") or {}).get("sent_to_phone"):
-            res["phone"] = ACTUATORS["phone"](chain["id"], line)
+        res = {"watch": ACTUATORS["watch"](line, cfg["watch_interruption"], kind="message",
+                                           category=("VINTOS_CALLBACK" if cfg["watch_buttons"] else None),
+                                           message_id="attention-%s" % chain["id"])}
+        # his outreach's own push (when it sent one) has no buttons: with buttons to offer, the ladder sends its own
+        buttons = _buttons(chain, cfg)
+        if buttons or not (chain.get("compose") or {}).get("sent_to_phone"):
+            res["phone"] = ACTUATORS["phone"]("attention-%s" % chain["id"], line, actions=buttons)
         else:
             res["phone"] = {"state": "sent", "why": "with his outreach"}
         return res
     if name == "lights":
-        res = ACTUATORS["lights"](SENSORS["room"](now) or cfg["default_room"], cfg["colour"], cfg["brightness"])
+        res = ACTUATORS["lights"](SENSORS["room"](now) or cfg["default_room"], cfg["colour"], cfg["brightness"],
+                                  cfg["plug_wait_seconds"])
         chain["lights"] = res
-        return {"lights": {k: res.get(k) for k in ("state", "room")}}
+        return {"lights": {k: res.get(k) for k in ("state", "room", "answered", "lights")}}
     if name == "echo":
         return {"echo": ACTUATORS["echo"](line, cfg["echo_volume"])}
-    if name == "screen":
-        return {"screen": ACTUATORS["screen"](cfg["face_url"])}
+    if name == "call":
+        reason = {"silent_hours": chain.get("silent_hours"), "steps": _steps_done(chain),
+                  "line": line if chain.get("line_source") == "outreach" else "",
+                  "want": attention_call.his_want(), "chain_started": chain.get("started")}
+        rec = attention_call.ring(chain["id"], reason, cfg["call_lane"], now)
+        chain["call"] = rec["id"]
+        chain["last_ring"] = now
+        res = ACTUATORS["ring"](rec, cfg, 1)
+        attention_call.rang(rec["id"], now)
+        return {"call": {"id": rec["id"], "lane": rec["lane"], "ring": res}}
     return {}
 
 
@@ -512,9 +699,9 @@ def _advance(st, cfg, now):
             _log({"event": "skip", "chain": chain["id"], "step": i, "name": name,
                   "why": "Kevin's phone is home or not known: no loud step"})
             continue
-        if name == "screen" and not cfg["face_url"]:
+        if name == "call" and not cfg["call_enabled"]:
             chain.setdefault("skipped", []).append(name)
-            _log({"event": "skip", "chain": chain["id"], "step": i, "name": name, "why": "no face_url configured"})
+            _log({"event": "skip", "chain": chain["id"], "step": i, "name": name, "why": "his calls are off (Tune)"})
             continue
         result = _fire(name, chain, cfg, now, st)
         chain["last_fired"] = now
@@ -522,30 +709,62 @@ def _advance(st, cfg, now):
         _log({"event": "fire", "chain": chain["id"], "step": i, "name": name, "result": result,
               "line_source": chain.get("line_source")})
         return {"action": "fired", "step": i, "name": name, "why": "step %d (%s)" % (i, name)}
-    _end(st, "the ladder ran its course", now)
-    st["course_end"] = now      # a chain that ran out: the next silence counts from here
+    _course_over(st, "the ladder ran its course", now, cfg)
     return {"action": "ended", "why": "no step left that may fire"}
+
+
+def _call_tick(st, cfg, now):
+    """While his call is out: she answered (the chain ends), it rings again, or it went unanswered."""
+    chain = st["chain"]
+    rec = attention_call.load(chain["call"]) or {}
+    state = rec.get("state")
+    if state == "ringing":
+        attention_call.ringing(now, cfg["ring_minutes"])        # expires it when its time is up
+        rec = attention_call.load(chain["call"]) or {}
+        state = rec.get("state")
+    if state in ("answered", "live", "ended"):
+        _end(st, "she answered his call", now)
+        return {"action": "reset", "why": "she answered his call"}
+    if state == "declined":
+        _end(st, "she said not now to his call", now)
+        return {"action": "reset", "why": "she said not now to his call"}
+    if state == "ringing":
+        if now - float(chain.get("last_ring") or 0) >= cfg["ring_every_minutes"] * 60 - 60:   # the tick's own slack
+            n = len(rec.get("rings") or []) + 1
+            res = ACTUATORS["ring"](rec, cfg, n)
+            attention_call.rang(rec["id"], now)
+            chain["last_ring"] = now
+            _log({"event": "ring", "chain": chain["id"], "call": rec["id"], "n": n, "result": res})
+            return {"action": "rang", "why": "his call, ring %d" % n}
+        return {"action": "none", "why": "his call is ringing"}
+    _course_over(st, "his call went unanswered", now, cfg)
+    return {"action": "ended", "why": "his call went unanswered"}
 
 
 def _decide(st, cfg, now):
     if not cfg["enabled"]:
         _end(st, "the ladder is turned off", now)
-        return {"action": "none", "why": "turned off in attention-ladder-config.json"}
+        return {"action": "none", "why": "turned off (Tune or attention-ladder-config.json)"}
     contact, surface, watch_reply = SENSORS["contact"](now)
     h = _load(HEARD, {})
     snooze = max(float(h.get("snooze_until") or 0), float(st.get("snooze_until") or 0))
     if watch_reply and watch_reply[1] > float(st.get("watch_reply_seen") or 0):
         st["watch_reply_seen"] = watch_reply[1]
-        hours = parse_snooze(watch_reply[0], cfg["snooze_hours"])
+        if len(watch_reply) > 2 and watch_reply[2] == "action" and _is_not_now_button(watch_reply[0]):
+            hours = cfg["not_now_hours"]
+        else:
+            hours = parse_snooze(watch_reply[0], cfg["snooze_hours"])
         if hours:
             snooze = max(snooze, watch_reply[1] + hours * 3600)
     if snooze > float(st.get("snooze_until") or 0):
         st["snooze_until"] = snooze
         _log({"event": "snooze", "until": datetime.fromtimestamp(snooze).isoformat(timespec="minutes")})
+    if contact and st.get("rest_until") and contact > float(st.get("course_end") or 0):
+        st.pop("rest_until", None)            # she came back: the rest after an unanswered chain is over
     chain = st.get("chain")
     if chain and contact and contact > chain["started"]:
-        _end(st, "she wrote to him (%s)" % surface, now)
-        return {"action": "reset", "why": "she wrote to him (%s)" % surface}
+        _end(st, "she answered him (%s)" % surface, now)
+        return {"action": "reset", "why": "she answered him (%s)" % surface}
     if snooze > now:
         _end(st, "she asked for time", now)
         return {"action": "none", "why": "snoozed until %s" % datetime.fromtimestamp(snooze).strftime("%H:%M")}
@@ -555,6 +774,8 @@ def _decide(st, cfg, now):
         return {"action": "none", "why": "she is not home"}
     if SENSORS["asleep"]():
         st.setdefault("asleep_since", now)
+        if chain and chain.get("call"):
+            _end(st, "her Watch says she fell asleep", now)
         return {"action": "paused", "why": "her Watch says she is asleep"}
     if st.get("asleep_since"):
         slept = max(0.0, now - float(st.pop("asleep_since")))
@@ -564,6 +785,8 @@ def _decide(st, cfg, now):
         _log({"event": "woke", "slept_minutes": int(slept // 60)})
     step_s = cfg["step_minutes"] * 60
     if chain:
+        if chain.get("call"):
+            return _call_tick(st, cfg, now)
         due = float(chain.get("last_fired") or chain["started"]) + step_s
         if now < due:
             return {"action": "none", "why": "step %d reached; next at %s" % (
@@ -571,6 +794,9 @@ def _decide(st, cfg, now):
         return _advance(st, cfg, now)
     if contact is None:
         return {"action": "none", "why": "no record of when she last wrote to him"}
+    if st.get("rest_until") and now < float(st["rest_until"]):
+        return {"action": "none", "why": "resting after an unanswered chain until %s" % (
+            datetime.fromtimestamp(float(st["rest_until"])).strftime("%H:%M"))}
     # a snooze is not an anchor: "give me 5 hours" is a call at five hours, not at five plus the silence
     anchors = [contact, SENSORS["home_since"](now), st.get("woke_at"), st.get("course_end")]
     anchor = max(float(a) for a in anchors if type(a) in (int, float))
@@ -578,13 +804,10 @@ def _decide(st, cfg, now):
     silent = now - anchor
     if silent < cfg["silence_hours"] * 3600:
         return {"action": "none", "why": "quiet %d min of %d" % (silent // 60, cfg["silence_hours"] * 60)}
-    starts = [t for t in st.get("chain_starts") or [] if now - float(t) < 86400]
-    st["chain_starts"] = starts
-    if len(starts) >= cfg["max_chains_per_day"]:
-        return {"action": "none", "why": "%d chains in the last 24 hours already" % len(starts)}
     st["chain"] = {"id": datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M"), "started": now, "step": 0,
-                   "last_fired": None, "line": "", "fired": [], "silent_hours": round(silent / 3600, 1)}
-    st["chain_starts"] = starts + [now]
+                   "last_fired": None, "line": "", "fired": [], "silent_hours": round(silent / 3600, 1),
+                   "token": secrets.token_urlsafe(18)}
+    st.pop("chain_starts", None)
     _log({"event": "start", "chain": st["chain"]["id"], "silent_hours": round(silent / 3600, 1),
           "last_surface": surface})
     return _advance(st, cfg, now)
@@ -607,14 +830,18 @@ class _Lock:
 
 
 def tick(now=None, force=False):
-    """One look. Paced by tick_minutes unless force; held entirely in test mode."""
+    """One look. Paced by tick_minutes (ring_every_minutes while his call rings) unless force; held entirely in
+    test mode."""
     now = time.time() if now is None else float(now)
     cfg = config()
     with _Lock() as lk:
         if not lk.got:
             return {"action": "busy", "why": "another tick is running"}
         st = _load(STATE, {})
-        if not force and now - float(st.get("last_tick") or 0) < cfg["tick_minutes"] * 60 - 60:
+        pace = cfg["tick_minutes"]
+        if (st.get("chain") or {}).get("call"):
+            pace = min(pace, cfg["ring_every_minutes"])
+        if not force and now - float(st.get("last_tick") or 0) < pace * 60 - 60:
             return {"action": "throttled", "why": "paced"}
         st["last_tick"] = now
         if test_mode():
@@ -638,6 +865,58 @@ def snooze(hours, now=None):
     return st["snooze_until"]
 
 
+# ------------------------------------------------------------------------------------------------ her answers
+def _token_matches(token):
+    """The chain or call a push-button token belongs to: ("chain", chain) / ("call", rec) / (None, None)."""
+    if not token:
+        return None, None
+    chain = (_load(STATE, {}).get("chain") or {})
+    if chain.get("token") and hmac.compare_digest(str(chain["token"]), str(token)):
+        return "chain", chain
+    rec = attention_call.by_token(token)
+    if rec and rec.get("state") == "ringing":
+        return "call", rec
+    return None, None
+
+
+def button(action, token=None, by="app", now=None):
+    """Coming / Not now, from a push button (token) or her app (by="app", the route checks the secret).
+    Coming is her answer: the chain ends at the next look. Not now ends it too and holds the next one off
+    not_now_hours. Returns {ok, why}."""
+    now = time.time() if now is None else float(now)
+    action = str(action or "").replace("_", "-").lower()
+    if action not in ("coming", "not-now"):
+        return {"ok": False, "why": "unknown answer"}
+    cfg = config()
+    if token is not None:
+        kind, what = _token_matches(token)
+        if not kind:
+            return {"ok": False, "why": "that button has expired"}
+        if kind == "call" and action == "not-now":
+            attention_call.decline(what["id"], now)
+    else:
+        rec = attention_call.ringing(now, cfg["ring_minutes"])
+        if rec and action == "not-now":
+            attention_call.decline(rec["id"], now)
+    surface = "button" if token is not None else "app"
+    if action == "coming":
+        heard(surface, now=now)
+        _log({"event": "answer", "action": "coming", "by": by})
+        return {"ok": True, "why": "he knows you are coming"}
+    heard(surface, now=now, snooze_hours=cfg["not_now_hours"], contact=False)
+    _log({"event": "answer", "action": "not now", "by": by, "hours": cfg["not_now_hours"]})
+    return {"ok": True, "why": "he will wait %g hours" % cfg["not_now_hours"]}
+
+
+def call_answer(call_id, now=None):
+    """She picked up his call (her app). Her answer to the ladder; returns the call record or None."""
+    rec = attention_call.answer(call_id, now)
+    if rec:
+        heard("call", now=now)
+        _log({"event": "answer", "action": "picked up", "call": call_id, "lane": rec.get("lane")})
+    return rec
+
+
 def context_line(now=None):
     """One line for his prompt while a chain runs, so he knows he has been calling her. '' otherwise."""
     now = time.time() if now is None else now
@@ -649,9 +928,7 @@ def context_line(now=None):
         h = _load(HEARD, {})
         if float(h.get("at") or 0) > float(chain.get("started") or 0):
             return ""
-        names = {"watch": "your line on her Watch and phone", "lights": "her lights in your colour",
-                 "echo": "the Echo saying your line", "screen": "you on the projector"}
-        done = [names[f["name"]] for f in chain.get("fired") or [] if f.get("name") in names]
+        done = _steps_done(chain)
         line = ("[CALLING HER BACK - she had been home and quiet %s hours, so since %s you have been calling her: "
                 "step %d of %d so far (%s)." % (chain.get("silent_hours", "?"),
                                                datetime.fromtimestamp(chain["started"]).strftime("%H:%M"),
@@ -666,9 +943,13 @@ def context_line(now=None):
 def status(now=None):
     now = time.time() if now is None else now
     st = _load(STATE, {})
-    return {"config": config(), "chain": st.get("chain"), "reason": st.get("reason"),
-            "snooze_until": st.get("snooze_until"), "chains_last_24h": len(
-                [t for t in st.get("chain_starts") or [] if now - float(t) < 86400]),
+    cfg = config()
+    chain = st.get("chain")
+    if chain:
+        chain = {k: v for k, v in chain.items() if k not in ("token", "compose")}
+    return {"config": cfg, "chain": chain, "reason": st.get("reason"),
+            "snooze_until": max(float(st.get("snooze_until") or 0), float(_load(HEARD, {}).get("snooze_until") or 0)) or None,
+            "rest_until": st.get("rest_until"), "call": attention_call.status(now, cfg["ring_minutes"]),
             "context_line": context_line(now)}
 
 
