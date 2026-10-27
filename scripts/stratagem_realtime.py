@@ -25,7 +25,9 @@ def _read(path):
         return None
 
 
-def admit(raw, event_id):
+def admit(raw, event_id, hold=False):
+    """hold: a call he started (attention_call.py), whose words wait for her yes before any memory of his takes
+    them; the intent engine's capture of her answer is skipped for it."""
     if not event_id:
         return {'error': 'provider event identity required'}
     path = _path(event_id)
@@ -43,7 +45,8 @@ def admit(raw, event_id):
         intent_target = None
         try:
             from intent_engine import note_response
-            note_response(raw)
+            if not hold:
+                note_response(raw)
             from intent_context import admit_voice_lead
             intent_target, intent_prompt = admit_voice_lead(event_id)
             if intent_prompt:

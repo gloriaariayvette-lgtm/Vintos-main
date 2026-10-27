@@ -138,3 +138,36 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
             "audio_reading":heard.get("audio_reading"),"reply":reply,
             "audio":base64.b64encode(voice_raw).decode(),"audio_format":"wav",
             "voice_engine":headers.get("X-Vintos-Voice","unknown"),"model":BRAIN}
+
+
+def opening(instructions, framing="", opening_instruction=""):
+    """His first words on a call he started (the attention ladder, 27 October): no recording of hers yet, so no
+    ears; his brain and his voice only, the same local model and voice as every local turn. Typed failures, like
+    turn()."""
+    system = str(instructions or "")
+    if framing:
+        system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
+    if opening_instruction:
+        system += "\n\n" + str(opening_instruction)
+    system += ("\n\nLOCAL LIVE VOICE: one to four conversational sentences. Your Chatterbox voice performs these "
+               "exact native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, only "
+               "when you genuinely mean it. Never write any other bracketed stage direction.")
+    brain_raw, _ = _post(LM + "/v1/chat/completions", {"model": BRAIN,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": "[The call you placed has just connected. She is listening. Speak first.]"}],
+        "temperature": .85, "max_tokens": 200}, 180)
+    brain = json.loads(brain_raw)
+    raw_reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+    try:
+        import stratagem
+        raw_reply = stratagem.consume(raw_reply, "voice")
+    except Exception:
+        pass
+    reply = _display_text(raw_reply)
+    if not reply:
+        return {"ok": False, "stage": "brain", "error": "local brain returned no words"}
+    voice_raw, headers = _post(STAGE + "/tts", {"text": raw_reply}, 210)
+    if not voice_raw.startswith(b"RIFF"):
+        return {"ok": False, "stage": "voice", "error": "voice returned no WAV", "reply": reply}
+    return {"ok": True, "transcript": "", "reply": reply, "audio": base64.b64encode(voice_raw).decode(),
+            "audio_format": "wav", "voice_engine": headers.get("X-Vintos-Voice", "unknown"), "model": BRAIN}

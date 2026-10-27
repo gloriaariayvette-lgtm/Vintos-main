@@ -73,13 +73,16 @@ def _receipt(row):
 
 
 INTERRUPTION_LEVELS = ("passive", "active", "time-sensitive")
+CATEGORIES = ("VINTOS_MESSAGE", "VINTOS_SONG", "VINTOS_PAINTING", "VINTOS_CALLBACK", "VINTOS_CALL")
 
 
 def send(title, body, kind="message", media_url="", image_url="", message_id="", config_path=None,
-         transport=None, now=None, force=False, interruption="active"):
+         transport=None, now=None, force=False, interruption="active", category=None):
     """interruption: "active" for everything that was here before. "time-sensitive" (the attention ladder, 27 October)
     breaks through a Focus only when the Watch app carries Apple's Time Sensitive Notifications entitlement; without
-    it the system delivers the push as an ordinary active one, so asking for it never costs a delivery."""
+    it the system delivers the push as an ordinary active one, so asking for it never costs a delivery.
+    category: an explicit notification category (the ladder's VINTOS_CALLBACK / VINTOS_CALL, whose Coming / Not now /
+    Answer buttons the Watch app must register first); None keeps the category the kind has always had."""
     title, body = str(title)[:120], str(body)[:600]
     if interruption not in INTERRUPTION_LEVELS: interruption = "active"
     if not title or not body: return {"state":"failed", "why":"title and body required"}
@@ -95,7 +98,8 @@ def send(title, body, kind="message", media_url="", image_url="", message_id="",
     except Exception: devices = []
     if not devices: return _receipt({"state":"failed", "why":"no registered Watch", "kind":kind,
                                      "at":datetime.now(timezone.utc).isoformat()})
-    category = {"song":"VINTOS_SONG", "painting":"VINTOS_PAINTING"}.get(kind, "VINTOS_MESSAGE")
+    if category not in CATEGORIES:
+        category = {"song":"VINTOS_SONG", "painting":"VINTOS_PAINTING"}.get(kind, "VINTOS_MESSAGE")
     payload = {"aps":{"alert":{"title":title, "body":body}, "sound":"vintos.caf",
                       "category":category, "thread-id":"vintos", "interruption-level":interruption},
                "vintos":{"kind":kind, "message_id":message_id or uuid.uuid4().hex,
