@@ -37,6 +37,12 @@ def normalize_plugin(request, purpose=''):
     if plugin in ('ncbi', 'entrez'):
         op = args.get('operation') or args.get('database') or args.get('db') or bare
         return dict(args, source='ncbi', operation=op), None
+    if plugin in ('ena', 'sra', 'ncbi_sra', 'sequencing_runs', 'sequencing_reads'):
+        # public sequencing archives are Lab sources, not connectors
+        return normalize_source(dict(args, source=plugin)), None
+    if plugin in ('adaptyv', 'adaptyv_bio', 'adaptyvbio', 'adaptive', 'adaptyv-bio'):
+        # Adaptyv Bio's tools are policy names under its own prefix; "Adaptive" is how its name is said
+        return None, dict(out, plugin='adaptyv_bio', tool='adaptyv_bio.' + bare)
     return None, out
 
 
@@ -90,7 +96,27 @@ def normalize_source(spec):
     out = dict(spec)
     source = str(out.get('source') or '').lower()
     out['source'] = {'rcsb': 'pdb', 'alphagenome': 'atlas', 'entrez': 'ncbi',
-                     'ncbi_rt_locus_screen': 'rt_locus_screen'}.get(source, source)
+                     'ncbi_rt_locus_screen': 'rt_locus_screen', 'ena': 'sequencing_runs', 'sra': 'sequencing_runs',
+                     'ncbi_sra': 'sequencing_runs', 'sequencing': 'sequencing_runs',
+                     'ena_reads': 'sequencing_reads', 'fastq': 'sequencing_reads'}.get(source, source)
+    if out['source'] == 'sequencing_runs' and out.get('reads') is not None:
+        # {source: ena, run_accession: SRR.., reads: 5000}: the read sample, said under the archive's name
+        out['source'] = 'sequencing_reads'
+    if out['source'] in ('sequencing_runs', 'sequencing_reads'):
+        op = str(out.pop('operation', '') or '').lower()
+        if op in ('reads', 'sample', 'read_sample', 'fastq'):
+            out['source'] = 'sequencing_reads'
+        if out['source'] == 'sequencing_runs' and not out.get('accession'):
+            for key in ('run_accession', 'study_accession', 'experiment_accession', 'project', 'id'):
+                if out.get(key):
+                    out['accession'] = out.pop(key)
+                    break
+            if not out.get('accession') and isinstance(out.get('query'), str):
+                q = out.pop('query').strip()
+                out['accession' if re.fullmatch(r'(?:[SED]R[RXSPA]|PRJ[NED][A-Z]|SAM[NED][A-Z]?)[0-9]+', q.upper())
+                    else 'term'] = q
+        if out['source'] == 'sequencing_reads' and out.get('accession') and not out.get('run_accession'):
+            out['run_accession'] = out.pop('accession')
     if out['source'] == 'pubmed':
         citation = out.get('query') or out.get('term')
         if isinstance(citation, str) and re.fullmatch(r'[1-9][0-9]{0,19}', citation.strip()) and not out.get('pmids'):
@@ -163,7 +189,8 @@ def normalize_request(route, request):
         # with the source said twice; it was refused as having no search terms (25 October)
         request={request['source']:request[request['source']]}
     allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
-             'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc'}
+             'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc',
+             'sequencing_runs','sequencing_reads'}
     if route=='source' and not request.get('source'):
         request={k:v for k,v in request.items() if k!='source'}
         # A source named where its operation goes ({"operation":"rt_locus_screen","accession":...}), or a UniProt
@@ -183,8 +210,15 @@ def normalize_request(route, request):
                 request={'source':source,'accession':value}
             elif isinstance(value,str) and source=='pubchem':request={'source':source,'name':value}
             elif isinstance(value,str) and source=='pubmed':request={'source':source,'query':value}
+            elif isinstance(value,str) and source=='sequencing_runs':request={'source':source,'query':value}
+            elif isinstance(value,str) and source=='sequencing_reads':request={'source':source,'run_accession':value}
     if route=='source':return normalize_source(request)
     if route=='instrument':return normalize_instrument(request)
+    if route=='experiment':
+        # its parameters under "parameters", where the door reads them: written beside "experiment" they were not
+        # sent, and {"titrate": {...}} was refused as experiment None (25 October)
+        from lab_experiments import experiment_request
+        return experiment_request(request)
     return request
 
 

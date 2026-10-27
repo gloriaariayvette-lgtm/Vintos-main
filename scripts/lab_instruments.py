@@ -12,8 +12,11 @@ for ONE instrument on it:
   reference_compare on an ESMFold model the Lab made    (structure.compare: against a real RCSB entry, on Aegis)
   fold_read         on an ESMFold model the Lab made    (structure.read: helix/strand and confidence over a range)
 
-Adaptyv (needs Gloria's approval for anything real) and the NGS workbench (needs a real dataset) are not
-offered here. At most DAILY_RUNS instrument runs a day. A sequence the Lab fetches is kept as a FASTA
+  ngs_workbench     on a FASTQ read sample the Lab holds    (list_workflows / plan_nextflow / plan_snakemake:
+                                                           planning only, nothing is executed)
+
+Adaptyv (needs Gloria's approval for anything real) is not offered here. The NGS workbench is offered only once
+the Lab holds a real read sample (sequencing_reads keeps the first reads of a public run, 2026-10-27). At most DAILY_RUNS instrument runs a day. A sequence the Lab fetches is kept as a FASTA
 artifact so the sequence instruments have something real to open.
 """
 from __future__ import annotations
@@ -45,10 +48,13 @@ OFFERED = {
     # a family panel declared earlier, measured against the retained readings it froze: does the feature persist
     # across the homologs and go missing in the comparator (2026-10-26)? Reads artifacts he already has, folds nothing
     "family_panel": ("structure.compare_family",),
+    # a real public read sample (lab_sequencing, 2026-10-27): workflows planned over it, never executed
+    "ngs_workbench": ("list_workflows", "plan_nextflow", "plan_snakemake"),
 }
 LOCAL = {"reference_compare": "chemistry_reference_compare.py", "fold_read": "chemistry_fold_read.py"}
 STRUCTURE = (".pdb", ".cif", ".cif.gz")
-SEQUENCE = (".fasta", ".fa", ".faa", ".fna", ".gb", ".gbk")
+READS = (".fastq.gz", ".fq.gz", ".fastq", ".fq")
+SEQUENCE = (".fasta", ".fa", ".faa", ".fna", ".gb", ".gbk") + READS
 
 
 def _runs_today():
@@ -67,6 +73,11 @@ def artifacts(kind, limit=5):
              and "verification" not in p.relative_to(ARTIFACTS).parts] if ARTIFACTS.is_dir() else []
     found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return [str(p.relative_to(LAB)) for p in found[:limit]]
+
+
+def read_samples(limit=5):
+    """The FASTQ read samples among the Lab's sequence artifacts: what the NGS workbench can be given."""
+    return [f for f in artifacts("sequence", 50) if f.lower().endswith(READS)][:limit]
 
 
 def save_fasta(accession, sequence, start=None, end=None, database=""):
@@ -131,6 +142,11 @@ def menu_block():
                      "files from: " + ", ".join(structures))
     if sequences:
         lines.append("- sequence_viewer, operation sequence.run_analysis | sequence.align, files from: " + ", ".join(sequences))
+    samples = read_samples()
+    if samples:
+        lines.append("- ngs_workbench, operation list_workflows | plan_nextflow | plan_snakemake, files [one of: "
+                     + ", ".join(samples) + "]: the first reads of a public run (its sequencing_reads receipt says "
+                     "which). Plans a workflow over the sample; nothing is executed.")
     models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
     if models:
         lines.append("- reference_compare, operation structure.compare, files [one of: " + ", ".join(models) + "], "
@@ -202,6 +218,10 @@ def planner_menu():
         skills["structure_viewer"] = {"operations": list(OFFERED["structure_viewer"]), "files": structures}
     if sequences:
         skills["sequence_viewer"] = {"operations": list(OFFERED["sequence_viewer"]), "files": sequences}
+    samples = read_samples()
+    if samples:
+        skills["ngs_workbench"] = {"operations": list(OFFERED["ngs_workbench"]), "files": samples,
+                                   "gives": "a workflow plan over the read sample; planning only, nothing is executed"}
     if models:
         skills["reference_compare"] = {
             "operations": list(OFFERED["reference_compare"]), "files": models,
@@ -249,8 +269,10 @@ def validate(req):
     allowed = set(artifacts("structure", 50) + artifacts("sequence", 50))
     if any(f not in allowed for f in files):
         raise ValueError("instrument files must be artifacts the Lab listed")
-    if skill in ("structure_viewer", "sequence_viewer") + tuple(LOCAL) and not files:
+    if skill in ("structure_viewer", "sequence_viewer", "ngs_workbench") + tuple(LOCAL) and not files:
         raise ValueError("this instrument needs a Lab artifact")
+    if skill == "ngs_workbench" and any(not f.lower().endswith(READS) for f in files):
+        raise ValueError("ngs_workbench takes a FASTQ read sample the Lab holds (from sequencing_reads)")
     if skill in LOCAL and (len(files) != 1 or not files[0].startswith("artifacts/esmfold/")):
         raise ValueError("%s takes one ESMFold model the Lab made" % skill)
     if skill == "reference_compare":

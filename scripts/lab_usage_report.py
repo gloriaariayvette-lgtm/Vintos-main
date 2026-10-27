@@ -75,7 +75,7 @@ def report(root, since, until):
     expected={'representation','genome','regulatory_genome','campaign'}
     expected.update('experiment:'+name for name in ('protein','molecule','fold','titrate'))
     expected.update('source:'+name for name in ('uniprot','pdb','ncbi','ncbi_sequence','ncbi_gene_identity','ncbi_protein_context',
-        'ncbi_neighborhood','rt_locus_screen','atlas','interpro','chembl','pubchem','pubmed','pubmed_abstracts','reactome','rhea','quickgo','mgnify','imgvr','bvbrc'))
+        'ncbi_neighborhood','rt_locus_screen','atlas','interpro','chembl','pubchem','pubmed','pubmed_abstracts','reactome','rhea','quickgo','mgnify','imgvr','bvbrc','sequencing_runs','sequencing_reads'))
     from plugin_catalog import PLUGINS
     from claude_connector_catalog import PLUGINS as ACCOUNT
     from lab_instruments import OFFERED

@@ -710,6 +710,8 @@ def fetch_json(url, *, transport=None):
         if (getattr(response, 'status', None) == 204 and not body and
                 url.startswith('https://search.rcsb.org/rcsbsearch/v2/query?')):
             return {'result_set': [], 'total_count': 0}, dict(response.headers)
+        if not body.strip() and url.startswith('https://www.ebi.ac.uk/ena/portal/api/'):
+            return [], dict(response.headers)    # ENA's portal answers a search with no runs with an empty body
         return json.loads(body), dict(response.headers)
 
 
@@ -729,6 +731,12 @@ def fetch_record(url, *, transport=None):
         return body.decode('utf-8')
 
 
+
+
+def open_stream(url, *, transport=None):
+    """A response to read a public file from in pieces (lab_sequencing reads only the first part of one FASTQ)."""
+    request = Request(url, headers={'User-Agent': 'Vintos-Lab/2.0'})
+    return (transport or open_request)(request, timeout=60)
 
 
 def fetch_structure(url, *, transport=None):
@@ -864,8 +872,9 @@ def receipt(source, query, records, *, metadata=None):
 
 class Sources:
     def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record,
-                 imgvr=None, fetch_structure=fetch_structure, imgvr_loci=None):
+                 imgvr=None, fetch_structure=fetch_structure, imgvr_loci=None, open_stream=open_stream):
         self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
+        self.open_stream = open_stream
         self.imgvr = imgvr
         self.imgvr_loci = imgvr_loci
         self.fetch_structure = fetch_structure
@@ -1311,6 +1320,12 @@ class Sources:
         if source == 'rt_locus_screen':
             import lab_phage
             return lab_phage.screen(self, spec)
+        if source == 'sequencing_runs':
+            import lab_sequencing
+            return lab_sequencing.search_runs(self, spec)
+        if source == 'sequencing_reads':
+            import lab_sequencing
+            return lab_sequencing.sample_reads(self, spec)
         if source == 'interpro':
             accession = _uniprot_accession(spec.get('accession'))
             data, _ = self.fetch(INTERPRO_BASE + 'entry/interpro/protein/uniprot/' + accession + '/?' + urlencode({'page_size':8}))

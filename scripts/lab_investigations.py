@@ -292,6 +292,13 @@ def record_phase(state, phase, note):
     lab._append(lab.NOTEBOOK,{'kind':'investigation_step','investigation':iid,**step})
 
 
+def _tool_states():
+    try:
+        return lab.tools_status()
+    except Exception:
+        return {}
+
+
 def _menu():
     import lab_instruments
     from plugin_catalog import instructions
@@ -301,7 +308,7 @@ def _menu():
     import chemistry_mcp
     import lab_native_instruments
     return {
-        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'imgvr':'local IMG/VR v4.1 high-confidence phage and virus genomes: {operation:protein_similarity,sequence:<20-2000 residue protein>} finds similar viral proteins across all of it (mmseqs); {operation:uvig,uvig:<UViG id>,start,end} reads up to 12000 bases of one genome; {operation:metadata,term} searches its annotations', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
+        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'sequencing_runs':'public sequencing runs (ENA, NCBI SRA), metadata only: {accession:exact SRR/ERR/DRR run, SRX experiment, SRP/PRJNA/PRJEB study or SAMN/SAMEA sample} or {organism or taxon_id, term (optional), platform:ILLUMINA|OXFORD_NANOPORE|PACBIO_SMRT, layout:PAIRED|SINGLE, strategy:WGS|RNA-Seq|AMPLICON, limit:1..8}', 'sequencing_reads':'{run_accession:a run from a sequencing_runs receipt, reads:1..50000 (default 10000), mate:1|2 for paired runs}: keeps the first reads of one FASTQ as a Lab artifact for sequence_viewer or ngs_workbench', 'imgvr':'local IMG/VR v4.1 high-confidence phage and virus genomes: {operation:protein_similarity,sequence:<20-2000 residue protein>} finds similar viral proteins across all of it (mmseqs); {operation:uvig,uvig:<UViG id>,start,end} reads up to 12000 bases of one genome; {operation:metadata,term} searches its annotations', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
                     'pdb': '{entry_id,operation:structure_evidence}',
                     'atlas': '{gene} or sourced {chromosome,start,end}',
                     'rt_locus_screen': '{accession:exact sourced protein accession.version}'},
@@ -311,9 +318,10 @@ def _menu():
         'instruments': lab_instruments.planner_menu(),
         'protein_design_mcp': chemistry_mcp.instructions(),
         'native': lab_native_instruments.menu(),
-        'experiments': {'protein': 'Exact sourced target_accession, protein_name, optional region. Fold on this host.',
-                        'fold': 'Mac toy lattice: {sequence:HPHPPHHP,chain_stiffness:0.15,hydrophobic_pull:1,charge_pull:0.5,search_steps:40}. Returns measured vs exact lowest energies; at most 9 beads, not a protein fold.',
-                        'molecule': 'Mac quantum chemistry: {molecule:H2|HeH+|LiH,bond_lengths:[angstrom values],layers:2,search_steps:200}. VQE versus exact ground energy in Hartree.', 'titrate': 'Mac toy lattice dial sweep: {sequence:HPHPPHHP,dial:chain_stiffness|hydrophobic_pull|charge_pull,from:0,to:0.8,points:5}. Each output point compares measured and exact energy.'},
+        # route "experiment", each with the exact request the door reads ({experiment, parameters, shots}), its limits
+        # and, for the quantum ones, QPanda's receipt state (27 October: the flat shapes shown here were not what the
+        # door read, and molecule was never once chosen)
+        'experiments': __import__('lab_experiments').menu(_tool_states()),
         'genome': 'Bounded sourced reference source_spec for comparative likelihood; unload/reload is managed.',
         'representation': 'Compute the whole-chain sequence representation: {records:<previous normalized protein records>}.',
         'regulatory_genome': 'Compare a prior regulatory source receipt with local genomic likelihood: {receipt:<prior atlas receipt>}.',
@@ -473,7 +481,8 @@ def _plan(investigation, context, ask, note=None):
                                         'request':'{skill,operation,files,question}',
                                         'skills':lab_instruments.skill_operations()},
                          'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
-                         'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
+                         'source':'{source,operation,query or accession}',
+                         'experiment':{name: spec['request'] for name, spec in menu['experiments'].items()}}
         prompt = json.dumps(task, ensure_ascii=False)
     # Still too long: shed what matters least, oldest results first, before ever refusing to plan. Every output stays
     # stored and can be read back with read_output.
@@ -1022,7 +1031,7 @@ def _retained_read(refusal, route, request, question):
 
 SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
                            'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea',
-                           'quickgo','imgvr','bvbrc'))
+                           'quickgo','imgvr','bvbrc','sequencing_runs','sequencing_reads'))
 ROUTES = ('source', 'plugin', 'instrument', 'experiment', 'genome', 'representation', 'regulatory_genome', 'campaign',
           'schema', 'native', 'read_output', 'finish')
 EXPERIMENTS = ('protein', 'fold', 'molecule', 'titrate')
@@ -1653,7 +1662,7 @@ def _offer_problem(route, request):
         if isinstance(raw, dict) or (isinstance(raw, list) and any(not isinstance(f, str) for f in raw)):
             return None     # a stored output named as the file: resolved, and checked, at the instrument's door
         files = [raw] if isinstance(raw, str) else [f for f in raw or [] if isinstance(f, str)]
-        needs = skill in ('structure_viewer', 'sequence_viewer') + tuple(lab_instruments.LOCAL)
+        needs = skill in ('structure_viewer', 'sequence_viewer', 'ngs_workbench') + tuple(lab_instruments.LOCAL)
         listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
         if any(f not in listed for f in files) or (needs and not files):
             menu = (lab_instruments.planner_menu().get('skills') or {}).get(skill) or {}

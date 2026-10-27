@@ -88,6 +88,26 @@ PLUGINS = {
                             "nvidia_nim.proteinmpnn", "nvidia_nim.rfdiffusion")),
         "limits": "Hosted inference, at most six attempted jobs per America/Chicago day across all surfaces. Requires a private Aegis NVIDIA key file. No automatic retry after timeout; predictions are not experimental validation. Parabricks is reserved for a verified hosted NIM endpoint and is not in this tool allowlist; KERMT and nvMolKit are separate local GPU tools.",
     },
+    "adaptyv_bio": {
+        # Gloria, 2026-10-27: "add Adaptive". No Adaptive Biotechnologies connector exists in the ChatGPT app directory
+        # or Claude's connector registry; Adaptyv Bio is the life-science one, and its plugin is installed in the
+        # relay's Codex. Its MCP server is its own ("adaptyv-bio"), not codex_apps: the relay calls the bare tool there.
+        "purpose": "Read Adaptyv Bio's protein-binding assay catalogue and experiments already run on Gloria's Adaptyv account: targets, status updates, sequences and returned results.",
+        "when": "Use in the Lab when a question concerns a target Adaptyv assays (list_targets) or an experiment already on her account. Never to price, draft, submit or pay for an experiment: those are hers, outside this policy.",
+        "surfaces": ("lab", "forge"), "visibility": "project",
+        "mcp_server": "adaptyv-bio",
+        # Read-only names from Adaptyv's MCP page (list_experiments, get_experiment, get_results, list_results) and its
+        # OpenAPI operationIds; the live listing (scripts/probes/adaptyv_confirm.py) is authoritative.
+        "tools_verified": False,
+        "tools": frozenset("adaptyv_bio." + t for t in (
+            "list_targets", "list_experiments", "get_experiment", "get_exp_info", "get_experiment_updates",
+            "get_experiment_sequences", "get_experiment_results", "get_results", "list_results",
+            "get_result_info", "list_sequences", "get_sequence_info")),
+        "withheld": ("cost_estimate", "create_exp", "modify_exp", "submit_experiment", "confirm_experiment_quote",
+                     "confirm_quote", "reject_quote", "pay_invoice", "add_sequences", "submit_feedback",
+                     "request_custom_target", "list_invoices", "get_invoice", "get_quote_info"),
+        "limits": "Read-only. No cost estimate (it transmits sequences), draft, edit, submission, quote or invoice action, payment, sequence upload, custom-target request or feedback. Returned values are Adaptyv's assay measurements for that experiment, with its units and flags: not clinical facts, not proof of function, and a missing result is not a negative one.",
+    },
     "nvmolkit": {
         "purpose": "Compute molecular fingerprints, Tanimoto similarity, GPU clustering, or conformers in Aegis's isolated nvMolKit environment.",
         "when": "Use with exact sourced SMILES for molecular comparison. GPU batching helps libraries; a one-off may be cheaper with RDKit.",
@@ -205,6 +225,8 @@ def instructions(surface=None):
             connectors[name]["enabled"] = python.is_file()
         if row.get("outbound_policy"):
             connectors[name]["outbound_policy"] = row["outbound_policy"]
+        if row.get("tools_verified") is False:
+            connectors[name]["tools_verified"] = False   # documented names, not yet seen in a live listing
     skills = {}
     for name, row in SKILLS.items():
         if surface is not None and surface not in row["surfaces"]:

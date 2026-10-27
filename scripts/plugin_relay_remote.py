@@ -213,9 +213,16 @@ def connector(request):
             mine = _own_address(prof.get("result") or {})
             send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""),
                                              to_self=bool(mine) and _recipients(arguments) == [mine])
-        called = _rpc(proc, n, "mcpServer/tool/call", {"threadId":thread_id, "server":"codex_apps",
-            "tool":tool, "arguments":arguments}, 180)
-        if called.get("error"): raise RuntimeError("connected tool call failed")
+        # A plugin with an MCP server of its own (Adaptyv Bio's "adaptyv-bio") is called there by its bare tool name;
+        # every other connector is one of the account's codex_apps tools, named in full.
+        server = entry.get("mcp_server") or "codex_apps"
+        bare = tool.split(".", 1)[1] if server != "codex_apps" and tool.startswith(plugin + ".") else tool
+        called = _rpc(proc, n, "mcpServer/tool/call", {"threadId":thread_id, "server":server,
+            "tool":bare, "arguments":arguments}, 180)
+        if called.get("error"):
+            # what the app server said (e.g. a plugin server not signed in), not only that it failed
+            raise RuntimeError("connected tool call failed: " + str((called["error"] or {}).get("message")
+                               if isinstance(called["error"], dict) else called["error"])[:300])
         result = called.get("result") or {}
         if result.get("isError"):
             # Say what the tool said: a bare "rejected" left an argument mismatch undiagnosable (2026-09-28).
@@ -311,6 +318,8 @@ def tool_schemas(request):
     skill_entry=SKILLS.get(plugin) or {}
     prefixes=tuple(skill_entry.get("schema_prefixes") or (plugin,))
     servers=tuple(skill_entry.get("schema_servers") or ())
+    own_server=(PLUGINS.get(plugin) or {}).get("mcp_server")
+    if own_server: servers=(own_server,)     # a connector with its own MCP server: every tool that server lists
     codex = _codex()
     proc = subprocess.Popen([codex, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True)

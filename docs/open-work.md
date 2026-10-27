@@ -1,3 +1,41 @@
+## 27 October — Public sequencing data for the Lab, and Adaptyv Bio ("Adaptive") in his context
+
+Built on `claude/lab-sequencing-adaptive-2026-10-27`; not merged or deployed. `scripts/lab_sequencing.py` (new),
+`lab_sources.py`, `lab_tool_calls.py`, `lab_instruments.py`, `lab_investigations.py`, `chemistry_lab.py` (planner
+menu line only), `forge_gaps.py`, `plugin_catalog.py`, `plugin_relay_remote.py`; suite `test_lab_sequencing.py`;
+probe `scripts/probes/adaptyv_confirm.py`.
+
+- **Done.** `sequencing_runs` reads run metadata from ENA (accession, or organism/platform/layout/strategy), a free
+  term through NCBI SRA first. `sequencing_reads` keeps the first reads (default 10,000, at most 50,000; at most
+  20 MiB downloaded, 16 MiB of FASTQ, 6 MiB stored) of one ENA FASTQ file as
+  `artifacts/sequencing/<run>_<mate>_first<N>.fastq.gz` with a provenance file, at most 8 new samples a day, and
+  is offered to `sequence_viewer` and to `ngs_workbench` (list_workflows, plan_nextflow, plan_snakemake; planning only).
+- **Done.** `adaptyv_bio` is a read-only Lab/Forge connector (targets, experiments, updates, sequences, results).
+  No cost estimate, draft, submission, quote, invoice or payment tool is in its policy.
+- **Not done: Adaptyv is not signed in.** On 27 October the Mac relay's Codex listed `adaptyv-bio` as
+  `notLoggedIn`, 0 tools. Gloria signs in on the Mac; then `adaptyv_confirm.py`.
+- **Not done: the Mac relay files.** The deploy never reaches the Mac. `plugin_catalog.py` and
+  `plugin_relay_remote.py` must be copied into the relay folder, or every Adaptyv call is refused there.
+- **Unverified live:** the ENA field list and query syntax (recorded shapes only; containers cannot reach EBI), and
+  Adaptyv's tool names (from its docs and OpenAPI; `tools_verified: False` until the probe lists them).
+
+## 27 October — The Lab's quantum experiments, offered as the door reads them
+
+Built on `claude/lab-qpanda-2026-10-27`; not merged or deployed. `scripts/lab_experiments.py` (new: one definition
+of the named experiments), `lab_investigations.py`, `lab_tool_calls.py`, `chemistry_mac.py`, `chemistry_probe.py`,
+`chemistry_session.py`; suite `test_lab_experiments.py`.
+
+- **Done.** The investigation menu and the daily session now show fold, titrate and molecule as the exact
+  `{experiment, parameters, shots}` request the door reads, with their limits and QPanda's receipt state; flat or
+  `{"titrate": {...}}` requests are put in that shape; shots are held to 256..16384; a completed fold, titrate or
+  molecule run (which the bench answers with `"pyqpanda3": <version>`) now renews QPanda's receipt.
+- **Not done: VQNet and pyChemiQ have no named experiment.** No bench experiment uses either; `molecule` is
+  pyqpanda3 VQE on PySCF/OpenFermion integrals, not pyChemiQ. Their receipts (13 September) expired on 13 October
+  and only `bin/chemistry_mac_probe.py` on the Mac, ingested with `chemistry_probe.py --record-run`, renews them.
+- **Not done: the orient prompt never poses a question these experiments answer.** It names folds, embeddings and
+  likelihoods only. The experiments themselves are toys (a 9-bead lattice, three diatomics), so this was left alone:
+  adding them there would invite toy questions, not novel ones.
+
 ## 26 October — Lab investigations: naming, being told no, and not repeating
 
 Built on `claude/lab-no-repeat-2026-10-26`; not merged or deployed. `scripts/lab_investigations.py`,

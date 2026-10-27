@@ -28,6 +28,7 @@ import chemistry_grade as grading
 import chemistry_frontier_bridge as bridge
 import chemistry_lab as lab
 import chemistry_mac as mac
+import lab_experiments
 import chemistry_probe as probe
 import chemistry_reading as owed
 import chemistry_taste as taste
@@ -317,7 +318,13 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
         genome_mining = "\n\n" + campaign_instructions()
     except Exception:
         genome_mining = ""
+    # the quantum ones' exact parameters and limits: only their names were here, so a molecule plan had to guess them
+    # (27 October: never chosen in any session); the protein experiment is described in full below
+    shapes = {name: {k: spec[k] for k in ("runs_on", "request", "limits", "returns")}
+              for name, spec in lab_experiments.EXPERIMENTS.items() if name in experiments and name != "protein"}
     prompt = (context + lean_text + plugin_menu + mcp_menu + genome_mining + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+              (("\nTHEIR EXACT REQUESTS AND LIMITS (return experiment, parameters and shots as shown):\n" +
+                json.dumps(shapes)) if shapes else "") +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
