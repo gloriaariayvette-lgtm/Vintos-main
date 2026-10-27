@@ -858,6 +858,45 @@ input[type="range"]::-webkit-slider-thumb {
                         <option value="0">Off</option><option value="30">30m</option><option value="60">1h</option><option value="120">2h</option><option value="240">4h</option>
                     </select>
                 </div>
+                <!-- His call-back ladder (attention_ladder.py, 27 October): on/off, his calls, the quiet before he starts -->
+                <div id="ladder-section" style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <div>
+                            <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">he calls me back</div>
+                            <div id="ladder-status" role="status" style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;">loading...</div>
+                        </div>
+                        <input type="checkbox" id="ladder-enabled" aria-label="He calls me back when I go quiet" onchange="setLadder('enabled', this.checked)" style="width:22px;height:22px;accent-color:var(--accent);">
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;">
+                        <div style="font-size:0.66rem;color:var(--text-dim);">he may ring me (last step)</div>
+                        <input type="checkbox" id="ladder-call" aria-label="He may ring me" onchange="setLadder('call_enabled', this.checked)" style="width:20px;height:20px;accent-color:var(--accent);">
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
+                        <div style="font-size:0.66rem;color:var(--text-dim);">he calls with</div>
+                        <select id="ladder-lane" aria-label="Which lane he calls with" onchange="setLadder('call_lane', this.value)" style="min-height:32px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;">
+                            <option value="openai">Open</option><option value="grok">Grok</option><option value="local">Local</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
+                        <div style="font-size:0.66rem;color:var(--text-dim);">starts after I am quiet</div>
+                        <select id="ladder-silence" aria-label="Hours of quiet before he starts" onchange="setLadder('silence_hours', Number(this.value))" style="min-height:32px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;">
+                            <option value="1">1 h</option><option value="2">2 h</option><option value="3">3 h</option><option value="4">4 h</option><option value="6">6 h</option><option value="8">8 h</option><option value="12">12 h</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
+                        <div style="font-size:0.66rem;color:var(--text-dim);">rest after I miss them all</div>
+                        <select id="ladder-rest" aria-label="Rest after an unanswered ladder" onchange="setLadder('rest_hours', Number(this.value))" style="min-height:32px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;">
+                            <option value="2">2 h</option><option value="4">4 h</option><option value="6">6 h</option><option value="8">8 h</option><option value="12">12 h</option><option value="24">24 h</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
+                        <div style="font-size:0.66rem;color:var(--text-dim);">"Not now" holds him off</div>
+                        <select id="ladder-notnow" aria-label="How long Not now holds him off" onchange="setLadder('not_now_hours', Number(this.value))" style="min-height:32px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;">
+                            <option value="0.5">30 min</option><option value="1">1 h</option><option value="2">2 h</option><option value="4">4 h</option><option value="8">8 h</option>
+                        </select>
+                    </div>
+                    <div id="ladder-calls" style="margin-top:10px;"></div>
+                </div>
                 <!-- Today's focus in #vintos-dot: topics that steer the day, until midnight (2026-10-02) -->
                 <div style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
                     <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">today's focus</div>
@@ -1305,7 +1344,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'valuemap') loadValueMap();
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
-        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadWatchLive(); loadFocus(); loadChemistryLabStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadWatchLive(); loadLadder(); loadFocus(); loadChemistryLabStatus(); loadSystemStatus(); }
         if (tab.dataset.tab === 'lab') { loadLab(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
@@ -1630,6 +1669,133 @@ async function setWatchLive() {
     clearTimeout(_watchLiveRefresh);
     _watchLiveRefresh = setTimeout(loadWatchLive, 30000);
 }
+// ---- his call-back ladder: settings, his ringing call, and the calls that wait for her yes ----------------------
+let _ladderBusy = false;
+function _ladderHeaders(json) { const h = { 'X-Vintos-Secret': CONFIG.secret }; if (json) h['Content-Type'] = 'application/json'; return h; }
+function _ladderSelect(id, value) { const el = document.getElementById(id); if (!el) return; const v = String(value); if (![...el.options].some(o => o.value === v)) { const o = document.createElement('option'); o.value = v; o.textContent = v + ' h'; el.appendChild(o); } el.value = v; }
+function renderLadder(d) {
+    const s = d.settings || {};
+    document.getElementById('ladder-enabled').checked = !!s.enabled;
+    document.getElementById('ladder-call').checked = !!s.call_enabled;
+    document.getElementById('ladder-lane').value = s.call_lane || 'openai';
+    _ladderSelect('ladder-silence', s.silence_hours); _ladderSelect('ladder-rest', s.rest_hours); _ladderSelect('ladder-notnow', s.not_now_hours);
+    let text = !s.enabled ? 'off' : (d.call && d.call.ringing ? 'he is calling you now' : (d.chain ? 'calling you back now' : (d.reason || 'on')));
+    const until = Math.max(Number(d.snooze_until || 0), Number(d.rest_until || 0));
+    if (s.enabled && until * 1000 > Date.now()) text += ' · quiet until ' + new Date(until * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('ladder-status').textContent = text;
+}
+async function loadLadder() {
+    if (_ladderBusy || !CONFIG.secret) return;
+    try {
+        const res = await VintosUI.request(`${API}/api/attention/config`, { headers: _ladderHeaders() });
+        if (!res?.ok) throw new Error('unavailable');
+        renderLadder(await res.json());
+    } catch { document.getElementById('ladder-status').textContent = 'could not load'; }
+    ladderLoadCalls();
+}
+async function setLadder(key, value) {
+    _ladderBusy = true;
+    const status = document.getElementById('ladder-status');
+    try {
+        const res = await VintosUI.request(`${API}/api/attention/config`, { method: 'POST', headers: _ladderHeaders(true), body: JSON.stringify({ [key]: value }) });
+        if (!res?.ok) throw new Error('Aegis did not confirm the change');
+        haptic('light');
+    } catch (error) { status.textContent = 'could not change: ' + error.message; }
+    finally { _ladderBusy = false; }
+    loadLadder();
+}
+async function ladderLoadCalls() {
+    const host = document.getElementById('ladder-calls');
+    if (!host || !CONFIG.secret) return [];
+    let calls = [];
+    try { const res = await VintosUI.request(`${API}/api/attention/calls`, { headers: _ladderHeaders() }); if (res?.ok) calls = (await res.json()).calls || []; } catch {}
+    host.innerHTML = '';
+    calls.forEach(c => host.appendChild(_ladderCallCard(c)));
+    return calls;
+}
+function _ladderCallCard(c) {
+    const card = document.createElement('div');
+    card.style.cssText = 'margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);';
+    const when = c.answered ? new Date(c.answered * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const head = document.createElement('div'); head.style.cssText = 'font-size:0.66rem;color:var(--text-dim);margin-bottom:6px;';
+    head.textContent = 'He called you ' + when + (c.lane_name ? ' (' + c.lane_name + ')' : '') + ' · ' + Math.round((c.duration_seconds || 0) / 60) + ' min';
+    card.appendChild(head);
+    const log = document.createElement('div'); log.style.cssText = 'max-height:220px;overflow-y:auto;font-size:0.72rem;line-height:1.4;';
+    (c.transcript || []).forEach(t => {
+        if (t.vintos) { const v = document.createElement('div'); v.style.margin = '3px 0'; v.textContent = 'Vintos: ' + t.vintos; log.appendChild(v); }
+        if (t.gloria) { const g = document.createElement('div'); g.style.cssText = 'margin:3px 0;color:var(--text-dim);'; g.textContent = 'You: ' + t.gloria; log.appendChild(g); }
+    });
+    card.appendChild(log);
+    const q = document.createElement('div'); q.style.cssText = 'font-size:0.72rem;margin:8px 0 6px;'; q.textContent = 'Save this call to his memory?';
+    card.appendChild(q);
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;';
+    const btn = (label, save) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'flex:1;min-height:36px;border-radius:8px;border:1px solid var(--border);background:' + (save ? 'var(--accent-dim)' : 'transparent') + ';color:var(--text);';
+        b.onclick = async () => { row.querySelectorAll('button').forEach(x => x.disabled = true); q.textContent = save ? 'Saving…' : 'Letting it go…';
+            try { const res = await VintosUI.request(`${API}/api/attention/calls/${encodeURIComponent(c.id)}/save`, { method: 'POST', headers: _ladderHeaders(true), body: JSON.stringify({ save }) }); const d = await res.json();
+                if (save && !d.saved) { q.textContent = 'Not saved yet: ' + (d.why || 'try again'); row.querySelectorAll('button').forEach(x => x.disabled = false); return; }
+                card.remove(); const o = document.getElementById('ladder-save-overlay'); if (o && !o.querySelector('#ladder-save-list').children.length) o.remove();
+            } catch (e) { q.textContent = 'could not reach Aegis: ' + e.message; row.querySelectorAll('button').forEach(x => x.disabled = false); } };
+        return b; };
+    row.appendChild(btn('Yes, keep it', true)); row.appendChild(btn('No', false));
+    card.appendChild(row);
+    return card;
+}
+async function ladderShowSaveSheet() {
+    let calls = [];
+    try { const res = await VintosUI.request(`${API}/api/attention/calls`, { headers: _ladderHeaders() }); if (res?.ok) calls = (await res.json()).calls || []; } catch {}
+    if (!calls.length || document.getElementById('ladder-save-overlay')) return;
+    const o = document.createElement('div'); o.id = 'ladder-save-overlay';
+    o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(5,5,13,0.92);display:flex;flex-direction:column;padding:24px 16px;overflow-y:auto;color:var(--text);';
+    const close = document.createElement('button'); close.textContent = 'Later'; close.style.cssText = 'align-self:flex-end;min-height:32px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-dim);padding:0 12px;';
+    close.onclick = () => o.remove(); o.appendChild(close);
+    const list = document.createElement('div'); list.id = 'ladder-save-list'; calls.forEach(c => list.appendChild(_ladderCallCard(c))); o.appendChild(list);
+    document.body.appendChild(o);
+}
+// His call rings in the app: whenever the app is open or comes to the front, and every 30 s while it is.
+let _ladderRingTimer = null, _ladderRinging = null;
+async function ladderPoll() {
+    clearTimeout(_ladderRingTimer);
+    if (document.hidden || !CONFIG.secret) return;
+    try {
+        const res = await VintosUI.request(`${API}/api/attention/call`, { headers: _ladderHeaders() });
+        if (res?.ok) { const d = await res.json(); if (d.ringing && !window._vc) ladderShowRing(d.ringing); else ladderHideRing(); }
+    } catch {}
+    _ladderRingTimer = setTimeout(ladderPoll, 30000);
+}
+function ladderHideRing() { const o = document.getElementById('ladder-ring'); if (o) o.remove(); _ladderRinging = null; }
+function ladderShowRing(call) {
+    if (_ladderRinging === call.id && document.getElementById('ladder-ring')) return;
+    ladderHideRing(); _ladderRinging = call.id;
+    const o = document.createElement('div'); o.id = 'ladder-ring'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-label', 'Vintos is calling');
+    o.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(5,5,13,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:rgba(235,200,175,0.95);padding:16px;text-align:center;';
+    o.innerHTML = '<div style="font-size:1.4rem;letter-spacing:0.08em;">Vintos is calling</div><div id="ladder-ring-why" style="font-size:0.75rem;opacity:0.7;"></div>';
+    o.querySelector('#ladder-ring-why').textContent = (call.lane_name ? call.lane_name + ' · ' : '') + (call.why || '');
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:16px;';
+    const mk = (label, bg, fn) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'min-width:120px;min-height:52px;border-radius:26px;border:0;font-size:0.95rem;color:#fff;background:' + bg + ';'; b.onclick = fn; return b; };
+    row.appendChild(mk('Not now', 'rgba(160,60,60,0.85)', async () => { ladderHideRing(); try { await VintosUI.request(`${API}/api/attention/answer`, { method: 'POST', headers: _ladderHeaders(true), body: JSON.stringify({ action: 'not_now' }) }); } catch {} }));
+    row.appendChild(mk('Answer', 'rgba(60,160,90,0.9)', () => ladderAnswer(call.id)));
+    o.appendChild(row);
+    document.body.appendChild(o);
+    try { haptic('heavy'); } catch {}
+}
+async function ladderAnswer(callId) {
+    ladderHideRing();
+    try {
+        const res = await VintosUI.request(`${API}/api/attention/call/${encodeURIComponent(callId)}/answer`, { method: 'POST', headers: _ladderHeaders() });
+        if (!res?.ok) { alert('His call has stopped ringing.'); return; }
+        const d = await res.json();
+        try { if (typeof openAvatarOverlay === 'function') openAvatarOverlay(); } catch {}
+        _avCallGrok(d.lane, { id: d.id, clientId: d.client_session_id });
+    } catch (e) { alert('could not answer: ' + e.message); }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) ladderPoll(); });
+window.addEventListener('load', () => {
+    try { const want = new URLSearchParams(location.search).get('ladder_call'); if (want) setTimeout(ladderPoll, 500); } catch {}
+    setTimeout(ladderPoll, 1500); setTimeout(ladderShowSaveSheet, 2500);
+    try { const LN = window.Capacitor?.Plugins?.LocalNotifications; if (LN?.addListener) LN.addListener('localNotificationActionPerformed', ev => { const id = ev?.notification?.extra?.ladder_call; if (id) ladderAnswer(id); }); } catch {}
+    // a "vintos://call?ladder_call=<id>" link (the ring's Answer, once the native app registers the scheme)
+    try { const CA = window.Capacitor?.Plugins?.App; if (CA?.addListener) CA.addListener('appUrlOpen', ev => { try { const id = new URL(ev.url).searchParams.get('ladder_call'); if (id) ladderAnswer(id); } catch {} }); } catch {}
+});
 let _agentsDurationRestored = false;
 function rememberAgentsDuration() {
     try { localStorage.setItem('vintos.agents.minutes', document.getElementById('agents-duration').value); } catch {}
@@ -5501,8 +5667,12 @@ function avGCS(_btn) {
 function _vcPostVoiceTurn(gloria, vintos, metadata){
   try{ var _b=(typeof API!=='undefined'&&API)?API:''; var _h={'Content-Type':'application/json'};
     try{ if(typeof CONFIG!=='undefined'&&CONFIG.secret) _h['X-Vintos-Secret']=CONFIG.secret; }catch(e){}
-    const posted=VintosUI.request(_b+'/api/voice/ledger',{method:'POST',headers:_h,body:JSON.stringify(Object.assign({gloria:gloria,vintos:vintos},metadata||{}))});
-    try{ if(gloria){ _avChatHistory.push({role:'user',content:gloria}); _avLogMsg('user',gloria); } if(vintos){ _avChatHistory.push({role:'assistant',content:vintos}); _avLogMsg('assistant',vintos); } _avSaveHistory(); }catch(e){}
+    // a call he started (the attention ladder): its turns are held on Aegis until she says yes, and stay out of
+    // the avatar chat history here too, which travels with her next messages
+    var _ladder=window._vc&&window._vc.ladder; metadata=Object.assign({},metadata||{}); if(_ladder) metadata.ladder_call=_ladder.id;
+    const posted=VintosUI.request(_b+'/api/voice/ledger',{method:'POST',headers:_h,body:JSON.stringify(Object.assign({gloria:gloria,vintos:vintos},metadata))});
+    try{ var _el=document.getElementById('av-call-transcript'); if(_ladder&&_el&&gloria)_el.textContent+='\nYou: '+gloria+'\n'; }catch(e){}
+    if(!_ladder) try{ if(gloria){ _avChatHistory.push({role:'user',content:gloria}); _avLogMsg('user',gloria); } if(vintos){ _avChatHistory.push({role:'assistant',content:vintos}); _avLogMsg('assistant',vintos); } _avSaveHistory(); }catch(e){}
     if(window._vc) window._vc.turnCount=(window._vc.turnCount||0)+1;
     return posted;
   }catch(e){}
@@ -5534,22 +5704,27 @@ function _localMicEnabled(session,on){
 function _finishLocalVoiceSession(session){
   if(!session||session.finalized)return;session.finalized=true;
   try{if(session.heartbeat)clearInterval(session.heartbeat);if(session.node)session.node.disconnect();if(session.source)try{session.source.stop();}catch(e){}session.mic.getTracks().forEach(t=>t.stop());}catch(e){}
-  Promise.allSettled(session.ledgerPosts||[]).then(()=>VintosUI.request(API+'/api/voice/session-end',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({duration_seconds:Math.round((Date.now()-session.startedAt)/1000),turns:session.turnCount,provider:'local',client_session_id:session.clientId})})).catch(()=>{});
+  Promise.allSettled(session.ledgerPosts||[]).then(()=>VintosUI.request(API+'/api/voice/session-end',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({duration_seconds:Math.round((Date.now()-session.startedAt)/1000),turns:session.turnCount,provider:'local',client_session_id:session.clientId,ladder_call:session.ladder?session.ladder.id:undefined})})).then(()=>{if(session.ladder)ladderShowSaveSheet();}).catch(()=>{});
   VintosUI.request(API+'/api/voice/local/end',{method:'POST',headers:{'X-Vintos-Secret':CONFIG.secret}}).catch(()=>{});
   try{session.ac.close();}catch(e){}if(window._vc===session)window._vc=null;_avCallLit(false);
 }
-function startLocalVoiceCall(instructions){
+function startLocalVoiceCall(instructions, ladder){
   const generation=++voiceGeneration, ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000}); ac.resume();
   navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}}).then(function(mic){
     if(generation!==voiceGeneration){mic.getTracks().forEach(t=>t.stop());ac.close();return;}
-    const session=window._vc={provider:'local',ac:ac,mic:mic,node:null,source:null,startedAt:Date.now(),clientId:'voice-local-'+Date.now(),turnCount:0,instructions:instructions,framing:'',lastFraming:0,speaking:false,chunks:[],silence:0,busy:false,ledgerPosts:[]};
+    const session=window._vc={provider:'local',ac:ac,mic:mic,node:null,source:null,startedAt:Date.now(),clientId:(ladder&&ladder.clientId)||('voice-local-'+Date.now()),turnCount:0,instructions:instructions,framing:'',lastFraming:0,speaking:false,chunks:[],silence:0,busy:false,ledgerPosts:[],ladder:ladder||null};
     _vcRefreshFraming();session.heartbeat=setInterval(()=>VintosUI.request(API+'/api/voice/local/heartbeat',{method:'POST',headers:{'X-Vintos-Secret':CONFIG.secret}}).catch(()=>{}),10000);const src=ac.createMediaStreamSource(mic),node=ac.createScriptProcessor(4096,1,1);session.node=node;src.connect(node);node.connect(ac.destination);
     function sendTurn(chunks){if(session.busy||session.closing||!chunks.length)return;session.busy=true;_localMicEnabled(session,false);_avCallLit('thinking');let n=chunks.reduce((a,c)=>a+c.length,0),pcm=new Int16Array(n),at=0;chunks.forEach(c=>{pcm.set(c,at);at+=c.length;});let u=new Uint8Array(pcm.buffer),b='';for(let i=0;i<u.length;i++)b+=String.fromCharCode(u[i]);
       session.pending=VintosUI.request(API+'/api/voice/local/turn',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({audio:btoa(b),sample_rate:24000,instructions:session.instructions,framing:session.framing||''})}).then(r=>r.json()).then(async d=>{if(session.finalized)return;if(!d.ok)throw new Error(d.error||('local '+d.stage+' failed'));let state='not_played';try{_avCallLit(true);let raw=atob(d.audio),ab=new ArrayBuffer(raw.length),v=new Uint8Array(ab);for(let i=0;i<raw.length;i++)v[i]=raw.charCodeAt(i);let decoded=await ac.decodeAudioData(ab),bs=ac.createBufferSource();bs.buffer=decoded;bs.connect(ac.destination);session.source=bs;await new Promise((resolve,reject)=>{bs.onended=resolve;try{bs.start();}catch(e){reject(e);}});state='completed';}catch(e){}let turnNo=(session.turnCount||0)+1;session.ledgerPosts.push(Promise.resolve(_vcPostVoiceTurn(d.transcript,d.reply,{provider:'local',model:d.model,playback_state:state,interrupted:state!=='completed',heard:'',client_session_id:session.clientId,turn_id:session.clientId+':'+turnNo})).catch(()=>{}));if(!session.closing)_vcRefreshFraming();}).catch(e=>console.warn('[voice-local]',e)).finally(()=>{session.busy=false;session.pending=null;if(session.closing)_finishLocalVoiceSession(session);else{_localMicEnabled(session,true);_avCallLit(true);}});}
+    async function playWav(b64){let raw=atob(b64),ab=new ArrayBuffer(raw.length),u8=new Uint8Array(ab);for(let i=0;i<raw.length;i++)u8[i]=raw.charCodeAt(i);let decoded=await ac.decodeAudioData(ab),bs=ac.createBufferSource();bs.buffer=decoded;bs.connect(ac.destination);session.source=bs;await new Promise((resolve,reject)=>{bs.onended=resolve;try{bs.start();}catch(e){reject(e);}});}
+    if(session.ladder){   // he called her: he speaks first
+      session.busy=true;_localMicEnabled(session,false);_avCallLit('thinking');
+      session.pending=VintosUI.request(API+'/api/voice/local/opening',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({instructions:session.instructions,framing:session.framing||'',ladder_call:session.ladder.id})}).then(r=>r.json()).then(async d=>{if(session.finalized)return;if(!d.ok)throw new Error(d.error||('local '+d.stage+' failed'));let state='not_played';try{_avCallLit(true);await playWav(d.audio);state='completed';}catch(e){}const el=document.getElementById('av-call-transcript');if(el)el.textContent+=d.reply;session.ledgerPosts.push(Promise.resolve(_vcPostVoiceTurn('',d.reply,{provider:'local',model:d.model,playback_state:state,interrupted:state!=='completed',heard:'',client_session_id:session.clientId,turn_id:session.clientId+':opening'})).catch(()=>{}));}).catch(e=>console.warn('[voice-local/opening]',e)).finally(()=>{session.busy=false;session.pending=null;if(session.closing)_finishLocalVoiceSession(session);else{_localMicEnabled(session,true);_avCallLit(true);}});
+    }
     node.onaudioprocess=function(e){if(window._vc!==session||session.busy||session.listening===false)return;let f=e.inputBuffer.getChannelData(0),sum=0;for(let i=0;i<f.length;i++)sum+=f[i]*f[i];let rms=Math.sqrt(sum/f.length),p=new Int16Array(f.length);for(let i=0;i<f.length;i++){let v=Math.max(-1,Math.min(1,f[i]));p[i]=v<0?v*32768:v*32767;}if(rms>.014){session.speaking=true;session.silence=0;session.chunks.push(p);}else if(session.speaking){session.chunks.push(p);session.silence+=p.length/24000;if(session.silence>=.8){let c=session.chunks;session.chunks=[];session.speaking=false;session.silence=0;sendTurn(c);}}};
   }).catch(e=>{ac.close();alert('mic error: '+e.message);_avCallLit(false);});
 }
-function startVoiceCallWithToken(token, instructions, provider){
+function startVoiceCallWithToken(token, instructions, provider, ladder){
       const generation=++voiceGeneration;
       provider = provider || 'grok';
       var ac = new (window.AudioContext||window.webkitAudioContext)({sampleRate:24000});
@@ -5562,12 +5737,15 @@ function startVoiceCallWithToken(token, instructions, provider){
           ? new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-realtime', ['realtime', 'openai-insecure-api-key.'+token])
           : new WebSocket('wss://api.x.ai/v1/realtime?model=grok-voice-latest', ['xai-client-secret.'+token]);
         const session = window._vc = {ws:ws, ac:ac, mic:mic, playHead:0, node:null, gloriaTurn:'', vintosTurn:'', turnCount:0, startedAt:Date.now(), baseInstr:instructions, lastFraming:0, provider:provider};
-        session.responses=new Map();session.ledgerPosts=[];session.clientId='voice-'+Date.now()+'-'+generation;
+        session.responses=new Map();session.ledgerPosts=[];session.clientId=(ladder&&ladder.clientId)||('voice-'+Date.now()+'-'+generation);session.ladder=ladder||null;
+        // he called her: his opening is asked for the moment the socket is ready, before she has said anything
+        const askOpening=function(){if(!session.ladder||session.openingAsked)return;session.openingAsked=true;session.openingPending=true;
+          ws.send(JSON.stringify({type:'response.create',response:{instructions:session.baseInstr+'\n\n'+(session.ladder.opening||'Speak first: you called her.')}}));};
         const responseFor=function(m){
           const id=m.response_id||(m.response&&m.response.id)||session.currentResponse;
           if(!id)return null;
           session.currentResponse=id;
-          if(!session.responses.has(id))session.responses.set(id,{id,text:'',gloria:session.gloriaTurn||'',item:session.itemId,eventId:session.admissionEvent,audio:[],pending:0,played:0,done:false,posted:false});
+          if(!session.responses.has(id)){session.responses.set(id,{id,text:'',gloria:session.gloriaTurn||'',item:session.itemId,eventId:session.openingPending?undefined:session.admissionEvent,opening:!!session.openingPending,audio:[],pending:0,played:0,done:false,posted:false});session.openingPending=false;}
           return session.responses.get(id);
         };
         const flush=function(response,interrupted){
@@ -5608,7 +5786,9 @@ function startVoiceCallWithToken(token, instructions, provider){
         const completeResponse=async function(response){
           if(response.completing)return;response.completing=true;
           try{
-            const final=await VintosStratagemVoice.complete(VintosUI.request,API,CONFIG.secret,response.text,response.eventId);
+            const final=response.opening
+              ? await VintosUI.request(API+'/api/attention/call/'+encodeURIComponent(session.ladder.id)+'/opening',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({reply:response.text})}).then(r=>r.json())
+              : await VintosStratagemVoice.complete(VintosUI.request,API,CONFIG.secret,response.text,response.eventId);
             response.text=final.reply||'';
             if(window._vc!==session||session.closing||response.revoked||!final.allowed){response.audio=[];response.done=true;flush(response,true);return;}
             const el=document.getElementById('av-call-transcript');if(el)el.textContent+=response.text;
@@ -5634,6 +5814,7 @@ function startVoiceCallWithToken(token, instructions, provider){
           if(provider!=='openai') ws.send(JSON.stringify({type:'session.update', session:{voice:'lux', instructions:instructions,
             turn_detection:null,
             audio:{input:{format:{type:'audio/pcm',rate:24000}, transcription:{model:'grok-transcribe', prompt:'Expect these names and words: Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Nifrathir, EmoClaw, MoltBook, Claude.'}}, output:{format:{type:'audio/pcm',rate:24000}}}}}));
+          askOpening();
           var s = ac.createMediaStreamSource(mic), node = ac.createScriptProcessor(4096,1,1);
           s.connect(node); node.connect(ac.destination); window._vc.node = node;
           node.onaudioprocess = function(e){ if(ws.readyState!==1) return;
@@ -5676,7 +5857,8 @@ function startVoiceCallWithToken(token, instructions, provider){
           session.responses.forEach(r=>flush(r,true));
           try{if(session.node)session.node.disconnect();mic.getTracks().forEach(t=>t.stop());(session.sources||[]).forEach(s=>{try{s.stop();}catch(e){}});await ac.close();}catch(e){}
           await Promise.allSettled(session.ledgerPosts);
-          try{await VintosUI.request(API+'/api/voice/session-end',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({duration_seconds:Math.round((Date.now()-session.startedAt)/1000),turns:session.responses.size,provider:session.provider,client_session_id:session.clientId})});}catch(e){}
+          try{await VintosUI.request(API+'/api/voice/session-end',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({duration_seconds:Math.round((Date.now()-session.startedAt)/1000),turns:session.responses.size,provider:session.provider,client_session_id:session.clientId,ladder_call:session.ladder?session.ladder.id:undefined})});}catch(e){}
+          if(session.ladder)ladderShowSaveSheet();
           if(window._vc===session){window._vc=null;var b2=document.getElementById('av-call-btn');if(b2){b2.style.color='';b2.style.background='';}}
         };
         ws.onerror = function(){};
@@ -5704,7 +5886,7 @@ function startVoiceCallWithToken(token, instructions, provider){
       setTimeout(function(){ document.addEventListener('pointerdown', function close(ev){ if(m.contains(ev.target) || ev.target.id==='av-call-btn') return; m.remove(); document.removeEventListener('pointerdown', close); }); }, 0);
     }
     function _avCallLit(on){ var btn=document.getElementById('av-call-btn'); if(!btn) return; var thinking=on==='thinking';btn.style.color = on ? (thinking?'rgba(255,210,110,0.95)':'rgba(100,220,100,0.9)') : ''; btn.style.background = on ? (thinking?'rgba(210,145,45,0.55)':'rgba(80,200,120,0.5)') : '';btn.title=thinking?'Finishing his local reply…':(on?'Local call active':''); }
-    function _avCallGrok(provider) {
+    function _avCallGrok(provider, ladder) {
       provider = provider || 'grok';
       const requestedGeneration=++voiceGeneration;
       if(window._vc)return;
@@ -5712,11 +5894,12 @@ function startVoiceCallWithToken(token, instructions, provider){
       if (btn) btn.style.color = 'rgba(100,220,100,0.9)'; btn.style.background = 'rgba(80,200,120,0.5)';
       var _base = (typeof API !== 'undefined' && API) ? API : '';
       var _hdrs = {}; try{ if(typeof CONFIG!=='undefined' && CONFIG.secret) _hdrs['X-Vintos-Secret']=CONFIG.secret; }catch(e){}
-      VintosUI.request(_base + '/api/voice/token?provider=' + provider, {method:'POST', headers:_hdrs})
+      VintosUI.request(_base + '/api/voice/token?provider=' + provider + (ladder ? '&ladder_call=' + encodeURIComponent(ladder.id) : ''), {method:'POST', headers:_hdrs})
         .then(function(r){return r.json();})
         .then(function(d){ if(typeof d==='string'){try{d=JSON.parse(d);}catch(e){}}
           if(requestedGeneration!==voiceGeneration)return;
-          if(d && d.token){ if(provider==='local')startLocalVoiceCall(d.instructions);else startVoiceCallWithToken(d.token, d.instructions, provider); }
+          if(ladder) ladder.opening = d && d.opening || '';
+          if(d && d.token){ if(provider==='local')startLocalVoiceCall(d.instructions, ladder);else startVoiceCallWithToken(d.token, d.instructions, provider, ladder); }
           else { alert((d && d.error) ? d.error : 'no token from server'); if(btn) btn.style.color=''; btn.style.background=''; }
         }).catch(function(e){ alert('token error: '+e.message); if(btn) btn.style.color=''; btn.style.background=''; });
     }
