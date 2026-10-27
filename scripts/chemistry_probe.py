@@ -364,16 +364,41 @@ def _run_hash(reply):
     return walk(reply if isinstance(reply, dict) else {})
 
 
+_QPANDA_VERSION = re.compile(r"^\d+(?:\.\d+){1,3}[A-Za-z0-9.+-]{0,16}$")
+
+
+def _bench_qpanda(reply):
+    """The bench's own naming of QPanda in a completed run, as an instrument named by that run; None otherwise.
+
+    bench_remote.py answers a run with {"ok", "run_id", "run": {experiment, source_sha256, result, ...},
+    "pyqpanda3": <the version it ran>}: QPanda is named by key, not under "instruments", so a completed fold, titrate
+    or molecule (each drives pyqpanda3 circuits on the Mac's CPUQVM) never renewed the qpanda receipt, and it has read
+    receipt_stale since 13 October while those runs kept completing. Only those three experiments, only a completed
+    run with a result, and only a version string count; "protein" and anything else name nothing here."""
+    from lab_experiments import QPANDA_EXPERIMENTS
+    run = reply.get("run") if isinstance(reply.get("run"), dict) else {}
+    version = reply.get("pyqpanda3")
+    if not (reply.get("ok") and run.get("experiment") in QPANDA_EXPERIMENTS and isinstance(run.get("result"), dict)
+            and isinstance(version, str) and _QPANDA_VERSION.fullmatch(version)):
+        return None
+    return {"named_as": "pyqpanda3", "version": version, "device": "mac",
+            "entry_point": "bench %s.py on pyqpanda3 CPUQVM" % run["experiment"],
+            "verification": "completed named bench run with its source hash"}
+
+
 def record_run_attestation(run_id, reply):
     """A completed Mac run proves only the instruments it names *and* hashes."""
     if not isinstance(reply, dict): return []
     digest = _run_hash(reply)
     rows, seen = [], set()
-    for raw in _instruments_named(reply):
+    bench = _bench_qpanda(reply)
+    for raw in _instruments_named(reply) + ([bench["named_as"]] if bench else []):
         tool = MAC_INSTRUMENTS.get(raw.strip().lower())
         if not tool or tool in seen: continue
         seen.add(tool)
         detail = reply.get("receipt") if isinstance(reply.get("receipt"), dict) else reply
+        if bench and raw == bench["named_as"]:
+            detail = bench
         if not digest:
             rows.append(_receipt(tool, "mac", "named_by_run_without_hash",
                                  evidence={"named_as": raw[:40], "run_id": str(run_id)[:64]},

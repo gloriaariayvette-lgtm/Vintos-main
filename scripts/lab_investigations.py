@@ -292,6 +292,13 @@ def record_phase(state, phase, note):
     lab._append(lab.NOTEBOOK,{'kind':'investigation_step','investigation':iid,**step})
 
 
+def _tool_states():
+    try:
+        return lab.tools_status()
+    except Exception:
+        return {}
+
+
 def _menu():
     import lab_instruments
     from plugin_catalog import instructions
@@ -311,9 +318,10 @@ def _menu():
         'instruments': lab_instruments.planner_menu(),
         'protein_design_mcp': chemistry_mcp.instructions(),
         'native': lab_native_instruments.menu(),
-        'experiments': {'protein': 'Exact sourced target_accession, protein_name, optional region. Fold on this host.',
-                        'fold': 'Mac toy lattice: {sequence:HPHPPHHP,chain_stiffness:0.15,hydrophobic_pull:1,charge_pull:0.5,search_steps:40}. Returns measured vs exact lowest energies; at most 9 beads, not a protein fold.',
-                        'molecule': 'Mac quantum chemistry: {molecule:H2|HeH+|LiH,bond_lengths:[angstrom values],layers:2,search_steps:200}. VQE versus exact ground energy in Hartree.', 'titrate': 'Mac toy lattice dial sweep: {sequence:HPHPPHHP,dial:chain_stiffness|hydrophobic_pull|charge_pull,from:0,to:0.8,points:5}. Each output point compares measured and exact energy.'},
+        # route "experiment", each with the exact request the door reads ({experiment, parameters, shots}), its limits
+        # and, for the quantum ones, QPanda's receipt state (27 October: the flat shapes shown here were not what the
+        # door read, and molecule was never once chosen)
+        'experiments': __import__('lab_experiments').menu(_tool_states()),
         'genome': 'Bounded sourced reference source_spec for comparative likelihood; unload/reload is managed.',
         'representation': 'Compute the whole-chain sequence representation: {records:<previous normalized protein records>}.',
         'regulatory_genome': 'Compare a prior regulatory source receipt with local genomic likelihood: {receipt:<prior atlas receipt>}.',
@@ -473,7 +481,8 @@ def _plan(investigation, context, ask, note=None):
                                         'request':'{skill,operation,files,question}',
                                         'skills':lab_instruments.skill_operations()},
                          'schema':'{plugin}', 'read_output':'{reference:{step,path}}',
-                         'source':'{source,operation,query or accession}', 'experiment':'{experiment,parameters,shots}'}
+                         'source':'{source,operation,query or accession}',
+                         'experiment':{name: spec['request'] for name, spec in menu['experiments'].items()}}
         prompt = json.dumps(task, ensure_ascii=False)
     # Still too long: shed what matters least, oldest results first, before ever refusing to plan. Every output stays
     # stored and can be read back with read_output.

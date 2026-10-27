@@ -185,6 +185,11 @@ def normalize_request(route, request):
             elif isinstance(value,str) and source=='pubmed':request={'source':source,'query':value}
     if route=='source':return normalize_source(request)
     if route=='instrument':return normalize_instrument(request)
+    if route=='experiment':
+        # its parameters under "parameters", where the door reads them: written beside "experiment" they were not
+        # sent, and {"titrate": {...}} was refused as experiment None (25 October)
+        from lab_experiments import experiment_request
+        return experiment_request(request)
     return request
 
 
