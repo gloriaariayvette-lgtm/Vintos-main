@@ -72,9 +72,16 @@ def _receipt(row):
     return row
 
 
+INTERRUPTION_LEVELS = ("passive", "active", "time-sensitive")
+
+
 def send(title, body, kind="message", media_url="", image_url="", message_id="", config_path=None,
-         transport=None, now=None, force=False):
+         transport=None, now=None, force=False, interruption="active"):
+    """interruption: "active" for everything that was here before. "time-sensitive" (the attention ladder, 27 October)
+    breaks through a Focus only when the Watch app carries Apple's Time Sensitive Notifications entitlement; without
+    it the system delivers the push as an ordinary active one, so asking for it never costs a delivery."""
     title, body = str(title)[:120], str(body)[:600]
+    if interruption not in INTERRUPTION_LEVELS: interruption = "active"
     if not title or not body: return {"state":"failed", "why":"title and body required"}
     if not force:
         held, why = watch_presence.should_hold()
@@ -90,7 +97,7 @@ def send(title, body, kind="message", media_url="", image_url="", message_id="",
                                      "at":datetime.now(timezone.utc).isoformat()})
     category = {"song":"VINTOS_SONG", "painting":"VINTOS_PAINTING"}.get(kind, "VINTOS_MESSAGE")
     payload = {"aps":{"alert":{"title":title, "body":body}, "sound":"vintos.caf",
-                      "category":category, "thread-id":"vintos", "interruption-level":"active"},
+                      "category":category, "thread-id":"vintos", "interruption-level":interruption},
                "vintos":{"kind":kind, "message_id":message_id or uuid.uuid4().hex,
                           "media_url":str(media_url)[:1000], "image_url":str(image_url)[:1000]}}
     encoded = json.dumps(payload, separators=(",", ":")).encode()

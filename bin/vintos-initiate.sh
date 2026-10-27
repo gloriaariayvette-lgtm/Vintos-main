@@ -545,7 +545,11 @@ import os, sys
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 import deliver
 url = os.environ.get("POSTCARD_URL") or None   # the piece he chose to send with his words, on its shelf link
-r = deliver.deliver(os.environ["OUTREACH_ID"], "ntfy", os.environ["RESPONSE"], title="Vintos", tags="sparkles",
+# Called by the attention ladder (27 October): a call back to him, high priority and its own tag, so it stands
+# out from ordinary outreach. Nothing else about the send changes.
+_ladder = bool(os.environ.get("OUTREACH_FROM_LADDER"))
+r = deliver.deliver(os.environ["OUTREACH_ID"], "ntfy", os.environ["RESPONSE"], title="Vintos",
+                    tags=("bell" if _ladder else "sparkles"), priority=("high" if _ladder else None),
                     click=url, attach=url, authority=lambda: (True, "his outreach: she receives these by ntfy"))
 print("[Outreach] ntfy:", (r or {}).get("state"), (r or {}).get("why") or "")
 sys.exit(0 if (r or {}).get("state") == "sent" else 1)
@@ -565,7 +569,8 @@ SPARK_WORKSPACE="$HOME/.vintos/workspace" python3 "$HOME/.vintos/workspace/scrip
     dispatch "$RESPONSE" "${trigger:-initiate}" >> /tmp/encounter.log 2>&1 || true
 
 HOUR_NOW=$(date +%H)
-if [ "$HOUR_NOW" -ge 9 ] && [ "$HOUR_NOW" -le 22 ]; then
+# The attention ladder speaks through the Echo only by its own rule (Kevin's phone not home); never from here.
+if [ -z "$OUTREACH_FROM_LADDER" ] && [ "$HOUR_NOW" -ge 9 ] && [ "$HOUR_NOW" -le 22 ]; then
     python3 "$WORKSPACE/scripts/vintos-home.py" announce "$RESPONSE" 2>/dev/null &
 fi
 
@@ -598,4 +603,5 @@ CHAT_INJECT
 # "none". His felt-gate, timing (quiet hours / is she near / mid-call) and cooldowns ARE the
 # y/n; most runs choose "none". Guarded so it never fails or delays the host task.
 _MISCHIEF="$HOME/.vintos/workspace/scripts/mischief-detector.sh"
-[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" --after-activity || true
+# Not after a ladder call: mischief can be loud, and the ladder alone decides when the house may be.
+[ -z "$OUTREACH_FROM_LADDER" ] && [ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" --after-activity || true

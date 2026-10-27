@@ -22,8 +22,15 @@ network ("Private Wi-Fi Address") — use the MAC the HOUSE network sees
 (`ip neigh` while the phone is provably home), or pin the phone's DHCP lease
 in the router and use the IP.
 
+Kevin's phone (27 October, for the attention ladder's loud steps): the same config may carry
+    "kevin_phone": {"ip": "192.168.x.x", "mac": "aa:bb:cc:dd:ee:ff"}
+It is probed the same way, with the same hysteresis, and kept under "kevin" in the state file. It answers one
+question only, whether the house may be loud (attention_ladder.py); it is never in his context. Unconfigured, stale
+or unreadable is None, and every reader treats None as "Kevin is home".
+
 Cron (every 5 minutes):
     */5 * * * * python3 ~/.vintos/workspace/scripts/home_presence.py >> /tmp/home-presence.log 2>&1
+The same run gives the attention ladder (attention_ladder.py) its tick; the ladder keeps its own 10-minute pace.
 """
 import json, math, os, subprocess, tempfile, time
 
@@ -31,6 +38,7 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 CONFIG = os.path.join(MEMORY, "home-presence-config.json")
 STATE = os.path.join(MEMORY, "home-presence.json")
+_DEFAULT_STATE = STATE   # a test that repoints STATE never ticks the ladder from main()
 ABSENT_AFTER = 4          # consecutive misses before "not seen" (20 min at 5-min cron)
 FRESH_S = 15 * 60         # a reading older than this asserts nothing
 
@@ -94,6 +102,29 @@ def decide(prev, hit, now=None):
     return st
 
 
+def probe_kevin(cfg=None):
+    """Kevin's phone, the same live look: True, False, or None when "kevin_phone" is not configured."""
+    cfg = _load(CONFIG, {}) if cfg is None else cfg
+    k = cfg.get("kevin_phone") if isinstance(cfg, dict) else None
+    if not isinstance(k, dict):
+        return None
+    return probe({"phone_ip": k.get("ip", ""), "phone_mac": k.get("mac", "")})
+
+
+def kevin_home(now=None, state=None):
+    """True (his phone is on the house Wi-Fi), False (missed long enough to be not seen, and freshly checked), or
+    None (not configured, never checked, or the last check is stale). Callers treat None as home."""
+    now = time.time() if now is None else now
+    st = _load(STATE, {}) if state is None else state
+    k = st.get("kevin") if isinstance(st, dict) else None
+    if not isinstance(k, dict) or type(k.get("home")) is not bool:
+        return None
+    checked = k.get("checked")
+    if type(checked) not in (int, float) or not 0 <= now - checked <= FRESH_S:
+        return None
+    return k["home"]
+
+
 def context_line():
     """Age of an actual phone detection, not the latest check or her whereabouts."""
     st = _load(STATE, {})
@@ -118,6 +149,14 @@ def main():
     prev = _load(STATE, {})
     st = decide(prev, hit)
     try:
+        k_hit = probe_kevin()
+        if k_hit is not None:
+            st["kevin"] = decide((prev or {}).get("kevin"), k_hit)
+        else:
+            st.pop("kevin", None)
+    except Exception:
+        st.pop("kevin", None)
+    try:
         os.makedirs(MEMORY, exist_ok=True)
         _save_state(st)
     except Exception:
@@ -129,6 +168,25 @@ def main():
     except Exception:
         pass
     print("[presence] %s (misses=%s)" % ("seen - home" if hit else "not seen", st.get("misses", 0)))
+    _ladder_tick()
+
+
+def _ladder_tick():
+    """The attention ladder's tick rides this cron (27 October). Never from a run whose paths a test repointed,
+    never when VINTOS_ATTENTION_LADDER=0, and nothing it does can fail the presence check."""
+    if STATE != _DEFAULT_STATE or os.environ.get("VINTOS_ATTENTION_LADDER", "1") == "0":
+        return
+    try:
+        import sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import attention_ladder
+        out = attention_ladder.tick()
+        if out and out.get("action") not in (None, "throttled", "none"):
+            print("[ladder] %s: %s" % (out.get("action"), out.get("why", "")))
+    except Exception as e:
+        print("[ladder] tick failed: %s: %s" % (type(e).__name__, str(e)[:160]))
 
 
 def _save_state(state):

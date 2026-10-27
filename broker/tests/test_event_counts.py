@@ -73,7 +73,13 @@ outside_after = snapshot(REPO)
 changed = [p for p, m in outside_after.items() if outside_before.get(p) != m] + [p for p in outside_before if p not in outside_after]
 check("no file outside the scratch tree changed", not changed, changed[:5])
 written = snapshot(MEM)
-check("the only memory file written is the post-turn record", set(os.path.basename(p) for p in written) == {"post-turn-record.jsonl"}, sorted(os.path.basename(p) for p in written))
+# attention-ladder-heard.json: when and on which surface she last wrote (never her words), so the ladder that calls
+# her back stops (27 October)
+check("the only memory files written are the post-turn record and the ladder's last-heard time",
+      set(os.path.basename(p) for p in written) == {"post-turn-record.jsonl", "attention-ladder-heard.json"},
+      sorted(os.path.basename(p) for p in written))
+_heard = json.load(open(os.path.join(MEM, "attention-ladder-heard.json")))
+check("the ladder keeps when and where, not her words", "hello" not in json.dumps(_heard) and _heard.get("surface") == "chat", _heard)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

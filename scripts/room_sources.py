@@ -39,13 +39,15 @@ WATCH_FRESH_S = 7200         # watch_presence.should_hold: a snapshot older than
 WATCH_MOTION_FRESH_S = 900   # a motion reading older than this is not "now"
 
 PERMITS = {
-    "house_wifi": ("the house floor plan in his context; a presence reaction through sensor_reactions (2 an hour)",
+    "house_wifi": ("the house floor plan in his context; a presence reaction through sensor_reactions (2 an hour); "
+                   "the attention ladder (attention_ladder.py) while she is home and quiet",
                    "saying she is out when the phone is not seen; saying which room"),
-    "bedroom_board": ("the arrival song, after bedroom_arrival's own checks (enrolled, distance, away, cooldown, sleep)",
+    "bedroom_board": ("the arrival song, after bedroom_arrival's own checks (enrolled, distance, away, cooldown, sleep); "
+                      "which room's lights the attention ladder tints",
                       "saying it is she, rather than the enrolled device, who is there"),
     "room_sensor": ("nothing: no consumer is connected",
                     "saying who is in the room; any device action"),
-    "watch": ("holding notifications while a fresh snapshot reports sleep",
+    "watch": ("holding notifications, and pausing the attention ladder, while a fresh snapshot reports sleep",
               "medical facts; where she is"),
 }
 LABELS = {"house_wifi": "house Wi-Fi", "bedroom_board": "bedroom board", "room_sensor": "room sensor",
