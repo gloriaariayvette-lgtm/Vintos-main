@@ -301,7 +301,7 @@ def _menu():
     import chemistry_mcp
     import lab_native_instruments
     return {
-        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'imgvr':'local IMG/VR v4.1 high-confidence phage and virus genomes: {operation:protein_similarity,sequence:<20-2000 residue protein>} finds similar viral proteins across all of it (mmseqs); {operation:uvig,uvig:<UViG id>,start,end} reads up to 12000 bases of one genome; {operation:metadata,term} searches its annotations', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
+        'sources': {'pubchem':'{name or cid}', 'chembl':'{target_id} or {operation:search_targets,term,organism}', 'interpro':'{accession}', 'pubmed':'{query}', 'ncbi_sequence':'{database,accession,start,end}', 'ncbi_protein_context':'{accession}', 'ncbi_neighborhood':'{accession,anchor_start,anchor_end,flank}', 'reactome':'{term,species}', 'rhea':'{term}', 'quickgo':'{term}', 'mgnify':'{term,operation:studies}', 'sequencing_runs':'public sequencing runs (ENA, NCBI SRA), metadata only: {accession:exact SRR/ERR/DRR run, SRX experiment, SRP/PRJNA/PRJEB study or SAMN/SAMEA sample} or {organism or taxon_id, term (optional), platform:ILLUMINA|OXFORD_NANOPORE|PACBIO_SMRT, layout:PAIRED|SINGLE, strategy:WGS|RNA-Seq|AMPLICON, limit:1..8}', 'sequencing_reads':'{run_accession:a run from a sequencing_runs receipt, reads:1..50000 (default 10000), mate:1|2 for paired runs}: keeps the first reads of one FASTQ as a Lab artifact for sequence_viewer or ngs_workbench', 'imgvr':'local IMG/VR v4.1 high-confidence phage and virus genomes: {operation:protein_similarity,sequence:<20-2000 residue protein>} finds similar viral proteins across all of it (mmseqs); {operation:uvig,uvig:<UViG id>,start,end} reads up to 12000 bases of one genome; {operation:metadata,term} searches its annotations', 'bvbrc':'{operation:genomes,term}', 'ncbi': sorted(NCBI_DATABASES), 'uniprot': '{query}',
                     'pdb': '{entry_id,operation:structure_evidence}',
                     'atlas': '{gene} or sourced {chromosome,start,end}',
                     'rt_locus_screen': '{accession:exact sourced protein accession.version}'},
@@ -1022,7 +1022,7 @@ def _retained_read(refusal, route, request, question):
 
 SOURCE_ROUTES = frozenset(('uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
                            'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea',
-                           'quickgo','imgvr','bvbrc'))
+                           'quickgo','imgvr','bvbrc','sequencing_runs','sequencing_reads'))
 ROUTES = ('source', 'plugin', 'instrument', 'experiment', 'genome', 'representation', 'regulatory_genome', 'campaign',
           'schema', 'native', 'read_output', 'finish')
 EXPERIMENTS = ('protein', 'fold', 'molecule', 'titrate')
@@ -1653,7 +1653,7 @@ def _offer_problem(route, request):
         if isinstance(raw, dict) or (isinstance(raw, list) and any(not isinstance(f, str) for f in raw)):
             return None     # a stored output named as the file: resolved, and checked, at the instrument's door
         files = [raw] if isinstance(raw, str) else [f for f in raw or [] if isinstance(f, str)]
-        needs = skill in ('structure_viewer', 'sequence_viewer') + tuple(lab_instruments.LOCAL)
+        needs = skill in ('structure_viewer', 'sequence_viewer', 'ngs_workbench') + tuple(lab_instruments.LOCAL)
         listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
         if any(f not in listed for f in files) or (needs and not files):
             menu = (lab_instruments.planner_menu().get('skills') or {}).get(skill) or {}

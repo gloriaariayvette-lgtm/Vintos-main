@@ -38,6 +38,8 @@ HAVE = (
     (r"\brhea\b|\breaction database\b", "Rhea (source rhea)"),
     (r"\b(?:quickgo|gene ontology|go terms?)\b", "QuickGO (source quickgo)"),
     (r"\bmgnify\b|\bmetagenom\w*\b", "MGnify (source mgnify)"),
+    (r"\b(?:sra|ena|fastq|raw reads|sequencing (?:runs?|reads|data(?:sets?)?))\b",
+     "public sequencing runs (source sequencing_runs) and the first reads of one (sequencing_reads)"),
     (r"\bcosmic\b|\bsomatic mutations?\b", "COSMIC (source cosmic)"),
     (r"\b(?:atac|dnase|cage|chromatin accessibility|alphagenome|atlas)\b|\bregulatory (?:genomics|variant effect)\b",
      "Atlas (AlphaGenome: predicted variant effects in one fixed window, source atlas)"),
