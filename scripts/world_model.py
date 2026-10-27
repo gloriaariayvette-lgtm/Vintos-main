@@ -199,7 +199,12 @@ def get_world_block():
         _bed = bedroom_arrival.context_line()
     except Exception:
         _bed = ""
-    return "\n".join(x for x in (block, _home, _bed) if x)
+    try:   # he has been calling her back (attention_ladder.py, 27 October): one line while a chain runs
+        import attention_ladder
+        _call = attention_ladder.context_line()
+    except Exception:
+        _call = ""
+    return "\n".join(x for x in (block, _home, _bed, _call) if x)
 
 
 def _scene_block(st):

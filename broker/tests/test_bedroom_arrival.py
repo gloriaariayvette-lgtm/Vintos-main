@@ -173,7 +173,7 @@ srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("his tag is taken in both his chat and his avatar replies", srv.count("_ba.take_picks(reply") == 2
       and "take_picks(reply, act=not (_test_turn" in srv)
 check("the line reaches his avatar and ReelRoom context with the house", "bedroom_arrival.context_line()" in wm
-      and "(block, _home, _bed)" in wm)
+      and "(block, _home, _bed, _call)" in wm)
 
 
 # --- the relay: a fake socket speaking MQTT ---

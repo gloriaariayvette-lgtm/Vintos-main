@@ -1383,6 +1383,11 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         try: test_mode = bool(_test_mode_active())
         except Exception: pass
     test_mode = bool(test_mode)
+    try:   # she wrote to him: the attention ladder's chain ends, and "not now" / "give me 2 hours" holds it off
+        import attention_ladder as _al
+        _al.heard(surface, gloria_text, test_mode=test_mode)
+    except Exception as _al_e:
+        print("[attention-ladder]", str(_al_e)[:200], flush=True)
     if not test_mode:
         try:
             import intent_engine as _intent
