@@ -28,6 +28,7 @@ DoorDash outputs remain readable only by the surface that requested them.
 | PDF, Presentations, Spreadsheets | Any surface when that artifact is the requested output | Contextless, disposable skill workspace; returned files are hash checked and retained. |
 | Template Creator | Forge or Atelier when reuse is explicitly intended | Contextless artifact generation only. |
 | BioNeMo | Lab, Forge or Atelier after selecting a named workflow | The Chat-account BioNeMo skill relay is disabled. The separate Aegis `nvidia_nim` gateway has a configured key and a six-attempt daily cap; Boltz-2, DiffDock, ProteinMPNN and RFdiffusion returned live results on 23 September. |
+| Adaptyv Bio | Lab or Forge, for a target Adaptyv assays or an experiment already on Gloria's account | Read-only: targets, experiments, updates, sequences, results. Its own MCP server (`adaptyv-bio`), called by bare tool name. No cost estimate, draft, submission, quote, invoice or payment. Needs an Adaptyv sign-in in the Mac's Codex. |
 | Plugin Management | Configuration visibility only | Vintos cannot install, remove, connect or change Eve's plugin permissions. |
 
 Connector policy lives in `scripts/plugin_catalog.py`, rather than in prompts. Tool names outside
@@ -65,3 +66,7 @@ forced command naming `plugin_relay_remote.py`; the request cannot select anothe
 No deployment is complete until the checked-out Mac command is executable, Aegis can reach it with
 that restricted SSH identity, `plugin_gateway.py instructions` works on Aegis, and a read-only
 commissioning call produces a receipt under the real workspace without exposing account credentials.
+
+The Mac relay runs its own copies of `plugin_catalog.py` and `plugin_relay_remote.py` in the folder above; the
+Aegis deploy does not update them. A catalog change that the relay must enforce (a new connector) is copied there
+by hand after the deploy.
