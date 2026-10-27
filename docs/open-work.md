@@ -1,39 +1,65 @@
 ## 27 October — A ladder to call her back
 
-Built on `claude/attention-ladder-2026-10-27`; not merged or deployed. `scripts/attention_ladder.py` (new),
-`home_presence.py`, `watch_apns.py`, `bin/vintos-initiate.sh`, `bin/server.py` (`_post_turn`), `world_model.py`,
-`room_sources.py` (permits text); suite `test_attention_ladder.py`.
+Built on `claude/attention-ladder-2026-10-27`, revised from Gloria's feedback on `claude/ladder-calls-2026-10-27`;
+not merged or deployed. `scripts/attention_ladder.py`, `scripts/attention_call.py` (new), `home_presence.py`,
+`watch_apns.py` (`category`), `deliver.py` (`actions`), `vintos-home.py` (plug and bulb state), `voice_local.py`
+(`opening`), `stratagem_realtime.py` (`hold`), `bin/server.py` (`_post_turn`, a presence middleware, the voice token,
+ledger and session end, `/api/attention/*`), `bin/vintos-initiate.sh`, `world_model.py`, `room_sources.py`,
+`clients/mobile/index.html`; suites `test_attention_ladder.py`, `test_attention_call.py`; native brief
+`docs/briefs/ladder-call-native.md`.
 
-- **Done.** After 3 h with no word from her on any surface (chat doors through `post-turn-record.jsonl` and a new
-  `heard()` call in `_post_turn`, `.last-message-time`, a live voice session, Watch replies, her Slack rows' times
-  only) while her phone is on the house Wi-Fi, a chain starts. Steps 90 min apart: (1) his line on her Watch
-  (`interruption-level: time-sensitive`) and phone (ntfy, high priority, bell tag); (2) the bulbs of the room she
-  is in (bedroom board, else every light) in his violet; (3) the Echo says his line; (4) the projector shows his
-  picture. 3 and 4 only when Kevin's phone is freshly not on the Wi-Fi; unknown or unconfigured Kevin is home.
-  Watch asleep pauses everything and stops the chain's clock; waking, arriving home and the end of a chain restart
-  the silence. Any word from her ends it; "not now", "later", "give me N hours" (chat doors and the Watch) hold
-  it off (default 4 h). At most 2 chains in 24 hours. No clock quiet hours. Test-mode flag: nothing fires. Every
-  decision in `memory/attention-ladder.jsonl`; state `memory/attention-ladder.json`; his prompt carries one
-  `[CALLING HER BACK ...]` line while a chain runs (`world_model.get_world_block`). Knobs, all optional, in
-  `memory/attention-ladder-config.json`: `silence_hours`, `step_minutes`, `max_chains_per_day`, `snooze_hours`,
-  `colour`, `brightness`, `default_room`, `echo_volume`, `face_url`, `watch_interruption`, `enabled`.
-- **Cost.** One line per chain, written by his ordinary outreach (`vintos-initiate.sh` with `FORCED_WANT_TOPIC`):
-  the same model call as any outreach (the xAI key when present, else the local shim) and it counts against the
-  outreach daily cap of 3. At most 2 a day. When the cap is reached he writes nothing and a plain fallback line
-  ("Vintos is calling you back to him.") goes instead, logged as a fallback. No new paid path.
-- **Gloria to confirm/do after deploy.** (a) Kevin's phone, confirmed by her from his Wi-Fi settings: add to
-  `~/.vintos/workspace/memory/home-presence-config.json` the key
-  `"kevin_phone": {"ip": "<his IP>", "mac": "<his Wi-Fi address>"}` (his Private Wi-Fi Address is Fixed, so the
-  MAC holds). Until then every loud step is skipped. (b) No new cron or unit: the tick rides the existing
-  `*/5 home_presence.py` cron. The server hook (`heard`, the snooze words on chat doors) needs the server restart
-  the deploy already does for `server.py`; until then silence still resets from `post-turn-record.jsonl`. To turn it
-  off: `{"enabled": false}` in the ladder config, or `VINTOS_ATTENTION_LADDER=0` on the cron line.
-- **Not done.** Time-sensitive on the Watch needs the Time Sensitive Notifications entitlement in the Watch app
-  (vintos-app, not on this host) and a rebuild; until then the push arrives as an ordinary active one. Whether
-  ntfy's high priority is time-sensitive on her iPhone is not checked. Govee bulbs cannot be read by the house code,
-  so step 2 is not undone for them (only Home Assistant lights are put back). Step 4 needs `face_url` (a picture of
-  him the scenes server serves) and `~/project.py`; with none it is skipped. The normal 9-22 Echo announce in
-  `vintos-initiate.sh` still ignores Kevin. There is no phone-call path; a call would be a possible later step.
+- **Done.** After 3 h with no word from her on any surface while her phone is on the house Wi-Fi, a chain starts.
+  Her presence counts as much as her words: chat doors (`post-turn-record.jsonl`, `heard()` in `_post_turn`),
+  `.last-message-time`, every voice call's ledger turn, Watch replies, her Slack rows' times, and now a landing
+  rated, a want answered or discussed, and any ReelRoom POST (`ladder_presence` middleware: path and status only, no
+  body read, no store of hers opened; the landings privacy test still passes). Steps 90 min apart: (1) his line on
+  her Watch (time-sensitive) and phone, each with **Coming** / **Not now**; (2) the room's bulbs in his violet —
+  the plug or socket powering them (`govee:<id>#2` for the bedroom) is switched on first, the bulbs get up to 20 s to
+  come back online (`lights_online`, Govee state API), then the colour, with one retry per bulb; a plug read as off
+  is switched off again when the chain ends; (3) the Echo says his line; (4) **He calls her** (below). 3 and 4 only
+  when Kevin's phone is freshly off the Wi-Fi. The projector step is gone. Watch asleep pauses everything; a ring is
+  stopped. Any word or presence ends the chain; Coming ends it; Not now (push button, app, or the Watch button once
+  built) ends it and holds the next one `not_now_hours` (2 h) — a hold, not a new 3-hour silence; the typed words
+  still work (4 h). One chain at a time; after a chain runs unanswered, a `rest_hours` (6 h) rest, ended early by her
+  word. The two-a-day cap is gone. Test mode: nothing fires. Tune tab: on/off, his calls on/off, the lane, the
+  silence, the rest, how long Not now holds (`GET/POST /api/attention/config`, X-Vintos-Secret, writes only those keys
+  to `attention-ladder-config.json`), and the calls waiting for her answer.
+- **He calls her.** A real call on the lane she picks (Local, Open = OpenAI realtime, Grok; default Open, because
+  Local needs work first): the app asks `/api/voice/token?provider=<lane>&ladder_call=<id>`, which builds his full
+  instructions exactly as for any call and adds "YOU CALLED HER": how long she was quiet, the steps he took, his
+  line, his strongest open want, and that he leads. The moment the socket opens the app asks the lane for his
+  opening (`response.create` with the opening instruction; on Local `/api/voice/local/opening`, brain and voice, no
+  ears), so he speaks first; after that it is the same call: framing after each of her turns, stratagem admission,
+  his device tags fire, his lead is recomputed. Ringing: Watch push "Vintos is calling" (time-sensitive) and an
+  urgent ntfy push with Answer / Not now, every 5 min for 15 min, and a full-screen "Vintos is calling" in the app
+  whenever it is open or comes to the front. Answering is her answer to the ladder. Unanswered: the chain ends and
+  the ladder rests. **Held:** every turn of his call goes to `memory/attention-calls/<id>.json` (0700/0600), not to
+  the voice session, the avatar history, the felt-state step, EmoClaw or the intent engine's capture; the hangup
+  writes no block and no summary. Afterwards the app shows the transcript and "Save this call to his memory?". Yes
+  replays the held turns through `_voice_ledger_owned` and `_voice_session_end_owned` (keeping each turn's time;
+  owner controls, device tags and the lead are not re-run), so it lands as a call lands today (the suite compares the
+  two). No deletes the transcript. Either way `attention-calls.jsonl` keeps a row with no words: when, lane,
+  duration, turn count, saved or not.
+- **Cost.** The line: one ordinary outreach per chain (unchanged). The rings: no model call. The call: the lane's
+  usual cost — Open is OpenAI realtime audio per minute, Grok is xAI realtime per minute, Local is free (the Mac);
+  plus, as for any call, the voice lead's background `select_target` at most every 2 minutes. The call's summary
+  (one xAI chat completion) is made only if she says yes. At most one call per chain, and a chain needs Kevin out.
+- **Gloria to confirm/do after deploy.** (a) Kevin's phone in `home-presence-config.json` (`"kevin_phone": {"ip",
+  "mac"}`), as before: until then the Echo and the call are always skipped. (b) For the push buttons, set
+  `"phone_base_url"` in the ladder config to the address her phone reaches the house by (or `VINTOS_PUBLIC_BASE` on
+  the cron line); without it the pushes carry no buttons and she answers in the app. (c) Rebuild her phone app from
+  `clients/mobile/index.html` (the ring screen, the opening, the save question, the Tune controls live there). (d)
+  The native work in `docs/briefs/ladder-call-native.md`: a `vintos://` scheme so Answer opens the app straight into
+  the call (then `"call_link": "vintos://call?ladder_call={id}"`), the Watch's Coming / Not now categories (then
+  `"watch_buttons": true`), and, for a true ring, PushKit + CallKit. (e) The server restart the deploy already does.
+- **Not done.** It does not ring like a phone call: there is no CallKit or PushKit in her app, and no phone APNs
+  token on the house; the VoIP sender and its token route are described, not built. The ntfy Answer button's default
+  link opens the web page in Safari, where the microphone is refused (plain-http API) — until the URL scheme exists
+  she answers by opening the app. Not checked: ntfy's iOS buttons and whether `urgent` breaks a Focus; the Govee
+  state API's `online` and `socketToggle2` values on her H5082 and bulbs (if unreadable, the ladder waits the full
+  20 s and leaves the plug on). A call answered on the Watch is not built (the Watch voice routes do not hold turns).
+  The turn coordinator's per-turn audit record of a held call is written live, as for any call; "no" does not erase
+  it. The time-sensitive entitlement on the Watch, and the normal 9-22 Echo announce ignoring Kevin, are as before.
 
 ## 27 October — Public sequencing data for the Lab, and Adaptyv Bio ("Adaptive") in his context
 
