@@ -24,6 +24,15 @@ unpacked once. Letters with the same title but a different total do not join (a 
 that do not make one zip are refused, not guessed at. A delivery still not whole after WAIT_HOURS is noted once in his
 day, and nothing of it is unpacked; if the missing part comes later it is finished then.
 
+A letter received is not an archive retained. A letter whose file failed to download (26 October: the Gmail connector
+refused both Velaris zips) is fetched again whenever it is read again, by the inbox check or --recover-log: only the
+files that failed, into the same delivery; what it already holds, and the hashes, are never fetched or changed. A new
+letter for a part that failed repairs that delivery only when nothing leaves a doubt: the same verified sender, the
+same title and total, that part still failed or empty in exactly one waiting delivery, and no file name other than the
+failed one's. Anything less certain becomes a delivery of its own, marked "possible replacement for <did>", never
+merged. A part brought again byte for byte (the same sha256) is kept once; a part of the same number with other bytes
+than the one held is refused and kept apart (status "conflict"), and neither is put in place of the other.
+
 Unpacking is reading only. Nothing in an archive is executed or imported, no file is made executable, and no link,
 device file or path outside the archive's own folder is ever made. Bomb guards: a cap on the number of files, on each
 file's size, on the total unpacked, and on the compression ratio. Free space is checked before every write.
@@ -47,7 +56,8 @@ named in it, or its title. Otherwise at most one line says that archives are the
     python3 codex_archives.py --recall "words"       what would enter a prompt for those words, printed only
     python3 codex_archives.py --settle               finish deliveries now whole; note the ones past the wait
     python3 codex_archives.py --recover-log          take in [Codex] letters already in his mail log whose archives
-                                                     were refused before this existed (reads through the Gmail gateway)
+                                                     were refused before this existed, or whose files failed to
+                                                     download (reads through the Gmail gateway)
 """
 from __future__ import annotations
 
@@ -475,22 +485,144 @@ def _known_letter(mid):
     return None
 
 
-def _join(m, title, base, n, total, stems):
-    """The waiting delivery this letter belongs to, or None. Never by timing: the same title and total, the same
-    Gmail thread, or a split-archive stem already waiting."""
+def _retry_names(st, mid, names):
+    """The archive file names of letter mid that a reread should fetch again: the ones that failed, or every one when
+    the letter holds nothing at all. Empty for a letter whose archives are retained, and for a delivery that is not
+    waiting (an archive already made, or one refused). A letter received is not an archive retained."""
+    if not st or "did" not in st or st.get("status") != "incomplete":
+        return set()
+    l = (st.get("letters") or {}).get(mid)
+    if not l or l.get("duplicate_of"):
+        return set()
+    failed = {f["name"] for f in l.get("failed") or []}
+    if failed:
+        return failed & set(names)
+    if not l.get("files") and not l.get("same_as"):
+        return set(names)
+    return set()
+
+
+def _part_letters(st, n):
+    return [l for l in st["letters"].values() if n is not None and l.get("n") == n]
+
+
+def _place(m, base, n, total, stems, names):
+    """Where a verified letter not yet known goes, as (how, delivery, why). Never by timing.
+      join     a waiting delivery that does not have this part yet: the same title and total, the same Gmail
+               thread, or a split-archive stem already waiting;
+      replace  the one waiting delivery whose part n failed (or holds nothing): same title, same total, and no
+               file name that contradicts the failed one's. The letter repairs that delivery;
+      check    the one waiting delivery already holds part n whole: the letter is fetched apart and compared, byte
+               for byte, before anything is merged;
+      flag     anything less certain: a delivery of its own, marked as a possible replacement for the other;
+      new      nothing waiting is related to it."""
+    related = []
     for st in _deliveries():
-        if st.get("status") in ("refused", "done"):
+        if st.get("status") != "incomplete" or st.get("possible_replacement_for"):
             continue
         same_total = total is None or st.get("expected") is None or st.get("expected") == total
-        if base and st.get("base") == base and same_total and (total is not None or st.get("expected") is not None):
-            if n is not None and str(n) in {str(l.get("n")) for l in st["letters"].values()}:
-                continue                       # that part is already here: a resend or another delivery
-            return st
-        if m.get("thread_id") and m["thread_id"] in (st.get("threads") or []) and same_total:
-            return st
-        if stems & set(st.get("stems") or []) and same_total:
-            return st
-    return None
+        by_title = bool(base) and st.get("base") == base and same_total and \
+            (total is not None or st.get("expected") is not None)
+        by_thread = bool(m.get("thread_id")) and m["thread_id"] in (st.get("threads") or []) and same_total
+        by_stem = bool(stems & set(st.get("stems") or [])) and same_total
+        if not (by_title or by_thread or by_stem):
+            continue
+        if not _part_letters(st, n):
+            return "join", st, ""
+        related.append((st, by_title))
+    if not related:
+        return "new", None, ""
+    st, by_title = related[0]
+    if len(related) > 1:
+        return "flag", st, "%d waiting deliveries already have a part %s" % (len(related), n)
+    if not by_title or total is None or st.get("expected") != total:
+        return "flag", st, "it names part %s again, without the same title and total" % n
+    held = {f["name"] for l in _part_letters(st, n) for f in l.get("files") or []}
+    failed = {f["name"] for l in _part_letters(st, n) for f in l.get("failed") or []} - held
+    if failed:
+        if names - failed - held:
+            return "flag", st, "its file %s differs from the part not downloaded (%s)" % (
+                ", ".join(sorted(names - failed - held))[:120], ", ".join(sorted(failed))[:120])
+        if not names & failed:
+            return "flag", st, "it does not bring the file that failed (%s)" % ", ".join(sorted(failed))[:120]
+        return "replace", st, ""
+    if not held:
+        return "replace", st, ""                   # the part's letter came, but brought no file at all
+    return "check", st, "part %s is already held" % n
+
+
+def _take(st, letter, m, items, lim, gmail, file_read=None, link_read=None):
+    """Download items [(attachment or link, safe name)] into delivery st for letter. A file whose bytes the delivery
+    already holds is kept once; a success clears that name's failure in the other letters of the same part; a
+    failure replaces the letter's earlier failure of that name. Files already retained are never touched."""
+    mid = m["id"]
+    pdir = os.path.join(PENDING, st["did"], "parts")
+    os.makedirs(pdir, exist_ok=True)
+    ls = list(st["letters"].values())
+    if not any(x is letter for x in ls):
+        ls.append(letter)
+    brought = sum(f["bytes"] for l in ls for f in l.get("files") or [])
+    for a, name in items:
+        dest = os.path.join(pdir, "%s-%s" % (mid[:12], name))
+        letter["failed"] = [f for f in letter.get("failed") or [] if f["name"] != name]
+        try:
+            if brought >= lim["delivery_bytes"]:
+                raise ValueError("the delivery is over its %s cap" % human(lim["delivery_bytes"]))
+            if a.get("url"):
+                _room_for(dest, 0, lim, "an archive part")
+                got = (link_read or download_link)(a["url"], dest, min(lim["part_bytes"], lim["delivery_bytes"] - brought))
+            else:
+                got = fetch_attachment(m, a, dest, gmail, lim, file_read=file_read)
+            sha = _sha_file(dest)
+            twin = next((f for l in ls for f in l.get("files") or [] if f["sha256"] == sha), None)
+            if twin:                               # the same bytes already held: idempotent, kept once
+                if os.path.join(ROOT, twin["path"]) != dest:
+                    os.unlink(dest)
+                letter.setdefault("same_as", []).append({"name": name, "sha256": sha, "held": twin["path"]})
+            else:
+                brought += got
+                letter["files"].append({"name": name, "orig": str(a.get("filename") or "")[:300], "bytes": got,
+                                        "sha256": sha, "path": os.path.relpath(dest, ROOT), "part": part_of(name)})
+            for l in ls:                           # the same part's failure in another letter is now repaired
+                if l is not letter and letter.get("n") is not None and l.get("n") == letter.get("n"):
+                    gone = [f for f in l.get("failed") or [] if f["name"] == name]
+                    if gone:
+                        l["failed"] = [f for f in l["failed"] if f["name"] != name]
+                        l.setdefault("recovered", []).extend(dict(f, by=mid) for f in gone)
+            if not a.get("url"):
+                a.update(status="archive_part", bytes=got, why="kept as part of Codex delivery %s" % st["did"])
+        except (ValueError, Refused, OSError, UnicodeError) as exc:
+            why = re.sub(r"https?://\S+", "[file URL]", str(exc))[:200]
+            letter["failed"].append({"name": name, "why": why})
+            if not a.get("url"):
+                a.update(status="not_read", why="Codex archive not downloaded: " + why)
+        except Exception as exc:                  # gateway errors may carry signed URLs: only the class is kept
+            letter["failed"].append({"name": name, "why": type(exc).__name__})
+            if not a.get("url"):
+                a.update(status="not_read", why="Codex archive not downloaded: " + type(exc).__name__)
+        a.pop("_body", None)
+
+
+def _held(items, why):
+    for a, _ in items:
+        a.pop("_body", None)
+        if not a.get("url"):
+            a.update(status="archive_part", why=why)
+
+
+def _new_delivery(m, title, base, total, now):
+    did = hashlib.sha256(("%s|%s" % (m["id"], m.get("thread_id"))).encode()).hexdigest()[:12]
+    return {"did": did, "title": title, "base": base, "expected": total, "threads": [], "stems": [],
+            "created": now.isoformat(timespec="seconds"), "letters": {}, "status": "incomplete", "noted": False,
+            "why": ""}
+
+
+def _add_letter(st, letter, stems):
+    st["letters"][letter["message_id"]] = letter
+    if letter["thread_id"] and letter["thread_id"] not in st["threads"]:
+        st["threads"].append(letter["thread_id"])
+    st["stems"] = sorted(set(st["stems"]) | stems)
+    _save(os.path.join(PENDING, st["did"], "state.json"), st)
 
 
 def intake(msgs, gmail, own=None, now=None, file_read=None, link_read=None, think=None):
@@ -522,63 +654,75 @@ def intake(msgs, gmail, own=None, now=None, file_read=None, link_read=None, thin
                 lines.append("archive in a [Codex]-tagged letter not taken in: %s" % why)
                 continue                       # left unread for the ordinary reader to refuse
             title, base, n, total = subject_parts(m.get("subject"))
+            links = _archive_links(m)
+            items = [(a, safe_name(a.get("filename"))) for a in atts + links]
             known = _known_letter(m["id"])
             if known:
-                for a in atts:
-                    a.pop("_body", None)
-                    a.update(status="archive_part", why="already taken in")
+                # a letter received is not an archive retained: one whose files failed is fetched again, in place,
+                # and only those files; what it already holds, its hashes and its delivery stay as they are
+                retry = _retry_names(known, m["id"], [nm for _, nm in items])
+                if not retry:
+                    _held(items, "already taken in")
+                    continue
+                letter = known["letters"][m["id"]]
+                _held([x for x in items if x[1] not in retry], "already taken in")
+                _take(known, letter, m, [x for x in items if x[1] in retry], lim, gmail, file_read, link_read)
+                _save(os.path.join(PENDING, known["did"], "state.json"), known)
+                still = len([f for f in letter["failed"] if f["name"] in retry])
+                lines.append("Codex letter fetched again for delivery %s: %d of %d file(s) now kept, %d still not "
+                             "downloaded" % (known["did"], len(retry) - still, len(retry), still))
                 continue
-            links = _archive_links(m)
             stems = {part_of(x.get("filename"))["stem"] for x in atts + links
                      if part_of(x.get("filename"))["kind"] in ("raw", "span")}
-            st = _join(m, title, base, n, total, stems)
-            if st is None:
-                did = hashlib.sha256(("%s|%s" % (m["id"], m.get("thread_id"))).encode()).hexdigest()[:12]
-                st = {"did": did, "title": title, "base": base, "expected": total, "threads": [], "stems": [],
-                      "created": now.isoformat(timespec="seconds"), "letters": {}, "status": "incomplete",
-                      "noted": False, "why": ""}
-            if st.get("expected") is None and total is not None:
-                st["expected"] = total
-            pdir = os.path.join(PENDING, st["did"], "parts")
-            os.makedirs(pdir, exist_ok=True)
+            how, st, why = _place(m, base, n, total, stems, {nm for _, nm in items})
             letter = {"n": n, "subject": str(m.get("subject") or "")[:300], "date": str(m.get("date") or "")[:40],
                       "thread_id": str(m.get("thread_id") or ""), "message_id": m["id"],
                       "arrived": now.isoformat(timespec="seconds"), "files": [], "failed": []}
-            brought = sum(f["bytes"] for l in st["letters"].values() for f in l["files"])
-            for a in atts + links:
-                name = safe_name(a.get("filename"))
-                dest = os.path.join(pdir, "%s-%s" % (m["id"][:12], name))
-                try:
-                    if brought >= lim["delivery_bytes"]:
-                        raise ValueError("the delivery is over its %s cap" % human(lim["delivery_bytes"]))
-                    if a.get("url"):
-                        _room_for(dest, 0, lim, "an archive part")
-                        got = (link_read or download_link)(a["url"], dest, min(lim["part_bytes"], lim["delivery_bytes"] - brought))
-                    else:
-                        got = fetch_attachment(m, a, dest, gmail, lim, file_read=file_read)
-                    brought += got
-                    letter["files"].append({"name": name, "orig": str(a.get("filename") or "")[:300], "bytes": got,
-                                            "sha256": _sha_file(dest), "path": os.path.relpath(dest, ROOT),
-                                            "part": part_of(name)})
-                    if not a.get("url"):
-                        a.update(status="archive_part", bytes=got, why="kept as part of Codex delivery %s" % st["did"])
-                except (ValueError, Refused, OSError, UnicodeError) as exc:
-                    why = re.sub(r"https?://\S+", "[file URL]", str(exc))[:200]
-                    letter["failed"].append({"name": name, "why": why})
-                    if not a.get("url"):
-                        a.update(status="not_read", why="Codex archive not downloaded: " + why)
-                except Exception as exc:          # gateway errors may carry signed URLs: only the class is kept
-                    letter["failed"].append({"name": name, "why": type(exc).__name__})
-                    if not a.get("url"):
-                        a.update(status="not_read", why="Codex archive not downloaded: " + type(exc).__name__)
-                a.pop("_body", None)
-            st["letters"][m["id"]] = letter
-            if letter["thread_id"] and letter["thread_id"] not in st["threads"]:
-                st["threads"].append(letter["thread_id"])
-            st["stems"] = sorted(set(st["stems"]) | stems)
-            _save(os.path.join(PENDING, st["did"], "state.json"), st)
-            lines.append("Codex letter taken in for delivery %s: %d file(s), %d failed"
-                         % (st["did"], len(letter["files"]), len(letter["failed"])))
+            if how in ("join", "replace"):
+                if st.get("expected") is None and total is not None:
+                    st["expected"] = total
+                todo = items
+                if how == "replace":
+                    held = {f["name"] for l in _part_letters(st, n) for f in l.get("files") or []}
+                    letter["replaces"] = sorted(l["message_id"] for l in _part_letters(st, n))
+                    _held([x for x in items if x[1] in held], "already held in Codex delivery %s" % st["did"])
+                    todo = [x for x in items if x[1] not in held]
+                _take(st, letter, m, todo, lim, gmail, file_read, link_read)
+                _add_letter(st, letter, stems)
+                lines.append("Codex letter taken in for delivery %s%s: %d file(s), %d failed"
+                             % (st["did"], " (in place of part %s that had failed)" % n if how == "replace" else "",
+                                len(letter["files"]) + len(letter.get("same_as") or []), len(letter["failed"])))
+                continue
+            own_st = _new_delivery(m, title, base, total, now)
+            if how in ("flag", "check"):
+                own_st.update(possible_replacement_for=st["did"],
+                              note="possible replacement for %s: %s; not merged with it" % (st["did"], why))
+            _take(own_st, letter, m, items, lim, gmail, file_read, link_read)
+            if how == "check":
+                theirs = {f["sha256"] for l in _part_letters(st, n) for f in l.get("files") or []}
+                mine = {f["sha256"] for f in letter["files"]}
+                if mine and not letter["failed"] and mine <= theirs:
+                    # byte for byte the part already held: the letter joins it, and nothing is kept twice
+                    letter["same_as"] = [{"name": f["name"], "sha256": f["sha256"],
+                                          "held": next(g["path"] for l in _part_letters(st, n) for g in l["files"]
+                                                       if g["sha256"] == f["sha256"])} for f in letter["files"]]
+                    letter["files"] = []
+                    letter["duplicate_of"] = sorted(l["message_id"] for l in _part_letters(st, n))
+                    shutil.rmtree(os.path.join(PENDING, own_st["did"]), ignore_errors=True)
+                    _add_letter(st, letter, stems)
+                    _held(items, "the same file as part %s of Codex delivery %s, kept once" % (n, st["did"]))
+                    lines.append("Codex letter for delivery %s brings part %s again, byte for byte: kept once"
+                                 % (st["did"], n))
+                    continue
+                if mine - theirs:
+                    own_st.update(status="conflict",
+                                  why="part %s of %s, but not the same file as the part %s already holds (another "
+                                      "sha256); neither is put in place of the other" % (n, st["did"], st["did"]))
+            _add_letter(own_st, letter, stems)
+            lines.append("Codex letter taken in for delivery %s: %d file(s), %d failed%s"
+                         % (own_st["did"], len(letter["files"]), len(letter["failed"]),
+                            "; " + (own_st["why"] if own_st["status"] == "conflict" else own_st["note"])
+                            if own_st.get("possible_replacement_for") else ""))
         lines += _settle_locked(now, think=think)
     _mark(msgs)
     return lines
@@ -593,7 +737,7 @@ def _mark(msgs):
             by_msg[l.get("message_id")] = ("archived", "kept as Codex archive %s" % a["id"], a["id"])
     for st in _deliveries():
         for mid in st.get("letters") or {}:
-            if st.get("status") == "refused":
+            if st.get("status") in ("refused", "conflict"):
                 by_msg.setdefault(mid, ("not_read", "Codex archive refused: %s" % st.get("why"), ""))
             else:
                 by_msg.setdefault(mid, ("archive_part", "part of Codex delivery %s, %s" % (st["did"], st.get("why") or "waiting"), ""))
@@ -639,7 +783,7 @@ def _missing(st):
         gone = [str(k) for k in range(1, st["expected"] + 1) if k not in ns]
         if gone:
             need.append("letter%s %s of %d" % ("" if len(gone) == 1 else "s", ", ".join(gone), st["expected"]))
-    failed = [f for l in st["letters"].values() for f in l.get("failed") or []]
+    failed = list({(l.get("n"), f["name"]): f for l in st["letters"].values() for f in l.get("failed") or []}.values())
     if failed:
         need.append("%d file(s) not downloaded (%s)" % (len(failed), failed[0]["why"][:120]))
     sets, whole = _sets(st)
@@ -678,7 +822,7 @@ def _settle_locked(now, think=None):
     lim = limits()
     lines = []
     for st in _deliveries():
-        if st.get("status") in ("refused", "done"):
+        if st.get("status") in ("refused", "done", "conflict"):
             continue
         need = _missing(st)
         if not need:
@@ -723,6 +867,8 @@ def _index_pending():
     idx = _load(INDEX, {"archives": [], "pending": []})
     idx["pending"] = [{"did": s["did"], "title": s["title"], "expected": s.get("expected"), "status": s.get("status"),
                        "why": s.get("why", ""), "created": s.get("created"),
+                       **({"possible_replacement_for": s["possible_replacement_for"], "note": s.get("note", "")}
+                          if s.get("possible_replacement_for") else {}),
                        "letters": [{"n": l.get("n"), "subject": l["subject"], "date": l["date"],
                                     "message_id": l["message_id"], "thread_id": l["thread_id"]}
                                    for l in s["letters"].values()]} for s in _deliveries() if s.get("status") != "done"]
@@ -1382,8 +1528,9 @@ def context_for(text, budget_chars=4000):
 
 # ── recovery of letters that came before this existed ───────────────────────────────────────────────
 def recover_log(gmail=None, now=None):
-    """[Codex] letters already in his mail log with an archive that was not taken in: read again through the
-    gateway and taken in now. Returns lines."""
+    """[Codex] letters already in his mail log with an archive that was not taken in, or taken in with files that
+    failed to download while their delivery still waits: read again through the gateway and taken in now (only the
+    failed files are fetched). Returns lines."""
     here = os.path.dirname(os.path.abspath(__file__))
     if here not in sys.path:
         sys.path.insert(0, here)
@@ -1391,14 +1538,19 @@ def recover_log(gmail=None, now=None):
     gmail = gmail or E._gmail
     ids = []
     try:
-        for line in open(E.INBOX_LOG, encoding="utf-8"):
+        with open(E.INBOX_LOG, encoding="utf-8") as f:
+            rows = list(f)
+        for line in rows:
             try:
                 r = json.loads(line)
             except ValueError:
                 continue
             subj = str(r.get("subject") or "")
-            if TAG.match(subj) and not REPLY.match(subj) and not _known_letter(r.get("id")) and \
-                    any(part_of(a.get("filename")) for a in r.get("attachments") or []):
+            names = [safe_name(a.get("filename")) for a in r.get("attachments") or [] if part_of(a.get("filename"))]
+            if not (TAG.match(subj) and not REPLY.match(subj) and names):
+                continue
+            known = _known_letter(r.get("id"))
+            if not known or _retry_names(known, r.get("id"), names):    # never taken in, or its files failed
                 ids.append(r["id"])
     except OSError:
         return ["no mail log"]
@@ -1420,6 +1572,8 @@ def main(argv):
                                                                 len(a["letters"]), a["title"][:80]))
         for p in idx.get("pending") or []:
             print("waiting %s  \"%s\"  %s: %s" % (p["did"], p["title"][:80], p.get("status"), p.get("why", "")[:160]))
+            if p.get("note"):
+                print("        %s" % p["note"][:200])
         if not idx:
             print("no Codex archives yet")
     elif argv[0] == "--show" and len(argv) > 1:
