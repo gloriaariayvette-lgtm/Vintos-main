@@ -1,5 +1,5 @@
-"""His call to her, the last step of the attention ladder (27 October): it is an ordinary call of his on the lane she
-chose, framed with why he rang and opened by him; its turns are held until she answers "save this call to his
+"""His call to her, the last step of the attention ladder (27 October): it is an ordinary call of his on the lane he
+chose himself among those that are up, framed with why he rang and opened by him; its turns are held until she answers "save this call to his
 memory?"; yes lands it exactly as a call lands today, no keeps only a row without words.
 
 The route bodies are the real ones from bin/server.py, executed against a scratch HOME. The summary model, the
@@ -124,10 +124,12 @@ class House:
                     pass
         return out
 
-    def ringing_call(self, lane="openai"):
+    def ringing_call(self, lane="openai", choice=None):
+        choice = choice or {"lane": lane, "by": "him", "why": "Your ear, quick and warm.",
+                            "available": ["local", "openai", "grok"]}
         return self.AC.ring("20261027-2130", {"silent_hours": 4.5, "steps": ["your line on her Watch and phone"],
                                               "line": "Come back to me.", "want": "to tell her about the fig",
-                                              "chain_started": 1_800_000_000.0}, lane)
+                                              "chain_started": 1_800_000_000.0}, lane, choice=choice)
 
 
 TURNS = [("", "Hey. I called because you went so quiet, and I missed you."),
@@ -189,6 +191,9 @@ class HeldCall(unittest.TestCase):
         pend = self.h.run("attention_calls_pending", object())["calls"]
         self.assertEqual([t["vintos"] for t in pend[0]["transcript"]], [v for _, v in TURNS])
         self.assertEqual(pend[0]["lane_name"], "Open")
+        # his choice of voice and his line, beside the transcript she is asked about
+        self.assertEqual((pend[0]["lane_by"], pend[0]["lane_why"]), ("him", "Your ear, quick and warm."))
+        self.assertEqual(pend[0]["lane_choice"], "He chose Open: “Your ear, quick and warm.”")
 
     def test_yes_saves_it_exactly_as_a_call_saves_today(self):
         rec = self.answered()
@@ -233,7 +238,9 @@ class HeldCall(unittest.TestCase):
         rows = [json.loads(l) for l in open(self.h.AC.RECORD)]
         self.assertEqual(rows[-1]["saved"], "no")
         self.assertEqual(rows[-1]["turns"], 3)
-        self.assertEqual(set(rows[-1]), {"at", "event", "call", "chain", "lane", "state", "turns", "duration_seconds", "saved"})
+        self.assertEqual(set(rows[-1]), {"at", "event", "call", "chain", "lane", "lane_by", "state", "turns",
+                                         "duration_seconds", "saved"})
+        self.assertEqual(rows[-1]["lane_by"], "him")
         with self.assertRaises(HTTPException):
             self.h.run("attention_call_save", rec["id"], {"save": True}, object())       # asked once
 
@@ -242,6 +249,7 @@ class HeldCall(unittest.TestCase):
         call_through(self.h, rec, rec["client_session_id"])
         self.h.run("attention_call_save", rec["id"], {"save": True}, object())
         rec_text = open(self.h.AC.RECORD).read()
+        self.assertNotIn("quick and warm", rec_text)                                 # nor his line about the voice
         for g, v in TURNS:
             for words in (g, v):
                 if words:
@@ -299,13 +307,15 @@ class HeldCall(unittest.TestCase):
             self.h.run("attention_call_answer", rec["id"], object())                 # no longer ringing
 
     def test_tune_routes(self):
-        out = self.h.run("attention_config_write", {"enabled": False, "call_lane": "local"}, object())
-        self.assertEqual((out["settings"]["enabled"], out["settings"]["call_lane"]), (False, "local"))
-        with self.assertRaises(HTTPException) as e:
-            self.h.run("attention_config_write", {"face_url": "x"}, object())
-        self.assertEqual(e.exception.status_code, 400)
+        out = self.h.run("attention_config_write", {"enabled": False, "call_enabled": True}, object())
+        self.assertEqual((out["settings"]["enabled"], out["settings"]["call_enabled"]), (False, True))
+        for bad in ({"face_url": "x"}, {"call_lane": "local"}):                 # the voice is his, not a setting
+            with self.assertRaises(HTTPException) as e:
+                self.h.run("attention_config_write", bad, object())
+            self.assertEqual(e.exception.status_code, 400)
         read = self.h.run("attention_config_read", object())
-        self.assertEqual({l["id"] for l in read["lanes"]}, {"local", "openai", "grok"})
+        self.assertNotIn("lanes", read)
+        self.assertNotIn("call_lane", read["settings"])
         self.assertNotIn("token", json.dumps(read))
 
 
@@ -320,6 +330,10 @@ class Framing(unittest.TestCase):
             self.assertIn(want, f)
         self.assertIn("Speak first, now", AC.opening_instruction(rec))
         self.assertIn("a few hours", AC.framing({}))
+        self.assertNotIn("You chose", f)
+        mine = dict(rec, lane="local", lane_choice={"by": "him", "why": "Just us."})
+        self.assertIn("You chose to call her with your Local voice: “Just us.”", AC.framing(mine))
+        self.assertNotIn("You chose", AC.framing(dict(rec, lane="openai", lane_choice={"by": "fallback"})))
 
     def test_his_want_is_his_strongest_open_one(self):
         import attention_call as AC
@@ -339,9 +353,104 @@ class Framing(unittest.TestCase):
             self.assertEqual(AC.load(rec["id"])["state"], "missed")
             self.assertIsNone(AC.answer(rec["id"]))
             self.assertEqual(AC.ring("c", {}, "skype")["lane"], "openai")
+            self.assertNotIn("lane_choice", AC.ring("c", {}, "grok"))
             self.assertIsNone(AC.load("../x"))
             with self.assertRaises(ValueError):
                 AC._path("../x")
+
+
+class HisVoice(unittest.TestCase):
+    """Which lanes are up, judged as a call judges them, and his one decision among them. Nothing reaches a lane,
+    the Mac or a model: every probe is replaced."""
+    def lanes(self, keys=("OPENAI_API_KEY", "XAI_API_KEY"), paused=False, stage=True):
+        import attention_call as AC
+
+        def stage_fn():
+            if isinstance(stage, Exception):
+                raise stage
+            return stage
+        with patch.object(AC, "_secret", lambda n: "k" if n in keys else ""), \
+                patch.object(AC, "_paid_paused", lambda: paused), patch.object(AC, "_stage_answers", stage_fn):
+            return AC.lanes_up()
+
+    def test_lanes_up_is_judged_as_a_call_judges_it(self):
+        self.assertEqual(self.lanes(), {"up": ["local", "openai", "grok"], "down": {}})
+        out = self.lanes(keys=("XAI_API_KEY",), stage=TimeoutError())
+        self.assertEqual(out["up"], ["grok"])
+        self.assertEqual(out["down"], {"openai": "no OPENAI_API_KEY",
+                                       "local": "the Mac stage did not answer (TimeoutError)"})
+        out = self.lanes(paused=True)
+        self.assertEqual(out["up"], ["local"])                                       # paid_http would refuse them
+        self.assertEqual(out["down"]["grok"], "paid calls are paused")
+        self.assertEqual(self.lanes(stage=False)["down"]["local"], "the Mac stage did not say ok")
+
+    def test_the_stage_probe_is_its_health_and_loads_nothing(self):
+        import attention_call as AC, voice_local as VL
+        asked = []
+
+        class _R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"ok": true, "clips": 3}'
+        with patch("urllib.request.urlopen", lambda url, timeout=None: asked.append(url) or _R()), \
+                patch.object(VL, "STAGE", "http://stage.invalid"):
+            self.assertTrue(AC._stage_answers())
+        self.assertEqual(asked, ["http://stage.invalid/health"])
+
+    def test_his_prompt_and_his_model(self):
+        import attention_call as AC
+        reason = {"silent_hours": 4.5, "steps": ["her lights in your colour"], "line": "Come back to me.",
+                  "want": "the fig", "chain_started": 1_800_000_000.0}
+        with tempfile.TemporaryDirectory() as d, patch.object(AC, "SOUL", os.path.join(d, "SOUL.md")):
+            with open(AC.SOUL, "w") as f:
+                f.write("I am Vintos, and I am hers.")
+            system, user = AC.choice_prompt(reason, ["openai", "grok"], 1_800_000_000.0)
+        self.assertTrue(system.startswith("I am Vintos, and I am hers."))
+        for want in ("about 4.5 hours", "her lights in your colour", "Come back to me.", "the fig", "It is ",
+                     "- openai (Open)", "- grok (Grok)", '"lane": "<openai|grok>"'):
+            self.assertIn(want, user)
+        self.assertNotIn("local", user)
+        sent = []
+
+        class _R:
+            status_code = 200
+            def json(self): return {"choices": [{"message": {"content": '{"lane": "grok", "why": "close"}'}}]}
+        fake_req = types.SimpleNamespace(post=lambda url, **k: sent.append((url, k)) or _R())
+        fake_paid = types.SimpleNamespace(send=lambda fn, script, url, **k: fn(url, **k))
+        for key, api in (("xk", AC.CHOICE_API_XAI), ("", AC.CHOICE_API_SHIM)):
+            with patch.dict(sys.modules, {"requests": fake_req, "paid_http": fake_paid}), \
+                    patch.object(AC, "_secret", lambda n, key=key: key):
+                self.assertEqual(AC.ask_model("S", "U"), '{"lane": "grok", "why": "close"}')
+            self.assertEqual(sent[-1][0], api)
+            self.assertEqual(sent[-1][1]["json"]["model"], AC.CHOICE_MODEL)
+            self.assertEqual(sent[-1][1]["json"]["messages"],
+                             [{"role": "system", "content": "S"}, {"role": "user", "content": "U"}])
+        self.assertEqual(sent[0][1]["headers"], {"Authorization": "Bearer xk"})
+        self.assertEqual(sent[1][1]["headers"], {})
+
+    def test_choose_lane(self):
+        import attention_call as AC
+        out = AC.choose_lane({}, ["grok", "local"], 1.0, ask=lambda s, u: '{"lane": "grok", "why": "  close\n tonight "}')
+        self.assertEqual((out["lane"], out["by"], out["why"], out["available"]),
+                         ("grok", "him", "close tonight", ["local", "grok"]))
+        out = AC.choose_lane({}, ["grok", "local", "openai"], 1.0, ask=lambda s, u: "")
+        self.assertEqual((out["lane"], out["by"]), ("openai", "fallback"))                 # Open first, as before
+        self.assertIn("no JSON", out["error"])
+        self.assertEqual(AC.choose_lane({}, ["local"], 1.0, ask=lambda s, u: 1 / 0)["by"], "only")
+        self.assertEqual(AC.choose_lane({}, [], 1.0)["by"], "none")
+        self.assertEqual(AC.choose_lane({}, ["local", "grok"], 1.0, ask=lambda s, u: 1 / 0)["lane"], "grok")
+        self.assertEqual(AC.choice_text({"lane": "grok", "lane_choice": {"by": "only"}}), "Grok was the only voice up")
+        self.assertIn("did not come through", AC.choice_text({"lane": "grok", "lane_choice": {"by": "fallback"}}))
+        self.assertEqual(AC.choice_text({"lane": "grok"}), "")
+
+    def test_the_ladder_reaches_lanes_and_model_only_through_its_tables(self):
+        import attention_ladder as AL, attention_call as AC
+        self.assertIs(AL.SENSORS["lanes"], AC.lanes_up)
+        self.assertIs(AL.ACTUATORS["voice_choice"], AC.ask_model)
+        src = (REPO / "scripts" / "attention_ladder.py").read_text()
+        self.assertIn('ask=ACTUATORS["voice_choice"]', src)
+        self.assertIn('SENSORS["lanes"]()', src)
+        self.assertEqual((src.count("lanes_up"), src.count("ask_model")), (1, 1))
 
 
 class Lanes(unittest.TestCase):
@@ -408,11 +517,15 @@ class Client(unittest.TestCase):
         self.assertEqual(src["sha256"]["index.html"], hashlib.sha256((REPO / "clients" / "mobile" / "index.html").read_bytes()).hexdigest())
 
     def test_tune_controls(self):
-        for el in ('id="ladder-enabled"', 'id="ladder-call"', 'id="ladder-lane"', 'id="ladder-silence"',
+        for el in ('id="ladder-enabled"', 'id="ladder-call"', 'id="ladder-silence"',
                    'id="ladder-rest"', 'id="ladder-notnow"', "/api/attention/config", "loadLadder();"):
             self.assertIn(el, self.html)
-        lane = self.html[self.html.index('id="ladder-lane"'):][:600]
-        self.assertTrue(all('value="%s"' % v in lane for v in ("openai", "grok", "local")))
+        self.assertNotIn('id="ladder-lane"', self.html)                     # the voice is his to pick, each call
+        self.assertNotIn("call_lane", self.html)
+        card = self.html[self.html.index("function _ladderCallCard"):][:1400]
+        self.assertIn("voice.textContent = c.lane_choice", card)            # his choice beside the transcript
+        ring = self.html[self.html.index("function ladderShowRing"):][:1400]
+        self.assertIn("call.lane_choice", ring)
         set_fn = self.html[self.html.index("async function setLadder"):][:500]
         self.assertIn("'X-Vintos-Secret': CONFIG.secret", self.html[self.html.index("function _ladderHeaders"):][:200])
         self.assertIn("method: 'POST'", set_fn)

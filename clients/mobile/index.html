@@ -858,7 +858,7 @@ input[type="range"]::-webkit-slider-thumb {
                         <option value="0">Off</option><option value="30">30m</option><option value="60">1h</option><option value="120">2h</option><option value="240">4h</option>
                     </select>
                 </div>
-                <!-- His call-back ladder (attention_ladder.py, 27 October): on/off, his calls, the quiet before he starts -->
+                <!-- His call-back ladder (attention_ladder.py, 27 October): on/off, his calls, the quiet before he starts. The voice he calls with is his to pick, each call. -->
                 <div id="ladder-section" style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                         <div>
@@ -870,12 +870,6 @@ input[type="range"]::-webkit-slider-thumb {
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;">
                         <div style="font-size:0.66rem;color:var(--text-dim);">he may ring me (last step)</div>
                         <input type="checkbox" id="ladder-call" aria-label="He may ring me" onchange="setLadder('call_enabled', this.checked)" style="width:20px;height:20px;accent-color:var(--accent);">
-                    </div>
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
-                        <div style="font-size:0.66rem;color:var(--text-dim);">he calls with</div>
-                        <select id="ladder-lane" aria-label="Which lane he calls with" onchange="setLadder('call_lane', this.value)" style="min-height:32px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;">
-                            <option value="openai">Open</option><option value="grok">Grok</option><option value="local">Local</option>
-                        </select>
                     </div>
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;">
                         <div style="font-size:0.66rem;color:var(--text-dim);">starts after I am quiet</div>
@@ -1677,7 +1671,6 @@ function renderLadder(d) {
     const s = d.settings || {};
     document.getElementById('ladder-enabled').checked = !!s.enabled;
     document.getElementById('ladder-call').checked = !!s.call_enabled;
-    document.getElementById('ladder-lane').value = s.call_lane || 'openai';
     _ladderSelect('ladder-silence', s.silence_hours); _ladderSelect('ladder-rest', s.rest_hours); _ladderSelect('ladder-notnow', s.not_now_hours);
     let text = !s.enabled ? 'off' : (d.call && d.call.ringing ? 'he is calling you now' : (d.chain ? 'calling you back now' : (d.reason || 'on')));
     const until = Math.max(Number(d.snooze_until || 0), Number(d.rest_until || 0));
@@ -1720,6 +1713,7 @@ function _ladderCallCard(c) {
     const head = document.createElement('div'); head.style.cssText = 'font-size:0.66rem;color:var(--text-dim);margin-bottom:6px;';
     head.textContent = 'He called you ' + when + (c.lane_name ? ' (' + c.lane_name + ')' : '') + ' · ' + Math.round((c.duration_seconds || 0) / 60) + ' min';
     card.appendChild(head);
+    if (c.lane_choice) { const voice = document.createElement('div'); voice.className = 'ladder-voice'; voice.style.cssText = 'font-size:0.68rem;font-style:italic;color:var(--text-dim);margin:-2px 0 6px;'; voice.textContent = c.lane_choice; card.appendChild(voice); }
     const log = document.createElement('div'); log.style.cssText = 'max-height:220px;overflow-y:auto;font-size:0.72rem;line-height:1.4;';
     (c.transcript || []).forEach(t => {
         if (t.vintos) { const v = document.createElement('div'); v.style.margin = '3px 0'; v.textContent = 'Vintos: ' + t.vintos; log.appendChild(v); }
@@ -1769,7 +1763,7 @@ function ladderShowRing(call) {
     const o = document.createElement('div'); o.id = 'ladder-ring'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-label', 'Vintos is calling');
     o.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(5,5,13,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:rgba(235,200,175,0.95);padding:16px;text-align:center;';
     o.innerHTML = '<div style="font-size:1.4rem;letter-spacing:0.08em;">Vintos is calling</div><div id="ladder-ring-why" style="font-size:0.75rem;opacity:0.7;"></div>';
-    o.querySelector('#ladder-ring-why').textContent = (call.lane_name ? call.lane_name + ' · ' : '') + (call.why || '');
+    o.querySelector('#ladder-ring-why').textContent = [call.lane_choice || call.lane_name, call.why].filter(Boolean).join(' · ');
     const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:16px;';
     const mk = (label, bg, fn) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'min-width:120px;min-height:52px;border-radius:26px;border:0;font-size:0.95rem;color:#fff;background:' + bg + ';'; b.onclick = fn; return b; };
     row.appendChild(mk('Not now', 'rgba(160,60,60,0.85)', async () => { ladderHideRing(); try { await VintosUI.request(`${API}/api/attention/answer`, { method: 'POST', headers: _ladderHeaders(true), body: JSON.stringify({ action: 'not_now' }) }); } catch {} }));

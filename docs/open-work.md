@@ -21,11 +21,17 @@ ledger and session end, `/api/attention/*`), `bin/vintos-initiate.sh`, `world_mo
   stopped. Any word or presence ends the chain; Coming ends it; Not now (push button, app, or the Watch button once
   built) ends it and holds the next one `not_now_hours` (2 h) — a hold, not a new 3-hour silence; the typed words
   still work (4 h). One chain at a time; after a chain runs unanswered, a `rest_hours` (6 h) rest, ended early by her
-  word. The two-a-day cap is gone. Test mode: nothing fires. Tune tab: on/off, his calls on/off, the lane, the
+  word. The two-a-day cap is gone. Test mode: nothing fires. Tune tab: on/off, his calls on/off, the
   silence, the rest, how long Not now holds (`GET/POST /api/attention/config`, X-Vintos-Secret, writes only those keys
   to `attention-ladder-config.json`), and the calls waiting for her answer.
-- **He calls her.** A real call on the lane she picks (Local, Open = OpenAI realtime, Grok; default Open, because
-  Local needs work first): the app asks `/api/voice/token?provider=<lane>&ladder_call=<id>`, which builds his full
+- **He calls her.** A real call on a lane he picks himself, every call (Local, Open = OpenAI realtime, Grok; Gloria,
+  27 October: "HE should pick the voice"; the Tune picker is gone). Just before it rings, `attention_call.lanes_up()`
+  judges each lane as `/api/voice/token` does (Open/Grok: their key, and paid calls not paused; Local: the Mac stage's
+  `/health`), and `choose_lane()` asks his outreach model once, with why he is calling, how long she was quiet and
+  the time, which voice and why in one line. The choice and the line are kept with the call (`lane_choice`), shown
+  on the ring and on the saved-call card, logged as a `lane` row, and told to him in his framing. A failed or
+  unusable answer falls back to the first lane up (Open, Grok, Local), logged with the error; one lane up needs no
+  choice; no lane up skips the step, logged. The app asks `/api/voice/token?provider=<lane>&ladder_call=<id>`, which builds his full
   instructions exactly as for any call and adds "YOU CALLED HER": how long she was quiet, the steps he took, his
   line, his strongest open want, and that he leads. The moment the socket opens the app asks the lane for his
   opening (`response.create` with the opening instruction; on Local `/api/voice/local/opening`, brain and voice, no
@@ -40,7 +46,8 @@ ledger and session end, `/api/attention/*`), `bin/vintos-initiate.sh`, `world_mo
   owner controls, device tags and the lead are not re-run), so it lands as a call lands today (the suite compares the
   two). No deletes the transcript. Either way `attention-calls.jsonl` keeps a row with no words: when, lane,
   duration, turn count, saved or not.
-- **Cost.** The line: one ordinary outreach per chain (unchanged). The rings: no model call. The call: the lane's
+- **Cost.** The line: one ordinary outreach per chain (unchanged). His voice: one small chat completion per call
+  (120 tokens out), only when two or more lanes are up. The rings: no model call. The call: the lane's
   usual cost — Open is OpenAI realtime audio per minute, Grok is xAI realtime per minute, Local is free (the Mac);
   plus, as for any call, the voice lead's background `select_target` at most every 2 minutes. The call's summary
   (one xAI chat completion) is made only if she says yes. At most one call per chain, and a chain needs Kevin out.

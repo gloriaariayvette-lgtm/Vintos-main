@@ -9592,7 +9592,7 @@ async def attention_config_read(request: Request):
     import attention_ladder as _at
     st = _at.status()
     cfg = st["config"]
-    return {"settings": {k: cfg[k] for k in _at.TUNABLE}, "lanes": [{"id": k, "name": v} for k, v in __import__("attention_call").LANE_NAMES.items()],
+    return {"settings": {k: cfg[k] for k in _at.TUNABLE},       # no lane: he picks the voice of each call himself
             "reason": st.get("reason"), "chain": bool(st.get("chain")), "snooze_until": st.get("snooze_until"),
             "rest_until": st.get("rest_until"), "call": st.get("call")}
 

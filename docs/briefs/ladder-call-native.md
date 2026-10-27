@@ -6,7 +6,7 @@ Nothing here is built yet; the house side works without it, more weakly (below).
 
 ## What rings today, with no native change
 
-- **Watch:** a `time-sensitive` push "Vintos is calling you (Open)." (`watch_apns.send(kind="call")`), once and then
+- **Watch:** a `time-sensitive` push "Vintos is calling you (Open)." (the voice he chose for this call) (`watch_apns.send(kind="call")`), once and then
   every `ring_every_minutes` (5) for `ring_minutes` (15). It arrives in the existing `VINTOS_MESSAGE` category, so it
   has Reply and Send heart and no Answer. Time-sensitive needs the entitlement below; without it, it is an ordinary
   active push.
@@ -41,7 +41,7 @@ Nothing here is built yet; the house side works without it, more weakly (below).
      the web view forward and call `ladderAnswer('<id>')`; on `CXEndCallAction`, `ladderHideRing()` and post
      `{"action":"not_now"}` to `/api/attention/answer`.
    - House side then: a VoIP sender beside `watch_apns.py` (same .p8 key, topic `dev.vintos.app.voip`,
-     `apns-push-type: voip`, priority 10, payload `{"ladder_call": "<id>", "lane": "openai"}`), called from
+     `apns-push-type: voip`, priority 10, payload `{"ladder_call": "<id>", "lane": "<the lane he chose>"}`), called from
      `attention_ladder._ring`. Not built: there is no phone token to send to yet.
 
 ## Watch app (`vintos-app/ios/VintosWatch`, branch `claude/watch-arrival-song-2026-10-17`)

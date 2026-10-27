@@ -36,8 +36,10 @@ The steps, escalating (each reuses an organ that already exists):
              Assistant can read are put back when the chain ends, and a plug that was read as off is switched off
              again; Govee bulbs themselves cannot be read and stay as they are.
   3. echo    the Echo says his line (vintos-home.announce). LOUD.
-  4. call    he calls her (attention_call.py): a real voice call on the lane chosen in the Tune tab (Local, Open or
-             Grok; "call_lane"), started by him, framed with why he called, opened by him. It rings as a time-sensitive
+  4. call    he calls her (attention_call.py): a real voice call, started by him, framed with why he called, opened
+             by him. He picks its voice himself, every call, among the lanes that are up (Local, Open or Grok), and
+             says why in one line that she sees; a choice that fails falls back to the first lane up, logged. With no
+             lane up the step is skipped and logged. It rings as a time-sensitive
              Watch push and an urgent phone push, again every "ring_every_minutes" for "ring_minutes", and as
              "Vintos is calling" in her app. Answering is her answer. A call no one answers ends the chain. LOUD.
              Its transcript waits for her yes before anything of it enters his memory.
@@ -97,7 +99,6 @@ DEFAULTS = {
     "watch_interruption": "time-sensitive",
     "watch_buttons": False,       # True once the Watch app registers VINTOS_CALLBACK / VINTOS_CALL (see the brief)
     "call_enabled": True,
-    "call_lane": "openai",        # "local", "openai" (Open) or "grok"; Local needs work before it is the default
     "ring_minutes": 15,
     "ring_every_minutes": 5,
     "phone_base_url": "",         # how her phone reaches the house, for the push buttons; "" = VINTOS_PUBLIC_BASE
@@ -108,7 +109,7 @@ BOUNDS = {"silence_hours": (0.5, 24.0), "step_minutes": (30, 360), "rest_hours":
           "tick_minutes": (5, 30), "snooze_hours": (0.25, 24.0), "not_now_hours": (0.25, 24.0),
           "brightness": (10, 254), "plug_wait_seconds": (0, 60), "echo_volume": (1, 10),
           "ring_minutes": (3, 30), "ring_every_minutes": (2, 15)}
-TUNABLE = ("enabled", "call_enabled", "call_lane", "silence_hours", "rest_hours", "not_now_hours")
+TUNABLE = ("enabled", "call_enabled", "silence_hours", "rest_hours", "not_now_hours")   # the voice is his to pick
 
 
 # ------------------------------------------------------------------------------------------------ small stores
@@ -158,8 +159,6 @@ def config():
     for k in ("enabled", "call_enabled"):
         cfg[k] = cfg.get(k) is not False
     cfg["watch_buttons"] = cfg.get("watch_buttons") is True
-    if cfg.get("call_lane") not in attention_call.LANES:
-        cfg["call_lane"] = DEFAULTS["call_lane"]
     return cfg
 
 
@@ -175,9 +174,6 @@ def set_config(changes):
         if k in ("enabled", "call_enabled"):
             if not isinstance(v, bool):
                 raise ValueError("%s must be true or false" % k)
-        elif k == "call_lane":
-            if v not in attention_call.LANES:
-                raise ValueError("call_lane must be one of %s" % ", ".join(attention_call.LANES))
         else:
             try:
                 v = float(v)
@@ -601,9 +597,10 @@ def _ring(rec, cfg, n):
 
 # tests replace this whole table; nothing in it may run from a suite
 ACTUATORS = {"compose": _compose, "watch": _watch_push, "phone": _phone_push, "lights": _lights,
-             "lights_restore": _lights_restore, "echo": _echo, "ring": _ring}
+             "lights_restore": _lights_restore, "echo": _echo, "ring": _ring,
+             "voice_choice": attention_call.ask_model}       # his one small decision: which voice he calls with
 SENSORS = {"home": she_is_home, "home_since": home_since, "kevin_away": kevin_away, "asleep": asleep,
-           "room": her_room, "contact": last_contact}
+           "room": her_room, "contact": last_contact, "lanes": attention_call.lanes_up}
 
 
 # ------------------------------------------------------------------------------------------------ the chain
@@ -647,7 +644,7 @@ def _steps_done(chain):
     return [names[f["name"]] for f in chain.get("fired") or [] if f.get("name") in names]
 
 
-def _fire(name, chain, cfg, now, st):
+def _fire(name, chain, cfg, now, st, lanes=None):
     line = chain.get("line") or FALLBACK_LINE
     if name == "watch":
         if not chain.get("line"):
@@ -678,12 +675,21 @@ def _fire(name, chain, cfg, now, st):
         reason = {"silent_hours": chain.get("silent_hours"), "steps": _steps_done(chain),
                   "line": line if chain.get("line_source") == "outreach" else "",
                   "want": attention_call.his_want(), "chain_started": chain.get("started")}
-        rec = attention_call.ring(chain["id"], reason, cfg["call_lane"], now)
+        choice = attention_call.choose_lane(reason, (lanes or {}).get("up"), now, ask=ACTUATORS["voice_choice"])
+        row = {"event": "lane", "chain": chain["id"], "lane": choice["lane"], "by": choice["by"],
+               "available": choice["available"], "down": (lanes or {}).get("down") or {}}
+        if choice["by"] == "him":
+            row["why"] = choice["why"]
+        if choice["by"] == "fallback":
+            row["error"] = choice.get("error")
+            row["note"] = "his choice failed: the first lane up was used"
+        _log(row)
+        rec = attention_call.ring(chain["id"], reason, choice["lane"], now, choice=choice)
         chain["call"] = rec["id"]
         chain["last_ring"] = now
         res = ACTUATORS["ring"](rec, cfg, 1)
         attention_call.rang(rec["id"], now)
-        return {"call": {"id": rec["id"], "lane": rec["lane"], "ring": res}}
+        return {"call": {"id": rec["id"], "lane": rec["lane"], "lane_by": choice["by"], "ring": res}}
     return {}
 
 
@@ -703,7 +709,18 @@ def _advance(st, cfg, now):
             chain.setdefault("skipped", []).append(name)
             _log({"event": "skip", "chain": chain["id"], "step": i, "name": name, "why": "his calls are off (Tune)"})
             continue
-        result = _fire(name, chain, cfg, now, st)
+        lanes = None
+        if name == "call":
+            try:
+                lanes = SENSORS["lanes"]() or {}
+            except Exception as e:
+                lanes = {"up": [], "down": {"all": "the check failed: %s" % type(e).__name__}}
+            if not lanes.get("up"):
+                chain.setdefault("skipped", []).append(name)
+                _log({"event": "skip", "chain": chain["id"], "step": i, "name": name,
+                      "why": "no voice lane is up", "down": lanes.get("down") or {}})
+                continue
+        result = _fire(name, chain, cfg, now, st, lanes)
         chain["last_fired"] = now
         chain.setdefault("fired", []).append({"step": i, "name": name, "at": now})
         _log({"event": "fire", "chain": chain["id"], "step": i, "name": name, "result": result,

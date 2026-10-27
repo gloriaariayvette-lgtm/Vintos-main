@@ -53,14 +53,17 @@ class Ladder(unittest.TestCase):
                 "watch": rec("watch", {"state": "sent"}), "phone": rec("phone", {"state": "sent"}),
                 "lights": rec("lights", {"state": "sent", "room": "bedroom", "restore": []}),
                 "lights_restore": rec("lights_restore", {"restored": 0, "left_as_is": 0}),
-                "echo": rec("echo", {"state": "sent"}), "ring": rec("ring", {"watch": {}, "phone": {}})}
+                "echo": rec("echo", {"state": "sent"}), "ring": rec("ring", {"watch": {}, "phone": {}}),
+                "voice_choice": rec("voice_choice", self.his_answer)}
+        self.voice = '{"lane": "grok", "why": "I want to sound close to you tonight."}'
+        self.lanes = {"up": ["local", "openai", "grok"], "down": {}}
         p = patch.dict(AL.ACTUATORS, acts, clear=True); p.start(); self.addCleanup(p.stop)
         self.world = {"home": True, "home_since": T0 - 10 * H, "kevin_away": False, "asleep": False,
                       "room": "bedroom", "contact": T0}
         sens = {"home": lambda now: self.world["home"], "home_since": lambda now: self.world["home_since"],
                 "kevin_away": lambda now: self.world["kevin_away"], "asleep": lambda: self.world["asleep"],
                 "room": lambda now: self.world["room"],
-                "contact": self.contact}
+                "contact": self.contact, "lanes": lambda: self.lanes}
         p = patch.dict(AL.SENSORS, sens, clear=True); p.start(); self.addCleanup(p.stop)
         p = patch.dict(sys.modules, {"effect_gate": types.SimpleNamespace(test_mode_flag=lambda: False)})
         p.start(); self.addCleanup(p.stop)
@@ -71,6 +74,11 @@ class Ladder(unittest.TestCase):
         self.assertTrue(all(getattr(f, "__qualname__", "").startswith("Ladder.") for f in AL.ACTUATORS.values()))
         self.assertNotIn(AL._compose, AL.ACTUATORS.values())
         self.assertNotIn(AL._ring, AL.ACTUATORS.values())
+
+    def his_answer(self, system, user):
+        if isinstance(self.voice, Exception):
+            raise self.voice
+        return self.voice
 
     def contact(self, now):
         """The world's last word, or what heard() recorded if that is newer (as last_contact reads it)."""
@@ -361,22 +369,23 @@ class Ladder(unittest.TestCase):
     def test_config_is_bounded(self):
         self.cfg(silence_hours=0, step_minutes=1, rest_hours=500, call_lane="skype", nonsense=1)
         c = AL.config()
-        self.assertEqual((c["silence_hours"], c["step_minutes"], c["rest_hours"], c["call_lane"]),
-                         (0.5, 30, 48.0, "openai"))
+        self.assertEqual((c["silence_hours"], c["step_minutes"], c["rest_hours"]), (0.5, 30, 48.0))
         self.assertNotIn("nonsense", c)
+        self.assertNotIn("call_lane", c)                           # an old file's lane is ignored: the voice is his
 
     def test_tune_writes_only_tune_settings(self):
         self.cfg(colour="#112233")
-        c = AL.set_config({"enabled": False, "call_lane": "grok", "silence_hours": 4, "rest_hours": 8,
+        c = AL.set_config({"enabled": False, "silence_hours": 4, "rest_hours": 8,
                            "not_now_hours": 1, "call_enabled": False})
-        self.assertEqual((c["enabled"], c["call_lane"], c["silence_hours"], c["rest_hours"], c["call_enabled"]),
-                         (False, "grok", 4.0, 8.0, False))
+        self.assertEqual((c["enabled"], c["silence_hours"], c["rest_hours"], c["call_enabled"]),
+                         (False, 4.0, 8.0, False))
         self.assertEqual(json.load(open(AL.CONFIG))["colour"], "#112233")      # her hand-set knob stays
         for bad in ({"colour": "#000"}, {"call_lane": "skype"}, {"enabled": "yes"}, {"silence_hours": 99},
                     {"rest_hours": "x"}, ["enabled"]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 AL.set_config(bad)
-        self.assertEqual(AL.DEFAULTS["call_lane"], "openai")       # Local needs work before it is the default
+        self.assertNotIn("call_lane", AL.DEFAULTS)                # he picks the voice of each call; Tune does not
+        self.assertNotIn("call_lane", AL.TUNABLE)
 
     def test_last_contact_reads_every_surface(self):
         root = Path(self.tmp.name)
@@ -412,7 +421,9 @@ class Ladder(unittest.TestCase):
         self.assertEqual((out["action"], out["name"]), ("fired", "call"))
         chain = self.state()["chain"]
         rec = AC.load(chain["call"])
-        self.assertEqual((rec["state"], rec["lane"], rec["chain"]), ("ringing", "openai", chain["id"]))
+        self.assertEqual((rec["state"], rec["lane"], rec["chain"]), ("ringing", "grok", chain["id"]))
+        self.assertEqual(rec["lane_choice"]["by"], "him")
+        self.assertEqual(rec["lane_choice"]["why"], "I want to sound close to you tonight.")
         self.assertEqual(rec["reason"]["want"], "to tell her about the fig")
         self.assertEqual(rec["reason"]["line"], "Come back to me, love.")
         self.assertEqual(len(rec["reason"]["steps"]), 3)
@@ -427,10 +438,68 @@ class Ladder(unittest.TestCase):
         self.assertEqual(AC.load(rec["id"])["state"], "answered")       # the call itself goes on
         self.assertFalse(any(r["event"] == "rest" for r in self.rows()))
 
-    def test_the_lane_is_hers_to_choose(self):
-        self.cfg(call_lane="local")
+    def lane_rows(self):
+        return [r for r in self.rows() if r["event"] == "lane"]
+
+    def test_he_picks_the_voice_among_the_lanes_that_are_up(self):
+        self.cfg(call_lane="openai")                                     # an old Tune choice no longer decides
+        self.lanes = {"up": ["local", "grok"], "down": {"openai": "no OPENAI_API_KEY"}}
+        self.voice = 'Mm. {"lane": "Local", "why": "Just us tonight, nothing leaving the house."}'
         self.to_the_call()
-        self.assertEqual(AC.load(self.state()["chain"]["call"])["lane"], "local")
+        rec = AC.load(self.state()["chain"]["call"])
+        self.assertEqual(rec["lane"], "local")
+        self.assertEqual(rec["lane_choice"], {"by": "him", "why": "Just us tonight, nothing leaving the house.",
+                                              "available": ["local", "grok"]})
+        (system, user), _ = self.kw["voice_choice"][0]
+        self.assertIn("about 3.0 hours", user)                             # why he is calling, how long she was quiet
+        self.assertIn("Come back to me, love.", user)
+        self.assertIn("It is ", user)                                      # the time
+        self.assertIn("- local (Local)", user)
+        self.assertIn("- grok (Grok)", user)
+        self.assertNotIn("openai", user)                                   # only lanes that are up are offered
+        row = self.lane_rows()[-1]
+        self.assertEqual((row["lane"], row["by"], row["why"], row["down"]),
+                         ("local", "him", "Just us tonight, nothing leaving the house.", {"openai": "no OPENAI_API_KEY"}))
+        self.assertIn("He chose Local", AC.status(T0 + 7.5 * H)["ringing"]["lane_choice"])
+
+    def test_a_failed_choice_falls_back_to_the_first_lane_up_and_says_so(self):
+        for answer, error in ((RuntimeError("the model refused (503)"), "RuntimeError"),
+                              ("I think Grok.", "no JSON"),
+                              ('{"lane": "openai", "why": "x"}', "not up"),           # a lane that is down
+                              ('{"lane": "skype", "why": "x"}', "not up")):
+            with self.subTest(answer=answer):
+                self.setUp()
+                self.lanes = {"up": ["local", "grok"], "down": {"openai": "paid calls are paused"}}
+                self.voice = answer
+                self.to_the_call()
+                rec = AC.load(self.state()["chain"]["call"])
+                self.assertEqual((rec["lane"], rec["lane_choice"]["by"]), ("grok", "fallback"))
+                self.assertIn(error, rec["lane_choice"]["error"])
+                row = self.lane_rows()[-1]
+                self.assertEqual((row["by"], row["lane"]), ("fallback", "grok"))
+                self.assertIn(error, row["error"])
+                self.assertNotIn("why", row)
+                self.assertIn("ring", self.calls)                            # the call still rings
+
+    def test_one_lane_up_needs_no_choice(self):
+        self.lanes = {"up": ["openai"], "down": {"grok": "no XAI_API_KEY", "local": "the Mac stage did not answer"}}
+        self.to_the_call()
+        rec = AC.load(self.state()["chain"]["call"])
+        self.assertEqual((rec["lane"], rec["lane_choice"]["by"]), ("openai", "only"))
+        self.assertNotIn("voice_choice", self.calls)                         # no model call for no choice
+
+    def test_no_lane_up_skips_the_call_and_says_why(self):
+        self.lanes = {"up": [], "down": {"local": "the Mac stage did not answer"}}
+        out = self.to_the_call()
+        self.assertEqual(out["action"], "ended")
+        self.assertNotIn("ring", self.calls)
+        self.assertNotIn("voice_choice", self.calls)
+        skip = [r for r in self.rows() if r["event"] == "skip" and r["name"] == "call"][-1]
+        self.assertEqual((skip["why"], skip["down"]), ("no voice lane is up", {"local": "the Mac stage did not answer"}))
+        self.setUp()
+        AL.SENSORS["lanes"] = lambda: (_ for _ in ()).throw(OSError("x"))   # a failed check is no lane, not a crash
+        self.assertEqual(self.to_the_call()["action"], "ended")
+        self.assertNotIn("ring", self.calls)
 
     def test_an_unanswered_call_ends_the_chain_and_the_ladder_rests(self):
         self.to_the_call()
