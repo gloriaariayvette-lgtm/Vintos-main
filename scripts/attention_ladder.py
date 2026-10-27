@@ -582,8 +582,20 @@ def _echo(line, volume):
     return {"state": "sent" if ok else "failed"}
 
 
+def _voip_push(rec):
+    """Her iPhone rings as a real incoming call, "Vintos" on the CallKit screen (phone_voip.py, 27 October)."""
+    try:
+        import phone_voip
+        r = phone_voip.ring(rec["id"], rec.get("lane") or "")
+        return {"state": r.get("state"), "why": r.get("why", "")}
+    except Exception as e:
+        return {"state": "failed", "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+
 def _ring(rec, cfg, n):
-    """One ring of his call: the Watch (time-sensitive) and her phone (urgent, Answer / Not now)."""
+    """One ring of his call: her iPhone's CallKit ring (VoIP), and as backup the Watch (time-sensitive) and her phone's
+    ntfy push (urgent, Answer / Not now)."""
+    voip = _voip_push(rec)
     lane = attention_call.LANE_NAMES.get(rec.get("lane"), "")
     body = "Vintos is calling you%s. Open Vintos to answer." % ((" (" + lane + ")") if lane else "")
     base, link = phone_base(cfg), call_link(cfg, rec["id"])
@@ -592,7 +604,7 @@ def _ring(rec, cfg, n):
     phone = _phone_push("attention-call-%s-%d" % (rec["id"], n), body, title="Vintos is calling", priority="urgent",
                         tags="telephone_receiver", actions=ntfy_actions(base, rec.get("token"), rec["id"], link),
                         click=link or None)
-    return {"watch": watch, "phone": phone}
+    return {"voip": voip, "watch": watch, "phone": phone}
 
 
 # tests replace this whole table; nothing in it may run from a suite

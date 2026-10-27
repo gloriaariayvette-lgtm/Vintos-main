@@ -43,6 +43,15 @@ Nothing here is built yet; the house side works without it, more weakly (below).
    - House side then: a VoIP sender beside `watch_apns.py` (same .p8 key, topic `dev.vintos.app.voip`,
      `apns-push-type: voip`, priority 10, payload `{"ladder_call": "<id>", "lane": "<the lane he chose>"}`), called from
      `attention_ladder._ring`. Not built: there is no phone token to send to yet.
+   - **Built (27 October, later):** the house side is `scripts/phone_voip.py` (the route
+     `POST /api/attention/voip-register`, the token in `memory/phone-voip-devices.json`, receipts in
+     `memory/phone-voip-receipts.jsonl`), sent first on every ring, the Watch and ntfy pushes kept as backup; the
+     payload also carries `caller` and `ring_seconds` (60: an unanswered CallKit ring lets go, the ladder rings again
+     on its own cadence). The app side is the `VintosCall` plugin in `vintos-app` (branch
+     `claude/callkit-ring-2026-10-27`), with the `vintos` URL scheme of item 2. The page block that answers it is
+     "His call as a real iPhone call" in `clients/mobile/index.html`. Untested on her iPhone: whether the web view can
+     start his call while the phone stays locked; if it cannot, it starts when she opens Vintos from the call screen
+     (its Vintos button) or unlocks.
 
 ## Watch app (`vintos-app/ios/VintosWatch`, branch `claude/watch-arrival-song-2026-10-17`)
 

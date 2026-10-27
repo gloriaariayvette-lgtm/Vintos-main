@@ -9635,6 +9635,18 @@ async def attention_call_ringing(request: Request):
     return _ac.status(ring_minutes=_at.config()["ring_minutes"])
 
 
+@app.post("/api/attention/voip-register")
+async def attention_voip_register(payload: dict, request: Request):
+    """Her iPhone's PushKit VoIP token (the app's VintosCall plugin), so his call rings as a CallKit call
+    (phone_voip.py). Kept privately in memory/phone-voip-devices.json."""
+    _require_secret(request)
+    import phone_voip as _pv
+    ok, result = _pv.register(payload)
+    if not ok:
+        raise HTTPException(status_code=422, detail=result)
+    return result
+
+
 @app.post("/api/attention/call/{call_id}/answer")
 async def attention_call_answer(call_id: str, request: Request):
     _require_secret(request)

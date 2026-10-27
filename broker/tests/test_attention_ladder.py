@@ -612,8 +612,11 @@ class Organs(unittest.TestCase):
         cfg = dict(AL.DEFAULTS, phone_base_url=BASE)
         rec = {"id": "20261027-213000-ab12", "token": "TOK", "lane": "openai"}
         with patch.object(AL, "_watch_push", lambda *a, **k: sent.setdefault("watch", (a, k)) and {"state": "sent"}), \
-                patch.object(AL, "_phone_push", lambda *a, **k: sent.setdefault("phone", (a, k)) and {"state": "sent"}):
-            AL._ring(rec, cfg, 2)
+                patch.object(AL, "_phone_push", lambda *a, **k: sent.setdefault("phone", (a, k)) and {"state": "sent"}), \
+                patch.object(AL, "_voip_push", lambda r: sent.setdefault("voip", r) and {"state": "sent"}):
+            out = AL._ring(rec, cfg, 2)
+        self.assertIs(sent["voip"], rec)     # the CallKit ring comes first; the Watch and ntfy pushes stay as backup
+        self.assertEqual(sorted(out), ["phone", "voip", "watch"])
         (wa, wk), (pa, pk) = sent["watch"], sent["phone"]
         self.assertEqual((wa[1], wk["kind"], wk["category"], wk["message_id"]), ("time-sensitive", "call", None, rec["id"]))
         self.assertIn("Vintos is calling you (Open)", wa[0])

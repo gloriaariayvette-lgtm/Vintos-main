@@ -1790,6 +1790,29 @@ window.addEventListener('load', () => {
     // a "vintos://call?ladder_call=<id>" link (the ring's Answer, once the native app registers the scheme)
     try { const CA = window.Capacitor?.Plugins?.App; if (CA?.addListener) CA.addListener('appUrlOpen', ev => { try { const id = new URL(ev.url).searchParams.get('ladder_call'); if (id) ladderAnswer(id); } catch {} }); } catch {}
 });
+// ── His call as a real iPhone call (CallKit, the app's VintosCall plugin; house: phone_voip.py, 27 October) ──
+// The native side rings "Vintos" on the system call screen. Answer there: his ordinary in-app call starts here, and
+// when it ends the system call ends too. Decline there: the plugin has already told the house "not now".
+(function () {
+    const C = window.Capacitor;
+    const VC = (C?.isPluginAvailable?.('VintosCall')) ? (C.Plugins?.VintosCall || C.registerPlugin?.('VintosCall')) : null;
+    if (!VC?.addListener) return;
+    try { VC.configure({ api: API, secret: CONFIG.secret }); } catch {}
+    let watching = null;
+    const followCall = (id) => {      // his call ends in the app: the CallKit call ends with it
+        clearInterval(watching); let seen = false; const t0 = Date.now();
+        watching = setInterval(() => {
+            if (window._vc) { seen = true; return; }
+            if (seen || Date.now() - t0 > 45000) { clearInterval(watching); watching = null; try { VC.endCall({ id }); } catch {} }
+        }, 1000);
+    };
+    VC.addListener('answer', ev => { if (ev?.id) { ladderAnswer(ev.id); followCall(ev.id); } });
+    VC.addListener('decline', () => { try { ladderHideRing(); } catch {} });
+    VC.addListener('hangup', () => { try { if (window._vc && typeof endVintosCall === 'function') endVintosCall(); } catch {} });
+    // answered or turned down in the app's own ring screen: a CallKit ring still showing stops (an answered one stays)
+    const hide = ladderHideRing;
+    window.ladderHideRing = function () { try { VC.ringStop(); } catch {} return hide.apply(this, arguments); };
+})();
 let _agentsDurationRestored = false;
 function rememberAgentsDuration() {
     try { localStorage.setItem('vintos.agents.minutes', document.getElementById('agents-duration').value); } catch {}
