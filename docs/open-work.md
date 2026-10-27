@@ -1,3 +1,20 @@
+## 27 October — The Lab's quantum experiments, offered as the door reads them
+
+Built on `claude/lab-qpanda-2026-10-27`; not merged or deployed. `scripts/lab_experiments.py` (new: one definition
+of the named experiments), `lab_investigations.py`, `lab_tool_calls.py`, `chemistry_mac.py`, `chemistry_probe.py`,
+`chemistry_session.py`; suite `test_lab_experiments.py`.
+
+- **Done.** The investigation menu and the daily session now show fold, titrate and molecule as the exact
+  `{experiment, parameters, shots}` request the door reads, with their limits and QPanda's receipt state; flat or
+  `{"titrate": {...}}` requests are put in that shape; shots are held to 256..16384; a completed fold, titrate or
+  molecule run (which the bench answers with `"pyqpanda3": <version>`) now renews QPanda's receipt.
+- **Not done: VQNet and pyChemiQ have no named experiment.** No bench experiment uses either; `molecule` is
+  pyqpanda3 VQE on PySCF/OpenFermion integrals, not pyChemiQ. Their receipts (13 September) expired on 13 October
+  and only `bin/chemistry_mac_probe.py` on the Mac, ingested with `chemistry_probe.py --record-run`, renews them.
+- **Not done: the orient prompt never poses a question these experiments answer.** It names folds, embeddings and
+  likelihoods only. The experiments themselves are toys (a 9-bead lattice, three diatomics), so this was left alone:
+  adding them there would invite toy questions, not novel ones.
+
 ## 26 October — Lab investigations: naming, being told no, and not repeating
 
 Built on `claude/lab-no-repeat-2026-10-26`; not merged or deployed. `scripts/lab_investigations.py`,

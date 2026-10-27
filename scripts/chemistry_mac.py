@@ -29,6 +29,8 @@ import sys
 import time
 import uuid
 
+from lab_experiments import bounded_shots
+
 MAX_HP_LATTICE_RESIDUES = 9
 ESMFOLD_PARAMETERS = {"target_accession", "requested_accession", "accession", "protein_name", "requested_protein",
                       "gene", "target_gene", "sequence", "sequence_source", "protein_backend", "fragment", "region",
@@ -482,6 +484,7 @@ _NOT_FOR_THE_TOY = ("region", "range", "region_label", "protein_name", "requeste
 
 def run(experiment, parameters=None, shots=4096, resolver=None, transport=None, esmfold_worker=None):
     parameters = dict(parameters or {})
+    shots = bounded_shots(shots)     # the bench's 256..16384, as the planners are told
     contract = None
     if str(experiment) in ("fold", "protein") and _accession(parameters):
         experiment = "protein"          # a sourced protein is folded for real, whatever the plan called it
