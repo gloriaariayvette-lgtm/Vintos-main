@@ -33,6 +33,14 @@ if [ -f "$LAST_MSG_FILE" ]; then
     fi
 fi
 
+# The mirror works on unresolved threads: with none in the pool it stays quiet, whatever else would have
+# called it (Gloria, 2026-10-27). Exit 1 is the gate's "quiet"; any other failure of the gate runs as before.
+_GATE_LINE=$(python3 "$WORKSPACE/scripts/thread_gate.py" mirror 2>&1)
+if [ $? -eq 1 ]; then
+    echo "[MirrorTrigger] $_GATE_LINE — mirror stays quiet"
+    exit 0
+fi
+
 TRIGGER=""
 TOPIC=""
 
