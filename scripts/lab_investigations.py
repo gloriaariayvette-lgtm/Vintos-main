@@ -24,6 +24,21 @@ def _save(data):
     lab._atomic(_path('investigations.json'), data)
 
 
+class MissingField(ValueError):
+    """A reference to a field a stored output does not have: nothing was sent. Says which fields it has there."""
+    def __init__(self, step, walked, key, at):
+        if isinstance(at, dict):
+            there = 'its fields there are: ' + ', '.join(map(str, list(at)[:16]))
+        elif isinstance(at, list):
+            there = 'there it is a list of %d (indices 0-%d)' % (len(at), len(at) - 1) if at else 'there it is an empty list'
+        else:
+            there = 'there it is a %s, not an object or a list' % type(at).__name__
+        example = list(walked) + ([next(iter(at))] if isinstance(at, dict) and at else [])
+        super().__init__('%s\'s output has no %s at path %s; %s. Name a path that exists, e.g. {"step": "%s", "path": %s}'
+                         % (step, json.dumps(key), json.dumps(walked), there, step, json.dumps(example)))
+        self.step, self.path, self.key = step, list(walked), key
+
+
 def resolve(value, steps):
     """References use an exact previous step and JSON field, never model copies."""
     if isinstance(value, dict) and set(value) == {'step', 'path'}:
@@ -33,9 +48,16 @@ def resolve(value, steps):
         encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
         if hashlib.sha256(encoded).hexdigest() != step['output_sha256']:
             raise ValueError('investigation output changed')
-        out = payload
+        out, walked = payload, []
         for key in value['path']:
-            out = out[int(key)] if isinstance(out, list) else out[str(key)]
+            try:
+                out = out[int(key)] if isinstance(out, list) else out[str(key)]
+            except (KeyError, IndexError, TypeError, ValueError):
+                # 27 October: a read_output of ["candidate", ...] on a PubMed step, whose output has no "candidate"
+                # (only a source door's UniProt and NCBI outputs carry one), crashed the step as KeyError 'candidate'
+                # six times in 12 hours, with nothing saying what the output does hold
+                raise MissingField(value['step'], walked, key, out) from None
+            walked.append(key)
         return out
     if isinstance(value, dict): return {k: resolve(v, steps) for k, v in value.items()}
     if isinstance(value, list): return [resolve(v, steps) for v in value]
@@ -215,6 +237,9 @@ def _store_result(step, result):
         receipt=result.get('receipt') or result.get('source_receipt') or result.get('instrument_receipt') or {}
         step['execution_receipt_id']=receipt.get('receipt_id')
         step['run_id']=result.get('run_id')
+        resolution=(receipt.get('metadata') or {}).get('entry_resolution') if isinstance(receipt,dict) else None
+        if isinstance(resolution,dict) and resolution.get('note'):
+            step['resolved']=str(resolution['note'])[:400]     # which PDB entry was used, told with the result
     step['output_file'] = 'investigation-outputs/'+step['id']+'.json'
     os.makedirs(_path('investigation-outputs'),exist_ok=True)
     lab._atomic(_path(step['output_file']),result)
@@ -373,6 +398,7 @@ def _plan(investigation, context, ask, note=None):
     # a repeat handed its earlier output is shown as an attempt, not as a result: it must not push real results out
     fresh = lambda s: s.get('state') == 'completed' and not s.get('repeat_within')
     visible = [s for s in steps if fresh(s)][-6:] + [s for s in steps if not fresh(s)][-2:]
+    named = _name_notes(investigation)   # before the task copies its question and its line's
     system = ('You are at your Chemistry Lab conducting an investigation. Produce a new computed finding: '
               'a measurement, screen, fold, alignment, simulation or prediction tested against a reference. '
               'Documented-fact retrieval supplies inputs; it is not the research result. '
@@ -383,7 +409,8 @@ def _plan(investigation, context, ask, note=None):
         'line_context': line_summary(investigation.get('line_context')),
         'build_on': __import__('lab_findings').for_planner(3),
         'plan': investigation.get('plan'), 'context': context[-2500:],
-        'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs','reused_from')}
+        'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs','reused_from')
+                            + tuple(k for k in ('identity_correction', 'resolved') if s.get(k))}
                            for s in visible],
         'retained_outputs':[{'id':s['id'],'state':s.get('state'),'tool':s.get('tool'),
                              **({'repeat_of':s['reused_from']} if s.get('repeat_within') else {})} for s in steps],
@@ -441,6 +468,12 @@ def _plan(investigation, context, ask, note=None):
         # her own plan from the turn before named the very step just refused, and she followed it: after a re-plan on
         # 26 October her next proposal was a repeat again 158 times in 243, and something new 21 times
         task.pop('plan', None)
+    cooling = cooling_note()
+    if cooling:
+        task['cooling_sources'] = cooling
+    if named:
+        # an accession named with a name its UniProt record does not carry: told, with the record's own name
+        task['identity_corrections'] = named
     recent = [s.get('tool') for s in steps if s.get('state') == 'completed'][-4:]
     if len(recent) == 4 and len(set(recent)) == 1 and recent[0]:
         task['same_tool'] = ('Your last 4 completed steps all used %s: its kind of output is already in hand. Another '
@@ -562,6 +595,54 @@ def _not_again(note, steps):
     return '\n'.join(lines)
 
 
+# What each route does, in one line: what a refusal names when a route, instrument or operation is not one the Lab
+# has, so his next step can name a real one (Gloria, 27 October).
+ROUTE_WHAT = {
+    'source': 'ask a public database: {source, ...}',
+    'plugin': 'call a connector tool: {plugin, tool, arguments}',
+    'instrument': 'run a Lab instrument on a file the Lab holds: {skill, operation, files, question}',
+    'native': 'protein_mpnn, rfdiffusion or openmm on a Lab artifact, locally',
+    'experiment': 'protein, fold, molecule or titrate: {experiment, parameters, shots}',
+    'genome': 'comparative genomic likelihood over a sourced reference: {source_spec}',
+    'representation': 'ESMC representation of protein records from a prior step: {records}',
+    'regulatory_genome': 'a prior atlas receipt against local genomic likelihood: {receipt}',
+    'campaign': 'one step of the locus screening campaign',
+    'schema': "read a connector tool's exact arguments: {plugin}",
+    'read_output': "read one field of a prior step's stored output: {reference: {step, path}}",
+    'finish': 'ask for a review of the evidence so far (adds no step)',
+}
+
+
+class NamesTheMenu(ValueError):
+    """A refusal that names what the Lab has right now; kept whole on the step (it is longer than an error)."""
+
+
+def available_routes():
+    """Every route, one line each, with the sources, connectors and instruments the Lab has right now."""
+    import lab_instruments
+    lines = []
+    for route in ROUTES:
+        what = ROUTE_WHAT.get(route, '')
+        if route == 'source':
+            what += '; sources: ' + ', '.join(sorted(SOURCE_ROUTES))
+        elif route == 'plugin':
+            what += '; connectors: ' + ', '.join(_lab_plugins())
+        elif route == 'instrument':
+            try:
+                menu = lab_instruments.planner_menu()
+                names = sorted(menu.get('skills') or {}) if menu.get('runs_left_today') else []
+            except Exception:
+                names = []
+            what += ('; now: ' + ', '.join(names)) if names else '; no instrument run is left today'
+        lines.append('%s: %s' % (route, what))
+    return lines
+
+
+def unknown_route(route):
+    return NamesTheMenu('unknown investigation route %r. Routes the Lab has right now: %s'
+                        % (str(route)[:40], ' | '.join(available_routes())))
+
+
 class SourceWaiting(RuntimeError):
     def __init__(self, until):
         super().__init__('source cooldown; request has not been sent')
@@ -580,6 +661,125 @@ def _cooldown_until(request):
     throttle = lab._load(_path('source-throttle.json'), {}) or {}
     until = max([float(throttle.get(n, 0) or 0) for n in names if n] or [0])
     return until if until > time.time() else time.time() + 60
+
+
+def _held_record(accession, steps):
+    """The UniProt record of exactly this accession the Lab already holds: one of this investigation's retained
+    normalized records, else the Lab's own sourced record. Nothing is fetched; None when neither is held."""
+    for s in reversed(steps or []):
+        if s.get('state') != 'completed' or not s.get('output_file'):
+            continue
+        try:
+            out = resolve({'step': s['id'], 'path': []}, steps)
+        except Exception:
+            continue
+        for rec in (out.get('normalized_records') or []) if isinstance(out, dict) else []:
+            if isinstance(rec, dict) and str(rec.get('accession') or '').upper() == accession.upper():
+                return rec
+    try:
+        rec = lab._sourced_record(accession)
+    except Exception:
+        rec = None
+    return rec if isinstance(rec, dict) else None
+
+
+def _remember_names(investigation, found):
+    import lab_names
+    kept = investigation.setdefault('name_corrections', [])
+    for m in found:
+        row = {'accession': m['accession'], 'said': m['said'], 'is': m['is'], 'message': lab_names.message(m)}
+        if not any(k.get('accession') == row['accession'] and k.get('said', '').lower() == row['said'].lower() for k in kept):
+            kept.append(row)
+    del kept[:-6]
+
+
+def _correct_names(investigation, step, request, steps):
+    """The step's question and its request's text with any protein name its accession's UniProt record does not carry
+    replaced by the record's own name; what was corrected is kept on the step (identity_correction) and on the
+    investigation, so he is told (27 October: O43511, pendrin, carried as "Trehalose phosphate synthase")."""
+    import lab_names
+    lookup = lambda accession: _held_record(accession, steps)
+    found = []
+    m = lab_names.check(step.get('question'), lookup)
+    if m:
+        step['question_as_asked'] = step['question']
+        step['question'] = lab_names.correct(step['question'], m)
+        found += m
+    if isinstance(request, dict):
+        for key in ('query', 'term', 'question', 'step_question'):
+            if isinstance(request.get(key), str):
+                m = lab_names.check(request[key], lookup)
+                if m:
+                    request = dict(request, **{key: lab_names.correct(request[key], m)})
+                    found += m
+    if found:
+        step['identity_correction'] = list(dict.fromkeys(lab_names.message(x) for x in found))
+        _remember_names(investigation, found)
+    return request
+
+
+def _name_notes(investigation):
+    """The name corrections he is told at planning: the investigation's question and its line's question checked the
+    same way (the investigation's copies corrected, the asked wording kept), and every correction made so far in it."""
+    import lab_names
+    steps = investigation.get('steps') or []
+    lookup = lambda accession: _held_record(accession, steps)
+    try:
+        m = lab_names.check(investigation.get('question'), lookup)
+        if m:
+            investigation.setdefault('question_as_asked', investigation['question'])
+            investigation['question'] = lab_names.correct(investigation['question'], m)
+            _remember_names(investigation, m)
+        line = investigation.get('line_context')
+        if isinstance(line, dict):
+            for key in ('question', 'title', 'next_step'):
+                m = lab_names.check(line.get(key), lookup) if isinstance(line.get(key), str) else []
+                if m:
+                    line[key] = lab_names.correct(line[key], m)
+                    _remember_names(investigation, m)
+    except Exception:
+        pass
+    return [k['message'] for k in investigation.get('name_corrections') or []]
+
+
+def cooling_sources(now=None):
+    """{source: until} for every Lab source still cooling down (one request per source per minute, five after a 429):
+    what the planner is shown before it chooses, so it does not choose one that cannot be sent (27 October: 73 steps
+    in a day were "source cooldown; request has not been sent"). The spacing itself is the sources' and is unchanged."""
+    now = time.time() if now is None else now
+    throttle = lab._load(_path('source-throttle.json'), {}) or {}
+    return {str(k): float(v) for k, v in throttle.items()
+            if k and ':' not in str(k) and isinstance(v, (int, float)) and float(v) > now}
+
+
+def _clock(until):
+    return time.strftime('%H:%M:%S UTC', time.gmtime(until))
+
+
+def cooling_note(now=None):
+    """The cooling sources as the planner reads them: which, until when, and what to do instead; None when none."""
+    now = time.time() if now is None else now
+    cooling = cooling_sources(now)
+    if not cooling:
+        return None
+    return {'sources': {k: 'until %s (%d s)' % (_clock(v), max(1, int(v - now))) for k, v in sorted(cooling.items())},
+            'meaning': ('Each Lab source takes one request a minute (five after the provider asks the Lab to slow '
+                        'down). A request to one of these now is not sent and only waits: choose another source, '
+                        'another route, or read_output on what you hold, and come back to it after the time shown.')}
+
+
+def _cooling(request, now=None):
+    """(source, until) when the source this request names is still cooling down; None otherwise."""
+    now = time.time() if now is None else now
+    names = {str((request or {}).get('source') or '')}
+    try:
+        from lab_sources import normalize_source_spec
+        names.add(str(normalize_source_spec(dict(request or {})).get('source') or ''))
+    except Exception:
+        pass
+    cooling = cooling_sources(now)
+    hits = sorted(((cooling[n], n) for n in names if n in cooling), reverse=True)
+    return (hits[0][1], hits[0][0]) if hits else None
 
 
 def dispatch(route, request, question, steps):
@@ -636,7 +836,7 @@ def dispatch(route, request, question, steps):
         if result.get('ok'): __import__('chemistry_probe').record_evo2_run(result)
         return result
     field = {'source':'source_query', 'plugin':'plugin_query', 'instrument':'instrument_query'}.get(route)
-    if not field: raise ValueError('unknown investigation route')
+    if not field: raise unknown_route(route)
     if route == 'instrument':
         request = dict(request)
         if len(str(request.get('question') or '')) < 10:
@@ -1068,6 +1268,10 @@ def _route_word(word, request):
     named = canonical(w, list(OPERATIONS))
     if named:
         return 'native', dict(request, skill=request.get('skill') or named)
+    # an instrument's operation named as the route ("structure.analyze", 27 October): the instrument it belongs to
+    named = canonical(w, [o for ops in lab_instruments.skill_operations().values() for o in ops])
+    if named:
+        return 'instrument', dict(request, operation=request.get('operation') or named)
     if low in EXPERIMENTS:
         return 'experiment', dict(request, experiment=request.get('experiment') or low)
     # a connector named as the route ("boltz", "genomic_intelligence", "nvidia_nim"), or a route word that is none of
@@ -1553,18 +1757,55 @@ def _repeat_note(earlier):
             'earlier_output_index': (earlier.get('output_index') or [])[:12]}
 
 
-def _reference_input(request, steps):
-    """(request, why) for a reference_compare request: its reference taken from what this investigation already holds
-    when the planner gave none or gave a protein's name or accession, else why it cannot run, before anything runs.
-    On 26 October every compare named no PDB entry at all, each was refused inside the instrument after taking one of
-    the day's runs, and five in a row closed an investigation. A reference is filled in only when exactly one entry
-    is meant: the entry this investigation already read for the model's protein, or that protein's only PDB entry in
-    its UniProt record here."""
+_PDB_WORD = re.compile(r'(?<![A-Za-z0-9])([1-9](?=[A-Za-z0-9]{0,2}[A-Za-z])[A-Za-z0-9]{3})(?![A-Za-z0-9])')
+
+
+def _rcsb_entries_for(accession):
+    """(entry ids, why none) of deposited experimental structures RCSB maps to exactly this UniProt accession: one
+    bounded search, sent only when public reads are on and source pdb is not cooling down, and spacing it like every
+    pdb request (one a minute)."""
+    import chemistry_sources
+    if not lab.config().get('allow_public_database_reads'):
+        return None, 'public database reads are off'
+    cool = _cooling({'source': 'pdb'})
+    if cool:
+        return None, 'source pdb is cooling down until %s' % _clock(cool[1])
+    with lab._locked():
+        throttle = lab._load(_path('source-throttle.json'), {}) or {}
+        throttle['pdb'] = time.time() + 60
+        lab._atomic(_path('source-throttle.json'), throttle)
+    try:
+        ids, _ = chemistry_sources.configured_sources().rcsb_entries(accession=accession)
+    except Exception as exc:
+        return None, 'RCSB search failed (%s)' % str(exc)[:120]
+    return ids, ''
+
+
+def _reference_input(request, steps, question=''):
+    """(request, why, note) for a reference_compare request: its reference taken from what this investigation already
+    holds when the planner gave none or gave a protein's name or accession, else why it cannot run, before anything
+    runs; note says which entry was used and why. On 26 October every compare named no PDB entry at all, each was
+    refused inside the instrument after taking one of the day's runs, and five in a row closed an investigation.
+
+    27 October (reference_compare 0 of 31 in a day): the entry is now worked out whenever it can be. One entry id
+    written in the question ("the 9UTC reference") is that entry. Otherwise, of the entries this investigation holds
+    for the model's protein (its UniProt record's PDB cross-references, the entries it read), one it read comes first,
+    then one whose file the Lab already keeps, then the first; with none held, the Lab's own UniProt record of the
+    protein, then RCSB's entries for exactly that accession. The others are named. No deposited structure is said
+    plainly."""
     import chemistry_reference_compare as compare
     files = [f for f in (request.get('files') or []) if isinstance(f, str)]
     actual = resolve(request, steps)
     ref = str(actual.get('reference') or '').strip()
+    note = ''
     resolved = re.fullmatch(r'[0-9][A-Za-z0-9]{3}(?:[ _-]?[A-Za-z0-9])?', ref)
+    if not resolved and not ref:
+        written = list(dict.fromkeys(m.upper() for m in _PDB_WORD.findall(
+            ' '.join(str(x) for x in (actual.get('question'), question) if x))))
+        if len(written) == 1:
+            request, actual = dict(request, reference=written[0]), dict(actual, reference=written[0])
+            ref, resolved = written[0], True
+            note = 'reference %s was read from the question' % written[0]
     if not resolved:
         protein = Path(files[0]).name.split('-')[0].upper() if files else ''
         wanted = {protein, ref.upper()} - {''}
@@ -1584,23 +1825,43 @@ def _reference_input(request, steps):
             receipt = out.get('receipt') or out.get('source_receipt') or {}
             if receipt.get('source') == 'pdb':
                 read += [str(r.get('entry_id')).upper() for r in receipt.get('records') or []
-                         if isinstance(r, dict) and r.get('entry_id')]
-        held = list(dict.fromkeys(held))
-        chosen = [p for p in dict.fromkeys(read) if p in held] or held
-        if len(chosen) != 1:
-            return request, ('reference must be a four-character PDB entry id of a deposited structure; got %r. %s'
-                             % (ref[:40], ('This investigation holds these entries for %s: %s. Name one as reference, '
-                                           'with chain and ref_span read from a pdb source step on it.'
-                                           % (protein, ', '.join(held[:8]))) if held else
-                                ('This investigation holds no PDB entry for %s: take one from its UniProt record '
-                                 '(pdb_ids) or a pdb source step first, or use another instrument.' % (protein or 'it'))))
+                         if isinstance(r, dict) and r.get('entry_id')
+                         and (not r.get('mapped_accession') or str(r['mapped_accession']).upper() in wanted)]
+        via = 'the entries this investigation holds for %s' % protein
+        if not held and not read and protein:
+            try:
+                record = lab._sourced_record(protein)
+            except Exception:
+                record = None
+            held = [str(p).upper() for p in (record or {}).get('pdb_ids') or [] if compare.PDB_ID.fullmatch(str(p))]
+            via = "the Lab's UniProt record of %s" % protein
+            if not held:
+                found, why_not = _rcsb_entries_for(protein) if re.fullmatch(r'[A-Z0-9]{6,10}', protein) else (None, '')
+                if found == []:
+                    return request, ('no deposited structure: RCSB has no experimental PDB entry mapped to %s, so there '
+                                     'is nothing to compare the model against. Read the model itself (fold_read) '
+                                     'instead.' % protein), ''
+                held, via = list(found or []), 'RCSB entries mapped to UniProt %s' % protein
+                if not held:
+                    return request, ('reference must be a four-character PDB entry id of a deposited structure; got %r. '
+                                     'No PDB entry for %s is held here and none could be looked up (%s): take one from a '
+                                     'pdb source step ({"source": "pdb", "accession": "%s"}) first.'
+                                     % (ref[:40], protein or 'it', why_not or 'no accession', protein)), ''
+        held = list(dict.fromkeys(held + [p for p in read if p not in held]))
+        kept = {p.name.split('.')[0].upper() for p in compare.REFERENCES.glob('*.cif')} if compare.REFERENCES.is_dir() else set()
+        chosen = ([p for p in dict.fromkeys(read) if p in held] or [p for p in held if p in kept] or held)[:1]
         request = dict(request, reference=chosen[0])
         actual = dict(actual, reference=chosen[0])
+        others = [p for p in held if p != chosen[0]]
+        note = ('reference %s was used for %s (%s%s)%s' % (
+            chosen[0], ref or protein, via, ', one this investigation read' if chosen[0] in read else
+            ', its file already in the Lab' if chosen[0] in kept else '',
+            ('; others: ' + ', '.join(others[:8])) if others else ''))
     try:
         compare.validate(dict(actual, model=files[0] if files else ''))
     except ValueError as exc:
-        return request, str(exc)
-    return request, ''
+        return request, (str(exc) + ('. (%s)' % note if note else '')), note
+    return request, '', note
 
 
 def _other_door(request):
@@ -1635,7 +1896,7 @@ def _offer_problem(route, request):
     request = request if isinstance(request, dict) else {}
     if route not in ROUTES:
         return ('there is no route %r' % str(route)[:40],
-                {'routes': list(ROUTES), 'source': 'route "source" with {"source": one of %s}' % ', '.join(sorted(SOURCE_ROUTES)),
+                {'routes': list(ROUTES), 'what_each_does': available_routes(), 'source': 'route "source" with {"source": one of %s}' % ', '.join(sorted(SOURCE_ROUTES)),
                  'plugin': 'route "plugin" with {"plugin": one of %s, "tool", "arguments"}' % ', '.join(_lab_plugins())})
     if route == 'source':
         if request.get('source') not in SOURCE_ROUTES | {'pubmed_abstracts'}:
@@ -1652,12 +1913,15 @@ def _offer_problem(route, request):
                  'question': '<what it should answer>'}
         if skill not in offered:
             return ('no instrument is named under "skill"' if not skill else 'there is no instrument %r' % str(skill)[:40],
-                    {'skills': offered, 'request': shape})
+                    {'skills': offered, 'request': shape, 'available_now': lab_instruments.available_now()})
         if op not in offered[skill]:
             return ('%s has no operation %r' % (skill, str(op)[:40]) if op else '%s needs its operation named' % skill,
                     {'operations': offered[skill], 'request': dict(shape, skill=skill)})
         if lab_instruments.runs_left() <= 0:
             return ('no instrument run is left today', {'routes': [r for r in ROUTES if r not in ('instrument', 'native')]})
+        if skill in lab_instruments.RELAY and lab_instruments.relay_runs_left() <= 0:
+            return ('%s has no run left today (the relay instruments run %d a day)' % (skill, lab_instruments.RELAY_DAILY_RUNS),
+                    {'available_now': lab_instruments.available_now()})
         raw = request.get('files')
         if isinstance(raw, dict) or (isinstance(raw, list) and any(not isinstance(f, str) for f in raw)):
             return None     # a stored output named as the file: resolved, and checked, at the instrument's door
@@ -1772,6 +2036,7 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         authored_request = request
         request = normalize_request(route, request)
         request = bind_inputs(request, investigation['steps'][:-1])
+        request = _correct_names(investigation, step, request, investigation['steps'][:-1])
         step['executed_request'] = request
         step['input_refs'] = _inputs(request)
         step['reference_origin'] = 'explicit_or_exact_equal_returned_value' if step['input_refs'] else None
@@ -1790,8 +2055,10 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             raise replan({'why_not_run': 'nothing was sent: %s. Choose from these exact names, in this shape.'
                           % problem[0], 'valid_choices': problem[1]}, 'not_offered')
         if route == 'instrument' and request.get('skill') == 'reference_compare':
-            request, why = _reference_input(request, investigation['steps'][:-1])
+            request, why, resolved_note = _reference_input(request, investigation['steps'][:-1], step['question'])
             step['executed_request'] = request
+            if resolved_note:
+                step['resolved'] = resolved_note     # which PDB entry was used, told with the result
             if why and may_replan:
                 raise replan({'why_not_run': 'nothing was sent: ' + why}, 'reference_compare_input')
             if why:
@@ -1830,6 +2097,17 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 step['repeat_within'] = True
             _store_result(step, payload)
         else:
+            cool = _cooling(resolved) if route == 'source' and may_replan else None
+            if cool:
+                # Told before anything waits: which source is cooling, until when, and which are ready now. Sent
+                # anyway it would only wait (73 steps in a day did, 26-27 October); the spacing itself is unchanged.
+                note = cooling_note() or {}
+                raise replan({'why_not_run': 'nothing was sent: source %s is cooling down until %s (each source takes '
+                              'one request a minute). Choose another source or route now, and come back to %s after '
+                              'that time.' % (cool[0], _clock(cool[1]), cool[0]),
+                              'valid_choices': {'sources_ready_now': sorted(s for s in SOURCE_ROUTES
+                                                                            if not _cooling({'source': s})),
+                                                'cooling': note.get('sources') or {}}}, 'source_cooling')
             _save(data)
             try:
                 result = execute(route, request, step['question'], investigation['steps'][:-1])
@@ -1866,6 +2144,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         raise
     except SourceWaiting as exc:
         step.update(state='waiting_not_sent',retry_at=exc.until,error=str(exc))
+    except MissingField as exc:
+        # a path into a stored output that is not there: nothing was sent; told which fields there are, and asked
+        # again in the same turn while a re-plan is left
+        if may_replan:
+            raise replan({'why_not_run': 'nothing was sent: ' + str(exc)}, 'missing_field')
+        step.update(state='refused_not_sent', error=str(exc)[:600])
     except _InputShape as exc:
         step.update(state='refused_not_sent', error=str(exc)[:300])
     except Exception as exc:
@@ -1874,8 +2158,11 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             step.update(state='waiting_not_sent', retry_at=_cooldown_until(step.get('executed_request') or request),
                         error='source cooldown; request has not been sent')
         else:
+            import lab_instruments
             step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
-            step['error'] = str(exc)[:300]
+            # a refusal that names the instruments and routes he has right now is kept whole: cut at 300 characters
+            # it named none of them (27 October)
+            step['error'] = str(exc)[:1800 if isinstance(exc, (NamesTheMenu, lab_instruments.NotOffered)) else 300]
     if FRONTIER_PLANS and plan_ref and step.get('state') in ('completed', 'failed'):
         # Settle the attempt against the exact plan step it was made for. Credit needs a completed operation with a
         # retained output; an unknown outcome or a send still waiting is neither credit nor failure.

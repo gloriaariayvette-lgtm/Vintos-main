@@ -16,7 +16,8 @@ for ONE instrument on it:
                                                            planning only, nothing is executed)
 
 Adaptyv (needs Gloria's approval for anything real) is not offered here. The NGS workbench is offered only once
-the Lab holds a real read sample (sequencing_reads keeps the first reads of a public run, 2026-10-27). At most DAILY_RUNS instrument runs a day. A sequence the Lab fetches is kept as a FASTA
+the Lab holds a real read sample (sequencing_reads keeps the first reads of a public run, 2026-10-27). At most DAILY_RUNS
+instrument runs a day, of which at most RELAY_DAILY_RUNS on the relay (a model turn each, on the Mac). A sequence the Lab fetches is kept as a FASTA
 artifact so the sequence instruments have something real to open.
 """
 from __future__ import annotations
@@ -32,7 +33,14 @@ LAB = WS / "memory" / "chemistry-lab"
 ARTIFACTS = LAB / "artifacts"
 SEQUENCES = ARTIFACTS / "sequences"
 LEDGER = LAB / "instrument-runs.json"
-DAILY_RUNS = 25
+# 100 instrument runs a day in all (Gloria, 27 October: 25 a day was used up by mid-afternoon on 26 October). The
+# local instruments (fold_read, reference_compare, derived_compare, family_panel, the native ones) run in his own Python
+# on Aegis and cost nothing. The relay instruments do not: each run is a whole model turn on the Mac relay's chat
+# account, which has its plan's usage limits, and biohub_esm also spends Biohub's metered ESM calls. Those stay at the
+# old 25 a day, inside the 100.
+DAILY_RUNS = 100
+RELAY = ("structure_viewer", "sequence_viewer", "biohub_esm", "ngs_workbench")
+RELAY_DAILY_RUNS = 25
 OFFERED = {
     "structure_viewer": ("structure.analyze", "structure.measure", "structure.render_image"),
     "sequence_viewer": ("sequence.run_analysis", "sequence.align"),
@@ -129,30 +137,40 @@ def completed_fold_read(req):
     return None
 
 
+def relay_runs_left():
+    """Runs left today for the relay instruments (a model turn each on the Mac relay), within runs_left()."""
+    used = len([r for r in _runs_today()["runs"] if isinstance(r, dict) and r.get("skill") in RELAY])
+    return max(0, min(RELAY_DAILY_RUNS - used, runs_left()))
+
+
 def menu_block():
     """The instrument option for his orient prompt, or '' when there is nothing real to run one on."""
     left = DAILY_RUNS - len(_runs_today()["runs"])
     if left <= 0:
         return ""
+    relay = relay_runs_left()
     structures, sequences = artifacts("structure"), artifacts("sequence")
-    lines = ["ON-DEMAND INSTRUMENTS (%d run(s) left today). Only when the question needs one, instead of "
-             "source_query and plugin_query, return instrument_query = {skill, operation, files, question}:" % left]
-    if structures:
-        lines.append("- structure_viewer, operation structure.analyze | structure.measure | structure.render_image, "
+    lines = ["ON-DEMAND INSTRUMENTS (%d run(s) left today, %d of them for the ones marked relay). Only when the "
+             "question needs one, instead of "
+             "source_query and plugin_query, return instrument_query = {skill, operation, files, question}:" % (left, relay)]
+    if not relay:     # the relay instruments are not offered once their own runs are spent
+        sequences = []
+    if structures and relay:
+        lines.append("- structure_viewer (relay), operation structure.analyze | structure.measure | structure.render_image, "
                      "files from: " + ", ".join(structures))
     if sequences:
-        lines.append("- sequence_viewer, operation sequence.run_analysis | sequence.align, files from: " + ", ".join(sequences))
-    samples = read_samples()
+        lines.append("- sequence_viewer (relay), operation sequence.run_analysis | sequence.align, files from: " + ", ".join(sequences))
+    samples = read_samples() if relay else []
     if samples:
-        lines.append("- ngs_workbench, operation list_workflows | plan_nextflow | plan_snakemake, files [one of: "
+        lines.append("- ngs_workbench (relay), operation list_workflows | plan_nextflow | plan_snakemake, files [one of: "
                      + ", ".join(samples) + "]: the first reads of a public run (its sequencing_reads receipt says "
                      "which). Plans a workflow over the sample; nothing is executed.")
     models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
     if models:
         lines.append("- reference_compare, operation structure.compare, files [one of: " + ", ".join(models) + "], "
-                     "with reference (a four-character PDB entry id of a deposited structure, e.g. 1ABC, never a "
-                     "protein name or UniProt accession: take it from a pdb source step's records or the structure's "
-                     "receipt), chain, ref_span [first, last] in the entry's "
+                     "with reference (a four-character PDB entry id of a deposited structure, e.g. 1ABC, from a pdb "
+                     "source step's records or the structure's receipt; given none, or the protein's accession, the Lab "
+                     "picks one of its entries and says which), chain, ref_span [first, last] in the entry's "
                      "numbering; offset is worked out from the alignment (give it only to check it: a wrong one is refused). Lines your model up "
                      "with the real structure by sequence and gives TM-score, RMSD, and the entry's helices and strands "
                      "in your numbering.")
@@ -180,9 +198,10 @@ def menu_block():
                      "readings it named - whether the feature persists in the homologs and is missing in the "
                      "comparator. A position no alignment places is undecidable, not absent; it claims nothing "
                      "about function, stability or flexibility.")
-    lines.append("- biohub_esm, operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
-                 "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
-    return "\n".join(lines)
+    if relay:
+        lines.append("- biohub_esm (relay), operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
+                     "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def runs_left():
@@ -195,6 +214,52 @@ def skill_operations():
     out = {k: list(v) for k, v in OFFERED.items()}
     out.update({k: [v] for k, v in OPERATIONS.items()})
     return out
+
+
+# What each instrument does, in one line: what a refusal tells him, so the next step can name a real one (Gloria,
+# 27 October: "name the real instruments in the moment").
+WHAT = {
+    "fold_read": "helices, strands and confidence over a residue range of one of your ESMFold models (local)",
+    "reference_compare": "one of your ESMFold models against a deposited PDB entry: TM-score, RMSD, the entry's "
+                         "helices and strands in your numbering (local)",
+    "derived_compare": "how far the refolds of your designed sequences sit from the backbone they were designed on (local)",
+    "family_panel": "a family panel you froze, measured against its retained readings (local)",
+    "structure_viewer": "analyze, measure distances/angles in, or render a structure file the Lab holds (relay)",
+    "sequence_viewer": "analyze or align a FASTA/GenBank file the Lab holds (relay)",
+    "ngs_workbench": "plan a Nextflow/Snakemake workflow over a read sample the Lab holds; nothing is executed (relay)",
+    "biohub_esm": "Biohub ESM: Atlas neighbours, mutation landscape or feature interpretation of a sourced accession (relay)",
+    "protein_mpnn": "design sequences for a PDB backbone the Lab holds (local, route native)",
+    "rfdiffusion": "generate a short new backbone, 10-80 residues (local, route native)",
+    "openmm": "relax a structure the Lab holds on a C-alpha elastic network (local, route native)",
+}
+
+
+class NotOffered(ValueError):
+    """An instrument or operation the Lab does not have, with what it has right now."""
+
+
+def available_now():
+    """The instruments he can name on his next step, right now, one line each: name, its operations, what it does,
+    and what it takes. Only those with something real to run on and a run left today."""
+    menu = planner_menu()
+    if menu.get("runs_left_today", 0) <= 0:
+        return [menu.get("state", "No instrument run is left today.")]
+    lines = []
+    for name, row in list((menu.get("skills") or {}).items()) + list((menu.get("native_skills") or {}).items()):
+        files = row.get("files") or []
+        takes = (" files: one of %s" % ", ".join(files[:2]) + (" (+%d more)" % (len(files) - 2) if len(files) > 2 else "")
+                 if files else "")
+        also = (" also: " + ", ".join(sorted(row["also"]))) if isinstance(row.get("also"), dict) else ""
+        lines.append("%s [%s]: %s.%s%s" % (name, " | ".join(row.get("operations") or []), WHAT.get(name, ""), takes, also))
+    lines.append("%d run(s) left today, %d of them for the relay instruments." % (menu["runs_left_today"],
+                                                                                menu.get("relay_runs_left_today", 0)))
+    return lines
+
+
+def not_offered(why):
+    """A NotOffered refusal: why, then every instrument he can name instead, right now."""
+    return NotOffered("%s. Instruments the Lab has right now (route instrument, {skill, operation, files, question}): %s"
+                      % (why, " | ".join(available_now())))
 
 
 def planner_menu():
@@ -214,19 +279,23 @@ def planner_menu():
     structures, sequences = artifacts("structure"), artifacts("sequence")
     models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
     skills = {}
-    if structures:
+    relay = relay_runs_left()
+    if not relay:     # the relay instruments are not offered once their own runs are spent
+        sequences = []
+    if structures and relay:
         skills["structure_viewer"] = {"operations": list(OFFERED["structure_viewer"]), "files": structures}
     if sequences:
         skills["sequence_viewer"] = {"operations": list(OFFERED["sequence_viewer"]), "files": sequences}
-    samples = read_samples()
+    samples = read_samples() if relay else []
     if samples:
         skills["ngs_workbench"] = {"operations": list(OFFERED["ngs_workbench"]), "files": samples,
                                    "gives": "a workflow plan over the read sample; planning only, nothing is executed"}
     if models:
         skills["reference_compare"] = {
             "operations": list(OFFERED["reference_compare"]), "files": models,
-            "also": {"reference": "four-character PDB entry id of a deposited structure (from a pdb source step), never "
-                                  "a protein name or accession", "chain": "A", "ref_span": "[first, last] in the entry's numbering"},
+            "also": {"reference": "four-character PDB entry id of a deposited structure (from a pdb source step); "
+                                  "given none or the protein's accession, the Lab picks one of its entries and says which",
+                     "chain": "A", "ref_span": "[first, last] in the entry's numbering"},
             "gives": "TM-score, RMSD, the entry's helices and strands in your numbering"}
         skills["fold_read"] = {"operations": list(OFFERED["fold_read"]), "files": models,
                                "also": {"range": "[first, last] in your protein's numbering"},
@@ -247,10 +316,14 @@ def planner_menu():
     if declared:
         skills["family_panel"] = {"operations": list(OFFERED["family_panel"]), "files": [],
                                   "also": {"panel": "one of " + ", ".join(declared)}}
-    skills["biohub_esm"] = {"operations": list(OFFERED["biohub_esm"]), "files": [],
-                            "note": "a sourced UniProt accession or sequence named in the question"}
+    if relay:
+        skills["biohub_esm"] = {"operations": list(OFFERED["biohub_esm"]), "files": [],
+                                "note": "a sourced UniProt accession or sequence named in the question"}
     native = {k: {"operations": [v], "route": "native"} for k, v in OPERATIONS.items()}
-    return {"runs_left_today": left,
+    return {"runs_left_today": left, "relay_runs_left_today": relay,
+            **({} if relay else {"relay_state": "structure_viewer, sequence_viewer, ngs_workbench and biohub_esm have no "
+                                                "run left today (%d a day: each is a model turn on the Mac); the "
+                                                "local instruments still run" % RELAY_DAILY_RUNS}),
             "request": {"skill": "<one name from skills, under the key skill>", "operation": "<one of its operations>",
                         "files": ["<one of its files>"], "question": "<what it should answer>"},
             "skills": skills, "native_skills": native}
@@ -264,7 +337,8 @@ def validate(req):
     from lab_native_instruments import OPERATIONS
     native = op == OPERATIONS.get(skill) and skill in OPERATIONS
     if not native and (skill not in OFFERED or op not in OFFERED[skill]):
-        raise ValueError("instrument or operation not offered in the Lab")
+        raise not_offered("instrument or operation not offered in the Lab (%s, %s)"
+                          % (str(skill)[:40] if skill else "no skill named", str(op)[:40] if op else "no operation named"))
     files = [str(f) for f in (req.get("files") or []) if isinstance(f, str)][:4]
     allowed = set(artifacts("structure", 50) + artifacts("sequence", 50))
     if any(f not in allowed for f in files):
@@ -291,7 +365,11 @@ def run(req, runner=None):
     skill, op, files, question = validate(req)
     today = _runs_today()
     if len(today["runs"]) >= DAILY_RUNS:
-        raise PermissionError("instrument runs used up for today")
+        raise PermissionError("instrument runs used up for today (%d a day)" % DAILY_RUNS)
+    if skill in RELAY and relay_runs_left() <= 0:
+        raise PermissionError("%s has no run left today: the relay instruments (%s) run at most %d a day, each a model "
+                              "turn on the Mac; the local ones (%s) still run"
+                              % (skill, ", ".join(RELAY), RELAY_DAILY_RUNS, ", ".join(sorted(LOCAL))))
     from lab_native_instruments import OPERATIONS
     if runner is None and skill in OPERATIONS:
         from lab_native_instruments import run as native_run

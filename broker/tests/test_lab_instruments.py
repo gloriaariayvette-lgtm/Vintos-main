@@ -43,10 +43,16 @@ out = L.run({"skill": "structure_viewer", "operation": "structure.analyze", "fil
 check("an instrument runs on the Lab's own file, from the Lab surface, and returns a receipt the Lab records",
       calls and calls[0][0] == "lab" and calls[0][3] == [str(L.LAB / "artifacts/structures/1abc.pdb")]
       and out["receipt"]["records"][0]["summary"] == "63 contacts" and out["receipt"]["source"] == "instrument:structure_viewer", out)
-for _ in range(L.DAILY_RUNS - 1): L.run({"skill": "biohub_esm", "operation": "atlas.search", "files": [], "question": "near neighbours of P69905 in the atlas"}, runner=runner)
+for _ in range(L.RELAY_DAILY_RUNS - 1): L.run({"skill": "biohub_esm", "operation": "atlas.search", "files": [], "question": "near neighbours of P69905 in the atlas"}, runner=runner)
 try: L.run({"skill": "biohub_esm", "operation": "atlas.search", "files": [], "question": "one more search please"}, runner=runner); capped = False
 except PermissionError: capped = True
-check("25 runs a day at most, and the menu goes quiet", L.DAILY_RUNS == 25 and capped and L.menu_block() == "")
+check("25 relay runs a day at most (a model turn each), and with nothing local to offer the menu goes quiet",
+      L.RELAY_DAILY_RUNS == 25 and capped and L.menu_block() == "")
+local = lambda *a, **k: {"receipt": {"receipt_id": "d"}, "summary": "refolds", "files": []}
+for _ in range(L.DAILY_RUNS - L.RELAY_DAILY_RUNS): L.run({"skill": "derived_compare", "operation": "structure.compare_refolds", "files": [], "question": "how far do the refolds sit"}, runner=local)
+try: L.run({"skill": "derived_compare", "operation": "structure.compare_refolds", "files": [], "question": "how far do the refolds sit"}, runner=local); capped = False
+except PermissionError: capped = True
+check("100 runs a day in all, the local ones beyond the relay's 25", L.DAILY_RUNS == 100 and capped and L.runs_left() == 0)
 lab = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("his Lab turn can ask for one, and the sources phase runs it",
       '"instrument_query": (value.get("instrument_query")' in lab and "lab_instruments.run(sent_query)" in lab
