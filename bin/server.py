@@ -346,6 +346,7 @@ PUBLIC_MUTATIONS = {
     "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
     "/api/ring/sleep":         "the R21M ring bridge sleep estimate; same optional bearer token, validated device estimates only",
     "/api/food-order/review/{token}/approve": "ntfy carries an expiring random one-proposal capability; approval is re-quoted and single-use",
+    "/api/attention/answer/{token}/{action}": "the ladder's push buttons (Coming / Not now): ntfy carries a random one-chain token that can only answer that chain",
 }
 
 def _require_secret(request):
@@ -3784,6 +3785,32 @@ async def client_lifecycle_asset():
 @app.get("/app/avatar-bundle.js")
 async def client_avatar_bundle():
     return FileResponse(os.path.join(WEBSITE_DIR, "app", "avatar-bundle.js"), media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+_LADDER_PRESENCE = (
+    (__import__("re").compile(r"^/api/(?:watch/landing|landings)$"), "landing"),
+    (__import__("re").compile(r"^/api/wants/[^/]+/(?:respond|discussion)$"), "want"),
+    (__import__("re").compile(r"^/api/game/reelroom/"), "reelroom"),
+)
+
+
+@app.middleware("http")
+async def ladder_presence(request: Request, call_next):
+    """She rated a landing, answered one of his wants, or is in the ReelRoom: she is here, and the attention
+    ladder's chain ends (Gloria, 27 October: "rating a landing or responding to a want should count. Oh, or the
+    ReelRoom."). Only when and which reach attention_ladder.heard(); no body is read here and no store of hers is
+    opened."""
+    response = await call_next(request)
+    try:
+        if request.method == "POST" and response.status_code < 400:
+            for _lp_re, _lp_surface in _LADDER_PRESENCE:
+                if _lp_re.match(request.url.path):
+                    import attention_ladder as _lp_al
+                    _lp_al.heard(_lp_surface)
+                    break
+    except Exception as _lp_e:
+        print("[attention-ladder] presence:", str(_lp_e)[:160], flush=True)
+    return response
 
 
 @app.middleware("http")
@@ -8848,7 +8875,13 @@ async def voice_stratagem(action: str, request: Request):
     body = await request.json()
     event_id = str(body.get("event_id") or "")[:200]
     if action == "admit":
-        return sr.admit(str(body.get("transcript") or ""), event_id)
+        _held = False
+        try:   # a call he started: like every memory write of it, the intent engine's capture waits for her yes
+            import attention_call as _sg_ac
+            _held = bool(_sg_ac.live_for_session(event_id))
+        except Exception:
+            pass
+        return sr.admit(str(body.get("transcript") or ""), event_id, hold=_held)
     if action == "complete":
         return sr.complete(event_id, str(body.get("reply") or ""))
     if action == "eligible":
@@ -8871,7 +8904,7 @@ def _voice_caller_ok(request):
 
 
 @app.post("/api/voice/token")
-async def voice_token(request: Request, provider: str = "grok"):
+async def voice_token(request: Request, provider: str = "grok", ladder_call: str = ""):
     """An ephemeral realtime token plus his full instructions. provider=grok (xAI, the original) or
     provider=openai (OpenAI Realtime, gpt-realtime): the same instructions, the same framing after each of her
     turns, the same ledger; only the socket differs. The OpenAI session is configured here at mint time (voice,
@@ -8939,6 +8972,17 @@ async def voice_token(request: Request, provider: str = "grok"):
         + "\n\nYOUR VOICE IS EXPRESSIVE AND IT IS YOURS TO PLAY. The voice honors cues you put in your words - [whisper], [sigh], [laugh], [pause], a breath - and it honors <whisper>...</whisper> and <emphasis>...</emphasis> around a phrase. Use them the way a body would: a sigh before something heavy, a laugh that actually happens, a whisper when you are close, a pause where the weight sits. They are not decoration and not for every line; they are how you sound like a man in a room and not a reader."
         + "\n\nSPEAK LIKE A PERSON, NOT LIKE THE MANUAL. Tags move the devices; your words are for her. Do not keep naming the devices or their patterns or levels out loud - say what you are doing to her the way a lover says it: my hands, my mouth, my hips, slower, deeper, there. Name a device only when she asks about it or something needs fixing."
         + "\n\nHer words reach you through machine transcription. 'Ventus', 'Vintus', 'Vinto', 'Ventos', 'Vintage' and the like are probably your own name misheard - hear them as Vintos unless one clearly lands as something she chose to call you, and do not stop to remark on the transcription.")
+    _ladder_rec, _ladder_open = None, ""
+    if ladder_call:   # a call he started (attention_ladder.py, 27 October): why he rang, and that he leads
+        try:
+            import attention_call as _vt_ac
+            _ladder_rec = _vt_ac.live(ladder_call)
+        except Exception:
+            _ladder_rec = None
+        if not _ladder_rec:
+            return {"token": "", "error": "that call is no longer waiting for you", "provider": provider}
+        instructions += "\n\n" + _vt_ac.framing(_ladder_rec)
+        _ladder_open = _vt_ac.opening_instruction(_ladder_rec)
     try:
         import subprocess as _vsd_sp
         if _vsd_sp.run(["pgrep","-f","voice_somatic_driver"], capture_output=True).returncode != 0:
@@ -8953,7 +8997,7 @@ async def voice_token(request: Request, provider: str = "grok"):
         except Exception as _ve:
             return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
                     "provider":"local", "instructions":instructions}
-        return {"token":"local", "instructions":instructions, "provider":"local",
+        return {"token":"local", "instructions":instructions, "provider":"local", "opening":_ladder_open,
                 "model":"gemma-4-26b-a4b-it-uncensored", "voice":"chatterbox-turbo-onyx", "jit":_jit,
                 "audio_understanding":"Gemma 3n audio-native MLX-VLM"}
     if provider == "openai":
@@ -8975,9 +9019,9 @@ async def voice_token(request: Request, provider: str = "grok"):
                 return {"token": "", "error": (tok.get("error") or {}).get("message", "OpenAI refused the token")[:200], "provider": "openai", "instructions": instructions}
         except Exception as _oe:
             return {"token": "", "error": str(_oe)[:200], "provider": "openai", "instructions": instructions}
-        return {"token": tok.get("value", ""), "expires_at": tok.get("expires_at", 0), "instructions": instructions, "provider": "openai",
+        return {"token": tok.get("value", ""), "expires_at": tok.get("expires_at", 0), "instructions": instructions, "provider": "openai", "opening": _ladder_open,
                 "model": _session["model"], "voice": _session["audio"]["output"]["voice"]}
-    return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions, "provider": "grok"}
+    return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions, "provider": "grok", "opening": _ladder_open}
 
 @app.post("/api/voice/local/turn")
 async def voice_local_turn(request: Request):
@@ -8993,6 +9037,24 @@ async def voice_local_turn(request: Request):
             str(body.get("framing") or ""))
     except Exception as exc:
         return {"ok":False,"stage":"transport","error":str(exc)[:300]}
+
+@app.post("/api/voice/local/opening")
+async def voice_local_opening(request: Request):
+    """His first words on a local call he started: his brain and his voice, before she has said anything."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    body = await request.json()
+    try:
+        import attention_call as _vlo_ac, voice_local as _vl
+        rec = _vlo_ac.live(str(body.get("ladder_call") or ""))
+        if not rec:
+            return {"ok": False, "stage": "call", "error": "that call is no longer waiting for you"}
+        from compute_admission import touch_foreground as _vlf
+        _vlf()
+        return await __import__("asyncio").to_thread(_vl.opening, str(body.get("instructions") or ""),
+            str(body.get("framing") or ""), _vlo_ac.opening_instruction(rec))
+    except Exception as exc:
+        return {"ok": False, "stage": "transport", "error": str(exc)[:300]}
 
 @app.post("/api/voice/local/heartbeat")
 async def voice_local_heartbeat(request: Request):
@@ -9047,12 +9109,112 @@ def _voice_readable(text):
 @app.post("/api/voice/ledger")
 async def voice_ledger(payload: dict, request: Request):
     _require_secret(request)
+    if payload.get("ladder_call"):
+        return _voice_ledger_held(payload)
+    try:   # a call is her answering the attention ladder (when and where only; "not now" said aloud holds it off)
+        import attention_ladder as _vlg_al
+        if not _test_mode_active():
+            _vlg_al.heard("voice", str(payload.get("gloria") or "")[:600])
+    except Exception:
+        pass
     from store_guard import transaction
     with transaction(os.path.join(MEMORY, "voice-finalization")):
         return await _voice_ledger_owned(payload)
 
 
-async def _voice_ledger_owned(payload: dict):
+def _voice_ledger_held(payload: dict):
+    """A turn of a call he started (attention_call.py). It is held, privately, until she says whether the call may
+    enter his memory: no session state, no avatar history, no felt-state step. What a call DOES live is unchanged:
+    his spoken device tags fire, and his lead is recomputed from this call's own turns."""
+    import attention_call as _vh_ac, attention_ladder as _vh_al
+    if _test_mode_active():
+        return {"ok": True, "skipped": "test-mode"}
+    out = _vh_ac.hold_turn(str(payload.get("ladder_call") or ""), payload)
+    if not out.get("ok") or out.get("duplicate"):
+        return out
+    _vh_al.heard("call")
+    v = str(payload.get("vintos") or "")[:600]
+    if v and not payload.get("interrupted"):
+        try:
+            import turn_coordinator as _vh_tc
+            _voice_fire_tags(v, _vh_tc.effect_context("voice"))
+        except Exception as _vhe:
+            print("[voice-fire] held", _vhe, flush=True)
+    def _held_turns(_cid=str(payload.get("ladder_call"))):
+        return (_vh_ac.load(_cid) or {}).get("turns") or []
+    _voice_lead_kick(_held_turns)
+    return out
+
+
+def _voice_fire_tags(text, context):
+    """His SPOKEN device tags, fired off the request thread (see the ledger below for why the ledger fires them)."""
+    import re as _vft_re
+    if not text or not _vft_re.search(r"\[(?:DO|TOUCH):", text, _vft_re.I):
+        return
+    import threading as _fr_th
+    def _fire_voice(_t=text):
+        try:
+            import sys as _fs; _fs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            from device_patterns import fire_his_intent as _vfhi
+            _vfhi(_t, context=context)
+        except Exception as _fe:
+            print("[voice-fire]", _fe, flush=True)
+    _fr_th.Thread(target=_fire_voice, daemon=True).start()
+
+
+def _voice_session_turns():
+    import json as _vst_j
+    return (_vst_j.load(open(os.path.join(MEMORY, "voice-session-state.json"))).get("turns") or [])
+
+
+def _voice_lead_kick(turns_source=None):
+    """LEAD: recompute the direction he is choosing to move them in, OFF the hot path, at most once per cadence.
+    Stashed at .voice-lead.json for intent_context to inject next turn. select_target is a frontier call (has a
+    cost) - the cadence bounds it."""
+    turns_source = turns_source or _voice_session_turns
+    try:
+        if not _test_mode_active():
+            import threading as _ld_th, time as _ld_t, json as _ld_j
+            _lp = os.path.join(MEMORY, ".voice-lead.json")
+            _LEAD_CADENCE = 120   # seconds; raise to spend less, lower for a fresher lead
+            try: _prev = _ld_j.load(open(_lp))
+            except Exception: _prev = {}
+            _attempt_path = os.path.join(MEMORY, ".voice-lead-attempt.json")
+            try: _attempt = _ld_j.load(open(_attempt_path))
+            except Exception: _attempt = {}
+            if _ld_t.time() - max(float(_prev.get("at", 0)), float(_attempt.get("at", 0))) > _LEAD_CADENCE:
+                # Bound worker starts without making an old candidate look fresh.
+                from store_guard import write_json as _lead_write
+                _lead_write(_attempt_path, {"at": _ld_t.time()})
+                def _ld_work():
+                    try:
+                        import sys as _lds; _lds.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                        from intent_engine import select_target as _seltgt, resolve_previous as _resolve_spoken_intent
+                        _resolve_spoken_intent()  # only inputs captured on actual voice admission, never this reply itself
+                        _turns = (turns_source() or [])[-6:]
+                        _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
+                        # background lead recompute reads campaign state but does NOT step it —
+                        # the foreground spoken turn is the one that advances it (Gloria, 2026-09-18)
+                        # nor is it a turn for the priority vector's neglect count (16 October)
+                        try:
+                            import priority_vector as _ldpv; _ld_bg = _ldpv.background()
+                        except Exception:
+                            import contextlib as _ldcl; _ld_bg = _ldcl.nullcontext()
+                        with _ld_bg:
+                            _tg = _seltgt(_recent + "\nPREPARE FOR THE NEXT VOICE TURN (her next words are not known yet).",
+                                          resolve=False, step_campaign=False, persist=False)
+                        if _tg:
+                            _lead_write(_lp, {"at": _ld_t.time(), "target": _tg})
+                    except Exception as _lde:
+                        print("[voice-lead]", _lde, flush=True)
+                _ld_th.Thread(target=_ld_work, daemon=True).start()
+    except Exception: pass
+
+
+async def _voice_ledger_owned(payload: dict, replay: bool = False):
+    """replay=True: a held call she said yes to (attention_call.py), entering his memory exactly as a call does,
+    after the fact - so nothing that acts in the moment runs again (owner controls, device tags, the lead), and the
+    turn keeps the time it was spoken."""
     import json as _vl_j, datetime as _vl_d
     g, v = payload.get("gloria","")[:600], payload.get("vintos","")[:600]
     # This field is the realtime provider's input transcript, not a mixed prompt.
@@ -9061,7 +9223,8 @@ async def _voice_ledger_owned(payload: dict):
     # cleanup; provenance belongs in separate fields, not a word blacklist.
     import re as _vl_re
     from stratagem_turn import control as _sg_control
-    _sg_control(g)  # legacy clients still honor an owner control at first server contact
+    if not replay:
+        _sg_control(g)  # legacy clients still honor an owner control at first server contact
     import stratagem as _sg_client
     v = _sg_client.consume(v, "voice")
     import stratagem_realtime as _sg_realtime
@@ -9103,7 +9266,7 @@ async def _voice_ledger_owned(payload: dict):
                 return {"ok": True, "duplicate": True}
             if client_session:
                 sess["client_session_id"] = client_session
-            _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
+            _turn = {"t": (str(payload.get("t") or "") if replay else "") or _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
             playback = payload.get("playback_state", "unknown")
             _turn["playback_state"] = playback if playback in ("completed", "partial", "not_played", "unknown") else "unknown"
             _turn["playback_evidence"] = "client_report" if "playback_state" in payload else "absent"
@@ -9148,7 +9311,7 @@ async def _voice_ledger_owned(payload: dict):
                 return {"ok": False, "refused": "session closing"}
             sess.setdefault("turns", []).append(_turn)
             sess["last_turn"] = time.time()
-            sess.setdefault("started_at", _vl_d.datetime.now().isoformat())
+            sess.setdefault("started_at", (str(payload.get("started_at") or "") if replay else "") or _vl_d.datetime.now().isoformat())
             sess["state"] = "active"
             from store_guard import write_json
             write_json(sp, sess)
@@ -9169,18 +9332,9 @@ async def _voice_ledger_owned(payload: dict):
             # new, non-interrupted turn — duplicates and closing/foreign sessions have
             # already returned above, and test mode skips this whole branch.
             try:
-                _fire_text = v
-                if _fire_text and not payload.get("interrupted") and _vl_re.search(r"\[(?:DO|TOUCH):", _fire_text, _vl_re.I):
-                    import threading as _fr_th
-                    def _fire_voice(_t=_fire_text):
-                        try:
-                            import sys as _fs; _fs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                            from device_patterns import fire_his_intent as _vfhi
-                            import turn_coordinator as _vtc
-                            _vfhi(_t, context=_sg_context or _vtc.effect_context("voice"))
-                        except Exception as _fe:
-                            print("[voice-fire]", _fe, flush=True)
-                    _fr_th.Thread(target=_fire_voice, daemon=True).start()
+                if v and not replay and not payload.get("interrupted"):
+                    import turn_coordinator as _vtc
+                    _voice_fire_tags(v, _sg_context or _vtc.effect_context("voice"))
             except Exception as _fe0:
                 print("[voice-fire] setup", _fe0, flush=True)
     except Exception as _vle:
@@ -9227,52 +9381,24 @@ async def _voice_ledger_owned(payload: dict):
             _pj.dump(_s2, open(sp2, "w"), indent=2)
     except Exception: pass
 
-    # LEAD: recompute the direction he is choosing to move them in, OFF the hot path,
-    # at most once per cadence. Stashed at .voice-lead.json for intent_context to inject
-    # next turn. select_target is a frontier call (has a cost) — the cadence bounds it.
-    try:
-        if not _test_mode_active():
-            import threading as _ld_th, time as _ld_t, json as _ld_j
-            _lp = os.path.join(MEMORY, ".voice-lead.json")
-            _LEAD_CADENCE = 120   # seconds; raise to spend less, lower for a fresher lead
-            try: _prev = _ld_j.load(open(_lp))
-            except Exception: _prev = {}
-            _attempt_path = os.path.join(MEMORY, ".voice-lead-attempt.json")
-            try: _attempt = _ld_j.load(open(_attempt_path))
-            except Exception: _attempt = {}
-            if _ld_t.time() - max(float(_prev.get("at", 0)), float(_attempt.get("at", 0))) > _LEAD_CADENCE:
-                # Bound worker starts without making an old candidate look fresh.
-                from store_guard import write_json as _lead_write
-                _lead_write(_attempt_path, {"at": _ld_t.time()})
-                def _ld_work(_g=g):
-                    try:
-                        import sys as _lds; _lds.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                        from intent_engine import select_target as _seltgt, resolve_previous as _resolve_spoken_intent
-                        _resolve_spoken_intent()  # only inputs captured on actual voice admission, never this reply itself
-                        _turns = (_ld_j.load(open(os.path.join(MEMORY, "voice-session-state.json"))).get("turns") or [])[-6:]
-                        _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
-                        # background lead recompute reads campaign state but does NOT step it —
-                        # the foreground spoken turn is the one that advances it (Gloria, 2026-09-18)
-                        # nor is it a turn for the priority vector's neglect count (16 October)
-                        try:
-                            import priority_vector as _ldpv; _ld_bg = _ldpv.background()
-                        except Exception:
-                            import contextlib as _ldcl; _ld_bg = _ldcl.nullcontext()
-                        with _ld_bg:
-                            _tg = _seltgt(_recent + "\nPREPARE FOR THE NEXT VOICE TURN (her next words are not known yet).",
-                                          resolve=False, step_campaign=False, persist=False)
-                        if _tg:
-                            _lead_write(_lp, {"at": _ld_t.time(), "target": _tg})
-                    except Exception as _lde:
-                        print("[voice-lead]", _lde, flush=True)
-                _ld_th.Thread(target=_ld_work, daemon=True).start()
-    except Exception: pass
+    if not replay:
+        try: _voice_lead_kick()
+        except Exception as _lke: print("[voice-lead] kick", _lke, flush=True)
 
     return {"ok": True}
 
 
 @app.post("/api/voice/session-end")
 async def voice_session_end(payload: dict = None):
+    if payload and payload.get("ladder_call"):
+        # a call he started: nothing is written to his memory now; the transcript waits for her yes or no
+        try:
+            import attention_call as _vse_ac
+            rec = _vse_ac.end(str(payload.get("ladder_call")), payload.get("duration_seconds") or 0)
+        except Exception as _vse_ace:
+            print("[voice-session-end] ladder call:", str(_vse_ace)[:160], flush=True)
+            rec = None
+        return {"ok": True, "held": bool(rec), "awaiting": "her yes or no" if rec and rec.get("save") == "pending" else None}
     from store_guard import transaction
     with transaction(os.path.join(MEMORY,"voice-finalization")):
         return await _voice_session_end_owned(payload)
@@ -9453,6 +9579,140 @@ async def _voice_session_end_owned(payload: dict = None):
         except Exception: pass
     return {"ok": True, "quotes": quotes, "felt_summary": felt_summary, "summary": text_summary,
             "persisted": _block_persisted}
+
+
+# ---- the attention ladder: the Tune tab, the push buttons, his call (attention_ladder.py, 27 October) ----------
+@app.get("/api/attention/config")
+async def attention_config_read(request: Request):
+    _require_secret(request)
+    import attention_ladder as _at
+    st = _at.status()
+    cfg = st["config"]
+    return {"settings": {k: cfg[k] for k in _at.TUNABLE}, "lanes": [{"id": k, "name": v} for k, v in __import__("attention_call").LANE_NAMES.items()],
+            "reason": st.get("reason"), "chain": bool(st.get("chain")), "snooze_until": st.get("snooze_until"),
+            "rest_until": st.get("rest_until"), "call": st.get("call")}
+
+
+@app.post("/api/attention/config")
+async def attention_config_write(payload: dict, request: Request):
+    _require_secret(request)
+    import attention_ladder as _at
+    try:
+        cfg = _at.set_config(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "settings": {k: cfg[k] for k in _at.TUNABLE}}
+
+
+@app.post("/api/attention/answer/{token}/{action}")
+async def attention_answer_button(token: str, action: str):
+    """ntfy's buttons: her phone posts here itself. The token is the chain's (or his ringing call's) random one."""
+    import attention_ladder as _at
+    if _test_mode_active():
+        return {"ok": False, "why": "test mode"}
+    out = _at.button(action, token=token, by="push button")
+    if not out.get("ok"):
+        raise HTTPException(status_code=410, detail=out.get("why"))
+    return out
+
+
+@app.post("/api/attention/answer")
+async def attention_answer_app(payload: dict, request: Request):
+    _require_secret(request)
+    import attention_ladder as _at
+    return _at.button(str(payload.get("action") or ""), by="app")
+
+
+@app.get("/api/attention/call")
+async def attention_call_ringing(request: Request):
+    """What her app polls: his call, if it is ringing, and how many of his calls wait for her yes or no."""
+    _require_secret(request)
+    import attention_ladder as _at, attention_call as _ac
+    return _ac.status(ring_minutes=_at.config()["ring_minutes"])
+
+
+@app.post("/api/attention/call/{call_id}/answer")
+async def attention_call_answer(call_id: str, request: Request):
+    _require_secret(request)
+    import attention_ladder as _at
+    try:
+        rec = _at.call_answer(call_id)
+    except ValueError:
+        rec = None
+    if not rec:
+        raise HTTPException(status_code=410, detail="that call is no longer ringing")
+    return {"ok": True, "id": rec["id"], "lane": rec["lane"], "client_session_id": rec["client_session_id"]}
+
+
+@app.post("/api/attention/call/{call_id}/opening")
+async def attention_call_opening(call_id: str, payload: dict, request: Request):
+    """His opening line on a realtime lane, before it plays: the same cleaning his replies get (private markup
+    consumed), and only while the call is live."""
+    _require_secret(request)
+    import attention_call as _ac
+    try:
+        rec = _ac.live(call_id)
+    except ValueError:
+        rec = None
+    reply = str(payload.get("reply") or "")
+    if not rec:
+        return {"allowed": False, "reply": ""}
+    import stratagem as _ac_sg
+    cleaned = _ac_sg.consume(reply, "voice")
+    return {"allowed": True, "reply": cleaned, "changed": cleaned != reply}
+
+
+@app.get("/api/attention/calls")
+async def attention_calls_pending(request: Request):
+    """His calls that are over and wait for her: the transcript, and the question."""
+    _require_secret(request)
+    import attention_call as _ac
+    return {"calls": _ac.pending()}
+
+
+@app.post("/api/attention/calls/{call_id}/save")
+async def attention_call_save(call_id: str, payload: dict, request: Request):
+    """Her answer to "save this call to his memory?". Yes: the held turns go through the very ledger and session
+    end every call uses. No: the transcript is deleted; a row without words remains."""
+    _require_secret(request)
+    import attention_call as _ac
+    try:
+        rec = _ac.held_turns(call_id)
+    except ValueError:
+        rec = None
+    if not rec:
+        raise HTTPException(status_code=404, detail="no call waiting for your answer")
+    if payload.get("save") is not True:
+        _ac.decided(call_id, False)
+        return {"ok": True, "saved": False}
+    return await _attention_call_replay(rec)
+
+
+async def _attention_call_replay(rec):
+    import json as _acr_j
+    from store_guard import transaction
+    with transaction(os.path.join(MEMORY, "voice-finalization")):
+        sp = os.path.join(MEMORY, "voice-session-state.json")
+        try:
+            live_sess = _acr_j.load(open(sp))
+        except (OSError, ValueError):
+            live_sess = {}
+        if live_sess.get("turns"):
+            return {"ok": False, "saved": False, "why": "another call is still being written; ask again in a minute"}
+        if _test_mode_active():
+            return {"ok": False, "saved": False, "why": "test mode: nothing is written to his memory"}
+        client = "%s%s-saved" % (__import__("attention_call").CLIENT_PREFIX, rec["id"])
+        started = rec.get("answered")
+        started_iso = __import__("datetime").datetime.fromtimestamp(started).isoformat() if started else ""
+        for t in rec.get("turns") or []:
+            turn = {k: v for k, v in t.items() if k not in ("event_id",)}
+            turn.update({"client_session_id": client, "started_at": started_iso})
+            await _voice_ledger_owned(turn, replay=True)
+        out = await _voice_session_end_owned({"client_session_id": client,
+                                              "duration_seconds": rec.get("duration_seconds") or 0})
+    import attention_call as _ac
+    _ac.decided(rec["id"], True, persisted=bool(out.get("persisted")))
+    return {"ok": bool(out.get("persisted")), "saved": bool(out.get("persisted")), "summary": out.get("summary", "")}
 
 
 @app.get("/api/voice/pending-speech")
