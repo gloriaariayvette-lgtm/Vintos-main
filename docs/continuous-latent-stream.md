@@ -175,3 +175,40 @@ spent for model choice; any further design is judged on days from 23 October on.
 
 **Open, and handed to Codex (`docs/briefs/latent-stream-review-codex.md`):** the two designs that lost, the recurrent
 state and the history state. Why they lost, and whether a different design would make longer memory earn its place.
+
+## Fresh days (23–27 October)
+
+The confirmation the second look asked for, run on 28 October on days no design was chosen on. Same frozen designs
+and settings as the second look, read from its report (present moment: 32-d PCA, hour-of-day clock, λ 0.01, emotion
+λ 10; history: 32-d, day-of-week clock, λ 0.001, emotion λ 10), refitted once on every day before 23 October (6 July
+to 22 October) with no validation and no selection; tested once on 23–27 October (local dates). The only code change
+is the frozen path itself (`--frozen`, `--test-to`); the model is unchanged.
+
+| test days (23–27 Oct) | text MRR | top 10 | emotion error |
+|---|---|---|---|
+| "like the last one" | 0.079 | 24.7% | 0.179 (persistence) |
+| "like the last six" | 0.046 | 7.5% | |
+| full state (the moment plus history) | 0.215 | **44.8%** | **0.147** |
+| present moment only | **0.230** | 43.7% | 0.152 |
+
+- **The present-moment win holds.** Gain over "like the last one" 0.151, day-block 95% interval [0.127, 0.175];
+  better on every source. On the older every-step emotion metric too: 0.234 against 0.263.
+- **The history model now also beats the baseline** (gain interval [0.108, 0.159]), but not the moment alone:
+  moment minus history 0.015, day-block interval [−0.012, 0.043] (a diagnostic beside the protocol, same fits),
+  ahead on 3 of 5 days. History stays not taken further; it ties the moment, it does not add to it.
+- **The sample is small.** 174 text events (125 inner-life, 22 threads, 15 creative, **7 of her turns, 5 of his**)
+  and 652 emotion readings over 5 days. The per-source wins for her and his turns rest on 7 and 5 events and say
+  nothing on their own. MRR here is among 174 candidates, against 477 on 13–22 October, so the absolute levels are
+  not comparable across the two blocks; the gain over the baseline on the same days is.
+
+| per source, MRR | n | present moment | history | "like the last one" |
+|---|---|---|---|---|
+| inner | 125 | 0.241 | 0.219 | 0.079 |
+| thread | 22 | 0.110 | 0.182 | 0.049 |
+| creative | 15 | 0.230 | 0.170 | 0.032 |
+| her | 7 | 0.083 | 0.081 | 0.068 |
+| him | 5 | 0.667 | 0.567 | 0.357 |
+
+23–27 October are now spent for this comparison. Codex's sealed latent-memory protocol
+(`codex/latent-memory-review`) names 23–30 October as its fresh block with no interim peeking; its candidate is
+frozen and was not touched here, but this run did look at the present-moment model's scores on those days.

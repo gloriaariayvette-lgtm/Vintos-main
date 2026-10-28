@@ -236,7 +236,7 @@ def design(events, X, E, is_t, is_e, sp, dz, clock, history, emo_mu, emo_sd):
     return Z, H, LAST, MEAN6
 
 
-def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=200, log=print, export_selected=False):
+def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=200, log=print, export_selected=False, frozen=None):
     os.makedirs(out, exist_ok=True)
     coverage, unseen = manifest(events, val_from, test_from, out)
     X, E, is_t, is_e = arrays(events)
@@ -249,43 +249,63 @@ def run(events, out, val_from=VAL_FROM, test_from=TEST_FROM, grid=None, steps=20
     TID = text_ids(X)
     tsets = {s: [i for i in range(1, T) if is_t[i] and sp[i] == s] for s in ("train", "val", "test")}
     esets = {s: [i for i in range(1, T) if is_e[i] and sp[i] == s and LASTE[i - 1].any()] for s in ("train", "val", "test")}
-    grid = grid or [(dz, clock, lam) for dz in (32, 64) for clock in ("none", "hour", "week") for lam in (1.0, 0.1, 0.01, 0.001)]
     results, cache = [], {}
-    for history in (True, False):
-        for dz, clock, lam in grid:
-            key = (dz, clock, history)
-            if key not in cache:
-                cache[key] = design(events, X, E, is_t, is_e, sp, dz, clock, history, emo_mu, emo_sd)
+    if frozen:   # confirmation on fresh days: the designs chosen earlier, refitted on training days only; no
+        # grid, no validation, no selection (28 October)
+        for d in frozen:
+            key = (d["dz"], d["clock"], d["history"])
+            cache[key] = design(events, X, E, is_t, is_e, sp, d["dz"], d["clock"], d["history"], emo_mu, emo_sd)
             Z, H, LAST, MEAN6 = cache[key]
-            fit = fit_text(H, LAST, MEAN6, X, Z, tsets["train"], tsets["train"], src, lam, steps=steps, tid=TID)
-            v, _ = rank_eval(text_scores(fit, H, LAST, MEAN6, X, Z, tsets["val"], tsets["val"]), X, tsets["val"], tsets["val"])
-            best_e = None
-            for le in (100.0, 10.0, 1.0, 0.1):
-                Bm = fit_emotion(H, LASTE, E, esets["train"], le, emo_sd)
-                ev = emo_eval(Bm, H, LASTE, E, esets["val"], emo_sd)
-                if best_e is None or ev["model"] < best_e[1]["model"]: best_e = (le, ev, Bm)
-            row = {"history": history, "dz": dz, "clock": clock, "lam": lam, "val_text": v, "emotion_lam": best_e[0],
-                   "val_emotion": best_e[1], "beta": round(fit["beta"], 3), "gamma": round(fit["gamma"], 3)}
-            results.append((row, fit, best_e[2]))
-            log("%-7s dz=%-3d clock=%-5s lam=%-6g  val MRR %.4f top10 %.3f | emotion %.4f vs %.4f" % (
-                "full" if history else "ablate", dz, clock, lam, v["mrr"], v["top10"], best_e[1]["model"], best_e[1]["persistence"]))
-    # the baselines on the validation days, same events
-    Z0, H0, LAST0, MEAN60 = cache[(grid[0][0], grid[0][1], True)]
-    base = lambda b, g: rank_eval(b * (LAST0[[j - 1 for j in tsets["val"]]] @ X[tsets["val"]].T)
-                                  + g * (MEAN60[[j - 1 for j in tsets["val"]]] @ X[tsets["val"]].T), X, tsets["val"], tsets["val"])[0]
-    val_base = {"last_one": base(1, 0), "mean_last_six": base(0, 1)}
-    def choose(history):
-        ok = [r for r in results if r[0]["history"] == history and r[0]["val_emotion"]["model"] < r[0]["val_emotion"]["persistence"]]
-        return max(ok, key=lambda r: r[0]["val_text"]["mrr"]) if ok else None
-    chosen, ablation = choose(True), choose(False)
-    report = {"coverage": coverage, "unseen_in_train_or_val": unseen, "val_baselines": val_base,
-              "grid": [r[0] for r in results],
-              "note": "informed follow-up: the test days were seen in the first design's three runs"}
-    if not chosen:
-        report["verdict"] = "no design beat emotion persistence on the validation days: it fails validation"
-        json.dump(report, open(os.path.join(out, "linear-result.json"), "w"), indent=2, default=float)
-        return report
-    report["validation_qualifies"] = chosen[0]["val_text"]["mrr"] > max(val_base["last_one"]["mrr"], val_base["mean_last_six"]["mrr"])
+            fit = fit_text(H, LAST, MEAN6, X, Z, tsets["train"], tsets["train"], src, d["lam"], steps=steps, tid=TID)
+            Bm = fit_emotion(H, LASTE, E, esets["train"], d["emotion_lam"], emo_sd)
+            row = {**{k: d[k] for k in ("history", "dz", "clock", "lam", "emotion_lam")},
+                   "beta": round(fit["beta"], 3), "gamma": round(fit["gamma"], 3)}
+            results.append((row, fit, Bm))
+            log("frozen %-6s dz=%-3d clock=%-5s lam=%-6g emotion_lam=%g  beta %.3f gamma %.3f" % (
+                "full" if d["history"] else "ablate", d["dz"], d["clock"], d["lam"], d["emotion_lam"], fit["beta"], fit["gamma"]))
+        chosen = next((r for r in results if r[0]["history"]), None)
+        ablation = next((r for r in results if not r[0]["history"]), None)
+        report = {"coverage": coverage, "unseen_in_train_or_val": unseen, "frozen": [r[0] for r in results],
+                  "note": "confirmation: frozen designs, no selection; training is every day before the test days"}
+        if not chosen:
+            raise ValueError("frozen run needs a history design to report beside its ablation")
+    else:
+        grid = grid or [(dz, clock, lam) for dz in (32, 64) for clock in ("none", "hour", "week") for lam in (1.0, 0.1, 0.01, 0.001)]
+        for history in (True, False):
+            for dz, clock, lam in grid:
+                key = (dz, clock, history)
+                if key not in cache:
+                    cache[key] = design(events, X, E, is_t, is_e, sp, dz, clock, history, emo_mu, emo_sd)
+                Z, H, LAST, MEAN6 = cache[key]
+                fit = fit_text(H, LAST, MEAN6, X, Z, tsets["train"], tsets["train"], src, lam, steps=steps, tid=TID)
+                v, _ = rank_eval(text_scores(fit, H, LAST, MEAN6, X, Z, tsets["val"], tsets["val"]), X, tsets["val"], tsets["val"])
+                best_e = None
+                for le in (100.0, 10.0, 1.0, 0.1):
+                    Bm = fit_emotion(H, LASTE, E, esets["train"], le, emo_sd)
+                    ev = emo_eval(Bm, H, LASTE, E, esets["val"], emo_sd)
+                    if best_e is None or ev["model"] < best_e[1]["model"]: best_e = (le, ev, Bm)
+                row = {"history": history, "dz": dz, "clock": clock, "lam": lam, "val_text": v, "emotion_lam": best_e[0],
+                       "val_emotion": best_e[1], "beta": round(fit["beta"], 3), "gamma": round(fit["gamma"], 3)}
+                results.append((row, fit, best_e[2]))
+                log("%-7s dz=%-3d clock=%-5s lam=%-6g  val MRR %.4f top10 %.3f | emotion %.4f vs %.4f" % (
+                    "full" if history else "ablate", dz, clock, lam, v["mrr"], v["top10"], best_e[1]["model"], best_e[1]["persistence"]))
+        # the baselines on the validation days, same events
+        Z0, H0, LAST0, MEAN60 = cache[(grid[0][0], grid[0][1], True)]
+        base = lambda b, g: rank_eval(b * (LAST0[[j - 1 for j in tsets["val"]]] @ X[tsets["val"]].T)
+                                      + g * (MEAN60[[j - 1 for j in tsets["val"]]] @ X[tsets["val"]].T), X, tsets["val"], tsets["val"])[0]
+        val_base = {"last_one": base(1, 0), "mean_last_six": base(0, 1)}
+        def choose(history):
+            ok = [r for r in results if r[0]["history"] == history and r[0]["val_emotion"]["model"] < r[0]["val_emotion"]["persistence"]]
+            return max(ok, key=lambda r: r[0]["val_text"]["mrr"]) if ok else None
+        chosen, ablation = choose(True), choose(False)
+        report = {"coverage": coverage, "unseen_in_train_or_val": unseen, "val_baselines": val_base,
+                  "grid": [r[0] for r in results],
+                  "note": "informed follow-up: the test days were seen in the first design's three runs"}
+        if not chosen:
+            report["verdict"] = "no design beat emotion persistence on the validation days: it fails validation"
+            json.dump(report, open(os.path.join(out, "linear-result.json"), "w"), indent=2, default=float)
+            return report
+        report["validation_qualifies"] = chosen[0]["val_text"]["mrr"] > max(val_base["last_one"]["mrr"], val_base["mean_last_six"]["mrr"])
 
     # ---- the test days, once, for the frozen choice (and the predeclared ablation)
     def on_test(choice):
@@ -363,21 +383,30 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--days", type=int, default=365, help="history to use; everything before validation trains")
     ap.add_argument("--val-from", default=VAL_FROM); ap.add_argument("--test-from", default=TEST_FROM)
+    ap.add_argument("--frozen", default=None, help="an earlier linear-result.json: refit its two designs, no selection")
+    ap.add_argument("--test-to", default=None, help="last test day, inclusive (local date); later events are dropped")
     a = ap.parse_args()
     out = a.out or tempfile.mkdtemp(prefix="latent-stream-linear-")
     t0 = time.time()
     ev = R.build_stream()
     ev = [e for e in ev if e["t"] >= datetime.now(timezone.utc) - timedelta(days=a.days)]
+    if a.test_to:
+        ev = [e for e in ev if e["t"].astimezone().date().isoformat() <= a.test_to]
     sys.path.insert(0, os.path.join(R.WS, "scripts"))
     from jepa_predictor import encoder
     enc = encoder()
     ev = R.embed_texts(ev, lambda texts: enc.encode(texts, batch_size=32), os.path.join(out, "text-vectors.jsonl"))
     print("stream: %d events, %s; embedded in %.0f s" % (len(ev), dict(Counter(e["source"] for e in ev)), time.time() - t0))
-    rep = run(ev, out, a.val_from, a.test_from, export_selected=True)
+    frozen = None
+    if a.frozen:
+        old = json.load(open(a.frozen))
+        frozen = [old["test"]["design"], old["test_history_ablation"]["design"]]
+        a.val_from = a.test_from   # no validation days: everything before the test days trains
+    rep = run(ev, out, a.val_from, a.test_from, export_selected=not frozen, frozen=frozen)
     print("\ncoverage by split:", json.dumps(rep["coverage"]))
     if rep.get("unseen_in_train_or_val"):
         print("NOT SEEN in training or validation (a shared fallback covers them):", rep["unseen_in_train_or_val"])
-    print("validation baselines:", json.dumps(rep["val_baselines"]))
+    print("validation baselines:", json.dumps(rep.get("val_baselines")))
     for k in ("test", "test_history_ablation"):
         if rep.get(k):
             print("\n== %s ==" % k); print(json.dumps({x: y for x, y in rep[k].items() if x != "most_surprising"}, indent=1))

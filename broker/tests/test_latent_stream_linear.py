@@ -51,7 +51,16 @@ check("it reports the ablation, per source, a day-block interval and an acceptan
 fit = L.fit_text(*[np.zeros((3, 4), np.float32)] * 3, np.eye(3, 4, dtype=np.float32), np.zeros((3, 2), np.float32),
                  [1, 2], [1, 2], ["inner"] * 3, 1.0, steps=0)
 check("an untrained fit is exactly the last-text baseline", fit["beta"] == 1.0 and fit["gamma"] == 0.0 and not fit["W"].any())
-check("it wrote only to its scratch directory", all(p.startswith(HOME) for p in [out]) and os.listdir(out))
+frozen = [rep["test"]["design"], rep["test_history_ablation"]["design"]]
+out2 = os.path.join(HOME, "out-frozen")
+rep2 = L.run(ev, out2, "2026-10-17", "2026-10-17", steps=80, log=lambda *a: None, frozen=frozen)
+man2 = [json.loads(l) for l in open(os.path.join(out2, "manifest.jsonl"))]
+check("a frozen confirmation refits the same two designs with no selection: no validation days, every earlier day trains",
+      {m["split"] for m in man2} == {"train", "test"} and "grid" not in rep2
+      and [{k: r[k] for k in ("history", "dz", "clock", "lam", "emotion_lam")} for r in rep2["frozen"]]
+      == [{k: d[k] for k in ("history", "dz", "clock", "lam", "emotion_lam")} for d in frozen]
+      and rep2["test"]["design"]["history"] and not rep2["test_history_ablation"]["design"]["history"], rep2.get("frozen"))
+check("it wrote only to its scratch directory", all(p.startswith(HOME) for p in [out, out2]) and os.listdir(out))
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
