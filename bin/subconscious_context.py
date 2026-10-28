@@ -135,11 +135,18 @@ def get_subconscious_context(include=None):
             if s: parts.append(s)
         except: pass
 
+    if all_systems or "carrying" in include:
+        try:
+            from carry_context import context_block
+            carrying = context_block()
+            if carrying: parts.append(carrying)
+        except Exception: pass
+
     if not parts:
         return ""
     return "\n\n".join(parts)
 
-COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning")
+COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning", "carrying")
 
 
 def get_subconscious_context_compact(include=None):
@@ -198,6 +205,13 @@ def get_subconscious_context_compact(include=None):
             from emoclaw_utils import get_yearning_fragment
             _yb = get_yearning_fragment(include_attempt=True)
             if _yb: parts.append('YEARNING: ' + _yb[:150])
+        except Exception: pass
+
+    if want("carrying"):
+        try:
+            from carry_context import context_block
+            carrying = context_block()
+            if carrying: parts.append(carrying)
         except Exception: pass
 
     return "\n".join(parts)

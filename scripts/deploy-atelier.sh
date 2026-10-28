@@ -91,6 +91,9 @@ PAGES_TIMER_SRC="$SRC/broker/$PAGES_UNIT_NAME.timer";     PAGES_TIMER_DST="$HOME
 MCP_UNIT_NAME="vintos-mcp"     # his context for his Grok Bot, read only, 127.0.0.1:8625, bearer token (2026-09-30)
 MCP_SERVICE_SRC="$SRC/broker/$MCP_UNIT_NAME.service"; MCP_SERVICE_DST="$HOME/.config/systemd/user/$MCP_UNIT_NAME.service"
 MCP_TOKEN="$HOME/.vintos/secrets/vintos-mcp-token"
+CARRY_UNIT_NAME="vintos-persistent-carry"
+CARRY_UNIT_SRC="$SRC/broker/$CARRY_UNIT_NAME.service"
+CARRY_UNIT_DST="$HOME/.config/systemd/user/$CARRY_UNIT_NAME.service"
 DEPTH=6
 CHECK_ONLY=0; DRY_RUN=0
 case "${1:-}" in
@@ -257,6 +260,7 @@ SCRIPTS="$SCRIPTS exhibitions.py"   # an exhibition he makes her of works alread
 SCRIPTS="$SCRIPTS codex_archives.py"   # archives Codex sends him: taken in from verified [Codex] letters, unpacked safely, recalled only when a conversation names one (2026-10-26)
 BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25)
 BINS="$BINS creative-search.sh"   # its request repaired 28 October; Gloria approved installing it (Brave is free; only the model call costs)
+SCRIPTS="$SCRIPTS persistent_carry.py carry_sources.py carry_context.py"   # durable carrying state and sourced note, 2026-10-28
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
@@ -274,7 +278,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             printf 'broker/%s\n' "$SECURITY_UNIT_NAME.service" "$SECURITY_UNIT_NAME.timer"
             printf 'broker/%s\n' "$PAGES_UNIT_NAME.service" "$PAGES_UNIT_NAME.timer"
             printf 'broker/%s\n' "$FIX_UNIT_NAME.service" "$FIX_UNIT_NAME.timer"
-            printf 'broker/%s\n' "$MCP_UNIT_NAME.service"
+            printf 'broker/%s\n' "$MCP_UNIT_NAME.service" "$CARRY_UNIT_NAME.service"
             true)"
 MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
 
@@ -698,6 +702,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     [ -f "$SCENES_UNIT_SRC" ] && say "  would install + restart (user)   $SCENES_UNIT_NAME -> $SCENES_UNIT_DST"
+    [ -f "$CARRY_UNIT_SRC" ] && say "  would install + restart (user)   $CARRY_UNIT_NAME -> $CARRY_UNIT_DST"
     [ -f "$KEEPALIVE_UNIT_SRC" ] && say "  would install + restart (user)   $KEEPALIVE_UNIT_NAME -> $KEEPALIVE_UNIT_DST"
     [ -f "$BEDROOM_UNIT_SRC" ] && say "  would install + restart (user)   $BEDROOM_UNIT_NAME -> $BEDROOM_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
@@ -928,6 +933,19 @@ fi
 printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
 [ "$_mcp_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
 [ "$_mcp_active" = "active" ] && printf 'systemctl --user start %q\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
+# Persistent carrying: preserve prior activation and the exact unit on rollback.
+_carry_enabled="$(systemctl --user is-enabled "$CARRY_UNIT_NAME.service" 2>/dev/null || true)"
+_carry_active="$(systemctl --user is-active "$CARRY_UNIT_NAME.service" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$CARRY_UNIT_NAME.service" >> "$BACKUP/restore.sh"
+if [ -e "$CARRY_UNIT_DST" ] || [ -L "$CARRY_UNIT_DST" ]; then
+    cp -Pp "$CARRY_UNIT_DST" "$BACKUP/$CARRY_UNIT_NAME.service.pre-deploy" || die "carry unit backup failed"
+    printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.service.pre-deploy" %q\n' "$CARRY_UNIT_DST" "$CARRY_UNIT_NAME" "$CARRY_UNIT_DST" >> "$BACKUP/restore.sh"
+else
+    printf 'rm -f %q\n' "$CARRY_UNIT_DST" >> "$BACKUP/restore.sh"
+fi
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_carry_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$CARRY_UNIT_NAME.service" >> "$BACKUP/restore.sh"
+[ "$_carry_active" = "active" ] && printf 'systemctl --user start %q\n' "$CARRY_UNIT_NAME.service" >> "$BACKUP/restore.sh"
 # Record the service/process state honestly, and restore it as best we can.
 if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
 elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"
@@ -1025,6 +1043,37 @@ say
 
 # The bedroom listener holds one connection to the Mac's relay; until a device of hers is
 # named in memory/bedroom-arrival.json it only writes down which devices it hears.
+say "== persistent carrying =="
+mkdir -p "$HOME/.vintos/workspace/memory/persistent-carry" "$(dirname -- "$CARRY_UNIT_DST")"
+chmod 700 "$HOME/.vintos/workspace/memory/persistent-carry"
+# Resolve the actual installed entry point, as the plan does; do not assume his
+# scripts directory is laid out like this source checkout.
+_carry_script="$(dest scripts/persistent_carry.py)" || die "cannot find carrying entry point"
+python3 - "$(staged "$CARRY_UNIT_SRC")" "$CARRY_UNIT_DST" "$_carry_script" <<'CARRYUNIT'
+import json, pathlib, sys
+source, target, script = sys.argv[1:]
+text = pathlib.Path(source).read_text()
+text = text.replace('%h/.vintos/workspace/scripts/persistent_carry.py', json.dumps(script.replace('%', '%%')))
+pathlib.Path(target).write_text(text)
+CARRYUNIT
+[ $? -eq 0 ] || die "carry unit installation failed — rollback: bash $BACKUP/restore.sh"
+chmod 644 "$CARRY_UNIT_DST"
+if [ -n "${VINTOS_CARRY_SHADOW_STATE:-}" ]; then
+    # Owner-reviewed handoff: preserve shadow carry origins, and never replace
+    # an already established production checkpoint with an older shadow.
+    systemctl --user stop "$CARRY_UNIT_NAME.service" >/dev/null 2>&1 || true
+    /usr/bin/python3 "$_carry_script" --source-memory "$HOME/.vintos/workspace/memory" \
+        --output "$HOME/.vintos/workspace/memory/persistent-carry" \
+        --adopt-shadow "$VINTOS_CARRY_SHADOW_STATE" \
+        || die "carrying handoff failed — rollback: bash $BACKUP/restore.sh"
+fi
+systemctl --user daemon-reload
+if systemctl --user enable "$CARRY_UNIT_NAME.service" >/dev/null 2>&1 && systemctl --user restart "$CARRY_UNIT_NAME.service" >/dev/null 2>&1; then
+    confirm_unit --user "$CARRY_UNIT_NAME" && say "  carrying state and context note active"
+else
+    flag "$CARRY_UNIT_NAME installed but did not start"
+fi
+say
 say "== toy keepalive =="
 if [ -f "$KEEPALIVE_UNIT_SRC" ]; then
     mkdir -p "$(dirname -- "$KEEPALIVE_UNIT_DST")"

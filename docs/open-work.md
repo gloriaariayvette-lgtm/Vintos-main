@@ -1,26 +1,16 @@
-## 28 October — persistence sprint in scratch (Codex, review branch)
+## 28 October — persistent carrying state running in shadow
 
-`codex/persistence-sprint` starts from `7b859dad`; implementation and each round
-are in [the sprint log](persistence-sprint-log.md). Eight CPU rounds completed,
-13,999 parameters each. None beats the strongest six-hour development control;
-state-only pretraining is closest, still 2.60% worse on reused validation.
-Small text validation gains are not fresh evidence. Final Aegis validation: 542/542
-broker suites pass; 18/18 focused contracts and four CPU-runtime tests pass, with
-one existing optional SDK test internally skipped. No live feed or head changed.
+Gloria replaced the forecasting goal. `codex/persistence-sprint` now implements
+an always-on selective carrying state and a sourced note for normal context and
+First Light. No existing feeds are removed, muted or gated. The worker is running
+in private Aegis scratch; live context remains unchanged pending Claude Code review
+and owner approval. See [implementation and acceptance](persistent-carry-shadow.md)
+and [round log](persistence-sprint-log.md).
 
-All eight candidates and exact evaluation code are sealed in Aegis private
-scratch for **31 October–6 November**, selected primary candidate 7. Strong
-present/history/semantic controls, 5% practical gain, paired-day intervals,
-sequential weekly alpha spending and text noninferiority are fixed in advance.
-No fresh score has been read. A daily 09:00 Chicago Codex continuation keeps the
-round log, preregisters future weeks and evaluates only after closure. The older
-23–29 October candidate remains byte-for-byte sealed, with its scheduled
-comparison explicitly labeled overlapping/exposed after Claude's incumbent run.
-
-Still open: reliable arrival adapters for mutable dream/thread history,
-independent continuity labels, the sealed fresh evaluation and subsequent review.
-No merge or deployment is authorized. A future winner only permits proposing
-its shadow-week audit and later single-consumer holdout for Gloria's approval.
+Open: actual across-day observations, full Aegis suite receipt, Claude Code review,
+then owner release and ordinary-use continuity assessment. The earlier eight-round
+forecast competition and its proposed weekly score windows are superseded. The
+old scheduled forecasting evaluation is paused; archived weights stay untouched.
 
 ## 27 October — A ladder to call her back
 

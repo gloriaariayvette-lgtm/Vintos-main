@@ -1,5 +1,31 @@
 # Persistence sprint
 
+## 28 October — goal changed: working carry, not forecast competition
+
+Gloria explicitly replaced the objective. All forecasting rounds below are archival;
+their future score windows no longer direct this sprint. Paused the old sealed
+forecast automation and rewrote the daily continuation around actual carrying state.
+No historical checkpoint was modified or rescored.
+
+Built the transparent selective recurrence, current-source validation, durable carry
+origins, private shadow worker, full/compact context block and First Light prompt
+path. Preserved all existing feeds. Added standard owner deployment/rollback and
+an explicit handoff that inherits the shadow checkpoint without overwriting a live
+one. Details and human acceptance criteria: `persistent-carry-shadow.md`.
+
+Aegis shadow started 28 October in `/tmp/persistent-carry-shadow-20261028-gDEKoUTQ`.
+Initial working-path evidence: 190 admitted records, three selected, 664-character
+note, no unavailable sources, all 190 carry origins preserved across controlled
+restart. Source files unchanged; live readers do not see shadow. Actual context
+and First Light assembly were checked with provider stubs. These are minutes on
+one actual calendar day, not a claim of multi-day lived continuity.
+
+31 new OS-isolated tests pass under Aegis `/usr/bin/python3.12`, NumPy/requests
+without SciPy. Full-suite receipt will be recorded after the final implementation
+snapshot is tested. No merge, production service installation, live send or paid call.
+
+## Earlier forecasting rounds — superseded historical record
+
 ## 28 October — round 0: contract and capture
 
 Started from deploy branch `7b859dad`, on `codex/persistence-sprint`, following

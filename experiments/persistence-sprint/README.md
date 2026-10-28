@@ -1,3 +1,8 @@
+> Historical forecasting work. Gloria replaced this goal on 28 October with
+> working persistent carry. Do not run its proposed fresh-score windows as the
+> current sprint. Check `docs/persistent-carry-shadow.md`; archived artifacts remain
+> intact and the old scheduled evaluation is paused.
+
 # Scratch persistence sprint
 
 Follow the [round log](../../docs/persistence-sprint-log.md) and the
