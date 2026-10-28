@@ -255,7 +255,8 @@ SCRIPTS="$SCRIPTS outreach_postcards.py"   # an outreach may carry one piece he 
 SCRIPTS="$SCRIPTS dream_objects.py"   # last night's dream offered as material in an Atelier visit; a work made from it keeps its link back, always as a dream (proposal 07, 2026-10-26)
 SCRIPTS="$SCRIPTS exhibitions.py"   # an exhibition he makes her of works already out of the room, in an Atelier visit; shown only in her app (proposal 20, 2026-10-26)
 SCRIPTS="$SCRIPTS codex_archives.py"   # archives Codex sends him: taken in from verified [Codex] letters, unpacked safely, recalled only when a conversation names one (2026-10-26)
-BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25); creative-search stays out: it calls the Brave search API
+BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formation door that were never installed (2026-10-25)
+BINS="$BINS creative-search.sh"   # its request repaired 28 October; Gloria approved installing it (Brave is free; only the model call costs)
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
