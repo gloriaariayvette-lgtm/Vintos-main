@@ -13,7 +13,11 @@ HORIZONS = np.array([600,1800,3600,10800,21600,43200,86400])
 ROUNDS = [(1,'2026-10-14','2026-10-16','2026-10-18'),
           (2,'2026-10-16','2026-10-18','2026-10-20'),
           (3,'2026-10-18','2026-10-20','2026-10-21'),
-          (4,'2026-10-20','2026-10-21','2026-10-23')]
+          (4,'2026-10-20','2026-10-21','2026-10-23'),
+          (5,'2026-10-21','2026-10-23','2026-10-23'),
+          (6,'2026-10-21','2026-10-23','2026-10-23'),
+          (7,'2026-10-21','2026-10-23','2026-10-23'),
+          (8,'2026-10-21','2026-10-23','2026-10-23')]
 
 
 def timestamp(value):
@@ -78,14 +82,14 @@ def ranks(scores,positive):
     return np.sum(scores>=scores[np.arange(len(scores)),positive,None],axis=1)
 
 
-def features(t,source,emo,text,numeric,train_end):
+def features(t,source,emo,text,numeric,train_end,stats=None):
     """Post-batch observations; all same-time members are folded atomically.
 
     Carried values have explicit age/missingness. Observed-time weighted history
     clips unsupported gaps rather than inventing unchanged measurements.
     """
     train=(t<train_end)&np.isfinite(emo).all(1)
-    mu=emo[train].mean(0);sd=np.maximum(emo[train].std(0),.05)
+    mu,sd=stats if stats is not None else (emo[train].mean(0),np.maximum(emo[train].std(0),.05))
     carried=mu.copy();last_text=np.zeros(text.shape[1]);last_emo=None;last_t=t[0]
     means=np.tile(mu,(3,1));mass=np.zeros(3)
     out=[];hist=[];last=[];seen=[]
@@ -116,3 +120,32 @@ def projected_text(text,mask,train_end,t,width=32):
     z=(text-mu)@p
     z[~mask]=0
     return z.astype(np.float32),mu,p
+
+
+def begin_evaluation(sealed,manifest,now=None):
+    """Check time/hash provenance, then consume exactly one evaluation attempt."""
+    sealed=Path(sealed)
+    now=datetime.now(TZ) if now is None else now
+    if now.timestamp()<boundary(manifest['week'][1]):raise ValueError('fresh week not closed')
+    if timestamp(manifest['sealed_at'])>=boundary(manifest['week'][0]):raise ValueError('late seal')
+    for name,expected in manifest['code'].items():
+        if sha(sealed/'code'/name)!=expected:raise ValueError('sealed code mismatch')
+    for filename,key in [('incumbent.npz','incumbent_sha256'),('present-refit.npz','present_refit_sha256')]:
+        if sha(sealed/filename)!=manifest[key]:raise ValueError('sealed comparator mismatch')
+    for c in manifest['candidates']:
+        for filename,expected in c['files'].items():
+            if sha(sealed/('candidate-'+str(c['round']))/filename)!=expected:raise ValueError('sealed candidate mismatch')
+    with (sealed/'evaluation-attempt.json').open('x') as f:
+        json.dump({'started':now.isoformat(),'manifest_sha256':sha(sealed/'manifest.json')},f)
+
+
+def paired_interval(differences,days,quantiles,samples=20000):
+    """Same sampled days for all controls; minimum is worst paired contrast."""
+    differences=np.asarray(differences)
+    if differences.ndim==1:differences=differences[:,None]
+    days=np.asarray(days);unique=sorted(set(days))
+    sums=np.array([differences[days==d].sum(0) for d in unique])
+    counts=np.array([(days==d).sum() for d in unique])
+    rng=np.random.default_rng(20261028);draw=rng.integers(0,len(unique),(samples,len(unique)))
+    means=sums[draw].sum(1)/counts[draw].sum(1)[:,None]
+    return np.quantile(means.min(1),quantiles).tolist()

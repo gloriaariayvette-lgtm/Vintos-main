@@ -16,7 +16,7 @@ from data import (SOURCES,HORIZONS,ROUNDS,TZ,boundary,horizon_pairs,split_pairs,
 from scan import SelectiveScan,states
 
 
-def fit_scan(x,dt,t,emo,em,scale,z,text_mask,source,train_end,aux,out):
+def fit_scan(x,dt,t,emo,em,scale,z,text_mask,source,train_end,aux,out,state_only=False,epochs=4):
     torch.manual_seed(20261028);torch.set_num_threads(1)
     model=SelectiveScan(x.shape[1]);opt=torch.optim.AdamW(model.parameters(),lr=.001,weight_decay=.05)
     n=int(np.searchsorted(t,train_end));target=np.zeros((n,7,11),np.float32);mask=np.zeros((n,7),bool)
@@ -30,12 +30,12 @@ def fit_scan(x,dt,t,emo,em,scale,z,text_mask,source,train_end,aux,out):
     labels=np.argmax(source,axis=1);freq=np.bincount(labels[:n],minlength=len(SOURCES))
     cw=torch.tensor(n/np.maximum(freq,1)/len(SOURCES),dtype=torch.float32)
     logs=[]
-    for epoch in range(4):
+    for epoch in range(epochs):
         model.train();state=None;sums=Counter();counts=Counter()
         for start in range(0,n,128):
             end=min(n,start+128);chunk=xt[start:end]
             h,state=model(chunk,dtt[start:end],state)
-            state=state.detach();pred=model.emotion(torch.cat([chunk,h],1)).reshape(-1,7,11)
+            state=state.detach();pred=model.emotion(torch.cat([chunk*0 if state_only else chunk,h],1)).reshape(-1,7,11)
             m=mt[start:end];loss=pred.sum()*0
             if m.any():
                 term=((pred-yt[start:end])**2).mean(2)[m].mean()
@@ -64,7 +64,7 @@ def fit_scan(x,dt,t,emo,em,scale,z,text_mask,source,train_end,aux,out):
     return model,logs
 
 
-def emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,start,end):
+def emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,start,end,anchor_history=False):
     output={};weights={}
     is_e=np.isfinite(emo).all(1)
     for j,h in enumerate(HORIZONS):
@@ -78,8 +78,12 @@ def emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,start,end
         wp=ridge(present[a],y);base=em[c]+present[c]@wp*sd
         residual=y-present[a]@wp
         wh=ridge(history[a],residual);ws=ridge(state[a],residual);wr=ridge(reset[a],residual)
+        if anchor_history:
+            residual=residual-history[a]@wh
+            ws=ridge(state[a],residual);wr=ridge(reset[a],residual)
+        anchor=base+history[c]@wh*sd if anchor_history else base
         predictions={'persistence':em[c],'present':base,'history':base+history[c]@wh*sd,
-                     'selective':base+state[c]@ws*sd,'reset':base+reset[c]@wr*sd}
+                     'selective':anchor+state[c]@ws*sd,'reset':anchor+reset[c]@wr*sd}
         # Climatology is trained, not fitted to the evaluated day.
         predictions['climatology']=np.tile(emo[np.isfinite(emo).all(1)&(t<train_end)].mean(0),(len(c),1))
         errs={k:np.mean(((v-emo[d])/sd)**2,axis=1) for k,v in predictions.items()}
@@ -100,11 +104,10 @@ def emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,start,end
     return output,weights
 
 
-def text_evaluation(zdata,t,present,state,train_end,val_start,test_start,end,round_no,incumbent):
+def query_rows(zdata,t,incumbent):
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts'))
     from latent_stream_model import Model,State
     model=Model(incumbent);runtime=State(model)
-    if boundary(model.meta['test_from'])>train_end:raise ValueError('incumbent training crosses sprint training boundary')
     ids=zdata['text_i'];vectors=zdata['text_vectors'];exact=zdata['text_exact'];source=zdata['text_source']
     queries=[];six=[];last=[];before=[];updates={}
     for k,i in enumerate(ids):updates.setdefault(int(i),[]).append(k)
@@ -115,6 +118,13 @@ def text_evaluation(zdata,t,present,state,train_end,val_start,test_start,end,rou
             runtime.advance({'t':datetime.fromtimestamp(at,TZ),'id':'sprint-text-'+str(k),'source':SOURCES[int(source[k])],'vec':vectors[k]})
         if np.isfinite(zdata['emo'][i]).all():runtime.advance({'t':datetime.fromtimestamp(at,TZ),'id':'sprint-emotion-'+str(i),'source':'emotion','emo':zdata['emo'][i]})
     queries=np.asarray(queries);last=np.asarray(last);six=np.asarray(six);before=np.asarray(before)
+    return model,queries,last,six,before
+
+
+def text_evaluation(zdata,t,present,state,train_end,val_start,test_start,end,round_no,incumbent):
+    model,queries,last,six,before=query_rows(zdata,t,incumbent)
+    if boundary(model.meta['val_from'])>train_end:raise ValueError('incumbent training crosses sprint training boundary')
+    ids=zdata['text_i'];vectors=zdata['text_vectors'];exact=zdata['text_exact'];source=zdata['text_source']
     # Model clock is advanced only by its original event sources, preserving its
     # defined serving semantics when other modalities arrive between them.
     train=np.flatnonzero((t[ids]<train_end)&exact&(ids>0))
@@ -167,18 +177,23 @@ def run(args):
     z=np.pad(z,((0,0),(0,32-z.shape[1])))
     x=np.concatenate([present,z],axis=1).astype(np.float32)
     x=np.clip(x,-10,10);dt=np.r_[60,np.diff(t)].astype(np.float32)
-    model,logs=fit_scan(x,dt,t,emo,em,sd,z,mask,source,train_end,number>=2,root)
+    model,logs=fit_scan(x,dt,t,emo,em,sd,z,mask,source,train_end,number>=2,root,number>=7,20 if number>=8 else 4)
     state=states(model,x,dt);reset=states(model,x,dt,True)
-    validation,_=emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,train_end,test_start)
-    metrics,weights=emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,test_start,end)
+    smu=state[t<train_end].mean(0) if number>=5 else np.zeros(24)
+    ssd=np.maximum(state[t<train_end].std(0),.01) if number>=5 else np.ones(24)
+    state=(state-smu)/ssd;reset=(reset-smu)/ssd
+    validation,weights=emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,train_end,test_start,number>=6)
+    metrics,check_weights=emotion_readouts(t,emo,em,present,history,state,reset,sd,train_end,test_start,end,number>=6)
+    if check_weights:weights=check_weights
     tx,tw,_,_=text_evaluation(zdata,t,present,state,train_end,train_end,test_start,end,number,args.incumbent)
-    arrays={'projection':p,'projection_mu':zmu,'emotion_mu':mu,'emotion_sd':sd,'text_W':tw['text_W'],'alpha':np.array(tw['alpha'])}
+    arrays={'projection':p,'projection_mu':zmu,'emotion_mu':mu,'emotion_sd':sd,'text_W':tw['text_W'],'alpha':np.array(tw['alpha']),
+            'state_mu':smu,'state_sd':ssd,'climatology':emo[np.isfinite(emo).all(1)&(t<train_end)].mean(0)}
     for h,ws in weights.items():
         arrays.update({h+'_'+name:w for name,w in ws.items()})
     np.savez_compressed(root/'readouts.npz',**arrays)
     np.savez_compressed(root/'states.npz',state=state,reset=reset)
     report=dict(round=number,kind='historical development; previously inspected era, not prospective confirmation',
-                change=['emotion-only selective state','add source/gap/projected-text losses','add present-score residual','add state-keyed retrieval'][number-1],
+                change=['emotion-only selective state','add source/gap/projected-text losses','add present-score residual','add state-keyed retrieval','standardize readout state','anchor on observed history','state-only emotion pretraining','twenty pretraining epochs'][number-1],
                 split={'train_before':val_day,'validation':[val_day,test_day],'check':[test_day,end_day]},
                 snapshot_sha256=sha(args.snapshot),code={p.name:sha(p) for p in Path(__file__).parent.glob('*.py')},
                 checkpoint_sha256=sha(root/'scan.pt'),readouts_sha256=sha(root/'readouts.npz'),
@@ -191,5 +206,5 @@ def run(args):
 
 if __name__=='__main__':
     ap=argparse.ArgumentParser();ap.add_argument('--snapshot',required=True);ap.add_argument('--incumbent',required=True)
-    ap.add_argument('--round',required=True,type=int,choices=range(1,5));ap.add_argument('--out',required=True)
+    ap.add_argument('--round',required=True,type=int,choices=range(1,9));ap.add_argument('--out',required=True)
     run(ap.parse_args())

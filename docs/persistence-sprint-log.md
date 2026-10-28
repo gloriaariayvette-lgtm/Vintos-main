@@ -62,3 +62,95 @@ Bonferroni two-sided intervals use quantiles .05/(2*28) and 1-.05/(2*28), fixed
 20,000 paired day draws. Development selection does not confer permission to
 steer him. A winner only becomes eligible for an owner-approved scratch shadow
 week; daemon installation and one consumer remain later review decisions.
+
+
+## 28 October — rounds 1–4 completed; none qualifies
+
+Capture `capture-v2` contains 17,490 atomic steps, 3,317 emotion readings and
+2,763 text events before 23 October. Lab: 131,015 rows; sensors: 15,270;
+Watch: 8,915; want events: 284; presence: 88. Five-minute bins preserve counts
+and bounded numeric values, not raw Lab prose. Only 91 texts needed local
+embedding. The initial capture reached numeric serialization but failed because
+a NumPy integer was passed to JSON; it was retained, repaired, and recaptured to
+a new directory before any scoring. No fabricated observations or erased backup.
+
+| Round | Check days | 6h n | Selective MSE | Best control MSE | Relative gain |
+|---|---|---:|---:|---:|---:|
+| 1: emotion scan | 16–17 Oct | 186 | .803116 | .740038 (history) | −8.52% |
+| 2: auxiliary losses | 18–19 Oct | 176 | .197958 | .180730 (history) | −9.53% |
+| 3: text correction | 20 Oct | 69 | .449795 | .432277 (history) | −4.05% |
+| 4: state retrieval | 21–22 Oct | 166 | .399246 | .382778 (present) | −4.30% |
+
+These are different scoring blocks and different training cutoffs, so differences
+between rows do not causally isolate each added feature. Same-row controls and
+the reset-state ablation are the persistence tests. No interval is claimed from
+one or two days. Primary exact-time text MRR: round 3 .276010 versus present
+.276770; round 4 .351339 versus .372616. Round 4 retrieval proxy: .561021 versus
+.553340 for present-key retrieval and .513727 for recent context, only 19 targets.
+No independent continuity/return labels exist, so this proxy grants no release.
+
+### Follow-up rounds, registered before running them
+
+The learned state's amplitude is small, but the ridge penalty is applied in raw
+units. Round 5 changes only train-fitted state standardization (floor .01).
+Round 6 changes only the anchor: state residual on top of the observed-history
+control, rather than forcing the state to relearn the history control's gain.
+Both use training before 21 October and validation 21–22 October. Those days are
+already exposed: **validation-only diagnostic rounds, no new check-block claim**.
+Fresh acceptance remains exclusively future sealed blocks. Report all validation
+results and choose a candidate there, never by future outcomes. Readout penalty
+and backbone training settings stay fixed. The confirmation family is expanded
+in advance to six candidates × seven horizons = 42 contrasts; no looser intervals.
+
+
+## 28 October — rounds 5–6 completed; state still loses at six hours
+
+On the explicitly exposed 21–22 October validation block (166 unique 6h targets),
+state standardization gives MSE .416620, versus .361156 for present and .362517
+for history. Changing to the history anchor improves that to .383043, still
+6.06% worse than the strongest control. Neither qualifies. State-standardized
+text validation improves from .372616 to .400691 (19 exact targets); this is a
+selection result on reused validation, not a new accuracy claim.
+
+Round 7 changes only the emotion pretraining path: remove its direct present-input
+bypass, forcing the hidden state to carry the emotion signal. Round 8 changes
+only the training budget from four to twenty epochs. Same exposed validation,
+no newly claimed check block; no hyperparameter search on fresh data. All eight
+candidates are reported, and the future family expands conservatively to 56
+candidate/horizon contrasts before any fresh scoring. No failing model is installed.
+
+Initial full Aegis suite: 542 invoked, 541 passed. The one failure is the generated
+`docs/untested.md` consistency assertion, not an experiment import/runtime error.
+Regenerate the ownership/coverage reports and verify the repaired source again.
+
+
+## 28 October — rounds 7–8 and first prospective seal
+
+State-only emotion pretraining (round 7) gives 6h validation MSE .370548 against
+.361156 present, a **2.60% loss**, the closest of same-split diagnostics 5–8.
+Twenty epochs (round 8) worsen that to .394035, a 9.10% loss. Text validation
+chooses .1 correction for round 7 (MRR .403396) and .25 for round 8 (.428051),
+both against .372616 on just 19 exact-time targets. These reused validation
+scores are not evidence that a held-out text gain has been established.
+
+All eight rounds are retained. Select candidate 7 as the predeclared future
+primary on the six-hour objective, not candidate 8 on the nicer text number.
+No development candidate earns promotion. The first future block can still
+honestly reject the whole family.
+
+The provisional first seal SHA256
+`13e2fa9ac2a573c4d9d9fa1c7e3af019590e5347044ff733600c367c95d0d240`
+is retired **before any fresh outcome is read**. Final v2 adds missing auxiliary
+clock/source controls, retrieval reporting and sequential weekly error spending.
+The candidate parameters and already computed through-22-October present refit
+are copied unchanged. No repeat experiment or reselected hyperparameter.
+Week w receives alpha .05/(w*(w+1)); week 1 alpha .025 is further divided across
+56 candidate/horizon contrasts. A new week must seal before it opens, even
+though its predecessor has not finished yet. No repeated unadjusted looks until
+something happens to win. Exact v2 manifest is recorded in aggregate evidence.
+
+CPU tests: 3 scan tests pass (chunk/restart parity, causality, real memory,
+zero-start outputs and irregular-gap decay). A fully synthetic future-dated
+week exercises all eight evaluation paths and repeat refusal. It exposed a
+zero-error comparator division edge case; this was repaired before sealing any
+final executable. No actual future-week inputs were opened by these tests.

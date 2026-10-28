@@ -21,9 +21,13 @@ from data import SOURCES,TZ,boundary,timestamp,scratch,sha,write_json
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--memory',required=True);ap.add_argument('--out',required=True)
     ap.add_argument('--cache',required=True);ap.add_argument('--encoder',required=True)
-    args=ap.parse_args();root=scratch(args.out);source=Path(args.memory).resolve();mem=root/'memory';mem.mkdir()
-    # Protect the old sealed experiment: sprint development reads no post-22 outcomes.
-    cutoff=boundary('2026-10-23')
+    ap.add_argument('--through',choices=['2026-10-22','2026-11-06'],default='2026-10-22')
+    args=ap.parse_args()
+    next_day=(datetime.fromisoformat(args.through)+timedelta(days=1)).date().isoformat()
+    if args.through!='2026-10-22' and datetime.now(TZ).date().isoformat()<next_day:
+        raise ValueError('fresh week has not closed; no sources opened')
+    root=scratch(args.out);source=Path(args.memory).resolve();mem=root/'memory';mem.mkdir()
+    cutoff=boundary(next_day)
     os.environ.update(SPARK_WORKSPACE=str(root),HOME=str(root/'home'),TMPDIR=str(root),
                       HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',CUDA_VISIBLE_DEVICES='',
                       HF_HOME=str(Path(args.encoder).parents[3]),HF_HUB_CACHE=str(Path(args.encoder).parents[2]),
@@ -44,7 +48,7 @@ def main():
         for f in sorted(source.glob(pattern)):
             if not f.is_file():continue
             match=re.search(r'2026-\d\d-\d\d',f.name)
-            if match and match.group()>='2026-10-23':continue
+            if match and match.group()>=next_day:continue
             shutil.copyfile(f,mem/f.name);provenance.append({'file':f.name,'sha256':sha(mem/f.name)})
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts'))
     import latent_feed as F
@@ -154,7 +158,7 @@ def main():
                         text_source=np.array([SOURCES.index(r['source']) for r in text_meta]),
                         text_exact=np.array([r['exact'] for r in text_meta]),
                         text_vectors=np.array([r['vector'] for r in text_meta],np.float32))
-    report=dict(captured_at=datetime.now(TZ).isoformat(),cutoff_exclusive='2026-10-23',
+    report=dict(captured_at=datetime.now(TZ).isoformat(),cutoff_exclusive=next_day,
                 raw_rows=dict(raw_counts),atomic_steps=len(times),text_targets=len(text_meta),
                 emotion_readings=int(np.isfinite(emotions).all(1).sum()),excluded=dict(excluded),
                 sources=provenance,snapshot_sha256=sha(root/'events.npz'),new_embeddings=len(todo),
