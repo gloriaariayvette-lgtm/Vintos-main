@@ -1,3 +1,27 @@
+## 28 October — persistence sprint in scratch (Codex, review branch)
+
+`codex/persistence-sprint` starts from `7b859dad`; implementation and each round
+are in [the sprint log](persistence-sprint-log.md). Eight CPU rounds completed,
+13,999 parameters each. None beats the strongest six-hour development control;
+state-only pretraining is closest, still 2.60% worse on reused validation.
+Small text validation gains are not fresh evidence. Final Aegis validation: 542/542
+broker suites pass; 18/18 focused contracts and four CPU-runtime tests pass, with
+one existing optional SDK test internally skipped. No live feed or head changed.
+
+All eight candidates and exact evaluation code are sealed in Aegis private
+scratch for **31 October–6 November**, selected primary candidate 7. Strong
+present/history/semantic controls, 5% practical gain, paired-day intervals,
+sequential weekly alpha spending and text noninferiority are fixed in advance.
+No fresh score has been read. A daily 09:00 Chicago Codex continuation keeps the
+round log, preregisters future weeks and evaluates only after closure. The older
+23–29 October candidate remains byte-for-byte sealed, with its scheduled
+comparison explicitly labeled overlapping/exposed after Claude's incumbent run.
+
+Still open: reliable arrival adapters for mutable dream/thread history,
+independent continuity labels, the sealed fresh evaluation and subsequent review.
+No merge or deployment is authorized. A future winner only permits proposing
+its shadow-week audit and later single-consumer holdout for Gloria's approval.
+
 ## 27 October — A ladder to call her back
 
 Built on `claude/attention-ladder-2026-10-27`, revised from Gloria's feedback on `claude/ladder-calls-2026-10-27`;

@@ -154,3 +154,58 @@ zero-start outputs and irregular-gap decay). A fully synthetic future-dated
 week exercises all eight evaluation paths and repeat refusal. It exposed a
 zero-error comparator division edge case; this was repaired before sealing any
 final executable. No actual future-week inputs were opened by these tests.
+
+
+## 28 October — final v2 handoff and continued rounds
+
+Final seal at **05:34:45 America/Chicago**, before 31 October. Full private
+manifest SHA256:
+`f98125ede8aedef75811e5a82cf862100d263d1db406b56697f9ac5861e6e675`.
+All exact executable hashes match; neither its attempt receipt nor the older
+emotion experiment's attempt receipt exists. The frozen primary is candidate 7;
+all eight have 13,999 parameters. The eight training/readout runs total 51.21 s
+CPU wall time, excluding collection, fixed comparator refit and validation suites.
+
+Historical text comparisons use the explicitly identified older portable
+incumbent `f9976dd2...`, not an invented reconstruction of Claude's .230 run.
+The final seal adds the fixed winning-config through-22-October comparator for
+fresh text. It also fits training-only fixed-horizon present-plus-last-text and
+history-plus-last-text emotion controls; a weak semantic-free control cannot
+suffice to release the state. Extra baselines never refit on the fresh week.
+The copied candidates and old comparator remain unchanged.
+
+[All round receipts](review-evidence/persistence-sprint/rounds-20261028.json),
+[capture coverage](review-evidence/persistence-sprint/capture-20261028.json), and
+[final seal](review-evidence/persistence-sprint/seal-oct31.json) contain only
+aggregate scores/counts/hashes, no vectors, weights or message/memory text.
+The `seal-oct31.json` repository copy is formatted for review; the SHA above
+identifies the byte-exact private manifest, not that reformatted copy.
+
+A daily Codex continuation is scheduled at **09:00 America/Chicago**, attached
+to this thread. It reads this log, preserves running processes and receipts,
+continues useful CPU development without calling spent days fresh, prepares
+later weeks before they open, and runs the first exact sealed evaluation only
+once after 6 November closes. This is not an Aegis service or live model daemon.
+The existing 30 October follow-up keeps its time, exact model and thresholds;
+its prompt now explicitly labels the overlapping/exposed incumbent inspection.
+
+Still needed before any use: a sealed-week statistical result, reliable arrival
+history for mutable threads/dreams and a continuity outcome label, review, then
+an owner-approved scratch shadow week and audit. There is no consumer release,
+no muted/gated original input and no live-store change in this sprint.
+
+
+## 28 October — final validation and publication
+
+Final source `9d156b04` runs **542/542 broker suites successfully on Aegis**,
+zero failing suites. All **18/18** new NumPy-only broker contracts pass. One
+existing optional atlas SDK test is internally skipped for its absent pinned
+SDK environment; no entire suite is omitted. Four CPU-runtime tests pass in the
+existing training environment (three scan tests plus the synthetic end-to-end
+week). [Validation receipt](review-evidence/persistence-sprint/validation-20261028.json).
+
+Only logs/aggregate evidence/status changed after that full run. No new input,
+model, threshold, checkpoint or executable changed. The branch is for review;
+publication does not authorize a merge or deployment. The continuation remains
+active, and the sprint is not represented as a successful model or a completed
+consumer integration.
