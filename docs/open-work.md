@@ -17,6 +17,11 @@ Release remains held for one actual uninterrupted midnight under this revision's
 runtime hashes, followed by Claude Code review and Gloria's yes. No merge or live
 deployment. Gloria turns on the production context flag herself after release.
 
+28 October, 09:15 Chicago check: the v3 process and reviewed hashes match; 175
+ticks, zero restarts, zero recorded clock jumps, current selected sources and
+consumer checks pass. Actual midnight count remains zero. The next midnight
+check is 29 October at 00:10 Chicago; see the aggregate watch receipt in the log.
+
 ## 27 October — A ladder to call her back
 
 Built on `claude/attention-ladder-2026-10-27`, revised from Gloria's feedback on `claude/ladder-calls-2026-10-27`;

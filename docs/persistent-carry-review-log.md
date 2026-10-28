@@ -89,3 +89,27 @@ checks only this v3 root/hashes and explicitly reports any reboot/interruption.
 This nohup `/tmp` shadow will not survive reboot; no boot service was installed.
 Production stays off until Gloria turns it on herself after reviewed release.
 No merge, deploy, paid call, real send or live-store change.
+
+## 28 October — 09:15 Chicago continuation
+
+Verified the v3 PID, resolved script path and `--shadow` argument before the
+check. All three runtime hashes match tested snapshot `2a746c6d`. The worker has
+175 ticks, zero restarts, zero recorded clock jumps, and 5,227 seconds of observed
+monotonic elapsed time. Health was 1.28 seconds old at the probe, with no fault
+file or unavailable sources. Daily health contains only 28 October; there is no
+midnight receipt and the actual midnight count remains **zero**.
+
+There are now 20 admitted candidates and three selected fragments. Inspected the
+private note: journal excerpts retain self-report attribution and dream residue
+is explicitly imagined. All selected references still resolve to current sources.
+Switch, expiry, default-context exclusion, explicit full/compact consumption and
+First Light assembly passed again with one stubbed provider call. The shadow
+remains absent from live context. Only aggregate evidence is committed in
+`docs/review-evidence/persistent-carry/second-review-watch-20261028-0915.json`.
+
+No runtime code changed, so the prior 542/542 Aegis suite result still applies;
+the full suite was not repeated for this documentation/evidence update. Release
+stays held for this revision's uninterrupted actual midnight, then Claude Code
+review and Gloria's yes. The 29 October 00:10 Chicago continuation will check it.
+This scratch process still does not survive reboot. No restart, install, merge,
+deploy, live flag change, paid call or real send occurred.
