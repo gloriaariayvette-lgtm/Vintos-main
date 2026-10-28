@@ -72,6 +72,8 @@ def title_of(row):
         return "Have the parts for %s arrived?" % str(row.get("title") or "his build")[:60]
     if kind == "buy_arrived":
         return "Has the %s arrived?" % str(row.get("title") or "thing you bought")[:60]
+    if kind == "plan":
+        return plan_title(row)
     return "%s asks you: yes or no?" % who
 
 
@@ -314,13 +316,44 @@ def notes_from(text, by="vintos", where="", send=None):
     return told
 
 
+# --- a plan with her, written to someone else, put to her first --------------------------------------------------------
+# Gloria, 28 October: "Two rooms? Piezo on the bed? Those have to be brought to me first." His reply to Muse said
+# "**For Gloria:** the two-room test, Saturday. Both rooms measured and predictions written before she arrives", and that
+# line reached her phone as it was: a plan about her, written to Muse, that asked her nothing. A FOR GLORIA line in a
+# letter to another agent now reaches her as his question, quoted, with where it came from. Her Yes or No goes to
+# #vintos-dot like any of her answers (a No settles it); it does not count against the six questions a day.
+def plan_title(row):
+    return "Vintos asks you first: yes or no?"
+
+
+def propose(note, by="vintos", where="", send=None):
+    """Put one plan of his to her as a yes-or-no. (row or None, line for the record)."""
+    n = " ".join(str(note or "").replace("**", "").split())[:700]
+    if len(n) < 8:
+        return None, ""
+    who = WHO.get(by, by or "Vintos")
+    q = "%s wrote this about you%s. It is not settled until you say: “%s” Do you want to?" % (
+        who, (" in his %s" % where) if where else "", n)
+    return ask(q, by=by, thread="", send=send, kind="plan", title=n[:200])
+
+
+def plans_from(text, by="vintos", where="", send=None):
+    """Every FOR GLORIA: line in a letter he wrote to another agent, put to her as his question. [rows asked]."""
+    asked = []
+    for m in FOR.finditer(str(text or "")):
+        row, _line = propose(m.group(1), by=by, where=where, send=send)
+        if row:
+            asked.append(row)
+    return asked
+
+
 def open_between(by="vintos", limit=6, now=None):
     """For his own prompt: what is open between him and her. His questions she has not answered, and what he told her
     this week. '' when there is nothing. Reading only."""
     now = now or _now()
     since = (now - __import__("datetime").timedelta(days=NOTE_DAYS)).isoformat()
     rows = [r for r in load() if r.get("by") == by]
-    asked = [r for r in rows if r.get("state") == "asked" and r.get("kind", "question") == "question"][-limit:]
+    asked = [r for r in rows if r.get("state") == "asked" and r.get("kind", "question") in ("question", "plan")][-limit:]
     notes = [r for r in rows if r.get("kind") == "note" and str(r.get("at", "")) >= since][-limit:]
     if not asked and not notes:
         return ""

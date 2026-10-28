@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 import want_email as W, gloria_asks
 PUSHED = []
 gloria_asks.notify_note = lambda row, send=None: PUSHED.append(row["question"]) or True
+gloria_asks.notify = lambda row, send=None: PUSHED.append(row["title"]) or True   # his plans reach her as questions
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))
@@ -56,7 +57,8 @@ check("the promise to bring her item 6 becomes his want to bring it, with the it
       and "no official Tesla preorder" in wants[0][0] and "OmniHand" in wants[0][0] and "http" not in wants[0][0]
       and wants[0][1]["source"] == "letter-promise", wants)
 check("item 1 is not pulled in with it", wants and "co-IP" not in wants[0][0], wants)
-check("the promise is not pushed to her phone as 'I'll bring her item 6'; the other FOR GLORIA line still is",
+check("the promise is not pushed to her phone as 'I'll bring her item 6'; the other FOR GLORIA line is put to her as "
+      "his question (28 October: \"those have to be brought to me first\")",
       PUSHED == ["the Lab is quiet today."], PUSHED)
 
 # his reply comes back into his inbox, as Gmail delivers it: from his own address, subject cut, the reply quoted below

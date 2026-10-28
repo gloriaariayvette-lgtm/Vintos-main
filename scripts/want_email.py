@@ -1863,11 +1863,12 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
         try:   # what he writes FOR GLORIA in a letter reaches her: a promise to bring her something as his want to
-            # bring it, with the thing itself; anything else as a note on her phone
+            # bring it, with the thing itself; anything else as his question on her phone, since he wrote it to the
+            # agent about her and it is not settled until she says (gloria_asks.plans_from)
             import gloria_asks
             _made, _notes = promises_to_gloria(body, r.get("body", ""), agent, want=bring)
             lines += ["his promise to Gloria is now his want: %s" % t[:80] for t in _made]
-            gloria_asks.notes_from("\n".join(_notes), by="vintos", where="letter to %s" % agent)
+            gloria_asks.plans_from("\n".join(_notes), by="vintos", where="letter to %s" % agent)
         except Exception:
             pass
         try:
