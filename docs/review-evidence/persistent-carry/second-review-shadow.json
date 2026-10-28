@@ -1,0 +1,45 @@
+{
+  "at": 1793192308.940327,
+  "implementation_commit": "2a746c6d96e8e85b48f20126f6d4816d9ea38306",
+  "shadow_pid": 218219,
+  "ticks": 10,
+  "midnights": 0,
+  "elapsed": 270.43211294687353,
+  "clock_jumps": 0,
+  "context_switch_obeyed": true,
+  "default_context_excluded": true,
+  "shadow_survives_reboot": false,
+  "state_pending": false,
+  "last_saved_elapsed": 180.32007805095054,
+  "expired_note_dropped": true,
+  "release_ready": false,
+  "restarts": 0,
+  "days_observed": [
+    "2026-10-28"
+  ],
+  "oldest_carried_hours": 0.07511998853523336,
+  "heartbeat_age_seconds": 15.733312606811523,
+  "source_counts": {
+    "dream": 3,
+    "journal": 13,
+    "thread": 3,
+    "want": 2
+  },
+  "unavailable_sources": [],
+  "note_chars": 691,
+  "selected_count": 3,
+  "selected_refs_current": true,
+  "full_and_compact_match_note": true,
+  "first_light_prompt_contains_note": true,
+  "provider_stub_calls": 1,
+  "live_context_has_shadow": false,
+  "first_seen_preserved_across_restart": null,
+  "initial_items_before_restart": null,
+  "runtime_code": {
+    "carry_context.py": "02127e83327a0958e8a061f8f3d25a886c9a8a5c981ec94db0d399204c9e96e5",
+    "carry_sources.py": "5e858d53b88f39ef2c68d91437fa946b85f71ccfdd9a235a282e85ed47e3c440",
+    "persistent_carry.py": "6f950133cf75f35a401bfd6e709e61d2b4b695273f6536b9802451af1c0fdddc"
+  },
+  "fault_file_present": false,
+  "scope": "read-only live source inputs; output and provider-stub probe in private shadow scratch only"
+}
