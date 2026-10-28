@@ -8,8 +8,10 @@ state writes. Existing feeds remain intact. See
 [persistent-carry-shadow.md](persistent-carry-shadow.md) and the
 [review log](persistent-carry-review-log.md).
 
-45 focused Aegis tests passed. Full Aegis validation and corrected shadow evidence
-will be recorded on this branch. **No release before at least one actual midnight
+Final full Aegis validation: **542/542 suites passed**, including 45 new tests;
+one existing optional SDK test internally skipped. The corrected v2 shadow is
+running at `/tmp/persistent-carry-review-20261028-rvc4LM`, with 32 admitted records.
+Aggregate receipts: `docs/review-evidence/persistent-carry/review-*.json`. **No release before at least one actual midnight
 of the corrected shadow**, followed by Claude Code review and Gloria's yes.
 No merge or live deployment. Forecast experiments remain on the old branch.
 

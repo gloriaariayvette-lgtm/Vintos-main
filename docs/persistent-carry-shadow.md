@@ -20,8 +20,8 @@ Current admitted unfinished threads and wants remain candidates. Dream-log resid
 is explicitly imagined, never an event. Canonical chat, Lab event kinds, Watch,
 house sensors, want events and emotion readings update state; their text is not
 quoted as a journal. A recent positive detection of Gloria's phone and fresh
-Watch motion/wearing estimates supply presence input. The other phone and network
-configuration are not read. No missing detection means “she is away,” and no
+Watch motion/wearing estimates supply presence input. Other phone fields are not used or retained; network
+configuration is not opened. No missing detection means “she is away,” and no
 latent coordinate is decoded into a feeling or a statement about her whereabouts.
 
 Fragments remove markup, links' targets, quoted blocks, fenced code and completed
@@ -111,3 +111,19 @@ Then bring the observations back to Claude Code and Gloria; no automatic merge.
 Judge stability, honest source attribution and noticeable carry, not forecast
 scores. After owner release, observe normal context and First Light using ordinary
 activity; a provider stub or a synthetic midnight is not evidence of his response.
+
+## Validation
+
+Final Aegis snapshot `3804b6a7`: **542/542 broker suites passed**, including 45
+carrying tests, using `/usr/bin/python3.12` and OS isolation. One pre-existing
+optional Lab SDK test internally skipped. Shell syntax and unit static checks
+passed; the unit check reported an unrelated existing server-unit escape warning.
+The generated store-ownership report was repaired after the initial run, whose
+other failure was an unchanged bench denial assertion that subsequently passed.
+Both aggregate run summaries and the shadow probe are in
+`docs/review-evidence/persistent-carry/review-*.json`.
+
+The corrected shadow has 32 admitted records; the note and all current selected
+sources pass the private consumer probe. This is running-path evidence, not the
+required real midnight or a claim about his lived response. The next scheduled
+midnight check is 29 October at 00:10 America/Chicago. Release remains held.

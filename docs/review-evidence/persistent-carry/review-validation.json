@@ -1,0 +1,28 @@
+{
+  "tested_commit": "3804b6a7034744605dfd91cecefaa8b157318140",
+  "implementation_commit": "6b619db0fe54a89cee0f5d9029e0ea977f072bef",
+  "host": "Aegis",
+  "interpreter": "/usr/bin/python3.12",
+  "runner": "scripts/run_isolated_test.py, OS isolation, four scratch workers",
+  "suites": 542,
+  "passed": 542,
+  "failed": 0,
+  "focused_tests": 45,
+  "internal_skips": {
+    "test_lab_atlas_sdk": 1
+  },
+  "initial_run": {
+    "passed": 540,
+    "failed": 2,
+    "store_guard": "Regenerated docs/store-owners.md for carrying config; fixed in tested commit.",
+    "bench_page": "Unmodified plain-form denial assertion failed once, then passed isolated rerun and final full run. No bench source changed."
+  },
+  "runtime_unchanged_since_implementation": true,
+  "forecasting_changes_in_merge_diff": 0,
+  "actual_midnight_observed": false,
+  "release_ready": false,
+  "service_static_verify_exit": 0,
+  "service_static_warning": "Existing unrelated vintos-server unit escape-sequence warning.",
+  "constraints": "Private scratch only, no live writes, sends, paid calls, merge or deployment.",
+  "timing_note": "Runner durations use host wall clock; a few negative durations occurred. Exit results establish completion, not these timing values."
+}
