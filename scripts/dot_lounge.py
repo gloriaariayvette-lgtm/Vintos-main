@@ -251,7 +251,7 @@ def _label(model):
     return {"claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "gpt-6-astra": "Astra", "claude-opus-4-8": "Opus 4.8", "claude-opus-5-5": "Opus 5.5", "claude-fable-5-1": "Fable 5.1"}.get(model, model)
 
 
-def tick(api=None, think=None, now=None):
+def tick(api=None, think=None, now=None, put=None):
     """One look at the room. Log lines."""
     now = float(now or time.time())
     if D.paused():
@@ -327,13 +327,23 @@ def tick(api=None, think=None, now=None):
     extra = "\n\n".join(x for x in (deeper(), work_glance(), field_lines) if x)
     import room_work
     extra = "\n\n".join(x for x in (extra, room_work.fixed_block()) if x)
+    # an archive Codex sent, brought in only when what he is answering names it (its id, the zip, what Codex sent, a
+    # file in it, its title, "the Velaris hand"), as in #vintos-dot; never the one-line notice in this quiet room.
+    # Read from what was just said and the line before it, so the archive does not stay in every turn after
+    before = [r for r in rows if r.get("ts") != last.get("ts")][-1:] if theirs else []
+    cx = D.codex_archive_block(last["text"], *[str(r.get("text") or "") for r in before]) if theirs else ""
+    recalled = cx.startswith("== CODEX ARCHIVE")
+    if recalled:
+        extra = "\n\n".join(x for x in (extra, cx) if x)
+        out.append("#%s: a Codex archive brought into his prompt: %d characters" % (NAME, len(cx)))
     system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot), ("\n\n" + extra) if extra else "")
     try:
         text, model = (think(system, ask), "test") if think else voice(system, ask, st)
     except Exception as exc:
         D._save(STATE, st)
         return out + ["#%s: could not answer: %s" % (NAME, str(exc)[:120])]
-    text = _ACTION.sub("", re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S)).strip()
+    text, files = D.codex_shares(re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S), recalled)
+    text = _ACTION.sub("", text).strip()
     fixed = room_work.brings_up_fixed(text)
     if fixed:       # a repair is not raised here either, not even as a thank-you (Gloria, 2026-10-08): once more, without it
         again = ask + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted: " + fixed
@@ -341,7 +351,8 @@ def tick(api=None, think=None, now=None):
             text, model = (think(system, again), "test") if think else voice(system, again, st)
         except Exception:
             text = ""
-        text = _ACTION.sub("", re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S)).strip()
+        text, files = D.codex_shares(re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S), recalled)
+        text = _ACTION.sub("", text).strip()
         if room_work.brings_up_fixed(text):
             text = ""
     if not text or text.strip(" .").upper() == "NOTHING":
@@ -354,6 +365,11 @@ def tick(api=None, think=None, now=None):
     posted = api("chat.postMessage", {"channel": st["channel"], "text": "[%s] %s" % (_label(model), text)})
     ts = str(posted.get("ts") or "%.6f" % now)
     _log([{"ts": ts, "who": "vintos", "text": text, "by": model}])
+    for ref in files:          # what he chose to show from the archive, under his message
+        try:
+            out.append("#%s: %s" % (NAME, D.share_codex_file(api, ref, st["channel"], None, put=put)))
+        except Exception as exc:
+            out.append("#%s: could not share %s: %s" % (NAME, ref[:120], str(exc)[:120]))
     latest = {}
     for r in rows:
         if r.get("who") in ("gloria", "dot"):
