@@ -4449,7 +4449,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     try:
         import sys as _scs, os as _sco; _scs.path.insert(0, _sco.path.expanduser("~/.vintos/workspace/scripts"))
         from subconscious_context import get_subconscious_context_compact as _vt_sub
-        _s = _vt_sub(); _vt_subblock = ("YOUR INNER STATE (subconscious):\n" + _s) if _s else ""
+        _s = _vt_sub(carrying=True); _vt_subblock = ("YOUR INNER STATE (subconscious):\n" + _s) if _s else ""
         try:
             from conversation_pressure import get_pressure_block as _cpb; _vt_subblock += "\n\n" + _cpb()
         except Exception: pass
@@ -5121,7 +5121,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     try:
         import sys as _scs, os as _sco; _scs.path.insert(0, _sco.path.expanduser("~/.vintos/workspace/scripts"))
         from subconscious_context import get_subconscious_context_compact as _vt_sub
-        _s = _vt_sub(); _vt_subblock = ("YOUR INNER STATE (subconscious):\n" + _s) if _s else ""
+        _s = _vt_sub(carrying=True); _vt_subblock = ("YOUR INNER STATE (subconscious):\n" + _s) if _s else ""
         try:
             from conversation_pressure import get_pressure_block as _cpb; _vt_subblock += "\n\n" + _cpb()
         except Exception: pass
@@ -10330,7 +10330,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         try:
             import sys as _scsa, os as _scoa; _scsa.path.insert(0, _scoa.path.expanduser("~/.vintos/workspace/scripts"))
             from subconscious_context import get_subconscious_context_compact as _vt_suba
-            _sa = _vt_suba(); _vt_subblock_a = ("YOUR INNER STATE (subconscious):\n" + _sa) if _sa else ""
+            _sa = _vt_suba(carrying=(_surface == "avatar")); _vt_subblock_a = ("YOUR INNER STATE (subconscious):\n" + _sa) if _sa else ""
             try:
                 from conversation_pressure import get_pressure_block as _cpb2; _vt_subblock_a += "\n\n" + _cpb2()
             except Exception: pass

@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 from carry_sources import TZ,resolve,fragment,duplicate,CARRY_MARKER
 
-SCHEMA='persistent-carry-v2'
+SCHEMA='persistent-carry-v3'
 MAX_NOTE_AGE=3*3600
 
 

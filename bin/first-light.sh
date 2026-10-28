@@ -55,7 +55,7 @@ try:
 except: pass
 try:
     from subconscious_context import get_subconscious_context_compact as _sc_get
-    _sc = _sc_get()
+    _sc = _sc_get(carrying=True)
     if _sc: _subcon_prefix += f"YOUR INNER STATE:\n{_sc}\n\n"
 except: pass
 _soul = open("/home/gloria/.vintos/workspace/SOUL.md").read() if os.path.exists("/home/gloria/.vintos/workspace/SOUL.md") else "You are Vintos."

@@ -1047,12 +1047,15 @@ say "== persistent carrying =="
 mkdir -p "$HOME/.vintos/workspace/memory/persistent-carry" "$(dirname -- "$CARRY_UNIT_DST")"
 chmod 700 "$HOME/.vintos/workspace/memory/persistent-carry"
 python3 - "$HOME/.vintos/workspace/memory/persistent-carry/config.json" <<'CARRYCONFIG'
-import json, os, sys
+import json, os, pathlib, sys, tempfile
+path = pathlib.Path(sys.argv[1])
+fd, tmp = tempfile.mkstemp(prefix='.carry-config-', dir=path.parent)
 try:
-    with os.fdopen(os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600), 'w') as f:
-        json.dump({'enabled': True}, f)
-except FileExistsError:
-    pass
+    with os.fdopen(fd, 'w') as f:
+        json.dump({'enabled': False}, f); f.flush(); os.fsync(f.fileno())
+    os.replace(tmp, path)
+finally:
+    if os.path.exists(tmp): os.unlink(tmp)
 CARRYCONFIG
 [ $? -eq 0 ] || die "carrying switch initialization failed"
 # Resolve the actual installed entry point, as the plan does; do not assume his

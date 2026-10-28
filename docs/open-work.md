@@ -1,19 +1,20 @@
-## 28 October — persistent carry review revisions
+## 28 October — persistent carry, second review
 
-`codex/persistent-carry-review` starts directly from deploy, with no forecasting
-experiments in its merge diff. Implements Claude Code's eight requested revisions:
-exact journal authorship, explicit context switch, expiry, reset on adoption,
-clean fragments, state-driven selection, loop/clock protection and change-only
-state writes. Existing feeds remain intact. See
-[persistent-carry-shadow.md](persistent-carry-shadow.md) and the
-[review log](persistent-carry-review-log.md).
+`codex/persistent-carry-review` has no forecasting experiments in its merge diff.
+Second review: every deploy writes the new context flag off, and only main chat
+and First Light explicitly opt in. All other default context callers exclude it.
+Added 40-character/five-word content minimum, timestamp/heading/META-DREAM cleanup,
+H1 boundaries, grok/muse/codex origin exclusions, observation-only Lab/house traffic,
+and at most one checkpoint write per 180 seconds. 52 focused Aegis tests pass.
+Full validation and private running receipts are recorded in the
+[review log](persistent-carry-review-log.md); implementation details in
+[persistent-carry-shadow.md](persistent-carry-shadow.md).
 
-Final full Aegis validation: **542/542 suites passed**, including 45 new tests;
-one existing optional SDK test internally skipped. The corrected v2 shadow is
-running at `/tmp/persistent-carry-review-20261028-rvc4LM`, with 32 admitted records.
-Aggregate receipts: `docs/review-evidence/persistent-carry/review-*.json`. **No release before at least one actual midnight
-of the corrected shadow**, followed by Claude Code review and Gloria's yes.
-No merge or live deployment. Forecast experiments remain on the old branch.
+Current shadow root: `/tmp/persistent-carry-second-review-20261028-1Ht0eN`.
+**It does not survive reboot.** No boot service is installed during review.
+Release remains held for one actual uninterrupted midnight under this revision's
+runtime hashes, followed by Claude Code review and Gloria's yes. No merge or live
+deployment. Gloria turns on the production context flag herself after release.
 
 ## 27 October — A ladder to call her back
 

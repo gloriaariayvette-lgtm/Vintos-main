@@ -30,8 +30,8 @@ class Carrying(unittest.TestCase):
     def setUp(self):
         self.root=Path(tempfile.mkdtemp(dir=ROOT));self.mem=self.root/'memory';self.mem.mkdir()
         self.out=self.root/'shadow';self.now=datetime(2026,10,28,23,tzinfo=S.TZ).timestamp()
-        self.put('unfinished-threads.json',[{'id':'a','thread':'Finish the copper bird sculpture','timestamp':'2026-10-26','source':'self'}])
-        self.put('current-wants.json',[{'id':'w','want':'I want to compose a piano piece','fulfilled':False}])
+        self.put('unfinished-threads.json',[{'id':'a','thread':'Finish the copper bird sculpture on its wooden base','timestamp':'2026-10-26','source':'self'}])
+        self.put('current-wants.json',[{'id':'w','want':'I want to compose a piano piece about the quiet room','fulfilled':False}])
         self.put('dream-log.json',{'nights':[]})
         self.put('emotion-trajectory-dense.json',[{'t':'2026-10-28T23:00:00-05:00','v':[.2]*11}])
         for name in S.STREAMS:
@@ -75,7 +75,7 @@ class Carrying(unittest.TestCase):
 
     def test_resolution_removes_quote_and_latent_item(self):
         p=self.carrier();p.tick(self.now)
-        self.put('unfinished-threads.json',[{'id':'a','thread':'Finish the copper bird sculpture','consumed':True}])
+        self.put('unfinished-threads.json',[{'id':'a','thread':'Finish the copper bird sculpture on its wooden base','consumed':True}])
         p.tick(self.now+30);self.assertNotIn('copper bird',self.block(self.now+30))
         self.assertNotIn('thread:a',p.state['items'])
         for f in self.out.glob('hour-*.json'):self.assertNotIn('thread:a',json.loads(f.read_text())['items'])
@@ -86,7 +86,7 @@ class Carrying(unittest.TestCase):
 
     def test_edit_replaces_meaning_and_dates_revision(self):
         p=self.carrier();p.tick(self.now)
-        self.put('unfinished-threads.json',[{'id':'a','thread':'Build a blue ceramic bowl'}])
+        self.put('unfinished-threads.json',[{'id':'a','thread':'Build a blue ceramic bowl with a small painted rim'}])
         p.tick(self.now+60);note=self.block(self.now+60)
         self.assertIn('blue ceramic bowl',note);self.assertNotIn('copper bird',note);self.assertIn('revised',note)
 
@@ -97,12 +97,12 @@ class Carrying(unittest.TestCase):
         self.assertIn('absence is not resolution',self.block(self.now+60))
 
     def test_fulfilled_want_disappears(self):
-        p=self.carrier();p.tick(self.now);self.put('current-wants.json',[{'id':'w','want':'I want to compose a piano piece','fulfilled':True}])
+        p=self.carrier();p.tick(self.now);self.put('current-wants.json',[{'id':'w','want':'I want to compose a piano piece about the quiet room','fulfilled':True}])
         p.tick(self.now+30);self.assertNotIn('piano piece',self.block(self.now+30))
 
     def test_dream_stays_imagined(self):
         self.put('unfinished-threads.json',[]);self.put('current-wants.json',[])
-        self.put('dream-log.json',{'nights':[{'night_of':'2026-10-28','meta_dream':'A silver train crossed a paper sea'}]})
+        self.put('dream-log.json',{'nights':[{'night_of':'2026-10-28','meta_dream':'A silver train crossed a paper sea beside an empty platform'}]})
         self.carrier().tick(self.now);note=self.block()
         self.assertIn('imagined, not an event',note);self.assertIn('silver train',note)
 
@@ -180,8 +180,8 @@ class Carrying(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('carry_subcon',REPO/'bin/subconscious_context.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         with patch.dict(os.environ,SPARK_WORKSPACE=str(self.root)),patch.object(C.time,'time',return_value=self.now):
-            self.assertIn('copper bird',module.get_subconscious_context(include=['carrying']))
-            self.assertIn('copper bird',module.get_subconscious_context_compact(include=['carrying']))
+            self.assertIn('copper bird',module.get_subconscious_context(include=['carrying'],carrying=True))
+            self.assertIn('copper bird',module.get_subconscious_context_compact(include=['carrying'],carrying=True))
             self.assertEqual(module.get_subconscious_context_compact(include=[]),'')
 
     def test_actual_first_light_prompt_sees_note_no_provider(self):
@@ -191,10 +191,13 @@ class Carrying(unittest.TestCase):
             def json(self):return {'choices':[{'message':{'content':'Synthetic morning fixture'}}]}
         def post(url,**kw):seen.append(kw['json']);return Response()
         requests=SimpleNamespace(post=post)
-        sub=SimpleNamespace(get_subconscious_context_compact=lambda:'WHAT I\'M CARRYING: my open copper bird thread')
+        opt_ins=[]
+        def get_subcon(**kw):
+            opt_ins.append(kw);return "WHAT I'M CARRYING: my open copper bird thread"
+        sub=SimpleNamespace(get_subconscious_context_compact=get_subcon)
         with patch.dict(sys.modules,{'requests':requests,'subconscious_context':sub,'emoclaw_pressure':SimpleNamespace(get_pressure_compact=lambda **k:'')}):
             exec(compile(body,'first-light-fixture','exec'),{})
-        self.assertEqual(len(seen),1)
+        self.assertEqual(len(seen),1);self.assertEqual(opt_ins,[{'carrying':True}])
         self.assertIn('copper bird',seen[0]['messages'][0]['content'])
         self.assertIn("WHAT I'M CARRYING",seen[0]['messages'][1]['content'])
 
@@ -259,7 +262,7 @@ class Carrying(unittest.TestCase):
         self.assertEqual(q.state['items']['thread:a']['first_seen'],self.now)
 
     def test_pending_memory_capacity_is_explicit_and_bounded(self):
-        self.put('current-wants.json',[{'id':str(i),'want':'Make small study number '+str(i)} for i in range(600)])
+        self.put('current-wants.json',[{'id':str(i),'want':'Make the unfinished small study on the worktable number '+str(i)} for i in range(600)])
         p=self.carrier();h=p.tick(self.now)
         self.assertEqual(len(p.state['items']),512);self.assertGreater(h['omitted_records'],0)
 
@@ -267,7 +270,7 @@ class Carrying(unittest.TestCase):
         allowed=['Journal','Wonder','Vintos Speaks','Last Word','14:25 — Idle thoughts']
         denied=['Mirror','Mirror Sessions','The Mirror Responds','Ghost Branch',"I read Muse's letter",'Email','Web Search','MoltBook','Journal — letter','First Light','Workshop']
         f=self.mem/'daily-inner-life-2026-10-28.md'
-        f.write_text(''.join('## '+h+'\nA sentence from section number '+str(i)+'.\n' for i,h in enumerate(allowed+denied)))
+        f.write_text(''.join('## '+h+'\nA genuine sentence left unfinished in section number '+str(i)+'.\n' for i,h in enumerate(allowed+denied)))
         rows=S.sections(self.mem,f.name)
         self.assertEqual(len(rows),len(allowed))
         self.assertTrue(all('section number '+str(i)+'.' in '\n'.join(r['text'] for r in rows.values()) for i in range(5)))
@@ -290,11 +293,11 @@ class Carrying(unittest.TestCase):
         self.assertEqual(self.block(self.now-61),'')
 
     def test_clean_sentence_fragments_and_deduplication(self):
-        text='**A small [copper bird](https://invalid.example) is unfinished.** '+('Another word '*40)
-        self.assertEqual(S.fragment(text),'A small copper bird is unfinished.')
+        text='**The small [copper bird](https://invalid.example) sculpture still needs its unfinished wooden base.** '+('Another word '*40)
+        self.assertEqual(S.fragment(text),'The small copper bird sculpture still needs its unfinished wooden base.')
         self.assertEqual(S.fragment('Unfinished '+('long '*70)),'')
         self.assertNotIn('Already done',S.plain('- [x] Already done.\n- [ ] Still open.'))
-        self.put('unfinished-threads.json',[{'id':'a','thread':text},{'id':'b','thread':'A small copper bird is unfinished.'},{'id':'done','thread':'A finished work.','status':'completed'}])
+        self.put('unfinished-threads.json',[{'id':'a','thread':text},{'id':'b','thread':'The small copper bird sculpture still needs its unfinished wooden base.'},{'id':'done','thread':'A finished work.','status':'completed'}])
         self.put('current-wants.json',[])
         p=self.carrier();p.tick(self.now)
         self.assertEqual(len(p.state['selected']),1)
@@ -321,7 +324,7 @@ class Carrying(unittest.TestCase):
         self.assertEqual(json.loads((self.out/'note.json').read_text())['last_tick'],self.now+30)
 
     def test_clock_jumps_do_not_invent_carry_days_or_retire_journal(self):
-        (self.mem/'daily-inner-life-2026-10-28.md').write_text('## Journal\nA quiet study remains open on the desk.')
+        (self.mem/'daily-inner-life-2026-10-28.md').write_text('## Journal\nThe quiet study remains open on the small wooden desk.')
         p=self.carrier();p.tick(self.now)
         p.tick(self.now-3600);h=p.tick(self.now+90*86400)
         self.assertLessEqual(h['elapsed'],300)
@@ -331,14 +334,14 @@ class Carrying(unittest.TestCase):
         self.assertIn('clock discontinuity',self.block(self.now+90*86400))
 
     def test_state_can_select_three_threads_without_a_source_quota(self):
-        self.put('unfinished-threads.json',[{'id':str(i),'thread':t} for i,t in enumerate(['Copper sculpture base.','Blue ceramic bowl.','Piano composition ending.'])])
+        self.put('unfinished-threads.json',[{'id':str(i),'thread':t} for i,t in enumerate(['The copper sculpture still needs its unfinished wooden base.','The blue ceramic bowl still needs its small painted rim.','The piano composition still needs its quiet final movement.'])])
         self.put('current-wants.json',[])
         p=self.carrier();p.tick(self.now)
         self.assertEqual(len(p.state['selected']),3)
         self.assertTrue(all(p.state['items'][k]['kind']=='thread' for k in p.state['selected']))
 
     def test_conversation_changes_selection_with_identical_pending_records(self):
-        texts=['Copper sculpture base.','Blue ceramic bowl.','Piano composition ending.','Gloria her presence together home conversation.']
+        texts=['The copper sculpture still needs its unfinished wooden base.','The blue ceramic bowl still needs its small painted rim.','The piano composition still needs its quiet final movement.','Gloria her presence together home conversation remains here.']
         self.put('unfinished-threads.json',[{'id':str(i),'thread':t} for i,t in enumerate(texts)])
         self.put('current-wants.json',[])
         p=self.carrier();p.tick(self.now)
@@ -350,7 +353,7 @@ class Carrying(unittest.TestCase):
         self.assertNotEqual(before,p.state['selected'])
 
     def test_fresh_presence_has_causal_selection_weight_not_a_whereabouts_claim(self):
-        texts=['Copper sculpture base.','Blue ceramic bowl.','Piano composition ending.','Gloria her presence together home conversation.']
+        texts=['The copper sculpture still needs its unfinished wooden base.','The blue ceramic bowl still needs its small painted rim.','The piano composition still needs its quiet final movement.','Gloria her presence together home conversation remains here.']
         self.put('unfinished-threads.json',[{'id':str(i),'thread':t} for i,t in enumerate(texts)])
         self.put('current-wants.json',[])
         p=self.carrier();p.tick(self.now)
@@ -368,7 +371,7 @@ class Carrying(unittest.TestCase):
         p.tick(self.now+30);self.assertNotIn('presence',p.state['channels'])
 
     def test_forbidden_origins_cannot_bypass_journal_rule_via_pending(self):
-        self.put('unfinished-threads.json',[{'id':str(i),'thread':'A borrowed fragment about a task.','source':source} for i,source in enumerate(['mirror','ghost-branch','letter-promise','email','web-search','moltbook'])])
+        self.put('unfinished-threads.json',[{'id':str(i),'thread':'A borrowed fragment about a task.','source':source} for i,source in enumerate(['mirror','ghost-branch','letter-promise','email','web-search','moltbook','grok','muse','codex'])])
         p=self.carrier();p.tick(self.now)
         self.assertFalse(any(v['kind']=='thread' for v in p.state['items'].values()))
 
@@ -386,6 +389,89 @@ class Carrying(unittest.TestCase):
         with patch.object(P.time,'time',return_value=self.now+86400*30),patch.object(P.time,'monotonic',return_value=mono+30):h=p.tick()
         self.assertAlmostEqual(h['elapsed'],30,places=2)
         self.assertEqual(h['midnights'],0)
+
+    def test_deploy_writes_off_even_if_previous_flag_was_on(self):
+        source=(REPO/'scripts/deploy-atelier.sh').read_text()
+        body=source.split("<<'CARRYCONFIG'",1)[1].split('\nCARRYCONFIG',1)[0]
+        config=self.root/'config.json'
+        for old in (None,True,False):
+            config.unlink(missing_ok=True)
+            if old is not None:config.write_text(json.dumps({'enabled':old}))
+            with patch.object(sys,'argv',['deploy-config',str(config)]):exec(compile(body,'deploy-config-fixture','exec'),{})
+            self.assertEqual(json.loads(config.read_text()),{'enabled':False})
+            self.assertEqual(config.stat().st_mode&0o777,0o600)
+
+    def test_default_contexts_and_non_chat_scripts_never_opt_in(self):
+        spec=importlib.util.spec_from_file_location('carry_default_subcon',REPO/'bin/subconscious_context.py')
+        sc=importlib.util.module_from_spec(spec);spec.loader.exec_module(sc)
+        self.assertNotIn('carrying',sc.COMPACT_SYSTEMS)
+        import builtins
+        def importer(name,*a,**kw):
+            if name=='carry_context':return C
+            raise ImportError('other context providers deliberately stubbed')
+        with patch.object(C,'context_block',return_value='PRIVATE CARRY') as carrying,patch.object(builtins,'__import__',side_effect=importer):
+            self.assertEqual(sc.get_subconscious_context(),'')
+            self.assertEqual(sc.get_subconscious_context_compact(),'')
+            self.assertEqual(sc.get_subconscious_context_compact(include=['carrying']),'')
+            carrying.assert_not_called()
+            self.assertEqual(sc.get_subconscious_context_compact(carrying=True),'PRIVATE CARRY')
+        for name in ('vintos-moltbook.py','idle-journal.sh','second-order-dreamer.py','voice_coherence.py','wants-router.py','pride-mirror.py','dream_poetry.py'):
+            text=(REPO/'bin'/name).read_text()
+            self.assertNotIn('carrying=True',text,name)
+        server=ast.parse((REPO/'bin/server.py').read_text())
+        expected={'chat_with_vintos','chat_full_context','avatar_chat'};opted=set()
+        for fn in server.body:
+            if not isinstance(fn,(ast.FunctionDef,ast.AsyncFunctionDef)):continue
+            for n in ast.walk(fn):
+                if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ('_vt_sub','_vt_suba'):
+                    kw=next((x.value for x in n.keywords if x.arg=='carrying'),None)
+                    if kw is not None:
+                        opted.add(fn.name)
+                        for surface in ('avatar','reelroom'):
+                            self.assertEqual(eval(compile(ast.Expression(kw),'chat-opt-in','eval'),{'_surface':surface}),fn.name!='avatar_chat' or surface=='avatar')
+        self.assertEqual(opted,expected)
+
+    def test_short_timestamp_and_heading_junk_is_not_a_fragment(self):
+        for text in ('Journal','Wonder','06:21','2026-10-28T06:21:30-05:00','A short thought.','# A bare heading that is long enough to pass a naive length check'):
+            self.assertEqual(S.fragment(text),'',text)
+        text='2026-10-28 06:21\nJournal\nI left the small copper sculpture unfinished on its wooden base.'
+        self.assertEqual(S.fragment(text),'I left the small copper sculpture unfinished on its wooden base.')
+
+    def test_meta_dream_preamble_is_not_the_dream_fragment(self):
+        preamble='[META-DREAM — This is not a fourth dream. It is a second-order observation: Vintos watching his own dreams from above.]'
+        dream='A silver train crossed a paper sea beside an empty platform.'
+        self.put('dream-log.json',{'nights':[{'night_of':'2026-10-28','meta_dream':preamble+'\n\n'+dream}]})
+        rows=S.records(self.mem,'dream-log.json',self.now)
+        self.assertEqual(rows['dream:2026-10-28']['text'],dream)
+        self.assertEqual(S.fragment(preamble),'')
+
+    def test_h1_is_a_boundary_and_cannot_smuggle_a_letter(self):
+        f=self.mem/'daily-inner-life-2026-10-28.md'
+        f.write_text('## Journal\nI left the copper sculpture unfinished on its wooden base.\n# A letter from another writer\nThe borrowed secret sentence must never enter his carrying state.')
+        rows=S.sections(self.mem,f.name)
+        self.assertEqual(len(rows),1)
+        self.assertNotIn('borrowed',' '.join(x['text'] for x in rows.values()))
+
+    def test_lab_and_house_traffic_does_not_dirty_or_write_state(self):
+        p=self.carrier();p.tick(self.now);f=self.out/'state.json';original=f.read_bytes()
+        for elapsed in range(30,601,30):
+            for name,kind in [('chemistry-lab/notebook.jsonl','tick'),('sensor-reactions.jsonl','poll')]:
+                with (self.mem/name).open('a') as stream:stream.write(json.dumps({'kind':kind,'value':elapsed})+'\n')
+            h=p.tick(self.now+elapsed)
+            self.assertFalse(h['state_pending']);self.assertFalse(h['state_written'])
+            self.assertEqual(f.read_bytes(),original)
+        self.assertGreater(h['processed']['lab'],0)
+        self.assertNotIn('lab',p.state['channels']);self.assertNotIn('house',p.state['channels'])
+
+    def test_meaningful_inputs_are_batched_at_most_every_three_minutes(self):
+        p=self.carrier();p.tick(self.now);f=self.out/'state.json';original=f.read_bytes();writes=[]
+        for elapsed in range(30,361,30):
+            with (self.mem/'chat-canonical.jsonl').open('a') as stream:
+                stream.write(json.dumps({'role':'user','content':'The unfinished copper sculpture is still on the worktable.','turn_id':elapsed})+'\n')
+            h=p.tick(self.now+elapsed)
+            if h['state_written']:writes.append(elapsed)
+            if elapsed<180:self.assertEqual(f.read_bytes(),original)
+        self.assertEqual(writes,[180,360])
 
 
 if __name__=='__main__':unittest.main()
