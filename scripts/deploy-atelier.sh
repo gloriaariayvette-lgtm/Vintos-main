@@ -1049,6 +1049,9 @@ chmod 700 "$HOME/.vintos/workspace/memory/persistent-carry"
 python3 - "$HOME/.vintos/workspace/memory/persistent-carry/config.json" <<'CARRYCONFIG'
 import json, os, pathlib, sys, tempfile
 path = pathlib.Path(sys.argv[1])
+if path.exists():
+    # her choice stands: a deploy only creates the switch, never overwrites it (Gloria, 28 October)
+    os.chmod(path, 0o600); sys.exit(0)
 fd, tmp = tempfile.mkstemp(prefix='.carry-config-', dir=path.parent)
 try:
     with os.fdopen(fd, 'w') as f:

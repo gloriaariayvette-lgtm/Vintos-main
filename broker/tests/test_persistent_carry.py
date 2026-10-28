@@ -390,15 +390,17 @@ class Carrying(unittest.TestCase):
         self.assertAlmostEqual(h['elapsed'],30,places=2)
         self.assertEqual(h['midnights'],0)
 
-    def test_deploy_writes_off_even_if_previous_flag_was_on(self):
+    def test_deploy_creates_the_switch_off_and_never_overwrites_her_choice(self):
         source=(REPO/'scripts/deploy-atelier.sh').read_text()
         body=source.split("<<'CARRYCONFIG'",1)[1].split('\nCARRYCONFIG',1)[0]
         config=self.root/'config.json'
-        for old in (None,True,False):
+        for old,want in ((None,False),(True,True),(False,False)):
             config.unlink(missing_ok=True)
             if old is not None:config.write_text(json.dumps({'enabled':old}))
-            with patch.object(sys,'argv',['deploy-config',str(config)]):exec(compile(body,'deploy-config-fixture','exec'),{})
-            self.assertEqual(json.loads(config.read_text()),{'enabled':False})
+            with patch.object(sys,'argv',['deploy-config',str(config)]):
+                try:exec(compile(body,'deploy-config-fixture','exec'),{})
+                except SystemExit as e:self.assertIn(e.code,(0,None))
+            self.assertEqual(json.loads(config.read_text()),{'enabled':want})
             self.assertEqual(config.stat().st_mode&0o777,0o600)
 
     def test_default_contexts_and_non_chat_scripts_never_opt_in(self):
