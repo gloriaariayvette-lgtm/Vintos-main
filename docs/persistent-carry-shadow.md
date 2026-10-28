@@ -157,3 +157,11 @@ letter origins, non-dirtying Lab/house streams and the 180-second write limit.
 The full-suite and current running-path receipts are recorded in the review log.
 No release before this v3 worker crosses a real midnight, then Claude Code's review
 and Gloria's yes. Her production context flag remains hers to turn on.
+
+Final second-review snapshot `2a746c6d`: **542/542 suites passed**, including all
+52 carrying tests. The new shadow has 21 admitted records and a 691-character note;
+current references and explicit consumers pass the provider-stubbed probe, with
+default contexts excluded. Receipts:
+`docs/review-evidence/persistent-carry/second-review-*.json`. No actual midnight
+has crossed yet. Reboot survival is explicitly **not provided** for this scratch
+worker; no production unit was installed.

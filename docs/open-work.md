@@ -5,8 +5,9 @@ Second review: every deploy writes the new context flag off, and only main chat
 and First Light explicitly opt in. All other default context callers exclude it.
 Added 40-character/five-word content minimum, timestamp/heading/META-DREAM cleanup,
 H1 boundaries, grok/muse/codex origin exclusions, observation-only Lab/house traffic,
-and at most one checkpoint write per 180 seconds. 52 focused Aegis tests pass.
-Full validation and private running receipts are recorded in the
+and at most one checkpoint write per 180 seconds. **542/542 Aegis suites passed**,
+including 52 carrying tests; one existing optional SDK test internally skipped.
+Private aggregate receipts are recorded in the
 [review log](persistent-carry-review-log.md); implementation details in
 [persistent-carry-shadow.md](persistent-carry-shadow.md).
 
