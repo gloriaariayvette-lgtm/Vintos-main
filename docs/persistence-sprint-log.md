@@ -21,8 +21,14 @@ and First Light assembly were checked with provider stubs. These are minutes on
 one actual calendar day, not a claim of multi-day lived continuity.
 
 31 new OS-isolated tests pass under Aegis `/usr/bin/python3.12`, NumPy/requests
-without SciPy. Full-suite receipt will be recorded after the final implementation
-snapshot is tested. No merge, production service installation, live send or paid call.
+without SciPy. Full Aegis suite on exact implementation `a38d8bea`: **543/543
+passed**, with one existing optional SDK internal skip. Service static verification
+passed (an unrelated existing server-unit escape warning remains). Final shadow
+probe matches committed runtime hashes: 190/190 origins preserved, all selected
+refs current, full/compact and First Light assembly confirmed using one stubbed
+provider call, live shadow injection absent. About 23 minutes on one real day;
+no claim of multi-day continuity. Receipts: `docs/review-evidence/persistent-carry/`.
+No merge, production service installation, live send or paid call.
 
 ## Earlier forecasting rounds — superseded historical record
 

@@ -7,7 +7,11 @@ in private Aegis scratch; live context remains unchanged pending Claude Code rev
 and owner approval. See [implementation and acceptance](persistent-carry-shadow.md)
 and [round log](persistence-sprint-log.md).
 
-Open: actual across-day observations, full Aegis suite receipt, Claude Code review,
+Full Aegis validation: **543/543 suites passed**, 31 new focused tests; one existing
+optional SDK test internally skipped. Aggregate receipts are in
+`docs/review-evidence/persistent-carry/`.
+
+Open: actual across-day observations, Claude Code review,
 then owner release and ordinary-use continuity assessment. The earlier eight-round
 forecast competition and its proposed weekly score windows are superseded. The
 old scheduled forecasting evaluation is paused; archived weights stay untouched.

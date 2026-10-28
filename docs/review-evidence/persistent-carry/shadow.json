@@ -1,0 +1,36 @@
+{
+  "at": 1793187055.690762,
+  "implementation_commit": "a38d8bea",
+  "shadow_pid": 98661,
+  "ticks": 50,
+  "restarts": 3,
+  "days_observed": [
+    "2026-10-28"
+  ],
+  "oldest_carried_hours": 0.3840516581800249,
+  "heartbeat_age_seconds": 25.67284083366394,
+  "source_counts": {
+    "creative": 21,
+    "dream": 3,
+    "journal": 152,
+    "thread": 4,
+    "want": 10
+  },
+  "unavailable_sources": [],
+  "note_chars": 664,
+  "selected_count": 3,
+  "selected_refs_current": true,
+  "full_and_compact_match_note": true,
+  "first_light_prompt_contains_note": true,
+  "provider_stub_calls": 1,
+  "live_context_has_shadow": false,
+  "first_seen_preserved_across_restart": 190,
+  "initial_items_before_restart": 190,
+  "runtime_code": {
+    "carry_context.py": "5149d23bd5cdb5b2e391d80544f0343529d9a3985e7a2742f815b379d5802efa",
+    "carry_sources.py": "651e92bb10058b28d33a5128a7bc1ce603d5fd315133bd8e4c3abea83e83adf5",
+    "persistent_carry.py": "5590cb88dac4025f7d01ed330f862a10fb90c89224e0a729af8b9a7b2881406f"
+  },
+  "fault_file_present": false,
+  "scope": "read-only live source inputs; output and provider-stub probe in private shadow scratch only"
+}

@@ -93,3 +93,14 @@ The daily continuation checks this running shadow and records evidence. It must
 not restart the closed forecasting competition or leave this permanently in shadow.
 Bring this implementation and its observations to Claude Code for review within
 days, then to the owner for the approved release and ordinary-use observation.
+
+## Validation receipt
+
+Implementation `a38d8beaae3bbd48cde8aaf1b83cd8f2808c0bd5`: all **543/543**
+broker suites passed under Aegis `/usr/bin/python3.12` through the OS-isolated
+runner, including all 31 new carrying tests. One pre-existing optional Lab SDK
+test internally skipped. Shell syntax and systemd static verification passed.
+The last shadow probe verified the runtime hashes match that snapshot and every
+selected source reference is current. Aggregate receipts are in
+`docs/review-evidence/persistent-carry/`. This validates the running path and
+recovery contracts; actual cross-day and post-release usefulness remain to observe.

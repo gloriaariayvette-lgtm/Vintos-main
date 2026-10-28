@@ -1,0 +1,17 @@
+{
+  "implementation_commit": "a38d8beaae3bbd48cde8aaf1b83cd8f2808c0bd5",
+  "host": "Aegis",
+  "interpreter": "/usr/bin/python3.12",
+  "runner": "scripts/run_isolated_test.py, four scratch workers",
+  "suites": 543,
+  "passed": 543,
+  "failed": 0,
+  "focused_tests": 31,
+  "internal_skips": {
+    "test_lab_atlas_sdk": 1
+  },
+  "constraints": "scratch HOME/workspace and OS isolation; no live writes, sends or paid calls",
+  "service_static_verify_exit": 0,
+  "static_verify_note": "An existing unrelated vintos-server unit emitted its pre-existing escape-sequence warning. No service installed or reloaded.",
+  "timing_note": "Per-suite seconds use host wall clock; clock adjustment made a few durations negative. Exit results establish completion, not those timing values."
+}
