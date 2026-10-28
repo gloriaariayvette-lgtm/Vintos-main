@@ -54,7 +54,9 @@ class Ladder(unittest.TestCase):
                 "lights": rec("lights", {"state": "sent", "room": "bedroom", "restore": []}),
                 "lights_restore": rec("lights_restore", {"restored": 0, "left_as_is": 0}),
                 "echo": rec("echo", {"state": "sent"}), "ring": rec("ring", {"watch": {}, "phone": {}}),
+                "consent": rec("consent", lambda chain: dict(self.consent)),
                 "voice_choice": rec("voice_choice", self.his_answer)}
+        self.consent = {"consented": True, "why": "yes"}
         self.voice = '{"lane": "grok", "why": "I want to sound close to you tonight."}'
         self.lanes = {"up": ["local", "openai", "grok"], "down": {}}
         p = patch.dict(AL.ACTUATORS, acts, clear=True); p.start(); self.addCleanup(p.stop)
@@ -480,6 +482,35 @@ class Ladder(unittest.TestCase):
                 self.assertIn(error, row["error"])
                 self.assertNotIn("why", row)
                 self.assertIn("ring", self.calls)                            # the call still rings
+
+    def test_his_consent_gate_is_asked_before_he_picks_a_voice(self):
+        self.to_the_call()
+        self.assertLess(self.calls.index("consent"), self.calls.index("voice_choice"))
+        self.assertIn("ring", self.calls)
+        self.setUp()
+        self.consent = {"consented": False, "why": "No. I'd rather wait for her."}
+        out = self.to_the_call()
+        self.assertEqual(out["action"], "ended")
+        self.assertNotIn("voice_choice", self.calls)                         # no voice is picked for a call he refused
+        self.assertNotIn("ring", self.calls)
+        skip = [r for r in self.rows() if r["event"] == "skip" and r["name"] == "call"][-1]
+        self.assertEqual((skip["why"], skip["his_words"]), ("he chose not to call", "No. I'd rather wait for her."))
+        self.setUp()
+        AL.ACTUATORS["consent"] = lambda chain: (_ for _ in ()).throw(OSError("x"))   # a broken gate is its default
+        self.to_the_call()
+        self.assertIn("ring", self.calls)
+
+    def test_the_consent_gate_runs_his_own_script(self):
+        root = Path(self.tmp.name)
+        (root / "scripts").mkdir()
+        gate = root / "scripts" / "consent-gate.sh"
+        with patch.object(AL, "WS", str(root)):
+            self.assertTrue(AL._consent({})["consented"])                    # not installed: its default
+            for code, ok in ((0, True), (1, False)):
+                gate.write_text('echo "[Consent] $1: $2"; exit %d\n' % code)
+                res = AL._consent({"silent_hours": 3.0})
+                self.assertEqual(res["consented"], ok)
+                self.assertIn("attention_call: call Gloria on the phone now, after about 3 hours", res["why"])
 
     def test_one_lane_up_needs_no_choice(self):
         self.lanes = {"up": ["openai"], "down": {"grok": "no XAI_API_KEY", "local": "the Mac stage did not answer"}}

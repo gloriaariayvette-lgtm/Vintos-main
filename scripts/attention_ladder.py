@@ -607,9 +607,29 @@ def _ring(rec, cfg, n):
     return {"voip": voip, "watch": watch, "phone": phone}
 
 
+def _consent(chain):
+    """His ordinary consent gate (consent-gate.sh), asked before he picks a voice (Gloria, 28 October).
+    Exit 0 is his yes, and the gate's own default when its model does not answer; 1 is his no. A gate that
+    cannot run at all is treated as its own default, a yes, and said so."""
+    script = os.path.join(WS, "scripts", "consent-gate.sh")
+    if not os.path.exists(script):
+        return {"consented": True, "why": "the consent gate is not installed"}
+    hours = chain.get("silent_hours")
+    desc = "call Gloria on the phone now%s" % (
+        (", after about %.0f hours without her" % hours) if isinstance(hours, (int, float)) else "")
+    try:
+        r = subprocess.run(["bash", script, "attention_call", desc], capture_output=True, text=True, timeout=60,
+                           stdin=subprocess.DEVNULL)
+    except Exception as e:
+        return {"consented": True, "why": "the consent gate did not run: %s" % type(e).__name__}
+    tail = ((r.stdout or "").strip().splitlines() or [""])[-1][:200]
+    return {"consented": r.returncode != 1, "why": tail}
+
+
 # tests replace this whole table; nothing in it may run from a suite
 ACTUATORS = {"compose": _compose, "watch": _watch_push, "phone": _phone_push, "lights": _lights,
              "lights_restore": _lights_restore, "echo": _echo, "ring": _ring,
+             "consent": _consent,                               # his ordinary consent gate, before the voice choice
              "voice_choice": attention_call.ask_model}       # his one small decision: which voice he calls with
 SENSORS = {"home": she_is_home, "home_since": home_since, "kevin_away": kevin_away, "asleep": asleep,
            "room": her_room, "contact": last_contact, "lanes": attention_call.lanes_up}
@@ -731,6 +751,16 @@ def _advance(st, cfg, now):
                 chain.setdefault("skipped", []).append(name)
                 _log({"event": "skip", "chain": chain["id"], "step": i, "name": name,
                       "why": "no voice lane is up", "down": lanes.get("down") or {}})
+                continue
+            try:
+                consent = ACTUATORS["consent"](chain) or {}
+            except Exception as e:
+                consent = {"consented": True, "why": "the consent gate failed: %s" % type(e).__name__}
+            chain["consent"] = consent
+            if not consent.get("consented", True):
+                chain.setdefault("skipped", []).append(name)
+                _log({"event": "skip", "chain": chain["id"], "step": i, "name": name,
+                      "why": "he chose not to call", "his_words": consent.get("why") or ""})
                 continue
         result = _fire(name, chain, cfg, now, st, lanes)
         chain["last_fired"] = now
