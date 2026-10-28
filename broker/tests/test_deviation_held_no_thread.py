@@ -39,5 +39,23 @@ slip = seeds(branch.body)
 check("slipping still seeds its deviation-check thread",
       len(slip) == 1 and slip[0].startswith('seed_thread("deviation-check", f"I slipped from what I intended'), slip)
 check("the 'That held - something I have been reaching for landed' thread text is gone", "reaching for landed" not in src)
+
+# A slip seeds its own thread whether or not a blush was written. Blush stopped seeding threads in
+# 64c07124, so the old "blush already seeded this event" skip left every slip at >= 0.45 threadless.
+slip_try = next((s for s in branch.body if isinstance(s, ast.Try)
+                 and any(isinstance(n, ast.Call) and getattr(n.func, "id", "") == "seed_thread"
+                         for n in ast.walk(s))), None)
+check("the slip seed sits in a top-level try of the deviation branch", slip_try is not None)
+slip_src = ast.get_source_segment(src, slip_try) if slip_try else ""
+check("the slip seed is not gated on a blush having been written",
+      "_blush_written" not in slip_src and "blush already seeded" not in src, slip_src)
+check("the slip seed keeps its threshold quality path",
+      'extra={"decision_mode": "threshold"}' in slip_src and "crossed the threshold" in slip_src, slip_src)
+check("no other seed_thread call anywhere in deviation_check (one deviation, one thread)",
+      sum(isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", "")) == "seed_thread"
+          for n in ast.walk(tree)) == 1)
+blush_src = open(os.path.join(REPO, "bin", "blush-ledger.py")).read()
+check("blush still seeds no thread of its own, so the slip seed cannot double up",
+      "seed_thread(" not in blush_src)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
