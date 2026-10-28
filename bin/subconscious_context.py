@@ -13,7 +13,7 @@ SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-def get_subconscious_context(include=None):
+def get_subconscious_context(include=None, *, carrying=False):
     """Return assembled subconscious context block.
     
     include: list of system names to include, or None for all.
@@ -135,7 +135,7 @@ def get_subconscious_context(include=None):
             if s: parts.append(s)
         except: pass
 
-    if all_systems or "carrying" in include:
+    if carrying and (all_systems or "carrying" in include):
         try:
             from carry_context import context_block
             carrying = context_block()
@@ -146,14 +146,14 @@ def get_subconscious_context(include=None):
         return ""
     return "\n\n".join(parts)
 
-COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning", "carrying")
+COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning")
 
 
-def get_subconscious_context_compact(include=None):
+def get_subconscious_context_compact(include=None, *, carrying=False):
     """Shorter version for scripts with tight context budgets.
 
     include: names from COMPACT_SYSTEMS (or the full block's names "statements", "causal", "drift"),
-    or None for all. Honoured since 2026-10-16; before that it was accepted and ignored. Pressure
+    or None for the default set. Carrying requires explicit carrying=True from main chat or First Light. Honoured since 2026-10-16; before that it was accepted and ignored. Pressure
     uses emoclaw_pressure.get_pressure_compact (one closed bracket) instead of cutting the full
     [EMOCLAW PRESSURE] block at 200 characters, which left its tag open mid-sentence."""
     parts = []
@@ -207,7 +207,7 @@ def get_subconscious_context_compact(include=None):
             if _yb: parts.append('YEARNING: ' + _yb[:150])
         except Exception: pass
 
-    if want("carrying"):
+    if carrying and (include is None or "carrying" in include):
         try:
             from carry_context import context_block
             carrying = context_block()

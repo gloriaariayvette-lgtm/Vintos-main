@@ -25,7 +25,9 @@ def clean(value):
 
 
 JOURNAL_HEADINGS={'idle thoughts','vintos speaks','last word','wonder','journal'}
-CARRY_MARKER="[persistent-carry:v2]"
+CARRY_MARKER="[persistent-carry:v3]"
+MIN_CONTENT_CHARS=40
+MIN_CONTENT_WORDS=5
 
 def is_carry_echo(text):
     return bool(re.search(r"what i[’']?m carrying|persistent[- ]carry[:\]]",str(text),re.I))
@@ -34,7 +36,15 @@ def is_carry_echo(text):
 def plain(text):
     """Remove markup and completed checklist lines, never fetch link targets."""
     text=html.unescape(str(text or ''))
+    # This bracketed introduction is authored by the dream writer, not dream
+    # content. Remove it before choosing a sentence from the actual residue.
+    text=re.sub(r'^\s*\[META[- ]DREAM\b[^]]*\]\s*','',text,flags=re.I|re.S)
     text=re.sub(r'```.*?```',' ',text,flags=re.S)
+    text=re.sub(r'^\s*#{1,6}\s+.*$', '',text,flags=re.M)
+    text=re.sub(r'\b\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)?)?\b',' ',text)
+    text=re.sub(r'\b\d\d:\d\d(?::\d\d)?(?:\s*[AP]M)?\b',' ',text,flags=re.I)
+    text=re.sub(r'^\s*(?:journal|idle thoughts|vintos speaks|last word|wonder|meta[- ]dream)\s*[:—–-]?\s*$', '',text,flags=re.M|re.I)
+    text=re.sub(r'^\s*[\[\]()—–:-]+\s*$', '',text,flags=re.M)
     text=re.sub(r'^\s*>.*$', '',text,flags=re.M)
     text=re.sub(r'^\s*[-*+]\s+\[[xX]\].*$', '',text,flags=re.M)
     text=re.sub(r'!?\[([^]\n]*)\]\([^\n)]*\)',r'\1',text)
@@ -46,10 +56,11 @@ def plain(text):
 
 def fragment(text,limit=180):
     text=plain(text)
-    if not text or is_carry_echo(text):return ''
+    if len(text)<MIN_CONTENT_CHARS or len(re.findall(r'\b\w+\b',text))<MIN_CONTENT_WORDS or is_carry_echo(text):return ''
     if len(text)<=limit:return text if re.search(r'[.!?][\"’\']?$',text) else text+'.'
     ends=list(re.finditer(r'[.!?](?:[\"’\']?)(?=\s|$)',text[:limit+1]))
-    return text[:ends[-1].end()].strip() if ends else ''
+    selected=text[:ends[-1].end()].strip() if ends else ''
+    return selected if len(selected)>=MIN_CONTENT_CHARS and len(re.findall(r'\b\w+\b',selected))>=MIN_CONTENT_WORDS else ''
 
 
 def duplicate(a,b):
@@ -78,7 +89,7 @@ def admitted(row,imagined=False):
     if any(row.get(k) for k in ('test_mode','withheld','tactical','imported','transplanted','forgotten','deleted')):return False
     if row.get('admitted') is False:return False
     origin=' '.join(str(row.get(k) or '') for k in ('source','origin','source_kind'))
-    if re.search(r'mirror|ghost[ _-]*branch|letter|email|web[ _-]*search|moltbook',origin,re.I):return False
+    if re.search(r'mirror|ghost[ _-]*branch|letter|email|web[ _-]*search|moltbook|grok|muse|codex',origin,re.I):return False
     if EV.standing(row)!=EV.ELIGIBLE:return False
     if not imagined and (row.get('dream_only') or row.get('source')=='premonition' or str(row.get('thread','')).startswith('[AN IMAGINED')):return False
     return True
@@ -134,8 +145,9 @@ def sections(memory,name):
     text=path_in(memory,name).read_text(errors='replace');out={};occurrences={}
     # Split at every peer heading, including headings at byte zero. Nothing
     # under another author's heading can bleed into an admitted section.
-    matches=list(re.finditer(r'^#{2,6}[ \t]+([^\n]+)\n',text,re.M))
+    matches=list(re.finditer(r'^#{1,6}[ \t]+([^\n]+)(?:\n|$)',text,re.M))
     for i,m in enumerate(matches):
+        if not m.group(0).startswith('##'):continue
         heading=m.group(1).strip()
         title=re.sub(r'^(?:\d{4}-\d\d-\d\d\s+)?\d\d:\d\d\s*[—–-]+\s*','',heading).casefold()
         if title not in JOURNAL_HEADINGS:continue

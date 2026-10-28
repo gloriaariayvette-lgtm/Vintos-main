@@ -40,3 +40,24 @@ private note continuity. A synthetic receipt cannot satisfy acceptance. Shadow
 carry origins will reset at any later owner-approved production adoption.
 Evidence contains only scores/counts/timestamps/code hashes and test exits, no
 source text, source identifiers, private vectors or checkpoints. No merge/deploy.
+
+## 28 October — second review implementation
+
+Kept the same carry-only branch; no forecasting changes. Deploy now atomically
+writes enabled=false, including over an earlier true flag. Default full/compact
+contexts exclude carrying; only the three main-chat builders and First Light opt
+in, with ReelRoom and voice/default background callers excluded. Added a cleaned
+40-character/five-word minimum, timestamp and bare-heading removal, META-DREAM
+preamble stripping, H1 boundaries and grok/muse/codex origin exclusions.
+
+Lab/house tails now supply counters only, not semantic state or dirty state.
+Meaningful changes are available in RAM/notes immediately and flush to state.json
+at most once per 180 seconds. Privacy removals invalidate old persisted state
+immediately without bypassing that write cadence. A crash may lose three minutes
+of pending state, which must be re-read without fabricating carry history.
+52 focused OS-isolated Aegis tests passed; full validation follows below.
+
+The revised shadow is in `/tmp/persistent-carry-second-review-20261028-1Ht0eN`.
+It is explicitly a nohup scratch process and **will not survive reboot**. No boot
+unit is installed; the production service remains subject to owner deployment.
+The second revision needs its own real midnight; v1/v2 runtime cannot satisfy it.

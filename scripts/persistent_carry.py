@@ -29,6 +29,8 @@ WEIGHTS={'thread':.4,'want':.4,'journal':.4,'dream':.12,
          'conversation':.8,'her_conversation':1.,'presence':1.,'emotion':.2,
          'lab':.04,'body':.15,'house':.04,'want_activity':.2}
 MAX_CLOCK_STEP=300.
+STATE_WRITE_INTERVAL=180.
+OBSERVATION_ONLY={'lab','house'}
 
 
 def feature(text):
@@ -111,6 +113,9 @@ class Carrier:
         self.mono=time.monotonic();self.ticks=max(self.state['ticks'],health.get('ticks',0)) if not adopted else 0
         self.clock_jumps=health.get('clock_jumps',0)
         self.needs_save=adopted or p.exists()
+        self.dirty=self.needs_save
+        self.last_write_elapsed=self.state.get('saved_elapsed',self.state.get('elapsed',0)) if p.exists() else None
+        self.observation_streams={};self.observation_seen={};self.observation_processed={}
         self.stopped=False
         self.shadow=shadow
         self.runtime_code={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in
@@ -186,15 +191,24 @@ class Carrier:
                 if row['kind'] in purge_kinds:events[row['kind']].append(feature(row['text']))
             for old in self.output.glob('hour-*.json'):old.unlink()
             for old in self.output.glob('state.corrupt-*.json'):old.unlink()
+            # Forgetting/removal invalidates the old checkpoint immediately;
+            # a replacement still obeys the bounded write cadence.
+            (self.output/'state.json').unlink(missing_ok=True)
         for name,kind in STREAMS.items():
             try:
-                rows,cursor,bad,reset=tail(self.memory,name,s['streams'].get(name,{}))
-                s['streams'][name]=cursor
-                seen=list(s['seen'].get(name,[]));seen_set=set(seen);count=0
+                observation_only=kind in OBSERVATION_ONLY
+                cursors=self.observation_streams if observation_only else s['streams']
+                dedup=self.observation_seen if observation_only else s['seen']
+                processed=self.observation_processed if observation_only else s['processed']
+                rows,cursor,bad,reset=tail(self.memory,name,cursors.get(name,{}))
+                cursors[name]=cursor
+                seen=list(dedup.get(name,[]));seen_set=set(seen);count=0
                 for row in rows:
                     eid=digest(row)[:32]
                     if eid in seen_set:continue
                     seen.append(eid);seen_set.add(eid)
+                    if observation_only:
+                        count+=1;continue
                     # Arrival is the first observation now, not a fabricated
                     # historical availability time from an edited record.
                     if kind=='conversation':
@@ -215,13 +229,14 @@ class Carrier:
                                 vector=vector/max(np.linalg.norm(vector),1.)
                         except (ValueError,OverflowError):pass
                     event_kind='her_conversation' if kind=='conversation' and row.get('role')=='user' else kind
-                    events[event_kind].append(vector);count+=1
+                    if not observation_only:events[event_kind].append(vector)
+                    count+=1
                     if kind=='body' and row.get('kind') in ('motion','wearing'):
                         try:fresh=-60<=source_now-float(row.get('observed_ts',0))<=900
                         except (ValueError,TypeError):fresh=False
                         if fresh:events['presence'].append(feature('Gloria her presence together '+text))
-                s['seen'][name]=seen[-1024:]
-                s['processed'][kind]=s['processed'].get(kind,0)+count
+                dedup[name]=seen[-1024:]
+                processed[kind]=processed.get(kind,0)+count
                 if bad:unavailable.append(name+':malformed-rows')
             except (OSError,ValueError,TypeError):unavailable.append(name)
         # Only a recent positive detection of HER phone is presence evidence.
@@ -278,6 +293,7 @@ class Carrier:
         s['days']=sorted(set(s['days']+[day]))[-30:]
         state_changed=self.needs_save or before!=digest(s)
         self.needs_save=False
+        self.dirty=self.dirty or state_changed
         if state_changed:
             s.update(last_tick=now,elapsed=self.elapsed,midnights=self.midnights,ticks=self.ticks,
                      channels={k:v.tolist() for k,v in channels.items()})
@@ -305,19 +321,22 @@ class Carrier:
                              'source_failures':len(unavailable),'runtime_code':self.runtime_code})
             atomic(receipt_path,receipts[-30:])
         atomic(self.output/'note.json',packet)
-        if state_changed:atomic(self.output/'state.json',s)
-        if state_changed and (purge or now-s['last_checkpoint']>=3600):
-            s['last_checkpoint']=now
-            atomic(self.output/('hour-'+datetime.fromtimestamp(now,TZ).strftime('%Y%m%d-%H%M')+'.json'),s)
-            for old in sorted(self.output.glob('hour-*.json'))[:-48]:old.unlink()
+        state_written=self.dirty and (self.last_write_elapsed is None or self.elapsed-self.last_write_elapsed>=STATE_WRITE_INTERVAL)
+        if state_written:
+            s['saved_elapsed']=self.elapsed
+            if purge or now-s['last_checkpoint']>=3600:
+                s['last_checkpoint']=now
+                atomic(self.output/('hour-'+datetime.fromtimestamp(source_now,TZ).strftime('%Y%m%d-%H%M')+'.json'),s)
+                for old in sorted(self.output.glob('hour-*.json'))[:-48]:old.unlink()
             atomic(self.output/'state.json',s)
+            self.last_write_elapsed=self.elapsed;self.dirty=False
         health={'schema':SCHEMA,'shadow':self.shadow,'pid':os.getpid(),'born':s['born'],'last_tick':now,
                 'ticks':self.ticks,'restarts':s['restarts'],'days':s['days'],'selected_count':len(chosen),
                 'oldest_carried_hours':max([item['carried_seconds']/3600 for item in selected],default=0),
                 'source_counts':dict(Counter(r['kind'] for r in current.values())),
-                'processed':s['processed'],'changes':s['changes'],'removed':s['removed'],
+                'processed':dict(s['processed'],**self.observation_processed),'changes':s['changes'],'removed':s['removed'],
                 'unavailable_sources':sorted(unavailable),'checkpoint_files':len(list(self.output.glob('hour-*.json')))}
-        health.update(elapsed=self.elapsed,midnights=self.midnights,clock_jumps=self.clock_jumps,source_wall=self.source_wall,state_written=state_changed,enabled=enabled(self.output))
+        health.update(elapsed=self.elapsed,midnights=self.midnights,clock_jumps=self.clock_jumps,source_wall=self.source_wall,state_written=state_written,state_pending=self.dirty,last_saved_elapsed=self.last_write_elapsed,enabled=enabled(self.output))
         health['checkpoint_rebuilt']=s.get('checkpoint_rebuilt',False)
         health['runtime_code']=self.runtime_code
         health['omitted_records']=omitted
