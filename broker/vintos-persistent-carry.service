@@ -1,0 +1,23 @@
+[Unit]
+Description=Vintos persistent carrying state
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/persistent_carry.py --daemon
+Restart=on-failure
+RestartSec=10
+Nice=15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace/memory/persistent-carry
+UMask=0077
+RestrictAddressFamilies=AF_UNIX
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Environment=SPARK_WORKSPACE=%h/.vintos/workspace
+
+[Install]
+WantedBy=default.target

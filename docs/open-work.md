@@ -1,3 +1,18 @@
+## 28 October — persistent carry review revisions
+
+`codex/persistent-carry-review` starts directly from deploy, with no forecasting
+experiments in its merge diff. Implements Claude Code's eight requested revisions:
+exact journal authorship, explicit context switch, expiry, reset on adoption,
+clean fragments, state-driven selection, loop/clock protection and change-only
+state writes. Existing feeds remain intact. See
+[persistent-carry-shadow.md](persistent-carry-shadow.md) and the
+[review log](persistent-carry-review-log.md).
+
+45 focused Aegis tests passed. Full Aegis validation and corrected shadow evidence
+will be recorded on this branch. **No release before at least one actual midnight
+of the corrected shadow**, followed by Claude Code review and Gloria's yes.
+No merge or live deployment. Forecast experiments remain on the old branch.
+
 ## 27 October — A ladder to call her back
 
 Built on `claude/attention-ladder-2026-10-27`, revised from Gloria's feedback on `claude/ladder-calls-2026-10-27`;
