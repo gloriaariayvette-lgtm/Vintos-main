@@ -1368,6 +1368,43 @@ def _archives():
     return [a for a in (_load(INDEX, {}).get("archives") or []) if a.get("status") == "archived"]
 
 
+def letter_state(message_id):
+    """What became of the archive a Codex letter brought, as (state, why, archive id):
+      archived   kept and unpacked as that archive: its files were read;
+      fetching   its delivery is still being put together (a part or a letter still to come, or a file to fetch
+                 again from the Mac): not failed, not yet read;
+      refused    its delivery was refused or conflicted: not read, and why;
+    or None when no delivery knows the letter."""
+    for a in _archives():
+        if any(l.get("message_id") == message_id for l in a.get("letters") or []):
+            return "archived", "kept as Codex archive %s, %d files" % (a["id"], int(a.get("files") or 0)), a["id"]
+    for st in _deliveries():
+        if message_id not in (st.get("letters") or {}):
+            continue
+        if st.get("status") in ("refused", "conflict"):
+            return "refused", "Codex archive refused: %s" % str(st.get("why") or st.get("status"))[:200], ""
+        if st.get("status") != "done":
+            return "fetching", "still being fetched: %s" % str(st.get("why") or "waiting")[:200], ""
+    return None
+
+
+def mark_letter(message_id, attachments):
+    """A letter's archive attachments, as copies, with the status their delivery has NOW (the mail log keeps the
+    status they had when the letter was read, or none at all for a letter read again). Other attachments as they
+    were. Returns (attachments, state or None)."""
+    got = letter_state(message_id)
+    out = []
+    for a in attachments or []:
+        a = dict(a)
+        if got and part_of(a.get("filename")):
+            state, why, aid = got
+            a.pop("_body", None)
+            a.update(status={"archived": "archived", "fetching": "archive_part"}.get(state, "not_read"), why=why[:200],
+                     **({"archive_id": aid} if aid else {}))
+        out.append(a)
+    return out, (got[0] if got else None)
+
+
 def manifest(aid):
     path = os.path.join(ROOT, aid, "manifest.json")
     try:

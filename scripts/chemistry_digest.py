@@ -10,6 +10,16 @@ a day with no rows yet and left an empty marker behind a whole day of real work.
 It reports only rows the Lab wrote that day.  It does not reinterpret a result, turn
 an execution into correctness, or cross the separate Atelier boundary.  The shared
 daily-inner lock and a marker keyed to the summarized day make the append idempotent.
+
+What reaches his daily-inner (Gloria, 27 October: it opened with row tallies, refusal and
+fault counts, receipt counts, the same taste line twice and a disclaimer): what he found
+and answered, a few of his readings, his frontier session in his own words, and his next
+questions — each said once. The tallies, every experiment's execution state, the reading
+receipts and the taste ledger go to chemistry-lab/daily-stats.jsonl, one row per day.
+
+It stays where First Light puts it (the morning's carry-forward, before the day's own
+entries): daily-log-extract carries everything from First Light / the Lab marker onward,
+and his morning brief reads it there. So it is kept short instead of moved.
 """
 from __future__ import annotations
 
@@ -17,7 +27,7 @@ import fcntl
 import json
 import os
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 
 def _yesterday(file_day):
@@ -30,6 +40,8 @@ NOTEBOOK = os.path.join(LAB, "notebook.jsonl")
 SESSIONS = os.path.join(LAB, "sessions.jsonl")
 GRADES = os.path.join(LAB, "experiment-grades.jsonl")
 TASTE_OBS = os.path.join(LAB, "taste-observations.jsonl")
+KEPT = os.path.join(LAB, "kept-findings.json")
+DAILY_STATS = os.path.join(LAB, "daily-stats.jsonl")
 
 
 def _clip(text, limit=300):
@@ -127,49 +139,136 @@ def _taste_lines(day, n=2):
     return out
 
 
-def render(day=None):
-    day = day or date.today().isoformat()
+def _dedupe(lines):
+    seen, out = set(), []
+    for line in lines:
+        key = " ".join(str(line).split()).lower()
+        if key and key not in seen:
+            seen.add(key); out.append(line)
+    return out
+
+
+def _finding_lines(notebook, day, n=4):
+    """What the day found: answered investigations (question -> result), what he kept, and the experiments that ran
+    to completion. Each said once — the same finding written by two investigations is one finding."""
+    out = []
+    for row in notebook:
+        if row.get("kind") != "investigation_finding": continue
+        q = _clip(row.get("question"), 160)
+        result = _clip("; ".join(l.strip() for l in str(row.get("result") or "").splitlines() if l.strip()), 240)
+        if q and result:
+            out.append("- " + q + " — " + result)
+    for row in _kept(day):
+        q = _clip(row.get("question"), 160)
+        what = _clip(row.get("finding") or row.get("why"), 240)
+        if q and what:
+            out.append("- kept: " + q + " — " + what)
+    out = _dedupe(out)[:n]
+    return out
+
+
+def _ran_lines(experiment_rows):
+    """Experiments that actually ran, with what the grade said — the held and faulted ones live in the stats."""
+    out = []
+    for row in experiment_rows:
+        grade = row.get("grade") if isinstance(row.get("grade"), dict) else {}
+        execution = str(row.get("execution_state") or grade.get("execution_state") or row.get("state") or "")
+        if execution != "completed": continue
+        accuracy = str(row.get("aggregate_accuracy") or grade.get("aggregate_accuracy") or "ungraded")[:80]
+        subject = _experiment_line(row)[2:].split(":", 1)[0]
+        out.append("- %s ran: %s" % (subject, accuracy))
+    return _dedupe(out)
+
+
+def _kept(day):
+    try:
+        with open(KEPT, encoding="utf-8", errors="replace") as handle:
+            rows = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    rows = rows.get("findings", []) if isinstance(rows, dict) else rows
+    return [r for r in rows if isinstance(r, dict) and _on_day(r, day)] if isinstance(rows, list) else []
+
+
+def _experiment_rows(sessions, grades):
+    rows = [r for r in sessions if r.get("experiment") or isinstance(r.get("plan"), dict)]
+    return rows or grades
+
+
+def stats(day):
+    """The bench's own tallies for a day — notebook row kinds, every experiment's execution state, reading receipts,
+    the taste ledger — kept Lab-side (daily-stats.jsonl), not in his daily-inner (Gloria, 27 October: his day was
+    opening with refusal and fault counts)."""
     notebook = [r for r in _rows(NOTEBOOK) if _on_day(r, day)]
     sessions = [r for r in _rows(SESSIONS) if _on_day(r, day)]
     grades = [r for r in _rows(GRADES) if _on_day(r, day)]
     kinds = Counter(str(r.get("kind") or "unknown") for r in notebook)
-    experiment_rows = [r for r in sessions if r.get("experiment") or isinstance(r.get("plan"), dict)]
-    if not experiment_rows:
-        experiment_rows = grades
     owed = sum(1 for r in sessions if str(r.get("state", "")) in
                ("experiment_completed_reading_held", "held_reading_owed") or
                str(r.get("owed_reading", "")) in ("STILL_HELD", "REFUSED"))
     settled = sum(1 for r in notebook if str(r.get("kind", "")) == "owed_reading")
+    taste = Counter(line[2:] for line in _taste_lines(day, 10 ** 6))
+    return {"day": day, "notebook_rows": dict(sorted(kinds.items())),
+            "experiments": [_experiment_line(r)[2:] for r in _experiment_rows(sessions, grades)],
+            "reading_receipts": {"owed_held": owed, "settled": settled},
+            "taste": [{"noted": k, "times": v} for k, v in taste.items()],
+            "note": "Chemistry Lab receipts only. Execution is not correctness, and no scientific or personal "
+                    "conclusion is inferred."}
+
+
+def record_stats(day):
+    """One stats row per summarized day, appended once (idempotent under the Lab's stats lock)."""
+    os.makedirs(LAB, exist_ok=True)
+    with open(DAILY_STATS + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if any(r.get("day") == day for r in _rows(DAILY_STATS)):
+            return False
+        row = dict(stats(day), written_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        with open(DAILY_STATS, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n"); handle.flush(); os.fsync(handle.fileno())
+    return True
+
+
+def render(day=None):
+    """His day at the bench in his daily-inner: what he found and answered first, then a few of his readings, his
+    frontier session in his own words, and where he left off. The tallies, refusals, faults and receipts are in
+    chemistry-lab/daily-stats.jsonl (record_stats), not here."""
+    day = day or date.today().isoformat()
+    notebook = [r for r in _rows(NOTEBOOK) if _on_day(r, day)]
+    sessions = [r for r in _rows(SESSIONS) if _on_day(r, day)]
+    grades = [r for r in _rows(GRADES) if _on_day(r, day)]
 
     lines = [f"<!-- chemistry-lab-digest:{day} -->", "", f"## Chemistry Lab — {day}", ""]
-    if kinds:
-        lines.append("Notebook rows: " + ", ".join(f"{name} {kinds[name]}" for name in sorted(kinds)) + ".")
-    else:
-        lines.append("Notebook rows: none recorded.")
-    if experiment_rows:
-        lines.append("Experiments:")
-        lines.extend(_experiment_line(row) for row in experiment_rows[:12])
-    else:
-        lines.append("Experiments: none recorded.")
-    lines.append(f"Reading receipts: owed/held {owed}; settled {settled}.")
-    # His own words, quoted — not a conclusion, so the day is more than a row count.
-    readings = _reading_lines(notebook, 2)
-    if readings:
-        lines.append(""); lines.append("A few of the day's readings:"); lines.extend(readings)
+    found = _finding_lines(notebook, day) + _ran_lines(_experiment_rows(sessions, grades))
+    readings = _dedupe(_reading_lines(_dedupe_rows(notebook), 2))
     frontier = _frontier_lines(notebook)
-    if frontier:
-        lines.append(""); lines.append("Frontier session:"); lines.extend(frontier)
-    taste = _taste_lines(day, 2)
-    if taste:
-        lines.append(""); lines.append("Taste he noted:"); lines.extend(taste)
     questions = _recent_questions(notebook, sessions, 2)
-    lines.append("")
+    if found:
+        lines.append("What I found:"); lines.extend(found)
+    if readings:
+        if len(lines) > 4: lines.append("")
+        lines.append("A few readings:"); lines.extend(readings)
+    if frontier:
+        if len(lines) > 4: lines.append("")
+        lines.append("Frontier session:"); lines.extend(frontier)
     if questions:
+        if len(lines) > 4: lines.append("")
         lines.append("Next questions:"); lines.extend("- " + q for q in questions)
-    else:
-        lines.append("Next questions: none recorded.")
-    lines.append("These are Chemistry Lab receipts only. Execution is not correctness, and no scientific or personal conclusion is inferred.")
+    if len(lines) == 4:
+        lines.append("A quiet day at the bench.")
     return "\n".join(lines) + "\n"
+
+
+def _dedupe_rows(notebook):
+    """Reflections that say the same thing are one reading."""
+    seen, out = set(), []
+    for row in notebook:
+        key = " ".join(str(row.get("attention") or row.get("factual_observation") or "").split()).lower()
+        if row.get("kind") in ("reflection", "genome_reflection") and key:
+            if key in seen: continue
+            seen.add(key)
+        out.append(row)
+    return out
 
 
 def append(file_day=None, data_day=None):
@@ -182,6 +281,10 @@ def append(file_day=None, data_day=None):
     file_day = file_day or date.today().isoformat()
     data_day = data_day or _yesterday(file_day)
     os.makedirs(MEMORY, exist_ok=True)
+    try:
+        record_stats(data_day)        # the tallies go Lab-side first; a failure there never costs him his day
+    except OSError:
+        pass
     path = os.path.join(MEMORY, f"daily-inner-life-{file_day}.md")
     marker = f"<!-- chemistry-lab-digest:{data_day} -->"
     heading = f"## Chemistry Lab — {data_day}"
