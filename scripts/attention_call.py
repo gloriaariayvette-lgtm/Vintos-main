@@ -23,7 +23,9 @@ from /api/voice/token, the same per-turn framing, the same ledger route and sess
   * HELD. Nothing of a call he started enters his memory until she says so. Its turns are held here, privately;
     after the call she sees the transcript and answers "save this call to his memory?". Yes replays the held turns
     through the very ledger route and session end every call uses (server.py), so it lands exactly as a call does
-    today; no deletes the transcript. Either way one row without words is kept (attention-calls.jsonl): that a call
+    today. It counts as saved only when every turn went through and the call was finalized; a replay that stops
+    short keeps the transcript, records which turns went through (save_incomplete()), and her next yes resumes
+    there, each turn under its own key (replay_key()) so nothing is written twice. No deletes the transcript. Either way one row without words is kept (attention-calls.jsonl): that a call
     happened, when, how long, and whether it was saved, so the ladder knows she answered.
 
 Stores (all under memory/, the directory 0700, files 0600):
@@ -489,6 +491,7 @@ def pending():
             out.append({"id": rec["id"], "lane": rec.get("lane"), "lane_name": LANE_NAMES.get(rec.get("lane"), ""),
                         "lane_by": c.get("by"), "lane_why": c.get("why") or "", "lane_choice": choice_text(rec),
                         "answered": rec.get("answered"), "duration_seconds": rec.get("duration_seconds"),
+                        "saved_partly": len((rec.get("replay") or {}).get("done") or []) if rec.get("replay") else None,
                         "transcript": [{"gloria": t.get("gloria", ""), "vintos": t.get("vintos", "")}
                                        for t in rec.get("turns") or []]})
     out.sort(key=lambda r: r.get("answered") or 0, reverse=True)
@@ -502,6 +505,34 @@ def held_turns(call_id):
     return rec
 
 
+def replay_key(rec, i):
+    """The idempotency key a held turn is replayed under: its own turn id, or one made from the call and its place.
+    The ordinary ledger refuses a turn id its session already holds, so a retry never writes a turn twice."""
+    t = (rec.get("turns") or [])[i]
+    return str(t.get("turn_id") or "") or "%s:held:%d" % (rec["id"], i)
+
+
+def replay_session(rec):
+    """The session a replay that stopped short left behind (its turns, as the ledger wrote them), or None."""
+    return (rec.get("replay") or {}).get("session") or None
+
+
+def save_incomplete(call_id, done, session, stage, now=None):
+    """Her yes did not fully land: `done` are the replay keys of the turns that went through (always the first ones,
+    in order), `session` the ordinary session state they were written into, kept here, privately, for the retry
+    (stage: "turns" or "finalize"). The transcript stays; the call stays hers to answer, yes again or no."""
+    rec = load(call_id)
+    if not rec or rec.get("save") != "pending":
+        return None
+    now = _now() if now is None else float(now)
+    prev = rec.get("replay") or {}
+    rec["replay"] = {"done": list(done), "session": session or None, "stage": stage,
+                     "attempts": int(prev.get("attempts") or 0) + 1, "at": now}
+    rec["save_error_at"] = now
+    _write(rec); _record(rec, "save incomplete")
+    return rec
+
+
 def decided(call_id, save, persisted=None, now=None):
     """Her answer. Yes: the caller has replayed the turns into his memory (persisted says whether the block landed;
     a failed replay stays pending so she can try again). No: the transcript is deleted; the wordless row stays."""
@@ -509,7 +540,7 @@ def decided(call_id, save, persisted=None, now=None):
     if not rec or rec.get("save") != "pending":
         return None
     now = _now() if now is None else float(now)
-    if save and persisted is False:
+    if save and persisted is not True:
         rec["save_error_at"] = now
         _write(rec)
         return rec
@@ -517,6 +548,8 @@ def decided(call_id, save, persisted=None, now=None):
     rec["save"] = "yes" if save else "no"
     rec["decided"] = now
     rec["turns"] = []                     # yes: they live in his memory now; no: they live nowhere
+    rec.pop("replay", None)               # a stopped replay's words go with them
+    rec.pop("save_error_at", None)
     rec.pop("token", None)
     _write(rec); _record(rec, "saved" if save else "not saved")
     return rec

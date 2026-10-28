@@ -16,6 +16,8 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import threading
+_RealThread = threading.Thread          # the House stubs threading.Thread; the concurrency test needs real ones
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -95,7 +97,8 @@ class House:
         exec(ast.get_source_segment(SRC, helper), self.ns)
         for name in ("_voice_fire_tags", "_voice_session_turns", "_voice_lead_kick", "_voice_ledger_held",
                      "_voice_ledger_owned", "voice_ledger", "_voice_session_end_owned", "_voice_session_end_held", "voice_session_end",
-                     "attention_call_save", "_attention_call_replay", "attention_call_opening",
+                     "attention_call_save", "_attention_call_replay", "_attention_call_session", "_attention_call_block_landed",
+                     "_attention_call_take_session", "_attention_call_forget", "attention_call_opening",
                      "attention_answer_button", "attention_call_answer", "attention_calls_pending",
                      "attention_config_write", "attention_config_read"):
             exec(_seg(name), self.ns)
@@ -317,6 +320,217 @@ class HeldCall(unittest.TestCase):
         self.assertNotIn("lanes", read)
         self.assertNotIn("call_lane", read["settings"])
         self.assertNotIn("token", json.dumps(read))
+
+
+class _Failing:
+    """Real store failures, injected where the real routes write: the session-state write of a chosen replayed turn
+    (the per-turn ledger write then returns ok:false, as it does when its store cannot be written), or the
+    interaction-ledger write of the session block (finalization then reports persisted:false)."""
+
+    def __init__(self):
+        import store_guard
+        self.sg, self.real = store_guard, store_guard.write_json
+        self.turns, self.block, self.writes = set(), False, []
+
+    def __call__(self, path, obj, *a, **k):
+        if str(path).endswith("voice-session-state.json") and isinstance(obj, dict) and obj.get("turns"):
+            last = obj["turns"][-1].get("turn_id")
+            if last in self.turns:
+                raise OSError("injected: session state not writable")
+        if str(path).endswith("interaction-ledger.json") and self.block:
+            raise OSError("injected: ledger not writable")
+        self.writes.append(os.path.basename(str(path)))
+        return self.real(path, obj, *a, **k)
+
+
+class PartialSave(unittest.TestCase):
+    """Her yes is kept only when every held turn landed and the call was finalized; anything less stays hers to
+    retry, and a retry resumes where the last one stopped, writing nothing twice (review, 28 October)."""
+
+    def setUp(self):
+        self.h = House()
+        self.addCleanup(self.h.close)
+        self.fail = _Failing()
+        p = patch.object(self.fail.sg, "write_json", self.fail)
+        p.start(); self.addCleanup(p.stop)
+        rec = self.h.ringing_call()
+        self.h.AL.call_answer(rec["id"])
+        call_through(self.h, rec, "ladder-" + rec["id"])
+        self.rec = self.h.AC.load(rec["id"])
+        self.keys = [t["turn_id"] for t in self.rec["turns"]]
+        self.h.fired.clear(); self.h.leads.clear()
+
+    def save(self, yes=True):
+        return self.h.run("attention_call_save", self.rec["id"], {"save": yes}, object())
+
+    def history(self):
+        p = os.path.join(self.h.mem, "avatar-overlay-chat.json")
+        return json.load(open(p)) if os.path.exists(p) else []
+
+    def assert_still_hers(self, out, landed):
+        self.assertFalse(out["saved"]); self.assertFalse(out["ok"])
+        after = self.h.AC.load(self.rec["id"])
+        self.assertEqual(after["save"], "pending")                                  # still hers to answer
+        self.assertEqual(after["turns"], self.rec["turns"])                         # the transcript, untouched
+        self.assertEqual(after["replay"]["done"], self.keys[:landed])               # which turns went through
+        self.assertEqual(self.h.entries(), [])                                      # no block yet
+        pend = self.h.run("attention_calls_pending", object())["calls"]
+        self.assertEqual([(c["id"], c["saved_partly"]) for c in pend], [(self.rec["id"], landed)])
+        self.assertNotIn(self.rec["turns"][0]["vintos"], open(self.h.AC.RECORD).read())   # the wordless row stays so
+        # her next ordinary call is not blocked by the unfinished replay
+        self.assertFalse(os.path.exists(os.path.join(self.h.mem, "voice-session-state.json")))
+        return after
+
+    def assert_saved_once(self):
+        mine = self.h.entries()
+        self.assertEqual(len(mine), 1)
+        self.assertEqual([t["vintos"] for t in mine[0]["transcript"]], [v for _, v in TURNS])   # each once, in order
+        hist = self.history()
+        self.assertEqual([r["content"] for r in hist],
+                         [w for g, v in TURNS for w in (g, v) if w])                # no row twice
+        self.assertEqual(len([f for f in self.h.felt if f[0] == "step"]), 3)        # each turn felt once
+        self.assertEqual(self.h.fired + self.h.leads, [])                          # nothing acts again
+        after = self.h.AC.load(self.rec["id"])
+        self.assertEqual((after["save"], after["turns"], after["turn_count"]), ("yes", [], 3))
+        self.assertNotIn("replay", after)
+        self.assertFalse(os.path.exists(os.path.join(self.h.mem, "voice-session-state.json")))
+        return mine[0]
+
+    def test_regression_a_failed_first_turn_is_not_declared_saved(self):
+        # the review's case: the first turn's ledger write fails and the later ones succeed
+        self.fail.turns = {self.keys[0]}
+        out = self.save()
+        self.assert_still_hers(out, 0)
+        self.assertIn("tap Save", out["why"])
+        self.assertEqual(self.history(), [])
+
+    def test_a_failed_middle_or_last_turn_keeps_the_call_and_a_retry_finishes_it(self):
+        for i in (1, 2):
+            with self.subTest(turn=i):
+                self.setUp()
+                self.fail.turns = {self.keys[i]}
+                out = self.save()
+                after = self.assert_still_hers(out, i)
+                self.assertEqual((out["partial"], out["saved_turns"], out["turns"]), (True, i, 3))
+                # the turns that went through are kept with the call, with the times they were spoken
+                self.assertEqual([t["t"] for t in after["replay"]["session"]["turns"]],
+                                 [t["t"] for t in self.rec["turns"][:i]])
+                self.assertEqual(len(self.history()), sum(1 for g, v in TURNS[:i] for w in (g, v) if w))
+                self.fail.turns = set()
+                self.assertTrue(self.save()["saved"])
+                self.assert_saved_once()
+
+    def test_a_failed_finalization_keeps_the_call_and_a_retry_finishes_it(self):
+        self.fail.block = True
+        out = self.save()
+        self.assert_still_hers(out, 3)
+        self.assertIn("tap Save", out["why"])
+        self.assertEqual(len(self.h.summaries), 1)
+        self.fail.block = False
+        out = self.save()
+        self.assertTrue(out["saved"])
+        self.assert_saved_once()
+
+    def test_several_failures_then_a_retry_writes_nothing_twice(self):
+        self.fail.turns = {self.keys[1]}
+        self.assert_still_hers(self.save(), 1)
+        self.assert_still_hers(self.save(), 1)                                      # the same failure again
+        self.fail.turns = set(); self.fail.block = True
+        self.assert_still_hers(self.save(), 3)
+        self.fail.block = False
+        self.assertTrue(self.save()["saved"])
+        self.assert_saved_once()
+        with self.assertRaises(HTTPException):
+            self.save()                                                             # answered once
+
+    def test_original_times_are_kept(self):
+        self.fail.turns = {self.keys[1]}
+        self.save()
+        self.fail.turns = set()
+        block = (self.save(), self.assert_saved_once())[1]
+        from datetime import datetime
+        self.assertEqual(block["turn_id"], datetime.fromtimestamp(self.rec["answered"]).isoformat())
+        spoken = [datetime.fromisoformat(t["t"]).timestamp() for t in self.rec["turns"]]
+        hist = self.history()
+        want = [s for s, (g, v) in zip(spoken, TURNS) for w in (g, v) if w]
+        self.assertEqual([r["ts"] for r in hist], want)
+
+    def test_a_save_already_in_the_ledger_is_not_written_again(self):
+        # finalized, then the process died before her answer was recorded: the retry finds the block
+        self.assertTrue(self.save()["saved"])
+        done = self.h.AC.load(self.rec["id"])
+        undone = dict(done, save="pending", turns=self.rec["turns"]); undone.pop("decided", None)
+        self.h.AC._write(undone)
+        self.assertTrue(self.save()["saved"])
+        self.assertEqual(len(self.h.entries()), 1)
+        self.assertEqual(len(self.h.summaries), 1)
+
+    def test_repeated_and_concurrent_saves_land_once(self):
+        outs, errs = [], []
+        gate = threading.Event()
+
+        def go():
+            gate.wait(10)             # all three are released together
+            try:
+                outs.append(asyncio.run(self.h.ns["attention_call_save"](self.rec["id"], {"save": True}, object())))
+            except HTTPException as e:
+                errs.append(e.status_code)
+        ths = [_RealThread(target=go) for _ in range(3)]
+        for t in ths:
+            t.start()
+        gate.set()
+        for t in ths:
+            t.join(30)
+        self.assertEqual(len(outs) + len(errs), 3)
+        self.assertTrue(all(o["saved"] for o in outs))
+        self.assertTrue(all(e == 404 for e in errs))
+        self.assert_saved_once()
+        self.assertEqual(len(self.h.summaries), 1)
+
+    def test_no_after_a_partial_save_leaves_no_words(self):
+        self.fail.turns = {self.keys[2]}
+        self.assert_still_hers(self.save(), 2)
+        self.assertTrue(self.history())
+        self.assertEqual(self.save(False), {"ok": True, "saved": False})
+        self.assertEqual(self.h.entries(), [])
+        everything = self.h.everything()
+        for g, v in TURNS:
+            for words in (g, v):
+                if words:
+                    self.assertNotIn(words, everything)
+        after = self.h.AC.load(self.rec["id"])
+        self.assertEqual((after["save"], after["turns"], after["turn_count"]), ("no", [], 3))
+        self.assertNotIn("replay", after)
+        rows = [json.loads(l) for l in open(self.h.AC.RECORD)]
+        self.assertEqual(rows[-1]["saved"], "no")
+        self.assertEqual(set(rows[-1]), {"at", "event", "call", "chain", "lane", "lane_by", "state", "turns",
+                                         "duration_seconds", "saved"})
+
+    def test_a_retry_waits_for_her_live_call(self):
+        self.fail.turns = {self.keys[1]}
+        self.assert_still_hers(self.save(), 1)
+        self.fail.turns = set()
+        self.h.ledger({"gloria": "hey", "vintos": "hi", "client_session_id": "voice-live", "turn_id": "x1"})
+        out = self.save()
+        self.assertFalse(out["saved"])
+        self.assertIn("another call", out["why"])
+        live = json.load(open(os.path.join(self.h.mem, "voice-session-state.json")))
+        self.assertEqual([t["turn_id"] for t in live["turns"]], ["x1"])                # hers, untouched
+        self.assertEqual(self.h.AC.load(self.rec["id"])["replay"]["done"], self.keys[:1])
+
+    def test_an_ordinary_call_is_unchanged(self):
+        other = House()
+        try:
+            call_through(other, None, "voice-ordinary")
+            block = other.entries()
+            self.assertEqual(len(block), 1)
+            self.assertEqual(block[0]["turns"], 3)
+            self.assertEqual(other.fired, ["_fire_voice"])                       # his live tags fire, as ever
+            hist = json.load(open(os.path.join(other.mem, "avatar-overlay-chat.json")))
+            import time as _t
+            self.assertTrue(all(abs(r["ts"] - _t.time()) < 60 for r in hist))    # stamped when spoken, i.e. now
+        finally:
+            other.close()
 
 
 class Framing(unittest.TestCase):

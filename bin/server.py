@@ -9354,8 +9354,12 @@ async def _voice_ledger_owned(payload: dict, replay: bool = False):
     try:
         if not _test_mode_active() and (g or v):
             _avh_p = os.path.join(MEMORY, "avatar-overlay-chat.json")
-            _append_avatar_history(_avh_p, ([{"role": "user", "content": g}] if g else []) +
-                                           ([{"role": "assistant", "content": v}] if v else []))
+            _avh_at = {}
+            if replay:   # a held call's turn keeps the time it was spoken here too
+                try: _avh_at = {"ts": _vl_d.datetime.fromisoformat(str(payload.get("t") or "")).timestamp()}
+                except ValueError: pass
+            _append_avatar_history(_avh_p, ([{"role": "user", "content": g, **_avh_at}] if g else []) +
+                                           ([{"role": "assistant", "content": v, **_avh_at}] if v else []))
     except Exception as _vae: print("[voice->avatar-history]", _vae, flush=True)
     try:
         from emotional_operators import step as _vo_step, causal_step as _vo_cstep
@@ -9699,36 +9703,147 @@ async def attention_call_save(call_id: str, payload: dict, request: Request):
     if not rec:
         raise HTTPException(status_code=404, detail="no call waiting for your answer")
     if payload.get("save") is not True:
-        _ac.decided(call_id, False)
-        return {"ok": True, "saved": False}
+        return _attention_call_forget(call_id)
     return await _attention_call_replay(rec)
 
 
-async def _attention_call_replay(rec):
-    import json as _acr_j
-    from store_guard import transaction
+def _attention_call_session(rec):
+    """(client session id, started_at) a held call is replayed under: the same every attempt, so a retry resumes
+    the same session and its block is found by the time she answered."""
+    import attention_call as _acs_ac, datetime as _acs_d
+    started = rec.get("answered")
+    return ("%s%s-saved" % (_acs_ac.CLIENT_PREFIX, rec["id"]),
+            _acs_d.datetime.fromtimestamp(started).isoformat() if started else "")
+
+
+def _attention_call_block_landed(started_iso):
+    """Whether the ledger already holds this call's session block (finalized, then her answer was not recorded)."""
+    import json as _acb_j
+    if not started_iso:
+        return False
+    try:
+        with open(os.path.join(MEMORY, "interaction-ledger.json")) as handle:
+            led = _acb_j.load(handle)
+    except (OSError, ValueError):
+        return False
+    entries = led if isinstance(led, list) else (led.get("entries") or [])
+    return any(isinstance(e, dict) and e.get("source") == "voice-session" and e.get("turn_id") == started_iso
+               for e in entries)
+
+
+def _attention_call_take_session(client):
+    """The replay's own session state, lifted out of the ordinary slot so her next call is not blocked by it
+    (it is kept with the held call instead). None when the slot is empty or holds another call."""
+    import json as _act_j
+    sp = os.path.join(MEMORY, "voice-session-state.json")
+    try:
+        with open(sp) as handle:
+            sess = _act_j.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(sess, dict) or sess.get("client_session_id") != client:
+        return None
+    try:
+        os.remove(sp)
+    except OSError:
+        pass
+    return sess
+
+
+def _attention_call_forget(call_id):
+    """Her no. The held transcript is deleted, and so is whatever an earlier, unfinished yes had already put down:
+    its session state and the rows it added to the avatar history (found by the times the turns were spoken)."""
+    import attention_call as _acf_ac, datetime as _acf_d
+    from store_guard import transaction, locked_update
     with transaction(os.path.join(MEMORY, "voice-finalization")):
+        try:
+            rec = _acf_ac.held_turns(call_id)
+        except ValueError:
+            rec = None
+        if not rec:
+            after = _acf_ac.load(call_id) or {}
+            return {"ok": False, "saved": after.get("save") == "yes", "why": "this call was already answered"}
+        client, _ = _attention_call_session(rec)
+        sessions = [s for s in (_acf_ac.replay_session(rec), _attention_call_take_session(client)) if s]
+        spoken = set()
+        for sess in sessions:
+            for t in sess.get("turns") or []:
+                try:
+                    spoken.add(_acf_d.datetime.fromisoformat(str(t.get("t") or "")).timestamp())
+                except ValueError:
+                    pass
+        if spoken:
+            try:
+                locked_update(os.path.join(MEMORY, "avatar-overlay-chat.json"),
+                              lambda cur: [r for r in (cur if isinstance(cur, list) else [])
+                                           if not (isinstance(r, dict) and r.get("ts") in spoken)],
+                              default=[], reader="server.avatar_history")
+            except Exception as _acfe:
+                print("[attention-call] forgetting a partial save:", str(_acfe)[:160], flush=True)
+        _acf_ac.decided(call_id, False)
+    return {"ok": True, "saved": False}
+
+
+async def _attention_call_replay(rec):
+    """Her yes. Each held turn goes through the ordinary ledger under its own key (attention_call.replay_key), in
+    order, stopping at the first that does not land; then the ordinary session end. It is saved only when every
+    turn landed and the block persisted. Anything less keeps the transcript and records how far it got (the
+    session state it wrote is kept with the call), and her next yes resumes there: a turn already written is a
+    duplicate the ledger refuses, and a block already in the ledger is not written again."""
+    import json as _acr_j
+    import attention_call as _ac
+    from store_guard import transaction, write_json
+    with transaction(os.path.join(MEMORY, "voice-finalization")):
+        if _test_mode_active():
+            return {"ok": False, "saved": False, "why": "test mode: nothing is written to his memory"}
+        call_id = rec["id"]
+        try:
+            rec = _ac.held_turns(call_id)        # again, under the lock: a second yes waits here, then finds it answered
+        except ValueError:
+            rec = None
+        if not rec:
+            after = _ac.load(call_id) or {}
+            if after.get("save") == "yes":
+                return {"ok": True, "saved": True, "already": True, "summary": ""}
+            return {"ok": False, "saved": False, "why": "no call waiting for your answer"}
+        client, started_iso = _attention_call_session(rec)
+        turns = rec.get("turns") or []
+        if _attention_call_block_landed(started_iso):
+            _attention_call_take_session(client)
+            _ac.decided(call_id, True, persisted=True)
+            return {"ok": True, "saved": True, "already": True, "summary": ""}
         sp = os.path.join(MEMORY, "voice-session-state.json")
         try:
             live_sess = _acr_j.load(open(sp))
         except (OSError, ValueError):
             live_sess = {}
-        if live_sess.get("turns"):
+        if live_sess.get("turns") and live_sess.get("client_session_id") != client:
             return {"ok": False, "saved": False, "why": "another call is still being written; ask again in a minute"}
-        if _test_mode_active():
-            return {"ok": False, "saved": False, "why": "test mode: nothing is written to his memory"}
-        client = "%s%s-saved" % (__import__("attention_call").CLIENT_PREFIX, rec["id"])
-        started = rec.get("answered")
-        started_iso = __import__("datetime").datetime.fromtimestamp(started).isoformat() if started else ""
-        for t in rec.get("turns") or []:
+        if not live_sess.get("turns") and _ac.replay_session(rec):
+            write_json(sp, _ac.replay_session(rec))     # resume the session an earlier yes stopped in
+        done = []
+        for i, t in enumerate(turns):
             turn = {k: v for k, v in t.items() if k not in ("event_id",)}
-            turn.update({"client_session_id": client, "started_at": started_iso})
-            await _voice_ledger_owned(turn, replay=True)
+            key = _ac.replay_key(rec, i)
+            turn.update({"client_session_id": client, "started_at": started_iso, "turn_id": key})
+            res = await _voice_ledger_owned(turn, replay=True)
+            if not (isinstance(res, dict) and res.get("ok") is True):
+                print("[attention-call] replay stopped at turn %d of %d: %s" % (
+                    i + 1, len(turns), str((res or {}).get("refused") or (res or {}).get("error") or res)[:120]), flush=True)
+                break
+            done.append(key)
+        if len(done) < len(turns):
+            _ac.save_incomplete(call_id, done, _attention_call_take_session(client), "turns")
+            return {"ok": False, "saved": False, "partial": bool(done), "saved_turns": len(done), "turns": len(turns),
+                    "why": "%d of %d turns went through; tap Save to finish" % (len(done), len(turns))}
         out = await _voice_session_end_owned({"client_session_id": client,
                                               "duration_seconds": rec.get("duration_seconds") or 0})
-    import attention_call as _ac
-    _ac.decided(rec["id"], True, persisted=bool(out.get("persisted")))
-    return {"ok": bool(out.get("persisted")), "saved": bool(out.get("persisted")), "summary": out.get("summary", "")}
+        if not (isinstance(out, dict) and out.get("persisted") is True):
+            _ac.save_incomplete(call_id, done, _attention_call_take_session(client), "finalize")
+            return {"ok": False, "saved": False, "partial": True, "saved_turns": len(done), "turns": len(turns),
+                    "why": "every turn went through but the call was not written to his memory; tap Save to retry"}
+        _ac.decided(call_id, True, persisted=True)
+    return {"ok": True, "saved": True, "summary": out.get("summary", "")}
 
 
 @app.get("/api/voice/pending-speech")
