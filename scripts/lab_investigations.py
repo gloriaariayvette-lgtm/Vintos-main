@@ -237,9 +237,11 @@ def _store_result(step, result):
         receipt=result.get('receipt') or result.get('source_receipt') or result.get('instrument_receipt') or {}
         step['execution_receipt_id']=receipt.get('receipt_id')
         step['run_id']=result.get('run_id')
-        resolution=(receipt.get('metadata') or {}).get('entry_resolution') if isinstance(receipt,dict) else None
+        metadata=(receipt.get('metadata') or {}) if isinstance(receipt,dict) else {}
+        # which PDB entry was used, or which NCBI record a UniProt accession was resolved to, told with the result
+        resolution=metadata.get('entry_resolution') or metadata.get('accession_resolution')
         if isinstance(resolution,dict) and resolution.get('note'):
-            step['resolved']=str(resolution['note'])[:400]     # which PDB entry was used, told with the result
+            step['resolved']=str(resolution['note'])[:400]
     step['output_file'] = 'investigation-outputs/'+step['id']+'.json'
     os.makedirs(_path('investigation-outputs'),exist_ok=True)
     lab._atomic(_path(step['output_file']),result)

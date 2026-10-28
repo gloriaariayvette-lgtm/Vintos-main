@@ -90,11 +90,34 @@ NCBI_OPERATIONS = {
     'search_literature': 'literature', 'nucleotide': 'sequence', 'nuccore': 'sequence',
 }
 UNIPROT_ACCESSION = r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})'
+# every source the Lab has; a refusal names them (lab_sources.sources_note) and the shapes below read them
+SOURCE_NAMES = frozenset(('uniprot', 'ncbi', 'pdb', 'atlas', 'interpro', 'pubchem', 'pubmed', 'chembl',
+                          'ncbi_sequence', 'ncbi_protein_context', 'ncbi_neighborhood', 'rt_locus_screen',
+                          'mgnify', 'reactome', 'rhea', 'quickgo', 'imgvr', 'bvbrc', 'sequencing_runs',
+                          'sequencing_reads'))
+# One of NCBI's databases written as a source of its own ({"source": "ncbi_taxonomy", "operation": "taxonomy",
+# "term": "1009004"}): it is source ncbi with that operation, and as a source it was refused as unsupported, so the
+# ID he wanted to check was never looked up (28 October).
+NCBI_DATABASE_SOURCES = {'ncbi_taxonomy': 'taxonomy', 'ncbi_taxon': 'taxonomy', 'taxonomy': 'taxonomy',
+                         'ncbi_assembly': 'assembly', 'ncbi_gene': 'gene', 'ncbi_protein': 'protein',
+                         'ncbi_literature': 'literature', 'ncbi_pubmed': 'literature',
+                         'ncbi_nuccore': 'sequence', 'ncbi_nucleotide': 'sequence'}
 
 
 def normalize_source(spec):
     out = dict(spec)
     source = str(out.get('source') or '').lower()
+    if not source:
+        # A source named where its operation goes ({"operation": "uniprot", "query": ...}): it names one source, and
+        # 7 of 9 "unsupported Lab source" refusals in 12 hours were this shape, sent with an empty source. The
+        # planning route read it; the execution door did not, so the request was refused after being chosen.
+        operation = str(out.get('operation') or '').lower()
+        if operation in SOURCE_NAMES:
+            out = {k: v for k, v in out.items() if k != 'operation'}
+            source = out['source'] = operation
+    if source in NCBI_DATABASE_SOURCES:
+        out['source'], out['operation'] = 'ncbi', NCBI_DATABASE_SOURCES[source]
+        source = 'ncbi'
     out['source'] = {'rcsb': 'pdb', 'alphagenome': 'atlas', 'entrez': 'ncbi',
                      'ncbi_rt_locus_screen': 'rt_locus_screen', 'ena': 'sequencing_runs', 'sra': 'sequencing_runs',
                      'ncbi_sra': 'sequencing_runs', 'sequencing': 'sequencing_runs',
@@ -196,9 +219,7 @@ def normalize_request(route, request):
         # {"source":"pubmed","pubmed":"<search>"}: the query under the source's own name is the shorthand below
         # with the source said twice; it was refused as having no search terms (25 October)
         request={request['source']:request[request['source']]}
-    allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
-             'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc',
-             'sequencing_runs','sequencing_reads'}
+    allowed=SOURCE_NAMES
     if route=='source' and not request.get('source'):
         request={k:v for k,v in request.items() if k!='source'}
         # A source named where its operation goes ({"operation":"rt_locus_screen","accession":...}), or a UniProt

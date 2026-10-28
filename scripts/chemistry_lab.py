@@ -525,6 +525,9 @@ def rotate_source_receipts(limit=None):
     return target
 
 
+NCBI_TAXONOMY_CALL = '{"source": "ncbi", "operation": "taxonomy", "term": "<organism name>"}'
+
+
 def search_misses(limit=6):
     """The searches that found nothing, so he stops sending them. "No such record" was written down and
     then asked again a minute later, because nothing showed it to him (2026-09-26)."""
@@ -533,7 +536,11 @@ def search_misses(limit=6):
         if row.get("kind") == "additional_source" and row.get("records_returned") == 0 and row.get("query_sent"):
             why, sent = "the source holds no such record", row["query_sent"]
         elif row.get("kind") == "unsourced_id" and row.get("ids"):
-            why, sent = ("ID %s came from no receipt: look the organism up by name first" % ", ".join(row["ids"]),
+            # Which call looks it up, not only that it must be looked up: 1009004 was carried through a night of
+            # questions, every search under it returned nothing, and the one request that would have checked it was
+            # sent as {"source": "ncbi_taxonomy", ...} and refused (28 October).
+            why, sent = ("ID %s came from no receipt: look the organism up by name first, with %s"
+                         % (", ".join(row["ids"]), NCBI_TAXONOMY_CALL),
                          row.get("query_sent") or {"ids": row["ids"]})
         elif row.get("kind") == "unsourced_id" and row.get("reason"):
             # The follow-up guard from the microbiology branch writes its refusal as a reason, not a query.
@@ -2610,8 +2617,11 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
             return refuse("repeat: " + why)
     sq = inquiry.get('source_query') or {}
     if sq.get('source') in ('ncbi_protein_context', 'ncbi_neighborhood', 'ncbi_sequence', 'rt_locus_screen'):
-        from lab_sources import _ncbi_accession
-        try: accession = _ncbi_accession(sq.get('accession'))
+        from lab_sources import step_accession
+        # The identifier this request will read: an NCBI accession.version, or the UniProt accession the door
+        # resolves to one through that record's own cross-reference. A refusal names how to get an accession rather
+        # than only that one is required (28 October: 11 of 12 such refusals named a UniProt accession).
+        try: accession = step_accession(sq)
         except ValueError as exc: return refuse(str(exc))
         # A version suffix is not provenance: P01234.1 was manufactured after
         # an earlier unversioned UniProt accession failed. Only returned data
@@ -2619,7 +2629,7 @@ def _held_to_plan(system, task, inquiry, value, lean, step, repeats, spent=None,
         returned = _tail_jsonl(os.path.join(ROOT, 'source-receipts.jsonl'), nbytes=8*1024*1024)
         pattern = r'(?<![A-Za-z0-9_])' + re.escape(accession) + r'(?![A-Za-z0-9_.])'
         if not any(re.search(pattern, json.dumps(row.get('records') or [])) for row in returned):
-            return refuse('NCBI accession not returned by a source receipt: ' + accession)
+            return refuse('accession not returned by a source receipt: ' + accession)
     identity = _ground_inquiry(inquiry)
     if identity['status'] == 'unresolved' and replan and system:
         # A wrong premise is put back to the planner once, named, so the same pass asks a question that holds, not

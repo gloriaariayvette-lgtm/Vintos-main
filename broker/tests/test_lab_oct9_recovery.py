@@ -203,11 +203,17 @@ with patch.object(I,'artifacts',return_value=[model]), patch.object(I,'_runs_tod
     explicit=C._inquiry({'question':'What secondary structure does O43511 have?',
                         'source_query':{'source':'pdb','entry_id':'8SGW'}})
     assert C._existing_model_read(explicit)==explicit
-# Invalid NCBI accession never becomes an accepted run, nor calls the provider.
+# An identifier no receipt returned never becomes an accepted run, nor calls the provider. From 28 October a
+# UniProt accession here is one the door itself resolves, so this one is refused for its provenance, not its shape;
+# an identifier of neither shape is still refused as no accession.version.
 with patch.object(C,'_ground_inquiry',side_effect=AssertionError('must refuse before identity sender')):
     bad={'question':'What is the context?', 'source_query':{'source':'ncbi_protein_context','accession':'P01136'}}
     out,_=C._held_to_plan('s','t',bad,bad,None,None,R)
-    assert 'accession.version' in out['refused']
+    assert 'not returned by a source receipt' in out['refused'] and 'P01136' in out['refused']
+    shapeless={'question':'What is the context?',
+               'source_query':{'source':'ncbi_protein_context','accession':'3042852874'}}
+    out,_=C._held_to_plan('s','t',shapeless,shapeless,None,None,R)
+    assert 'accession.version required' in out['refused']
 assert net==[]
 print('PASS: live-shaped ChEMBL, existing model routing, invalid accession preflight; isolated')
 
