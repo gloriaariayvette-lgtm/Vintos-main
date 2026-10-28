@@ -413,12 +413,10 @@ def check(reply_text, gloria_msg=""):
             except Exception:
                 pass
 
-        # Seed a thread on holding too, not only on slipping.
-        try:
-            from emoclaw_utils import seed_thread
-            seed_thread("deviation-check", f"That held - something I have been reaching for landed (alignment {final_aln:.2f}): {reply_text[:140]}", reasoning=f"alignment {final_aln:.2f} above threshold - a reach actually landed", extra={"decision_mode": "threshold"})
-        except Exception:
-            pass
+        # No thread for holding. A held reply is settled, not unfinished: the held-ledger
+        # entry above is its record. Seeding "That held - ..." on every alignment filled
+        # the pool with landed replies dressed as open tension (Gloria, 2026-10-28).
+        # Slipping still seeds, in the deviation branch above.
 
         if voice_line:
             append_voice_coherence(voice_line, "alignment", final_dev, final_aln)
