@@ -1,5 +1,11 @@
 # Scratch persistence sprint
 
+**29 October continuation:** recovered the already completed offline rounds on
+`codex/persistence-offline-round-one`; no duplicate real-data fit. Current code
+is tested in `/tmp/persistence-offline-20261029-EpYs5CMi` on Aegis. The original
+rounds and fitted scores below remain historical development. The carrying-note
+work is a separate branch and is not an output of these forecasting experiments.
+
 Follow the [round log](../../docs/persistence-sprint-log.md) and the
 [approved brief](../../docs/briefs/persistence-sprint-codex.md). Nothing in this
 directory is installed, and nothing reads its outputs as a live feed. Keep learned
@@ -60,6 +66,20 @@ controls, retrieval reporting and sequential error spending; weights and the
 already computed comparator are copied unchanged. No outcome or model result
 motivated those acceptance corrections. Never evaluate the provisional bundle.
 
+On 29 October, v2 was superseded by **v3**, before the block opened, solely to
+include the collector's missing admission dependencies and harden scratch writes.
+V3 is `/tmp/persistence-offline-20261029-EpYs5CMi/sealed-oct31-v3`;
+all 34 fitted candidate/control/report artifacts and the five scientific
+executables are byte-identical to v2. Primary candidate 7, all eight reported
+candidates, metrics, thresholds and multiplicity rules are unchanged. The exact
+manifest SHA256 is
+`b186cf66f3ab078ef74d1946a7fa7f27d2211ae13598f80866b41cb3e3680268`.
+V2 is preserved for audit, not another evaluation opportunity. No untouched
+scores exist yet. V3's clean-room synthetic capture tests use cached fixture
+vectors and a nonexistent encoder path, proving no model call is needed for
+those tests. The older .230 text confirmation's unsaved artifact is not
+reconstructed or claimed as a reproduced score.
+
 The sprint must not keep testing weekly at an unadjusted .05 until something
 wins. Family budget in week w is `.05/(w*(w+1))`; week 1 uses .025, then divides
 across 56 candidate/horizon contrasts. Both candidates and controls use identical
@@ -70,22 +90,45 @@ unchanged, with its original 23–29 October dates and adjusted interval.
 After 7 November local midnight only, use the **sealed** collector and evaluator:
 
 ```sh
-python3 launch.py collect.py --through 2026-11-06 \
+export PERSISTENCE_SCRATCH=/tmp/persistence-offline-20261029-EpYs5CMi
+export PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+cd "$PERSISTENCE_SCRATCH/sealed-oct31-v3/code/experiments/persistence-sprint"
+nice -n 15 /home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 \
+  launch.py collect.py --through 2026-11-06 \
   --memory /home/gloria/.vintos/workspace/memory \
-  --out /tmp/persistence-sprint-20261028-JR0Nwf82/fresh-nov06 \
+  --out "$PERSISTENCE_SCRATCH/fresh-nov06" \
   --cache /tmp/latent-stream-linear-u_zj_msj/text-vectors.jsonl \
   --encoder /home/gloria/.cache/huggingface/hub/models--nomic-ai--nomic-embed-text-v1/snapshots/3ac47f125a41961d13b397d0332866be2f9152e1
 
-python3 launch.py evaluate.py \
-  --sealed /tmp/persistence-sprint-20261028-JR0Nwf82/sealed-oct31-v2 \
-  --snapshot /tmp/persistence-sprint-20261028-JR0Nwf82/fresh-nov06/events.npz \
-  --out /tmp/persistence-sprint-20261028-JR0Nwf82/fresh-report-nov06
+nice -n 15 /home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 \
+  launch.py evaluate.py \
+  --sealed "$PERSISTENCE_SCRATCH/sealed-oct31-v3" \
+  --snapshot "$PERSISTENCE_SCRATCH/fresh-nov06/events.npz" \
+  --out "$PERSISTENCE_SCRATCH/fresh-report-nov06"
 ```
 
-Run from `sealed-oct31-v2/code/experiments/persistence-sprint`, with the existing
+Run from `sealed-oct31-v3/code/experiments/persistence-sprint`, with the existing
 training interpreter (not an unconfigured system Python) and the scratch env.
 The evaluator verifies executable and parameter hashes and consumes an exclusive
 attempt receipt before loading the new snapshot. Insufficient data and failures
 are terminal; never remove an attempt receipt. No refitting happens during
 evaluation. A statistical result is not installation authorization: Claude Code
 review and Gloria's yes still precede any merge, shadow week or consumer change.
+
+The separate emotion-history follow-up remains **30 October at 08:00 Chicago**,
+using 23–29 October and excluding 30 October, with the original 98.75% interval.
+Its byte-identical durable copy lives under
+`/home/gloria/sealed-latent-memory-20261022`; the original follow-up was restored
+from its carrying-era pause on 29 October. Its overlapping incumbent scores are
+already exposed. Do not reopen its rejected text candidate or substitute sprint
+code, thresholds or data. The carrying check automation remains paused for Claude.
+
+## Repeatable synthetic checks
+
+From a scratch copy of this branch, with `PERSISTENCE_SCRATCH` pointing to its
+private parent, run the 19 NumPy-only broker contracts with
+`/usr/bin/python3.12 scripts/run_isolated_test.py broker/tests/test_persistence_sprint.py`.
+Run CPU checks with the training interpreter above using
+`-m unittest discover -s experiments/persistence-sprint -p 'test_*.py'`.
+These exercise synthetic data only, including a full artificial closed week;
+that test's pass/fail result is not a result on 31 October–6 November.
