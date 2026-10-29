@@ -1,0 +1,48 @@
+{
+  "checked_at": "2026-10-29T09:06:49.585760+00:00",
+  "host": "Aegis",
+  "tested_commit": "79bd59bc",
+  "scratch": "/tmp/persistence-offline-20261029-EpYs5CMi",
+  "verified_private_inputs": [
+    "emotion-trajectory-dense.json",
+    "watch-presence-history.jsonl",
+    "sensor-reactions.jsonl",
+    "want-events.jsonl",
+    "avatar-presence-log.json",
+    "chemistry-lab/notebook.jsonl",
+    "chat-canonical.jsonl"
+  ],
+  "cached_encoder_accessible": true,
+  "text_vector_cache_readable": true,
+  "prior_snapshot_and_round_one_hashes_verified": true,
+  "new_real_data_fits": 0,
+  "new_real_data_scores": 0,
+  "contract_tests": 19,
+  "cpu_runtime_tests": 8,
+  "sealed_bundle_cpu_tests": 8,
+  "artifact_count": 34,
+  "changed_artifacts": [],
+  "code_hash_errors": [],
+  "protocol_identical": true,
+  "seal_manifest_sha256": "b186cf66f3ab078ef74d1946a7fa7f27d2211ae13598f80866b41cb3e3680268",
+  "supersedes_manifest_sha256": "f98125ede8aedef75811e5a82cf862100d263d1db406b56697f9ac5861e6e675",
+  "evaluation_attempted": false,
+  "first_untouched_block": [
+    "2026-10-31",
+    "2026-11-07"
+  ],
+  "old_emotion_window": [
+    "2026-10-23",
+    "2026-10-30"
+  ],
+  "old_emotion_weights_sha256": "8b939aa1e900988ab5b87094686aaf9bee300f1a9e9c95c34c12050b9daee7d8",
+  "old_emotion_followup": "2026-10-30T08:00:00-05:00",
+  "overlapping_baseline_scores_exposed": true,
+  "no_live_writes_sends_paid_calls_merge_deployment": true,
+  "full_broker_suites": 543,
+  "full_broker_passed": 543,
+  "full_broker_failed": 0,
+  "internal_optional_skips": {
+    "test_lab_atlas_sdk": 1
+  }
+}

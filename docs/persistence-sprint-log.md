@@ -55,6 +55,10 @@ remain separate. No fresh outcome has been opened, and no candidate is promoted.
 
 ## Prior 28 October work (preserved historical log)
 
+The following schedule statements record what was arranged on 28 October; the
+29 October receipt at the end is the current handoff. The daily carrying/sprint
+continuation remains paused, with carrying checks left to Claude Code.
+
 ## 28 October — round 0: contract and capture
 
 Started from deploy branch `7b859dad`, on `codex/persistence-sprint`, following
@@ -264,3 +268,50 @@ model, threshold, checkpoint or executable changed. The branch is for review;
 publication does not authorize a merge or deployment. The continuation remains
 active, and the sprint is not represented as a successful model or a completed
 consumer integration.
+
+## 29 October — verified recovery, complete bundle, review handoff
+
+Exact tested source `79bd59bc`: **543/543 broker suites pass on Aegis** through
+`/usr/bin/python3.12 scripts/run_isolated_test.py`; one pre-existing optional
+SDK test internally skips. All **19** sprint broker contracts pass. **Eight**
+CPU-runtime tests pass in the existing emotion-model training interpreter, then
+pass again from the actual sealed v3 code. Those include clean-room capture
+with absent optional sources, closed dense-event buckets, split exclusion,
+same-time target causality, zero correction heads, irregular decay, disk restart
+and a fully synthetic future week. That synthetic week is not an untouched
+outcome measurement. No model, encoder or dependency was installed.
+
+Private current root: `/tmp/persistence-offline-20261029-EpYs5CMi`.
+Verified the old capture and round-1 model/readout against their hashes. Readable
+inputs: emotion-trajectory-dense.json, watch-presence-history.jsonl,
+sensor-reactions.jsonl, want-events.jsonl, avatar-presence-log.json,
+chemistry-lab/notebook.jsonl and chat-canonical.jsonl, plus the existing local
+encoder and vector cache. Real-data fits repeated: **zero**. Real-data scores
+newly computed: **zero**. Mutable thread/dream arrival histories and independent
+continuity labels remain unavailable; they are not fabricated or backdated.
+
+V3 future bundle: `sealed-oct31-v3/`, manifest SHA256
+`b186cf66f3ab078ef74d1946a7fa7f27d2211ae13598f80866b41cb3e3680268`.
+It supersedes v2 solely for collector dependency packaging and the scratch guard.
+All **34** fitted candidate/control/report artifacts match v2 byte-for-byte;
+all scientific executables and statistical protocol fields match. The original
+v2 remains intact, with no evaluation attempt. V3 has no attempt either. Candidate
+7 remains primary, all eight remain reported, and the first block is unchanged:
+31 October–6 November, evaluated only after 7 November local midnight. Use the
+exact commands in `experiments/persistence-sprint/README.md`; do not evaluate
+both v2 and v3. Like the previous scratch bundle, `/tmp` may disappear on reboot;
+loss is a blocker, not permission to reconstruct a seal after the block opens.
+
+The separate older emotion-history executable, frozen weights and incumbent
+match its manifest in Claude's durable copy under
+`/home/gloria/sealed-latent-memory-20261022`. No attempt exists there or in the
+original `/tmp` copy. Restored the existing 30 October 08:00 Chicago follow-up
+from its carrying-era pause, retaining 23–29 October only, the original thresholds
+and adjusted interval, and the overlapping/exposed comparison label. Its rejected
+text design stays closed; the separate carrying check automation stays paused.
+
+Aggregate receipts: `docs/review-evidence/persistence-sprint/recovery-20261029.json`,
+`full-suite-20261029.json` and `seal-oct31-v3.json`. No private input text, weights,
+vectors, source identifiers or secrets are published. No live script/feed/unit,
+Gloria-head parameter or disabled emotion service changed. Claude Code reviews
+this branch; Gloria approves before any merge. No deploy or promotion.

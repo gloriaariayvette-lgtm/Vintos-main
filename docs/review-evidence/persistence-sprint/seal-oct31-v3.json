@@ -1,0 +1,144 @@
+{
+  "alpha_week": 0.025,
+  "bootstrap_samples": 20000,
+  "bootstrap_seed": 20261028,
+  "candidates": [
+    {
+      "anchor_history": false,
+      "files": {
+        "readouts.npz": "905e0131c2dce7387d6962e9d563a42d7c2ec62eda4bf8d78317fe3bdc1b3c23",
+        "report.json": "413cb4a2c0cb9be46cbe959cee48e4be6ef4df3607b86ec550e63b988b2a5f36",
+        "scan.pt": "bb58400d0b3bfa038f0f3c022af0d959000a863a85c4c5f6661177ff954810b0",
+        "schedule.npz": "8712da175e01d9c1bf5bdceebfa04730845bb49df9e2f2f7b710893817602047"
+      },
+      "round": 1,
+      "training_cutoff": "2026-10-14"
+    },
+    {
+      "anchor_history": false,
+      "files": {
+        "readouts.npz": "d3fb44adb9beaf3495fa09113cf4c46d6a137aa5f1b6a2192160379c24385ab4",
+        "report.json": "5cf452090f7cc94a9d37d6575c3ade6693fffca22f658a7ffc0ede22ea48a24f",
+        "scan.pt": "f210185355d3ea40194181c1dce6ad5276cba2b32722f5386d2d2441d2ca7799",
+        "schedule.npz": "372ebfbf24df06ee55d0fb95561cd692b97b88a61885e67fab59d7ddb1a78440"
+      },
+      "round": 2,
+      "training_cutoff": "2026-10-16"
+    },
+    {
+      "anchor_history": false,
+      "files": {
+        "readouts.npz": "52d90d4ac140491a1f64feba4ba03881063885627c9fd620c22f461ac1b9dcee",
+        "report.json": "174ae087d1026f3f4628d342886ec196f9c99951fd65fa5a60ed250695dd0cc3",
+        "scan.pt": "32ae1b148b84fd0fce970801dc83b270d75044e3ed1c7e6f0f3e96b5dfb09c11",
+        "schedule.npz": "f0cdedf6aefc4fe1eee433cb76b88e8ce7e0e2c65366b7209561b08b3f3bc2e5"
+      },
+      "round": 3,
+      "training_cutoff": "2026-10-18"
+    },
+    {
+      "anchor_history": false,
+      "files": {
+        "readouts.npz": "341aaec02012bb9520a607569c3908022071097d99e6fecf25d47460821d1bd5",
+        "report.json": "f81c7f95ba616841ffc4ed79c94246f175c7063210c1a710b54ef58ca919e9db",
+        "scan.pt": "223826e47229f7411a6decf9ec6137a10d1ed4f111402ae946586b68f79240cb",
+        "schedule.npz": "68e8ae1b6023a680ba40c8ada2b22fc0648f0fdb7caa872e202cb8df1c105c31"
+      },
+      "round": 4,
+      "training_cutoff": "2026-10-20"
+    },
+    {
+      "anchor_history": false,
+      "files": {
+        "readouts.npz": "3c9961e165361d894764c51bd0494e01d033b1d0e73c25f5ccb1f9921e4f2ba6",
+        "report.json": "bb45226358ba726a1ddf096dba6923a0f7fa8a4b566e46cd5959c92d8b5d8db3",
+        "scan.pt": "faafd90d3cf9f72d965498c7f5234b187ae06719567dea29a2d4d900db351f3f",
+        "schedule.npz": "18235b6c1873bbfb1614f21e17062ef340c91cd299cc123d87732f0cd9a1fdd0"
+      },
+      "round": 5,
+      "training_cutoff": "2026-10-21"
+    },
+    {
+      "anchor_history": true,
+      "files": {
+        "readouts.npz": "2458d2d2ff766884d2ddff0369d131b4e50f80022670aa5e7231af36e232577d",
+        "report.json": "f6327e318dcc0bd204d715ae7d4d833ab8e22c8bd86be70aa5a3f151067bcc02",
+        "scan.pt": "faafd90d3cf9f72d965498c7f5234b187ae06719567dea29a2d4d900db351f3f",
+        "schedule.npz": "18235b6c1873bbfb1614f21e17062ef340c91cd299cc123d87732f0cd9a1fdd0"
+      },
+      "round": 6,
+      "training_cutoff": "2026-10-21"
+    },
+    {
+      "anchor_history": true,
+      "files": {
+        "readouts.npz": "4b2c412f7a7332e7ce027c46e75ed90e612d498f3fe70cb16bc5fef1c798918d",
+        "report.json": "45107cbd3863071b4066b445895a4701268f8c386e45de1238be6b72b9e119f3",
+        "scan.pt": "f968df991f8595a15032bf615ac7d529ea1363885918bb4dac43bfdd800892b5",
+        "schedule.npz": "18235b6c1873bbfb1614f21e17062ef340c91cd299cc123d87732f0cd9a1fdd0"
+      },
+      "round": 7,
+      "training_cutoff": "2026-10-21"
+    },
+    {
+      "anchor_history": true,
+      "files": {
+        "readouts.npz": "f31ae9974b2219b0935a15fd284075a6e6a7669dd0734f34423a22db02914f1c",
+        "report.json": "6df31c4dabda878c9a060dbc440bd369e9ee67eadaa014c61dd6e7392229c7cf",
+        "scan.pt": "2cafc06944372c1889448547d9c0a711d8125ed986325e94e0deb8ab573cf0fb",
+        "schedule.npz": "18235b6c1873bbfb1614f21e17062ef340c91cd299cc123d87732f0cd9a1fdd0"
+      },
+      "round": 8,
+      "training_cutoff": "2026-10-21"
+    }
+  ],
+  "ci_quantiles": [
+    0.00022321428571428573,
+    0.9997767857142857
+  ],
+  "code": {
+    "experiments/persistence-sprint/bundle.py": "3f0f88dde08a922e4527f0ae6e5e33826240bd2c78195afdbf581faa410baccb",
+    "experiments/persistence-sprint/collect.py": "95a3678c8897fb4552a1ee7392554d8f654389ab47ed6587496bd4ff704ac4f8",
+    "experiments/persistence-sprint/data.py": "1607eda4d0e2c0c1e4f34bdc1935b340eebbed5005852cb1fd424b0ca2c9ba69",
+    "experiments/persistence-sprint/evaluate.py": "edeebf6d9024a07bc377ad991711599313120ecf4667a232bf12b2ab23080ef7",
+    "experiments/persistence-sprint/freeze.py": "dd2576162ee5afad0da65376277ab3dc0d68f4ca9a4650ef84d946e64b8e0c5d",
+    "experiments/persistence-sprint/launch.py": "01b22783e38c7eef060c86296b2244d23b28cb559f525b69fbed8902a871c445",
+    "experiments/persistence-sprint/repair_bundle.py": "9bdb87e0ac73985687b4135e3629f472a0b3ef8cffc52554ee0ddbb32f353464",
+    "experiments/persistence-sprint/run.py": "63d811762379800ba27647347f9fd82f3151509591371d14489c99c3c5cc6ac4",
+    "experiments/persistence-sprint/scan.py": "7a7129ed5a95e8dee5d0cdd9be06d60117a2986454fea1ab1ac83627edbeac51",
+    "experiments/persistence-sprint/test_capture.py": "bd21f6b8cf3e810f9aa5d5cec4d04e5e3c729257069e693b9d9bfa7cb13add10",
+    "experiments/persistence-sprint/test_evaluation.py": "7952ff7b4a95fed437bcff49f985be28f29a65f10e5f4eb3d4ea9834dc10c30f",
+    "experiments/persistence-sprint/test_scan.py": "0049d63e0b75ad9a129adae120a090e5bec44789fe8af2c08db4ed87b365fd4f",
+    "scripts/evidence_provenance.py": "b9ac9c5e754a5a728eac4cd2c4d32683a75be710c8e1df980f3acbb0858012dd",
+    "scripts/evidence_view.py": "2a0002555fc4b75fdfa861a0b67acc08489427ad77775fe0480a8361bba37253",
+    "scripts/her_words.py": "8f55df37ea41cc9241b96ed8ff611beb13c6325cd04f04700d4bc61e48f596b7",
+    "scripts/jepa_predictor.py": "1833b5213d9ef0faebe639e718009c66ae5f276b14beec079dc014da112fc302",
+    "scripts/jepa_self_head.py": "78271eef70508646b355ff805447bb7ca61cf7f6812e5ef72412da83162af8f6",
+    "scripts/latent_feed.py": "dbd82453ddd3d897c2e03c516abe5d867722d08376b822f1c527c01b039b27df",
+    "scripts/latent_stream_linear.py": "2d7eefe22c9fc3e50dcf3aa34a139c994a414be3a5f551ffe0e49d0f29cceba9",
+    "scripts/latent_stream_model.py": "fc032bfd0c0c44160ee710fcf9aaebd97caa813330059c0776826e68ec7217f3",
+    "scripts/latent_stream_replay.py": "3de62287249c42bb1bde72a8d485532a4decc61a0f3eb7ba1d6bbde083922a7d"
+  },
+  "incumbent_sha256": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+  "min_days": 7,
+  "min_primary_targets": 300,
+  "no_development_candidate_met_5_percent": true,
+  "practical_gain": 0.05,
+  "present_refit_sha256": "d8f16ede65068b8666718a5c77ebb5e32ad43293dae254fae42e6838c226cee5",
+  "primary_horizon": 21600,
+  "purpose": "future confirmation only; no live consumer or promotion command",
+  "repair": "Capture dependency packaging and scratch guard only; all scientific executables, fitted artifacts and statistical rules unchanged",
+  "schema": "persistence-week-v1",
+  "sealed_at": "2026-10-29T04:03:13.517928-05:00",
+  "selected_primary": 7,
+  "selection": "best 6h validation of same-split diagnostic rounds 5\u20138; all remain reported",
+  "sequential_alpha_rule": ".05/(week_index*(week_index+1)); first week index 1",
+  "snapshot_sha256": "9ff793dc9578db421e9a343639011fe7589b60dcd64cc632525b82a8006a9fe0",
+  "supersedes_manifest_sha256": "f98125ede8aedef75811e5a82cf862100d263d1db406b56697f9ac5861e6e675",
+  "text_relative_floor": 0.99,
+  "timezone": "America/Chicago",
+  "week": [
+    "2026-10-31",
+    "2026-11-07"
+  ]
+}
