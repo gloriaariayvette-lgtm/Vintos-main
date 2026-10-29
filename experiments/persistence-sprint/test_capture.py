@@ -50,6 +50,18 @@ class Capture(unittest.TestCase):
             self.assertEqual(r['excluded']['absent:'+name], 1)
         self.assertEqual(d['source'][0, SOURCES.index('emotion')], 1)
 
+    def test_direct_collector_refuses_before_any_capture_write(self):
+        exp=self.code/'experiments/persistence-sprint'
+        p=subprocess.run([sys.executable,str(exp/'collect.py'),'--memory',str(self.source),
+                          '--out',str(self.root/'must-not-exist'),'--cache',str(self.cache),
+                          '--encoder',str(self.root/'NO-ENCODER')],cwd=self.root,
+                         env=dict(os.environ,PERSISTENCE_SCRATCH=str(self.root),
+                                  PERSISTENCE_LAUNCHED='1',PYTHONDONTWRITEBYTECODE='1'),
+                         capture_output=True,text=True)
+        self.assertNotEqual(p.returncode,0)
+        self.assertIn('requires launch.py',p.stderr)
+        self.assertFalse((self.root/'must-not-exist').exists())
+
     def test_atomic_batch_dense_adapters_and_boundary(self):
         self.write('emotion-trajectory-dense.json', [{'t': self.at, 'v': [0.5]*11},
                    {'t': boundary('2026-10-23'), 'v': [999.]*11}])

@@ -3,15 +3,6 @@
   "host": "Aegis",
   "tested_commit": "79bd59bc",
   "scratch": "/tmp/persistence-offline-20261029-EpYs5CMi",
-  "verified_private_inputs": [
-    "emotion-trajectory-dense.json",
-    "watch-presence-history.jsonl",
-    "sensor-reactions.jsonl",
-    "want-events.jsonl",
-    "avatar-presence-log.json",
-    "chemistry-lab/notebook.jsonl",
-    "chat-canonical.jsonl"
-  ],
   "cached_encoder_accessible": true,
   "text_vector_cache_readable": true,
   "prior_snapshot_and_round_one_hashes_verified": true,
@@ -44,5 +35,6 @@
   "full_broker_failed": 0,
   "internal_optional_skips": {
     "test_lab_atlas_sdk": 1
-  }
+  },
+  "verified_input_source_count": 7
 }

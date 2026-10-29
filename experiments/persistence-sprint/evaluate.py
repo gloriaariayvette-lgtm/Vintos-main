@@ -14,6 +14,10 @@ from run import query_rows
 
 def score(args):
     sealed=Path(args.sealed);manifest=json.loads((sealed/'manifest.json').read_text())
+    pass_horizons=manifest['pass_horizons_seconds']
+    if (manifest['primary_horizon'] not in pass_horizons or
+            any(h not in HORIZONS or h>=86400 for h in pass_horizons)):
+        raise ValueError('invalid weekly pass horizons; 24h is descriptive only')
     for name,expected in manifest['code'].items():
         if sha(Path(__file__).resolve().parents[2]/name)!=expected:
             raise ValueError('run the exact sealed executable, not another checkout')
@@ -81,9 +85,12 @@ def score(args):
             enough=len(origin)>=manifest['min_primary_targets'] and len(set(days))==manifest['min_days']
             best=min(v for k,v in means.items() if k!='selective')
             gain=1-means['selective']/best if best>0 else None
+            eligible=int(h) in pass_horizons
             metrics[key]={'n':len(origin),'days':len(set(days)),'mse':means,'gain_vs_best_control':gain,
                           'adjusted_gain_interval':ci,'enough_data':bool(enough),
-                          'passes':bool(enough and gain is not None and gain>=manifest['practical_gain'] and ci[0]>0)}
+                          'eligible_for_pass':eligible,
+                          'status':'scored' if eligible else 'descriptive_only',
+                          'passes':bool(eligible and enough and gain is not None and gain>=manifest['practical_gain'] and ci[0]>0)}
         text_report={'n':len(ti),'status':'insufficient','passes':False}
         if len(ti):
             correction=(state[before[ti]]@a['text_W'])@incumbent.a['P'].T

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import numpy as np
 
 ROOT=Path(tempfile.mkdtemp(prefix='persistence-test-'))
@@ -50,6 +51,12 @@ class Contracts(unittest.TestCase):
     def test_scratch_rejects_live_or_parent(self):
         for p in (ROOT,ROOT.parent,Path('/home/gloria/.vintos/workspace')):
             with self.assertRaises(ValueError):D.scratch(p)
+        # This output is a valid child of its configured root, so rejection
+        # specifically exercises the forbidden .vintos root component.
+        forbidden=ROOT/'.vintos'/'workspace'
+        with patch.dict(os.environ,PERSISTENCE_SCRATCH=str(forbidden)):
+            with self.assertRaises(ValueError):D.scratch(forbidden/'child')
+        self.assertFalse(forbidden.exists())
 
     def test_projection_fits_training_only(self):
         rng=np.random.default_rng(4);x=rng.normal(size=(30,8));t=np.arange(30)
@@ -128,18 +135,38 @@ class Contracts(unittest.TestCase):
     def test_launcher_blocks_writes_deletes_renames_and_sends(self):
         parent=Path(tempfile.mkdtemp(dir=ROOT));allowed=parent/'scratch';allowed.mkdir()
         outside=parent/'sentinel';outside.write_text('preserve')
-        for operation in ('write','remove','rename','symlink','send'):
+        for operation in ('write','remove','rename','symlink','send','subprocess'):
             fixture=allowed/'fixture.py'
             commands={'write':"p.write_text('bad')",'remove':"p.unlink()",
                       'rename':"p.rename(Path('moved'))",'symlink':"Path('link').symlink_to(p)",
-                      'send':"socket.socket().connect(('127.0.0.1',9))"}
-            fixture.write_text('from pathlib import Path\nimport socket\np=Path('+repr(str(outside))+')\n'+
+                      'send':"socket.socket().connect(('127.0.0.1',9))",
+                      'subprocess':"subprocess.run([sys.executable,'-c',\"open('spawned','w').write('bad')\"],check=True)"}
+            fixture.write_text('from pathlib import Path\nimport socket,subprocess,sys\np=Path('+repr(str(outside))+')\n'+
                                commands[operation]+'\n')
             p=subprocess.run([sys.executable,str(folder/'launch.py'),str(fixture)],cwd=allowed,
                              env=dict(os.environ,PERSISTENCE_SCRATCH=str(allowed)),capture_output=True,text=True)
             self.assertNotEqual(p.returncode,0,operation)
             self.assertIn('PermissionError',p.stderr,operation)
             self.assertEqual(outside.read_text(),'preserve')
+            self.assertFalse((allowed/'spawned').exists())
+
+    def test_retired_bundle_attempt_is_terminal(self):
+        p,m=self.make_seal()
+        D.write_json(p/'evaluation-attempt.json',{'status':'retired_without_evaluation','replacement':'fixture-v3'})
+        with self.assertRaises(FileExistsError):
+            D.begin_evaluation(p,m,datetime(2026,11,7,tzinfo=D.TZ))
+
+    def test_published_rounds_omit_daily_and_strong_moment_counts(self):
+        import json
+        p=folder.parents[1]/'docs/review-evidence/persistence-sprint/rounds-20261028.json'
+        def check(value,parent=None):
+            if isinstance(value,dict):
+                self.assertNotIn('daily',value)
+                if parent=='strong_moment':self.assertNotIn('n',value)
+                for key,item in value.items():check(item,key)
+            elif isinstance(value,list):
+                for item in value:check(item,parent)
+        check(json.loads(p.read_text()))
 
 
 if __name__=='__main__':unittest.main()

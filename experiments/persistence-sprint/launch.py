@@ -35,5 +35,6 @@ def guard(event,a):
     if event in ('subprocess.Popen','os.system','os.exec','os.posix_spawn','pty.spawn'):
         raise PermissionError('child processes denied in scratch runner')
 sys.addaudithook(guard)
+sys._persistence_guard_root=str(root)
 sys.argv=sys.argv[1:]
 runpy.run_path(sys.argv[0],run_name='__main__')

@@ -19,6 +19,8 @@ from data import SOURCES,TZ,boundary,timestamp,scratch,sha,write_json
 
 
 def main():
+    if getattr(sys,'_persistence_guard_root',None)!=str(Path(os.environ.get('PERSISTENCE_SCRATCH','')).resolve()):
+        raise RuntimeError('collector requires launch.py with its installed scratch audit hook')
     ap=argparse.ArgumentParser();ap.add_argument('--memory',required=True);ap.add_argument('--out',required=True)
     ap.add_argument('--cache',required=True);ap.add_argument('--encoder',required=True)
     ap.add_argument('--through',choices=['2026-10-22','2026-11-06'],default='2026-10-22')
