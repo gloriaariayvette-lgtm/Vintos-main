@@ -1456,35 +1456,77 @@ def _topic_hit(text_low, a):
     return bool(others & words)
 
 
-def file_for(ref, archives=None):
-    """(archive id, manifest entry, absolute path) of one kept file, named as the recall lists it: its path in the
-    archive, optionally after "<archive id>:", or a file name only this archive's manifest has once. None when no kept
-    archive has it. Read only; the path is checked to stay inside that archive's files/."""
+def recalled_id(block):
+    """The id of the archive a recall block brought in, checked against the kept archives (exactly one, by its whole
+    id), or '' when the block is not a recall or names no kept archive."""
+    m = re.match(r"^== CODEX ARCHIVE ([0-9a-f]{6,16}) ", str(block or ""))
+    if not m:
+        return ""
+    return m.group(1) if any(a.get("id") == m.group(1) for a in _archives()) else ""
+
+
+def resolve(ref, archives=None, within=None):
+    """((archive id, manifest entry, absolute path), '') for one kept file, or (None, why not). The file is named as
+    the recall lists it: its path in the archive, or a file name that archive's manifest has only once; optionally
+    after "<archive id>:", which must name exactly one kept archive. Without an id it is looked for in `within` (the
+    archive this conversation recalled) alone; with no `within`, in every kept archive, and refused when more than
+    one has it (never the newest chosen in silence: 29 October, the older Velaris palm). Read only; the path is
+    checked to stay inside that archive's files/."""
     ref = str(ref or "").strip().strip("`'\"").strip()
     m = re.match(r"^([0-9a-f]{6,16})\s*:\s*(.+)$", ref)
     want_id, rel = (m.group(1), m.group(2)) if m else ("", ref)
     rel = rel.strip().lstrip("/")
     if not rel or ".." in rel.split("/") or "\\" in rel:
-        return None
+        return None, "not a file path inside an archive"
     arcs = sorted(archives if archives is not None else _archives(), key=lambda a: a.get("received") or "", reverse=True)
+    if want_id:
+        arcs = [a for a in arcs if a["id"].startswith(want_id)]
+        if not arcs:
+            return None, "no kept Codex archive has the id %s" % want_id
+        if len(arcs) > 1:
+            return None, "the id %s fits %d archives (%s): give more of it" % (
+                want_id, len(arcs), ", ".join(a["id"] for a in arcs[:4]))
+    elif within:
+        arcs = [a for a in arcs if a["id"] == within]
+        if not arcs:
+            return None, "the recalled archive %s is no longer kept" % str(within)[:16]
+    hits, why = [], ""
     for a in arcs:
-        if want_id and not a["id"].startswith(want_id):
-            continue
         files = (manifest(a["id"]) or {}).get("files") or []
         e = next((x for x in files if x.get("path") == rel), None)
         if e is None and "/" not in rel:
             named = [x for x in files if str(x.get("path") or "").rsplit("/", 1)[-1].lower() == rel.lower()]
-            e = named[0] if len(named) == 1 else None
-        if e is None:
-            continue
-        base = os.path.realpath(os.path.join(ROOT, a["id"], "files"))
-        path = os.path.join(base, *e["path"].split("/"))
-        if os.path.islink(path) or not os.path.realpath(path).startswith(base + os.sep) or not os.path.isfile(path):
-            return None
-        if e.get("size") is not None and os.path.getsize(path) != int(e["size"]):
-            return None
-        return a["id"], e, path
-    return None
+            if len(named) > 1:
+                why = "%d files in archive %s are named %s (%s): give its whole path" % (
+                    len(named), a["id"][:8], rel, ", ".join(x["path"] for x in named[:3]))
+                if len(arcs) == 1:
+                    return None, why
+                hits.append((a, None))
+                continue
+            e = named[0] if named else None
+        if e is not None:
+            hits.append((a, e))
+    if not hits:
+        where = ("archive %s" % arcs[0]["id"][:8]) if len(arcs) == 1 else "a kept Codex archive"
+        return None, why or "no file %s in %s" % (rel[:120], where)
+    if len(hits) > 1:
+        return None, "%s is in %d archives (%s): name one as <archive id>: <path>" % (
+            rel[:120], len(hits), ", ".join(a["id"][:8] for a, _ in hits[:4]))
+    a, e = hits[0]
+    if e is None:
+        return None, why
+    base = os.path.realpath(os.path.join(ROOT, a["id"], "files"))
+    path = os.path.join(base, *e["path"].split("/"))
+    if os.path.islink(path) or not os.path.realpath(path).startswith(base + os.sep) or not os.path.isfile(path):
+        return None, "%s in archive %s is not a plain file inside it" % (e["path"][:120], a["id"][:8])
+    if e.get("size") is not None and os.path.getsize(path) != int(e["size"]):
+        return None, "%s in archive %s is not the size its manifest says" % (e["path"][:120], a["id"][:8])
+    return (a["id"], e, path), ""
+
+
+def file_for(ref, archives=None, within=None):
+    """(archive id, manifest entry, absolute path) of one kept file, as resolve() finds it; None when it does not."""
+    return resolve(ref, archives, within)[0]
 
 
 def match(text, archives=None):
