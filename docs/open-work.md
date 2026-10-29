@@ -5,13 +5,17 @@ from `6f841f33`, on current deploy `340f9195`. The first round already lost its
 historical emotion check; no duplicate fit or 768-d regression is needed.
 Verified Aegis/private input access. Added clean-room capture, timestamp-batch,
 disk-restart and scratch-write tests; repaired missing capture dependencies in
-the v3 future bundle before 31 October. **543/543 Aegis suites passed**, plus
-eight CPU-runtime tests; 19 focused broker contracts. See `docs/persistence-sprint-log.md` for
+the v3 future bundle before 31 October. Review revision: **543/543 Aegis suites
+passed**, plus ten CPU-runtime tests; 21 focused broker contracts. See `docs/persistence-sprint-log.md` for
 the distinction between synthetic tests, fitted results and untouched outcomes.
 The 23–29 October emotion-history experiment remains separate and exposed by
 overlapping incumbent scores; 30 October is excluded. First sprint confirmation:
-31 October–6 November. All 34 fitted artifacts and statistical rules are unchanged
-from v2. No new real-data fit/score or fresh evaluation. The separate 30 October
+31 October–6 November. All 34 fitted artifacts are unchanged from v2. Review
+revision 1 makes 24h descriptive-only, retains the six-hour primary and the
+56-contrast interval adjustment, and requires guarded collector entry. The sole
+active v3 is durably private under `/home/gloria/persistence-sprint-private-20261029`;
+older bundles have consumed retirement attempt files. Published diagnostic detail
+is trimmed as requested. No new real-data fit/score or fresh evaluation. The separate 30 October
 08:00 emotion-history follow-up is restored; carrying checks remain with Claude.
 Claude Code review and Gloria's approval precede any merge.
 

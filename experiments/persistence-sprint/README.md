@@ -2,7 +2,7 @@
 
 **29 October continuation:** recovered the already completed offline rounds on
 `codex/persistence-offline-round-one`; no duplicate real-data fit. Current code
-is tested in `/tmp/persistence-offline-20261029-EpYs5CMi` on Aegis. The original
+review revision is tested in `/tmp/persistence-review-20261029-YQsAEnJZ` on Aegis. The original
 rounds and fitted scores below remain historical development. The carrying-note
 work is a separate branch and is not an output of these forecasting experiments.
 
@@ -15,6 +15,8 @@ Use Aegis's existing CPU training interpreter and `nice -n 15`, with
 `PERSISTENCE_SCRATCH` set to the private experiment parent. `launch.py` denies
 network calls and writes outside that parent. Python, NumPy, PyTorch and the
 already cached frozen encoder suffice; no installation or paid call is needed.
+The collector refuses direct invocation: `launch.py` must have installed the
+audit hook, including rename and subprocess denial, before capture begins.
 The deploy interpreter needs only NumPy for the broker contracts. CPU-runtime
 tests stay here, outside `broker/tests/`.
 
@@ -59,6 +61,10 @@ text noninferiority. Six-hour emotion needs 300 unique outcomes across seven
 days, 5% reduction versus every same-row control, and a positive adjusted paired
 day interval. The stronger fixed-config through-22-October present refit is an
 additional text comparator; it is not the missing original .230 artifact.
+Pass-eligible horizons are 10/30 minutes and 1/3/6/12 hours. **24 hours is
+descriptive only**: within-block outcomes cannot cover day-seven origins.
+The six-hour primary is unchanged. Retain the original conservative interval
+adjustment for 56 contrasts; removing the 24-hour claim does not loosen it.
 
 The first provisional `sealed-oct31/` was sealed without looking at any fresh
 outcome. It is retired in favor of `sealed-oct31-v2/`, which adds clock/source
@@ -68,13 +74,18 @@ motivated those acceptance corrections. Never evaluate the provisional bundle.
 
 On 29 October, v2 was superseded by **v3**, before the block opened, solely to
 include the collector's missing admission dependencies and harden scratch writes.
-V3 is `/tmp/persistence-offline-20261029-EpYs5CMi/sealed-oct31-v3`;
-all 34 fitted candidate/control/report artifacts and the five scientific
-executables are byte-identical to v2. Primary candidate 7, all eight reported
-candidates, metrics, thresholds and multiplicity rules are unchanged. The exact
-manifest SHA256 is
-`b186cf66f3ab078ef74d1946a7fa7f27d2211ae13598f80866b41cb3e3680268`.
-V2 is preserved for audit, not another evaluation opportunity. No untouched
+That initial v3 was then amended for Claude Code's review, still before the
+block opened. The **only active bundle** is now the durable private directory
+`/home/gloria/persistence-sprint-private-20261029/sealed-oct31-v3` (review revision 1).
+Directories are 0700, files 0600; it survives `/tmp` cleanup and reboot.
+All 34 fitted artifacts, fitting/state mathematics and the primary decision
+thresholds are unchanged. The evaluator marks 24h descriptive-only and the
+collector requires the guarded launcher. The active manifest SHA256 is
+`9b6e09c96e4eff54fa55cb873db6c705110bd370f8fd82c65308c02f16fa7051`.
+V1, v2, the initial `/tmp` v3 and its durable before-review copy each have an
+exclusive `evaluation-attempt.json` marked `retired_without_evaluation`.
+Their original evaluation gates were verified to refuse them; do not remove
+those receipts. The amended durable v3 has no attempt receipt yet. No untouched
 scores exist yet. V3's clean-room synthetic capture tests use cached fixture
 vectors and a nonexistent encoder path, proving no model call is needed for
 those tests. The older .230 text confirmation's unsaved artifact is not
@@ -90,14 +101,14 @@ unchanged, with its original 23–29 October dates and adjusted interval.
 After 7 November local midnight only, use the **sealed** collector and evaluator:
 
 ```sh
-export PERSISTENCE_SCRATCH=/tmp/persistence-offline-20261029-EpYs5CMi
+export PERSISTENCE_SCRATCH=/home/gloria/persistence-sprint-private-20261029
 export PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 cd "$PERSISTENCE_SCRATCH/sealed-oct31-v3/code/experiments/persistence-sprint"
 nice -n 15 /home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 \
   launch.py collect.py --through 2026-11-06 \
   --memory /home/gloria/.vintos/workspace/memory \
   --out "$PERSISTENCE_SCRATCH/fresh-nov06" \
-  --cache /tmp/latent-stream-linear-u_zj_msj/text-vectors.jsonl \
+  --cache "$PERSISTENCE_SCRATCH/empty-text-cache.jsonl" \
   --encoder /home/gloria/.cache/huggingface/hub/models--nomic-ai--nomic-embed-text-v1/snapshots/3ac47f125a41961d13b397d0332866be2f9152e1
 
 nice -n 15 /home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 \
@@ -109,6 +120,9 @@ nice -n 15 /home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 \
 
 Run from `sealed-oct31-v3/code/experiments/persistence-sprint`, with the existing
 training interpreter (not an unconfigured system Python) and the scratch env.
+The durable empty cache fallback intentionally re-encodes admitted inputs with
+the existing local frozen encoder, so loss of the old `/tmp` cache cannot block
+capture. It adds CPU work, not a paid call or model change.
 The evaluator verifies executable and parameter hashes and consumes an exclusive
 attempt receipt before loading the new snapshot. Insufficient data and failures
 are terminal; never remove an attempt receipt. No refitting happens during
@@ -126,9 +140,10 @@ code, thresholds or data. The carrying check automation remains paused for Claud
 ## Repeatable synthetic checks
 
 From a scratch copy of this branch, with `PERSISTENCE_SCRATCH` pointing to its
-private parent, run the 19 NumPy-only broker contracts with
+private parent, run the 21 NumPy-only broker contracts with
 `/usr/bin/python3.12 scripts/run_isolated_test.py broker/tests/test_persistence_sprint.py`.
 Run CPU checks with the training interpreter above using
 `-m unittest discover -s experiments/persistence-sprint -p 'test_*.py'`.
-These exercise synthetic data only, including a full artificial closed week;
+The ten CPU tests exercise synthetic data only, including full artificial closed
+weeks that must respectively pass and fail using actual scores and intervals;
 that test's pass/fail result is not a result on 31 October–6 November.

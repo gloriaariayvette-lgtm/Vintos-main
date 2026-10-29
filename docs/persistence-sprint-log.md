@@ -4,7 +4,7 @@
 
 Claude Code reviewed `da1b31cd`; Gloria requested fixes and another review before
 merge. A byte-exact private v3 copy now exists outside `/tmp`, with directories
-0700 and files 0600. The amended v3 will be the sole evaluable bundle; older
+0700 and files 0600. The amended v3 is the sole evaluable bundle; older
 copies receive exclusive retirement receipts in their attempt files. No actual
 evaluation attempt has run.
 
@@ -22,7 +22,7 @@ Published round receipts omit all daily blocks and strong-moment counts. Removed
 private input filenames and source-store start dates from the log/recovery
 receipt, and source filenames from the published capture provenance. Full private
 artifacts retain their exact original bytes. Validation and durable seal hashes
-will be recorded after the checks. No fitting, new score, merge or deploy.
+are recorded in the final review receipt below. No fitting, new score, merge or deploy.
 
 ## 29 October — resume the offline work without repeating fitted rounds
 
@@ -337,3 +337,46 @@ Aggregate receipts: `docs/review-evidence/persistence-sprint/recovery-20261029.j
 vectors, source identifiers or secrets are published. No live script/feed/unit,
 Gloria-head parameter or disabled emotion service changed. Claude Code reviews
 this branch; Gloria approves before any merge. No deploy or promotion.
+
+## 29 October — all six review fixes verified
+
+Final tested implementation `78a8a85d`: **543/543 Aegis broker suites pass**,
+including **21** sprint contracts; one existing optional SDK test internally
+skips. **Ten CPU-runtime tests pass**, both in the review workspace and from
+the actual durable sealed code. The full synthetic positive case reports
+`primary_passes: true` using real prediction errors, retrieval ranks and paired
+intervals; the negative case reports false. These are contract tests, not fitted
+or untouched-block evidence. The `.vintos` rejection now uses an otherwise valid
+child path, isolating that condition. Collector direct-entry and launcher rename/
+subprocess refusal checks pass.
+
+The sole active bundle is now
+`/home/gloria/persistence-sprint-private-20261029/sealed-oct31-v3`, review revision 1.
+Private directories are 0700 and files 0600; file hashes and durable writes were
+verified. This is outside `/tmp` and outside the repository. Active manifest:
+`9b6e09c96e4eff54fa55cb873db6c705110bd370f8fd82c65308c02f16fa7051`.
+All 34 fitted artifacts are byte-identical to the reviewed original v3. Fitting
+and state mathematics are unchanged. The explicit pre-window protocol amendment
+removes 24h from pass eligibility, retaining it as descriptive only; the six-hour
+primary and conservative 56-contrast interval adjustment are unchanged.
+
+The provisional v1, v2, original `/tmp` v3 and durable before-review v3 copy now
+each contain an exclusive `evaluation-attempt.json` marked
+`retired_without_evaluation`, pointing to the active manifest. Verified all four
+original evaluation gates refuse with their own hashes intact. The active v3 has
+no attempt receipt. The older emotion-history seal is separate and unchanged.
+The executable README now points only to the durable active v3 and a durable empty
+cache fallback; the existing local encoder can re-encode if the old temporary
+vector cache disappears. No private text cache was added to Git.
+
+Public round receipts no longer include any per-day `daily` block or
+`strong_moment.n`. Private memory filenames and source-store start dates were
+trimmed from this log and recovery receipt; published capture provenance retains
+only its file count. Original private fitted artifacts remain intact. These are
+normal follow-up commits; no branch history was rewritten.
+
+Receipts: `docs/review-evidence/persistence-sprint/review-validation-20261029.json`,
+`full-suite-review-20261029.json`, `retirement-20261029.json`, and the revised
+`seal-oct31-v3.json`. No actual future-block evaluation, new fit, live-feed change,
+send, paid call, installation, merge or deployment. Pushed for Claude Code's
+requested re-review; Gloria's approval still precedes merge.
