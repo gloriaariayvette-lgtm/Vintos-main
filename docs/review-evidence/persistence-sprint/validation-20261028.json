@@ -1,0 +1,28 @@
+{
+  "tested_commit": "9d156b04",
+  "host": "Aegis",
+  "interpreter": "/usr/bin/python3.12",
+  "suites": 542,
+  "passed": 542,
+  "failed": 0,
+  "skipped_suites": 0,
+  "internal_skips": [
+    {
+      "suite": "test_lab_atlas_sdk",
+      "tests": 1
+    }
+  ],
+  "focused_tests": 18,
+  "cpu_runtime_tests": 4,
+  "isolation": "run_isolated_test.py, bubblewrap, copied checkout and HOME, scratch stores, stubbed senders",
+  "source_scratch": "/tmp/persistence-sprint-20261028-JR0Nwf82/final-suite-repo",
+  "seal_manifest_sha256": "f98125ede8aedef75811e5a82cf862100d263d1db406b56697f9ac5861e6e675",
+  "fresh_evaluation_attempted": false,
+  "no_live_writes_or_sends": true,
+  "initial_run": {
+    "total": 542,
+    "passed": 541,
+    "failed": 1,
+    "failure": "test_p09_p11_closures.py: stale generated docs/untested.md; regenerated before final full run"
+  }
+}

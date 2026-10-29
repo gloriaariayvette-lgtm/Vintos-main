@@ -1,3 +1,16 @@
+## 29 October — offline persistence sprint recovered for review
+
+`codex/persistence-offline-round-one` reuses the existing eight offline rounds
+from `6f841f33`, on current deploy `340f9195`. The first round already lost its
+historical emotion check; no duplicate fit or 768-d regression is needed.
+Verified Aegis/private input access. Added clean-room capture, timestamp-batch,
+disk-restart and scratch-write tests; repairing missing capture dependencies in
+the future bundle before 31 October. See `docs/persistence-sprint-log.md` for
+the distinction between synthetic tests, fitted results and untouched outcomes.
+The 23–29 October emotion-history experiment remains separate and exposed by
+overlapping incumbent scores; 30 October is excluded. First sprint confirmation:
+31 October–6 November. Claude Code review and Gloria's approval precede any merge.
+
 ## 28 October — persistent carry, second review
 
 `codex/persistent-carry-review` has no forecasting experiments in its merge diff.
