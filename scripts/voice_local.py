@@ -25,21 +25,53 @@ def call_id():
     return _CALL["id"]
 
 
-def _hold_audio(audio, speaker, turn_id, sample_rate=24000, test=False):
+def _held(ladder_call):
+    """A call he started (attention_call.py) keeps what its turns capture until she answers. True while it does;
+    a call that no longer holds anything (she answered while the turn was made) keeps nothing of the turn."""
+    try:
+        import attention_call
+        return attention_call.retention(ladder_call) == "held"
+    except Exception:
+        return False
+
+
+def _hold_audio(audio, speaker, turn_id, sample_rate=24000, test=False, ladder_call=None):
     """Hand one side of this turn to the media index (EmbeddingGemma 2, Gloria 26 October: both voices). The bytes
     wait in a private 0700 directory and are deleted when the batch after the call embeds them; nothing is
-    embedded here, so the turn is not slowed. Never raises."""
+    embedded here, so the turn is not slowed. A call he started holds them apart for her answer (ladder_call);
+    once that call holds nothing, nothing is kept. Never raises."""
     try:
+        if ladder_call and not _held(ladder_call):
+            return
         import media_embed
         media_embed.hold_call_audio(audio, speaker, turn_id=turn_id, session_id=call_id(),
-                                    sample_rate=sample_rate, test=test)
+                                    sample_rate=sample_rate, test=test, pending=ladder_call or None)
     except Exception as exc:
         print("[voice-local/media-embed]", str(exc)[:200], flush=True)
 
 
-def end_call():
-    """The call is over: close its label and start the batch that embeds its held audio (then deletes it)."""
+def _remember_how_it_sounded(audio_b64, sample_rate, heard, turn_id, test_mode, ladder_call=None):
+    """Proposal 17: how it sounded, kept as an attributed observation (the audio itself is not kept). On a call he
+    started the record is made now and held with the call until her answer. Never raises."""
+    try:
+        import auditory_memory
+        if not ladder_call:
+            auditory_memory.record(audio_b64, sample_rate, heard, turn_id=turn_id, test_mode=test_mode)
+            return
+        rec = auditory_memory.build(audio_b64, sample_rate, heard, turn_id=turn_id, test_mode=test_mode)
+        if rec is not None:
+            import attention_call
+            attention_call.hold_capture(ladder_call, "auditory", rec, same="source_hash")
+    except Exception as exc:
+        print("[voice-local/auditory-memory]", str(exc)[:200], flush=True)
+
+
+def end_call(kick=True):
+    """The call is over: close its label and start the batch that embeds its held audio (then deletes it). A call
+    he started passes kick=False: its audio waits for her answer, and her yes starts the batch."""
     _CALL["id"] = None
+    if not kick:
+        return "held for her answer"
     try:
         import media_embed
         return media_embed.kick(0)
@@ -76,7 +108,10 @@ def _display_text(text):
     return " ".join(out.split())
 
 
-def turn(audio_b64, sample_rate, instructions, framing=""):
+def turn(audio_b64, sample_rate, instructions, framing="", ladder_call=None):
+    """One turn. ladder_call: a call he started, already checked by the route against the call attention_call
+    holds. It is the same turn, but what the house would capture of it for his memory waits with the call for
+    her answer (how her voice sounded, both voices' audio), and her words do not reach the intent engine."""
     heard_raw, _ = _post(STAGE + "/listen", {"audio": audio_b64,
         "sample_rate": int(sample_rate or 24000)}, 180)
     heard = json.loads(heard_raw)
@@ -94,16 +129,12 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     interaction = Interaction(heard["transcript"], "voice")
     if interaction.turn.duplicate_event:
         return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
-    try:   # proposal 17: how it sounded, kept as an attributed observation; the audio itself is not kept
-        from auditory_memory import record as _remember_heard
-        _remember_heard(audio_b64, sample_rate, heard, turn_id=interaction.turn.turn_id,
-                        test_mode=bool(getattr(interaction.turn, "test_mode", False)))
-    except Exception as exc:
-        print("[voice-local/auditory-memory]", str(exc)[:200], flush=True)
     _test_turn = bool(getattr(interaction.turn, "test_mode", False))
-    _hold_audio(audio_b64, "gloria", interaction.turn.turn_id, sample_rate, test=_test_turn)
-    from intent_engine import note_response
-    note_response(heard["transcript"])
+    _remember_how_it_sounded(audio_b64, sample_rate, heard, interaction.turn.turn_id, _test_turn, ladder_call)
+    _hold_audio(audio_b64, "gloria", interaction.turn.turn_id, sample_rate, test=_test_turn, ladder_call=ladder_call)
+    if not ladder_call:   # a held call's words reach the intent engine only through her yes (as on the realtime lanes)
+        from intent_engine import note_response
+        note_response(heard["transcript"])
     from intent_context import admit_voice_lead
     intent_target, intent_prompt = admit_voice_lead(interaction.turn.turn_id)
     system = str(instructions or "") + interaction.prompt()
@@ -129,8 +160,9 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     from stratagem_turn import guard_reply
     if not guard_reply(reply, interaction.turn):
         return {"ok": True, "reply": "", "audio": "", "transcript": heard["transcript"], "suppressed": "stratagem ended before playback"}
-    _hold_audio(voice_raw, "vintos", interaction.turn.turn_id, test=_test_turn)   # what she will hear
-    if intent_target:
+    _hold_audio(voice_raw, "vintos", interaction.turn.turn_id, test=_test_turn,   # what she will hear
+                ladder_call=ladder_call)
+    if intent_target and not ladder_call:
         from intent_engine import record_delivery
         record_delivery(reply, "voice", interaction.turn.turn_id, target=intent_target,
                         input_text=heard["transcript"])

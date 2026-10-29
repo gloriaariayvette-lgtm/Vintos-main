@@ -27,9 +27,14 @@ from /api/voice/token, the same per-turn framing, the same ledger route and sess
     short keeps the transcript, records which turns went through (save_incomplete()), and her next yes resumes
     there, each turn under its own key (replay_key()) so nothing is written twice. No deletes the transcript. Either way one row without words is kept (attention-calls.jsonl): that a call
     happened, when, how long, and whether it was saved, so the ladder knows she answered.
+    On the Local lane the house itself hears her and makes captures of its own (how her voice sounded, both voices'
+    audio for the media index). The app names the call to those routes too, and while retention() says "held" the
+    captures wait with the call (hold_capture(); the audio in media_embed's pending corner, still on its short
+    clock). Her yes publishes them once, after the turns; her no deletes them (29 October).
 
 Stores (all under memory/, the directory 0700, files 0600):
   attention-calls/<id>.json   one call: state, reason, lane and his reason for it, the held turns until she decides
+  attention-calls/held/<id>.json  what the Local lane captured of the call before her answer (no audio)
   attention-calls.jsonl       the minimal record: no words, ever
 Nothing here sends, rings or speaks: attention_ladder.py rings (through its own stubbed actuators) and server.py
 runs the call. lanes_up() and ask_model() are the only parts that touch a network, and the ladder reaches them only
@@ -464,6 +469,88 @@ def hold_turn(call_id, payload, now=None):
     return {"ok": True, "held": True}
 
 
+def retention(call_id):
+    """What may become of what this call captures: "held" while it is live or waits for her answer, "saved" or
+    "forgotten" once she answered, None for anything that is not a call he started (or not one any more)."""
+    try:
+        rec = load(call_id)
+    except ValueError:
+        return None
+    if not rec:
+        return None
+    if rec.get("state") in ("answered", "live") or (rec.get("state") == "ended" and rec.get("save") == "pending"):
+        return "held"
+    return {"yes": "saved", "no": "forgotten"}.get(rec.get("save"))
+
+
+def _captures_dir():
+    return os.path.join(CALLS, "held")
+
+
+def _captures_path(call_id):
+    _path(call_id)                                      # the same id check as the call's own file
+    return os.path.join(_captures_dir(), str(call_id) + ".json")
+
+
+def captures(call_id, kind):
+    """What the call's turns captured for his memory before her answer (kind "auditory": auditory_memory.build()
+    records), held here, privately, in the order taken."""
+    try:
+        with open(_captures_path(call_id)) as f:
+            v = json.load(f)
+    except (OSError, ValueError):
+        return []
+    items = (v.get(kind) if isinstance(v, dict) else None) or []
+    return [i for i in items if isinstance(i, dict)]
+
+
+def hold_capture(call_id, kind, item, same=None):
+    """Hold one capture of a call he started instead of writing it to his memory (the Local lane's heard record of
+    her voice). `same`: the field that makes a retried turn the same capture (held once). True when held (or already
+    held); False when the call no longer holds anything, and the caller then keeps nothing."""
+    from store_guard import transaction
+    if retention(call_id) != "held" or not isinstance(item, dict):
+        return False
+    path = _captures_path(call_id)
+    _private_dir()
+    os.makedirs(_captures_dir(), mode=0o700, exist_ok=True)
+    try:
+        os.chmod(_captures_dir(), 0o700)
+    except OSError:
+        pass
+    with transaction(path):
+        if retention(call_id) != "held":                # she answered while this turn was being made
+            return False
+        try:
+            with open(path) as f:
+                cur = json.load(f)
+        except (OSError, ValueError):
+            cur = {}
+        cur = cur if isinstance(cur, dict) else {}
+        items = [i for i in (cur.get(kind) or []) if isinstance(i, dict)]
+        if same and item.get(same) is not None and any(i.get(same) == item.get(same) for i in items):
+            return True
+        cur[kind] = items + [item]
+        fd, tmp = tempfile.mkstemp(prefix=".held.", dir=_captures_dir())
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(cur, f, ensure_ascii=False)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    return True
+
+
+def drop_captures(call_id):
+    """Her answer is in (or there was nothing to answer): the held captures are gone from here."""
+    try:
+        os.unlink(_captures_path(call_id))
+    except (OSError, ValueError):
+        pass
+
+
 def end(call_id, duration_seconds=0, now=None):
     """The call hung up: the transcript waits for her yes or no."""
     rec = load(call_id)
@@ -479,6 +566,8 @@ def end(call_id, duration_seconds=0, now=None):
     if not rec.get("turns"):
         rec["turn_count"] = 0
     _write(rec); _record(rec, "ended")
+    if rec["save"] == "no":
+        drop_captures(call_id)            # nothing to ask her about: nothing it captured is kept either
     return rec
 
 
@@ -552,6 +641,7 @@ def decided(call_id, save, persisted=None, now=None):
     rec.pop("save_error_at", None)
     rec.pop("token", None)
     _write(rec); _record(rec, "saved" if save else "not saved")
+    drop_captures(call_id)                # yes: the caller published them first; no: they live nowhere
     return rec
 
 

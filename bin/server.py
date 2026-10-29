@@ -9028,15 +9028,36 @@ async def voice_local_turn(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
     body = await request.json()
+    _ladder = _voice_local_ladder_call(body)
+    if _ladder is False:   # named a call that is not his live Local call: refused before anything hears it
+        return {"ok": False, "stage": "call", "error": "that call is no longer waiting for you"}
     try:
         import voice_local as _vl
         from compute_admission import touch_foreground as _vlf
         _vlf()
         return await __import__("asyncio").to_thread(_vl.turn, str(body.get("audio") or ""),
             int(body.get("sample_rate") or 24000), str(body.get("instructions") or ""),
-            str(body.get("framing") or ""))
+            str(body.get("framing") or ""), _ladder)
     except Exception as exc:
         return {"ok":False,"stage":"transport","error":str(exc)[:300]}
+
+
+def _voice_local_ladder_call(body):
+    """The call he started that a Local-lane request names (the app sends ladder_call on every local turn and on the
+    lane's end), checked against the call attention_call holds: None for an ordinary call, the call's id when it is
+    his live call on the Local lane, False for anything else (an unknown, ended, answered or foreign id), which is
+    refused, never run as an ordinary call."""
+    cid = str((body or {}).get("ladder_call") or "") if isinstance(body, dict) else ""
+    if not cid:
+        return None
+    try:
+        import attention_call as _vllc_ac
+        rec = _vllc_ac.live(cid)
+    except Exception:
+        rec = None
+    if not rec or rec.get("lane") != "local":
+        return False
+    return rec["id"]
 
 @app.post("/api/voice/local/opening")
 async def voice_local_opening(request: Request):
@@ -9070,12 +9091,16 @@ async def voice_local_heartbeat(request: Request):
 async def voice_local_end(request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    try: _held_call = bool((await request.json() or {}).get("ladder_call"))   # his call: its audio waits for her
+    except Exception: _held_call = False
     try:
         import voice_local as _vl
         result = await __import__("asyncio").to_thread(_vl.models, False)
         try: os.unlink(os.path.join(MEMORY, ".voice-live"))
         except OSError: pass
-        try: _vl.end_call()   # the batch that embeds this call's held audio, then deletes it (media_embed.py)
+        try:
+            if not _held_call: _vl.end_call()   # the batch that embeds this call's held audio, then deletes it (media_embed.py)
+            else: _vl.end_call(kick=False)      # a call he started: no batch now; her yes starts it
         except Exception as _vle: print("[voice-local-end] media index:", str(_vle)[:160], flush=True)
         return result
     except Exception as exc: return {"ok":False,"error":str(exc)[:240]}
@@ -9154,6 +9179,12 @@ def _voice_session_end_held(payload: dict):
     except Exception as _vse_ace:
         print("[voice-session-end] ladder call:", str(_vse_ace)[:160], flush=True)
         rec = None
+    if rec and rec.get("save") == "no":   # no turn to ask her about: whatever its Local turns held goes too
+        try:
+            import media_embed as _vse_me
+            _vse_me.discard(rec["id"])
+        except Exception as _vse_mee:
+            print("[voice-session-end] held audio:", str(_vse_mee)[:160], flush=True)
     return {"ok": True, "held": bool(rec), "awaiting": "her yes or no" if rec and rec.get("save") == "pending" else None}
 
 
@@ -9780,6 +9811,11 @@ def _attention_call_forget(call_id):
                               default=[], reader="server.avatar_history")
             except Exception as _acfe:
                 print("[attention-call] forgetting a partial save:", str(_acfe)[:160], flush=True)
+        try:   # what its Local turns held for her answer: the audio deleted unembedded (the heard records go below)
+            import media_embed as _acf_me
+            _acf_me.discard(call_id)
+        except Exception as _acfme:
+            print("[attention-call] forgetting the held audio:", str(_acfme)[:160], flush=True)
         _acf_ac.decided(call_id, False)
     return {"ok": True, "saved": False}
 
@@ -9810,6 +9846,10 @@ async def _attention_call_replay(rec):
         turns = rec.get("turns") or []
         if _attention_call_block_landed(started_iso):
             _attention_call_take_session(client)
+            if not _attention_call_publish(call_id):
+                _ac.save_incomplete(call_id, [_ac.replay_key(rec, i) for i in range(len(turns))], None, "captures")
+                return {"ok": False, "saved": False, "partial": True, "saved_turns": len(turns), "turns": len(turns),
+                        "why": "the call was written but how her voice sounded was not; tap Save to retry"}
             _ac.decided(call_id, True, persisted=True)
             return {"ok": True, "saved": True, "already": True, "summary": ""}
         sp = os.path.join(MEMORY, "voice-session-state.json")
@@ -9842,8 +9882,35 @@ async def _attention_call_replay(rec):
             _ac.save_incomplete(call_id, done, _attention_call_take_session(client), "finalize")
             return {"ok": False, "saved": False, "partial": True, "saved_turns": len(done), "turns": len(turns),
                     "why": "every turn went through but the call was not written to his memory; tap Save to retry"}
+        if not _attention_call_publish(call_id):
+            _ac.save_incomplete(call_id, done, None, "captures")
+            return {"ok": False, "saved": False, "partial": True, "saved_turns": len(done), "turns": len(turns),
+                    "why": "the call was written but how her voice sounded was not; tap Save to retry"}
         _ac.decided(call_id, True, persisted=True)
     return {"ok": True, "saved": True, "summary": out.get("summary", "")}
+
+
+def _attention_call_publish(call_id):
+    """Her yes, for what the call's Local turns captured before it (voice_local.turn with ladder_call): the heard
+    records of her voice go to auditory memory (each id once, so a retry adds nothing twice), then the audio still
+    within media_embed's short limit goes where the next batch embeds it, and that batch starts. Expired audio was
+    already deleted and is not brought back. True when the heard records landed (audio is best effort: it would
+    expire anyway); False keeps the call hers to save again."""
+    import attention_call as _acp_ac
+    try:
+        import auditory_memory as _acp_am
+        for r in _acp_ac.captures(call_id, "auditory"):
+            _acp_am.add(r)
+    except Exception as _acpe:
+        print("[attention-call] publishing the heard records:", str(_acpe)[:160], flush=True)
+        return False
+    try:
+        import media_embed as _acp_me
+        if _acp_me.release(call_id):
+            _acp_me.kick(0)
+    except Exception as _acpme:
+        print("[attention-call] publishing the held audio:", str(_acpme)[:160], flush=True)
+    return True
 
 
 @app.get("/api/voice/pending-speech")

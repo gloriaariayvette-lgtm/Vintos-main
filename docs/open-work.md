@@ -64,7 +64,12 @@ ledger and session end, `/api/attention/*`), `bin/vintos-initiate.sh`, `world_mo
   replays the held turns through `_voice_ledger_owned` and `_voice_session_end_owned` (keeping each turn's time;
   owner controls, device tags and the lead are not re-run), so it lands as a call lands today (the suite compares the
   two). No deletes the transcript. Either way `attention-calls.jsonl` keeps a row with no words: when, lane,
-  duration, turn count, saved or not.
+  duration, turn count, saved or not. **Local lane (29 October):** the app also names the call to
+  `/api/voice/local/turn` and `/api/voice/local/end`; the house refuses an id that is not his live Local call, and
+  while she has not answered it holds what it hears apart: the heard records in `attention-calls/held/<id>.json`,
+  both voices' audio in `pending/` of the media index's private RAM directory (no batch reads it, the two-hour
+  sweep still does), her words kept from the intent engine, no batch at the end. Yes publishes them once after the
+  turns (`_attention_call_publish`); No deletes them. Suite: `test_local_call_save_gate.py`.
 - **Cost.** The line: one ordinary outreach per chain (unchanged). His voice: one small chat completion per call
   (120 tokens out), only when two or more lanes are up. The rings: no model call. The call: the lane's
   usual cost — Open is OpenAI realtime audio per minute, Grok is xAI realtime per minute, Local is free (the Mac);
