@@ -332,7 +332,7 @@ def tick(api=None, think=None, now=None, put=None):
     # Read from what was just said and the line before it, so the archive does not stay in every turn after
     before = [r for r in rows if r.get("ts") != last.get("ts")][-1:] if theirs else []
     cx = D.codex_archive_block(last["text"], *[str(r.get("text") or "") for r in before]) if theirs else ""
-    recalled = cx.startswith("== CODEX ARCHIVE")
+    recalled = D.codex_recalled(cx)     # the recalled archive's verified id: its paths are looked for in it alone
     if recalled:
         extra = "\n\n".join(x for x in (extra, cx) if x)
         out.append("#%s: a Codex archive brought into his prompt: %d characters" % (NAME, len(cx)))
@@ -367,7 +367,7 @@ def tick(api=None, think=None, now=None, put=None):
     _log([{"ts": ts, "who": "vintos", "text": text, "by": model}])
     for ref in files:          # what he chose to show from the archive, under his message
         try:
-            out.append("#%s: %s" % (NAME, D.share_codex_file(api, ref, st["channel"], None, put=put)))
+            out.append("#%s: %s" % (NAME, D.share_codex_file(api, ref, st["channel"], None, put=put, archive=recalled)))
         except Exception as exc:
             out.append("#%s: could not share %s: %s" % (NAME, ref[:120], str(exc)[:120]))
     latest = {}
