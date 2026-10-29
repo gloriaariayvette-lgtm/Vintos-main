@@ -1,5 +1,29 @@
 # Persistence sprint
 
+## 29 October — review fixes before the future block
+
+Claude Code reviewed `da1b31cd`; Gloria requested fixes and another review before
+merge. A byte-exact private v3 copy now exists outside `/tmp`, with directories
+0700 and files 0600. The amended v3 will be the sole evaluable bundle; older
+copies receive exclusive retirement receipts in their attempt files. No actual
+evaluation attempt has run.
+
+The 24-hour horizon remains a descriptive score but is removed from pass rules:
+day-seven origins cannot have within-block outcomes at that horizon. Six-hour
+primary, minimum primary counts, thresholds and the conservative 56-contrast
+interval adjustment remain unchanged. An analytic synthetic positive case must
+pass the full evaluator using real predictions, ranks and intervals; the existing
+negative case must fail. Neither is an empirical accuracy result.
+
+Collector entry now requires the guard installed by `launch.py`, before reading
+inputs or creating capture output. Tests cover direct-entry refusal, rename and
+subprocess denial, and a forbidden `.vintos` root with a valid child output.
+Published round receipts omit all daily blocks and strong-moment counts. Removed
+private input filenames and source-store start dates from the log/recovery
+receipt, and source filenames from the published capture provenance. Full private
+artifacts retain their exact original bytes. Validation and durable seal hashes
+will be recorded after the checks. No fitting, new score, merge or deploy.
+
 ## 29 October — resume the offline work without repeating fitted rounds
 
 Gloria requested the offline sprint again. Checked deploy `340f9195`, the
@@ -78,11 +102,11 @@ America/Chicago. Seal before each window opens; one look after closure. Earlier
 days are historical development even when a particular round has not scored them.
 No claim that previously inspected October days are fresh confirmation.
 
-Read-only coverage census: dense emotion retains **4,000 rows, 27 September–28
-October**, not months since July. The cap and unchanged-reading suppression mean
-missing times are not observations. Watch: 14,892 rows from 5 October; sensor
-reactions: 16,783 from 29 August; want events: 301 from 5 September; Lab notebook:
-143,281 from 13 September. These are available-store counts, not training counts.
+Read-only coverage census: dense emotion retains **4,000 rows**. The cap and
+unchanged-reading suppression mean missing times are not observations. Watch:
+14,892 rows; sensor reactions: 16,783; want events: 301; Lab activity: 143,281.
+These are available-store counts, not training counts. Store start dates are
+omitted from the public log.
 Only current admitted sources, no erased backups or reconstructed missing labels.
 
 ### Predeclared development sequence
@@ -283,10 +307,8 @@ outcome measurement. No model, encoder or dependency was installed.
 
 Private current root: `/tmp/persistence-offline-20261029-EpYs5CMi`.
 Verified the old capture and round-1 model/readout against their hashes. Readable
-inputs: emotion-trajectory-dense.json, watch-presence-history.jsonl,
-sensor-reactions.jsonl, want-events.jsonl, avatar-presence-log.json,
-chemistry-lab/notebook.jsonl and chat-canonical.jsonl, plus the existing local
-encoder and vector cache. Real-data fits repeated: **zero**. Real-data scores
+inputs: seven dense/conversation source stores, plus the existing local encoder
+and vector cache. Private input filenames are omitted from this log. Real-data fits repeated: **zero**. Real-data scores
 newly computed: **zero**. Mutable thread/dream arrival histories and independent
 continuity labels remain unavailable; they are not fabricated or backdated.
 

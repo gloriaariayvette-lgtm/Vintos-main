@@ -9,7 +9,7 @@ from bundle import package_code
 from data import TZ, boundary, scratch, sha, write_json
 
 
-def repair(source, output, now=None):
+def repair(source, output, now=None, review_fixes=False):
     source = Path(source)
     manifest = json.loads((source/'manifest.json').read_text())
     now = datetime.now(TZ) if now is None else now
@@ -28,10 +28,12 @@ def repair(source, output, now=None):
     for name, expected in artifacts.items():
         if sha(source/name) != expected:
             raise ValueError('source artifact hash mismatch')
-    # Scientific executable remains byte-identical. Only the launcher and
-    # packaging/tests may change in this operational repair.
+    # Default repair is packaging-only. The explicitly authorized pre-window
+    # review revision also changes collector entry enforcement and removes 24h
+    # from pass eligibility. Fitting and state mathematics remain identical.
     repo = Path(__file__).resolve().parents[2]
-    for name in ('collect.py', 'data.py', 'run.py', 'scan.py', 'evaluate.py'):
+    fixed=('data.py','run.py','scan.py') if review_fixes else ('collect.py','data.py','run.py','scan.py','evaluate.py')
+    for name in fixed:
         relative = 'experiments/persistence-sprint/'+name
         if sha(repo/relative) != manifest['code'][relative]:
             raise ValueError('scientific executable changed: '+name)
@@ -47,6 +49,11 @@ def repair(source, output, now=None):
                    repair='Capture dependency packaging and scratch guard only; all scientific executables, fitted artifacts and statistical rules unchanged',
                    code={str(p.relative_to(out/'code')): sha(p)
                          for p in sorted((out/'code').rglob('*.py'))})
+    if review_fixes:
+        updated.update(review_revision=1,
+                       pass_horizons_seconds=[600,1800,3600,10800,21600,43200],
+                       descriptive_horizons_seconds=[86400],
+                       repair='Authorized pre-window review: 24h descriptive only, unchanged 56-contrast interval adjustment; collector requires guarded launcher; all fitted artifacts unchanged')
     write_json(out/'manifest.json', updated)
     return {'manifest_sha256': sha(out/'manifest.json'), 'artifact_count': len(artifacts),
             'all_artifacts_byte_identical': True, 'week': updated['week'],
@@ -57,5 +64,6 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--from-sealed', required=True)
     ap.add_argument('--out', required=True)
+    ap.add_argument('--review-fixes',action='store_true')
     args = ap.parse_args()
-    print(json.dumps(repair(args.from_sealed, args.out)))
+    print(json.dumps(repair(args.from_sealed, args.out, review_fixes=args.review_fixes)))

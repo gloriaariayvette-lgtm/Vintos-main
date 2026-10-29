@@ -21,12 +21,21 @@ from latent_stream_model import save
 
 class Evaluation(unittest.TestCase):
     def test_complete_synthetic_week_and_repeat_refusal(self):
+        self.synthetic_week(winning=False)
+
+    def test_primary_can_pass_with_real_scores_and_24h_is_descriptive(self):
+        self.synthetic_week(winning=True)
+
+    def synthetic_week(self,winning):
         root=Path(tempfile.mkdtemp(dir=os.environ['PERSISTENCE_SCRATCH']))
         seal=root/'seal';seal.mkdir()
         t=D.boundary('2026-10-31')+np.arange(7*144+6)*600.
         t=t[t<D.boundary('2026-11-07')]
         n=len(t);emo=np.tile(np.arange(11,dtype=np.float32),(n,1))*.01
         text=np.eye(8,dtype=np.float32)[np.arange(n)%8]
+        if winning:
+            emo=np.repeat((np.arange(n,dtype=np.float32)*.001)[:,None],11,axis=1)
+            text=np.tile(np.eye(8,dtype=np.float32)[0],(n,1))
         source=np.zeros((n,12),np.float32);source[:,0]=1;numeric=np.zeros((n,12),np.float32)
         np.savez(root/'events.npz',t=t,emo=emo,text=text,source=source,numeric=numeric,
                  text_i=np.arange(n),text_vectors=text,text_source=np.ones(n,dtype=int),text_exact=np.ones(n,bool))
@@ -37,6 +46,10 @@ class Evaluation(unittest.TestCase):
         shutil.copyfile(seal/'incumbent.npz',seal/'present-refit.npz')
         present=D.features(t,source,emo,text,numeric,0,stats=(np.zeros(11),np.ones(11)))[0]
         model=SelectiveScan(present.shape[1]+32)
+        if winning:
+            with torch.no_grad():
+                model.proposal.weight.zero_();model.proposal.bias.fill_(np.arctanh(.5))
+                model.select.weight.zero_();model.select.bias.zero_();model.taus.fill_(1.)
         candidates=[]
         for k in range(1,9):
             p=seal/('candidate-'+str(k));p.mkdir();torch.save(model.state_dict(),p/'scan.pt')
@@ -45,6 +58,11 @@ class Evaluation(unittest.TestCase):
             for h in D.HORIZONS:
                 for name,width in [('present',present.shape[1]),('history',36),('selective',24),('reset',24)]:
                     a[str(h)+'_'+name]=np.zeros((width,11))
+                if winning:
+                    # Analytic synthetic constant-rate signal. Hidden channel
+                    # settles to .25; its predeclared readout predicts h/600
+                    # increments. All control readouts stay at persistence.
+                    a[str(h)+'_selective'][0,:]=float(h)/600*.001/.25
             np.savez(p/'readouts.npz',**a)
             np.savez(p/'schedule.npz',prob=np.ones((288,12))/12,log_gap=np.ones(288))
             candidates.append(dict(round=k,anchor_history=k>=6,files={f:D.sha(p/f) for f in ('scan.pt','readouts.npz','schedule.npz')}))
@@ -57,6 +75,7 @@ class Evaluation(unittest.TestCase):
                       code={str(p.relative_to(seal/'code')):D.sha(p) for p in (seal/'code').rglob('*.py')},
                       incumbent_sha256=D.sha(seal/'incumbent.npz'),present_refit_sha256=D.sha(seal/'present-refit.npz'),
                       candidates=candidates,selected_primary=7,primary_horizon=21600,ci_quantiles=[.001,.999],
+                      pass_horizons_seconds=[int(h) for h in D.HORIZONS if h<86400],
                       bootstrap_samples=100,min_primary_targets=300,min_days=7,practical_gain=.05,text_relative_floor=.99)
         D.write_json(seal/'manifest.json',manifest)
         args=argparse.Namespace(sealed=str(seal),snapshot=str(root/'events.npz'),out=str(root/'result'))
@@ -69,8 +88,14 @@ class Evaluation(unittest.TestCase):
         import json
         report=json.loads((root/'result/fresh-report.json').read_text())
         self.assertEqual(len(report['candidates']),8)
-        self.assertFalse(report['primary_passes'])
+        self.assertEqual(report['primary_passes'],winning)
         self.assertTrue(report['candidates']['7']['emotion']['21600']['enough_data'])
+        day=report['candidates']['7']['emotion']['86400']
+        self.assertEqual(day['status'],'descriptive_only')
+        self.assertFalse(day['eligible_for_pass']);self.assertFalse(day['passes'])
+        if winning:
+            self.assertGreater(report['candidates']['7']['emotion']['21600']['adjusted_gain_interval'][0],0)
+            self.assertTrue(report['candidates']['7']['text']['passes'])
         self.assertTrue((seal/'evaluation-attempt.json').exists())
 
 

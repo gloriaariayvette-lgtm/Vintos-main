@@ -93,6 +93,8 @@ def main(args):
                   bootstrap_seed=20261028,bootstrap_samples=20000,
                   alpha_week=.025,sequential_alpha_rule='.05/(week_index*(week_index+1)); first week index 1',
                   ci_quantiles=[.025/(2*56),1-.025/(2*56)],primary_horizon=21600,
+                  pass_horizons_seconds=[int(h) for h in HORIZONS if h<86400],
+                  descriptive_horizons_seconds=[86400],
                   min_primary_targets=300,min_days=7,practical_gain=.05,text_relative_floor=.99,
                   purpose='future confirmation only; no live consumer or promotion command')
     write_json(root/'manifest.json',manifest)
