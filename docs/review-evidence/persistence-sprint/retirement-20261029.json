@@ -1,0 +1,47 @@
+{
+  "durable_root": "/home/gloria/persistence-sprint-private-20261029",
+  "active_bundle": "/home/gloria/persistence-sprint-private-20261029/sealed-oct31-v3",
+  "active_manifest_sha256": "9b6e09c96e4eff54fa55cb873db6c705110bd370f8fd82c65308c02f16fa7051",
+  "review_revision": 1,
+  "retired": [
+    {
+      "bundle": "/tmp/persistence-sprint-20261028-JR0Nwf82/sealed-oct31",
+      "retired_without_scoring": true,
+      "original_gate_refused": true
+    },
+    {
+      "bundle": "/tmp/persistence-sprint-20261028-JR0Nwf82/sealed-oct31-v2",
+      "retired_without_scoring": true,
+      "original_gate_refused": true
+    },
+    {
+      "bundle": "/tmp/persistence-offline-20261029-EpYs5CMi/sealed-oct31-v3",
+      "retired_without_scoring": true,
+      "original_gate_refused": true
+    },
+    {
+      "bundle": "/home/gloria/persistence-sprint-private-20261029/v3-before-review",
+      "retired_without_scoring": true,
+      "original_gate_refused": true
+    }
+  ],
+  "private_modes_verified": true,
+  "active_attempt_exists": false,
+  "parameters_byte_identical": true,
+  "pass_horizons_seconds": [
+    600,
+    1800,
+    3600,
+    10800,
+    21600,
+    43200
+  ],
+  "descriptive_horizons_seconds": [
+    86400
+  ],
+  "ci_quantiles": [
+    0.00022321428571428573,
+    0.9997767857142857
+  ],
+  "no_fresh_scores": true
+}
