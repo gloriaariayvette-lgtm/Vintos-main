@@ -344,10 +344,11 @@ def check(reply_text, gloria_msg=""):
             save_ledger(led)
         except: pass
 
-        # Seed latent thread — ONLY if no blush was written; the blush seeds its own,
-        # and one deviation event must not produce two threads. (Gloria, 2026-08-12)
+        # Seed latent thread — always, blush or not. The 2026-08-12 rule skipped this when a
+        # blush was written because the blush seeded its own; blush stopped seeding threads
+        # in 64c07124 (2026-08-31), so every slip at >= 0.45 seeded nothing. This is now the
+        # one thread a deviation event produces (Gloria, 2026-10-28).
         try:
-            if _blush_written: raise RuntimeError("blush already seeded this event")
             from emoclaw_utils import seed_thread
             seed_thread("deviation-check", f"I slipped from what I intended (deviation {final_dev:.2f}) - what came out instead: {reply_text[:140]}", reasoning=f"deviation {final_dev:.2f} crossed the threshold - the reply left the intended line", extra={"decision_mode": "threshold"})
         except: pass
@@ -413,12 +414,10 @@ def check(reply_text, gloria_msg=""):
             except Exception:
                 pass
 
-        # Seed a thread on holding too, not only on slipping.
-        try:
-            from emoclaw_utils import seed_thread
-            seed_thread("deviation-check", f"That held - something I have been reaching for landed (alignment {final_aln:.2f}): {reply_text[:140]}", reasoning=f"alignment {final_aln:.2f} above threshold - a reach actually landed", extra={"decision_mode": "threshold"})
-        except Exception:
-            pass
+        # No thread for holding. A held reply is settled, not unfinished: the held-ledger
+        # entry above is its record. Seeding "That held - ..." on every alignment filled
+        # the pool with landed replies dressed as open tension (Gloria, 2026-10-28).
+        # Slipping still seeds, in the deviation branch above.
 
         if voice_line:
             append_voice_coherence(voice_line, "alignment", final_dev, final_aln)

@@ -196,6 +196,48 @@ def govee_color(device_id, rgb):
     return govee_control(device_id, "color_setting", "colorRgb", (r << 16) + (g << 8) + b)
 
 
+def govee_state(device_id):
+    """{instance: value} as the Govee cloud reports the device now (powerSwitch, online, socketToggle1/2 ...), or {}.
+    Read-only; the attention ladder uses it to know whether a plug was off and when its bulbs are back online."""
+    import uuid
+    try:
+        d = _govee_dev(device_id)
+        r = requests.post(GOVEE_API + "/device/state", headers={"Govee-API-Key": govee_key(), "Content-Type": "application/json"},
+                          json={"requestId": uuid.uuid4().hex, "payload": {"sku": d["sku"], "device": d["device"]}}, timeout=10)
+        if r.status_code != 200:
+            return {}
+        caps = ((r.json().get("payload") or {}).get("capabilities") or [])
+        return {c.get("instance"): (c.get("state") or {}).get("value") for c in caps if c.get("instance")}
+    except Exception:
+        return {}
+
+
+def plug_power_state(ent):
+    """True (on), False (off), or None when the house code cannot read it. 'govee:<id>#2' reads socket 2."""
+    if not _is_govee(ent):
+        if str(ent).startswith("alexa:"):
+            return None
+        try:
+            return {"on": True, "off": False}.get((ha_state(ent) or {}).get("state"))
+        except Exception:
+            return None
+    dev, _, sock = ent.split(":", 1)[1].partition("#")
+    v = govee_state(dev).get("socketToggle%s" % sock if sock else "powerSwitch")
+    try:
+        return None if v is None else bool(int(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def lights_online(lights):
+    """True when every Govee bulb in `lights` reports online (after its plug came on). Other lights are not asked."""
+    for ent in lights:
+        if _is_govee(ent) and "#" not in ent:
+            if govee_state(ent.split(":", 1)[1]).get("online") not in (True, 1, "true"):
+                return False
+    return True
+
+
 def _is_govee(ent):
     return str(ent).startswith("govee:")
 

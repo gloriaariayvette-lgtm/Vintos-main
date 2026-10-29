@@ -233,37 +233,101 @@ def archive(ids, reason, by, pool_path=None, retired_path=None):
         return done
 
 
+# The archive holds one row per thread id. A thread that is retired again (the resolver re-sediments
+# consumed threads the pool purge could not remove: the shrink guard refuses it) updates its row; it
+# never adds one. Before 2026-10-28 every re-retire appended, and the archive grew by ~900 rows a night
+# to 25,291 rows for 802 threads. Rows without an id cannot be matched and still append.
+
+_FOLD_FIXED = ("id", "retired_at", "last_retired_at")
+
+
+def _informative(v):
+    return v is not None and v != "" and v != [] and v != {}
+
+
+def fold_retired(old, new):
+    """One row for two retirements of the same thread. retired_at stays the earliest; the later
+    retirement's fields (its reason, its pass counts) win, without blanking a field it left empty;
+    last_retired_at records the later retirement when the two differ."""
+    a_old, a_new = str(old.get("retired_at") or ""), str(new.get("retired_at") or "")
+    l_old = str(old.get("last_retired_at") or a_old)
+    l_new = str(new.get("last_retired_at") or a_new)
+    newer, older = (new, old) if l_new >= l_old else (old, new)
+    out = dict(older)
+    for k, v in newer.items():
+        if k not in _FOLD_FIXED and (_informative(v) or k not in out):
+            out[k] = v
+    for k, v in older.items():
+        if k not in _FOLD_FIXED and not _informative(out.get(k)) and _informative(v):
+            out[k] = v
+    out["id"] = old.get("id") or new.get("id") or ""
+    firsts = [a for a in (a_old, a_new) if a]
+    out["retired_at"] = min(firsts) if firsts else ""
+    last = max(l_old, l_new)
+    if last and last != out["retired_at"]:
+        out["last_retired_at"] = last
+    else:
+        out.pop("last_retired_at", None)
+    return out
+
+
+def _fold_into(rows, entry, at, seen):
+    """Fold one normalized entry into rows (in place). at: id -> index; seen: keys of id-less rows."""
+    tid = str(entry.get("id") or "")
+    if tid:
+        i = at.get(tid)
+        if i is None:
+            at[tid] = len(rows); rows.append(entry)
+        else:
+            rows[i] = fold_retired(rows[i], entry)
+        return
+    key = (str(entry.get("thread") or ""), str(entry.get("retired_at") or ""), str(entry.get("consumed_by") or ""))
+    if key not in seen:
+        seen.add(key); rows.append(entry)
+
+
+def dedupe_retired(entries):
+    """One row per thread id, at the position of its first retirement; id-less rows kept once each."""
+    rows, at, seen = [], {}, set()
+    for e in entries:
+        _fold_into(rows, normalize_retired_entry(e), at, seen)
+    return rows
+
+
 def append_retired(entries, path=None):
-    """Append one or more entries and write the canonical (list) shape. Returns the full list."""
+    """Retire one or more entries into the canonical (list) shape, one row per thread id: a thread
+    already in the archive has its row updated (fold_retired), not a second row. Returns the full list."""
     from store_guard import transactions
     with transactions([path or RETIRED_FILE]):
         path = path or RETIRED_FILE
         if isinstance(entries, dict):
             entries = [entries]
-        existing = load_retired(path)
+        existing = dedupe_retired(load_retired(path))
+        at = {str(e.get("id")): i for i, e in enumerate(existing) if e.get("id")}
+        seen = {(str(e.get("thread") or ""), str(e.get("retired_at") or ""), str(e.get("consumed_by") or ""))
+                for e in existing if not e.get("id")}
         stamp = datetime.now().isoformat()
         for e in entries:
             n = normalize_retired_entry(e)
             if not n.get("retired_at"):
                 n["retired_at"] = stamp
-            existing.append(n)
+            _fold_into(existing, n, at, seen)
         if not _locked_write(path, existing): raise OSError("thread archive write refused")
         return existing
 
 
 def merge_retired(entries, path=None):
-    """Merge a resolver snapshot without overwriting concurrent appends."""
+    """Merge a resolver snapshot without overwriting concurrent appends, one row per thread id. Rows the
+    snapshot carries unchanged from its load fold to themselves; a concurrent writer's newer retirement
+    keeps its fields (the later retirement wins in fold_retired)."""
     from store_guard import transactions
     with transactions([path or RETIRED_FILE]):
         path = path or RETIRED_FILE
-        current = load_retired(path)
-        seen = {(str(e.get("id") or ""), str(e.get("retired_at") or ""),
-                 str(e.get("consumed_by") or "")) for e in current}
+        current = dedupe_retired(load_retired(path))
+        at = {str(e.get("id")): i for i, e in enumerate(current) if e.get("id")}
+        seen = {(str(e.get("thread") or ""), str(e.get("retired_at") or ""), str(e.get("consumed_by") or ""))
+                for e in current if not e.get("id")}
         for entry in entries if isinstance(entries, list) else [entries]:
-            normalized = normalize_retired_entry(entry)
-            key = (str(normalized.get("id") or ""), str(normalized.get("retired_at") or ""),
-                   str(normalized.get("consumed_by") or ""))
-            if key not in seen:
-                current.append(normalized); seen.add(key)
+            _fold_into(current, normalize_retired_entry(entry), at, seen)
         if not _locked_write(path, current): raise OSError("thread archive merge refused")
         return current

@@ -583,8 +583,8 @@ EDITOR = (
     "searches, reads, runs tools on Aegis and the Mac and posts files. Nobody can play sound to him in the chat; "
     "to hear something, he asks for it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
-    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, CAMPAIGN:, CAMPAIGN MOVE:, SEARCH:, READ:, "
-    "GREP: or OPEN:, and any [PURSUIT: ...], exactly as "
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, SHARE FILE:, LAB:, APPROVED:, DENIED:, CAMPAIGN:, CAMPAIGN MOVE:, "
+    "SEARCH:, READ:, GREP: or OPEN:, and any [PURSUIT: ...], exactly as "
     "written.\n\n"
     "Answer in this form and nothing else:\n"
     "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
@@ -592,7 +592,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|ASK)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -1188,6 +1188,10 @@ ATELIER_ROOT = ("\U0001F512 Atelier: a side conversation between Vintos and <@{d
 WORKS_SHOWN = 12
 SHARE_MAX = 200 * 1024 * 1024
 SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
+# a file from an archive Codex sent, attached to his message when the conversation brought that archive in (Gloria,
+# 27 October: he can see the files when he wants, in Slack too, and show her a render of the Velaris hand)
+SHARE_FILE = re.compile(r"^\s*SHARE FILE:\s*(\S[^\n]*?)\s*$", re.I | re.M)
+CODEX_SHARES = 2              # archive files attached to one message, at most
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
@@ -1424,13 +1428,45 @@ def share(api, tag, channel, thread=None, put=None):
     size = os.path.getsize(path)
     if size > SHARE_MAX:
         return "%s is too large to share (%d MB)" % (tag, size >> 20)
+    _upload(api, path, "%s: %s" % (kind, title), channel, thread, put)
+    return "shared %s (%s: %s)" % (tag, kind, title)
+
+
+def _upload(api, path, title, channel, thread=None, put=None):
+    """One file into the channel (or its thread), the Slack upload his works already use."""
+    size = os.path.getsize(path)
     up = api("files.getUploadURLExternal", {"filename": os.path.basename(path), "length": size})
-    (put or _put)(up["upload_url"], open(path, "rb").read())
-    done = {"files": [{"id": up["file_id"], "title": "%s: %s" % (kind, title)}], "channel_id": channel}
+    with open(path, "rb") as f:
+        (put or _put)(up["upload_url"], f.read())
+    done = {"files": [{"id": up["file_id"], "title": title[:250]}], "channel_id": channel}
     if thread:
         done["thread_ts"] = thread
     api("files.completeUploadExternal", done)
-    return "shared %s (%s: %s)" % (tag, kind, title)
+
+
+def share_codex_file(api, ref, channel, thread=None, put=None):
+    """Upload one file of a kept Codex archive (a render, a model, a report), named as his recall listed it. Returns a
+    line for the log. Only files the archive's own manifest lists, from inside its unpacked folder."""
+    try:
+        import codex_archives
+        got = codex_archives.file_for(ref)
+    except Exception as exc:
+        return "could not look for %r in the Codex archives: %s" % (str(ref)[:120], str(exc)[:120])
+    if not got:
+        return "no file %r in a kept Codex archive to share" % str(ref)[:120]
+    aid, e, path = got
+    size = os.path.getsize(path)
+    if size > SHARE_MAX:
+        return "%s is too large to share (%d MB)" % (e["path"], size >> 20)
+    _upload(api, path, "From Codex's archive %s: %s" % (aid[:8], e["path"]), channel, thread, put)
+    return "shared %s from Codex archive %s" % (e["path"], aid[:8])
+
+
+def codex_shares(text, recalled):
+    """(text without its SHARE FILE: lines, the files they name). Only when this turn's prompt brought an archive in
+    (recalled): otherwise the lines are only taken out."""
+    refs = SHARE_FILE.findall(text or "")[:CODEX_SHARES]
+    return SHARE_FILE.sub("", text or "").strip(), (refs if recalled else [])
 
 
 def atelier_line():
@@ -1483,9 +1519,29 @@ def codex_archive_block(*texts):
     when there are none. Read only."""
     try:
         import codex_archives
-        return codex_archives.context_for("\n".join(t for t in texts if t), CODEX_RECALL_CHARS)
+        block = codex_archives.context_for("\n".join(t for t in texts if t), CODEX_RECALL_CHARS)
     except Exception:
         return ""
+    if block.startswith("== CODEX ARCHIVE"):
+        block += CODEX_SHARE_HOW + _codex_pictures(block)
+    return block
+
+
+def _codex_pictures(block):
+    """The archive's pictures by path (renders and views have no words, so the recall's manifest may not list them)."""
+    try:
+        import codex_archives
+        aid = block.split()[3]
+        files = (codex_archives.manifest(aid) or {}).get("files") or []
+        pics = [e["path"] for e in files if e.get("type") == "image"][:6]
+        return ("\nIts pictures: " + "; ".join(pics)) if pics else ""
+    except Exception:
+        return ""
+
+
+CODEX_SHARE_HOW = ("\nIf you want to show one of its files here (a render, a model, a report), add a line SHARE FILE: "
+                   "<its path exactly as the manifest lists it> to your message, at most %d; the file goes up with "
+                   "it. Only if you choose to; never a file you have not seen listed." % CODEX_SHARES)
 
 
 def forge_line():
@@ -2889,7 +2945,7 @@ def promises_pass(api, channel, dot, state, now, ask=None):
 def _no_tags(text):
     """What goes to Gloria carries none of his action lines or tags: they act in #vintos-dot, not with her (2026-10-03:
     a result ended "[PURSUIT: continue]")."""
-    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, HOUSE, ASK_LINE, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
+    for rx in (PURSUIT, SHARE, SHARE_FILE, LOCKED, DO, LAB, STUDY_FIX, HOUSE, ASK_LINE, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
         text = rx.sub("", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
@@ -3769,8 +3825,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     text = DO.sub(lambda m: do_shown(m.group(1)[:300], next(shown_do, "")), text).strip()
     if lock:
         text = LOCKED.sub(lambda m: "\U0001F512 Locked: " + m.group(1), text).strip()
+    text, codex_files = codex_shares(text, cx.startswith("== CODEX ARCHIVE"))
     shares = SHARE.findall(text)[:3]
-    text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares) if shares else text)
+    text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares + [f.rsplit("/", 1)[-1] for f in codex_files])
+                                           if shares or codex_files else text)
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
@@ -3847,6 +3905,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines.append(share(api, tag, channel, where, put=put))
         except Exception as exc:
             lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
+    for ref in codex_files:
+        try:
+            lines.append(share_codex_file(api, ref, channel, where, put=put))
+        except Exception as exc:
+            lines.append("could not share %s: %s" % (ref[:120], str(exc)[:120]))
     state["sent"] += 1; state["last_activity"] = now
     allowance = "opus55" if who == "haiku55" else who
     if allowance in PAID_PER_DAY:

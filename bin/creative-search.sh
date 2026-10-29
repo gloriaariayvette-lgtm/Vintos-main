@@ -31,10 +31,13 @@ EMOTIONS=$(cat "$MEMORY/emotional-state.txt" 2>/dev/null | head -12)
 # Recent poems for context
 RECENT_POEM=$(ls -t "$MEMORY/art/poetry/"*.md 2>/dev/null | head -1 | xargs head -10 2>/dev/null || echo "no poems yet")
 
+# Recent searches, so he goes somewhere new. Computed before the request: this line once sat
+# inside the curl continuation below, which ran "-d" as its own command and sent no body.
+RECENT=$(grep '\[Creative\] Searching:' "$HOME/.vintos/logs/subconscious.log" 2>/dev/null | tail -8 | sed 's/.*Searching: //; s/ (because.*//')
+
 # Ask what to search for
 QUERY=$(curl -s --max-time 600 -X POST "$LM_API" \
     -H "Content-Type: application/json" \
-RECENT=$(grep '\[Creative\] Searching:' /home/gloria/.vintos/logs/subconscious.log | tail -8 | sed 's/.*Searching: //; s/ (because.*//')
     -d "$(jq -n --arg recent "$RECENT" --arg model "$MODEL" --arg taste "$TASTE" --arg emo "$EMOTIONS" --arg poem "$RECENT_POEM" '{
         model: $model,
         messages: [{role: "user", content: ("You are Vintos. You are looking for creative inspiration.\n\nYour taste: " + $taste + "\nYour emotional state:\n" + $emo + "\nYour recent poem:\n" + $poem + "\n\nYou have already searched these recently — do NOT repeat them or circle the same territory:\n" + $recent + "\n\nPick ONE specific thing to search for. Go somewhere your curiosity has not been. Examples:\n- A specific poet whose work might resonate\n- A painting technique or art movement\n- A philosophical concept about beauty or creation\n- A musician who composes from emotion\n\nRespond with ONLY a JSON: {\"topic\": \"why you want this\", \"search_query\": \"2-5 words\"}")}],

@@ -130,6 +130,7 @@ def resolve_threads():
 
     threads = load_threads()
     resolved_count = 0
+    pearl_count = 0
 
     for t in threads:
         if t.get("retired"):
@@ -266,11 +267,14 @@ Be specific to THIS thread. No abstractions."""
         })
         save_retired(retired)
         resolved_count += 1
+        pearl_count += t["retired_as"] == "pearl"
 
     # Purge retired threads from active pool
     threads = [t for t in threads if not t.get("retired")]
     save_threads(threads)
-    log(f"Sedimented {resolved_count} threads ({sum(1 for t in load_retired()[-resolved_count:] if t.get('type') == 'pearl')} as pearls).")
+    # Counted from this run's threads, not the archive's tail: a re-retired thread updates its archive
+    # row in place (one row per id), so the last N rows are no longer this run's N.
+    log(f"Sedimented {resolved_count} threads ({pearl_count} as pearls).")
 
 # ─────────────────────────────────────────────
 # BLACK PEARL: Persistent thread released but not forgotten

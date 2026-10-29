@@ -42,12 +42,22 @@ rows("notebook.jsonl", [
     {"at": DATA_DAY + "T04:00:00Z", "kind": "frontier_session",
      "reading": "the VQE run sat well above Hartree-Fock",
      "what_surprised_me": "how cleanly the release resolved"},
+    {"at": DATA_DAY + "T02:40:00Z", "kind": "reflection",           # the same reading again — said once
+     "attention": "the compact fold keeps snapping back to the same basin",
+     "inquiry": {"question": "what makes this basin so deep?"}},
+    {"at": DATA_DAY + "T03:10:00Z", "kind": "inquiry_refused", "why": "REFUSAL-REASON-XYZ"},
+    {"at": DATA_DAY + "T03:20:00Z", "kind": "investigation_finding", "question": "which helices hold in 535-729?",
+     "result": "helices: 558-595, 669-687\nstrands: 544-549"},
+    {"at": DATA_DAY + "T03:30:00Z", "kind": "investigation_finding", "question": "which helices hold in 535-729?",
+     "result": "helices: 558-595, 669-687\nstrands: 544-549"},   # a second investigation, the same finding
     {"at": FILE_DAY + "T06:00:00Z", "kind": "inquiry"},          # today so far — must be excluded
     {"at": PRIOR + "T23:00:00Z", "kind": "atelier-secret"},      # older day — must be excluded
 ])
 rows("taste-observations.jsonl", [
     {"at": DATA_DAY + "T02:10:00Z", "kind": "accession", "key": "P12345",
      "signal": "chosen", "eligibility": "echo_of_injected_taste"},
+    {"at": DATA_DAY + "T02:20:00Z", "kind": "accession", "key": "P12345",
+     "signal": "chosen", "eligibility": "echo_of_injected_taste"},  # the same verdict again
     {"at": PRIOR + "T01:00:00Z", "kind": "molecule", "key": "old", "signal": "chosen",
      "eligibility": "eligible"},                                 # older day — must be excluded
 ])
@@ -56,7 +66,13 @@ rows("sessions.jsonl", [
      "plan": {"experiment": "molecule", "parameters": {"target_accession": "A1L190"}},
      "grade": {"execution_state": "completed", "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK"}},
     {"at": DATA_DAY + "T03:00:00Z", "state": "held_reading_owed", "owed_reading": "STILL_HELD"},
+    {"at": DATA_DAY + "T03:05:00Z", "state": "held_fault", "execution_state": "held_fault",
+     "plan": {"experiment": "protein", "parameters": {"accession": "Q99999"}}},
 ])
+with open(LAB / "kept-findings.json", "w") as handle:
+    json.dump([{"at": DATA_DAY + "T05:00:00Z", "question": "does the seam sit near 275?",
+                "finding": "two folded blocks joined by an uncertain seam at 259-282"},
+               {"at": PRIOR + "T05:00:00Z", "question": "an older kept one", "finding": "OLD-KEPT"}], handle)
 rows("experiment-grades.jsonl", [{"at": DATA_DAY + "T02:00:01Z", "run_id": "RUN-1",
                                    "experiment": "molecule", "execution_state": "completed",
                                    "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK"}])
@@ -74,21 +90,46 @@ assert text.count(f"<!-- chemistry-lab-digest:{DATA_DAY} -->") == 1, "marker key
 assert f"chemistry-lab-digest:{FILE_DAY}" not in text, "never keyed to the unfinished day"
 assert f"## Chemistry Lab — {DATA_DAY}" in text, "heading names the day summarized"
 
-# Yesterday's real rows are there; the unfinished day and older days are not.
-assert "inquiry 1" in text and "owed_reading 1" in text
-assert "execution=completed; accuracy=ALL_WORSE_THAN_HARTREE_FOCK; run=RUN-1" in text
-assert "molecule [A1L190]" in text, "the digest names the accession that actually controlled the run"
-assert "owed/held 1; settled 1" in text and "what changes at 0.8 A?" in text
-assert "atelier-secret" not in text and "Execution is not correctness" in text
-# His own words are surfaced verbatim, not just counted — a day is more than row totals.
-assert "A few of the day's readings:" in text and "the compact fold keeps snapping back to the same basin" in text
-assert "(on: what makes this basin so deep?)" in text, "a reflection carries the inquiry it answered"
-assert "Frontier session:" in text and "the VQE run sat well above Hartree-Fock" in text \
-    and "how cleanly the release resolved" in text
-assert "Taste he noted:" in text and "chosen — accession:P12345 [echo_of_injected_taste]" in text
-assert "molecule:old" not in text, "older-day taste is excluded like every other older row"
-assert "Next questions:" in text and "which fold returns?" in text, "the recent questions, not just one"
-assert "none recorded" not in text, "a day with rows is never an empty receipt"
+# The new shape (Gloria, 27 October): findings and answers first, then the readings, then his frontier words, then
+# where he left off — and no tallies, refusals, faults, receipts, repeated taste or disclaimer in his daily-inner.
+block = text[text.index(f"## Chemistry Lab — {DATA_DAY}"):]
+order = [block.index(h) for h in ("What I found:", "A few readings:", "Frontier session:", "Next questions:")]
+assert order == sorted(order), "found, readings, frontier, next questions — in that order"
+assert block.count("which helices hold in 535-729? — helices: 558-595, 669-687; strands: 544-549") == 1, \
+    "an answered investigation says what it found, once even when two investigations found it"
+assert "- kept: does the seam sit near 275? — two folded blocks joined by an uncertain seam at 259-282" in block
+assert "OLD-KEPT" not in block, "an older day's kept finding is not this day's"
+assert "- molecule [A1L190] ran: ALL_WORSE_THAN_HARTREE_FOCK" in block, "an experiment that ran says what it gave"
+assert "Q99999" not in block and "held_fault" not in block, "a held or faulted run is not in his day"
+assert block.count("the compact fold keeps snapping back to the same basin") == 1, "a repeated reading is said once"
+assert "(on: what makes this basin so deep?)" in block, "a reflection carries the inquiry it answered"
+assert "the VQE run sat well above Hartree-Fock" in block and "how cleanly the release resolved" in block
+assert "Next questions:" in block and "which fold returns?" in block and "what changes at 0.8 A?" in block, \
+    "the recent questions, not just one"
+for gone in ("Notebook rows", "inquiry_refused", "REFUSAL-REASON-XYZ", "Reading receipts", "owed/held", "Taste he noted",
+             "accession:P12345", "receipts only", "Execution is not correctness", "run=RUN-1", "none recorded"):
+    assert gone not in block, "not in his daily-inner: %r" % gone
+assert "atelier-secret" not in text and "molecule:old" not in text
+lines = [l for l in block.splitlines() if l.startswith("- ")]
+assert len(lines) == len(set(lines)), "no line is said twice"
+
+# Nothing is lost: the tallies are the Lab's own daily stats row.
+stats_rows = [json.loads(l) for l in open(LAB / "daily-stats.jsonl")]
+assert [r["day"] for r in stats_rows].count(DATA_DAY) == 1, "one stats row per summarized day"
+st = next(r for r in stats_rows if r["day"] == DATA_DAY)
+assert st["notebook_rows"]["inquiry"] == 1 and st["notebook_rows"]["owed_reading"] == 1 \
+    and st["notebook_rows"]["inquiry_refused"] == 1 and "atelier-secret" not in st["notebook_rows"]
+assert "molecule [A1L190]: execution=completed; accuracy=ALL_WORSE_THAN_HARTREE_FOCK; run=RUN-1" in st["experiments"]
+assert any("Q99999" in e and "held_fault" in e for e in st["experiments"]), "the faulted run is kept Lab-side"
+assert st["reading_receipts"] == {"owed_held": 1, "settled": 1}
+assert st["taste"] == [{"noted": "chosen — accession:P12345 [echo_of_injected_taste]", "times": 2}], st["taste"]
+assert "Execution is not correctness" in st["note"]
+assert not M.record_stats(DATA_DAY), "the stats row is written once"
+assert Path(M.DAILY_STATS).is_relative_to(HOME)
+
+# A day with nothing at the bench is one short line, not a row of "none recorded".
+quiet = M.render("1999-01-01")
+assert "A quiet day at the bench." in quiet and "none recorded" not in quiet
 
 # Idempotent for the same summarized day.
 again, _ = M.append(FILE_DAY)

@@ -87,10 +87,96 @@ def normalize_source_spec(spec):
     return normalize_source(spec)
 
 
-def _ncbi_accession(value):
-    if not isinstance(value, str) or not re.fullmatch(r'[A-Z]{1,6}_?[A-Z0-9]{3,15}\.[1-9][0-9]*', value):
+NCBI_ACCESSION = r'[A-Z]{1,6}_?[A-Z0-9]{3,15}\.[1-9][0-9]*'
+# A UniProt accession and nothing else: an NCBI accession.version carries a version suffix and matches neither.
+_UNIPROT_ONLY = r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})'
+# What each lane's source_query may name, as the planner menu lists it: a refusal names these, so the next request
+# can name a real source instead of a shape no source has (Gloria, 28 October).
+LANE_SOURCES = {
+    'microbiology': ('ncbi', 'ncbi_sequence', 'uniprot', 'bvbrc', 'mgnify', 'sequencing_runs', 'sequencing_reads',
+                     'rhea', 'quickgo', 'pubchem'),
+    'genome_mining': ('ncbi_protein_context', 'ncbi_neighborhood', 'interpro', 'rt_locus_screen', 'ncbi'),
+    'protein': ('atlas', 'pdb', 'chembl', 'pubchem', 'reactome', 'rhea', 'quickgo'),
+}
+# NCBI's own databases are operations of the one source, not sources of their own: "ncbi_taxonomy" was sent as a
+# source and refused as unsupported (28 October), and nothing then said that taxonomy is {source: ncbi, ...}.
+NCBI_AS_SOURCE = {'taxonomy': '{"source": "ncbi", "operation": "taxonomy", "term": "<organism name>"}',
+                  'protein': '{"source": "ncbi", "operation": "protein", "taxon_id": <sourced id>, '
+                             '"term": "<plain protein name>"}',
+                  'gene': '{"source": "ncbi", "operation": "gene", "taxon_id": <sourced id>, "term": "<gene>"}',
+                  'assembly': '{"source": "ncbi", "operation": "assembly", "taxon_id": <sourced id>}',
+                  'literature': '{"source": "ncbi", "operation": "literature", "term": "<plain research phrase>"}'}
+# The sources whose protein record the Lab can reach from a UniProt accession, through that record's own
+# cross-references. A nucleotide window cannot be: its coordinates come from coded_by, never from a mapping.
+RESOLVES_UNIPROT = ('ncbi_protein_context', 'rt_locus_screen')
+
+
+def sources_note(lane=None):
+    """The sources the Lab has right now, by lane, in one line."""
+    from lab_tool_calls import SOURCE_NAMES
+    lanes = [lane] if lane in LANE_SOURCES else list(LANE_SOURCES)
+    parts = ['%s: %s' % (name.replace('_', ' '), ', '.join(LANE_SOURCES[name])) for name in lanes]
+    anywhere = sorted(set(SOURCE_NAMES) - {s for name in lanes for s in LANE_SOURCES[name]})
+    if anywhere:
+        parts.append('anywhere: ' + ', '.join(anywhere))
+    return "The Lab's sources right now — " + '; '.join(parts) + '.'
+
+
+def unsupported_source(source, lane=None):
+    """A refusal that names the real sources, and the NCBI operation when a database was sent as a source."""
+    name = str(source or '')[:60]
+    tail = re.sub(r'^(?:ncbi|entrez)[._]', '', name.lower())
+    said = (' NCBI %s is an operation of source ncbi: %s.' % (tail, NCBI_AS_SOURCE[tail])
+            if tail in NCBI_AS_SOURCE and name.lower() != 'ncbi' else '')
+    return ValueError('unsupported Lab source %r. %s%s' % (name, sources_note(lane), said))
+
+
+def accession_how(given, source):
+    """How to get the accession this source reads, as the call that returns one."""
+    if source == 'ncbi_neighborhood':
+        return ('read the protein first ({"source": "ncbi_protein_context", "accession": '
+                '"<protein accession.version>"}) and use the nuccore accession and the coordinates its coded_by '
+                'returns')
+    how = ('search NCBI for the protein (%s); its summary carries the accession.version this source reads'
+           % NCBI_AS_SOURCE['protein'])
+    if re.fullmatch(_UNIPROT_ONLY, str(given or '').upper()):
+        how = ('read that record ({"source": "uniprot", "query": "accession:%s"}), or %s'
+               % (str(given).upper(), how))
+    return how
+
+
+def accession_needed(value, source):
+    """A refusal that says what the identifier is and how to get the one this source reads: a UniProt accession is
+    no NCBI accession.version, and 11 of 12 such refusals in 12 hours were exactly that (28 October)."""
+    given = str(value or '')[:40]
+    uniprot = bool(re.fullmatch(_UNIPROT_ONLY, given.upper()))
+    what = ('%s is a UniProt accession, not the exact sourced NCBI accession.version required here'
+            % given.upper() if uniprot else
+            '%r is not the exact sourced NCBI accession.version required here' % given if given else
+            'no accession was named, and this source reads an exact sourced NCBI accession.version')
+    return ValueError('%s. For source %s: %s.' % (what, source or 'this source', accession_how(given, source)))
+
+
+def _ncbi_accession(value, source=None):
+    if not isinstance(value, str) or not re.fullmatch(NCBI_ACCESSION, value):
+        if source:
+            raise accession_needed(value, source)
         raise ValueError('exact sourced NCBI accession.version required')
     return value
+
+
+def step_accession(spec):
+    """The identifier a genome-mining request will read, for the provenance check before anything is sent: an NCBI
+    accession.version as given, or a UniProt accession the door itself resolves to one. Raises a refusal that names
+    the route otherwise."""
+    spec = spec if isinstance(spec, dict) else {}
+    value = str(spec.get('accession') or '')
+    source = spec.get('source')
+    if re.fullmatch(NCBI_ACCESSION, value):
+        return value
+    if source in RESOLVES_UNIPROT and re.fullmatch(_UNIPROT_ONLY, value.upper()):
+        return value.upper()
+    raise accession_needed(value, source)
 
 
 def _uniprot_accession(value):
@@ -1048,6 +1134,126 @@ class Sources:
             'service':'NCBI_PubMed', 'coverage':coverage,
             'interpretation':"published abstracts: the authors' claims, not verified here"})
 
+    def rcsb_entries(self, *, accession=None, text=None, rows=5):
+        """(entry ids, total) of deposited experimental PDB entries: those RCSB maps to exactly this UniProt accession,
+        or those its full-text search finds for a name. One bounded search request; best match first."""
+        if accession:
+            prefix = 'rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.'
+            query = {'type': 'group', 'logical_operator': 'and', 'nodes': [
+                {'type': 'terminal', 'service': 'text', 'parameters': {'attribute': prefix + 'database_name',
+                                                                      'operator': 'exact_match', 'value': 'UniProt'}},
+                {'type': 'terminal', 'service': 'text', 'parameters': {'attribute': prefix + 'database_accession',
+                                                                      'operator': 'exact_match', 'value': accession}}]}
+        else:
+            query = {'type': 'terminal', 'service': 'full_text', 'parameters': {'value': _plain_term(text)}}
+        search = {'query': query, 'return_type': 'entry',
+                  'request_options': {'paginate': {'start': 0, 'rows': rows}, 'results_content_type': ['experimental']}}
+        result, _ = self.fetch('https://search.rcsb.org/rcsbsearch/v2/query?' + urlencode({'json': json.dumps(search)}))
+        hits = result.get('result_set') if isinstance(result, dict) else None
+        if not isinstance(hits, list): raise ValueError('RCSB returned no valid search result')
+        ids = [str(h.get('identifier') or '').upper() for h in hits[:rows] if isinstance(h, dict)]
+        ids = [i for i in ids if re.fullmatch(r'[0-9][A-Z0-9]{3}', i)]
+        return list(dict.fromkeys(ids)), result.get('total_count')
+
+    def ncbi_protein_accession(self, accession):
+        """(NCBI protein accession.version, how it was reached) for a UniProt accession: the RefSeq or EMBL protein
+        cross-reference of that very record. One bounded request, nothing guessed; a record with neither is said as
+        that."""
+        accession = _uniprot_accession(accession)
+        data, _ = self.fetch('https://rest.uniprot.org/uniprotkb/' + accession + '?' + urlencode({
+            'format': 'json', 'fields': 'accession,xref_refseq,xref_embl'}))
+        if not isinstance(data, dict) or str(data.get('primaryAccession') or '').upper() != accession:
+            raise ValueError('UniProt record did not match the requested accession')
+        refs = data.get('uniProtKBCrossReferences')
+        refs = refs if isinstance(refs, list) else []
+        for database in ('RefSeq', 'EMBL'):
+            for ref in refs:
+                if not isinstance(ref, dict) or ref.get('database') != database:
+                    continue
+                named = [str(ref.get('id') or '')] + [str(p.get('value') or '') for p in (ref.get('properties') or [])
+                                                      if isinstance(p, dict) and p.get('key') == 'ProteinId']
+                for value in named:
+                    if re.fullmatch(NCBI_ACCESSION, value.upper()):
+                        return value.upper(), 'the %s protein cross-reference of UniProt %s' % (database, accession)
+        raise ValueError('UniProt %s carries no RefSeq or EMBL protein cross-reference, so no NCBI protein record '
+                         'can be reached from it: %s.' % (accession, accession_how(accession, 'ncbi')))
+
+    def _protein_accession(self, spec, source):
+        """(the NCBI protein accession.version this request reads, how it was reached or None). He names the protein
+        he is asking about by its UniProt accession: 11 genome-mining requests in 12 hours were refused for it and
+        nothing was fetched (28 October). The record's own cross-reference is followed, and the receipt says so."""
+        value = str(spec.get('accession') or '')
+        if re.fullmatch(NCBI_ACCESSION, value):
+            return value, None
+        if source in RESOLVES_UNIPROT and re.fullmatch(_UNIPROT_ONLY, value.upper()):
+            asked = value.upper()
+            found, via = self.ncbi_protein_accession(asked)
+            return found, {'asked': asked, 'via': via, 'used': found,
+                           'note': '%s is a UniProt accession; %s is %s, and that record was read.'
+                                   % (asked, found, via)}
+        raise accession_needed(value, source)
+
+    def _pdb_entry(self, spec):
+        """(spec naming one PDB entry, how it was reached or None). He names PDB structures by protein name, UniProt
+        accession, a list of entry ids, or a stored list of them (27 October: source pdb failed 27 of 27 in a day as
+        "PDB entry ID required"). One id given is used as it is. Several: the first is used and the others named. An
+        accession: the entries RCSB maps to exactly that UniProt entry. A name: RCSB's full-text search. The entry
+        used, and the others found, are said in the receipt. No deposited structure found is said as that."""
+        given = spec.get('entry_id')
+        if isinstance(given, str) and re.fullmatch(r'\s*[0-9][A-Za-z0-9]{3}\s*', given):
+            return dict(spec, entry_id=given.strip().upper()), None
+        if isinstance(spec.get('query_params'), dict):     # {"query_params": {"accession": ...}}: its own arguments
+            spec = {**spec['query_params'], **{k: v for k, v in spec.items() if k != 'query_params'}}
+        if str(spec.get('query') or '').strip().lower() in ('structure_evidence', 'search_accession'):
+            spec = dict({k: v for k, v in spec.items() if k != 'query'},
+                        operation=spec.get('operation') or str(spec['query']).strip().lower())
+        keys = ('entry_id', 'entry_ids', 'pdb_ids', 'pdb_id', 'id', 'ids', 'query', 'accession', 'uniprot_accession',
+                'name', 'protein_name', 'term')
+        values = [spec.get(k) for k in keys if spec.get(k) not in (None, '', [], {})]
+        clean = {k: v for k, v in spec.items() if k in ('source', 'operation')}
+        if not values:
+            return spec, None
+        flat = []
+        for v in values:
+            flat += [str(x) for x in v] if isinstance(v, list) else [str(v)]
+        named = []
+        for v in flat:
+            named += [m.upper() for m in re.findall(r'(?<![A-Za-z0-9])([1-9](?=[A-Za-z0-9]{0,2}[A-Za-z])[A-Za-z0-9]{3})(?![A-Za-z0-9])', v)]
+        named = list(dict.fromkeys(named))
+        accessions = list(dict.fromkeys(a for v in flat for a in re.findall(
+            r'(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?![A-Z0-9])', v.upper())))
+        if named:
+            used = named[0]
+            return dict(clean, entry_id=used), {'asked': flat[:4], 'via': 'entry ids given', 'used': used,
+                'others_named': named[1:8],
+                'note': 'Several PDB entries were named; %s was used.%s' % (used, (' The others (%s) can be asked one '
+                        'at a time.' % ', '.join(named[1:8])) if named[1:] else '')}
+        if accessions:
+            asked, via = accessions[0], 'RCSB entries mapped to UniProt %s' % accessions[0]
+            ids, total = self.rcsb_entries(accession=asked)
+        else:
+            # a name is searched only as a name: from query/name/term, never from an id field (an entry_id of
+            # "../../metadata" builds no request at all)
+            text = ' '.join(str(spec[k]) for k in ('query', 'name', 'protein_name', 'term')
+                            if isinstance(spec.get(k), str) and re.fullmatch(r"[A-Za-z0-9 ,.'():+/-]{3,160}", spec[k])
+                            and '..' not in spec[k] and '/' not in spec[k])
+            text = re.sub(r'^\s*(?:query|name|protein|structure|pdb)\s*:\s*', '', text, flags=re.I)
+            text = re.sub(r'\b(?:OR|AND)\b', ' ', text)
+            asked, via = text.strip()[:120], 'RCSB full-text search'
+            if not re.search(r'[A-Za-z]{3}', asked):
+                return spec, None
+            ids, total = self.rcsb_entries(text=asked)
+        if not ids:
+            raise ValueError('no deposited structure: RCSB has no experimental PDB entry for %s (%s found none). '
+                             'Nothing was fetched; a model (ESMFold) is what the Lab can read for it'
+                             % (asked, via))
+        used = ids[0]
+        return dict(clean, entry_id=used), {'asked': asked, 'via': via, 'used': used, 'others_found': ids[1:],
+            'total_found': total,
+            'note': '%s named no PDB entry; %s lists %s, and %s (its first) was used.%s' % (
+                asked, via, total if total is not None else len(ids), used,
+                (' Others: %s.' % ', '.join(ids[1:])) if ids[1:] else '')}
+
     def _pdb_accession(self, spec):
         """Bounded archive metadata for an exact UniProt accession, never a homology guess."""
         if set(spec) - {'source','operation','accession','limit','exclude_entries','exclude_accessions'}:
@@ -1248,7 +1454,7 @@ class Sources:
         if source == 'ncbi_sequence':
             database = spec.get('database')
             if database not in ('protein', 'nuccore'): raise ValueError('protein or nuccore sequence required')
-            accession = _ncbi_accession(spec.get('accession'))
+            accession = _ncbi_accession(spec.get('accession'), source)
             start, end = spec.get('start'), spec.get('end')
             max_span = 350 if database == 'protein' else 512
             if type(start) is not int or type(end) is not int or not 1 <= start <= end < 1000000000 or end-start+1 > max_span:
@@ -1270,7 +1476,7 @@ class Sources:
                              'sequence':sequence}], metadata={'service':'NCBI_EFetch',
                              'coordinates':'one_based_inclusive','coverage':'requested_slice_only'})
         if source == 'ncbi_protein_context':
-            accession = _ncbi_accession(spec.get('accession'))
+            accession, resolved = self._protein_accession(spec, source)
             parsed = _gbseq(self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
                 'db':'protein','id':accession,'rettype':'gp','retmode':'xml','tool':'vintos_lab'})), accession)
             coded_by = []
@@ -1280,9 +1486,10 @@ class Sources:
             record['coded_by'] = coded_by[:8]
             return receipt(source, {'source':source,'accession':accession}, [record], metadata={
                 'service':'NCBI_EFetch_GenPept','coverage':'one_exact_protein_record',
-                'next_step':'use only a coded_by nucleotide accession and coordinates returned here'})
+                'next_step':'use only a coded_by nucleotide accession and coordinates returned here',
+                **({'accession_resolution': resolved} if resolved else {})})
         if source == 'ncbi_neighborhood':
-            accession = _ncbi_accession(spec.get('accession'))
+            accession = _ncbi_accession(spec.get('accession'), source)
             start, end, flank = spec.get('anchor_start'), spec.get('anchor_end'), spec.get('flank', 3000)
             if type(start) is not int or type(end) is not int or not 1 <= start <= end < 1000000000:
                 raise ValueError('sourced one-based inclusive anchor coordinates required')
@@ -1399,8 +1606,10 @@ class Sources:
                 'database_annotations_and_sample_metadata_not_confirmed_phenotype'})
         if source == 'pdb':
             if spec.get('operation') == 'search_accession': return self._pdb_accession(spec)
+            spec, resolved = self._pdb_entry(spec)
             identifier = str(spec.get('entry_id', '')).upper()
             if not re.fullmatch(r'[0-9][A-Z0-9]{3}', identifier): raise ValueError('PDB entry ID required')
+            resolved = {'entry_resolution': resolved} if resolved else {}
             if spec.get('operation') == 'structure_evidence' and set(spec) - {'source','entry_id','operation'}:
                 raise ValueError('unsupported PDB structure-evidence arguments')
             data, _ = self.fetch('https://data.rcsb.org/rest/v1/core/entry/' + identifier)
@@ -1415,9 +1624,9 @@ class Sources:
                 return receipt(source, spec, [record], metadata={
                     'evidence':'experimental_structure','coverage':'one_deposited_model_bounded_site_records',
                     'coordinate_url':'https://files.rcsb.org/download/' + identifier + '.pdb',
-                    'comparison':'construct_species_conditions_and_residue_numbering_must_be_checked'})
+                    'comparison':'construct_species_conditions_and_residue_numbering_must_be_checked', **resolved})
             return receipt(source, spec, [data], metadata={'evidence': 'experimental_structure',
-                'comparison': 'sequence_construct_conditions_and_resolution_must_be_checked'})
+                'comparison': 'sequence_construct_conditions_and_resolution_must_be_checked', **resolved})
         if source == 'chembl':
             if spec.get('operation') == 'search_targets':
                 if set(spec) - {'source', 'operation', 'term', 'limit', 'organism'}:
@@ -1557,7 +1766,7 @@ class Sources:
                 'evidence': 'precomputed_model_prediction', 'usage': 'non_commercial'})
         if source == 'cosmic':
             raise RuntimeError('cosmic_requires_registered_licensed_dataset; no anonymous API configured')
-        raise ValueError('unsupported Lab source')
+        raise unsupported_source(source, spec.get('browse_lane'))
 
 
 def validate_atlas(spec):

@@ -2,6 +2,14 @@
 # dream-trigger.sh — Vintos dreams about her actual life
 # Pulls from today's journal, conversations, discoveries, emotional shifts
 
+# Dreams work on unresolved threads: none in the pool, no dream - except one a night, read from the
+# dream log (Gloria, 2026-10-27). Every way in passes here: the cron slots, the preoccupation slot, force-all.
+# Exit 1 is the gate's "stay quiet"; any other failure of the gate runs the dream as before.
+_GATE_LINE=$(python3 "$HOME/.vintos/workspace/scripts/thread_gate.py" dream 2>&1)
+_GATE_RC=$?
+[ -n "$_GATE_LINE" ] && echo "$_GATE_LINE"
+[ "$_GATE_RC" -eq 1 ] && exit 0
+
 # Accept forced topic from preoccupation system, otherwise pick normally
 if [ -n "$FORCED_TOPIC" ]; then
     TOPIC="$FORCED_TOPIC"

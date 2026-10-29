@@ -783,6 +783,16 @@ def log_artifacts(thread, ghost_results, resolutions, primary_resolved, appendag
 
 def main():
     print(f"[Ghost] Starting -- {TODAY} {NOW}", flush=True)
+    # The ghosts work on unresolved threads: with none in the pool they do not run (Gloria, 2026-10-27).
+    # A gate that cannot be read leaves the run as it was before it.
+    try:
+        import thread_gate
+        _run, _why = thread_gate.decide("ghost")
+        if not _run:
+            print(f"[Ghost] No unresolved thread in the pool ({_why}). Exiting.", flush=True)
+            return
+    except Exception as _ge:
+        print(f"[Ghost] thread gate unavailable ({_ge}) - running as before", flush=True)
 
     if os.path.exists(AXES_FILE):
         try:

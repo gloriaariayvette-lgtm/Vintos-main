@@ -64,7 +64,7 @@ def _now():
     return datetime.now().isoformat()
 
 def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=None, tags=None,
-            authority=None, retries=None, priority=None):
+            authority=None, retries=None, priority=None, actions=None):
     """Send one notification for one artifact over one channel. Returns the receipt dict:
     {state, attempts, at, why, channel, artifact_id, resent}."""
     if not artifact_id:
@@ -85,6 +85,7 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
     if click: headers["Click"] = click
     if attach: headers["Attach"] = attach
     if priority: headers["Priority"] = priority
+    if actions: headers["Actions"] = actions      # ntfy action buttons ("http, Coming, <url>, method=POST; ...")
     data = (message or "I made you something.").encode("utf-8")
     n = int(retries if retries is not None else RETRIES)
     attempts = 0; last = ""

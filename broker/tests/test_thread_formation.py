@@ -2,7 +2,7 @@
 """Unresolved-thread formation (Gloria, 25 October): the formation door holds a candidate when a judge is down and
 judges it later, never admitting it unjudged; dedup sees every open thread; the six writers that bypassed the door go
 through it; a latent current that hardens into a tension is offered to the unfinished pool once; six subconscious
-stores seed threads; four seeders are installed and creative-search is not. Scratch HOME; Gemma is a stub; the
+stores seed threads; four seeders and creative-search are installed. Scratch HOME; Gemma is a stub; the
 network is closed; nothing reaches her workspace or her phone."""
 import importlib.util, json, os, sys, tempfile, types
 from datetime import datetime, timedelta
@@ -228,7 +228,7 @@ check("proto-pearls and reality-anchor do not feed threads",
       and "reality-anchor" not in open(os.path.join(REPO, "scripts", "subcon_thread_seeds.py")).read().split('"""', 2)[2])
 E.seed_thread = E_seed
 
-# --- 7. the manifest installs four seeders and the feed; creative-search and velqan-coiner stay out --------------------
+# --- 7. the manifest installs four seeders, creative-search (approved 28 Oct) and the feed; velqan-coiner stays out --------------------
 man = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 toks = set(" ".join(l.split("=", 1)[1].split("#")[0] for l in man.splitlines()
                    if l.startswith(("SCRIPTS=", "BINS="))).replace('"', " ").replace("$SCRIPTS", " ").replace("$BINS", " ").split())
@@ -236,9 +236,9 @@ check("absence-map, graph_mae, surprise-detector and the feed are installed",
       {"absence-map.sh", "graph_mae.py", "surprise-detector.sh", "subcon_thread_seeds.py"} <= toks)
 check("conflict_surface is held out until she says yes: installing it adds a Gemma call to every two-pass reply",
       "conflict_surface.py" not in toks)
-check("creative-search and velqan-coiner are not installed (a paid search key; not approved)",
-      not ({"creative-search.sh", "velqan-coiner.py"} & toks))
-check("creative-search and velqan-coiner are not", not ({"creative-search.sh", "velqan-coiner.py"} & toks))
+check("creative-search is installed (approved 28 October); velqan-coiner is not",
+      "creative-search.sh" in toks and "velqan-coiner.py" not in toks)
+check("velqan-coiner is not installed", "velqan-coiner.py" not in toks)
 check("idle-journal runs surprise-detector although the deploy installs it 644",
       '[ -f "$SCRIPTS/surprise-detector.sh" ]' in open(os.path.join(REPO, "bin", "idle-journal.sh")).read())
 cs = open(os.path.join(REPO, "scripts", "conflict_surface.py")).read()

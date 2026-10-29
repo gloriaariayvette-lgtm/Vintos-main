@@ -25,6 +25,14 @@ except:
 PYEOF
 )
 
+# Every dream this slot starts passes dream-trigger's thread gate; asked first here, so no premonition is
+# seeded (a model call) and no state is bent for a dream the gate would not let happen (2026-10-27).
+_GATE_LINE=$(python3 "$WORKSPACE/scripts/thread_gate.py" dream 2>&1)
+if [ $? -eq 1 ]; then
+    echo "[PreoccupationDream] no dream this slot: $_GATE_LINE"
+    exit 0
+fi
+
 if [ -z "$HAS_PREOCCUPATION" ]; then
     echo "[PreoccupationDream] No preoccupation — falling back to a PREMONITION dream at $(date +%H:%M:%S)"
     # The fallback was rewritten into a plain forced dream, and premonition was

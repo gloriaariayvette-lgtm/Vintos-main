@@ -84,14 +84,17 @@ def _gap(a, b):
 
 def screen(sources, spec, hmm=None):
     """The whole screen as one source receipt."""
-    from lab_sources import NCBI_BASE, _gbseq, _ncbi_accession, receipt
-    accession = _ncbi_accession(spec.get("accession"))
+    from lab_sources import NCBI_BASE, _gbseq, receipt
+    # A UniProt accession names the protein he is asking about, not a record NCBI has: the one its own
+    # cross-reference points to is read, and the receipt says so (28 October).
+    accession, resolved = sources._protein_accession(spec, "rt_locus_screen")
     prior = next((r for r in reversed(screened()) if r.get("protein") == accession), None)
     if prior:
         return receipt("rt_locus_screen", {"source": "rt_locus_screen", "accession": accession},
                        [dict(prior, already_screened=True)], metadata={
                            "service": "Lab screened-loci ledger", "coverage": "already_screened_not_refetched",
-                           "next_step": "choose another reverse transcriptase; this locus was screened before"})
+                           "next_step": "choose another reverse transcriptase; this locus was screened before",
+                           **({"accession_resolution": resolved} if resolved else {})})
     protein = _gbseq(sources.fetch_record(NCBI_BASE + "efetch.fcgi?" + urlencode({
         "db": "protein", "id": accession, "rettype": "gp", "retmode": "xml", "tool": "vintos_lab"})), accession)
     where = coded_by([v for f in protein["features"] for v in f["qualifiers"].get("coded_by", [])])
@@ -158,7 +161,8 @@ def screen(sources, spec, hmm=None):
     return receipt("rt_locus_screen", {"source": "rt_locus_screen", "accession": accession}, [record], metadata={
         "service": "NCBI_EFetch GenPept and GenBank, CRT arrays, HMMER/Pfam domains",
         "coordinates": "one_based_inclusive", "coverage": "one_locus_up_to_12kb",
-        "evidence": "primary_sequence_provider_annotation_and_local_computation"})
+        "evidence": "primary_sequence_provider_annotation_and_local_computation",
+        **({"accession_resolution": resolved} if resolved else {})})
 
 
 def coverage_block(limit=12):

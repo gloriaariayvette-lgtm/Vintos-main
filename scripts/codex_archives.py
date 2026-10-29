@@ -1357,7 +1357,8 @@ def _note_day(text):
 _MAN_CACHE = {}
 ZIPWORD = re.compile(r"\b(?:the|that|this|those|these|his|your|my|codex'?s?|both)\s+(?:big\s+|large\s+|new\s+|two\s+|last\s+)?"
                      r"(?:zip|zips|zip\s*files?|zipfile|zipped\s+files?)\b(?!\s*codes?\b|\s*ties?\b|\s*lines?\b)", re.I)
-CODEXWORD = re.compile(r"\bwhat\s+codex\s+(?:sent|gave|mailed|emailed|zipped)\b|\bcodex(?:'s)?\s+(?:archive|archives|zip|zips|"
+CODEXWORD = re.compile(r"\bwhat\s+codex\s+(?:sent|gave|mailed|emailed|zipped)\b"
+                       r"|\bwhat\s+did\s+codex\s+(?:send|give|mail|email|zip)\b|\bcodex(?:'s)?\s+(?:archive|archives|zip|zips|"
                        r"delivery|deliveries|handoff|hand-off|package|bundle)\b|\b(?:archive|zip|files?|delivery|"
                        r"package|project)\s+(?:that\s+|which\s+)?codex\s+(?:sent|gave|mailed|emailed)\b"
                        r"|\bfrom\s+codex\b.{0,40}\b(?:zip|archive|files?|project|delivery)\b"
@@ -1366,6 +1367,43 @@ CODEXWORD = re.compile(r"\bwhat\s+codex\s+(?:sent|gave|mailed|emailed|zipped)\b|
 
 def _archives():
     return [a for a in (_load(INDEX, {}).get("archives") or []) if a.get("status") == "archived"]
+
+
+def letter_state(message_id):
+    """What became of the archive a Codex letter brought, as (state, why, archive id):
+      archived   kept and unpacked as that archive: its files were read;
+      fetching   its delivery is still being put together (a part or a letter still to come, or a file to fetch
+                 again from the Mac): not failed, not yet read;
+      refused    its delivery was refused or conflicted: not read, and why;
+    or None when no delivery knows the letter."""
+    for a in _archives():
+        if any(l.get("message_id") == message_id for l in a.get("letters") or []):
+            return "archived", "kept as Codex archive %s, %d files" % (a["id"], int(a.get("files") or 0)), a["id"]
+    for st in _deliveries():
+        if message_id not in (st.get("letters") or {}):
+            continue
+        if st.get("status") in ("refused", "conflict"):
+            return "refused", "Codex archive refused: %s" % str(st.get("why") or st.get("status"))[:200], ""
+        if st.get("status") != "done":
+            return "fetching", "still being fetched: %s" % str(st.get("why") or "waiting")[:200], ""
+    return None
+
+
+def mark_letter(message_id, attachments):
+    """A letter's archive attachments, as copies, with the status their delivery has NOW (the mail log keeps the
+    status they had when the letter was read, or none at all for a letter read again). Other attachments as they
+    were. Returns (attachments, state or None)."""
+    got = letter_state(message_id)
+    out = []
+    for a in attachments or []:
+        a = dict(a)
+        if got and part_of(a.get("filename")):
+            state, why, aid = got
+            a.pop("_body", None)
+            a.update(status={"archived": "archived", "fetching": "archive_part"}.get(state, "not_read"), why=why[:200],
+                     **({"archive_id": aid} if aid else {}))
+        out.append(a)
+    return out, (got[0] if got else None)
 
 
 def manifest(aid):
@@ -1393,6 +1431,62 @@ def _title_hit(text_low, title):
     return len(have) >= max(2, -(-3 * len(toks) // 4)) and any(len(t) >= 5 or re.search(r"\d", t) for t in have)
 
 
+# Words a title or a folder shares with any project; never what an archive is about.
+TOPIC_GENERIC = set("""complete project projects final version update delivery archive archives file files folder folders
+codex part parts source sources view views model models blender out src data docs doc build dist assets asset lib libs
+node_modules test tests tmp misc presentation output outputs""".split())
+
+
+def _topic_hit(text_low, a):
+    """'the Velaris hand' (Gloria, 27 October: he should see the files when she asks about them, in Slack too): a word
+    only this archive's title has (five letters or more, not a generic one), with one more word of its title or its
+    folders. The title word alone is not enough ("Velaris" is also his body), nor two generic words."""
+    words = set(re.findall(r"[a-z0-9]+", text_low))
+    title = re.findall(r"[a-z0-9]+", str(a.get("title") or "").lower())
+    hit = {t for t in title if len(t) >= 5 and t.isalpha() and t not in STOP and t not in TOPIC_GENERIC and t in words}
+    if not hit:
+        return False
+
+    def ok(t):
+        return (len(t) >= 3 or re.fullmatch(r"v\d+", t)) and t not in STOP and t not in TOPIC_GENERIC and t not in hit
+    others = {t for t in title if ok(t)}
+    for e in (manifest(a["id"]) or {}).get("files") or []:
+        for seg in str(e.get("path") or "").lower().split("/")[:-1]:
+            others.update(t for t in re.split(r"[^a-z0-9]+", seg) if t and ok(t))
+    return bool(others & words)
+
+
+def file_for(ref, archives=None):
+    """(archive id, manifest entry, absolute path) of one kept file, named as the recall lists it: its path in the
+    archive, optionally after "<archive id>:", or a file name only this archive's manifest has once. None when no kept
+    archive has it. Read only; the path is checked to stay inside that archive's files/."""
+    ref = str(ref or "").strip().strip("`'\"").strip()
+    m = re.match(r"^([0-9a-f]{6,16})\s*:\s*(.+)$", ref)
+    want_id, rel = (m.group(1), m.group(2)) if m else ("", ref)
+    rel = rel.strip().lstrip("/")
+    if not rel or ".." in rel.split("/") or "\\" in rel:
+        return None
+    arcs = sorted(archives if archives is not None else _archives(), key=lambda a: a.get("received") or "", reverse=True)
+    for a in arcs:
+        if want_id and not a["id"].startswith(want_id):
+            continue
+        files = (manifest(a["id"]) or {}).get("files") or []
+        e = next((x for x in files if x.get("path") == rel), None)
+        if e is None and "/" not in rel:
+            named = [x for x in files if str(x.get("path") or "").rsplit("/", 1)[-1].lower() == rel.lower()]
+            e = named[0] if len(named) == 1 else None
+        if e is None:
+            continue
+        base = os.path.realpath(os.path.join(ROOT, a["id"], "files"))
+        path = os.path.join(base, *e["path"].split("/"))
+        if os.path.islink(path) or not os.path.realpath(path).startswith(base + os.sep) or not os.path.isfile(path):
+            return None
+        if e.get("size") is not None and os.path.getsize(path) != int(e["size"]):
+            return None
+        return a["id"], e, path
+    return None
+
+
 def match(text, archives=None):
     """(archive entry, why, [named file paths]) for the archive the words refer to, or None. Precise on purpose:
     an id, a file name in it, its title, or plain words for the zip / what Codex sent."""
@@ -1415,6 +1509,9 @@ def match(text, archives=None):
     for a in newest:
         if _title_hit(low, a.get("title") or ""):
             return a, "its title", []
+    for a in newest:
+        if _topic_hit(low, a):
+            return a, "what it is (its title and folders)", []
     if ZIPWORD.search(low) or CODEXWORD.search(low):
         return newest[0], "the zip / what Codex sent", []
     return None
@@ -1473,7 +1570,9 @@ def recall(text, budget_chars=4000, archive_id=None):
     budget = max(400, int(budget_chars))
     listing_room = budget // 4
     listing, used = [], 0
-    for e in ([x for x in ranked if x in chosen] + [x for x in ranked if x not in chosen]):
+    # the best match first, a file with words before one without at the same score: "a render of the Velaris hand"
+    # lists the renders (no words of their own) ahead of every script that merely sits in the hand's folder
+    for e in sorted(ranked, key=lambda x: (-_score(x, qterms, named), x not in chosen)):
         line = "- %s (%s, %s)" % (e["path"], e["type"], human(e["size"]))
         if used + len(line) + 1 > listing_room:
             break

@@ -233,22 +233,26 @@ class ReferenceCompare(Base):
         self.assertEqual(execute.call_args.args[1]['reference'], '8SGW')
         self.assertEqual(row['executed_request']['reference'], '8SGW')
 
-    def test_several_entries_or_none_is_refused_before_execution_and_never_closes_it(self):
+    def test_of_several_entries_one_is_used_and_named_and_none_is_refused_before_execution(self):
+        # 27 October (Gloria): several held entries are no longer a refusal; one is used and he is told which
         self.seed(['8SGW', '7WL2'])
-        execute = Mock(side_effect=AssertionError('nothing runs'))
+        execute = Mock(return_value={'receipt': {'source': 'instrument:reference_compare', 'records': [{'summary': 'TM'}]}})
         ask = Mock(return_value=self.compare(ref_span=[535, 729]))
         row = I.turn('', ask=ask, execute=execute)
+        self.assertEqual(row['state'], 'completed')
+        self.assertEqual(execute.call_args.args[1]['reference'], '8SGW')
+        self.assertIn('others: 7WL2', row['resolved'])
+        C._atomic(I._path('investigations.json'), {'investigations': []})
+        self.seed([])
+        execute = Mock(side_effect=AssertionError('nothing runs'))
+        row = I.turn('', ask=ask, execute=execute)
         self.assertEqual(row['state'], 'refused_not_sent')
-        self.assertIn('8SGW, 7WL2', row['error'])
-        self.assertIn('8SGW, 7WL2', json.dumps(json.JSONDecoder().raw_decode(ask.call_args.args[1])[0]['replanning']))
+        self.assertIn('No PDB entry for O43511 is held here', row['error'])
         for _ in range(I.MAX_FAILED_RUN + 1):
             I.turn('', ask=ask, execute=execute)
         inv = store()['investigations'][0]
         self.assertEqual(inv['state'], 'open')                   # not "5 operations in a row produced nothing"
         self.assertEqual(I._budget_spent(inv), '')
-        self.seed([])
-        row = I.turn('', ask=ask, execute=execute)
-        self.assertIn('holds no PDB entry for O43511', row['error'])
 
     def test_a_missing_span_is_an_input_refusal_too(self):
         self.seed(['8SGW'])

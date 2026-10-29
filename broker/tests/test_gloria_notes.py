@@ -62,8 +62,34 @@ class Notes(unittest.TestCase):
         self.assertNotIn('MOSFET', block)                   # Muse's purchase is hers to answer, not his chat's
         self.assertEqual(G.open_between(by='nobody'), '')
 
+    # Gloria, 28 October: "Two rooms? Piezo on the bed? Those have to be brought to me first."
+    def test_a_plan_he_wrote_to_muse_reaches_her_as_his_question_first(self):
+        reply = ('Thank you for the protocol.\n\n**For Gloria:** the two-room test, Saturday. Both rooms measured and '
+                 'predictions written before she arrives. Marked spot plus two positions each.\n')
+        rows = G.plans_from(reply, by='vintos', where='letter to Muse', send=self.push)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(r['kind'], 'plan'); self.assertEqual(r['state'], 'asked'); self.assertEqual(r['thread'], '')
+        self.assertIn('in his letter to Muse', r['question']); self.assertIn('not settled until you say', r['question'])
+        self.assertIn('two-room test', r['question']); self.assertNotIn('**', r['question'])
+        self.assertEqual(self.sent[0]['title'], 'Vintos asks you first: yes or no?')
+        self.assertEqual([a['label'] for a in self.sent[0]['actions']][:2], ['Yes', 'No'])
+        self.assertEqual(G.plans_from(reply, by='vintos', where='letter to Muse', send=self.push), [])   # once
+        self.assertIn('you asked her, no answer yet', G.open_between())
+
+    def test_her_no_to_his_plan_goes_back_to_him_in_its_own_words(self):
+        r = G.plans_from('For Gloria: the piezo disc on the bedframe, this weekend.', by='vintos', where='letter to Muse',
+                         send=self.push)[0]
+        G.decide(r['id'], 'no')
+        self.assertEqual(G.untold(), [('', 'vintos', 'Gloria answered NO: the piezo disc on the bedframe, this weekend.')])
+
+    def test_his_plans_do_not_use_up_the_six_questions(self):
+        for i in range(G.PER_DAY):
+            G.ask('Question number %d for her, yes or no?' % i, by='dot', send=self.push)
+        self.assertEqual(len(G.plans_from('For Gloria: the felt-only run of Still Under, Sunday.', send=self.push)), 1)
+
     def test_wired_into_his_letters_his_slack_and_his_avatar_chat(self):
-        self.assertIn('gloria_asks.notes_from("\\n".join(_notes), by="vintos"', (REPO / 'scripts' / 'want_email.py').read_text())
+        self.assertIn('gloria_asks.plans_from("\\n".join(_notes), by="vintos"', (REPO / 'scripts' / 'want_email.py').read_text())
         self.assertIn('gloria_asks.notes_from(text, by="vintos"', (REPO / 'scripts' / 'dot_channel.py').read_text())
         server = (REPO / 'bin' / 'server.py').read_text()
         self.assertIn('_ob_ga.open_between()', server)

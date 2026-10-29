@@ -90,11 +90,34 @@ NCBI_OPERATIONS = {
     'search_literature': 'literature', 'nucleotide': 'sequence', 'nuccore': 'sequence',
 }
 UNIPROT_ACCESSION = r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})'
+# every source the Lab has; a refusal names them (lab_sources.sources_note) and the shapes below read them
+SOURCE_NAMES = frozenset(('uniprot', 'ncbi', 'pdb', 'atlas', 'interpro', 'pubchem', 'pubmed', 'chembl',
+                          'ncbi_sequence', 'ncbi_protein_context', 'ncbi_neighborhood', 'rt_locus_screen',
+                          'mgnify', 'reactome', 'rhea', 'quickgo', 'imgvr', 'bvbrc', 'sequencing_runs',
+                          'sequencing_reads'))
+# One of NCBI's databases written as a source of its own ({"source": "ncbi_taxonomy", "operation": "taxonomy",
+# "term": "1009004"}): it is source ncbi with that operation, and as a source it was refused as unsupported, so the
+# ID he wanted to check was never looked up (28 October).
+NCBI_DATABASE_SOURCES = {'ncbi_taxonomy': 'taxonomy', 'ncbi_taxon': 'taxonomy', 'taxonomy': 'taxonomy',
+                         'ncbi_assembly': 'assembly', 'ncbi_gene': 'gene', 'ncbi_protein': 'protein',
+                         'ncbi_literature': 'literature', 'ncbi_pubmed': 'literature',
+                         'ncbi_nuccore': 'sequence', 'ncbi_nucleotide': 'sequence'}
 
 
 def normalize_source(spec):
     out = dict(spec)
     source = str(out.get('source') or '').lower()
+    if not source:
+        # A source named where its operation goes ({"operation": "uniprot", "query": ...}): it names one source, and
+        # 7 of 9 "unsupported Lab source" refusals in 12 hours were this shape, sent with an empty source. The
+        # planning route read it; the execution door did not, so the request was refused after being chosen.
+        operation = str(out.get('operation') or '').lower()
+        if operation in SOURCE_NAMES:
+            out = {k: v for k, v in out.items() if k != 'operation'}
+            source = out['source'] = operation
+    if source in NCBI_DATABASE_SOURCES:
+        out['source'], out['operation'] = 'ncbi', NCBI_DATABASE_SOURCES[source]
+        source = 'ncbi'
     out['source'] = {'rcsb': 'pdb', 'alphagenome': 'atlas', 'entrez': 'ncbi',
                      'ncbi_rt_locus_screen': 'rt_locus_screen', 'ena': 'sequencing_runs', 'sra': 'sequencing_runs',
                      'ncbi_sra': 'sequencing_runs', 'sequencing': 'sequencing_runs',
@@ -135,6 +158,14 @@ def normalize_source(spec):
     if out['source'] == 'interpro' and not out.get('accession'):
         value=out.get('uniprot_accession') or out.get('protein_accession') or out.get('query') or out.get('id')
         if value is not None:out['accession']=value
+    if out['source'] == 'pdb':
+        # the step's own words, or the two halves of a stored-output reference written beside the request's fields,
+        # are no argument of the archive: each was refused as "unsupported PDB structure-evidence arguments" (26-27
+        # October: {"entry_id": "9UTC", "operation": "structure_evidence", "question": ...})
+        for key in ('question', 'step_question', 'why'):
+            out.pop(key, None)
+        if 'step' in out and 'path' in out:
+            out.pop('step'); out.pop('path')
     if out['source'] == 'pdb' and not out.get('entry_id'):
         # 22 October: {"source": "pdb", "query": "entry_id:6V7X"} failed "PDB entry ID required" again and again
         for key in ('pdb_id', 'pdb_code', 'id', 'query'):
@@ -188,9 +219,7 @@ def normalize_request(route, request):
         # {"source":"pubmed","pubmed":"<search>"}: the query under the source's own name is the shorthand below
         # with the source said twice; it was refused as having no search terms (25 October)
         request={request['source']:request[request['source']]}
-    allowed={'uniprot','ncbi','pdb','atlas','interpro','pubchem','pubmed','chembl','ncbi_sequence',
-             'ncbi_protein_context','ncbi_neighborhood','rt_locus_screen','mgnify','reactome','rhea','quickgo','imgvr','bvbrc',
-             'sequencing_runs','sequencing_reads'}
+    allowed=SOURCE_NAMES
     if route=='source' and not request.get('source'):
         request={k:v for k,v in request.items() if k!='source'}
         # A source named where its operation goes ({"operation":"rt_locus_screen","accession":...}), or a UniProt
@@ -240,7 +269,62 @@ def canonical(word, names):
 # keys the planner has put an instrument's name under instead of "skill" (26 October: "instrument" 31 times)
 _SKILL_KEYS = ('instrument', 'instrument_name', 'skill_name', 'name', 'tool')
 # keys she has put one Lab artifact under instead of "files"
-_FILE_KEYS = ('artifact', 'structure_id', 'structure', 'model', 'file', 'structure_file', 'model_file', 'path')
+_FILE_KEYS = ('artifact', 'structure_id', 'structure', 'model', 'file', 'structure_file', 'model_file', 'path',
+              # 26-27 October: a listed model under "query", "target", "model_id" or "pdb_id" (O43511-....pdb)
+              'model_id', 'target', 'query', 'input', 'input_file', 'pdb_id')
+# keys a reference_compare's PDB entry was put under instead of "reference" (26-27 October: "files_reference" 11
+# times, "reference_id" holding the Lab's own artifacts/reference/9UTC.cif)
+_REFERENCE_KEYS = ('files_reference', 'reference_id', 'reference_entry', 'reference_pdb', 'ref', 'entry_id', 'pdb_id',
+                   'pdb', 'pdb_entry')
+_SPAN = re.compile(r'\s*\[?\s*(\d{1,5})\s*(?:-|–|\.\.|to|,)\s*(\d{1,5})\s*\]?\s*')
+
+
+def _span(value):
+    """[first, last] from "535-729", "535–729", "535..729" or "[535, 729]"; the value itself otherwise."""
+    if isinstance(value, str):
+        m = _SPAN.fullmatch(value)
+        if m:
+            return [int(m.group(1)), int(m.group(2))]
+    return value
+
+
+def _unwrap_also(request):
+    """The arguments inside "also", the planner menu's own heading for them, lifted to where the instrument reads them:
+    8 compares on 27 October sent {"also": {"reference": "21TP", "chain": "A", "ref_span": "1-780"}} and were refused
+    for naming no reference. A value given beside "also" wins."""
+    also = request.get('also') if isinstance(request, dict) else None
+    if isinstance(also, dict) and set(also) != {'step', 'path'}:
+        return {**also, **{k: v for k, v in request.items() if k != 'also'}}
+    return request
+
+
+def _instrument_fields(request):
+    """The arguments a named instrument reads, from where the planner put them: a reference_compare entry under
+    another key or as the Lab's own reference file (artifacts/reference/9UTC.cif is 9UTC), chain_id for chain, and a
+    residue span written as text ("535-729") for ref_span or range, or under region/residues for fold_read. Only a
+    value given is moved; nothing is guessed."""
+    out = dict(request)
+    if out.get('skill') == 'reference_compare' and not out.get('reference'):
+        for key in _REFERENCE_KEYS:
+            value = out.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            entry = re.fullmatch(r'(?:.*/)?([0-9][A-Za-z0-9]{3})(?:\.cif(?:\.gz)?|\.pdb)?', value.strip())
+            if entry or key not in ('entry_id', 'pdb_id', 'pdb'):
+                out['reference'] = entry.group(1).upper() if entry else value.strip()
+                out.pop(key)
+                break
+    if out.get('chain_id') and not out.get('chain'):
+        out['chain'] = out.pop('chain_id')
+    for key in ('ref_span', 'range'):
+        if key in out:
+            out[key] = _span(out[key])
+    if out.get('skill') == 'fold_read' and not out.get('range'):
+        for key in ('region', 'residues', 'residue_range', 'window', 'span'):
+            if isinstance(_span(out.get(key)), list):
+                out['range'] = _span(out.pop(key))
+                break
+    return out
 
 
 def _artifact(value):
@@ -251,8 +335,8 @@ def _artifact(value):
     import lab_instruments
     listed = lab_instruments.artifacts('structure', 50) + lab_instruments.artifacts('sequence', 50)
     v = value.strip()
-    if '/memory/chemistry-lab/' in v:
-        v = v.split('/memory/chemistry-lab/', 1)[1]
+    if 'memory/chemistry-lab/' in v:
+        v = v.split('memory/chemistry-lab/', 1)[1]
     if v in listed:
         return v
     named = [f for f in listed if f.rsplit('/', 1)[-1] == v.rsplit('/', 1)[-1]]
@@ -266,6 +350,11 @@ def _artifact(value):
 
 
 def normalize_instrument(request):
+    """The instrument named (see _instrument_names) and its arguments read from where they were put."""
+    return _instrument_fields(_instrument_names(_unwrap_also(dict(request))))
+
+
+def _instrument_names(request):
     """Name the instrument when the planner named only its operation, or put the instrument's name where the
     operation goes ({"operation":"fold_read"}): each operation belongs to one instrument, so nothing is guessed. 125
     investigation steps in two days were refused as "not offered" for this alone (23 October).
@@ -286,6 +375,20 @@ def normalize_instrument(request):
         return request
     names=list(OFFERED)+list(OPERATIONS)
     ops_of=lambda s: list(OFFERED.get(s) or ())+([OPERATIONS[s]] if s in OPERATIONS else [])
+    allops=[o for s in names for o in ops_of(s)]
+    for key in ('skill',)+_SKILL_KEYS:
+        value=request.get(key)
+        if not isinstance(value,str) or canonical(value,names) or request.get('operation'):continue
+        head,_,tail=value.partition('.')
+        owner=canonical(head,names)
+        if owner and canonical(tail,ops_of(owner)):
+            # "reference_compare.structure.compare": the instrument and its operation, as the menu lists them
+            request.pop(key);request.update(skill=owner,operation=canonical(tail,ops_of(owner)))
+            break
+        if key in ('skill','tool') and canonical(value,allops):
+            # {"skill": "structure.measure"}, {"tool": "structure.analyze"}: the operation where the instrument goes
+            request.pop(key);request['operation']=canonical(value,allops)
+            break
     if isinstance(request.get('skill'),str) and request['skill'] not in names:
         named=canonical(request['skill'],names)
         if named:request['skill']=named
@@ -310,6 +413,10 @@ def normalize_instrument(request):
                 request={**inner,**request}
             elif isinstance(inner,str) and _artifact(inner) and not request.get('files'):
                 request['files']=[_artifact(inner)]
+            elif isinstance(inner,dict) and not request.get('files'):
+                # {"fold_read": {"step": .., "path": [.., "artifact"]}}: a stored output named as its one input;
+                # resolved, and checked against the Lab's list, at the instrument's door (26 October, 7 times)
+                request['files']=[inner]
             elif inner not in (None,'',{},[]):
                 request[key]=inner      # kept as given; the instrument's own checks say what is missing
     if isinstance(request.get('operation'),str) and request.get('operation') not in [o for s in names for o in ops_of(s)] \
@@ -375,4 +482,8 @@ def execution_request(route, request):
         record=out['records']
         if isinstance(record.get('sequence'),str) and record.get('accession'):out['records']=[record]
     if route in ('instrument','native') and isinstance(out.get('files'),str):out['files']=[out['files']]
+    if route in ('instrument','native') and isinstance(out.get('files'),list):
+        # a stored output resolves to the artifact as the Lab wrote it (memory/chemistry-lab/artifacts/...): the
+        # listed name it is, when it is one; anything else is left for the door to refuse
+        out['files']=[(_artifact(f) or f) if isinstance(f,str) else f for f in out['files']]
     return out
