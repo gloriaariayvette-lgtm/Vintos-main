@@ -99,6 +99,38 @@ check("a code fix from the gap review is not her decision: it goes to Claude Cod
       all(x["ref"] != bug["id"] for x in cards)
       and H._jload(H.FOR_CLAUDE_CODE, {}).get(bug["id"], {}).get("title") == "llm choices response handling"
       and gap["id"] not in H._jload(H.FOR_CLAUDE_CODE, {}), H._jload(H.FOR_CLAUDE_CODE, {}))
+# Claude Code's list says what is still work (Chat's review, 29 October): closed with why, never deleted, and never
+# closed on a list it could not read
+FIX = dict(SF._get(SF._load(), bug["id"]), id="SK-0f1x0001", capability="handle_missing_embed_data")
+def eng(): return H._jload(H.FOR_CLAUDE_CODE, {}).get("SK-0f1x0001") or {}
+H.decision_cards([FIX]); H.decision_cards([FIX])
+check("a code fix queued twice is one open entry with one history line",
+      eng().get("status") == "open" and len(eng().get("history", [])) == 1, eng())
+H.decision_cards([])
+check("an empty or unreadable proposals list closes nothing", eng().get("status") == "open", eng())
+_rows, _routed = H._study_rows, H._jload(H.TO_STUDY, {})
+H._jsave(H.TO_STUDY, dict(_routed, **{"SK-0f1x0001": "SF-0f1x0001"}))
+H._study_rows = lambda: {"SF-0f1x0001": {"id": "SF-0f1x0001", "state": "working"}}
+H.decision_cards([FIX])
+check("while the Study is doing it, it is marked Study-owned, not open",
+      eng().get("status") == "study_owned" and "SF-0f1x0001" in eng().get("reason", ""), eng())
+H._study_rows = lambda: {}
+H.decision_cards([FIX])
+check("an unreadable Study changes nothing", eng().get("status") == "study_owned", eng())
+H._study_rows = lambda: {"SF-0f1x0001": {"id": "SF-0f1x0001", "state": "done"}}
+H.decision_cards([FIX])
+check("done in the Study closes it, saying so", eng().get("status") == "closed" and "done in the Study" in eng()["reason"], eng())
+H._study_rows = _rows; H._jsave(H.TO_STUDY, _routed)
+for state in ("denied", "withdrawn"):
+    entry = H._jload(H.FOR_CLAUDE_CODE, {}); entry["SK-0f1x0001"].update(status="open", reason="")
+    H._jsave(H.FOR_CLAUDE_CODE, entry)
+    H.decision_cards([dict(FIX, state=state)])
+    check("a %s proposal closes it with that reason" % state,
+          eng().get("status") == "closed" and eng().get("reason") == "proposal " + state, eng())
+H.decision_cards([dict(FIX, id="SK-0th3r001")])
+check("a readable list without it closes it as gone, keeping its history",
+      eng().get("status") == "closed" and "no longer" in eng().get("reason", "") and len(eng()["history"]) >= 4, eng())
+check("a closed fix never comes back to her phone", all(x["ref"] != "SK-0f1x0001" for x in H.decision_cards([dict(FIX, state="denied")])))
 
 FORGE = {"decisions": []}
 def transport(req, timeout=0):

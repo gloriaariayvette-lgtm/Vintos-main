@@ -212,6 +212,38 @@ def is_code_fix(p):
         return False
 
 
+def _reconcile_engineering(engineering, snapshot, routed, rows, queued):
+    """Each entry on Claude Code's list says whether it is still work: 'open' (queued this pass), 'study_owned' (the
+    Study is doing it), or 'closed' with why (decided, withdrawn, done in the Study, or gone from a readable list of
+    proposals). Nothing is deleted. An empty or unreadable proposals list, or an unreadable Study, changes nothing:
+    uncertainty is never written down as a completion (Chat's review, 29 October)."""
+    by_id = {p.get('id'): p for p in snapshot if isinstance(p, dict)}
+    now = datetime.now().isoformat(timespec='seconds')
+    for pid, e in engineering.items():
+        if pid in queued:
+            status, why = 'open', ''
+        else:
+            p, sid = by_id.get(pid), routed.get(pid)
+            study = rows.get(sid) or {}
+            if p is None:
+                if not by_id:
+                    continue
+                status, why = 'closed', 'no longer among the Forge proposals'
+            elif p.get('state') != 'proposed':
+                status, why = 'closed', 'proposal %s' % p.get('state')
+            elif sid and not rows:
+                continue
+            elif study.get('state') == 'done':
+                status, why = 'closed', 'done in the Study as %s' % sid
+            elif study.get('state') in STUDY_DOING:
+                status, why = 'study_owned', 'the Study is doing it as %s' % sid
+            else:
+                continue
+        if e.get('status', 'open') != status or e.get('reason', '') != why or 'status' not in e:
+            e['status'], e['reason'], e['since'] = status, why, now
+            e.setdefault('history', []).append({'at': now, 'status': status, 'reason': why})
+
+
 def decision_cards(proposals=None):
     """Every ability card waiting for her yes (any origin, dot's included) and every parts list Muse priced. A card
     the Study is doing is not hers; a code fix the Study could not land goes to Claude Code's list, not to her."""
@@ -220,19 +252,24 @@ def decision_cards(proposals=None):
     routed, rows = _jload(TO_STUDY, {}), _study_rows()
     engineering = _jload(FOR_CLAUDE_CODE, {})
     before = json.dumps(engineering, sort_keys=True)
-    for p in (proposals if proposals is not None else sf._load()):
+    snapshot = proposals if proposals is not None else sf._load()
+    queued = set()
+    for p in snapshot:
         if p.get('state') != 'proposed':
             continue
         study = rows.get(routed.get(p['id'])) or {}
         if study.get('state') in STUDY_DOING or study.get('state') == 'done':
             continue
         if is_code_fix(p):
+            if routed.get(p['id']) and not rows:
+                continue          # sent to the Study, which cannot be read now: neither open nor hers
             scope = (p.get('asked') or {}).get('scope') or {}
             engineering.setdefault(p['id'], {'first_seen': datetime.now().isoformat(timespec='seconds')}).update(
                 title=str(p.get('capability', '')).replace('_', ' ').strip(), why=str(p.get('why') or '')[:1200],
                 patch=str(scope.get('path') or '')[:300], touches=list(p.get('touches') or [])[:12],
                 tests=str(p.get('tests') or '')[:300], created=str(p.get('created') or ''),
                 study=(study.get('id'), (study.get('log') or [{}])[-1].get('what', study.get('state'))) if study else None)
+            queued.add(p['id'])
             continue
         o = p.get('origin') or {}
         asked = ('a want of his (%s): %s' % (o.get('spark') or o.get('source') or '?', o.get('want', '')) if o.get('want_id')
@@ -251,6 +288,7 @@ def decision_cards(proposals=None):
                       'what': (str(p.get('why') or '') + tried)[:1200],
                       'cost': 'Built by the Forge; nothing is bought. Accepting lets it be built; it is tested before it is installed.',
                       'details': details})
+    _reconcile_engineering(engineering, snapshot, routed, rows, queued)
     if json.dumps(engineering, sort_keys=True) != before:
         _jsave(FOR_CLAUDE_CODE, engineering)
     applied = _jload(APPLIED, {})
