@@ -193,17 +193,46 @@ def route_to_study(proposals=None, ask=None):
     return sent
 
 
+# A code fix from the gap review is engineering work, not her decision (Gloria, 29 October: "I don't know what
+# they're asking of me"). Ten of the 22 cards on her phone were broken-code reports ("missing 'choices'", "HTTP 403")
+# the Study had not landed. Those now go to Claude Code's list instead of to her; a want of his still comes to her.
+FOR_CLAUDE_CODE = 'forge-for-claude-code.json'
+
+
+def is_code_fix(p):
+    """A gap-review card a change to his code would close. Hardware (device), a key she grants (access), and a change
+    touching what only she may decide (his subconscious, JEPA: study_fix.protected) stay hers."""
+    o = p.get('origin') or {}
+    if o.get('source') != 'gap_review' or o.get('reachable_by') != 'code_change' or o.get('want_id'):
+        return False
+    try:
+        import study_fix
+        return not any(study_fix.protected(str(t)) for t in (p.get('touches') or []))
+    except Exception:
+        return False
+
+
 def decision_cards(proposals=None):
     """Every ability card waiting for her yes (any origin, dot's included) and every parts list Muse priced. A card
-    the Study is doing is not hers; one the Study could not do is, with why."""
+    the Study is doing is not hers; a code fix the Study could not land goes to Claude Code's list, not to her."""
     import skill_forge as sf
     cards = []
     routed, rows = _jload(TO_STUDY, {}), _study_rows()
+    engineering = _jload(FOR_CLAUDE_CODE, {})
+    before = json.dumps(engineering, sort_keys=True)
     for p in (proposals if proposals is not None else sf._load()):
         if p.get('state') != 'proposed':
             continue
         study = rows.get(routed.get(p['id'])) or {}
         if study.get('state') in STUDY_DOING or study.get('state') == 'done':
+            continue
+        if is_code_fix(p):
+            scope = (p.get('asked') or {}).get('scope') or {}
+            engineering.setdefault(p['id'], {'first_seen': datetime.now().isoformat(timespec='seconds')}).update(
+                title=str(p.get('capability', '')).replace('_', ' ').strip(), why=str(p.get('why') or '')[:1200],
+                patch=str(scope.get('path') or '')[:300], touches=list(p.get('touches') or [])[:12],
+                tests=str(p.get('tests') or '')[:300], created=str(p.get('created') or ''),
+                study=(study.get('id'), (study.get('log') or [{}])[-1].get('what', study.get('state'))) if study else None)
             continue
         o = p.get('origin') or {}
         asked = ('a want of his (%s): %s' % (o.get('spark') or o.get('source') or '?', o.get('want', '')) if o.get('want_id')
@@ -222,6 +251,8 @@ def decision_cards(proposals=None):
                       'what': (str(p.get('why') or '') + tried)[:1200],
                       'cost': 'Built by the Forge; nothing is bought. Accepting lets it be built; it is tested before it is installed.',
                       'details': details})
+    if json.dumps(engineering, sort_keys=True) != before:
+        _jsave(FOR_CLAUDE_CODE, engineering)
     applied = _jload(APPLIED, {})
     plans = {v.get('tag'): v for k, v in _jload(PARTS_ASKED, {}).items() if isinstance(v, dict) and v.get('tag')}
     for tag, lst in sorted(_jload(PARTS_LISTS, {}).items()):
@@ -316,6 +347,13 @@ def sync_decisions(transport=None, post=None):
     cards = decision_cards()
     decided = request('/api/decisions-sync', {'cards': cards}, transport=transport)
     applied = _jload(APPLIED, {})
+    try:   # her page retires a card no longer waiting; her phone now does too (29 October: all 22 on it were gone)
+        import gloria_asks
+        for row in gloria_asks.withdraw_missing(('card', 'parts', 'arrived'), {c['id'] for c in cards},
+                                                'no longer waiting in the Forge'):
+            print('forge: off her phone (no longer waiting): %s' % row.get('ref'), flush=True)
+    except Exception as exc:
+        print('forge: could not tidy her phone: %s' % exc, flush=True)
     try:
         for cid in push_cards(cards, applied):
             print('forge: on her phone: %s' % cid, flush=True)

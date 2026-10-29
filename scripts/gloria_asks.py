@@ -240,11 +240,27 @@ def decide_with_token(qid, token, answer):
     row = get(qid)
     if not row or not row.get("token") or token != row["token"]:
         return None, "that is not this question's button"
+    if row.get("state") == "withdrawn":
+        return None, "this is no longer waiting on you: %s" % row.get("why_withdrawn", "")
     if row.get("state") != "asked":
         return None, "already answered: %s" % row.get("answer", "")
     if answer not in ("yes", "no"):
         return None, "answer must be yes or no"
     return decide(qid, answer), ""
+
+
+def withdraw_missing(kinds, live_refs, why):
+    """Her phone's cards of these kinds whose ref is no longer waiting (decided on her page, done in the Study, or
+    gone): withdrawn, never counted as her answer (Gloria, 29 October: all 22 Forge cards on her phone pointed at
+    nothing). Returns the rows withdrawn."""
+    data, out = load(), []
+    for r in data:
+        if r.get("state") == "asked" and r.get("kind") in kinds and r.get("ref") and r["ref"] not in live_refs:
+            r.update(state="withdrawn", withdrawn_at=_now().isoformat(timespec="seconds"), why_withdrawn=str(why)[:200])
+            out.append(r)
+    if out:
+        save(data)
+    return out
 
 
 def untold():
