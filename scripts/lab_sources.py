@@ -423,6 +423,9 @@ def question_entity_context(inquiry, records, *, literature_only=False):
                 values=gene.get(key) or []
                 if isinstance(values,dict): values=[values]
                 names.update(str(v.get('value','')).upper() for v in values)
+        # A name the record does not carry, established for it by the exact human gene identity it was kept with
+        # (SR-BI on SCARB1's Q8WTV0, 29 October); resolved_alias re-verifies that receipt against this very record.
+        names |= resolved_alias(row)
         proteins = {str(v).casefold() for v in [row.get('protein_name') or ''] + list(row.get('protein_aliases') or []) if v}
         organisms = {str(v).casefold() for v in [row.get('organism') or ''] + list(row.get('organism_aliases') or []) if v}
         return names,proteins,organisms
@@ -579,12 +582,85 @@ def missing_symbols(requested, names):
     return {s for s in requested if symbol_key(s) not in have}
 
 
-def verify_uniprot_identity(query, records):
+def _record_genes(row):
+    """A record's own primary gene names, its accession and its taxon, raw UniProt record or normalized row alike."""
+    genes = {symbol_key((gene.get('geneName') or {}).get('value')) for gene in row.get('genes') or []
+             if isinstance(gene, dict) and isinstance(gene.get('geneName'), dict)} - {''}
+    taxon = row.get('taxon_id') if 'taxon_id' in row else (row.get('organism') or {}).get('taxonId')
+    return genes, str(row.get('primaryAccession') or row.get('accession') or ''), str(taxon)
+
+
+def resolved_alias(row):
+    """The requested alias a record was kept for, when the human gene identity it carries still establishes it.
+
+    29 October: "requested SR-BI; returned Q8WTV0,Q14108 naming ...SCARB1,SRB1...", three times. SR-BI is NCBI Gene's
+    recorded alias of human SCARB1 (gene 949) and the SCARB1 record does not carry it. The receipt is checked again
+    here, not its verdict: it must be an exact single-gene human resolution of that very name, and this record must be
+    the human record whose own gene is that canonical symbol. A receipt moved onto another record, another species or
+    another request establishes nothing."""
+    res = row.get('identity_resolution')
+    if not isinstance(res, dict): return set()
+    requested, receipt = str(res.get('requested') or ''), res.get('receipt')
+    if not requested or not verified_human_identity(receipt, requested): return set()
+    gene = receipt['records'][0]
+    genes, accession, taxon = _record_genes(row)
+    if (taxon != '9606' or not accession or accession != str(res.get('accession'))
+            or symbol_key(gene['symbol']) not in genes or str(res.get('canonical_symbol')) != str(gene['symbol'])
+            or str(res.get('ncbi_gene_id')) != str(gene['gene_id'])):
+        return set()
+    return {requested.upper()}
+
+
+def _alias_resolution(symbol, records, identity):
+    """Resolve one requested name no record carries through its exact human gene identity.
+
+    Returns ({accession: record annotated with the resolution}, a note for a refusal). Nothing is guessed: a failed
+    or missing lookup, or a receipt that does not verify, resolves nothing and the original refusal stands; an alias
+    NCBI records on several human genes is a family name and is named as one, never read as any one of them."""
+    try:
+        receipt = identity(symbol)
+    except Exception:
+        return {}, ''
+    if not isinstance(receipt, dict): return {}, ''
+    meta = receipt.get('metadata') or {}
+    if (receipt.get('source') == 'ncbi_gene_identity' and isinstance(meta.get('match_count'), int)
+            and meta['match_count'] > 1):
+        genes = sorted(str(r.get('symbol')) for r in receipt.get('records') or [] if isinstance(r, dict))
+        return {}, '%s is an alias of %d human genes (%s); none is taken for it' % (
+            symbol, meta['match_count'], ','.join(genes))
+    if not verified_human_identity(receipt, symbol): return {}, ''
+    gene = receipt['records'][0]
+    found = {}
+    for row in records:
+        accession = _record_genes(row)[1]
+        candidate = dict(row, identity_resolution={
+            'requested': symbol, 'canonical_symbol': gene['symbol'], 'ncbi_gene_id': str(gene['gene_id']),
+            'accession': accession, 'taxon_id': 9606,
+            'evidence': "NCBI Gene records %s as an exact alias of human %s (gene %s); this human record's own gene "
+                        "is %s" % (symbol, gene['symbol'], gene['gene_id'], gene['symbol']),
+            'receipt': receipt})
+        if resolved_alias(candidate): found[accession] = candidate
+    return found, ''
+
+
+def identity_resolutions(records):
+    """The alias resolutions retained records carry, in short, for a receipt's metadata."""
+    return [dict({k: row['identity_resolution'][k] for k in ('requested', 'canonical_symbol', 'ncbi_gene_id', 'accession')},
+                 receipt_id=row['identity_resolution']['receipt']['receipt_id'])
+            for row in records if isinstance(row, dict) and resolved_alias(row)]
+
+
+def verify_uniprot_identity(query, records, identity=None):
     """An exact gene request is evidence only from returned records that name that gene. Returns those records.
 
     A search returns several records, and one of them naming some other gene used to fail the whole retrieval as a
     mismatch, the right records with it: 107 of 367 Lab reviews ended on a target mismatch by 13 October. The records
-    that do not name the gene are dropped; the retrieval fails only when none of them does."""
+    that do not name the gene are dropped; the retrieval fails only when none of them does.
+
+    A requested name that no returned record carries (SR-BI, 29 October) is looked up with ``identity`` (symbol ->
+    Sources.human_gene_identity receipt) when the query asks for human or for no species. Only a human record whose
+    own gene is the canonical symbol of that exact resolution is kept, and it carries the resolution as
+    ``identity_resolution``. Without ``identity``, or when it resolves nothing, the refusal is what it was."""
     query = normalize_uniprot_subjects(str(query or ''))
     symbols = []
     for field, value in _TERM.findall(query):
@@ -602,7 +678,7 @@ def verify_uniprot_identity(query, records):
         symbols.extend(found if len(words) == 1 else [item for item in found if len(item) >= 4])
     symbols = list(dict.fromkeys(symbols))
     if not symbols: return list(records)
-    kept, returned = [], []
+    kept, returned, carried = [], [], []
     for row in records:
         names = set()
         for gene in row.get('genes') or []:
@@ -620,12 +696,25 @@ def verify_uniprot_identity(query, records):
         # The names a record carries are kept before the check so a refusal can say what came back,
         # not only that it was wrong: "returned O95905" told him nothing about which gene that was.
         returned.extend(n for n in sorted(names) if n and n not in returned)
+        carried.append(names)
+    resolved, notes = {}, []
+    taxa = set(re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)', query))
+    if identity is not None and records and taxa <= {'9606'}:
+        for symbol in symbols:
+            if any(not missing_symbols({symbol}, names) for names in carried): continue
+            found, note = _alias_resolution(symbol, records, identity)
+            resolved.update(found)
+            if note: notes.append(note)
+    for row, names in zip(records, carried):
         if len(missing_symbols(symbols, names)) < len(symbols):
-            kept.append(row)
+            kept.append(resolved.get(_record_genes(row)[1], row))
+        elif _record_genes(row)[1] in resolved:
+            kept.append(resolved[_record_genes(row)[1]])
     if records and not kept:
         raise ValueError('source_gene_mismatch: requested ' + ','.join(symbols)
                          + '; returned ' + ','.join(str(r.get('primaryAccession')) for r in records[:5])
-                         + (' naming ' + ','.join(returned[:8]) if returned else ''))
+                         + (' naming ' + ','.join(returned[:8]) if returned else '')
+                         + ''.join('; ' + note for note in notes))
     return kept
 
 
@@ -1373,7 +1462,8 @@ class Sources:
                         break
             if rejected is not None and not relaxed: raise rejected
             records = data['results'][:limit]
-            records = verify_uniprot_identity(spec.get('query'), records)
+            records = verify_uniprot_identity(spec.get('query'), records, identity=self.human_gene_identity)
+            resolutions = identity_resolutions(records)
             if relaxed:
                 records = [dict(row, found_by=relaxed,
                                 partial_match=relaxed == 'partial_any_word',
@@ -1382,6 +1472,7 @@ class Sources:
             return receipt(source, dict(spec, executed_query=query) if relaxed else spec, records, metadata={
                 'release': headers.get('X-UniProt-Release') or headers.get('x-uniprot-release'),
                 'coverage': 'bounded_first_page',
+                **({'identity_resolutions': resolutions} if resolutions else {}),
                 **({'relaxed': relaxed, 'executed_query': query,
                     'partial_match': relaxed == 'partial_any_word'} if relaxed else {})})
         if source == 'ncbi':
