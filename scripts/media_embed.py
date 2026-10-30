@@ -52,6 +52,11 @@ in the batch process alone. Batches start: when a local call ends (its end route
 frame reading (lingering a few minutes for the next frame), and from the ten-minute `ensure` cron when anything is
 held and no call is live.
 
+A call he started (attention_call.py) is not his memory until she says so: its call audio waits in `pending/` inside
+the private directory, which no batch reads (hold_call_audio(..., pending=<call id>)). Her yes moves it, once, into
+the directory a batch reads (release()); her no deletes it (discard()). It keeps its own clock either way: the
+two-hour sweep reaches `pending/` too, so audio waiting for an answer that does not come is deleted unembedded.
+
 Search keeps to his works (image, video, audio, motif, atelier) unless a kind is asked: `search --kind call_audio`,
 `/near?kinds=film_frame`. The chat block (`block`) never asks for call or frame rows.
 
@@ -361,9 +366,36 @@ def test_mode():
     return os.path.exists(TEST_MODE_FLAG)
 
 
-def hold(kind, data, ext, meta=None, test=False):
+PENDING_DIR = "pending"
+
+
+def pending_dir(d=None, create=True):
+    """Where a held call's bytes wait for her answer: a 0700 directory inside the private one, never a link, that no
+    batch reads."""
+    d = d or spool_dir(create=create)
+    path = os.path.join(d, PENDING_DIR)
+    if create:
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+    try:
+        st = os.lstat(path)
+    except OSError:
+        if create:
+            raise
+        return path
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError("the pending directory is not a private directory of this user")
+    if stat.S_IMODE(st.st_mode) != 0o700:
+        os.chmod(path, 0o700)
+    return path
+
+
+def hold(kind, data, ext, meta=None, test=False, pending=None):
     """Hand bytes over for embedding. They wait in the private directory until the next batch embeds and deletes
-    them. Returns the held id, or None when nothing is held (test mode, no venv, nothing given, an unknown kind)."""
+    them. Returns the held id, or None when nothing is held (test mode, no venv, nothing given, an unknown kind).
+    `pending`: the id of a call he started; the bytes wait in pending/ for her answer instead (release, discard)."""
     if kind not in HELD_FROM or not data or test or test_mode() or not enabled():
         return None
     ext = ext if ext in (".wav", ".png", ".jpg", ".webp") else None
@@ -371,9 +403,13 @@ def hold(kind, data, ext, meta=None, test=False):
         return None
     d = spool_dir()
     sweep(d)
+    if pending:
+        d = pending_dir(d)
     hid = "%d-%s" % (int(time.time()), secrets.token_hex(6))
     body, side = os.path.join(d, hid + ext), os.path.join(d, hid + ".json")
     row = dict(meta or {})
+    if pending:
+        row["pending_call"] = str(pending)
     row.update({"kind": kind, "ext": ext, "held_at": time.time()})
     row.setdefault("sha256", hashlib.sha256(data).hexdigest())
     try:
@@ -394,9 +430,11 @@ def pcm_wav(pcm, rate):
     return buf.getvalue()
 
 
-def hold_call_audio(audio, speaker, turn_id=None, session_id=None, sample_rate=24000, test=False):
+def hold_call_audio(audio, speaker, turn_id=None, session_id=None, sample_rate=24000, test=False, pending=None):
     """One side of one local-call turn. `audio`: her PCM (base64 or bytes) or his reply's WAV bytes. Her digest is
-    of the PCM as received, the same as auditory_memory's source_hash, so the two can be joined by digest too."""
+    of the PCM as received, the same as auditory_memory's source_hash, so the two can be joined by digest too.
+    `pending`: a call he started; held apart until her answer, and the same recording of that call held once (a
+    retried turn)."""
     import base64
     if speaker not in ("gloria", "vintos"):
         return None
@@ -406,9 +444,53 @@ def hold_call_audio(audio, speaker, turn_id=None, session_id=None, sample_rate=2
     if not audio:
         return None
     digest = hashlib.sha256(audio).hexdigest()
+    if pending:
+        for hid, meta, _ in held_pending(pending):
+            if meta.get("speaker") == speaker and meta.get("sha256") == digest:
+                return hid
     data = audio if audio[:4] == b"RIFF" else pcm_wav(audio, sample_rate)
     return hold("call_audio", data, ".wav", {"speaker": speaker, "turn_id": turn_id or None,
-                                              "session_id": session_id or None, "sha256": digest}, test=test)
+                                              "session_id": session_id or None, "sha256": digest}, test=test,
+                pending=pending)
+
+
+def held_pending(call_id, d=None):
+    """[(id, meta, body path)] a call he started holds for her answer, oldest first."""
+    try:
+        p = pending_dir(d or spool_dir(create=False), create=False)
+    except OSError:
+        return []
+    if not os.path.isdir(p):
+        return []
+    return [h for h in held(p) if h[1].get("pending_call") == str(call_id)]
+
+
+def release(call_id, d=None):
+    """Her yes: the call's held audio that has not expired goes, once, where the next batch embeds it. Each file
+    keeps its time, so it expires on the clock it was held on. Returns how many were released."""
+    d = d or spool_dir(create=False)
+    if not os.path.isdir(d):
+        return 0
+    sweep(d)
+    n = 0
+    for hid, meta, body in held_pending(call_id, d):
+        side = os.path.join(os.path.dirname(body), hid + ".json")
+        try:
+            os.rename(body, os.path.join(d, os.path.basename(body)))     # the body first: a sidecar lists it
+            os.rename(side, os.path.join(d, hid + ".json"))
+            n += 1
+        except OSError:
+            _drop(body, side, os.path.join(d, os.path.basename(body)))
+    return n
+
+
+def discard(call_id, d=None):
+    """Her no (or a call with nothing to ask about): the call's held audio is deleted unembedded. Returns how many."""
+    n = 0
+    for hid, _, body in held_pending(call_id, d):
+        _drop(body, os.path.join(os.path.dirname(body), hid + ".json"))
+        n += 1
+    return n
 
 
 def _image_ext(data):
@@ -470,6 +552,9 @@ def sweep(d=None, max_age=HELD_MAX_S, now=None):
         if n == ".drain.lock":
             continue
         p = os.path.join(d, n)
+        if n == PENDING_DIR and os.path.isdir(p) and not os.path.islink(p):
+            gone += sweep(p, max_age=max_age, now=now)        # a held call's audio keeps the same clock
+            continue
         try:
             if now - os.lstat(p).st_mtime > max_age:
                 os.unlink(p); gone += 1

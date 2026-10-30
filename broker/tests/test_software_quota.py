@@ -83,22 +83,22 @@ class Tests(unittest.TestCase):
                 dt.now.side_effect = lambda zone, u=utc: datetime.fromisoformat(u).astimezone(zone)
                 self.assertEqual(clock.today(), expected)
 
-    def test_forge_retains_three_then_allows_seven_not_eight(self):
-        c = self.controller
-        for i in range(3):
+    def test_forge_retains_ordinary_limit_then_allows_the_reviewed_ceiling_not_more(self):
+        c, base = self.controller, F.DAILY_STEP_LIMIT   # six since 29 October (was three); the reviewed day allows ten
+        for i in range(base):
             self.assertTrue(c.reserve_build(self.owner, f"{i:032x}", "SK-12345678")["reserved"])
-        self.assertFalse(c.reserve_build(self.owner, f"{3:032x}", "SK-12345678")["reserved"])
+        self.assertFalse(c.reserve_build(self.owner, f"{base:032x}", "SK-12345678")["reserved"])
         self.activate()
-        self.assertEqual(c.step_budget(self.owner)["used"], 3)
-        self.assertEqual(c.step_budget(self.owner)["remaining"], 7)
+        self.assertEqual(c.step_budget(self.owner)["used"], base)
+        self.assertEqual(c.step_budget(self.owner)["remaining"], 10 - base)
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-            outcomes = list(pool.map(lambda i: c.reserve_build(self.owner, f"{i:032x}", "SK-12345678"), range(3, 15)))
-        self.assertEqual(sum(x["reserved"] for x in outcomes), 7)
+            outcomes = list(pool.map(lambda i: c.reserve_build(self.owner, f"{i:032x}", "SK-12345678"), range(base, base + 12)))
+        self.assertEqual(sum(x["reserved"] for x in outcomes), 10 - base)
         self.assertEqual(c.step_budget(self.owner)["used"], 10)
         self.assertTrue(c.reserve_build(self.owner, f"{0:032x}", "SK-12345678")["reserved"])
         self.assertEqual(c.step_budget(self.owner)["used"], 10)
         with patch.object(F, "step_day", return_value="2026-10-08"):
-            self.assertEqual(c.step_budget(self.owner)["limit"], 3)
+            self.assertEqual(c.step_budget(self.owner)["limit"], base)
             self.assertEqual(c.step_budget(self.owner)["used"], 0)
         self.assertEqual(c.step_budget(self.owner)["used"], 10)
 

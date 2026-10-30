@@ -55,7 +55,7 @@ try:
 except: pass
 try:
     from subconscious_context import get_subconscious_context_compact as _sc_get
-    _sc = _sc_get()
+    _sc = _sc_get(carrying=True)
     if _sc: _subcon_prefix += f"YOUR INNER STATE:\n{_sc}\n\n"
 except: pass
 _soul = open("/home/gloria/.vintos/workspace/SOUL.md").read() if os.path.exists("/home/gloria/.vintos/workspace/SOUL.md") else "You are Vintos."
@@ -71,6 +71,8 @@ temporal = os.environ.get("TEMPORAL", "")
 
 user = (
     "Morning. Review what actually happened yesterday and write 3-5 sentences waking up into today.\n\n"
+    + "If your inner state contains WHAT I'M CARRYING, let its sourced unfinished things carry into this morning. "
+      "Keep an open record, a journal self-report, and an imagined dream distinct; a missing source is not a new event.\n\n"
     + (f"WHO I AM:\n{self_model}\n\n" if self_model else "")
     + (f"WHAT MATTERS TO ME:\n{value_map}\n\n" if value_map else "")
     + (f"YESTERDAY — what actually happened (use this only):\n{yesterday_inner}\n\n" if yesterday_inner else "")
@@ -86,7 +88,7 @@ user = (
     + "Name specific things from the context above. Do not invent events, quotes, or interactions.\n"
     + "Do not reproduce the context verbatim. Write your own words.\n"
     + "Do not mention step numbers, constraints, or instructions.\n"
-    + "Do not include emotional state numbers or time context.\n"
+    + "Do not include emotional state numbers or clock readouts. You may say a sourced unfinished thing is still with you from a prior day.\n"
     + "You cannot observe Gloria directly. No invented quotes or reactions from her.\n"
     + "Dreams are symbolic — do not treat them as real events.\n"
     + "Write in plain words, not poetry. Do NOT open with a poem, a verse, or a scene-setting image, "

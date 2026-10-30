@@ -409,7 +409,12 @@ def pick_question():
         import json as _cdj
         _cd = _cdj.load(open(os.path.join(MEMORY, "curiosity-debt.json")))
         _items = _cd if isinstance(_cd, list) else next((v for v in _cd.values() if isinstance(v, list)), [])
-        _live = [x for x in _items if not x.get("retired") and x.get("question")]
+        # One web search per curiosity a month (Gloria, 29 October: "help him not to search for that fish anymore").
+        # "Gloria, what exactly is a 'bull red'?" was judged searchable and searched 26, 27, 28 and 29 October:
+        # nothing marked it searched, so it stayed the ripest item every day.
+        _now = time.time()
+        _live = [x for x in _items if not x.get("retired") and x.get("question")
+                 and _now - float(x.get("searched_at") or 0) > 30 * 86400]
         _live.sort(key=lambda x: -float(x.get("pull", 0) or 0))
         for _item in _live:                       # every live item, ripest first (fable-curiosity-p2)
             _q = str(_item["question"])
@@ -469,6 +474,16 @@ def pick_question():
                 continue
             if _v and _v.get("searchable"):
                 log("searching his own live curiosity: %s" % _q[:90])
+                try:
+                    from curiosity_debt import _load as _cd_load, _save as _cd_save
+                    _cd = _cd_load()
+                    for _x in _cd:
+                        if _x.get("id") == _item.get("id") or _x.get("question") == _q:
+                            _x["searched_at"] = _now
+                            _x["searches"] = int(_x.get("searches") or 0) + 1
+                    _cd_save(_cd)
+                except Exception as _se:
+                    log("could not mark the curiosity searched: %s" % _se)
                 return {"question": _q, "search_query": search_query(_q)}
             log("not searchable and not for her either (%s) - next item: %s" % (str((_v or {}).get("why",""))[:50], _q[:60]))
     except Exception as _cde:

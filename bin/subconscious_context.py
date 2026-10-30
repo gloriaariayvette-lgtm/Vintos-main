@@ -13,7 +13,7 @@ SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-def get_subconscious_context(include=None):
+def get_subconscious_context(include=None, *, carrying=False):
     """Return assembled subconscious context block.
     
     include: list of system names to include, or None for all.
@@ -135,6 +135,13 @@ def get_subconscious_context(include=None):
             if s: parts.append(s)
         except: pass
 
+    if carrying and (all_systems or "carrying" in include):
+        try:
+            from carry_context import context_block
+            carrying = context_block()
+            if carrying: parts.append(carrying)
+        except Exception: pass
+
     if not parts:
         return ""
     return "\n\n".join(parts)
@@ -142,11 +149,11 @@ def get_subconscious_context(include=None):
 COMPACT_SYSTEMS = ("statements", "causal", "drift", "threads", "pressure", "yearning")
 
 
-def get_subconscious_context_compact(include=None):
+def get_subconscious_context_compact(include=None, *, carrying=False):
     """Shorter version for scripts with tight context budgets.
 
     include: names from COMPACT_SYSTEMS (or the full block's names "statements", "causal", "drift"),
-    or None for all. Honoured since 2026-10-16; before that it was accepted and ignored. Pressure
+    or None for the default set. Carrying requires explicit carrying=True from main chat or First Light. Honoured since 2026-10-16; before that it was accepted and ignored. Pressure
     uses emoclaw_pressure.get_pressure_compact (one closed bracket) instead of cutting the full
     [EMOCLAW PRESSURE] block at 200 characters, which left its tag open mid-sentence."""
     parts = []
@@ -198,6 +205,13 @@ def get_subconscious_context_compact(include=None):
             from emoclaw_utils import get_yearning_fragment
             _yb = get_yearning_fragment(include_attempt=True)
             if _yb: parts.append('YEARNING: ' + _yb[:150])
+        except Exception: pass
+
+    if carrying and (include is None or "carrying" in include):
+        try:
+            from carry_context import context_block
+            carrying = context_block()
+            if carrying: parts.append(carrying)
         except Exception: pass
 
     return "\n".join(parts)

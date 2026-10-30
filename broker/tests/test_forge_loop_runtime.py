@@ -64,22 +64,23 @@ class Tests(unittest.TestCase):
         model=LocalModel('http://127.0.0.1:1234/v1/chat/completions','fixture',transport=lambda *a,**k:Response('Prose\n```json\n{"ok":true}\n```'),admission=nullcontext)
         with self.assertRaises(ValueError): model('fixture','fixture')
 
-    def test_three_steps_global_persistent_and_failed_attempts_count(self):
-        import concurrent.futures
-        projects=[self.create() for _ in range(8)]
+    def test_daily_steps_global_persistent_and_failed_attempts_count(self):
+        import concurrent.futures, forge_loop
+        L=forge_loop.DAILY_STEP_LIMIT   # six since 29 October (was three)
+        projects=[self.create() for _ in range(L+5)]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             claims=list(pool.map(lambda p:self.c.claim(self.worker,p['id'],'research_report'),projects))
-        self.assertEqual(sum(c is not None for c in claims),3)
+        self.assertEqual(sum(c is not None for c in claims),L)
         restarted=Controller(self.root/'forge.sqlite',self.owner,self.worker,'https://atelier.invalid')
         self.assertEqual(restarted.step_budget(self.owner)['remaining'],0)
         for p,claim in zip(projects,claims):
             if claim: restarted.uncertain(self.worker,p['id'],claim['cycle_id'])
-        self.assertEqual(restarted.step_budget(self.owner)['used'],3)
+        self.assertEqual(restarted.step_budget(self.owner)['used'],L)
         with patch('forge_loop.step_day',return_value='2099-01-02'):
-            self.assertEqual(restarted.step_budget(self.owner)['remaining'],3)
+            self.assertEqual(restarted.step_budget(self.owner)['remaining'],L)
             untouched=next(p for p,c in zip(projects,claims) if c is None)
             self.assertIsNotNone(restarted.claim(self.worker,untouched['id'],'research_report'))
-        self.assertEqual(json.loads(self.call('/api/budget')[1])['limit'],3)
+        self.assertEqual(json.loads(self.call('/api/budget')[1])['limit'],L)
 
     def test_step_budget_upgrade_does_not_reset_existing_cycles(self):
         p=self.create();self.r.step(p['id'])
@@ -96,6 +97,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.c.step_budget(self.owner)['used'], 1)
         self.assertTrue(self.r.step(p['id']))
         self.assertTrue(self.c.reserve_build(self.owner, 'b'*32, 'SK-87654321')['reserved'])
+        import forge_loop
+        for i in range(forge_loop.DAILY_STEP_LIMIT - 3):   # fill what is left of the day's steps
+            self.assertTrue(self.c.reserve_build(self.owner, '%032x' % (i + 0xf0), 'SK-87654321')['reserved'])
         self.assertFalse(self.r.step(p['id']))
         self.assertFalse(self.c.reserve_build(self.owner, 'c'*32, 'SK-87654321')['reserved'])
         self.assertEqual(self.call('/api/build-reservation', 'POST', {'proposal':'SK-12345678','attempt':'d'*32},token=self.worker)[0],403)

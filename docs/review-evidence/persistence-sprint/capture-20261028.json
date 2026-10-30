@@ -1,0 +1,31 @@
+{
+  "atomic_steps": 17490,
+  "captured_at": "2026-10-28T05:12:05.154645-05:00",
+  "cutoff_exclusive": "2026-10-23",
+  "emotion_readings": 3317,
+  "excluded": {
+    "mutable_dream_nights_without_arrival_history": 1,
+    "mutable_threads_without_arrival_history": 1
+  },
+  "limitations": [
+    "Current admitted historical text versions, not immutable arrival history",
+    "Dream and mutable thread history unavailable; excluded rather than backdated",
+    "Lab and sensors use closed five-minute count/value summaries; kind hash collisions possible"
+  ],
+  "new_embeddings": 91,
+  "raw_rows": {
+    "creative": 328,
+    "emotion": 3317,
+    "her": 265,
+    "him": 297,
+    "inner": 1873,
+    "lab": 131015,
+    "presence": 88,
+    "sensor": 15270,
+    "want": 284,
+    "watch": 8915
+  },
+  "snapshot_sha256": "9ff793dc9578db421e9a343639011fe7589b60dcd64cc632525b82a8006a9fe0",
+  "text_targets": 2763,
+  "source_file_count": 228
+}

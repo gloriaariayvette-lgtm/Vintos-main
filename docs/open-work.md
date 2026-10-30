@@ -1,3 +1,43 @@
+## 29 October — offline persistence sprint recovered for review
+
+`codex/persistence-offline-round-one` reuses the existing eight offline rounds
+from `6f841f33`, on current deploy `340f9195`. The first round already lost its
+historical emotion check; no duplicate fit or 768-d regression is needed.
+Verified Aegis/private input access. Added clean-room capture, timestamp-batch,
+disk-restart and scratch-write tests; repaired missing capture dependencies in
+the v3 future bundle before 31 October. Review revision: **543/543 Aegis suites
+passed**, plus ten CPU-runtime tests; 21 focused broker contracts. See `docs/persistence-sprint-log.md` for
+the distinction between synthetic tests, fitted results and untouched outcomes.
+The 23–29 October emotion-history experiment remains separate and exposed by
+overlapping incumbent scores; 30 October is excluded. First sprint confirmation:
+31 October–6 November. All 34 fitted artifacts are unchanged from v2. Review
+revision 1 makes 24h descriptive-only, retains the six-hour primary and the
+56-contrast interval adjustment, and requires guarded collector entry. The sole
+active v3 is durably private under `/home/gloria/persistence-sprint-private-20261029`;
+older bundles have consumed retirement attempt files. Published diagnostic detail
+is trimmed as requested. No new real-data fit/score or fresh evaluation. The separate 30 October
+08:00 emotion-history follow-up is restored; carrying checks remain with Claude.
+Claude Code review and Gloria's approval precede any merge.
+
+## 28 October — persistent carry, second review
+
+`codex/persistent-carry-review` has no forecasting experiments in its merge diff.
+Second review: every deploy writes the new context flag off, and only main chat
+and First Light explicitly opt in. All other default context callers exclude it.
+Added 40-character/five-word content minimum, timestamp/heading/META-DREAM cleanup,
+H1 boundaries, grok/muse/codex origin exclusions, observation-only Lab/house traffic,
+and at most one checkpoint write per 180 seconds. **542/542 Aegis suites passed**,
+including 52 carrying tests; one existing optional SDK test internally skipped.
+Private aggregate receipts are recorded in the
+[review log](persistent-carry-review-log.md); implementation details in
+[persistent-carry-shadow.md](persistent-carry-shadow.md).
+
+Current shadow root: `/tmp/persistent-carry-second-review-20261028-1Ht0eN`.
+**It does not survive reboot.** No boot service is installed during review.
+Release remains held for one actual uninterrupted midnight under this revision's
+runtime hashes, followed by Claude Code review and Gloria's yes. No merge or live
+deployment. Gloria turns on the production context flag herself after release.
+
 ## 27 October — A ladder to call her back
 
 Built on `claude/attention-ladder-2026-10-27`, revised from Gloria's feedback on `claude/ladder-calls-2026-10-27`;
@@ -45,7 +85,12 @@ ledger and session end, `/api/attention/*`), `bin/vintos-initiate.sh`, `world_mo
   replays the held turns through `_voice_ledger_owned` and `_voice_session_end_owned` (keeping each turn's time;
   owner controls, device tags and the lead are not re-run), so it lands as a call lands today (the suite compares the
   two). No deletes the transcript. Either way `attention-calls.jsonl` keeps a row with no words: when, lane,
-  duration, turn count, saved or not.
+  duration, turn count, saved or not. **Local lane (29 October):** the app also names the call to
+  `/api/voice/local/turn` and `/api/voice/local/end`; the house refuses an id that is not his live Local call, and
+  while she has not answered it holds what it hears apart: the heard records in `attention-calls/held/<id>.json`,
+  both voices' audio in `pending/` of the media index's private RAM directory (no batch reads it, the two-hour
+  sweep still does), her words kept from the intent engine, no batch at the end. Yes publishes them once after the
+  turns (`_attention_call_publish`); No deletes them. Suite: `test_local_call_save_gate.py`.
 - **Cost.** The line: one ordinary outreach per chain (unchanged). His voice: one small chat completion per call
   (120 tokens out), only when two or more lanes are up. The rings: no model call. The call: the lane's
   usual cost — Open is OpenAI realtime audio per minute, Grok is xAI realtime per minute, Local is free (the Mac);

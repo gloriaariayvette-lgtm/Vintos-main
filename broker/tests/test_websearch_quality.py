@@ -131,5 +131,23 @@ check("after a search he takes a position and pushes on it, not a lesson about h
       "Push on it: what holds up, what is weak" in web and "not a lesson about yourself" in web
       and "**Where I stand:**" in web and "**Growth:**" not in web and "What did you learn that changes how you think" not in web)
 
+# Gloria, 29 October: "help him not to search for that fish anymore. He's been doing it for days." His curiosity
+# "Gloria, what exactly is a 'bull red'?" was judged searchable and searched every day: nothing marked it searched.
+debt_path = os.path.join(W.MEMORY, "curiosity-debt.json")
+json.dump([{"id": "f82ce31b", "question": "Gloria, what exactly is a 'bull red'?", "object": "bull red",
+            "kind": "referential", "pull": 0.55, "surfaced": 0}], open(debt_path, "w"))
+W.llm_json = lambda system, prompt, **k: {"searchable": True,
+    "question": "How do bar-tailed godwits navigate an 11-day nonstop flight?", "search_query": "bar-tailed godwit navigation"}
+first = W.pick_question()
+check("his ripest searchable curiosity is searched", first and "bull red" in first.get("question", ""), first)
+item = json.load(open(debt_path))[0]
+check("and is marked searched, with a count", item.get("searched_at") and item.get("searches") == 1, item)
+second = W.pick_question()
+check("the next day it is not searched again: another question is picked",
+      second and "bull red" not in second.get("question", ""), second)
+item["searched_at"] -= 31 * 86400; json.dump([item], open(debt_path, "w"))
+check("after a month the same curiosity may be searched once more", "bull red" in (W.pick_question() or {}).get("question", ""))
+os.remove(debt_path)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -1,0 +1,31 @@
+{
+  "tested_commit": "2a746c6d96e8e85b48f20126f6d4816d9ea38306",
+  "host": "Aegis",
+  "interpreter": "/usr/bin/python3.12",
+  "runner": "scripts/run_isolated_test.py, four private scratch workers, OS isolation",
+  "suites": 542,
+  "passed": 542,
+  "failed": 0,
+  "focused_tests": 52,
+  "internal_skips": {
+    "test_lab_atlas_sdk": 1
+  },
+  "deployment_default_enabled": false,
+  "explicit_carrying_consumers": [
+    "chat_with_vintos",
+    "chat_full_context",
+    "avatar_chat (avatar only)",
+    "First Light"
+  ],
+  "default_context_excluded": true,
+  "state_write_min_interval_seconds": 180,
+  "lab_house_traffic": "health counters only; no semantic input or checkpoint dirtying",
+  "minimum_content_characters": 40,
+  "minimum_content_words": 5,
+  "shadow_survives_reboot": false,
+  "actual_midnight_observed": false,
+  "release_ready": false,
+  "service_static_verify_exit": 0,
+  "service_static_warning": "Existing unrelated vintos-server unit escape-sequence warning.",
+  "constraints": "Private scratch outputs only; no paid calls, real sends, live flag edits, installs, merge or deploy."
+}

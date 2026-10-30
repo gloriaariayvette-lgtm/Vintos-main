@@ -37,8 +37,9 @@ asks.clear(); C._ask = stub([PROSE, GOOD])
 v = C._plan("Return JSON only.", "TASK\n\nREFUSED, IT IS A REPEAT: x.")
 check("a prose reply is asked for once more, as JSON", len(asks) == 2 and "was prose" in asks[1][0] and v.get("browse_lane") == "protein", asks)
 check("the second ask is cooler", asks[1][1].get("temperature") == 0.3, asks[1][1])
-faults = [json.loads(l) for l in open(C.FAULTS)]
-check("the prose reply is written down with the prompt's size", any(f["stage"] == "plan_not_json" and f.get("prompt_chars") for f in faults), faults)
+faults = [json.loads(l) for l in open(C.FAULTS)] if os.path.exists(C.FAULTS) else []
+check("a prose reply the re-ask repaired is not a fault (29 October: ten such faults, all repaired)",
+      not any(f["stage"] == "plan_not_json" for f in faults), faults)
 
 asks.clear(); C._ask = stub([PROSE, PROSE])
 try:
@@ -46,6 +47,10 @@ try:
 except C.ModelJSONError:
     raised = True
 check("two prose replies fail the pass, as before (no third model call)", raised and len(asks) == 2)
+faults = [json.loads(l) for l in open(C.FAULTS)]
+check("and that is written down once, with the prompt's size",
+      [f["stage"] for f in faults].count("plan_not_json") == 1
+      and any(f["stage"] == "plan_not_json" and f.get("prompt_chars") for f in faults), faults)
 
 asks.clear(); C._ask = stub([GOOD])
 long = "OLD CONTEXT " * 10000 + "\n\nChoose ONE protein question. Return its fields."

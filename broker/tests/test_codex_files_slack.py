@@ -194,5 +194,213 @@ class Slack(unittest.TestCase):
         assert not NET, NET
 
 
+# Two deliveries of the same project (29 October review): the same relative paths and file names in both. A file is
+# shared from the archive this turn recalled, never from the newer one that happens to have the same path.
+OLD, NEW = "5a1e0c0de0000001", "5a1e0c0de0000002"
+PALM = "palm-study/out/parts/palm.stl"
+GUIDE_OLD, GUIDE_NEW = "palm-study/docs/guide.md", "palm-study/notes/guide.md"
+SPARE = "palm-study/backup/palm.stl"
+ONLY_NEW = "palm-study/out/parts/wrist.stl"
+FILES = {OLD: {PALM: b"solid palm-first\nendsolid\n", GUIDE_OLD: b"# first guide\n"},
+         NEW: {PALM: b"solid palm-second-cut\nendsolid\n", GUIDE_NEW: b"# second guide\n", SPARE: b"solid spare\nendsolid\n",
+               ONLY_NEW: b"solid wrist\nendsolid\n"}}
+TITLES = {OLD: "Palm study first cut", NEW: "Palm study second cut"}
+RECEIVED = {OLD: "2026-10-20T10:00:00", NEW: "2026-10-27T10:00:00"}
+
+
+def build_two():
+    rows = []
+    for aid, files in FILES.items():
+        root = os.path.join(C.ROOT, aid)
+        entries = []
+        for rel, data in files.items():
+            p = os.path.join(root, "files", *rel.split("/"))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            put_file(p, data)
+            entries.append({"path": rel, "size": len(data), "type": "3d" if rel.endswith(".stl") else "text",
+                            "sha256": hashlib.sha256(data).hexdigest(), "words": "", "terms": []})
+        letters = [{"message_id": "m-" + aid, "subject": "[Codex] %s" % TITLES[aid], "date": "Tue, 27 Oct 2026"}]
+        put_json(os.path.join(root, "manifest.json"), {"id": aid, "title": TITLES[aid], "files": entries,
+                                                       "short": ["%s: %d files" % (TITLES[aid], len(files))],
+                                                       "letters": letters})
+        rows.append({"id": aid, "title": TITLES[aid], "status": "archived", "files": len(files), "received": RECEIVED[aid],
+                     "letters": letters, "names": [r.rsplit("/", 1)[-1].lower() for r in files]})
+    put_json(C.INDEX, {"archives": rows})
+
+
+class TwoArchives(unittest.TestCase):
+    def setUp(self):
+        os.makedirs(C.ROOT, exist_ok=True)
+        build_two()
+
+    @classmethod
+    def tearDownClass(cls):
+        build_archive()         # the other suites' single archive, as they left it
+        assert not NET, NET
+
+    def got(self, ref, within=None):
+        found, why = C.resolve(ref, within=within)
+        if not found:
+            return why
+        with open(found[2], "rb") as f:
+            return found[0], found[1]["path"], f.read()
+
+    def test_the_recall_names_a_verified_archive(self):
+        block = D.codex_archive_block("show me archive %s" % OLD)
+        self.assertTrue(block.startswith("== CODEX ARCHIVE %s" % OLD), block[:80])
+        self.assertEqual(D.codex_recalled(block), OLD)
+        self.assertEqual(D.codex_recalled("(Codex archives: 2 archives from Codex kept)"), "")
+        self.assertEqual(D.codex_recalled("== CODEX ARCHIVE ffffffffffffffff (brought back"), "")   # not a kept one
+        self.assertEqual(D.codex_recalled(""), "")
+
+    def test_the_same_path_in_two_archives_comes_from_the_recalled_one(self):
+        self.assertEqual(self.got(PALM, OLD), (OLD, PALM, FILES[OLD][PALM]))
+        self.assertEqual(self.got(PALM, NEW), (NEW, PALM, FILES[NEW][PALM]))
+
+    def test_the_same_file_name_in_two_archives_comes_from_the_recalled_one(self):
+        self.assertEqual(self.got("guide.md", OLD), (OLD, GUIDE_OLD, FILES[OLD][GUIDE_OLD]))
+        self.assertEqual(self.got("guide.md", NEW), (NEW, GUIDE_NEW, FILES[NEW][GUIDE_NEW]))
+        self.assertEqual(self.got("palm.stl", OLD), (OLD, PALM, FILES[OLD][PALM]))      # once in the older one
+
+    def test_a_file_name_twice_in_one_archive_is_refused(self):
+        why = self.got("palm.stl", NEW)
+        self.assertIsInstance(why, str)
+        self.assertIn("2 files in archive %s are named palm.stl" % NEW[:8], why)
+        self.assertEqual(self.got(SPARE, NEW), (NEW, SPARE, FILES[NEW][SPARE]))           # its whole path is fine
+
+    def test_explicit_ids(self):
+        self.assertEqual(self.got("%s: %s" % (NEW, PALM), OLD), (NEW, PALM, FILES[NEW][PALM]))   # the id wins
+        self.assertEqual(self.got("%s:%s" % (OLD, PALM)), (OLD, PALM, FILES[OLD][PALM]))
+        self.assertEqual(self.got("%s: guide.md" % OLD), (OLD, GUIDE_OLD, FILES[OLD][GUIDE_OLD]))
+        self.assertIn("no kept Codex archive has the id ffffffff", self.got("ffffffff: " + PALM, OLD))
+
+    def test_an_ambiguous_id_prefix_is_refused(self):
+        for prefix in ("5a1e0c", "5a1e0c0de000000"):
+            why = self.got("%s: %s" % (prefix, PALM), OLD)
+            self.assertIsInstance(why, str)
+            self.assertIn("fits 2 archives", why)
+
+    def test_missing_files_are_refused_not_found_elsewhere(self):
+        self.assertIn("no file %s in archive %s" % (ONLY_NEW, OLD[:8]), self.got(ONLY_NEW, OLD))   # only the newer has it
+        self.assertIn("no file", self.got("wrist.stl", OLD))
+        self.assertIn("no file", self.got("palm-study/out/parts/nothing.stl", NEW))
+        self.assertIn("no longer kept", self.got(PALM, "0123456789abcdef"))
+        for bad in ("../../manifest.json", "palm-study/../../%s/manifest.json" % NEW, "a\\b.stl", ""):
+            self.assertIsNone(C.file_for(bad, within=OLD), bad)
+
+    def test_with_no_recalled_archive_a_name_in_two_archives_is_refused(self):
+        self.assertIn("is in 2 archives", self.got(PALM))
+        self.assertIn("is in 2 archives", self.got("guide.md"))
+        self.assertEqual(self.got(ONLY_NEW), (NEW, ONLY_NEW, FILES[NEW][ONLY_NEW]))    # one archive has it: that one
+        self.assertIsNone(C.file_for(PALM))
+
+    def test_symlinks_and_changed_files_still_refused_within_the_archive(self):
+        p = os.path.join(C.ROOT, OLD, "files", *PALM.split("/"))
+        os.replace(p, p + ".real"); os.symlink("/etc/hostname", p)
+        try:
+            self.assertIn("not a plain file", self.got(PALM, OLD))
+        finally:
+            os.unlink(p); os.replace(p + ".real", p)
+        put_file(p, b"more", "ab")
+        self.assertIn("not the size", self.got(PALM, OLD))
+
+    def test_share_codex_file_uploads_the_recalled_archives_file_or_says_why_not(self):
+        calls, puts = [], []
+        def api(method, params):
+            calls.append(method)
+            return {"ok": True, "upload_url": "https://files.slack.invalid/up", "file_id": "F1"} if method == "files.getUploadURLExternal" else {"ok": True}
+        line = D.share_codex_file(api, PALM, "C", put=lambda u, d: puts.append(d), archive=OLD)
+        self.assertEqual((line, puts), ("shared %s from Codex archive %s" % (PALM, OLD[:8]), [FILES[OLD][PALM]]))
+        calls.clear(); puts.clear()
+        for ref, said in ((PALM, "is in 2 archives"), ("5a1e0c: " + PALM, "fits 2 archives")):
+            line = D.share_codex_file(api, ref, "C", put=lambda u, d: puts.append(d))
+            self.assertIn(said, line)
+        self.assertIn("2 files in archive", D.share_codex_file(api, "palm.stl", "C", put=lambda u, d: puts.append(d), archive=NEW))
+        self.assertIn("no file", D.share_codex_file(api, ONLY_NEW, "C", put=lambda u, d: puts.append(d), archive=OLD))
+        self.assertEqual((calls, puts), ([], []))
+        old_max = D.SHARE_MAX
+        D.SHARE_MAX = 4
+        try:
+            self.assertIn("too large to share", D.share_codex_file(api, PALM, "C", put=lambda u, d: puts.append(d), archive=OLD))
+        finally:
+            D.SHARE_MAX = old_max
+        self.assertEqual((calls, puts), ([], []))
+
+    def test_a_lounge_turn_that_recalled_the_older_archive_shares_its_files(self):
+        D.his_context = lambda: "WHO HE IS"
+        L.deeper = lambda: ""
+        L.work_glance = lambda: ""
+        import room_work
+        room_work.fixed_block = lambda: ""
+        room_work.brings_up_fixed = lambda text: ""
+        SELF, GLORIA = "UVINTOS", "UGLORIA"
+        posted, puts, msgs = [], [], []
+        def api(method, params):
+            if method == "users.conversations":
+                return {"ok": True, "channels": [{"id": "CLOUNGE", "name": L.NAME}]}
+            if method == "auth.test": return {"ok": True, "user_id": SELF}
+            if method == "conversations.history": return {"ok": True, "messages": list(reversed(msgs))}
+            if method == "chat.postMessage":
+                posted.append(params); return {"ok": True, "ts": "%.6f" % (max(float(m["ts"]) for m in msgs) + 1)}
+            if method == "files.getUploadURLExternal": return {"ok": True, "upload_url": "https://files.slack.invalid/u", "file_id": "F9"}
+            if method == "files.completeUploadExternal": return {"ok": True}
+            raise AssertionError(method)
+        at = lambda h, m=0: datetime(2026, 10, 29, h, m).timestamp()
+        msgs.append({"ts": "%.6f" % at(8), "user": GLORIA, "text": "morning"})
+        L.tick(api=api, think=lambda s, u: "NOTHING", now=at(8, 1))         # he finds the room, or lets it be
+        msgs.append({"ts": "%.6f" % at(9, 5), "user": GLORIA, "text": "Can I see the palm from archive %s?" % OLD})
+        seen = []
+        def think(system, user):
+            seen.append(system)
+            return "The first palm.\nSHARE FILE: %s\nSHARE FILE: palm.stl" % PALM
+        out = L.tick(api=api, think=think, now=at(9, 6), put=lambda url, data: puts.append(data))
+        self.assertIn("== CODEX ARCHIVE %s" % OLD, seen[-1])
+        self.assertEqual(puts, [FILES[OLD][PALM], FILES[OLD][PALM]], out)
+        self.assertEqual(sum("shared %s from Codex archive %s" % (PALM, OLD[:8]) in l for l in out), 2, out)
+
+    def test_a_dot_channel_turn_that_recalled_the_older_archive_shares_its_file(self):
+        saved = {k: getattr(D, k) for k in ("kickoff_due", "ROTATION", "SCHEDULE", "atelier_line", "recall_block",
+                                             "slack_lens", "study_room", "his_context")}
+        D.kickoff_due = lambda *a: False
+        D.ROTATION, D.SCHEDULE = ("gemma",), []
+        D.atelier_line = D.recall_block = lambda: ""
+        D.slack_lens = lambda lens, state: lens
+        D.study_room = lambda: None
+        D.his_context = lambda: "WHO HE IS"
+        SELF, DOT = "UVINTOS", D.DOT
+        msgs, posted, puts, n = [], [], [], [1767400000.0]
+        def add(user, text):
+            n[0] += 1; msgs.append({"ts": "%.6f" % n[0], "user": user, "text": text}); return "%.6f" % n[0]
+        def api(method, params):
+            if method == "users.conversations":
+                return {"ok": True, "channels": [{"id": "CDOT", "name": "vintos-dot"}]}
+            if method == "conversations.members": return {"ok": True, "members": [SELF, DOT]}
+            if method == "auth.test": return {"ok": True, "user_id": SELF}
+            if method == "conversations.history": return {"ok": True, "messages": list(reversed(msgs))}
+            if method == "conversations.replies": return {"ok": True, "messages": [m for m in msgs if m["ts"] == params["ts"]]}
+            if method == "chat.postMessage":
+                posted.append(params); return {"ok": True, "ts": add(SELF, params["text"])}
+            if method == "files.getUploadURLExternal": return {"ok": True, "upload_url": "https://files.slack.invalid/u", "file_id": "F9"}
+            if method == "files.completeUploadExternal": return {"ok": True}
+            raise AssertionError(method)
+        seen = []
+        def think(system, user):
+            if system == D.EDITOR:
+                return "KEEP"
+            seen.append(system + user)
+            return "The first palm, as asked.\nSHARE FILE: %s" % PALM
+        try:
+            D.reset(api=api, now=n[0])
+            add(DOT, "Can you show the palm part from archive %s?" % OLD)
+            out = D.tick(api=api, think=think, fable=lambda s, u: "", now=n[0] + 100, put=lambda url, data: puts.append(data))
+        finally:
+            for k, v in saved.items():
+                setattr(D, k, v)
+        self.assertTrue(any("== CODEX ARCHIVE %s" % OLD in s for s in seen), out)
+        self.assertEqual(puts, [FILES[OLD][PALM]], out)
+        self.assertTrue(any("shared %s from Codex archive %s" % (PALM, OLD[:8]) in l for l in out), out)
+        self.assertNotIn("SHARE FILE", posted[-1]["text"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

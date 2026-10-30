@@ -48,6 +48,8 @@ class Productive(unittest.TestCase):
   self.cfg=dict(C.DEFAULTS,enabled=True,evo2_enabled=False,atlas_evo2_enabled=False,forge_report_intake=None)
   self.stack.enter_context(patch.object(C,'config',return_value=self.cfg))
   self.stack.enter_context(patch.object(C,'stop_requested',return_value=False))
+  # every pass here plans again; the wait's backoff between passes is test_lab_cooldown_spin's
+  self.stack.enter_context(patch.object(C,'QUIET_WAIT_BASE_SECONDS',0))
   self.stack.enter_context(patch.object(C,'lab_context',return_value=('offline scientific context',{'context_sha256':'offline'})))
   self.stack.enter_context(patch.object(C,'atlas_turn_due',return_value=False))
   self.stack.enter_context(patch.object(C,'_existing_model_read',side_effect=lambda x:x))

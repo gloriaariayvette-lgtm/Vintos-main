@@ -88,6 +88,35 @@ class Notes(unittest.TestCase):
             G.ask('Question number %d for her, yes or no?' % i, by='dot', send=self.push)
         self.assertEqual(len(G.plans_from('For Gloria: the felt-only run of Still Under, Sunday.', send=self.push)), 1)
 
+    # Chat's review, 29 October: the shared explanation made unrelated plans look alike (0.733 > 0.7)
+    def test_two_unrelated_plans_both_reach_her(self):
+        a = G.plans_from('For Gloria: the two-room test, Saturday.', where='letter to Muse', send=self.push)
+        b = G.plans_from('For Gloria: the hall sensor build, Friday.', where='letter to Muse', send=self.push)
+        self.assertEqual((len(a), len(b)), (1, 1))
+        self.assertEqual(len(self.sent), 2)
+
+    def test_unrelated_plan_after_her_no_still_reaches_her(self):
+        r = G.plans_from('For Gloria: the two-room test, Saturday.', where='letter to Muse', send=self.push)[0]
+        G.decide(r['id'], 'no')
+        self.assertEqual(len(G.plans_from('For Gloria: the hall sensor build, Friday.', where='letter to Muse',
+                                          send=self.push)), 1)
+
+    def test_the_same_plan_in_other_words_is_not_asked_again(self):
+        G.plans_from('For Gloria: the two-room test this Saturday, both rooms measured first.', send=self.push)
+        self.assertEqual(G.plans_from('For Gloria: both rooms measured first, then the two-room test Saturday.',
+                                      where='letter to Grok Bot', send=self.push), [])
+        r = G.load()[0]; G.decide(r['id'], 'no')
+        row, line = G.propose('the two-room test this Saturday, both rooms measured first', where='letter to Muse',
+                              send=self.push)
+        self.assertIsNone(row); self.assertIn('already answered', line)
+        self.assertEqual(len(self.sent), 1)                 # her No stands; nothing reopened
+
+    def test_ordinary_questions_still_match_each_other_as_before(self):
+        G.ask('Skin-only check of Still Under tonight, mains down until the room cannot hear it?', send=self.push)
+        row, _ = G.ask('Still Under skin-only check tonight, with the mains down until the room cannot hear it?',
+                       send=self.push)
+        self.assertIsNone(row)
+
     def test_wired_into_his_letters_his_slack_and_his_avatar_chat(self):
         self.assertIn('gloria_asks.plans_from("\\n".join(_notes), by="vintos"', (REPO / 'scripts' / 'want_email.py').read_text())
         self.assertIn('gloria_asks.notes_from(text, by="vintos"', (REPO / 'scripts' / 'dot_channel.py').read_text())

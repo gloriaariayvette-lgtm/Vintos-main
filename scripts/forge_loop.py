@@ -19,7 +19,7 @@ import software_quota
 
 INTAKE_RELEASED_STATES = frozenset(("complete", "cancelled", "abandoned", "failed", "awaiting_lab"))
 
-DAILY_STEP_LIMIT = 3
+DAILY_STEP_LIMIT = 6   # Gloria, 29 October: six steps a day (was three)
 STEP_TIMEZONE = ZoneInfo("America/Chicago")
 
 # Plain words for the owner. The page showed ids, "Needs reconciliation" and, for Lab projects, the whole

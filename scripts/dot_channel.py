@@ -1444,16 +1444,18 @@ def _upload(api, path, title, channel, thread=None, put=None):
     api("files.completeUploadExternal", done)
 
 
-def share_codex_file(api, ref, channel, thread=None, put=None):
+def share_codex_file(api, ref, channel, thread=None, put=None, archive=None):
     """Upload one file of a kept Codex archive (a render, a model, a report), named as his recall listed it. Returns a
-    line for the log. Only files the archive's own manifest lists, from inside its unpacked folder."""
+    line for the log. Only files the archive's own manifest lists, from inside its unpacked folder. `archive` is the
+    archive this turn recalled (codex_archives.recalled_id): a path or a file name without an id is looked for in it
+    alone, never in a newer delivery that has the same path; a missing or ambiguous name is refused, and said."""
     try:
         import codex_archives
-        got = codex_archives.file_for(ref)
+        got, why = codex_archives.resolve(ref, within=archive or None)
     except Exception as exc:
         return "could not look for %r in the Codex archives: %s" % (str(ref)[:120], str(exc)[:120])
     if not got:
-        return "no file %r in a kept Codex archive to share" % str(ref)[:120]
+        return "no file %r shared from the Codex archives: %s" % (str(ref)[:120], why[:240])
     aid, e, path = got
     size = os.path.getsize(path)
     if size > SHARE_MAX:
@@ -1467,6 +1469,15 @@ def codex_shares(text, recalled):
     (recalled): otherwise the lines are only taken out."""
     refs = SHARE_FILE.findall(text or "")[:CODEX_SHARES]
     return SHARE_FILE.sub("", text or "").strip(), (refs if recalled else [])
+
+
+def codex_recalled(block):
+    """The verified id of the archive a codex_archive_block() brought in, or '' (no recall, or not a kept archive)."""
+    try:
+        import codex_archives
+        return codex_archives.recalled_id(block)
+    except Exception:
+        return ""
 
 
 def atelier_line():
@@ -3825,7 +3836,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     text = DO.sub(lambda m: do_shown(m.group(1)[:300], next(shown_do, "")), text).strip()
     if lock:
         text = LOCKED.sub(lambda m: "\U0001F512 Locked: " + m.group(1), text).strip()
-    text, codex_files = codex_shares(text, cx.startswith("== CODEX ARCHIVE"))
+    cx_id = codex_recalled(cx)          # which archive was recalled, so its paths are looked for in it alone
+    text, codex_files = codex_shares(text, cx_id)
     shares = SHARE.findall(text)[:3]
     text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares + [f.rsplit("/", 1)[-1] for f in codex_files])
                                            if shares or codex_files else text)
@@ -3907,7 +3919,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
     for ref in codex_files:
         try:
-            lines.append(share_codex_file(api, ref, channel, where, put=put))
+            lines.append(share_codex_file(api, ref, channel, where, put=put, archive=cx_id))
         except Exception as exc:
             lines.append("could not share %s: %s" % (ref[:120], str(exc)[:120]))
     state["sent"] += 1; state["last_activity"] = now

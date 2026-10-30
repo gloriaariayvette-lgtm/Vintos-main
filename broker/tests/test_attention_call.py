@@ -100,7 +100,7 @@ class House:
                      "attention_call_save", "_attention_call_replay", "_attention_call_session", "_attention_call_block_landed",
                      "_attention_call_take_session", "_attention_call_forget", "attention_call_opening",
                      "attention_answer_button", "attention_call_answer", "attention_calls_pending",
-                     "attention_config_write", "attention_config_read"):
+                     "attention_config_write", "attention_config_read", "_attention_call_publish"):
             exec(_seg(name), self.ns)
 
     def close(self):
@@ -754,7 +754,8 @@ class Client(unittest.TestCase):
                      "if(!_ladder) try{", "Save this call to his memory?", "/api/attention/calls/${encodeURIComponent(c.id)}/save",
                      "localNotificationActionPerformed", "visibilitychange"):
             self.assertIn(want, h)
-        self.assertEqual(h.count("ladder_call:session.ladder?session.ladder.id:undefined"), 2)   # both hangups
+        # both hangups, and the Local lane's own turn and end (test_local_call_save_gate.py)
+        self.assertEqual(h.count("ladder_call:session.ladder?session.ladder.id:undefined"), 4)
         # the opening response is the only one that skips the stratagem completion gate, and only on a ladder call
         self.assertIn("eventId:session.openingPending?undefined:session.admissionEvent,opening:!!session.openingPending", h)
 

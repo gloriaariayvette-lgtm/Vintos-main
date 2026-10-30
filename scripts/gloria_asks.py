@@ -146,9 +146,17 @@ def get_with_token(qid, token):
 SAME_DAYS = 7
 
 
+def _substance(row):
+    """What a stored question is about. A plan's question wraps his own line in the same explanation every time
+    (propose); its line is kept as its title, and that is what is compared. Two unrelated plans ("the two-room test,
+    Saturday" and "the hall sensor build, Friday") once matched at 0.733 on the shared wording alone, and the second
+    never reached her (Chat's review, 29 October)."""
+    return (row.get("title") if row.get("kind") == "plan" and row.get("title") else row.get("question")) or ""
+
+
 def _asked_before(q, rows):
     """A question like this one still on her phone, or answered in the last SAME_DAYS days: most of the shorter
-    one's content words, at least three, shared."""
+    one's content words, at least three, shared. q is the substance: for a plan, his line itself."""
     import room_work
     have = room_work._words(q)
     cutoff = (_now() - timedelta(days=SAME_DAYS)).isoformat(timespec="seconds")
@@ -157,8 +165,9 @@ def _asked_before(q, rows):
             continue
         if r.get("state") == "answered" and str(r.get("answered_at", "")) < cutoff:
             continue
-        theirs = room_work._words(r.get("question", ""))
-        if theirs and have and len(have & theirs) >= 3 and room_work._like(q, r.get("question", "")) >= 0.7:
+        text = _substance(r)
+        theirs = room_work._words(text)
+        if theirs and have and len(have & theirs) >= 3 and room_work._like(q, text) >= 0.7:
             return r
     return None
 
@@ -178,7 +187,7 @@ def ask(question, by="vintos", thread="", send=None, kind="question", title="", 
     if not ref:
         # the same decision asked again in other words (2026-10-05: "do not send me another decision request
         # without material new information"): her answer this week stands, and one still on her phone is waiting
-        same = _asked_before(q, rows)
+        same = _asked_before(" ".join(str(title).split()) if kind == "plan" and title else q, rows)
         if same and same.get("state") == "answered":
             return None, ("\U0001F4F2 Not asked: Gloria already answered this on %s: %s — %s" % (
                 str(same.get("answered_at", ""))[:10], str(same.get("answer", "")).upper(), same.get("title") or same.get("question", "")))
@@ -240,11 +249,27 @@ def decide_with_token(qid, token, answer):
     row = get(qid)
     if not row or not row.get("token") or token != row["token"]:
         return None, "that is not this question's button"
+    if row.get("state") == "withdrawn":
+        return None, "this is no longer waiting on you: %s" % row.get("why_withdrawn", "")
     if row.get("state") != "asked":
         return None, "already answered: %s" % row.get("answer", "")
     if answer not in ("yes", "no"):
         return None, "answer must be yes or no"
     return decide(qid, answer), ""
+
+
+def withdraw_missing(kinds, live_refs, why):
+    """Her phone's cards of these kinds whose ref is no longer waiting (decided on her page, done in the Study, or
+    gone): withdrawn, never counted as her answer (Gloria, 29 October: all 22 Forge cards on her phone pointed at
+    nothing). Returns the rows withdrawn."""
+    data, out = load(), []
+    for r in data:
+        if r.get("state") == "asked" and r.get("kind") in kinds and r.get("ref") and r["ref"] not in live_refs:
+            r.update(state="withdrawn", withdrawn_at=_now().isoformat(timespec="seconds"), why_withdrawn=str(why)[:200])
+            out.append(r)
+    if out:
+        save(data)
+    return out
 
 
 def untold():

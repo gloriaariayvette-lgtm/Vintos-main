@@ -84,13 +84,53 @@ GA.notify = lambda row, send=None: (PHONE.append(row), True)[1]
 check("her phone is a stub and its store is the scratch one", GA.STORE.startswith(HOME) and GA.notify("x") is True and PHONE.pop() == "x")
 os.makedirs(SF.MEMORY, exist_ok=True)
 gap, _ = SF.propose_from_gap_review("citation_graph_traversal", "Follow citations both ways", ["dot: two-way traversal design"],
-                                    path="/mnt/c/Users/glori/Documents/design.md", touches=["scripts/citations.py"], tests="a two-way test")
-denied, _ = SF.propose_from_gap_review("old_idea", "an idea she will refuse", ["evidence"])
+                                    path="/mnt/c/Users/glori/Documents/design.md", touches=["scripts/citations.py"], tests="a two-way test",
+                                    reachable_by="access")
+denied, _ = SF.propose_from_gap_review("old_idea", "an idea she will refuse", ["evidence"], reachable_by="device")
+# a broken-code report is engineering work: Claude Code's list, not her phone (Gloria, 29 October)
+bug, _ = SF.propose_from_gap_review("llm_choices_response_handling", "The ValueMap call errors on a missing 'choices' key",
+                                    ["LLM error: choices"], touches=["scripts/value_map.py"], tests="a guarded call")
 cards = H.decision_cards()
 card = next(x for x in cards if x["ref"] == gap["id"])
 check("every card waiting for her yes becomes a decision, dot's (no want behind it) included",
       card["title"] == "Citation graph traversal" and card["what"] == "Follow citations both ways"
       and any("design.md" in l for l in card["details"]) and "nothing is bought" in card["cost"], card)
+check("a code fix from the gap review is not her decision: it goes to Claude Code's list instead",
+      all(x["ref"] != bug["id"] for x in cards)
+      and H._jload(H.FOR_CLAUDE_CODE, {}).get(bug["id"], {}).get("title") == "llm choices response handling"
+      and gap["id"] not in H._jload(H.FOR_CLAUDE_CODE, {}), H._jload(H.FOR_CLAUDE_CODE, {}))
+# Claude Code's list says what is still work (Chat's review, 29 October): closed with why, never deleted, and never
+# closed on a list it could not read
+FIX = dict(SF._get(SF._load(), bug["id"]), id="SK-0f1x0001", capability="handle_missing_embed_data")
+def eng(): return H._jload(H.FOR_CLAUDE_CODE, {}).get("SK-0f1x0001") or {}
+H.decision_cards([FIX]); H.decision_cards([FIX])
+check("a code fix queued twice is one open entry with one history line",
+      eng().get("status") == "open" and len(eng().get("history", [])) == 1, eng())
+H.decision_cards([])
+check("an empty or unreadable proposals list closes nothing", eng().get("status") == "open", eng())
+_rows, _routed = H._study_rows, H._jload(H.TO_STUDY, {})
+H._jsave(H.TO_STUDY, dict(_routed, **{"SK-0f1x0001": "SF-0f1x0001"}))
+H._study_rows = lambda: {"SF-0f1x0001": {"id": "SF-0f1x0001", "state": "working"}}
+H.decision_cards([FIX])
+check("while the Study is doing it, it is marked Study-owned, not open",
+      eng().get("status") == "study_owned" and "SF-0f1x0001" in eng().get("reason", ""), eng())
+H._study_rows = lambda: {}
+H.decision_cards([FIX])
+check("an unreadable Study changes nothing", eng().get("status") == "study_owned", eng())
+H._study_rows = lambda: {"SF-0f1x0001": {"id": "SF-0f1x0001", "state": "done"}}
+H.decision_cards([FIX])
+check("done in the Study closes it, saying so", eng().get("status") == "closed" and "done in the Study" in eng()["reason"], eng())
+H._study_rows = _rows; H._jsave(H.TO_STUDY, _routed)
+for state in ("denied", "withdrawn"):
+    entry = H._jload(H.FOR_CLAUDE_CODE, {}); entry["SK-0f1x0001"].update(status="open", reason="")
+    H._jsave(H.FOR_CLAUDE_CODE, entry)
+    H.decision_cards([dict(FIX, state=state)])
+    check("a %s proposal closes it with that reason" % state,
+          eng().get("status") == "closed" and eng().get("reason") == "proposal " + state, eng())
+H.decision_cards([dict(FIX, id="SK-0th3r001")])
+check("a readable list without it closes it as gone, keeping its history",
+      eng().get("status") == "closed" and "no longer" in eng().get("reason", "") and len(eng()["history"]) >= 4, eng())
+check("a closed fix never comes back to her phone", all(x["ref"] != "SK-0f1x0001" for x in H.decision_cards([dict(FIX, state="denied")])))
 
 FORGE = {"decisions": []}
 def transport(req, timeout=0):
@@ -185,7 +225,7 @@ code, _ = SF.propose_from_gap_review("slack_thread_reader", "Read Slack threads 
                                      touches=["scripts/dot_channel.py"], tests="a thread test")
 guarded, _ = SF.propose_from_gap_review("jepa_window", "Widen the JEPA window", ["evidence"], touches=["scripts/jepa_predictor.py"])
 sent = H.route_to_study()
-check("a code change inside his reach goes to the Study by itself", sent == [code["id"]]
+check("a code change inside his reach goes to the Study by itself", code["id"] in sent and guarded["id"] not in sent
       and any(r.get("by") == "forge:" + code["id"] and "Read Slack threads whole" in r["what"] for r in SFX._load()), sent)
 check("one touching his subconscious or JEPA stays with her", guarded["id"] not in sent
       and any(x["ref"] == guarded["id"] for x in H.decision_cards()))
@@ -195,7 +235,9 @@ for r in rows:
     if r["id"] == sfid: r.update(state="failed", log=[{"what": "still failing after 3 tries: test_x.py"}])
 SFX._save(rows)
 back = next((x for x in H.decision_cards() if x["ref"] == code["id"]), None)
-check("if the Study could not land it, it comes to her, saying so", back and "did not land: still failing after 3 tries" in back["what"], back)
+eng = H._jload(H.FOR_CLAUDE_CODE, {}).get(code["id"]) or {}
+check("if the Study could not land it, it goes to Claude Code's list with the Study's note, not to her (29 October)",
+      back is None and eng.get("study") and "still failing after 3 tries" in str(eng["study"]), (back, eng))
 for r in rows:
     if r["id"] == sfid: r["state"] = "done"
 SFX._save(rows); H.route_to_study()
@@ -209,6 +251,20 @@ check("Muse's skill says how to answer a Forge parts request, and still never to
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
 check("the house sync runs each step after the gap sync, and none can stop the others",
       "for step in (route_to_study, sync_decisions, _run_accepted_calls, ask_muse_for_parts):" in house)
+# her phone drops a card that is no longer waiting anywhere, as her page does (29 October: all 22 on it pointed at
+# nothing); a live card stays, and a withdrawn one is never her answer
+GA.save([{"id": "Q-gone", "kind": "card", "ref": "card:SK-00000000", "state": "asked", "token": "t1", "question": "old"},
+         {"id": "Q-live", "kind": "card", "ref": "card:SK-11111111", "state": "asked", "token": "t2", "question": "live"},
+         {"id": "Q-buy", "kind": "buy", "ref": "", "state": "asked", "token": "t3", "question": "a purchase"}])
+gone = GA.withdraw_missing(("card", "parts", "arrived"), {"card:SK-11111111"}, "no longer waiting in the Forge")
+rows = {r["id"]: r for r in GA.load()}
+check("a phone card no longer waiting is withdrawn; a live one and a purchase stay asked",
+      [r["id"] for r in gone] == ["Q-gone"] and rows["Q-gone"]["state"] == "withdrawn"
+      and rows["Q-live"]["state"] == "asked" and rows["Q-buy"]["state"] == "asked", rows)
+check("a withdrawn card cannot be answered and is never counted as hers",
+      GA.decide_with_token("Q-gone", "t1", "yes")[0] is None and "no longer waiting" in GA.decide_with_token("Q-gone", "t1", "yes")[1]
+      and all(r["id"] != "Q-gone" for r in GA.waiting()) and GA.untold() == [])
+check("the house tidies her phone on every decisions sync", "gloria_asks.withdraw_missing(" in house)
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))

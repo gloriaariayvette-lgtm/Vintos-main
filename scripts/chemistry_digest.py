@@ -44,6 +44,9 @@ KEPT = os.path.join(LAB, "kept-findings.json")
 DAILY_STATS = os.path.join(LAB, "daily-stats.jsonl")
 
 
+QUESTION_CHARS = 200   # a next question in his day; one family question ran to every absent member's name
+
+
 def _clip(text, limit=300):
     text = " ".join(str(text or "").split())
     return (text[:limit] + "…") if len(text) > limit else text
@@ -92,7 +95,7 @@ def _recent_questions(notebook, sessions, n=2):
         for value in candidates:
             v = str(value or "").strip()
             if v and v not in seen:
-                seen.add(v); out.append(_clip(v, 400))
+                seen.add(v); out.append(_clip(v, QUESTION_CHARS))
                 if len(out) >= n: return out
     return out
 
@@ -176,8 +179,26 @@ def _ran_lines(experiment_rows):
         if execution != "completed": continue
         accuracy = str(row.get("aggregate_accuracy") or grade.get("aggregate_accuracy") or "ungraded")[:80]
         subject = _experiment_line(row)[2:].split(":", 1)[0]
-        out.append("- %s ran: %s" % (subject, accuracy))
+        out.append("- %s ran: %s" % (subject, accuracy_sentence(accuracy)))
     return _dedupe(out)
+
+
+# chemistry_grade._aggregate's verdicts over a whole curve, said as a sentence in his day (the enum stays in the stats).
+ACCURACY_SENTENCES = {
+    "ALL_BETTER_THAN_HARTREE_FOCK": "every point came in below Hartree-Fock, so some correlation energy was recovered",
+    "ALL_WORSE_THAN_HARTREE_FOCK": "every point sat above Hartree-Fock, so the run did worse than the reference",
+    "ALL_AT_HARTREE_FOCK": "every point matched Hartree-Fock, with no correlation energy recovered",
+    "MIXED": "some points beat Hartree-Fock and some did not",
+    "ANY_INVALID_BELOW_EXACT": "at least one point fell below the exact energy, which is not physical, so the run is not trusted",
+    "NO_GRADEABLE_POINTS": "no point could be graded against a reference",
+    "ungraded": "it was not graded",
+}
+
+
+def accuracy_sentence(value):
+    """A plain sentence for an aggregate accuracy verdict; an unknown one is said as itself, lower-cased."""
+    value = str(value or "ungraded").strip()
+    return ACCURACY_SENTENCES.get(value) or value.replace("_", " ").lower()
 
 
 def _kept(day):

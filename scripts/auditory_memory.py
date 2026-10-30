@@ -113,6 +113,35 @@ def record(audio_b64: str, sample_rate: int, heard: Dict[str, Any], turn_id: Opt
            source: str = "voice_local", test_mode: bool = False) -> Optional[Dict[str, Any]]:
     """Keep one heard utterance. Returns the record, or None when there is nothing to keep (no reading, no
     words, test mode). The same recording in the same turn is kept once."""
+    rec = build(audio_b64, sample_rate, heard, turn_id=turn_id, source=source, test_mode=test_mode)
+    if rec is not None:
+        add(rec)
+    return rec
+
+
+def add(rec: Dict[str, Any]) -> bool:
+    """Keep a record build() made (a call he started holds its records until she says it may be remembered, then
+    hands them here). The same id is kept once; True when it was added now. Nothing is added in test mode."""
+    if not isinstance(rec, dict) or not rec.get("id") or os.path.exists(TEST_MODE_FLAG):
+        return False
+    from store_guard import locked_update
+    added = []
+
+    def put(cur):
+        cur = [r for r in (cur if isinstance(cur, list) else []) if isinstance(r, dict)]
+        if any(r.get("id") == rec["id"] for r in cur):
+            return None
+        added.append(True)
+        return cur + [rec]
+
+    locked_update(STORE, put, default=[], reader="auditory_memory")
+    return bool(added)
+
+
+def build(audio_b64: str, sample_rate: int, heard: Dict[str, Any], turn_id: Optional[str] = None,
+          source: str = "voice_local", test_mode: bool = False) -> Optional[Dict[str, Any]]:
+    """The record of one heard utterance, made now (its time and measurements are of this moment) but not kept:
+    record() keeps it at once, a held call keeps it until her answer. None when there is nothing to keep."""
     if test_mode or os.path.exists(TEST_MODE_FLAG):
         return None
     reading = str((heard or {}).get("audio_reading") or "").strip()
@@ -137,15 +166,6 @@ def record(audio_b64: str, sample_rate: int, heard: Dict[str, Any], turn_id: Opt
         "acoustics": acoustics(pcm, sample_rate),
         "interpretations": [],
     }
-    from store_guard import locked_update
-
-    def add(cur):
-        cur = [r for r in (cur if isinstance(cur, list) else []) if isinstance(r, dict)]
-        if any(r.get("id") == rec["id"] for r in cur):
-            return None
-        return cur + [rec]
-
-    locked_update(STORE, add, default=[], reader="auditory_memory")
     return rec
 
 
