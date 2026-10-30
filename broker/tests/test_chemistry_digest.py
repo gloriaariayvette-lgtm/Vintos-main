@@ -99,7 +99,16 @@ assert block.count("which helices hold in 535-729? — helices: 558-595, 669-687
     "an answered investigation says what it found, once even when two investigations found it"
 assert "- kept: does the seam sit near 275? — two folded blocks joined by an uncertain seam at 259-282" in block
 assert "OLD-KEPT" not in block, "an older day's kept finding is not this day's"
-assert "- molecule [A1L190] ran: ALL_WORSE_THAN_HARTREE_FOCK" in block, "an experiment that ran says what it gave"
+assert ("- molecule [A1L190] ran: every point sat above Hartree-Fock, so the run did worse than the reference"
+        in block), "an experiment that ran says what it gave, as a sentence"
+assert "ALL_WORSE_THAN_HARTREE_FOCK" not in block, "the grade's enum stays in the stats, not his day"
+for enum in ("ALL_BETTER_THAN_HARTREE_FOCK", "ALL_WORSE_THAN_HARTREE_FOCK", "ALL_AT_HARTREE_FOCK", "MIXED",
+             "ANY_INVALID_BELOW_EXACT", "NO_GRADEABLE_POINTS"):
+    assert "_" not in M.accuracy_sentence(enum) and M.accuracy_sentence(enum)[0].islower(), enum
+assert M.accuracy_sentence("SOMETHING_NEW") == "something new"
+long_q = "Retrieve " + ", ".join("SLC36A%d" % n for n in range(1, 60)) + " in one query?"
+assert len(M._recent_questions([{"next_question": long_q}], [], 1)[0]) <= M.QUESTION_CHARS + 1, \
+    "a runaway next question is clipped in his day"
 assert "Q99999" not in block and "held_fault" not in block, "a held or faulted run is not in his day"
 assert block.count("the compact fold keeps snapping back to the same basin") == 1, "a repeated reading is said once"
 assert "(on: what makes this basin so deep?)" in block, "a reflection carries the inquiry it answered"

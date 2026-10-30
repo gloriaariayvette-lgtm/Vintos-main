@@ -20,10 +20,12 @@ can drop it; only she closes it.
 from __future__ import annotations
 import contextlib
 import fcntl
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -103,6 +105,12 @@ def get(line_id):
     return next((l for l in load()["lines"] if l["id"] == line_id), None)
 
 
+def snapshot():
+    """The store as it is, read under the lock and not written back."""
+    with _locked():
+        return _read()
+
+
 def open_lines(d=None):
     return [l for l in (d or load())["lines"] if l.get("state") == "open"]
 
@@ -111,13 +119,92 @@ def _last_worked(line):
     return line["steps"][-1]["at"] if line.get("steps") else line.get("opened", "")
 
 
-def pick():
-    """The line this cycle works, or None for a free cycle (one in FREE_EVERY, or when no line is open)."""
+PARK_RECHECK_SECONDS = 24 * 3600   # a parked line whose inputs never change is still tried again once a day
+
+
+def inputs_key(line):
+    """What a parked line waits on: its question, next step and steering, and every step on it that returned
+    something. A step that came back empty is not a changed input."""
+    found = [s.get("at") for s in line.get("steps") or []
+             if s.get("result") and not str(s.get("answered") or "").lower().startswith("no")]
+    body = json.dumps([line.get("question"), line.get("next_step"), len(line.get("steer") or []), found])
+    return hashlib.sha256(body.encode()).hexdigest()[:16]
+
+
+def _note(row):
+    """One notebook row from the line store (a park, an unpark). Never raises: a row is a record, not the work."""
+    try:
+        os.makedirs(LAB, exist_ok=True)
+        with open(NOTEBOOK, "a", encoding="utf-8") as f:
+            f.write(json.dumps(dict({"at": datetime.now(timezone.utc).isoformat()}, **row), ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def park(line_id, reason):
+    """A line whose required source came back empty (29 October: UniProt on taxonomy 1009004 returned nothing at
+    03:36, and the RT-Cas1 line was retried or cooled down 359 times after). It waits, with the reason, until its
+    inputs change (inputs_key) or a day passes; it is written down once, not once a pass. Not an ending: a standing
+    line is still Gloria's, and nothing about it is dropped."""
     with _locked():
         d = _read()
+        line = next((l for l in d["lines"] if l["id"] == line_id and l.get("state") == "open"), None)
+        if not line:
+            return None
+        key = inputs_key(line)
+        if (line.get("parked") or {}).get("inputs") == key:
+            return line          # already parked on these very inputs: nothing new to say
+        line["parked"] = {"at": _now(), "reason": str(reason or "")[:400], "inputs": key,
+                          "recheck_after": time.time() + PARK_RECHECK_SECONDS}
+        _write(d)
+    _note({"kind": "line_parked", "line_id": line_id, "reason": str(reason or "")[:400],
+           "recheck_after": line["parked"]["recheck_after"], "truth_status": "operator_control"})
+    return line
+
+
+def _unpark_changed(d, now=None):
+    """Parked lines whose inputs changed, or whose day is up, are taken off the shelf; each is said once."""
+    now = time.time() if now is None else now
+    said = []
+    for line in d["lines"]:
+        p = line.get("parked")
+        if not isinstance(p, dict):
+            continue
+        why = ("line closed" if line.get("state") != "open" else
+               "its inputs changed" if p.get("inputs") != inputs_key(line) else
+               "recheck due" if float(p.get("recheck_after") or 0) <= now else None)
+        if why:
+            line.pop("parked", None)
+            said.append({"kind": "line_unparked", "line_id": line["id"], "why": why,
+                         "parked_reason": str(p.get("reason") or "")[:400], "truth_status": "operator_control"})
+    return said
+
+
+def pick(skip=None, held=None):
+    """The line this cycle works, or None for a free cycle (one in FREE_EVERY, or when no line is open).
+
+    A parked line is not picked, and neither is one `skip` says is waiting (the investigation's question cooldown).
+    Skipping happens here, before anything is planned or written: on 29 October a line on cooldown was picked, refused
+    and logged every pass (699 rows). When every open line is waiting on a line cycle, None is returned and the lines
+    that were held back are put in `held` (a list), so the caller can tell that from a free cycle."""
+    said = []
+    with _locked():
+        d = _read()
+        said = _unpark_changed(d)
         d["cycle"] = int(d.get("cycle") or 0) + 1
         lines = [l for l in d["lines"] if l.get("state") == "open"]
+        waiting = [l for l in lines if l.get("parked")]
+        if skip is not None:
+            for l in lines:
+                if l not in waiting:
+                    try:
+                        if skip(l): waiting.append(l)
+                    except Exception:
+                        pass
+        lines = [l for l in lines if l not in waiting]
         chosen = None
+        if waiting and not lines and d["cycle"] % FREE_EVERY and held is not None:
+            held.extend(waiting)
         if lines and d["cycle"] % FREE_EVERY:
             recent = d.get("worked") or []
             standing = [l for l in lines if l.get("standing")]
@@ -129,7 +216,9 @@ def pick():
             chosen = min(pool, key=lambda l: (last.get(l["id"], -1), _last_worked(l)))
             d["worked"] = (recent + [chosen["id"]])[-20:]
         _write(d)
-        return chosen
+    for row in said:
+        _note(row)
+    return chosen
 
 
 def opened_by(title, question, why, origin="vintos"):

@@ -71,7 +71,8 @@ class SameQuestion(Base):
         ask2 = Mock()
         self.assertIsNone(I.turn('', ask=ask2, execute=self.execute))
         ask2.assert_not_called()
-        self.assertEqual(notebook('investigation_not_opened')[-1]['why'], 'question on the repeat cooldown')
+        # ...and writes nothing: the refusal was its entry, the sweep writes its exit (29 October: 699 such rows)
+        self.assertEqual(notebook('investigation_not_opened'), [])
 
     def test_a_different_question_opens(self):
         other = 'Do IMG/VR phage reverse transcriptases cluster with retron or DGR families by sequence similarity?'
