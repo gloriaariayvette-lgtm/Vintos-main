@@ -149,6 +149,14 @@ def show_links(text):
 
 
 # ── one hop's safety ───────────────────────────────────────────────────────────────────────────────
+DNS_RETRY_SECONDS = 2.0
+
+
+def _sleep(seconds):
+    import time
+    time.sleep(seconds)
+
+
 def _resolve(host):
     return [info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)]
 
@@ -173,7 +181,15 @@ def _destination(url, resolve=None):
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".lan", ".home.arpa")):
         return (), "a local host name (%s)" % host
     try:
-        addresses = [host] if _is_ip(host) else (resolve or _resolve)(host)
+        try:
+            addresses = [host] if _is_ip(host) else (resolve or _resolve)(host)
+        except socket.gaierror:
+            # A lookup that failed once is often this house's resolver blinking, not the domain: one more try
+            # after a pause, and if it fails again it is said as the lookup failing here, not the site gone.
+            _sleep(DNS_RETRY_SECONDS)
+            addresses = (resolve or _resolve)(host)
+    except socket.gaierror as exc:
+        return (), "DNS failed here (the lookup failed twice; the site may be fine): could not resolve %s: %s" % (host, exc)
     except (OSError, UnicodeError) as exc:
         return (), "could not resolve %s: %s" % (host, exc)
     if not addresses:

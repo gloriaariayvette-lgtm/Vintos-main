@@ -418,7 +418,14 @@ def pick_question():
         _live.sort(key=lambda x: -float(x.get("pull", 0) or 0))
         for _item in _live:                       # every live item, ripest first (fable-curiosity-p2)
             _q = str(_item["question"])
-            _v = llm_json("You judge whether a question can be answered by searching the web.",
+            # A curiosity recorded as addressed to her (curiosity_debt.record sets target "gloria") is a
+            # question for her, never the web: "Gloria, what exactly is a 'bull red'?" was judged
+            # searchable by the model and searched. It goes to her path without asking the judge.
+            if str(_item.get("target") or "").strip().lower() == "gloria":
+                _v = {"searchable": False, "why": "addressed to her"}
+            else:
+                _v = None
+            _v = _v or llm_json("You judge whether a question can be answered by searching the web.",
                           "QUESTION: " + _q[:400] + "\n\n"
                           "Can a web search answer this, or is it addressed to a specific person about "
                           "things only they know — how they built something, why they chose something, "

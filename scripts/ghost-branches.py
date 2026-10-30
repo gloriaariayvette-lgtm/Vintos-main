@@ -257,6 +257,48 @@ def build_ghost_prompt(thread, axis, ctx):
     )
 
 
+_SEAM_NO_SPACE = ",.;:!?)]}'\"’”-—–"
+
+
+def join_continuation(cutoff, continuation):
+    """Join the streamed text cut at the intercept with the model's continuation. After the
+    intercept the model often rewrites from the start, so plain `cutoff + continuation` carried the
+    cut-off text twice, glued without a space ("...because" + "The silence ..." where the second
+    half repeats the first). Drop what the continuation repeats; otherwise join at one space."""
+    cutoff = cutoff or ""
+    continuation = continuation or ""
+    if not continuation.strip():
+        return cutoff
+    if not cutoff.strip():
+        return continuation
+    ncut = " ".join(cutoff.split())
+    ncon = " ".join(continuation.split())
+    head = ncut[:40] if len(ncut) <= 40 else ncut[:41].rsplit(" ", 1)[0]   # its opening, cut at a word
+    # A restart: the continuation begins with the cut-off text (whole, or its opening) - keep only it.
+    if ncon.startswith(ncut) or (len(head) >= 20 and ncon.startswith(head)):
+        return continuation.lstrip()
+    # The continuation picks up a few words back: "...the silence" + "the silence was ...".
+    con = continuation.lstrip()
+    tail = cutoff.rstrip()
+    for k in range(min(len(tail), len(con), 200), 11, -1):
+        if tail[-k:] == con[:k] and (k == len(tail) or not tail[-k - 1].isalnum()):
+            pre = tail[:-k]
+            if not pre:
+                return con
+            return pre + ("" if pre[-1].isspace() else " ") + con
+    # A partial (or whole) last word repeated: "...becau" + "because ..." / "...because" + "because ...".
+    # A short fragment is left alone: "...the" + "then" is two words, not a repeat.
+    m = re.search(r"(\w+)$", cutoff)
+    first = re.match(r"(\w+)", con)
+    if m and first:
+        frag, word = m.group(1).lower(), first.group(1).lower()
+        if (frag == word and len(frag) >= 3) or (len(frag) >= 4 and word.startswith(frag)):
+            return cutoff[:m.start()] + con
+    if cutoff[-1].isspace() or continuation[0].isspace() or con[0] in _SEAM_NO_SPACE:
+        return cutoff + continuation
+    return cutoff + " " + continuation
+
+
 def run_primary(system, prompt):
     messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
     payload = json.dumps({
@@ -334,7 +376,7 @@ def run_primary(system, prompt):
             req2 = urllib.request.Request(LM_URL, data=payload2, headers=HEADERS)
             with urllib.request.urlopen(req2, timeout=180) as r2:
                 continuation = json.loads(r2.read().decode())["choices"][0]["message"]["content"]
-            accumulated = stream_cutoff + continuation
+            accumulated = join_continuation(stream_cutoff, continuation)
             print(f"[Ghost/primary/BIS] Intercepted and resumed.", flush=True)
             try:
                 # Graded on the text, never auto-credited: an intercept that resumed is not an attempt
@@ -419,7 +461,7 @@ def stream_ghost(messages, axis, results_container, idx):
                 ],
                 temperature=0.92, max_tokens=300
             )
-            accumulated = stream_cutoff + continuation
+            accumulated = join_continuation(stream_cutoff, continuation)
             print(f"[GhostBIS/{axis['id']}] Resumed.", flush=True)
         except Exception as e:
             print(f"[Ghost/{axis['id']}] Continuation error: {e}", flush=True)

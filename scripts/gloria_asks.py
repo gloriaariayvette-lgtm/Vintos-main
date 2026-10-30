@@ -295,7 +295,8 @@ def untold():
 # Gloria:** the felt-only run of 'Still Under,' this weekend as planned", and nothing carried it to her: only a yes-or-no
 # reached her phone. A FOR GLORIA: line (bold or plain, in Slack or a letter) now goes to her phone too, as a note with
 # no buttons, and stays where his avatar chat can see what is open between them.
-FOR = re.compile(r"^[ \t>*_-]*for gloria[*_ ]*:[*_ ]*(.+?)[ \t]*$", re.I | re.M)
+# "To Gloria:" is the same line (30 October: his reply to Muse wrote "To Gloria: ..." and it reached no one).
+FOR = re.compile(r"^[ \t>*_-]*(?:for|to) gloria[*_ ]*:[*_ ]*(.+?)[ \t]*$", re.I | re.M)
 NOTE_DAYS = 7
 
 
