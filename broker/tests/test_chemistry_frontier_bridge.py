@@ -75,6 +75,20 @@ try:
 finally:
     lab.journal_threads = original_threads
 
+# A finding offered three times without acknowledgment steps aside so the next one gets a turn; it stays pending.
+other = bridge.assess(dict(note, at="2026-09-16T00:00:00+00:00", source_accessions=["Q11111"],
+                           next_question="What holds the second fold together under heat?"), source_query_succeeded=True)
+assert other["flagged_for_next_lab_session"] is True
+top = bridge.frontier_block()[1]
+assert other["entry_id"] in top
+for n in range(bridge.MAX_UNACKNOWLEDGED_OFFERS):
+    bridge.record_delivery("CHEM-R%d" % n, "claude", [other["entry_id"]], [], state="responded")
+assert other["entry_id"] not in bridge.frontier_block()[1]
+st = bridge.status()
+assert st["set_aside"] == 1 and st["pending"] >= 1 and st["backlog_bug"] is False, st
+bridge.record_delivery("CHEM-R9", "claude", [other["entry_id"]], [], state="responded")
+assert bridge.status()["backlog_bug"] is True
+
 source = open(os.path.join(REPO, "scripts", "chemistry_frontier_bridge.py")).read()
 assert "requests" not in source and "urllib" not in source and "atelier" not in source.lower()
-print("18/18 passed")
+print("19/19 passed")
