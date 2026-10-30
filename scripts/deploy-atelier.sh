@@ -155,6 +155,7 @@ SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the La
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_evo2.py"   # read-only Evo 2 comparative likelihood lane, 2026-09-13
 SCRIPTS="$SCRIPTS aegis-gemma-load.sh"   # exact Q4_0 Aegis Gemma reload contract
+SCRIPTS="$SCRIPTS lab-day.sh"   # his morning at the bench; reads the Mac's run-dict reply, never writes an empty bench (2026-10-29)
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
