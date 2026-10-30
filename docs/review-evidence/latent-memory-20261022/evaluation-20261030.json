@@ -1,0 +1,93 @@
+{
+  "schema": "sealed-emotion-history-evaluation-aggregate-v1",
+  "evaluated_on": "2026-10-30",
+  "block_inclusive": [
+    "2026-10-23",
+    "2026-10-29"
+  ],
+  "timezone": "America/Chicago",
+  "comparison_status": "overlapping/exposed fixed comparison; Oct23-27 incumbent scores exposed by Oct28 confirmation; not wholly untouched",
+  "emotion": {
+    "n": 378,
+    "target_days_covered": 7,
+    "lam_coverage": 378,
+    "mse": {
+      "persistence": 0.1996514772517442,
+      "incumbent": 0.17164944394466924,
+      "present": 0.1734120659264755,
+      "history": 0.16723498412063947,
+      "trend": 0.5348977937638562,
+      "lam": 0.1692541707208496
+    },
+    "lam_matched_subset": null,
+    "gain_ci98_75": [
+      -0.010938222559942744,
+      0.005026938375403144
+    ],
+    "enough_data": true,
+    "passes": false,
+    "relative_error_reduction": {
+      "persistence": 0.16236540584285375,
+      "incumbent": 0.025717880131629012,
+      "present": 0.035620830493162114,
+      "trend": 0.6873515163637607,
+      "lam": 0.011929907497171044
+    },
+    "five_percent_against_all": false
+  },
+  "fixed_ancillary_text": {
+    "n": 207,
+    "mrr": {
+      "incumbent": 0.178351606216817,
+      "episodic": 0.178351606216817,
+      "last": 0.0577537489171385,
+      "mean6": 0.0402530213049607
+    },
+    "eligible": false,
+    "passes": false,
+    "status": "closed unsuccessful development candidate; no selection or reopening"
+  },
+  "capture": {
+    "events": 6926,
+    "cutoff_exclusive": "2026-10-30",
+    "snapshot_sha256": "48b1c7763676e5c9bdd214366ec05a9d6e275a4057abbd58cc5af9f36303120a",
+    "limits": "current admitted records; mutable historical versions and link labels unavailable"
+  },
+  "verification": {
+    "verified_at": "2026-10-30T13:08:03.441637+00:00",
+    "manifest_sha256": "1b6244ca7fce1a481b00c6bf4ba2485f87cf19fdce5662e16c60bfef2a12340d",
+    "code_sha256": "12e6cdd503fd4df63852acc47c66a953ded3a0d6b1543f29aee07f3f50c6642f",
+    "frozen_sha256": "8b939aa1e900988ab5b87094686aaf9bee300f1a9e9c95c34c12050b9daee7d8",
+    "incumbent_sha256": "f9976dd2e2eddc89798fd36f170bd64203c1699adc86fffa0901d45259cbee75",
+    "snapshot_sha256": "48b1c7763676e5c9bdd214366ec05a9d6e275a4057abbd58cc5af9f36303120a",
+    "both_attempts_absent": true,
+    "original_dependency_bytes_equal": true
+  },
+  "private_report_sha256": "c39d3229b9633c7945cb7bc996c7441b7361e53762518434de87952073600b4c",
+  "attempt_receipts": {
+    "durable": true,
+    "original": true
+  },
+  "runtime_changes": false,
+  "protocol": {
+    "horizon_seconds": 600,
+    "tolerance_seconds": 120,
+    "minimum_targets": 300,
+    "required_target_days": 7,
+    "minimum_relative_error_reduction": 0.05,
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20261022,
+    "ci_quantiles": [
+      0.00625,
+      0.99375
+    ],
+    "interval_definition": "Paired target-day bootstrap; minimum comparator-minus-history gain across every registered comparator on each draw."
+  },
+  "validation": {
+    "evaluation_exit": 0,
+    "refitted": false,
+    "code_changed": false,
+    "private_inputs_published": false,
+    "per_day_diagnostics_published": false
+  }
+}

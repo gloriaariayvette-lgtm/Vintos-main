@@ -1,3 +1,18 @@
+## 30 October — sealed emotion-history evaluation completed once
+
+**FAIL with sufficient data:** 378 fixed-horizon targets across seven days;
+complete LAM coverage. History MSE 0.167235 versus LAM 0.169254: 1.19% improvement,
+below the registered 5%. Adjusted 98.75% interval [-0.010938, 0.005027] crosses zero.
+[Full aggregate result and review handoff](latent-memory-evaluation.md).
+
+This is an overlapping/exposed fixed comparison because the 28 October incumbent
+confirmation exposed 23–27 October scores. It cannot select or confirm the
+separate persistence sprint. Both attempt receipts are retained; automation paused.
+No rerun, refit, promotion, merge or deployment. Episodic text remains closed.
+Still open: Claude Code's review and Gloria's yes before any eventual merge.
+The dated entries below record the earlier state; their pending evaluation is now
+resolved by this terminal result.
+
 ## 22 October — accepted memory results, Aegis suite repair
 
 Claude Code accepted `f076f37`. Episodic memory is closed as unsuccessful in

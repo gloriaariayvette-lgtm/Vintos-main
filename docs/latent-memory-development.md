@@ -1,5 +1,9 @@
 # Longer memory: implementation and development result
 
+30 October update: the [sealed evaluation](latent-memory-evaluation.md) is complete.
+It failed the registered pass rules with sufficient data. Earlier development and
+freeze statements below are retained as the dated record.
+
 22 October 2026, `codex/latent-memory-review`. Implements the approved
 [proposal](latent-memory-review.md) with the later training cutoff Gloria requested.
 No merge, deployment, runtime consumer change, live-store write or test send.
