@@ -31,6 +31,10 @@ COLLISIONS = os.path.join(lab.MEM, "self-review-collisions.jsonl")
 FLAG_THRESHOLD = 0.35
 MAX_FLAGGED = 4
 BLOCK_CHARS = 1800
+# After this many offers without an acknowledgment a finding steps aside so others get a turn. It stays pending
+# (visible debt) and is counted in status()["set_aside"]; it is never deleted. Without this the same top-scored
+# finding was offered daily (17 times for one) while 15,000 others never reached him (30 October).
+MAX_UNACKNOWLEDGED_OFFERS = 3
 
 
 def _digest(*parts):
@@ -175,13 +179,23 @@ def _redirect_entry_ids():
     return rejected
 
 
+def _offer_counts():
+    counts = {}
+    for row in lab._jsonl(SURFACES):
+        for item in row.get("offered_entry_ids", []) or []:
+            counts[str(item)] = counts.get(str(item), 0) + 1
+    return counts
+
+
 def frontier_block(limit=MAX_FLAGGED, budget=BLOCK_CHARS):
     """Return a bounded priority block plus the exact IDs placed in it."""
     acknowledged = _acknowledged_ids()
     redirected = _redirect_entry_ids()
+    offers = _offer_counts()
     candidates = [row for row in _latest_interest().values()
                   if row.get("flagged_for_next_lab_session") and row.get("entry_id") not in acknowledged
-                  and row.get("entry_id") not in redirected]
+                  and row.get("entry_id") not in redirected
+                  and offers.get(str(row.get("entry_id")), 0) < MAX_UNACKNOWLEDGED_OFFERS]
     candidates.sort(key=lambda row: (float(row.get("interest_score") or 0), str(row.get("at") or "")), reverse=True)
     chosen, used = [], 0
     seen_evidence = set()
@@ -229,7 +243,7 @@ def record_delivery(session_id, lens, offered_ids, acknowledged_ids, *, state="r
            "acknowledged_entry_ids": acknowledged,
            "unacknowledged_entry_ids": [x for x in offered if x not in acknowledged],
            "delivery_attempts": attempts,
-           "backlog_bug": any(attempts[x] >= 3 and x not in acknowledged for x in offered),
+           "backlog_bug": any(attempts[x] > MAX_UNACKNOWLEDGED_OFFERS and x not in acknowledged for x in offered),
            "truth_status": "prompt_delivery_receipt_and_frontier_acknowledgment_attestation"}
     lab._append(SURFACES, row)
     return row
@@ -241,7 +255,9 @@ def status():
     all_flagged = [row for row in latest.values() if row.get("flagged_for_next_lab_session")]
     flagged = [row for row in all_flagged if row.get("entry_id") not in redirected]
     pending = [row for row in flagged if row.get("entry_id") not in acknowledged]
+    offers = _offer_counts()
     return {"assessed": len(latest), "flagged": len(flagged), "acknowledged": len(flagged) - len(pending),
             "pending": len(pending), "oldest_pending_at": min((x.get("at") for x in pending), default=None),
             "redirected_after_assessment": len(all_flagged) - len(flagged),
+            "set_aside": sum(offers.get(str(x.get("entry_id")), 0) >= MAX_UNACKNOWLEDGED_OFFERS for x in pending),
             "backlog_bug": any(row.get("backlog_bug") for row in lab._jsonl(SURFACES)[-50:])}
