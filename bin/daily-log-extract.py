@@ -22,14 +22,55 @@ def section(title, content):
         return ""
     return f"\n## {title}\n\n{content.strip()}\n"
 
+def _norm_q(text):
+    import re as _nre
+    return _nre.sub(r"\s+", " ", str(text or "")).strip().lower()
+
+def _journal_web_searches(journal_raw):
+    """(normalized question, minutes since midnight or None) for each "## Web Search — Q" block the
+    searcher wrote into today's journal (vintos-websearch.py, "*Searched at 03:14 PM*")."""
+    import re as _jre
+    out = []
+    for m in _jre.finditer(r"^##\s+Web Search\s+[—-]\s+(.+?)\s*$(?:\s*\*Searched at\s+(\d{1,2}):(\d{2})\s*([AP]M)\*)?",
+                           journal_raw or "", _jre.M):
+        mins = None
+        if m.group(2):
+            h = int(m.group(2)) % 12 + (12 if m.group(4) == "PM" else 0)
+            mins = h * 60 + int(m.group(3))
+        out.append((_norm_q(m.group(1)), mins))
+    return out
+
+def _discovery_in_journal(section_text, searches, window_min=30):
+    """True when a web-discoveries.md section ("## YYYY-MM-DD HH:MM — Q ...") is the same search the
+    journal already holds as "## Web Search — Q": the same question at about the same time. The
+    searcher writes both, so the day used to carry each search twice (Journal, then Web)."""
+    import re as _dre
+    m = _dre.match(r"##\s+\d{4}-\d{2}-\d{2}\s+(\d{2}):(\d{2})\s+[—-]\s+(.*)", section_text or "", _dre.S)
+    if not m:
+        return False
+    mins = int(m.group(1)) * 60 + int(m.group(2))
+    body = _norm_q(m.group(3).split("*Search:")[0])
+    for q, jmins in searches:
+        if not q:
+            continue
+        # The journal header is the cleaned question (a want step's "Current step goal" line), so a
+        # step question matches when that line appears in the discovery's question text.
+        if not (body == q or (len(q) >= 12 and q in body)):
+            continue
+        if jmins is None or abs(jmins - mins) <= window_min:
+            return True
+    return False
+
 def build_inner():
     parts = []
+    journal_raw = ""
 
     # Journal — strip want journal entries
     try:
         jf = os.path.join(MEMORY, "journal", f"{TODAY}.md")
         if os.path.exists(jf):
             raw = open(jf).read()
+            journal_raw = raw
             import re as _re
             # Remove sections starting with "HH:MM — Want journal" through next ## or end
             cleaned = _re.sub(r'##\s+\d{2}:\d{2}\s+[\u2014-]\s+Want journal.*?(?=\n##\s|\Z)', '', raw, flags=_re.DOTALL)
@@ -57,9 +98,16 @@ def build_inner():
         wf = os.path.join(MEMORY, "wonder-log.json")
         wonders = json.load(open(wf))
         today_wonders = [w for w in wonders if w.get("timestamp", "").startswith(TODAY)]
-        if today_wonders:
-            lines = "\n".join(f"- [{w['timestamp'][11:16]}] {w.get('flip_excerpt', w.get('text', w.get('content', '')))[:200]}" for w in today_wonders)
-            parts.append(section("Wonder", lines))
+        # The detector logs every scored pass, including ones where no flip was found
+        # (flip_excerpt == ""). The key is present, so .get(key, fallback) returned "" and the
+        # day carried a bare "- [HH:MM] " line. Take the first non-blank text and skip the rest.
+        _w_lines = []
+        for w in today_wonders:
+            _wt = str(w.get("flip_excerpt") or w.get("text") or w.get("content") or "").strip()
+            if _wt:
+                _w_lines.append(f"- [{w['timestamp'][11:16]}] {_wt[:200]}")
+        if _w_lines:
+            parts.append(section("Wonder", "\n".join(_w_lines)))
     except: pass
 
     # MoltBook — today's posts and browse saves
@@ -101,6 +149,9 @@ def build_inner():
             web_text = open(wdf).read()
             sections_web = web_text.split("## ")
             today_web = [("## " + s) for s in sections_web if s.startswith(TODAY)]
+            # Skip a discovery the Journal section above already carries (same question, same time).
+            _jw = _journal_web_searches(journal_raw)
+            today_web = [s for s in today_web if not _discovery_in_journal(s, _jw)]
             if today_web:
                 parts.append(section("Web", "\n\n".join(today_web)))
     except: pass

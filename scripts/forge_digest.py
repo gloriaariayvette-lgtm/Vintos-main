@@ -31,9 +31,19 @@ FORGE_OWNER_TOKEN = os.path.expanduser("~/.config/vintos/forge-owner")
 LIVE_STATES = ("ready", "active", "authorized", "awaiting_application", "building", "resumed")
 
 
-def _forge_projects(transport=None):
+# The project list passed 1 MiB in October 2026 (~1.2 MB). The old 1 MiB + 1 read cut it mid-JSON, the
+# parse failed, and every morning's receipt said the Forge was unreachable when it had answered.
+FORGE_MAX_BYTES = 8 * 1024 * 1024
+# Why the last read returned None: "unreachable", "too large" or "parse error" (each said differently).
+FORGE_FAILURE = "unreachable"
+
+
+def _forge_projects(transport=None, opener=None):
     """Best-effort read of the Forge's own project list (owner token, localhost). Returns a list of
-    {id,state,intent,private,spent,cycles,...} or None if the Forge is unreachable — never raises."""
+    {id,state,intent,private,spent,cycles,...} or None — never raises. On None, FORGE_FAILURE says
+    whether the Forge was unreachable or answered with a list too large or unreadable."""
+    global FORGE_FAILURE
+    FORGE_FAILURE = "unreachable"
     if transport is not None:
         try:
             return transport()
@@ -44,11 +54,30 @@ def _forge_projects(transport=None):
         from forge_loop_runtime import secret
         req = Request(FORGE_BASE + "/api/projects", method="GET",
                       headers={"Authorization": "Bearer " + secret(FORGE_OWNER_TOKEN)})
-        with urlopen(req, timeout=6) as response:
-            data = json.loads(response.read(1024 * 1024 + 1))
-        return data if isinstance(data, list) else None
+        with (opener or urlopen)(req, timeout=6) as response:
+            body = response.read(FORGE_MAX_BYTES + 1)
     except Exception:
         return None
+    if len(body) > FORGE_MAX_BYTES:
+        FORGE_FAILURE = "too large"
+        return None
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        FORGE_FAILURE = "parse error"
+        return None
+    if not isinstance(data, list):
+        FORGE_FAILURE = "parse error"
+        return None
+    return data
+
+
+def _failure_words(failure):
+    if failure == "too large":
+        return "its project list was larger than the digest reads (over %d MiB)" % (FORGE_MAX_BYTES // (1024 * 1024))
+    if failure == "parse error":
+        return "its project list could not be read (parse error)"
+    return "unreachable"
 
 
 def _yesterday(file_day):
@@ -107,8 +136,11 @@ def render(day=None, projects=None):
     reveals = [r for r in reveals_all if isinstance(r, dict) and r.get("revealed", True) is True
                and _on_day(r.get("revealed_at") or r.get("at"), day)] if isinstance(reveals_all, list) else []
 
+    global FORGE_FAILURE
     if projects is None:
+        FORGE_FAILURE = "unreachable"
         projects = _forge_projects()
+    failure = FORGE_FAILURE
 
     lines = [f"<!-- forge-digest:{day} -->", "", f"## Forge — {day}", ""]
 
@@ -146,7 +178,8 @@ def render(day=None, projects=None):
                     moved.append((str(pid), str(rec.get("state") or "unknown")))
         state_counts = Counter(state for _pid, state in moved)
         if not reveals and not moved:
-            lines.append("Quiet day — Forge unreachable; nothing revealed and no undertaking changed state.")
+            lines.append("Quiet day — Forge %s; nothing revealed and no undertaking changed state."
+                         % ("unreachable" if failure == "unreachable" else "list unread (%s)" % failure))
         else:
             if moved:
                 lines.append("Undertakings that changed state: " + ", ".join(
@@ -154,7 +187,9 @@ def render(day=None, projects=None):
             else:
                 lines.append("Undertakings that changed state: none.")
             lines.extend(_reveal_lines(reveals))
-        lines.append("Forge service was unreachable this morning — this is the content-free house mirror "
+        lead = ("Forge service was unreachable this morning" if failure == "unreachable"
+                else "The Forge answered this morning, but %s" % _failure_words(failure))
+        lines.append(lead + " — this is the content-free house mirror "
                      "only (state changes and reveals), not intent or spend. No conclusion is inferred.")
     return "\n".join(lines) + "\n"
 

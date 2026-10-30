@@ -1890,7 +1890,7 @@ def email_line(mem=None, now=None):
     # addresses so he can open one with LINK:. Replies to his own emails are always shown.
     try:
         import received_mail
-        mail = [r for r in rows if r.get("kind") != "reply"]
+        mail = [r for r in rows if r.get("kind") not in ("reply", "own_reply")]   # his own reply come back is not mail
         chosen = received_mail.useful(mail, EMAIL_SHOWN)
         shown = [r for r in rows if r.get("kind") == "reply"][-2:] + chosen
         links_of = received_mail.link_line

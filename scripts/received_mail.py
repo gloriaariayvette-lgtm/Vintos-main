@@ -68,7 +68,7 @@ def rows(path=None, days=DAYS, now=None):
                     r = json.loads(line)
                 except ValueError:
                     continue
-                if not isinstance(r, dict) or r.get("kind") == "reply" or not r.get("id"):
+                if not isinstance(r, dict) or r.get("kind") in ("reply", "own_reply") or not r.get("id"):
                     continue
                 at = _when(r)
                 if at is None or now - at > timedelta(days=days):

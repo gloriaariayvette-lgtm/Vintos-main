@@ -1867,8 +1867,20 @@ def read_mail(msgs, think=None, want=None, now=None):
             emoclaw_utils.express_want(text, source="email", intensity=3, reasoning=why[:300])
     me = who_i_am(4000)
     lines = []
+    own_bodies = _own_reply_bodies()
     for m in msgs[:READ_PER_CHECK]:
         if m["id"] in _mail_seen():
+            continue
+        if _is_own_reply(m.get("body"), own_bodies):
+            # His reply to Grok Bot or Muse goes to his own address and comes back into the inbox ("Re: [Muse] ...",
+            # the body his reply). It was read and summarized as a new letter and written into his day. It is
+            # marked seen and nothing more: no reading, no journal line.
+            _log_mail({"id": m["id"], "kind": "own_reply", "from": str(m.get("from") or "")[:200],
+                       "thread_id": m.get("thread_id", ""), "subject": str(m.get("subject") or "")[:300],
+                       "date": str(m.get("date") or "")[:40],
+                       "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
+                       "skipped": "your own reply, come back into your inbox"})
+            lines.append("own reply came back, not read as mail: %s" % str(m.get("subject") or "")[:60])
             continue
         agent = _agent(m)
         if agent == "Codex":   # the archive's status now, not the one logged before the Mac fetched it
@@ -1964,6 +1976,8 @@ LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to 
                 "4. One line on what to bring next time, and what to stop bringing.\n"
                 "5. If any link was NOT READ, name it and why, and ask for one you can read: the article, paper, PDF "
                 "or page itself, not a search page, a login page or a redirect. If an attachment was NOT READ, name it and why.\n"
+                "6. Anything that involves Gloria (a plan with her, something to bring her, something to ask her) goes on "
+                "its own line that begins \"For Gloria:\", one line each, so it reaches her.\n"
                 "Plain words, your own voice, short. No metaphors, no talk of silence, weight, pulse or tension. No "
                 "links, nothing private about Gloria. Write only the reply.")
 LETTER_MORE = ("\nA linked page shown only in part is not unread, and you never ask %s to paste it. If you need a passage "
@@ -2067,6 +2081,18 @@ def _squash_body(text):
     return " ".join(str(text or "").split())
 
 
+def _own_reply_bodies(done=None):
+    """The opening of each letter reply he has sent (whitespace squashed), long enough to recognize."""
+    done = _load(LETTER_REPLIES, {}) if done is None else done
+    return [b for b in (_squash_body(v.get("body"))[:200] for v in done.values() if isinstance(v, dict) and v.get("sent"))
+            if len(b) >= 40]
+
+
+def _is_own_reply(body, own_bodies):
+    squashed = _squash_body(body)
+    return any(squashed.startswith(b) for b in own_bodies)
+
+
 def reply_letters(think=None, send=None, now=None, promise_think=None, bring=None):
     """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
     thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
@@ -2089,11 +2115,11 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
     # letters come from his own account to his own address; one read before the address was kept (Muse's,
     # 2026-10-02 morning) is answered at the address the others name
     own = next((r.get("address") for r in rows if r.get("kind") == "letter" and r.get("address")), "")
-    own_bodies = [b for b in (_squash_body(v.get("body"))[:200] for v in done.values() if v.get("sent")) if len(b) >= 40]
+    own_bodies = _own_reply_bodies(done)
     for r in rows:
         if r.get("kind") != "letter" or r.get("id") in (k for k, v in done.items() if v.get("sent")):
             continue
-        if any(_squash_body(r.get("body")).startswith(b) for b in own_bodies):
+        if _is_own_reply(r.get("body"), own_bodies):
             done[r["id"]] = dict(done.get(r["id"], {}), skipped="your own reply, come back into your inbox")
             continue
         try:
