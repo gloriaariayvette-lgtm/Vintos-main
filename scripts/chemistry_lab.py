@@ -2133,6 +2133,26 @@ def _human_question_symbols(question):
 BACTERIAL_STYLE = re.compile(r'(?<![\w-])[A-Z][a-z]{2}[A-Z][0-9]?(?![\w-])')
 
 
+def _human_identity(symbol, client=None):
+    """The NCBI Gene identity receipt for one exact human symbol or alias: today's from source-receipts.jsonl, else
+    looked up and appended there. Both outcomes are cached for a day; a failed lookup raises and caches nothing.
+    The inquiry's grounding and its UniProt retrieval read the same receipt (SR-BI, 29 October)."""
+    from lab_sources import Sources
+    symbol = str(symbol or '').upper()
+    path = os.path.join(ROOT, 'source-receipts.jsonl')
+    for row in reversed(_tail_jsonl(path, nbytes=2*1024*1024)):
+        if row.get('source') != 'ncbi_gene_identity' or str((row.get('query') or {}).get('symbol', '')).upper() != symbol:
+            continue
+        try:
+            age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
+            if 0 <= age < 86400: return row
+        except (ValueError, KeyError, TypeError): pass
+        break
+    result = (client or Sources()).human_gene_identity(symbol)
+    _append(path, result)
+    return result
+
+
 def _ground_inquiry(inquiry, client=None):
     """Source-check generated human symbols before admitting them as research targets."""
     from lab_sources import Sources, question_entity_context
@@ -2163,28 +2183,15 @@ def _ground_inquiry(inquiry, client=None):
     symbols = list(dict.fromkeys(s.upper() for s in symbols))
     if not symbols: return {'status': 'not_applicable'}
     if len(symbols) > 4: return {'status': 'unresolved', 'reason': 'too many human gene identities in one inquiry'}
-    path = os.path.join(ROOT, 'source-receipts.jsonl')
-    cached = _tail_jsonl(path, nbytes=2*1024*1024)
     ids = []
     for symbol in symbols:
-        result = None
-        for row in reversed(cached):
-            if row.get('source') != 'ncbi_gene_identity' or (row.get('query') or {}).get('symbol', '').upper() != symbol:
-                continue
-            try:
-                age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
-                if 0 <= age < 86400: result = row
-            except (ValueError, KeyError, TypeError): pass
-            break
-        if result is None:
-            try:
-                result = (client or Sources()).human_gene_identity(symbol)
-            except Exception as exc:
-                from urllib.error import HTTPError
-                detail = ('HTTP %s' % exc.code) if isinstance(exc, HTTPError) else type(exc).__name__
-                return {'status': 'unavailable', 'symbol': symbol,
-                        'reason': 'human gene identity check unavailable: ' + detail}
-            _append(path, result)
+        try:
+            result = _human_identity(symbol, client)
+        except Exception as exc:
+            from urllib.error import HTTPError
+            detail = ('HTTP %s' % exc.code) if isinstance(exc, HTTPError) else type(exc).__name__
+            return {'status': 'unavailable', 'symbol': symbol,
+                    'reason': 'human gene identity check unavailable: ' + detail}
         ids.append(result['receipt_id'])
         if (result.get('metadata') or {}).get('status') != 'verified':
             return {'status': 'unresolved', 'symbol': symbol, 'receipt_ids': ids,
@@ -3404,6 +3411,8 @@ def normalize_protein_records(items, relaxed=None, sequence_limit=SEQUENCE_KEPT)
                      "sequence": (item.get("sequence") or {}).get("value", "")[:sequence_limit],
                      **({"sequence_shown": "first %d residues" % sequence_limit}
                         if len((item.get("sequence") or {}).get("value", "")) > sequence_limit else {}),
+                     # the exact human gene identity a requested alias was resolved through, receipt and all
+                     **({"identity_resolution": item["identity_resolution"]} if item.get("identity_resolution") else {}),
                      **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
                          "partial_match": relaxed == "partial_any_word"}
                         if relaxed else {})})
@@ -3475,14 +3484,17 @@ def _browse(query, limit, *, allow_relaxation=True):
     exact = re.fullmatch(r'accession:([A-Z0-9]+)', requested_query)
     if exact and any(item.get("primaryAccession") != exact[1] for item in raw.get("results", [])):
         raise ValueError("source_accession_mismatch: requested " + exact[1])
-    from lab_sources import verify_uniprot_identity
+    from lab_sources import verify_uniprot_identity, identity_resolutions
+    # only records naming the gene, or the one human record a requested alias resolves to through its gene identity
     raw = dict(raw, results=verify_uniprot_identity(executed_query if scope_resolution else requested_query,
-                                                    raw.get("results", [])[:limit]))   # only records naming the gene
+                                                    raw.get("results", [])[:limit], identity=_human_identity))
     rows = normalize_protein_records(raw.get("results", [])[:limit], relaxed)
+    resolutions = identity_resolutions(raw.get('results', [])[:limit])
     from lab_sources import receipt
     source_receipt = (None if fallback_reason else
         receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
                 raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page',
+                                                          **({'identity_resolutions':resolutions} if resolutions else {}),
                                                           **({'scope_resolution':scope_resolution} if scope_resolution else {}),
                                                           **({'relaxed': relaxed,
                                                               'partial_match': relaxed == 'partial_any_word'}
