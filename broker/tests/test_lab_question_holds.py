@@ -22,6 +22,8 @@ class QuestionHolds(Perimeter):
         # These pin the empty-pass behaviour when truly nothing is eligible; the fresh-protein fallback
         # (17 October) is tested in test_lab_one_ask, so it is switched off here.
         _nf = patch.object(C, '_fresh_free_inquiry', return_value=None); _nf.start(); self.addCleanup(_nf.stop)
+        # every pass here plans again; the wait's backoff between passes is test_lab_cooldown_spin's
+        _qw = patch.object(C, 'QUIET_WAIT_BASE_SECONDS', 0); _qw.start(); self.addCleanup(_qw.stop)
         super().setUp()
         self.snapshot=json.loads(SNAPSHOT.read_text())
         self.cftr=copy.deepcopy(self.snapshot['inquiry'])

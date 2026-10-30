@@ -1500,11 +1500,62 @@ def _valid_narrower(narrower, earlier):
     return {'changes': kind, 'what': what}
 
 
-def _on_cooldown(question, now=None):
-    ledger = lab._load(_path('question-cooldown.json'), {}) or {}
+def _on_cooldown(question, now=None, rows=None):
+    if rows is None:
+        rows = (lab._load(_path('question-cooldown.json'), {}) or {}).get('questions', [])
     now = now or time.time()
-    return any(float(row.get('until') or 0) > now and _alike(question, row.get('question'))
-               for row in ledger.get('questions', []))
+    return any(float(row.get('until') or 0) > now and _alike(question, row.get('question')) for row in rows)
+
+
+def _line_evidence(line_id, lines=None):
+    """What a question on the cooldown waits on, for its line: the line's inputs (lab_lines.inputs_key). A changed
+    value is new evidence, and the question is looked at again before its cooldown is out."""
+    if not line_id:
+        return None
+    try:
+        import lab_lines
+        d = lines if lines is not None else lab_lines.snapshot()
+        line = next((l for l in d.get('lines', []) if l.get('id') == line_id), None)
+        return lab_lines.inputs_key(line) if line else None
+    except Exception:
+        return None
+
+
+def _cooldown_sweep(now=None):
+    """Questions leave the cooldown here, each said once: its time is out, or its line's evidence changed. The
+    entry was the investigation_refused_repeat row; between the two nothing is written for it (29 October: 699
+    "investigation_not_opened (repeat cooldown)" rows, one a pass). Returns the rows still cooling."""
+    now = now or time.time()
+    path = _path('question-cooldown.json')
+    ledger = lab._load(path, {}) or {}
+    rows = [r for r in ledger.get('questions', []) if isinstance(r, dict)]
+    if not rows:
+        return []
+    lines = None
+    if any(r.get('line_id') and r.get('line_evidence') for r in rows):
+        try:
+            import lab_lines
+            lines = lab_lines.snapshot()
+        except Exception:
+            lines = None
+    keep, ended = [], []
+    for row in rows:
+        why = None
+        if float(row.get('until') or 0) <= now:
+            why = 'cooldown over'
+        elif lines is not None and row.get('line_id') and row.get('line_evidence'):
+            current = _line_evidence(row['line_id'], lines)
+            if current and current != row['line_evidence']:
+                why = 'evidence for its line changed'
+        (ended if why else keep).append((row, why))
+    if not ended:
+        return rows
+    lab._atomic(path, {'questions': [r for r, _ in keep]})
+    for row, why in ended:
+        lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'question_cooldown_ended', 'line_id': row.get('line_id'),
+                                   'question': str(row.get('question') or '')[:400], 'why': why,
+                                   'cooled_since': row.get('at'), 'truth_status': 'operator_control'})
+    return [r for r, _ in keep]
 
 
 def _refuse_repeat(data, investigation, question, note):
@@ -1514,8 +1565,10 @@ def _refuse_repeat(data, investigation, question, note):
     _save(data)
     ledger = lab._load(_path('question-cooldown.json'), {}) or {}
     rows = [r for r in ledger.get('questions', []) if float(r.get('until') or 0) > time.time()][-50:]
+    line_id = investigation.get('line_id')
     rows.append({'at': lab.now_iso(), 'question': str(question)[:400], 'until': time.time() + REPEAT_COOLDOWN_SECONDS,
-                 'like': [e['investigation'] for e in (note or {}).get('earlier', [])]})
+                 'like': [e['investigation'] for e in (note or {}).get('earlier', [])],
+                 **({'line_id': line_id, 'line_evidence': _line_evidence(line_id)} if line_id else {})})
     lab._atomic(_path('question-cooldown.json'), {'questions': rows})
     lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_refused_repeat', 'line_id':
                                investigation.get('line_id'), 'question': str(question)[:400],
@@ -1633,15 +1686,19 @@ def _turn(context, *, ask=None, execute=None):
         investigation = min(active, key=lambda i:i.get('last_step_at', i['opened_at']))
     else:
         import lab_lines
-        line = lab_lines.pick()
+        cooling = _cooldown_sweep()
+        held = []
+        line = lab_lines.pick(skip=lambda l: bool(l.get('question')) and _on_cooldown(l['question'], rows=cooling),
+                              held=held)
+        if line is None and held:
+            return None     # every open line is parked or on the cooldown: nothing to open, nothing to write
         investigation = {'id':'I-'+uuid.uuid4().hex[:12], 'opened_at':lab.now_iso(), 'state':'open',
                          'line_id':(line or {}).get('id'), 'line_context':line_summary(line), 'question':(line or {}).get('question',''),
                          'prediction':'', 'plan':[], 'steps':[]}
-        if investigation['question'] and _on_cooldown(investigation['question']):
-            # refused as a repeat a short while ago: not asked again until the cooldown ends; the Lab's other work runs
-            lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_not_opened', 'line_id':
-                                       investigation['line_id'], 'why': 'question on the repeat cooldown',
-                                       'truth_status': 'refused_before_any_execution'})
+        if investigation['question'] and _on_cooldown(investigation['question'], rows=cooling):
+            # refused as a repeat a short while ago (pick skips such lines; this is the race, or a free question
+            # that matches one): not asked again until it leaves the cooldown, and not written down again either,
+            # since its entry was written when it was refused and its exit is written by _cooldown_sweep
             return None
         fresh = True
         earlier = _same_question(investigation['question'], None, data) if investigation['question'] else []

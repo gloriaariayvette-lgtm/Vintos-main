@@ -1299,10 +1299,18 @@ def _plan_raw(system, prompt):
         prompt = "[older Lab context cut to fit]\n" + prompt[-limit:]
     try:
         return _json_object(_ask(system, prompt + PLAN_TAIL))
-    except ModelJSONError as exc:
-        _fault("plan_not_json", exc, prompt_chars=len(prompt))
-        return _json_object(_ask(system, prompt + PLAN_TAIL + "\n\nYour last reply was prose, not the JSON object. "
-                                 "Reply again with the JSON object only, starting with {.", temperature=0.3))
+    except ModelJSONError as first:
+        # One bounded repair: asked again, cooler, with what was wrong with the reply. Only a reply that still cannot
+        # be read is a fault, written once (29 October: 10 plan_not_json faults, every one repaired by this re-ask).
+        why = str(first).split("; evidence=")[0]
+        try:
+            return _json_object(_ask(system, prompt + PLAN_TAIL + "\n\nYour last reply was prose, not the JSON object "
+                                     "(the parser said: %s). Reply again with the JSON object only, starting with {."
+                                     % why, temperature=0.3))
+        except ModelJSONError as exc:
+            _fault("plan_not_json", exc, prompt_chars=len(prompt), repair_attempted=True,
+                   first_evidence=getattr(first, "evidence_id", None))
+            raise
 
 
 # A question that asks two things is unanswered when either is missing. On 16 October after the 17:48 UTC deploy,
@@ -1473,7 +1481,41 @@ def _sourced_followup(spec, records):
     available = {str(item).upper() for row in records for item in (row.get(field) or [])}
     if value and value in available:
         return {"source": source, "id": value, "sourced_from": "current_uniprot_records"}, None
+    if source == "pdb" and _UNIPROT_ACCESSION.fullmatch(value):
+        # A UniProt accession where an entry id belongs (29 October: Q8IWU4 refused as a PDB ID while its own record
+        # carried 6XPD). That record's PDB cross-references name the entry; refused only when it has none.
+        row = next((r for r in records if str(r.get("accession") or "").upper() == value), None)
+        ids = [str(x).upper() for x in ((row or {}).get("pdb_ids") or []) if re.fullmatch(r"[0-9][A-Za-z0-9]{3}", str(x))]
+        if ids:
+            return {"source": source, "id": ids[0], "mapped_from_accession": value,
+                    "sourced_from": "current_uniprot_records_pdb_cross_references", "other_entries": ids[1:8]}, None
+        if row is not None:
+            return None, ("pdb identifier %s is a UniProt accession, and its current record has no PDB "
+                          "cross-references" % value)
     return None, "%s identifier %s was absent from the current UniProt records" % (source, value or "(empty)")
+
+
+_UNIPROT_ACCESSION = re.compile(r"(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})")
+
+
+def _name_few(names, most=3):
+    """At most `most` names, then how many more: a family question once joined every absent member into one step."""
+    names = list(dict.fromkeys(str(n) for n in names if str(n).strip()))
+    if len(names) <= most:
+        return ' and '.join(names) if len(names) < 3 else ', '.join(names[:-1]) + ' and ' + names[-1]
+    rest = len(names) - most
+    return '%s and %d other family member%s' % (', '.join(names[:most]), rest, '' if rest == 1 else 's')
+
+
+def _absent_targets_step(absent, mapping):
+    """The next step when named targets were never retrieved. With one established, retrieve the absent ones beside
+    it; with none established, there is no 'established target' to name, so only the retrieval is asked for."""
+    if mapping:
+        return ('Retrieve %s together with %s in one query, then compare them; this question is unresolved until '
+                'one retrieval establishes every named target.'
+                % (_name_few(absent), _name_few(['%s (%s)' % (k, v) for k, v in sorted(mapping.items())])))
+    return ('Retrieve %s in one query; this question is unresolved until one retrieval establishes every named target.'
+            % _name_few(absent))
 
 
 ATLAS_EVERY = 3
@@ -1794,6 +1836,12 @@ def _orient(context, lean=None):
                    'question': ' '.join(str(inquiry.get('question') or '').casefold().split())}
         return dict(inquiry, planning_scope=own, planning_evidence=_planning_evidence(inquiry))
     recent = _tail_jsonl(NOTEBOOK, nbytes=64*1024)
+    _waited = (_load(STATE, {}) or {}).get('quiet_wait')
+    if isinstance(_waited, dict) and _waited.get('kind') in ('inquiry_refused', 'evidence_wait') and \
+            not (recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait')):
+        # A wait counted in state rather than written again is still the last thing this Lab did, so the recovery
+        # paths below see it as they saw the row each pass wrote before.
+        recent = (recent or []) + [{'kind': _waited['kind'], 'quiet_wait': True}]
     if lab_repeats and not atlas_due and not step and recent and recent[-1].get('kind') in ('inquiry_refused', 'evidence_wait'):
         # A saved, explicit local step is work already chosen. Try its exact
         # model/range before asking the planner for another exhausted subject.
@@ -4685,10 +4733,7 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
         held = [x for x in (entity.get('target_mapping') or {})]
         absent = [x for x in entity.get('symbols', []) if x not in held]
         if absent:   # a comparison whose second target was never retrieved: name it, and keep the question whole
-            step = ('Retrieve %s together with %s in one query, then compare them; this question is unresolved until '
-                    'one retrieval establishes every named target.'
-                    % (' and '.join(absent), ' and '.join('%s (%s)' % (k, v) for k, v in sorted((entity.get('target_mapping') or {}).items()))
-                       or 'the established target'))
+            step = _absent_targets_step(absent, entity.get('target_mapping') or {})
         return {'answers_question': 'no: ' + missing, 'missing_evidence': missing,
                 'factual_observation': 'Retrieved entity context does not establish the requested target: ' + missing,
                 'speculative_reading': '', 'next_question': step,
@@ -5026,6 +5071,116 @@ def _campaign_turn(state):
     return {"ok": True, "state": "completed", "kind": out.get("kind"), "campaign": out, "next_phase": "orient"}
 
 
+# A pass that ends waiting ("no eligible proposal this pass") or refused the same way as the pass before is not asked
+# again every minute. 29 October: 527 evidence_wait rows and 127 refusals in 16 hours, about one a pass, each after a
+# full planner call. The first is written; the Lab then waits QUIET_WAIT_BASE_SECONDS, doubling while it keeps ending
+# the same way, up to QUIET_WAIT_MAX_SECONDS, and plans again earlier only when its evidence changed (_wait_basis),
+# at most once per QUIET_WAIT_RECHECK_SECONDS. The repeats are counted in state, and the end is written once.
+QUIET_WAIT_BASE_SECONDS = 600
+QUIET_WAIT_MAX_SECONDS = 2 * 3600
+QUIET_WAIT_RECHECK_SECONDS = 300
+
+
+def _wait_basis():
+    """What a waiting Lab waits on, cheaply: the receipt and instrument stores growing, or an open line's inputs
+    changing (a new answered step, a new next step, a frontier steer). Not the notebook: its own rows are not news."""
+    parts = []
+    for name in ("source-receipts.jsonl", "instrument-runs.json"):
+        try: parts.append(os.path.getsize(os.path.join(ROOT, name)))
+        except OSError: parts.append(None)
+    try:
+        import lab_lines
+        parts.append(sorted([l["id"], lab_lines.inputs_key(l)] for l in lab_lines.snapshot()["lines"]
+                            if l.get("state") == "open" and not l.get("parked")))
+    except Exception:
+        parts.append(None)
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:16]
+
+
+def _frontier_active():
+    """Whether a frontier session's plan holds this pass (lab_repeats.frontier_step). Never raises."""
+    try:
+        import lab_repeats
+        return bool(lab_repeats.frontier_step())
+    except Exception:
+        return False
+
+
+def _wait_key(note):
+    if note.get("kind") == "evidence_wait":
+        return "evidence_wait"       # waiting is one state, whichever held proposal the planner offered this time
+    return "refused:" + hashlib.sha256(" ".join(str(note.get("why") or "").split()).encode()).hexdigest()[:16]
+
+
+def _quiet_wait_holds(state, now=None):
+    """True while the Lab is waiting and nothing it waits on has changed: this pass plans nothing, writes nothing."""
+    w = state.get("quiet_wait")
+    if not isinstance(w, dict):
+        return False
+    now = time.time() if now is None else now
+    if float(w.get("until") or 0) <= now:
+        return False
+    if now - float(w.get("checked") or 0) >= QUIET_WAIT_RECHECK_SECONDS and w.get("basis") != _wait_basis():
+        w["early_recheck"] = True
+        return False
+    w["skipped"] = int(w.get("skipped") or 0) + 1
+    return True
+
+
+def _quiet_wait_end(state, why):
+    """The wait is over (a question was admitted, or the Lab ended a different way): said once, then forgotten. A
+    single refusal that was never repeated held nothing, and ends without a row."""
+    w = state.pop("quiet_wait", None)
+    if not isinstance(w, dict):
+        return None
+    if w.get("kind") != "evidence_wait" and int(w.get("passes") or 1) < 2:
+        return None
+    row = {"at": now_iso(), "kind": "evidence_wait_ended", "waited": w.get("kind"), "why": why,
+           "since": w.get("since"), "passes_ending_the_same_way": int(w.get("passes") or 1),
+           "passes_not_planned": int(w.get("skipped") or 0), "first_reason": w.get("why"),
+           "truth_status": "operator_control"}
+    _append(NOTEBOOK, row)
+    return row
+
+
+def _quiet_wait_note(state, note, now=None):
+    """Whether this refusal or wait is written. The first of a kind is, with when the Lab will look again; the same
+    again only lengthens the wait."""
+    now = time.time() if now is None else now
+    key = _wait_key(note)
+    w = state.get("quiet_wait") if isinstance(state.get("quiet_wait"), dict) else None
+    if w and w.get("key") == key:
+        passes = int(w.get("passes") or 1) + 1
+        steps = passes - 1 if note.get("kind") == "evidence_wait" else passes - 2
+        w.update(passes=passes, checked=now, basis=_wait_basis(), last_why=str(note.get("why") or "")[:300],
+                 until=now + min(QUIET_WAIT_MAX_SECONDS, QUIET_WAIT_BASE_SECONDS * 2 ** max(0, steps)))
+        w.pop("early_recheck", None)
+        return False
+    if w:
+        _quiet_wait_end(state, "the Lab ended a different way")
+    hold = QUIET_WAIT_BASE_SECONDS if note.get("kind") == "evidence_wait" else 0
+    state["quiet_wait"] = {"key": key, "kind": note.get("kind"), "since": now_iso(), "passes": 1, "skipped": 0,
+                           "checked": now, "until": now + hold, "basis": _wait_basis(),
+                           "why": str(note.get("why") or "")[:300]}
+    if hold:
+        note["quiet_until"] = now + hold
+    return True
+
+
+def _empty_source_reason(phase, note):
+    """Why a line's required source came back empty, or None. A failure (an HTTP error, a refused query, a throttle)
+    is not empty: only a source that answered with no records."""
+    if phase == "browse" and note.get("kind") == "source_unavailable" and \
+            note.get("reason") == "uniprot_returned_no_records" and not note.get("fallback_reason"):
+        return "UniProt returned no records for %s" % str(note.get("executed_query") or note.get("requested_query"))[:240]
+    if phase == "sources" and note.get("kind") == "additional_source" and note.get("records_returned") == 0 \
+            and note.get("requested_source_unanswered") and not note.get("literature_instead"):
+        sent = note.get("query_sent") if isinstance(note.get("query_sent"), dict) else {}
+        return "%s returned no records for %s" % (str(sent.get("source") or "the source"),
+                                                 json.dumps(sent, sort_keys=True)[:240])
+    return None
+
+
 def tick():
     """Run one short, checkpointed turn. A foreground arrival prevents the next turn, never erases this one."""
     cfg = config()
@@ -5076,6 +5231,7 @@ def tick():
             context, receipt = lab_context()
             phase = state.get("phase", "orient")
             _inquiry_before = dict(state.get("inquiry") or {})
+            quiet = False      # a refusal the same as the last one is counted in state, not written again
             state["effective_state"] = "working"; _atomic(STATE, state)
             if phase == "orient":
                 import lab_investigations
@@ -5087,6 +5243,14 @@ def tick():
                                  fault_streak=0, fault_phase=None)
                     _atomic(STATE, state)
                     return {'ok':True, 'state':'completed', 'kind':investigation['kind'], 'next_phase':follow_phase}
+                frontier_wait = _frontier_active()
+                if not frontier_wait and _quiet_wait_holds(state):
+                    # still waiting on changed evidence: no planner call, no row (see QUIET_WAIT_BASE_SECONDS)
+                    state.update(phase="orient", last_turn_at=now_iso(), last_outcome="quiet_wait",
+                                 effective_state="waiting", fault_streak=0, fault_phase=None)
+                    _atomic(STATE, state)
+                    return {"ok": True, "state": "completed", "kind": "quiet_wait", "next_phase": "orient",
+                            "until": state["quiet_wait"]["until"]}
                 try:
                     import atelier_lab_lean
                     lean = atelier_lab_lean.today()
@@ -5110,7 +5274,11 @@ def tick():
                             "atlas_turn": bool(inquiry.get("atlas_turn")),
                             "truth_status": ("refused_after_identity_check" if inquiry.get("identity_check")
                                              else "refused_before_any_source_call")}
+                    # a frontier session's waits are its budgeted cycles (lab_repeats.FRONTIER_CYCLES): each is
+                    # planned and written, so the session ends on time instead of pinning the Lab for hours
+                    quiet = not frontier_wait and not _quiet_wait_note(state, note)
                 else:
+                    _quiet_wait_end(state, "a question was admitted")
                     state["inquiry"] = inquiry
                     # An explicit saved local step already identifies its input;
                     # do not precede it with an unrelated default UniProt browse.
@@ -5198,6 +5366,10 @@ def tick():
                                  journal_source_saturated([r.get("accession") for r in review_records]))
                     state["records"] = [] if stale else review_records
                     followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), review_records)
+                    if (followup_lineage or {}).get("mapped_from_accession"):
+                        # the accession's own PDB cross-reference is the entry read
+                        inquiry = dict(inquiry, source_query=dict(inquiry["source_query"], entry_id=followup_lineage["id"]))
+                        state["inquiry"] = inquiry
                     if unsourced_reason and review_records:
                         _append(NOTEBOOK, {"at": now_iso(), "kind": "unsourced_id",
                             "reason": unsourced_reason, "question": inquiry.get("question"),
@@ -5633,6 +5805,10 @@ def tick():
                                                   "source": str(((_inquiry_before or {}).get("source_query") or {}).get("source") or "uniprot"),
                                                   "result": "", "answered": "no: " + str(note.get("reason") or note["kind"])[:200]})
                     note["line"] = _line
+                    empty = _empty_source_reason(phase, note)
+                    if empty and lab_lines.park(_line, empty):
+                        # the line waits until its inputs change, instead of the same empty read again
+                        note["line_parked"] = empty
                 except Exception as exc:
                     _fault("lab_lines_miss", exc)
             if state.get('investigation_id'):
@@ -5641,11 +5817,12 @@ def tick():
                 if phase == 'atlas_genome' and not state.get('records'): next_phase = 'reflect'
                 if next_phase == 'orient':
                     state.pop('investigation_id', None); state.pop('investigation_input_step', None)
-            _append(NOTEBOOK, note)
-            try:
-                _note_graded(note)
-            except Exception as exc:
-                _fault("coverage_graded", exc)
+            if not quiet:
+                _append(NOTEBOOK, note)
+                try:
+                    _note_graded(note)
+                except Exception as exc:
+                    _fault("coverage_graded", exc)
             if note["kind"] == "reflection":
                 # Which sourced proteins he actually wrote about. Late import, same reason.
                 try:
