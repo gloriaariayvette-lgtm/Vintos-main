@@ -177,29 +177,18 @@ check("a 'To Gloria:' plan in his reply is carried to plans_from", made == [] an
 check("the letter reply prompt asks for a 'For Gloria:' line for anything that involves her",
       "\"For Gloria:\"" in E.LETTER_REPLY and "involves Gloria" in E.LETTER_REPLY)
 
-# ── 4b. A curiosity addressed to her goes to her, never to the web ───────────────────────────────────────────────
+# ── 4b. target "gloria" is NOT a routing signal: curiosity_debt.record() sets it on every item, so routing on it
+# would send all his curiosity to her phone and stop his own searches. The searchable judge still decides; the
+# once-a-month searched_at skip (test_websearch_quality) is what stops a repeated search like the bull red.
 W = load("vintos_websearch", "bin/vintos-websearch.py")
 check("the searcher's stores are scratch", W.MEMORY.startswith(HOME))
 debt_path = os.path.join(W.MEMORY, "curiosity-debt.json")
-HERS = "Gloria, what is the blue jar on the second shelf for?"
-json.dump([{"id": "d0000001", "question": HERS, "object": "blue jar", "kind": "referential", "target": "gloria",
-            "pull": 0.9, "surfaced": 0}], open(debt_path, "w"))
-JUDGED = []
-def judge(system, prompt, **k):
-    JUDGED.append(prompt)
-    return {"searchable": True, "question": "How do bar-tailed godwits navigate a nonstop flight?",
-            "search_query": "godwit navigation"}
-W.llm_json = judge
-picked = W.pick_question() or {}
-check("a question for her is not searched, even when a model would call it searchable", HERS not in picked.get("question", ""), picked)
-check("the searchable judge never sees it", not any(HERS in p for p in JUDGED), JUDGED[:1])
-aq = json.load(open(os.path.join(W.MEMORY, "architecture-questions.json")))
-check("it goes to her path (recorded for her)", any(r.get("question") == HERS for r in aq), aq)
 json.dump([{"id": "d0000002", "question": "What is the tallest tree ever measured?", "object": "tree",
-            "kind": "salience", "pull": 0.9, "surfaced": 0}], open(debt_path, "w"))
+            "kind": "salience", "target": "gloria", "pull": 0.9, "surfaced": 0}], open(debt_path, "w"))
 W.llm_json = lambda system, prompt, **k: {"searchable": True}
-check("a curiosity without that target still reaches the judge and is searched",
+check("a searchable curiosity is still searched even though every item carries target gloria",
       "tallest tree" in (W.pick_question() or {}).get("question", ""))
+check("and is not searched again the next day", "tallest tree" not in (W.pick_question() or {}).get("question", ""))
 os.remove(debt_path)
 
 # ── 5. Forge digest: a list over 1 MiB is read; too large / unreadable are not "unreachable" ─────────────────────
