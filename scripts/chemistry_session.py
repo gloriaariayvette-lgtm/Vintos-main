@@ -720,6 +720,7 @@ def run():
         except Exception: channel_lean = None
         instruments = lab.tools_status()
         plan = None; result = None; grade = None; delivery_recorded = not bool(offered_interest)
+        submitted = False   # the findings reached a model only once the planner is called with them
         base_context = len(context)
         try:
             from compute_admission import admit
@@ -728,6 +729,7 @@ def run():
                 plan = _operator_plan(experiments) or carried_plan
                 if plan is None:
                     leans = dict(({"lean": lean} if lean else {}), **({"channel_lean": channel_lean} if channel_lean else {}))
+                    submitted = True
                     plan = _plan(context, experiments, lens, instruments, offered_interest, **leans)
                     if channel_lean:   # shown to this plan: used, so the next run is not steered by it again
                         try: channel_lab_lean.used(channel_lean["lean_id"], session_id)
@@ -761,7 +763,7 @@ def run():
                 context += "\nLOCAL INSTRUMENT (prediction, not validation):\n" + json.dumps(source_result)[:12000]
             if offered_interest:
                 bridge.record_delivery(session_id, lens, offered_interest,
-                                       plan.get("addressed_entry_ids", []), state="responded")
+                                       plan.get("addressed_entry_ids", []), state="responded", submitted=submitted)
                 delivery_recorded = True
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
             if not result.get("ok") and result.get("waiting"):
@@ -871,7 +873,10 @@ def run():
                 except Exception as debt_exc: lab._fault("owe_reading", debt_exc, session_id=session_id)
         if offered_interest and not delivery_recorded:
             try:
-                bridge.record_delivery(session_id, lens, offered_interest, [], state="response_failed")
+                # Failed before the planner was called (admission timeout, probe, Mac): nothing was sent, so no
+                # offer is used. Failed after it was called: it may have been seen, so it counts.
+                bridge.record_delivery(session_id, lens, offered_interest, [],
+                                       state="response_failed" if submitted else "not_submitted", submitted=submitted)
             except Exception as exc:
                 lab._fault("frontier_delivery_receipt", exc, session_id=session_id)
         if plan: row["plan"] = plan
