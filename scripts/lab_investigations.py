@@ -540,7 +540,8 @@ def _plan(investigation, context, ask, note=None):
     import lab_instruments
     steps = investigation.get('steps') or []
     # a repeat handed its earlier output is shown as an attempt, not as a result: it must not push real results out
-    fresh = lambda s: s.get('state') == 'completed' and not s.get('repeat_within')
+    # so is a result that came back with an earlier step's receipt: it is shown as already held, not as new
+    fresh = _new_output
     visible = [s for s in steps if fresh(s)][-6:] + [s for s in steps if not fresh(s)][-2:]
     named = _name_notes(investigation)   # before the task copies its question and its line's
     system = ('You are at your Chemistry Lab conducting an investigation. Produce a new computed finding: '
@@ -554,10 +555,15 @@ def _plan(investigation, context, ask, note=None):
         'build_on': __import__('lab_findings').for_planner(3),
         'plan': investigation.get('plan'), 'context': context[-2500:],
         'results_so_far': [{k:s.get(k) for k in ('id','state','route','question','request','summary','output_index','output_sha256','error','input_refs','reused_from')
-                            + tuple(k for k in ('identity_correction', 'resolved') if s.get(k))}
+                            + tuple(k for k in ('identity_correction', 'resolved', 'same_receipt_as') if s.get(k))
+                            + (('execution_receipt_id',) if s.get('same_receipt_as') else ())}
                            for s in visible],
+        # a result already held: the same execution receipt an earlier step returned. Asking for it again in other
+        # words buys the same cached result again.
         'retained_outputs':[{'id':s['id'],'state':s.get('state'),'tool':s.get('tool'),
-                             **({'repeat_of':s['reused_from']} if s.get('repeat_within') else {})} for s in steps],
+                             **({'repeat_of':s['reused_from']} if s.get('repeat_within') else {}),
+                             **({'already_held':{'as':s['same_receipt_as'], 'receipt':s.get('execution_receipt_id')}}
+                                if s.get('same_receipt_as') else {})} for s in steps],
         # the tools whose questions the repeat check already refused in this investigation: Gemma kept rewording the
         # same PubMed question (about 600 refusals in two days) instead of moving to another tool (23 October). A
         # repeat handed its own earlier output counts here too: what that tool returns is already known.
@@ -1044,19 +1050,63 @@ def _gate(inquiry):
     return admitted
 
 
+REVIEW_OUTPUT_BYTES = 256 * 1024    # one step's retained output the review loads; a larger one is named, not loaded
+REVIEW_TOTAL_BYTES = 768 * 1024     # all of them together: about what COVERAGE_SPLIT_MAX_PARTS parts can carry
+
+
+def _retained_output(step):
+    """A completed step's retained output as the review may use it: (payload, encoded size, None), or (None, 0, why
+    not). Only the file the step names, and only when it still hashes to the output_sha256 recorded with the step; a
+    missing, unreadable or changed file is never trusted. It used to go through resolve(), which raises, so one
+    changed file failed the whole review instead of leaving out that one output."""
+    name, sha = step.get('output_file'), step.get('output_sha256')
+    if not name or not sha:
+        return None, 0, 'no retained output recorded'
+    path = _path(name)
+    if not os.path.isfile(path):
+        return None, 0, 'retained output file missing'
+    payload = lab._load(path, None)
+    if payload is None:
+        return None, 0, 'retained output file unreadable'
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    if hashlib.sha256(encoded).hexdigest() != sha:
+        return None, 0, 'retained output does not match its recorded sha256'
+    return payload, len(encoded), None
+
+
 def _observations(steps):
+    """Every completed step's retained output, checked against its hash and bounded, as the review's evidence. What
+    could not be used is listed under outputs_not_reviewed with its reason, beside the evidence and never in it, so
+    nothing about a missing output can be quoted as if it were one."""
     observations = {'records':[], 'LITERATURE':[], 'prior_validated_evidence':[]}
-    outputs = []
+    outputs, left_out, total = [], [], 0
     for step in steps:
         if step.get('state') != 'completed': continue
-        result = resolve({'step':step['id'], 'path':[]}, steps)
+        result, size, why = _retained_output(step)
+        if why is not None:   # not trusted: nothing of it is used
+            left_out.append({'step': step.get('id'), 'output_file': step.get('output_file'), 'reason': why})
+            continue
+        if not isinstance(result, dict):
+            result = {'output': result}
         receipt = result.get('receipt') or result.get('source_receipt') or result.get('instrument_receipt') or {}
         rows = receipt.get('records') or []
+        # a verified source's records and abstracts are used whatever its size: identity is established from them
         if receipt.get('source') == 'uniprot':
             observations['records'] += result.get('normalized_records') or lab.normalize_protein_records(rows, sequence_limit=200000)
         if receipt.get('source') == 'pubmed_abstracts': observations['LITERATURE'] += rows
+        if size > REVIEW_OUTPUT_BYTES:
+            why = 'retained output is %d bytes, over the %d a review loads for one step' % (size, REVIEW_OUTPUT_BYTES)
+        elif total + size > REVIEW_TOTAL_BYTES:
+            why = 'the review already holds %d bytes of outputs; this one (%d) is over the %d in all' % (
+                total, size, REVIEW_TOTAL_BYTES)
+        if why is not None:
+            left_out.append({'step': step.get('id'), 'output_file': step.get('output_file'), 'reason': why})
+            continue
+        total += size
         outputs.append({'step':step['id'], 'question':step['question'], 'result':result})
     observations['additional_source'] = {'receipt': {'source':'investigation', 'records': outputs}}
+    if left_out:
+        observations['outputs_not_reviewed'] = left_out
     return observations
 
 
@@ -1145,6 +1195,29 @@ def _mostly(steps):
     return 'mostly %s (%d of %d)' % (cause, n, len(steps))
 
 
+def _new_output(step):
+    """A completed step whose output this investigation did not already hold: not a repeat handed its own earlier
+    output, and not a differently worded request that came back with an earlier step's execution receipt (the same
+    cached result, counted as new on every such step and bought again by the planner)."""
+    return step.get('state') == 'completed' and not step.get('repeat_within') and not step.get('same_receipt_as')
+
+
+def _mark_same_receipt(investigation, step):
+    """same_receipt_as=<the earlier step> when this completed step's execution receipt is one an earlier completed
+    step of this investigation already returned. The step and its output are kept as they are; only its count changes.
+    A repeat handed its own earlier output is already told apart (repeat_within) and is left to that."""
+    receipt = step.get('execution_receipt_id')
+    if step.get('state') != 'completed' or not receipt or step.get('repeat_within'):
+        return None
+    for earlier in investigation.get('steps') or []:
+        if earlier is step:
+            break
+        if earlier.get('state') == 'completed' and earlier.get('execution_receipt_id') == receipt:
+            step['same_receipt_as'] = earlier.get('same_receipt_as') or earlier['id']
+            return step['same_receipt_as']
+    return None
+
+
 def _budget_spent(investigation):
     """Why this investigation should close now, or ''. Only one investigation is open at a time, so one that can
     neither finish nor progress would otherwise be chosen again on every turn, forever. The reason names what the
@@ -1152,15 +1225,17 @@ def _budget_spent(investigation):
     steps = investigation.get('steps') or []
     if len(steps) >= MAX_STEPS:
         failed = [s for s in steps if s.get('state') in FAILED]
-        done = [s for s in steps if s.get('state') == 'completed' and not s.get('repeat_within')]
+        done = [s for s in steps if _new_output(s)]
         repeats = [s for s in steps if s.get('repeat_within')]
+        held = [s for s in steps if s.get('state') == 'completed' and not s.get('repeat_within') and s.get('same_receipt_as')]
         waits = [s for s in steps if s.get('state') in NOT_SENT and s.get('state') != 'refused_not_sent']
         shaped = [s for s in steps if s.get('state') == 'refused_not_sent']
         return ('step budget spent (%d operations) without a finish: %d new outputs, %d repeats given their earlier '
-                'output, %d not sent while a source cooled down, %d failed%s%s'
+                'output, %d not sent while a source cooled down, %d failed%s%s%s'
                 % (len(steps), len(done), len(repeats), len(waits), len(failed),
                    ('; failures ' + _mostly(failed)) if failed else '',
-                   ('; %d refused for their inputs before sending' % len(shaped)) if shaped else ''))
+                   ('; %d refused for their inputs before sending' % len(shaped)) if shaped else '',
+                   ('; %d returned a receipt an earlier step already held' % len(held)) if held else ''))
     run = []
     for s in reversed(steps):
         if _neutral(s): continue
@@ -1176,9 +1251,16 @@ def _review(investigation, context, ask):
     Answered, the investigation is 'answered' and its finding is recorded. Returns (notebook row, answered)."""
     original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
     observations = _with_named_records(investigation['question'], investigation['steps'], _observations(investigation['steps']))
+    left_out = observations.get('outputs_not_reviewed') or []
+    if left_out and not (observations.get('additional_source') or {}).get('receipt', {}).get('records'):
+        # not one output could be used: nothing to review, and the model is not asked to judge nothing
+        raise ValueError('no retained output could be reviewed: %s'
+                         % '; '.join('%s %s' % (x['step'], x['reason']) for x in left_out[:3]))
     reflection = lab._reflect(context, original, observations)
     row = {'at':lab.now_iso(), 'kind':'investigation_review', 'investigation':investigation['id'],
            'inquiry':original, **reflection}
+    if observations.get('outputs_not_reviewed'):
+        row['outputs_not_reviewed'] = observations['outputs_not_reviewed']
     answered = lab.review_answered(reflection)
     if answered:
         investigation['state'] = 'answered'
@@ -1213,7 +1295,8 @@ def _review_at_budget(investigation, closed, context, ask):
     row['at_step_budget'] = True
     if not answered:
         investigation['budget_review'] = {k: row.get(k) for k in ('at', 'answers_question', 'missing_evidence',
-                                                                   'next_question', 'evidence_status') if row.get(k)}
+                                                                   'next_question', 'evidence_status',
+                                                                   'coverage_diagnostic') if row.get(k)}
         investigation.update(state='stalled', closed_reason=closed + '; a review at the budget found the outputs did '
                              'not answer it')
     return row
@@ -2215,7 +2298,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
             # never close an investigation the planner keeps trying to finish. Three unanswered reviews close it.
             investigation['last_review'] = {k: row.get(k) for k in ('at', 'answers_question', 'missing_evidence',
-                                                                    'next_question', 'evidence_status') if row.get(k)}
+                                                                    'next_question', 'evidence_status',
+                                                                    'coverage_diagnostic') if row.get(k)}
             investigation['unanswered_reviews'] = int(investigation.get('unanswered_reviews', 0)) + 1
             if investigation['unanswered_reviews'] >= MAX_UNANSWERED_REVIEWS:
                 investigation.update(state='unanswered', closed_reason='%d reviews found the outputs did not answer it'
@@ -2383,7 +2467,11 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             step['state_at'] = lab.now_iso()
             # a refusal that names the instruments and routes he has right now is kept whole: cut at 300 characters
             # it named none of them (27 October)
-            step['error'] = str(exc)[:1800 if isinstance(exc, (NamesTheMenu, lab_instruments.NotOffered)) else 300]
+            # anything else keeps its end as well as its start: an ESMC failure was kept as its first 300 characters,
+            # a progress bar, and the traceback after it was lost (progress output is dropped first)
+            step['error'] = (str(exc)[:1800] if isinstance(exc, (NamesTheMenu, lab_instruments.NotOffered))
+                             else lab.bounded_error(str(exc), 300))
+    _mark_same_receipt(investigation, step)
     if FRONTIER_PLANS and plan_ref and step.get('state') in ('completed', 'failed'):
         # Settle the attempt against the exact plan step it was made for. Credit needs a completed operation with a
         # retained output; an unknown outcome or a send still waiting is neither credit nor failure.

@@ -3544,6 +3544,38 @@ def _resolve_free_record_discovery(inquiry, records):
                                   'returned_record_count':len(records)}
 
 
+# A progress bar (tqdm and the like) with its label and timing: "Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00]"
+_PROGRESS_BAR = re.compile(r'(?:[\w .\-]{0,40}:\s*)?(?:\d{1,3}%)?\|[\s▀-▟#=>.\-]*\|\s*'
+                           r'\d+(?:\.\d+)?[kMGT]?/\d+(?:\.\d+)?[kMGT]?(?:\s*\[[^\]\n]*\])?')
+
+
+def without_progress(text):
+    """Error text without progress output. A line redrawn with carriage returns is what a terminal would show of it,
+    its last segment; a progress bar is taken out with its label and timing, and what else its segments said (the
+    "ESMC adapter failed:" a bar was printed after) is kept. A line left with nothing is dropped."""
+    lines = []
+    for raw in str(text or '').split('\n'):
+        segments = raw.rstrip('\r').split('\r')
+        if not any(_PROGRESS_BAR.search(s) for s in segments):
+            lines.append(segments[-1])
+            continue
+        rest = [kept for kept in (_PROGRESS_BAR.sub('', s).strip() for s in segments) if kept]
+        if rest:
+            lines.append(' '.join(dict.fromkeys(rest)))
+    return '\n'.join(lines).strip()
+
+
+def bounded_error(text, limit=300, head=80):
+    """Error text in at most about `limit` characters, keeping its end: the end of a traceback is where it says what
+    went wrong. The start is kept too (what failed), with the cut marked between them."""
+    text = without_progress(text)
+    if len(text) <= limit:
+        return text
+    marker = ' [...] '
+    head = max(0, min(head, limit // 3))
+    return text[:head] + marker + text[-(limit - head - len(marker)):]
+
+
 def _embed_records(records):
     if not (os.path.isfile(ESMC_PYTHON) and os.path.isfile(ESMC_WORKER)):
         return {"ok": False, "state": "adapter_unavailable", "embeddings": []}
@@ -3555,7 +3587,9 @@ def _embed_records(records):
             "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")},
     )
     if done.returncode:
-        raise RuntimeError("ESMC adapter failed: " + done.stderr.strip()[-400:])
+        # the worker's stderr starts with model-download progress bars: kept as they were, they filled the bounded
+        # error and the traceback after them was lost
+        raise RuntimeError("ESMC adapter failed: " + without_progress(done.stderr)[-400:])
     value = json.loads(done.stdout)
     if not isinstance(value, dict) or not value.get("ok"):
         raise RuntimeError("ESMC adapter returned no valid receipt")
@@ -4292,25 +4326,32 @@ def _coverage_split(inquiry, prepared):
     evidence, strings, addresses, (system, prompt, out) = prepared
     head = prompt.partition('\nEVIDENCE:\n')[0]
     normalized = lambda x: ' '.join(str(x).split())
-    found, missing, failed = {}, [], 0
+    found, missing, failed, dropped = {}, [], 0, []
     for request in parts:
         try:
             result = _json_object(_ask(request[0], request[1], max_tokens=request[2], temperature=0.0))
         except Exception:
             failed += 1; continue
         for item in result.get('supports') or []:
-            if not isinstance(item, dict): continue
+            if not isinstance(item, dict):
+                dropped.append({'support': item, 'reason': 'malformed_support'}); continue
             address, quote = item.get('address'), item.get('quote')
             if (isinstance(address, str) and address in addresses and isinstance(quote, str) and quote.strip()
                     and item.get('requirement') and normalized(quote) in normalized(strings[addresses[address]])):
                 found.setdefault(address, item)
+            else:
+                # refused exactly as before; now also kept, so a checker that cited something that did not hold is
+                # never mistaken for one that was offered nothing to cite
+                dropped.append({'support': item, 'reason': 'unknown_or_nonquotable_address'
+                                if not (isinstance(address, str) and address in addresses)
+                                else 'quote_not_in_cited_source'})
         missing += [str(m) for m in (result.get('missing') or []) if str(m).strip()]
     sha = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
     if failed == len(parts): return None
     if not found:
         return {'answered': False, 'missing': list(dict.fromkeys(missing))[:12] or
                 ['no part of the retrieved evidence supports the original question'],
-                'original_question': inquiry['question'], 'supports': [], 'discarded_supports': [],
+                'original_question': inquiry['question'], 'supports': [], 'discarded_supports': dropped[:12],
                 'evidence_sha256': sha, 'independent_sufficiency': None, 'split_parts': len(parts),
                 'split_failed_parts': failed, 'method': 'split_coverage_no_verified_support'}
     for cap in (4000, 1500, 600):
@@ -4617,6 +4658,29 @@ def _coverage_attempt(inquiry, evidence, strings, addresses, coverage_request, _
 
 
 
+NO_QUOTABLE_EVIDENCE = 'no quotable evidence reached the checker'
+
+
+def _coverage_diagnostic(coverage, prepared):
+    """When a coverage answer cites nothing at all (no support kept, none refused), why: whether the checker was ever
+    offered anything it could quote. Reviews of 8-14-step investigations came back supports=[] and
+    discarded_supports=[] with the question restated as missing, which looks exactly like a question the evidence
+    cannot answer. This only describes; the verdict is unchanged."""
+    if not isinstance(coverage, dict) or coverage.get('supports') or coverage.get('discarded_supports'):
+        return {}
+    addresses = prepared[2] if prepared and len(prepared) > 2 and isinstance(prepared[2], dict) else {}
+    outputs = [p for p in addresses.values() if str(p).startswith('evidence.additional_source.records.')]
+    if not addresses:
+        why = NO_QUOTABLE_EVIDENCE
+    elif not outputs:
+        why = (NO_QUOTABLE_EVIDENCE + ' from any retained output (%d quotable leaves, none of them an output)'
+               % len(addresses))
+    else:
+        why = ('the checker cited none of the %d quotable leaves it was offered (%d from retained outputs)'
+               % (len(addresses), len(outputs)))
+    return {'coverage_diagnostic': why, 'quotable_leaves': len(addresses), 'quotable_output_leaves': len(outputs)}
+
+
 def _incomplete_assessment(inquiry, value, raw, coverage=None, reason=None):
     coverage = coverage or {}
     supports = coverage.get('supports') or []
@@ -4855,6 +4919,9 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
         if coverage and coverage.get('coverage_deferred'): return dict(coverage, entity_context_check=entity)
         if not coverage or coverage.get('assessment_status') == 'incomplete':
             return dict(_incomplete_assessment(inquiry,value,raw,coverage),entity_context_check=entity)
+        diagnostic = _coverage_diagnostic(coverage, prepared)
+        if diagnostic:
+            coverage = dict(coverage, **diagnostic)
         if coverage:
             result = {k:str(value.get(k,''))[:1000] for k in
                 ('attention','factual_observation','next_question','instrument_gap','line_status')}
@@ -4863,6 +4930,8 @@ def _reflect(context, inquiry, records, _validation_attempt=0):
             result.update(answers_question=decision, reader_answers_question=verdict,
                           missing_evidence='' if coverage['answered'] else '; '.join(map(str,coverage['missing'])),
                           speculative_reading='', coverage_check=coverage, entity_context_check=entity)
+            if coverage.get('coverage_diagnostic'):
+                result['coverage_diagnostic'] = coverage['coverage_diagnostic']
             result['evidence_status'] = 'answered' if coverage['answered'] else 'partial'
             if not coverage['answered']:
                 result['line_status'] = 'continue'
