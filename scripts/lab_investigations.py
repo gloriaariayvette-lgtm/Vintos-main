@@ -12,6 +12,7 @@ from pathlib import Path
 import uuid
 import subprocess
 import time
+from datetime import datetime, timezone
 
 import chemistry_lab as lab
 
@@ -144,6 +145,146 @@ def uncertain(exc):
         text in str(exc).lower() for text in ('outcome unknown','timed out after send','timeout after send','unknown_after_timeout','timeouterror','timeoutexpired','timed out'))
 
 
+class Unreconciled(ValueError):
+    """An operation that may have reached its provider without its result being kept, named so it can be reconciled.
+
+    On 30 October one finish was refused nine times in two hours with only "cannot finish with an unreconciled
+    execution outcome": no investigation, no step, no operation, so the fault could not be traced from its alert."""
+
+
+def _stamp(value):
+    """A bounded UTC time for a diagnostic, or 'unrecorded'."""
+    try:
+        return datetime.fromisoformat(str(value)).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    except (TypeError, ValueError):
+        return 'unrecorded'
+
+
+def _named(investigation, step):
+    """Which step, which operation, and in what state since when: ids, names and times only, never a payload."""
+    steps = investigation.get('steps') or []
+    index = next((n for n, s in enumerate(steps) if s is step), None)
+    request = step.get('executed_request') or step.get('request') or {}
+    op = request.get('operation') if isinstance(request, dict) else None
+    what = str(step.get('tool') or step.get('route') or 'unknown operation')[:48] + (' ' + str(op)[:32] if op else '')
+    sent = ('sent %s' % _stamp(step['dispatched_at']) if step.get('dispatched_at')
+            else 'send not recorded' if not step.get('dispatch_marker') else 'not sent')
+    return ('%s step %s (%s of %d, %s): %s since %s, %s'
+            % (str(investigation.get('id'))[:20], str(step.get('id'))[:20], '?' if index is None else index + 1,
+               len(steps), what, str(step.get('state'))[:20], _stamp(step.get('state_at')), sent))
+
+
+def _mark_unknown(step, error):
+    step.update(state='outcome_unknown', state_at=lab.now_iso(), error=str(error)[:300])
+
+
+def _settle_interrupted(step):
+    """A step a dead process left 'started' (turns run under the Lab lock, so no live turn holds it).
+
+    Only a step whose record carries the dispatch marker can be told apart: dispatched_at is saved, durably, before
+    the external call is made, so a marked step without it was never sent and may be asked again. Anything else (sent,
+    or recorded before the marker existed) may have reached its provider and stays outcome_unknown until a receipt
+    reconciles it."""
+    if step.get('dispatch_marker') and not step.get('dispatched_at'):
+        step.update(state='interrupted_not_sent', state_at=lab.now_iso(),
+                    error='process ended before the operation was sent; nothing reached a provider')
+    else:
+        _mark_unknown(step, 'process ended before outcome was retained; reconcile before repeating')
+
+
+def _relay_receipt(step, prior, claimed):
+    """The one retained relay receipt that is this step's operation, or None.
+
+    Authoritative only for relay instruments, whose gateway writes a receipt keyed by the exact instruction and input
+    bytes after the reply is kept. The receipt must be later than the step, and claimed by no other step; two
+    candidates are no evidence at all."""
+    import lab_instruments
+    import plugin_gateway
+    from lab_tool_calls import execution_request
+    if step.get('route') != 'instrument':
+        return None
+    request = execution_request('instrument', resolve(step.get('executed_request') or step.get('request') or {}, prior))
+    # the instruction and inputs exactly as lab_instruments.run sent them (validate's listing check is about what
+    # may be sent now, not what was sent then, so it is not repeated here)
+    skill, op = request.get('skill'), request.get('operation')
+    if skill not in lab_instruments.RELAY:
+        return None
+    files = [str(f) for f in (request.get('files') or []) if isinstance(f, str)][:4]
+    question = str(request.get('question') or '')[:600]
+    inputs = []
+    for name in files:
+        path = (lab_instruments.LAB / name).resolve()
+        if not path.is_relative_to(lab_instruments.LAB.resolve()) or not path.is_file():
+            return None
+        inputs.append(hashlib.sha256(path.read_bytes()).hexdigest())
+    arguments = hashlib.sha256(json.dumps({'instruction_sha256': hashlib.sha256(question.encode()).hexdigest(),
+                                           'input_sha256': inputs}, sort_keys=True).encode()).hexdigest()
+    ledger = Path(plugin_gateway.MEMORY) / 'plugin-receipts.jsonl'
+    if not ledger.is_file():
+        return None
+    since = datetime.fromisoformat(step['at'])
+    found = []
+    for line in ledger.read_text(encoding='utf-8').splitlines():
+        try:
+            row = json.loads(line)
+            at = datetime.fromisoformat(row['at'])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if (row.get('plugin') == 'skill:' + skill and row.get('arguments_sha256') == arguments and at >= since
+                and row.get('receipt_id') not in claimed):
+            found.append(row)
+    if len(found) != 1:
+        return None
+    loaded = plugin_gateway.load_receipt(found[0]['receipt_id'], 'lab')
+    result = loaded['result']
+    return lab_instruments.relay_result(skill, op, files, {'receipt': loaded['receipt'],
+                                                           'summary': result.get('summary', ''),
+                                                           'files': result.get('files', [])})
+
+
+def _reconcile(investigation, step, data):
+    """Settle an outcome_unknown step from its receipt, if one is retained. Never re-sends, never assumes success."""
+    if step.get('state') != 'outcome_unknown' or step.get('route') != 'instrument':
+        return False
+    import plugin_gateway
+    try:
+        seen = os.stat(Path(plugin_gateway.MEMORY) / 'plugin-receipts.jsonl').st_mtime_ns
+    except OSError:
+        return False
+    if step.get('receipts_checked') == seen:
+        return False   # no receipt has been written since it was last looked for
+    step['receipts_checked'] = seen
+    steps = investigation.get('steps') or []
+    prior = steps[:next((n for n, s in enumerate(steps) if s is step), len(steps))]
+    claimed = {s.get('execution_receipt_id') for i in data['investigations'] for s in i.get('steps', [])
+               if s is not step and s.get('execution_receipt_id')}
+    try:
+        result = _relay_receipt(step, prior, claimed)
+    except Exception:
+        return False   # evidence that cannot be read is no evidence: it stays unknown
+    if result is None:
+        return False
+    was = {'state': step['state'], 'state_at': step.get('state_at'), 'error': step.get('error')}
+    step.pop('error', None)
+    _store_result(step, result)
+    step['state_at'] = lab.now_iso()
+    step['reconciled'] = dict(was, by='receipt', receipt_id=step.get('execution_receipt_id'), at=step['state_at'])
+    return True
+
+
+def reconcile(investigation_id, step_id=None):
+    """Try to reconcile one investigation's unknown outcomes against retained receipts; say what is still unknown."""
+    data = lab._load(_path('investigations.json'), {'investigations': []})
+    inv = next((i for i in data['investigations'] if i.get('id') == investigation_id), None)
+    if inv is None:
+        raise KeyError('unknown investigation %s' % str(investigation_id)[:20])
+    settled = [s['id'] for s in inv.get('steps', []) if (step_id in (None, s.get('id'))) and _reconcile(inv, s, data)]
+    if settled:
+        _save(data)
+    return {'reconciled': settled, 'still_unknown': [_named(inv, s) for s in inv.get('steps', [])
+                                                     if s.get('state') == 'outcome_unknown']}
+
+
 def normalize_result(result):
     if not isinstance(result, dict): return result
     result = dict(result)
@@ -250,6 +391,7 @@ def _store_result(step, result):
     step['output_index'] = _index(result)
     failure = _failed_result(result)
     step['state'] = 'outcome_unknown' if failure and uncertain(RuntimeError(failure)) else 'failed' if failure else 'completed'
+    step['state_at'] = lab.now_iso()
     if failure:step['error']=failure[:300]
 
 
@@ -958,7 +1100,7 @@ MAX_UNANSWERED_REVIEWS = 3   # finishes whose review said the outputs do not ans
 # step's retained output. They do not count toward MAX_FAILED_RUN and do not interrupt a run of real failures
 # either; MAX_STEPS still counts them, so a planner that only repeats or only waits is still closed. On 24-25 October
 # 47 of 85 failed steps were a repeat of the investigation's own earlier step, and every one closed "stalled".
-NOT_SENT = ('waiting_not_sent', 'superseded_not_sent', 'refused_not_sent')
+NOT_SENT = ('waiting_not_sent', 'superseded_not_sent', 'refused_not_sent', 'interrupted_not_sent')
 FAILED = ('failed', 'outcome_unknown')
 COOLDOWN = 'source_cooldown_active'
 
@@ -1675,7 +1817,9 @@ def _turn(context, *, ask=None, execute=None):
     for old in data['investigations']:
         for pending in old.get('steps') or []:
             if pending.get('state') == 'started':
-                pending.update(state='outcome_unknown', error='process ended before outcome was retained; reconcile before repeating')
+                _settle_interrupted(pending)
+            if pending.get('state') == 'outcome_unknown':
+                _reconcile(old, pending, data)   # only a retained receipt settles it; nothing is sent again
     _save(data)
     opened = [i for i in data['investigations'] if i.get('state') == 'open']
     active = [i for i in opened if float(i.get('deferred_until') or 0) <= time.time()]
@@ -2056,8 +2200,16 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             elif head in SOURCE_ROUTES and op and not request.get('operation'):
                 request = dict(request, source=head, operation=op)   # "ncbi.literature" -> source ncbi, op literature
     if route == 'finish':
-        if any(step.get('state') == 'outcome_unknown' for step in investigation['steps']):
-            raise ValueError('cannot finish with an unreconciled execution outcome')
+        unknown = [s for s in investigation['steps'] if s.get('state') == 'outcome_unknown']
+        settled = [s for s in unknown if _reconcile(investigation, s, data)]
+        unknown = [s for s in unknown if s.get('state') == 'outcome_unknown']
+        if settled:
+            _save(data)
+        if unknown:
+            # the fault line keeps 240 characters: the ids come first, so the alert alone says which step to reconcile
+            more = ' (+%d more)' % (len(unknown) - 1) if len(unknown) > 1 else ''
+            raise Unreconciled(('cannot finish with an unreconciled execution outcome: %s%s; no matching receipt'
+                                % (_named(investigation, unknown[0]), more))[:240])
         row, answered = _review(investigation, context, ask)
         if not answered:
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
@@ -2078,8 +2230,11 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             **({'plan_ref':plan_ref} if plan_ref else {}),
             **({'route_inferred':inferred} if inferred else {})}
     # Record the intended operation before calling it. Unknown execution outcomes
-    # are not retried automatically (especially hosted inference).
+    # are not retried automatically (especially hosted inference). dispatch_marker says this record will carry
+    # dispatched_at, saved just before the external call, so an interrupted step can be told apart from a sent one.
     step['state'] = 'started'
+    step['state_at'] = step['at']
+    step['dispatch_marker'] = 1
     investigation['steps'].append(step)
     _save(data)
 
@@ -2127,8 +2282,11 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         step['request_sha256'] = hashlib.sha256(json.dumps([route,resolved],sort_keys=True).encode()).hexdigest()
         prior = [s for inv in data['investigations'] for s in inv.get('steps', []) if s is not step]
         same = [s for s in prior if s.get('request_sha256') == step['request_sha256']] if route not in ('schema','read_output') else []
-        if any(s.get('state') in ('started','outcome_unknown') for s in same):
-            raise ValueError('operation has an unknown outcome; reconcile it before repeating')
+        held = next((s for s in same if s.get('state') in ('started','outcome_unknown')), None)
+        if held is not None:
+            owner = next((i for i in data['investigations'] if any(held is t for t in i.get('steps', []))), {})
+            raise ValueError('operation has an unknown outcome; reconcile it before repeating: '
+                             + _named(owner, held))
         # a repeat's copy is never the source: point back to the step that actually ran
         done = [s for s in same if s.get('state') == 'completed' and s.get('output_file') and not s.get('repeat_within')]
         mine = [s for s in done if any(s is t for t in investigation['steps'])]
@@ -2167,6 +2325,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                               'valid_choices': {'sources_ready_now': sorted(s for s in SOURCE_ROUTES
                                                                             if not _cooling({'source': s})),
                                                 'cooling': note.get('sources') or {}}}, 'source_cooling')
+            # the dispatch point: saved before the call, so a step left 'started' without it was never sent
+            step['dispatched_at'] = lab.now_iso()
             _save(data)
             try:
                 result = execute(route, request, step['question'], investigation['steps'][:-1])
@@ -2218,7 +2378,9 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                         error='source cooldown; request has not been sent')
         else:
             import lab_instruments
-            step['state'] = 'outcome_unknown' if uncertain(exc) else 'failed'
+            # an exception before the dispatch point sent nothing, whatever its text says
+            step['state'] = 'outcome_unknown' if uncertain(exc) and step.get('dispatched_at') else 'failed'
+            step['state_at'] = lab.now_iso()
             # a refusal that names the instruments and routes he has right now is kept whole: cut at 300 characters
             # it named none of them (27 October)
             step['error'] = str(exc)[:1800 if isinstance(exc, (NamesTheMenu, lab_instruments.NotOffered)) else 300]

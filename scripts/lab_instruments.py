@@ -391,6 +391,11 @@ def run(req, runner=None):
     os.replace(tmp, LEDGER)
     out = runner("lab", skill, question, operation=op, input_files=[str(LAB / f) for f in files])
     if skill in OPERATIONS: return out
+    return relay_result(skill, op, files, out)
+
+
+def relay_result(skill, op, files, out):
+    """A runner's reply as a Lab source receipt; also how a retained relay receipt reconciles an unknown outcome."""
     receipt = out.get("receipt") or {}
     return {"receipt": {"receipt_id": receipt.get("receipt_id"), "source": "instrument:" + skill,
                         "records": [{"skill": skill, "operation": op, "inputs": files,
