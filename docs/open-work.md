@@ -1711,8 +1711,8 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
-- **The thread (from 25 October, on Aegis):** its own CronCreate job 75fffe48 (created 25 October, about 21:00
-  Central; renew by 1 November). The Mac thread below went silent on 23 October.
+- **The thread (from 25 October, on Aegis):** its own CronCreate job e2a8a075 (renewed 31 October, 03:18
+  Central, replacing 75fffe48; renew by 5 November). The Mac thread below went silent on 23 October.
 - **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
   woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
   renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until
