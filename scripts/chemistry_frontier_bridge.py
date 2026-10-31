@@ -179,9 +179,22 @@ def _redirect_entry_ids():
     return rejected
 
 
+def _counts_as_offer(row):
+    """Whether a delivery receipt used up one of a finding's offers: only a prompt that was actually sent.
+
+    A receipt carries ``submitted`` since 30 October. One written before that is counted by what it can show: a
+    "responded" receipt was answered, so it was sent; an older "response_failed" receipt cannot say whether the
+    model ever saw it (a session can fail on compute admission before planning), so it is not counted, and
+    status() names how many of those there are rather than relabeling them."""
+    if "submitted" in row:
+        return bool(row.get("submitted"))
+    return row.get("state") == "responded"
+
+
 def _offer_counts():
     counts = {}
     for row in lab._jsonl(SURFACES):
+        if not _counts_as_offer(row): continue
         for item in row.get("offered_entry_ids", []) or []:
             counts[str(item)] = counts.get(str(item), 0) + 1
     return counts
@@ -231,15 +244,21 @@ def add_to_context(context, receipt):
     return merged, out, ids
 
 
-def record_delivery(session_id, lens, offered_ids, acknowledged_ids, *, state="responded"):
+def record_delivery(session_id, lens, offered_ids, acknowledged_ids, *, state="responded", submitted=True):
+    """``submitted`` says whether the prompt carrying these findings was actually sent to a model. A session that
+    stopped before sending (e.g. compute admission timed out before planning) records submitted=False: the finding
+    was not offered, and that receipt uses none of its offers."""
     offered = [str(x) for x in offered_ids if x]
     acknowledged = [str(x) for x in acknowledged_ids if str(x) in set(offered)]
     previous = lab._jsonl(SURFACES)
-    attempts = {item: sum(item in row.get("offered_entry_ids", []) for row in previous) + 1
-                for item in offered}
+    counts = {}
+    for row in previous:
+        if _counts_as_offer(row):
+            for item in row.get("offered_entry_ids", []) or []: counts[str(item)] = counts.get(str(item), 0) + 1
+    attempts = {item: counts.get(item, 0) + (1 if submitted else 0) for item in offered}
     row = {"surface_id": "CLFS-" + _digest(session_id, lens, offered, len(previous))[:16],
            "at": lab.now_iso(), "session_id": str(session_id)[:80], "lens": str(lens)[:20],
-           "state": str(state)[:40], "offered_entry_ids": offered,
+           "state": str(state)[:40], "submitted": bool(submitted), "offered_entry_ids": offered,
            "acknowledged_entry_ids": acknowledged,
            "unacknowledged_entry_ids": [x for x in offered if x not in acknowledged],
            "delivery_attempts": attempts,
@@ -260,4 +279,6 @@ def status():
             "pending": len(pending), "oldest_pending_at": min((x.get("at") for x in pending), default=None),
             "redirected_after_assessment": len(all_flagged) - len(flagged),
             "set_aside": sum(offers.get(str(x.get("entry_id")), 0) >= MAX_UNACKNOWLEDGED_OFFERS for x in pending),
+            "unknown_submission_receipts": sum(1 for row in lab._jsonl(SURFACES)
+                                               if "submitted" not in row and row.get("state") != "responded"),
             "backlog_bug": any(row.get("backlog_bug") for row in lab._jsonl(SURFACES)[-50:])}

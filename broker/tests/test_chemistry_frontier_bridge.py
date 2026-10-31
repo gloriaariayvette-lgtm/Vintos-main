@@ -89,6 +89,22 @@ assert st["set_aside"] == 1 and st["pending"] >= 1 and st["backlog_bug"] is Fals
 bridge.record_delivery("CHEM-R9", "claude", [other["entry_id"]], [], state="responded")
 assert bridge.status()["backlog_bug"] is True
 
+# A receipt from before 30 October has no "submitted": "responded" counts, an old "response_failed" is not
+# counted (it cannot show the model saw it) and is named in status, not relabeled.
+legacy = bridge.assess(dict(note, at="2026-09-17T00:00:00+00:00", source_accessions=["R22222"],
+                            next_question="Does the third loop stay open in the cold?"), source_query_succeeded=True)
+lid = legacy["entry_id"]
+for n in range(3):
+    lab._append(bridge.SURFACES, {"surface_id": "OLD-%d" % n, "session_id": "OLD-%d" % n, "state": "response_failed",
+                                  "offered_entry_ids": [lid], "acknowledged_entry_ids": []})
+assert bridge._offer_counts().get(lid, 0) == 0 and lid in bridge.frontier_block()[1]
+assert bridge.status()["unknown_submission_receipts"] == 3
+lab._append(bridge.SURFACES, {"surface_id": "OLD-R", "session_id": "OLD-R", "state": "responded",
+                              "offered_entry_ids": [lid], "acknowledged_entry_ids": []})
+assert bridge._offer_counts()[lid] == 1
+not_sent = bridge.record_delivery("CHEM-NS", "claude", [lid], [], state="not_submitted", submitted=False)
+assert not_sent["submitted"] is False and not_sent["delivery_attempts"][lid] == 1 and bridge._offer_counts()[lid] == 1
+
 source = open(os.path.join(REPO, "scripts", "chemistry_frontier_bridge.py")).read()
 assert "requests" not in source and "urllib" not in source and "atelier" not in source.lower()
-print("19/19 passed")
+print("20/20 passed")

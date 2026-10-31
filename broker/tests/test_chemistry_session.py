@@ -268,3 +268,64 @@ assert 'plugin_receipt_id' not in direct_session['plan']
 assert direct_session['mac_result']['ok'], direct_session
 assert not network_attempts
 print('Direct PubMed session receipt regression passed')
+
+# 30 October: a session that stops before its planner is called never sent its findings, so it uses none of their
+# three offers. One that fails after the planner was called may have been seen, and counts.
+import contextlib
+fresh_finding = session.bridge.assess({"at": "2026-09-20T00:00:00+00:00", "source_accessions": ["Q99887"],
+    "factual_observation": "A sourced membrane transporter record names a gated pore.",
+    "attention": "the gated pore", "next_question": "which residues gate this transporter pore under load?"},
+    source_query_succeeded=True)
+assert fresh_finding["flagged_for_next_lab_session"] is True
+fid = fresh_finding["entry_id"]
+real_admit = sys.modules["compute_admission"].admit
+@contextlib.contextmanager
+def plan_admission_times_out(*args, **kwargs):
+    if kwargs.get("stage") == "plan": raise TimeoutError("house busy")
+    yield object()
+def offers(): return session.bridge._offer_counts().get(fid, 0)
+sys.modules["compute_admission"].admit = plan_admission_times_out
+try:
+    for _ in range(3):
+        assert fid in session.bridge.frontier_block()[1]
+        yielded = session.run()
+        assert yielded["state"] == "yielded_to_house", yielded
+        last = session.lab._jsonl(session.bridge.SURFACES)[-1]
+        assert last["offered_entry_ids"] == [fid] and last["submitted"] is False and last["state"] == "not_submitted", last
+finally:
+    sys.modules["compute_admission"].admit = real_admit
+assert offers() == 0, "three admission timeouts before planning used none of its offers"
+assert fid in session.bridge.frontier_block()[1], "so it is still offered"
+
+# Failure AFTER the planner was called: it may have been seen, so that counts.
+def plan_then_fail(*args, **kwargs):
+    raise RuntimeError("planner returned nothing usable")
+with patch.object(session, "_plan", side_effect=plan_then_fail):
+    failed = session.run()
+last = session.lab._jsonl(session.bridge.SURFACES)[-1]
+assert last["submitted"] is True and last["state"] == "response_failed", last
+assert offers() == 1
+
+# Answered without acknowledging it: counts. Mixed with the earlier failure, two offers used so far.
+def plan_ignoring(*args, **kwargs):
+    plan = dict(original_plan(*args, **kwargs)); plan["addressed_entry_ids"] = []
+    plan.pop("source_query", None); plan.pop("plugin_query", None); plan.pop("instrument_query", None)
+    return plan
+with patch.object(session, "_plan", side_effect=plan_ignoring):
+    session.run()
+last = session.lab._jsonl(session.bridge.SURFACES)[-1]
+assert last["submitted"] is True and last["state"] == "responded" and last["acknowledged_entry_ids"] == [], last
+assert offers() == 2 and fid in session.bridge.frontier_block()[1]
+
+# Reading the block or status repeatedly sends nothing and uses nothing.
+for _ in range(5): session.bridge.frontier_block(); session.bridge.status()
+assert offers() == 2
+
+# A third genuine unacknowledged answer reaches the limit: it steps aside, still pending.
+with patch.object(session, "_plan", side_effect=plan_ignoring):
+    session.run()
+assert offers() == 3 and fid not in session.bridge.frontier_block()[1]
+st = session.bridge.status()
+assert st["set_aside"] >= 1 and st["pending"] >= 1, st
+print('Offers are used only by findings actually sent: passed')
+
