@@ -22,6 +22,7 @@ artifact so the sequence instruments have something real to open.
 """
 from __future__ import annotations
 import json
+import hashlib
 import os
 import re
 import time
@@ -394,13 +395,48 @@ def run(req, runner=None):
     return relay_result(skill, op, files, out)
 
 
+# The readable results a relay instrument wrote (its report, its measurements), kept in the step's output so the
+# finish review can quote them. 30 October: a structure_viewer measure wrote halide-coordination-report.md and
+# measurement-evidence.json, and the step kept only their names and a 463-character summary, so a question about
+# which residues coordinate the halide could never be found answered. Scripts it wrote are not results.
+RESULT_SUFFIXES = (".md", ".json", ".txt", ".csv", ".tsv")
+RESULT_TEXT_CHARS = 6000
+RESULT_TEXT_TOTAL = 16000
+
+
+def _result_texts(paths):
+    """Each retained result file's text, bounded, with its sha256 checked against the content-addressed name."""
+    texts, used = [], 0
+    for path in paths or []:
+        name = os.path.basename(str(path))
+        if not name.lower().endswith(RESULT_SUFFIXES) or used >= RESULT_TEXT_TOTAL:
+            continue
+        try:
+            with open(path, "rb") as stream:
+                data = stream.read()
+        except OSError:
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        prefix = name.split("-", 1)[0]
+        if len(prefix) == 64 and prefix != digest:
+            continue   # altered since the runner wrote it: not its result
+        text = data.decode("utf-8", "replace")
+        keep = text[:min(RESULT_TEXT_CHARS, RESULT_TEXT_TOTAL - used)]
+        used += len(keep)
+        texts.append({"file": name, "sha256": digest, "text": keep,
+                      **({"truncated_from_chars": len(text)} if len(keep) < len(text) else {})})
+    return texts
+
+
 def relay_result(skill, op, files, out):
     """A runner's reply as a Lab source receipt; also how a retained relay receipt reconciles an unknown outcome."""
     receipt = out.get("receipt") or {}
+    texts = _result_texts(out.get("files", []))
     return {"receipt": {"receipt_id": receipt.get("receipt_id"), "source": "instrument:" + skill,
                         "records": [{"skill": skill, "operation": op, "inputs": files,
                                      "summary": str(out.get("summary", ""))[:1500],
-                                     "outputs": [os.path.basename(p) for p in out.get("files", [])]}],
+                                     "outputs": [os.path.basename(p) for p in out.get("files", [])],
+                                     **({"results": texts} if texts else {})}],
                         "metadata": {"service": "relay_skill", "operation": op,
                                      "interpretation": "instrument_analysis_not_independent_validation"}}}
 
