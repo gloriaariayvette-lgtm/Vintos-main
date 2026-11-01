@@ -413,7 +413,7 @@ def pick_question():
         # "Gloria, what exactly is a 'bull red'?" was judged searchable and searched 26, 27, 28 and 29 October:
         # nothing marked it searched, so it stayed the ripest item every day.
         _now = time.time()
-        _live = [x for x in _items if not x.get("retired") and x.get("question")
+        _live = [x for x in _items if not x.get("retired") and not x.get("sent_to_gloria") and x.get("question")
                  and _now - float(x.get("searched_at") or 0) > 30 * 86400]
         _live.sort(key=lambda x: -float(x.get("pull", 0) or 0))
         for _item in _live:                       # every live item, ripest first (fable-curiosity-p2)
@@ -434,9 +434,11 @@ def pick_question():
                     except Exception: _store = []
                     _qid = _item.get("id") or str(abs(hash(_q)))[:8]
                     _prior = next((x for x in _store if x.get("id") == _qid), None)
-                    if _prior and _prior.get("delivered", True):
+                    from architecture_answers import question_sent as _question_sent
+                    if _prior and _question_sent(_prior):
                         # Until 2026-09-04 this logged and fell through: appended again, pinged again,
                         # collapsed twice. One send, ever. (fable-curiosity-p1 / grok-curiosity-p2)
+                        # Not _prior["delivered"]: answering resets that flag (2026-11-01 re-send).
                         log("already sent to her, not asking twice: %s" % _q[:70])
                         continue
                     if _prior:
@@ -456,6 +458,7 @@ def pick_question():
                                        headers=_answer_headers(_qid))
                     paid_http.send(_nu.urlopen, __file__, _req, timeout=15)
                     _rec["delivered"] = True; _rec["delivered_at"] = _nt.time()      # transport accepted; her receipt is a different fact (astra-curiosity-p3)
+                    _rec["question_sent_at"] = _rec["delivered_at"]      # the send's own mark; answer() never clears it
                     _atomic_json(_AQ, _store)
                     log("sent to her in full via ntfy; recorded so it cannot arise again: %s" % _q[:80])
                     try:
