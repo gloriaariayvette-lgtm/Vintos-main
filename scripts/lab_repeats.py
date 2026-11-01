@@ -270,20 +270,17 @@ def repeat(inquiry, now=None):
     rejected = identity_rejection(inquiry, rows)
     if rejected: return rejected
     key = lookup_key(inquiry)
-    if key:
+    requested = inquiry.get('instrument_query') or {} if isinstance(inquiry, dict) else {}
+    # Rereading material is not a repeat (Gloria, 1 November): her rule stops repeated QUESTIONS, not reading a
+    # model the Lab made again. A fold_read is a local, deterministic read of that file; refusing it as "already
+    # read" when the earlier read was never kept (166 refusals, 19-30 October) left investigations with no
+    # material and asking again until they stalled. Repeated questions are still refused below.
+    reread = requested.get('skill') == 'fold_read'
+    if key and not reread:
         for r in reversed(rows):
             if canonical_lookup(r.get("lookup") or "") == key:
                 return ("you already ran this exact lookup on %s (%s); it would return the same thing"
                         % (str(r.get("at", ""))[:16].replace("T", " "), key[:120]))
-    requested = inquiry.get('instrument_query') or {}
-    if requested.get('skill') == 'fold_read':
-        for row in reversed(rows):
-            lookup = canonical_lookup(row.get('lookup') or '')
-            if not lookup.startswith('instrument_query:'): continue
-            try: previous = json.loads(lookup.split(':', 1)[1])
-            except ValueError: continue
-            if fold_read_covers(previous, requested):
-                return 'prior model read already includes this residue range: ' + str(row.get('at') or '')
     mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
     own_targets = lookup_targets(key)
     if len(mine) >= 4:
