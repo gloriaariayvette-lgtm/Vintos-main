@@ -274,14 +274,17 @@ def repeat(inquiry, now=None):
     # Rereading material is not a repeat (Gloria, 1 November): her rule stops repeated QUESTIONS, not reading a
     # model the Lab made again. A fold_read is a local, deterministic read of that file; refusing it as "already
     # read" when the earlier read was never kept (166 refusals, 19-30 October) left investigations with no
-    # material and asking again until they stalled. Repeated questions are still refused below.
+    # material and asking again until they stalled. The same read asked with the same question is still a repeat.
     reread = requested.get('skill') == 'fold_read'
-    if key and not reread:
+    mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
+    if key:
         for r in reversed(rows):
+            if reread and not (mine and len(mine & set(r.get("words") or _words(r.get("question")))) / len(mine)
+                               >= SIMILAR):
+                continue
             if canonical_lookup(r.get("lookup") or "") == key:
                 return ("you already ran this exact lookup on %s (%s); it would return the same thing"
                         % (str(r.get("at", ""))[:16].replace("T", " "), key[:120]))
-    mine = _words(inquiry.get("question") if isinstance(inquiry, dict) else "")
     own_targets = lookup_targets(key)
     if len(mine) >= 4:
         for r in reversed(rows):
