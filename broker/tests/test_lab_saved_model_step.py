@@ -55,18 +55,16 @@ class SavedModelStep(unittest.TestCase):
             'skill':'fold_read','operation':'structure.read','files':[MODEL],'range':[654,729],
             'question':self.line['question']}})
 
-    def test_real_prior_whole_model_reads_exclude_the_saved_subrange(self):
-        # Restore the actual ledger: the previous positive fixture deliberately
-        # removes this model's history to test mechanics, not real eligibility.
+    def test_real_prior_whole_model_reads_no_longer_block_rereading_the_subrange(self):
+        # Rereading material is not a repeat (Gloria, 1 November): with the actual ledger's earlier whole-model reads
+        # restored, reading the saved subrange again is no longer refused as "prior model read already includes".
         Path(R.LOOKUPS).write_text(''.join(json.dumps(x)+'\n' for x in self.packet['lookups']))
         for event in self.packet['events']:
             with self.subTest(at=event['at']):
                 C._append(C.NOTEBOOK, event)
                 with patch.object(C, '_ask', return_value=json.dumps(event['inquiry'])):
                     got = C._orient('offline context')
-                self.assertTrue(got.get('refused'), got)
-                self.assertFalse(got.get('assignment_resolution'))
-                self.assertIsNotNone(C._held_question(self.cftr))
+                self.assertNotIn('prior model read', str(got.get('refused') or ''), got)
 
     def test_completed_external_result_without_lookup_stays_excluded_sequentially(self):
         Path(R.LOOKUPS).write_text('')
