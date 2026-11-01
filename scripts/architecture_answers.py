@@ -54,6 +54,15 @@ def answer(qid, text):
     print("no such question id: %s" % qid)
     return False
 
+def question_sent(x):
+    """Whether this question already reached her. `delivered` is the answer's flag (has the answer reached
+    his context), and answer() sets it back to False, so it cannot also mean "the question was sent": on
+    1 November that double meaning re-sent the three questions she had answered on 30 October. A question
+    she answered was plainly received; a record with no flag at all predates the field and was sent."""
+    if not x:
+        return False
+    return bool(x.get("question_sent_at") or x.get("answer") or x.get("answered_at") or x.get("delivered", True))
+
 def pending():
     for x in _load():
         state = "ANSWERED (undelivered)" if x.get("answer") and not x.get("delivered") else \
