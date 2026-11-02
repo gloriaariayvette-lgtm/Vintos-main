@@ -63,7 +63,10 @@ def pool(per_window, length):
 def main():
     body = json.load(sys.stdin)
     rows = body.get("records", []) if isinstance(body, dict) else []
-    rows = rows[:MAX_BATCH]
+    # One record alone is a batch of one; anything that is not a record is not read (2026-11-02: a dict here
+    # crashed the worker on rows[:MAX_BATCH], and a string was sliced into characters)
+    rows = [rows] if isinstance(rows, dict) else rows if isinstance(rows, list) else []
+    rows = [r for r in rows if isinstance(r, dict)][:MAX_BATCH]
     if not rows:
         print(json.dumps({"ok": True, "model": MODEL, "embeddings": []}))
         return

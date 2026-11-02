@@ -1803,14 +1803,43 @@ def _refuse_repeat(data, investigation, question, note):
     return None
 
 
+def _late_repeat(question, data):
+    """The note (or {}) when a question given to an investigation that opened without one repeats a closed or
+    cooling one; None when it is new."""
+    earlier = _same_question(question, None, data)
+    if earlier:
+        return _question_note(earlier)
+    return {} if _on_cooldown(question) else None
+
+
+def _close_late_repeat(data, investigation, question, note):
+    """An investigation that opened without a question and was then given a repeated one: with nothing run yet it
+    is refused as at opening; with steps it is closed (they stay, under its id) and the question rests as at opening."""
+    if not investigation.get('steps'):
+        return _refuse_repeat(data, investigation, question, note)
+    like = [e['investigation'] for e in (note or {}).get('earlier', [])]
+    investigation.update(question=question, state='stalled',
+                         closed_reason='its question repeats one already investigated and closed%s; not taken up '
+                         'again' % (' (%s)' % ', '.join(like[:3]) if like else ''))
+    _refuse_repeat(data, investigation, question, note)
+    data['investigations'].append(investigation)   # _refuse_repeat drops it; the closed record and its steps are kept
+    _save(data)
+    return None
+
+
 def _settle_question(investigation, value, data, context, ask, note):
     """(value, refused): the opening proposal with its question settled, or refused=True when it repeats a closed
     investigation's question and the investigation was not opened. A question already investigated is asked once more
     (with note given, the proposal was already asked with it)."""
     had = investigation.get('question') or ''
+    asked = ''
     for attempt in (0, 1):
         given = str(value.get('question') or '').strip()
-        question = had if (note and had and not given) else (given or had)
+        # A retry that leaves out "question" still asks the one it was told repeats: read as no question at all, it
+        # opened unchecked and a later turn wrote the old question back in (2 November: the pendrin 653-729
+        # question opened 69 times since 28 October, every one after a refusal).
+        question = given or had or asked
+        asked = question
         earlier = _same_question(question, None, data) if question else []
         if not earlier:
             if had and question != had:
@@ -1978,7 +2007,12 @@ def _turn(context, *, ask=None, execute=None):
     investigation['planning_failures'] = 0
     investigation.pop('deferred_until', None)
     if not investigation.get('question'):
-        investigation['question'] = str(value.get('question') or '')
+        filled = str(value.get('question') or '')
+        # A question written in after opening is checked as an opening one is: a repeat is not taken up here either
+        repeated = _late_repeat(filled, data) if filled else None
+        if repeated is not None:
+            return _close_late_repeat(data, investigation, filled, repeated)
+        investigation['question'] = filled
         investigation['prediction'] = str(value.get('prediction') or '')
         import lab_lines
         prior = investigation.get('line_context') or {}
@@ -2065,6 +2099,59 @@ def _rcsb_entries_for(accession):
     except Exception as exc:
         return None, 'RCSB search failed (%s)' % str(exc)[:120]
     return ids, ''
+
+
+_SEQUENCE_PATHS = (['normalized_records'], ['receipt', 'records'], ['source_receipt', 'records'], ['records'])
+
+
+def _protein_rows(value):
+    """The records in value that carry a protein sequence (one record alone counts), else []."""
+    rows = value if isinstance(value, list) else [value] if isinstance(value, dict) else []
+    return [r for r in rows if isinstance(r, dict) and isinstance(r.get('sequence'), str)
+            and len(re.sub(r'[^A-Za-z]', '', r['sequence'])) >= 10]
+
+
+def _held_sequences(steps):
+    """[(reference, count)]: where this investigation's completed outputs hold protein records with sequences."""
+    held = []
+    for s in steps:
+        if s.get('state') != 'completed' or not s.get('output_file'):
+            continue
+        for path in _SEQUENCE_PATHS:
+            try:
+                rows = _protein_rows(resolve({'step': s['id'], 'path': path}, steps))
+            except Exception:
+                continue
+            if rows:
+                held.append(({'step': s['id'], 'path': path}, len(rows)))
+                break
+    return held
+
+
+def _representation_input(request, steps):
+    """(request, why): a representation request whose records are protein records with sequences, else why not,
+    before anything runs. 21 October to 2 November the planner pointed it 126 times at a summary, an assessment or
+    one output line; the worker crashed on each (ESMC adapter failed), and five in a row closed an investigation.
+    A reference into a step that holds sequences elsewhere is taken to those records of the same step."""
+    ref = request.get('records') if isinstance(request, dict) else None
+    try:
+        given, broken = resolve(ref, steps), ''
+    except Exception as exc:
+        given, broken = None, str(exc)[:160]
+    if _protein_rows(given):
+        return request, ''
+    held = _held_sequences(steps)
+    if isinstance(ref, dict) and set(ref) == {'step', 'path'}:
+        same = next((h for h, _ in held if h['step'] == ref['step']), None)
+        if same is not None:
+            return dict(request, records=same), ''
+    shown = '; '.join('%s (%d record%s)' % (json.dumps(h), n, '' if n == 1 else 's') for h, n in held[:4])
+    return request, ('representation needs protein records with a sequence; %s holds %s. %s' % (
+        json.dumps(ref)[:160] if ref is not None else 'the request',
+        broken or ('a ' + type(given).__name__ if given is not None else 'nothing'),
+        ('Records held here: ' + shown + '. Use one of those as "records".') if held else
+        'This investigation holds no protein sequence yet: read the protein first ({"route": "source", "request": '
+        '{"source": "uniprot", "query": "accession:<UniProt accession>"}}).'))
 
 
 def _reference_input(request, steps, question=''):
@@ -2359,6 +2446,13 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 step['resolved'] = resolved_note     # which PDB entry was used, told with the result
             if why and may_replan:
                 raise replan({'why_not_run': 'nothing was sent: ' + why}, 'reference_compare_input')
+            if why:
+                raise _InputShape(why)
+        if route == 'representation':
+            request, why = _representation_input(request, investigation['steps'][:-1])
+            step['executed_request'] = request
+            if why and may_replan:
+                raise replan({'why_not_run': 'nothing was sent: ' + why}, 'representation_input')
             if why:
                 raise _InputShape(why)
         from lab_tool_calls import execution_request

@@ -213,9 +213,20 @@ def normalize_protein_notation(query):
     return query
 
 
+_UNIPROT_ACCESSION = re.compile(r'(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-[0-9]+)?')
+
+
+def _accession_field(query):
+    """accession:X where X is not a UniProt accession reads as the gene X. UniProt refuses the field with a 400
+    ("has invalid format"), and every looser form kept it: accession:LDLR, accession:TAS1R2 and accession:SLC26A11
+    were refused 23 times by 2 November. A cut-off accession (O146) is no gene either, and finds nothing."""
+    return re.sub(r'\baccession:("?)([A-Za-z0-9-]+)\1(?![A-Za-z0-9-])',
+                  lambda m: m[0] if _UNIPROT_ACCESSION.fullmatch(m[2].upper()) else 'gene:' + m[2], query)
+
+
 def normalize_uniprot_subjects(query):
     """Preserve complete unquoted subject values instead of reading only their first word."""
-    query = normalize_protein_notation(query)
+    query = _accession_field(normalize_protein_notation(query))
     # Boolean operators outside quoted names are case-insensitive in generated requests.
     query = re.sub(r'"[^"\n]*"|\b(?:and|or|not)\b',
                    lambda m: m[0] if m[0].startswith('"') else m[0].upper(), query, flags=re.I)
