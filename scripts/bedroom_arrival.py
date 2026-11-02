@@ -32,6 +32,9 @@ CONFIG = os.path.join(MEM, "bedroom-arrival.json")
 STATE = os.path.join(MEM, "bedroom-arrival-state.json")
 SEEN = os.path.join(MEM, "bedroom-seen.json")
 ARRIVALS = os.path.join(MEM, "bedroom-arrivals.jsonl")
+# each visit, from first heard to last heard, written when the next one begins (2 November: only arrivals were kept,
+# so when she was in the bedroom could not be set beside when she slept)
+VISITS = os.path.join(MEM, "bedroom-visits.jsonl")
 MUSIC = os.path.join(MEM, "art", "music", "music.json")
 PICKS = os.path.join(MEM, "bedroom-arrival-picks.json")
 PICKS_PER_DAY = 3
@@ -256,6 +259,7 @@ def observe(device, distance, now=None, cfg=None):
     if not isinstance(state, dict): state = {}
     last_here = float(state.get("last_here_ts") or 0)
     if now - last_here >= float(cfg["away_minutes"]) * 60:
+        _close_visit(state, device, cfg)
         state["here_since_ts"] = now           # this visit began now; presence_line says since when
         # one stable id for this arrival, written down before anything is sent: an encounter greets an episode once
         state["episode_id"] = episode_id(device, now)
@@ -266,6 +270,22 @@ def observe(device, distance, now=None, cfg=None):
     if now - float(state.get("last_sent_ts") or 0) < float(cfg["cooldown_minutes"]) * 60:
         return _arrived(state, now, device, distance, "cooldown")
     return _arrived(state, now, device, distance, None)
+
+
+def _close_visit(state, device, cfg):
+    """The visit that ended when she was last heard, written once, as a new one begins."""
+    since, last = state.get("here_since_ts"), state.get("last_here_ts")
+    if not since or not last or float(last) < float(since):
+        return
+    row = {"from": _now_iso(float(since)), "to": _now_iso(float(last)), "from_ts": float(since), "to_ts": float(last),
+           "minutes": round((float(last) - float(since)) / 60, 1), "device": device,
+           "ended": "last heard; away %s+ minutes after" % int(float(cfg["away_minutes"])),
+           "estimate": "ESPresense distance, not a camera: in range of the bedroom sensor"}
+    if state.get("episode_id"): row["episode"] = state["episode_id"]
+    try:
+        with open(VISITS, "a") as f: f.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
 
 
 def _arrived(state, now, device, distance, why):

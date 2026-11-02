@@ -18,6 +18,9 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SECRETS = os.path.expanduser("~/.vintos/secrets")
 LATEST = os.path.join(MEMORY, "watch-presence.json")
 HISTORY = os.path.join(MEMORY, "watch-presence-history.jsonl")
+# when the Watch's asleep flag changed (2 November: it was kept only in the snapshot, overwritten by the next one, so
+# there was no record of when she slept or woke; her hours are irregular, so the times themselves are the data)
+SLEEP_HISTORY = os.path.join(MEMORY, "watch-sleep-history.jsonl")
 REPLIES = os.path.join(MEMORY, "watch-replies.jsonl")
 MOMENTS = os.path.join(MEMORY, "watch-shared-moments.jsonl")
 DEVICES = os.path.join(MEMORY, "watch-apns-devices.json")
@@ -124,6 +127,35 @@ def _clean_sample(sample, now):
             "estimate": "device estimate, not a medical fact"}
 
 
+def _sleep_state(old, payload, now):
+    """The asleep flag as the Watch reported it, carried across snapshots, with one SLEEP_HISTORY row each time it
+    changes. A batch without the flag says nothing about sleep: the state stays as last reported. The change happened
+    between the last report of the old state and this one, and the row says both."""
+    keys = ("asleep_reported", "asleep_since_ts", "asleep_last_report_ts")
+    carried = {k: old[k] for k in keys if k in old}
+    if "asleep" not in payload or not isinstance(payload.get("asleep"), bool):
+        return carried
+    now_state = payload["asleep"]
+    before = carried.get("asleep_reported")
+    if before is None or before != now_state:
+        since = carried.get("asleep_since_ts")
+        last = carried.get("asleep_last_report_ts")
+        row = {"at": datetime.fromtimestamp(now, timezone.utc).isoformat(), "ts": now, "asleep": now_state,
+               "change": "first_report" if before is None else ("fell_asleep" if now_state else "woke"),
+               "source": "Watch app asleep flag", "estimate": "device estimate, not a medical fact"}
+        if before is not None:
+            row["changed_after_ts"] = last          # the old state was last reported then
+            if since is not None:
+                row["previous_since_ts"] = since
+                row["previous_lasted_s"] = round(max(0.0, float(last or now) - float(since)), 1)
+        try: _append(SLEEP_HISTORY, row)
+        except OSError: pass                        # the reading itself is still stored
+        carried["asleep_since_ts"] = now
+    carried["asleep_reported"] = now_state
+    carried["asleep_last_report_ts"] = now
+    return carried
+
+
 def record(payload, now=None):
     if not isinstance(payload, dict): return False, "body is not an object"
     now = float(time.time() if now is None else now)
@@ -139,10 +171,11 @@ def record(payload, now=None):
         except ValueError as exc: return False, str(exc)
     if not samples:
         return True, {"stored": 0, "skipped_stale": stale, "device": "AppleWatch"}
-    latest = {}
+    latest, old = {}, {}
     try:
         old = json.load(open(LATEST)); latest = old.get("latest", {}) if isinstance(old, dict) else {}
     except Exception: pass
+    old = old if isinstance(old, dict) else {}
     for row in samples:
         previous = latest.get(row["kind"])
         if not previous or row["observed_ts"] >= float(previous.get("observed_ts") or 0):
@@ -155,9 +188,10 @@ def record(payload, now=None):
                          if k not in ("battery", "wearing")), default=0)
     wearing = "no" if charging else ("probably" if now - recent_signal <= 900 else "unknown")
     asleep = bool(payload.get("asleep"))
+    sleep = _sleep_state(old, payload, now)
     snapshot = {"device": "AppleWatch", "received_at": datetime.now(timezone.utc).isoformat(),
                 "received_ts": now, "latest": latest, "wearing": wearing, "asleep": asleep,
-                "motion": (motion.get("value") or "unknown"),
+                "motion": (motion.get("value") or "unknown"), **sleep,
                 "estimate": "Watch readings and wearing state are device estimates, not medical facts"}
     try: _atomic(LATEST, snapshot)
     except OSError as exc: return False, "could not store: %s" % exc
