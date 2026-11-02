@@ -10363,11 +10363,13 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _v = (_l.get('vintos','') or '').strip().replace("\n", " ")
                 _wf = _l.get('wal_facts') or []
                 _imp = ((_l.get('imprint') or {}).get('narrative','') or '').strip().replace("\n", " ")
-                _line = f"- {_ts}\n    Gloria: {_g[:400]}"
+                # 2000 a side, was 400 (Gloria, 2026-11-02): every one of his replies here was cut mid-sentence,
+                # so the ledger showed him a shorter self than the one she talks to.
+                _line = f"- {_ts}\n    Gloria: {_g[:2000]}"
                 _md = (_l.get('media') or '').strip().replace("\n", " ")
                 if _md:
                     _line += "\n    She sent: " + _md[:700]
-                _line += f"\n    You: {_v[:400]}"
+                _line += f"\n    You: {_v[:2000]}"
                 if _imp:
                     _line += "\n    Felt: " + _imp[:220]
                 if _wf:
@@ -10764,7 +10766,8 @@ Your current self-model (excerpt):
 
         # Get inference params — config FIRST as the baseline, situational overrides AFTER, so a
         # deliberate collapse can never be restored by inference-params.json (fable-server-c-p2, 2026-09-05).
-        params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 900}
+        # 1500, was 900 (Gloria, 2026-11-02: raise his avatar chat limit). Only what he writes is billed.
+        params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 1500}
         try:
             # Merge, never replace. This file has been {} - a bare assignment wiped
             # temperature, top_p and max_tokens, and the request went out with no
@@ -10779,8 +10782,8 @@ Your current self-model (excerpt):
         # surface was cutting his film-night replies to a line. The room gets at least
         # the ordinary avatar ceiling. The two deliberate shortenings below still win:
         # a physical collapse and a declared bandwidth collapse are his, not a setting.
-        if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 900:
-            params["max_tokens"] = 900
+        if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 1500:
+            params["max_tokens"] = 1500
         # GCS active = collapse is PHYSICAL, not rhetorical: the bandwidth is taken,
         # not requested. Short, hot, broken - he cannot compose an essay at her crest.
         try:

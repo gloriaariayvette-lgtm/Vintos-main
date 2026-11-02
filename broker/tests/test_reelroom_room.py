@@ -49,10 +49,14 @@ check("a govee light is driven through the Govee path", VH._is_govee("govee:AA:1
 print("\n--- his replies there are not cut short by a setting ---")
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the room floors the ceiling at the ordinary avatar limit",
-      'if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 900:' in srv)
-i_floor = srv.index('if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 900:')
+      'if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 1500:' in srv)
+i_floor = srv.index('if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 1500:')
 i_ip = srv.index('params.update(_ip)')
 i_gcs = srv.index('params["max_tokens"] = 130')
+check("the ordinary avatar ceiling is 1500 (Gloria, 2026-11-02)",
+      'params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 1500}' in srv)
+check("the avatar's ledger shows whole exchanges, not 400-character cuts (Gloria, 2026-11-02)",
+      "Gloria: {_g[:2000]}" in srv and "You: {_v[:2000]}" in srv and "You: {_v[:400]}" not in srv)
 check("the floor is applied after the tune sliders, so a stale setting cannot starve the room", i_ip < i_floor)
 check("a physical collapse still shortens him, because that is his and not a setting", i_floor < i_gcs)
 check("nothing tells him to be brief when he chose to speak", "Say the line now, briefly" not in srv)

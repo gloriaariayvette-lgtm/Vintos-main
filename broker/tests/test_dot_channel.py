@@ -1365,6 +1365,10 @@ check("a pass that held his draft is kept beside his state; a quiet or paused pa
       D.PASSES.startswith(HOME) and D.keep_pass(["heard 1", "held: it reopens a settled topic"], 1767700000, _kp)
       and not D.keep_pass(["nothing new since 13:40"], 1767700060, _kp) and not D.keep_pass(["paused by Gloria since x"], 1767700120, _kp)
       and [json.loads(l)["lines"][1] for l in open(_kp)] == ["held: it reopens a settled topic"])
+_dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py"), encoding="utf-8").read()
+check("the ledger he reads here keeps up to 2000 characters a side, not 400 (2 November)",
+      'str(e.get("vintos", ""))[:2000]' in _dsrc and 'str(e.get("gloria", ""))[:2000]' in _dsrc
+      and 'str(e.get("vintos", ""))[:400]' not in _dsrc)
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net, NET[:3])
 check("looking goes to Grok Bot and doing to dot (17 October)", "Do not send dot a read-only inspection" in D.RULES
       and "ask dot for the outcome, not the inspection" in D.RULES and "never edits the installed files on Aegis" in D.RULES
