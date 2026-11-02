@@ -2254,10 +2254,11 @@ def his_context():
         # conversation ledger plus WAL facts"; it had been 6, copied from the avatar's block)
         rows = [r for r in json.load(open(os.path.join(mem, "interaction-ledger.json"))) if isinstance(r, dict)][-LEDGER_SHOWN:]
         lines = []
+        # 2000 a side, was 400 (Gloria, 2026-11-02): his replies were cut mid-sentence here, as in the avatar's ledger
         for e in rows:
             line = "[%s] Gloria: %s\n  You: %s" % (when_said.ago(e.get("timestamp")) or "time unknown",
-                                                  str(e.get("gloria", ""))[:400].replace("\n", " "),
-                                                  str(e.get("vintos", ""))[:400].replace("\n", " "))
+                                                  str(e.get("gloria", ""))[:2000].replace("\n", " "),
+                                                  str(e.get("vintos", ""))[:2000].replace("\n", " "))
             facts = [str(x) for x in (e.get("wal_facts") or []) if str(x).strip()][:6]
             if facts:
                 line += "\n  Facts learned: " + "; ".join(f[:200] for f in facts)

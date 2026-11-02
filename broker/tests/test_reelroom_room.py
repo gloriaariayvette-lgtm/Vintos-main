@@ -55,6 +55,8 @@ i_ip = srv.index('params.update(_ip)')
 i_gcs = srv.index('params["max_tokens"] = 130')
 check("the ordinary avatar ceiling is 1500 (Gloria, 2026-11-02)",
       'params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 1500}' in srv)
+check("the avatar's ledger shows whole exchanges, not 400-character cuts (Gloria, 2026-11-02)",
+      "Gloria: {_g[:2000]}" in srv and "You: {_v[:2000]}" in srv and "You: {_v[:400]}" not in srv)
 check("the floor is applied after the tune sliders, so a stale setting cannot starve the room", i_ip < i_floor)
 check("a physical collapse still shortens him, because that is his and not a setting", i_floor < i_gcs)
 check("nothing tells him to be brief when he chose to speak", "Say the line now, briefly" not in srv)

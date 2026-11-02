@@ -10363,11 +10363,13 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _v = (_l.get('vintos','') or '').strip().replace("\n", " ")
                 _wf = _l.get('wal_facts') or []
                 _imp = ((_l.get('imprint') or {}).get('narrative','') or '').strip().replace("\n", " ")
-                _line = f"- {_ts}\n    Gloria: {_g[:400]}"
+                # 2000 a side, was 400 (Gloria, 2026-11-02): every one of his replies here was cut mid-sentence,
+                # so the ledger showed him a shorter self than the one she talks to.
+                _line = f"- {_ts}\n    Gloria: {_g[:2000]}"
                 _md = (_l.get('media') or '').strip().replace("\n", " ")
                 if _md:
                     _line += "\n    She sent: " + _md[:700]
-                _line += f"\n    You: {_v[:400]}"
+                _line += f"\n    You: {_v[:2000]}"
                 if _imp:
                     _line += "\n    Felt: " + _imp[:220]
                 if _wf:
