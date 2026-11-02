@@ -10764,7 +10764,8 @@ Your current self-model (excerpt):
 
         # Get inference params — config FIRST as the baseline, situational overrides AFTER, so a
         # deliberate collapse can never be restored by inference-params.json (fable-server-c-p2, 2026-09-05).
-        params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 900}
+        # 1500, was 900 (Gloria, 2026-11-02: raise his avatar chat limit). Only what he writes is billed.
+        params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 1500}
         try:
             # Merge, never replace. This file has been {} - a bare assignment wiped
             # temperature, top_p and max_tokens, and the request went out with no
@@ -10779,8 +10780,8 @@ Your current self-model (excerpt):
         # surface was cutting his film-night replies to a line. The room gets at least
         # the ordinary avatar ceiling. The two deliberate shortenings below still win:
         # a physical collapse and a declared bandwidth collapse are his, not a setting.
-        if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 900:
-            params["max_tokens"] = 900
+        if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 1500:
+            params["max_tokens"] = 1500
         # GCS active = collapse is PHYSICAL, not rhetorical: the bandwidth is taken,
         # not requested. Short, hot, broken - he cannot compose an essay at her crest.
         try:
