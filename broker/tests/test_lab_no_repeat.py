@@ -116,6 +116,39 @@ class SameQuestion(Base):
         self.assertEqual(ask.call_count, 2)
         self.assertIn('8SGW', store()['investigations'][-1]['question'])
 
+    def test_a_retry_that_leaves_out_its_question_still_asks_the_repeated_one(self):
+        # 2 November: the second reply had no "question", read as none at all, and opened unchecked (69 times)
+        lab_lines.pick.return_value = None
+        reply = json.loads(choice('source', {'source': 'pubchem', 'name': 'x'}))
+        reply.pop('question')
+        ask = Mock(side_effect=[choice('source', {'source': 'pubchem', 'name': 'x'}), json.dumps(reply)])
+        self.assertIsNone(I.turn('', ask=ask, execute=self.execute))
+        self.assertEqual(ask.call_count, 2)
+        self.assertEqual([i['id'] for i in store()['investigations']], ['I-old%d' % len(PHAGE)])   # not opened
+        self.execute.assert_not_called()
+        self.assertEqual(notebook('investigation_refused_repeat')[-1]['question'], PHAGE)
+
+    def test_a_question_written_in_after_opening_is_checked_too(self):
+        # an investigation that opened with no question is not given a closed one by a later turn
+        step = {'id': 'S-x1', 'at': C.now_iso(), 'route': 'source', 'tool': 'source:pubchem', 'state': 'failed',
+                'question': 'one input', 'request': {'source': 'pubchem', 'name': 'x'}, 'error': 'nothing'}
+        empty = {'id': 'I-empty', 'opened_at': C.now_iso(), 'state': 'open', 'question': '', 'prediction': '',
+                 'plan': [], 'steps': [step]}
+        C._atomic(I._path('investigations.json'), {'investigations': [closed(PHAGE), empty]})
+        self.assertIsNone(I.turn('', ask=Mock(return_value=choice('source', {'source': 'pubchem', 'name': 'y'})),
+                                 execute=self.execute))
+        self.execute.assert_not_called()
+        kept = next(i for i in store()['investigations'] if i['id'] == 'I-empty')
+        self.assertEqual((kept['state'], kept['question'], len(kept['steps'])), ('stalled', PHAGE, 1))
+        self.assertIn('repeats one already investigated', kept['closed_reason'])
+        self.assertTrue(I._on_cooldown(PHAGE))
+        # with nothing run yet it is not kept at all, as at opening
+        C._atomic(I._path('question-cooldown.json'), {})
+        C._atomic(I._path('investigations.json'), {'investigations': [closed(PHAGE), dict(empty, steps=[])]})
+        self.assertIsNone(I.turn('', ask=Mock(return_value=choice('source', {'source': 'pubchem', 'name': 'y'})),
+                                 execute=self.execute))
+        self.assertEqual([i['id'] for i in store()['investigations']], ['I-old%d' % len(PHAGE)])
+
     def test_similar_wording_about_other_identifiers_is_another_question(self):
         self.assertTrue(I._alike(PHAGE, PHAGE.replace('?', '.')))
         self.assertFalse(I._alike('What are the STAS helices of O43511?', 'What are the STAS helices of Q8ECH7?'))

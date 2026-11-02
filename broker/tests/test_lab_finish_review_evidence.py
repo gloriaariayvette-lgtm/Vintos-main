@@ -320,7 +320,8 @@ class ErrorTail(unittest.TestCase):
         data = {'investigations': [inv]}
         C._atomic(I._path('investigations.json'), data)
         with patch.multiple(lab_lines, record_step=Mock(), advance_plan=Mock(return_value='stale')):
-            row = I._carry_out(data, inv, {'route': 'representation', 'request': {'records': []}}, None, '', Mock(),
+            row = I._carry_out(data, inv, {'route': 'representation',
+                                     'request': {'records': [{'accession': 'P00001', 'sequence': 'MKTAYIAKQR' * 3}]}}, None, '', Mock(),
                                Mock(side_effect=RuntimeError('ESMC adapter failed: ' + self.TQDM)), False)
         self.assertEqual(row['state'], 'failed')
         self.assertIn('CUDA out of memory', row['error'])
