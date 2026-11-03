@@ -47,7 +47,21 @@ REASONS.update({
  "capability_scope": "Capability verification only permits existing read tools; implementation or consequential work needs its own approved workflow.",
  "unexpected": "Unexpected adapter failure; inspect the named execution phase.",
  "interrupted": "Worker interrupted; inspect the checkpoint before retrying.",
+ "connector_auth": "Connector refused the call: its sign-in has expired or is missing; sign in again before retrying.",
+ "connector_quota": "Connector refused the call: quota or rate limit reached; wait or raise the limit before retrying.",
+ "connector_missing": "Connector is not available on this login; connect it before retrying.",
+ "connector_tool_error": "Connector tool returned an error; inspect the gateway before retrying.",
+ "connector_no_result": "Connector produced no verified tool result; inspect the gateway before retrying.",
 })
+# The connector's own reason crosses relay -> gateway -> Forge only as one of these codes, never as its text.
+CONNECTOR_CODES = ("connector_auth", "connector_quota", "connector_missing", "connector_tool_error", "connector_no_result")
+
+class ConnectorFailure(RuntimeError):
+    """A connector call that failed and said why. Not a ValidationFailure: it is never repaired or replayed."""
+    def __init__(self, code, detail=""):
+        self.code = code if code in CONNECTOR_CODES else "connector_tool_error"
+        super().__init__(detail or REASONS[self.code])
+
 class ValidationFailure(ValueError):
     def __init__(self, code, missing=()):
         self.missing = [k for k in missing if k in ("title", "sourced_observations", "hypotheses", "conflicting_evidence", "limitations", "next_tests")]
@@ -69,7 +83,7 @@ class Trace:
         return {"phase":self.phase, "external":self.external, "repair_attempts":self.repair,
                 "history":self.history[-8:]}
     def failure(self, exc):
-        code = exc.code if isinstance(exc, ValidationFailure) else ("interrupted" if not isinstance(exc, Exception) else ("connector_timeout" if isinstance(exc, TimeoutError) and self.external == "unknown" else "unexpected"))
+        code = exc.code if isinstance(exc, (ValidationFailure, ConnectorFailure)) else ("interrupted" if not isinstance(exc, Exception) else ("connector_timeout" if isinstance(exc, TimeoutError) and self.external == "unknown" else "unexpected"))
         return {**self.snapshot(), "code":code, "reason":str(exc) if isinstance(exc, ValidationFailure) else REASONS[code],
                 "category":"validation" if isinstance(exc, ValidationFailure) else ("interruption" if not isinstance(exc, Exception) else "adapter")}
 def checkpoint(phase, external=None):

@@ -25,6 +25,7 @@ from claude_connector_catalog import policy
 # Reuse Chat's durable receipt store WITHOUT modifying it — one ledger, cross-gateway load_receipt.
 from plugin_gateway import _store, summary, load_receipt          # noqa: F401  (load_receipt re-exported)
 from plugin_send_guard import PolicyHold
+from forge_cycle_failure import CONNECTOR_CODES, ConnectorFailure
 
 RELAY = os.path.join(HERE, "claude_connector_relay.py")
 # The Agent SDK lives in the connector venv (externally-managed host python cannot import it).
@@ -51,6 +52,9 @@ def _validate(result):
     if not isinstance(result, dict) or not result.get("ok"):
         if isinstance(result, dict) and isinstance(result.get("receipt"), dict):
             raise PolicyHold(result["receipt"])
+        if isinstance(result, dict) and result.get("code") in CONNECTOR_CODES:   # the relay named why: keep it
+            raise ConnectorFailure(result["code"], "claude connector relay refused or failed: "
+                                   + str(result.get("detail", "unknown"))[:160])
         raise RuntimeError("claude connector relay refused or failed: "
                            + str((result or {}).get("detail", "unknown"))[:160])
     return result
