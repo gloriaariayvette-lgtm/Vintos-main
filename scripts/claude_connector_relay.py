@@ -84,6 +84,15 @@ def _guard(entry, tool, arguments, request):
                                   "request_sha256": findings["request_sha256"], "links": findings["links"]})
 
 
+def _error_text(payload):
+    """The reason an errored tool result gives, as one short line: a string, or the text of its blocks."""
+    if isinstance(payload, list):
+        parts = [(b.get("text") if isinstance(b, dict) else getattr(b, "text", None)) or "" for b in payload]
+        payload = " ".join(p for p in parts if p)
+    text = " ".join(str(payload or "").split())
+    return text[:160] or "no reason given"
+
+
 def _tool_result_from(message, wanted, tool_uses):
     """Return a result only when the SDK ties it to the requested connector call.
 
@@ -112,10 +121,10 @@ def _tool_result_from(message, wanted, tool_uses):
         errored = getattr(block, "is_error", None)
         if errored is None and isinstance(block, dict):
             errored = block.get("is_error")
-        if errored:
-            raise RuntimeError("requested connector tool returned an error")
         payload = (block.get("content") if isinstance(block, dict)
                    else getattr(block, "content", None))
+        if errored:                                                  # keep the connector's own reason, not just "an error"
+            raise RuntimeError("requested connector tool returned an error: " + _error_text(payload))
         if isinstance(payload, str):
             parsed, valid_json = _coerce_result(payload)
             return parsed if valid_json else {"text": payload}
