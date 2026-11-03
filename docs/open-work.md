@@ -1,3 +1,25 @@
+## 3 November — what was left in #fault-fix, gone through at Gloria's request
+
+- **F-c3b63fc7a2, "Lab running, and no review for 16 hours" — fixed in source, waiting for a deploy.** The Lab was
+  switched off at 13:26 on 2 November (an operator control in its notebook; `config.json` `enabled: false` and
+  `.stop-requested`). Switched off, its systemd unit keeps running, and the sweep's silence check asked only systemd.
+  `fault_sweep.silences` now also reads the Lab's own switch, the way `chemistry_lab.stop_requested` does. The Lab is
+  still off; switching it back on is Gloria's choice.
+- **Not code faults; nothing to change:** F-a0d9c2dde6 (503), F-e497b0afaf and F-5b77a7d9d5 (502), F-a072d639de (500),
+  F-cdb2c9e753 (connection dropped), F-07c9e70ac4 (TLS handshake timeout) are upstream outages, a few an hour at
+  worst. The 502s at 13:11–13:25 on 2 November came during that deploy. The source_gene_mismatch faults
+  (F-73eacb9569 and earlier) are the Lab refusing records for the wrong gene and parking the question after three
+  tries, as designed; none since 31 October.
+- **F-17dd10e362, the shim call surge — known runs, quiet in source; a security-alarm change, so Gloria deploys it.**
+  Gloria: "If it's a known run we can turn off the surge alarms for that." All six alarms (22 October to 2 November)
+  are two cron jobs calling through the shim: `thread-triage.py` daily at 18:27 (13-18 calls in about 20 s) and
+  `memory_aging.py` at 05:30 on the 1st (144 calls in 4 minutes, up to 38 a minute). `security_alarm.KNOWN_RUNS`
+  names them; inside a run's window, and only when every caller in the minute is the shim, the threshold is the
+  60/minute ceiling instead of 12. Outside the window, above 60, or with another caller beside it, it still alarms.
+  The ledger still records no caller behind the shim, so a different job calling it at 18:27 would also be quiet.
+- **Gloria's:** F-2fac041dde (an SSH login from her iPhone's tailnet address: Termius. The alarm already reads
+  `known_ssh_addresses` from `memory/security-alarm.json` on Aegis, so this is a one-line config change on Aegis); F-f5bedc0c6b (the new persistent-carry user unit, from the persistent-carry work).
+
 ## 29 October — offline persistence sprint recovered for review
 
 `codex/persistence-offline-round-one` reuses the existing eight offline rounds

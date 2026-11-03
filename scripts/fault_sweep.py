@@ -38,6 +38,8 @@ ORGANS = os.path.join(MEM, "organ-failures.jsonl")
 LAB = os.path.join(MEM, "chemistry-lab")
 LAB_FAULTS = os.path.join(LAB, "faults.jsonl")
 LAB_NOTEBOOK = os.path.join(LAB, "notebook.jsonl")
+LAB_CONFIG = os.path.join(LAB, "config.json")
+LAB_STOP = os.path.join(LAB, ".stop-requested")
 WATCH_RECEIPTS = os.path.join(MEM, "watch-delivery-receipts.jsonl")
 MUSIC = os.path.join(MEM, "art", "music", "music.json")
 TOKEN_FILE = os.path.expanduser(os.environ.get("VINTOS_SLACK_TOKEN_FILE", "~/.vintos/slack-bot-token"))
@@ -223,13 +225,20 @@ def silences(now, lab_active=None):
         out.append(_finding("music", "silent", "no new song for %d hours" % ((now - max(times)) // 3600), now,
                             snapshot=True))
     if lab_active is None: lab_active = _unit_active("vintos-chemistry-lab.service")
-    if lab_active:
+    if lab_active and _lab_switched_on():
         rows = [r for r in _tail(LAB_NOTEBOOK, 1024 * 1024) if r.get("kind") == "reflection"]
         last = max((t for t in (_when(r) for r in rows) if t), default=None)
         if last and now - last > SILENT_LAB_S:
             out.append(_finding("chemistry-lab", "silent", "running, and no review for %d hours"
                                 % ((now - last) // 3600), now, snapshot=True))
     return out
+
+
+def _lab_switched_on():
+    """The Lab's own switch, read as chemistry_lab.stop_requested reads it. Switched off, its unit keeps running and
+    reviews nothing (F-c3b63fc7a2, 3 November: a Lab turned off at 13:26 was posted as 16 hours silent)."""
+    cfg = _load(LAB_CONFIG, {})
+    return isinstance(cfg, dict) and bool(cfg.get("enabled")) and not os.path.exists(LAB_STOP)
 
 
 def _unit_active(unit, run=None):
