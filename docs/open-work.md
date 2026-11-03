@@ -1,3 +1,18 @@
+## 3 November — what was left in #fault-fix, gone through at Gloria's request
+
+- **F-c3b63fc7a2, "Lab running, and no review for 16 hours" — fixed in source, waiting for a deploy.** The Lab was
+  switched off at 13:26 on 2 November (an operator control in its notebook; `config.json` `enabled: false` and
+  `.stop-requested`). Switched off, its systemd unit keeps running, and the sweep's silence check asked only systemd.
+  `fault_sweep.silences` now also reads the Lab's own switch, the way `chemistry_lab.stop_requested` does. The Lab is
+  still off; switching it back on is Gloria's choice.
+- **Not code faults; nothing to change:** F-a0d9c2dde6 (503), F-e497b0afaf and F-5b77a7d9d5 (502), F-a072d639de (500),
+  F-cdb2c9e753 (connection dropped), F-07c9e70ac4 (TLS handshake timeout) are upstream outages, a few an hour at
+  worst. The 502s at 13:11–13:25 on 2 November came during that deploy. The source_gene_mismatch faults
+  (F-73eacb9569 and earlier) are the Lab refusing records for the wrong gene and parking the question after three
+  tries, as designed; none since 31 October.
+- **Gloria's:** F-17dd10e362 (shim call surge, five times now, the disagreement recorded further down);
+  F-2fac041dde (an SSH login from her iPhone's tailnet address, so likely hers; the alarm does not know the phone); F-f5bedc0c6b (the new persistent-carry user unit, from the persistent-carry work).
+
 ## 29 October — offline persistence sprint recovered for review
 
 `codex/persistence-offline-round-one` reuses the existing eight offline rounds

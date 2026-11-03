@@ -32,7 +32,7 @@ def iso(t): return time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(t))
 
 check("every store is throwaway and Slack and systemd are stubs",
       all(p.startswith(HOME) for p in (F.CONFIG, F.STATE, F.ORGANS, F.LAB_FAULTS, F.LAB_NOTEBOOK,
-                                       F.WATCH_RECEIPTS, F.MUSIC, F.TOKEN_FILE)))
+                                       F.WATCH_RECEIPTS, F.MUSIC, F.TOKEN_FILE, F.LAB_CONFIG, F.LAB_STOP)))
 
 NOW = time.time()
 # 18 October, as it was: one held question waiting every four minutes
@@ -113,6 +113,18 @@ found = F.silences(NOW, lab_active=False)
 check("no new song for 50 hours is a fault, though nothing logged one",
       any(f["part"] == "music" and f["kind"] == "silent" for f in found), found)
 check("a Lab that is not running is not called silent", not any(f["part"] == "chemistry-lab" for f in found))
+
+# F-c3b63fc7a2: the Lab's unit keeps running after it is switched off, and reviews nothing
+LATE = NOW + 7 * 3600    # the last review was at NOW - 600
+def lab_silent(): return any(f["part"] == "chemistry-lab" for f in F.silences(LATE, lab_active=True))
+json.dump({"enabled": True}, open(F.LAB_CONFIG, "w"))
+check("a switched-on Lab with no review for 7 hours is silent", lab_silent())
+json.dump({"enabled": False}, open(F.LAB_CONFIG, "w"))
+check("a Lab switched off in its config is not called silent", not lab_silent())
+json.dump({"enabled": True}, open(F.LAB_CONFIG, "w")); open(F.LAB_STOP, "w").write("2026-11-02T19:26:08\n")
+check("a Lab with a stop requested is not called silent", not lab_silent())
+os.unlink(F.LAB_STOP); os.unlink(F.LAB_CONFIG)
+check("a Lab with no config is off, as the Lab itself reads it", not lab_silent())
 check("a machine without systemd reports no unit faults, not a crash",
       F.failed_units(run=lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("systemctl"))) == [])
 
