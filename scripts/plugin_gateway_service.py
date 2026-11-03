@@ -7,7 +7,6 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import make_server, WSGIServer, WSGIRequestHandler
 from plugin_send_guard import PolicyHold
-from forge_cycle_failure import ConnectorFailure
 
 MAX_BODY = 128 * 1024
 TOKEN_FILE = Path(os.environ.get("VINTOS_PLUGIN_GATEWAY_TOKEN_FILE",
@@ -56,8 +55,6 @@ class API:
             status, body = 403, {"error":type(exc).__name__, "detail":str(exc)[:160]}
         except (ValueError, KeyError, TypeError) as exc:
             status, body = 400, {"error":type(exc).__name__, "detail":str(exc)[:160]}
-        except ConnectorFailure as exc:                       # the allowlisted code only, never the connector's text
-            status, body = 500, {"error":"gateway_call_failed", "code":exc.code}
         except Exception:
             status, body = 500, {"error":"gateway_call_failed"}
         encoded = json.dumps(body, ensure_ascii=False, allow_nan=False).encode()

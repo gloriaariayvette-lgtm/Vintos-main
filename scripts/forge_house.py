@@ -4,7 +4,6 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.request import Request
 from lab_http import open_request
 
@@ -47,15 +46,8 @@ def plugin_query(plugin, tool, arguments, purpose):
     req = Request(gateway, data=json.dumps({'plugin':plugin,'tool':tool,'arguments':arguments,
                                             'purpose':purpose}).encode(), method='POST',
                   headers={'Content-Type':'application/json','Authorization':'Bearer '+secret(token_file)})
-    try:
-        with open_request(req, timeout=210) as response:
-            data=response.read(1024*1024+1)
-    except HTTPError as exc:   # a failure the gateway named with an allowlisted code keeps it; anything else as before
-        from forge_cycle_failure import CONNECTOR_CODES, ConnectorFailure
-        try: code=json.loads(exc.read(4096)).get('code')
-        except Exception: code=None
-        if code in CONNECTOR_CODES: raise ConnectorFailure(code) from None
-        raise
+    with open_request(req, timeout=210) as response:
+        data=response.read(1024*1024+1)
     if len(data)>1024*1024: raise ValueError('plugin gateway response too large')
     result=json.loads(data)
     if isinstance(result,dict) and result.get('held') is True and isinstance(result.get('receipt'),dict):

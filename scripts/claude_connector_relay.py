@@ -30,7 +30,6 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from claude_connector_catalog import policy                        # per-surface tool allow-list (NOT Chat's)
 from plugin_send_guard import PolicyHold, outbound_findings       # confidential-info block + link gate
-from forge_cycle_failure import ConnectorFailure                  # an allowlisted code survives to the Forge
 
 MAX_REQUEST = 128 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
@@ -94,16 +93,6 @@ def _error_text(payload):
     return text[:160] or "no reason given"
 
 
-def _error_code(text):
-    """The allowlisted code for a connector's own reason; the text itself never leaves as a code."""
-    low = text.lower()
-    if re.search(r"sign ?in|log ?in|authenticat|unauthori[sz]ed|session expired|credential|\b401\b", low):
-        return "connector_auth"
-    if re.search(r"quota|rate.?limit|too many requests|\b429\b", low):
-        return "connector_quota"
-    return "connector_tool_error"
-
-
 def _tool_result_from(message, wanted, tool_uses):
     """Return a result only when the SDK ties it to the requested connector call.
 
@@ -135,8 +124,7 @@ def _tool_result_from(message, wanted, tool_uses):
         payload = (block.get("content") if isinstance(block, dict)
                    else getattr(block, "content", None))
         if errored:                                                  # keep the connector's own reason, not just "an error"
-            reason = _error_text(payload)
-            raise ConnectorFailure(_error_code(reason), "requested connector tool returned an error: " + reason)
+            raise RuntimeError("requested connector tool returned an error: " + _error_text(payload))
         if isinstance(payload, str):
             parsed, valid_json = _coerce_result(payload)
             return parsed if valid_json else {"text": payload}
@@ -199,9 +187,9 @@ async def _run(server, tool, arguments, url):
         return {"result": captured, "source": "tool_result"}
     if seen is not None and not any(t.endswith("__" + tool) for t in seen):
         servers = sorted({t.split("__")[1] for t in seen if t.startswith("mcp__") and t.count("__") >= 2})
-        raise ConnectorFailure("connector_missing", f"this Claude login has no {server} connector; its connectors: "
-                               + (", ".join(servers) or "none"))
-    raise ConnectorFailure("connector_no_result", "requested connector produced no verified tool result")
+        raise RuntimeError(f"this Claude login has no {server} connector; its connectors: "
+                           + (", ".join(servers) or "none"))
+    raise RuntimeError("requested connector produced no verified tool result")
 
 
 def connector(request):
@@ -274,8 +262,7 @@ def main():
     except PolicyHold as hold:
         print(json.dumps({"ok": False, "receipt": hold.receipt}))
     except Exception as exc:                                       # one JSON error out, never a stack trace
-        print(json.dumps({"ok": False, "detail": (type(exc).__name__ + ": " + str(exc))[:200],
-                          **({"code": exc.code} if isinstance(exc, ConnectorFailure) else {})}))
+        print(json.dumps({"ok": False, "detail": (type(exc).__name__ + ": " + str(exc))[:200]}))
 
 
 if __name__ == "__main__":
