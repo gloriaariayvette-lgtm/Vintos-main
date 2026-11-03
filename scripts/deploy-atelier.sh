@@ -1525,8 +1525,19 @@ else
             printf '  printf %%s %q > %q && chown %s %q\n' "$forge_mark_lines" "$FORGE_MARK" "$(id -u):$(id -g)" "$FORGE_MARK"
             printf 'else cp -a "$B/." "$D/"; systemctl restart %s; echo "Forge did not come up; old bundle put back."; fi\n' "$FORGE_UNIT"
         } > "$FORGE_SCRIPT"
-        flag "forge not updated (sudo wants a password). Run: sudo bash $FORGE_SCRIPT"
-        say "  changed:$forge_changed"
+        # Gloria, 3 November: the Forge install runs without her password, so his Study fixes land on their own. Only
+        # this one command is allowed without a password (/etc/sudoers.d/vintos-forge-install); sudo for anything else
+        # still asks, and without that rule this falls through to the line for her, as before.
+        if forge_out="$(sudo -n /usr/bin/bash "$FORGE_SCRIPT" 2>&1)"; then
+            say "  changed:$forge_changed"
+            case "$forge_out" in
+                *"Forge updated and running."*) say "  Forge updated and running (installed without a password, as she allowed)" ;;
+                *) flag "forge did not come up; the old bundle was put back: $(printf '%s' "$forge_out" | tail -1)" ;;
+            esac
+        else
+            flag "forge not updated (sudo wants a password). Run: sudo bash $FORGE_SCRIPT"
+            say "  changed:$forge_changed"
+        fi
     fi
 fi
 say
