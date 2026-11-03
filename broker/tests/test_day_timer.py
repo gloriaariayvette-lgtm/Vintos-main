@@ -4,7 +4,7 @@ is an expensive thing and a way to tell them to continue from the last task spec
 the day' message to contain the timer I set").
 
 Scratch HOME and workspace; nothing is posted; sockets are refused."""
-import os, socket, sys, tempfile
+import json, os, socket, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="day-timer-"); os.environ["HOME"] = HOME
 os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, "workspace")
@@ -28,6 +28,9 @@ check("a start with no time has no timer, and a stray word is not one",
 T = 1_800_000_000.0
 D.set_paused(True, "slack", T - 600)
 D.set_paused(False, "slack", T, minutes=120, carry_on=True)
+_sw = [json.loads(l) for l in open(D.SWITCH_HISTORY)]
+check("her !stop and !start are kept in the switch's history, with the timer (3 November)",
+      [(r["on"], r["by"], r["ts"], r.get("for")) for r in _sw][-2:] == [(False, "slack", T - 600, None), (True, "slack", T, "2h")], _sw)
 start = D._load(D.RESUME_FILE, {})
 check("starting the day with a timer keeps when it ends", start["until"] == T + 7200 and start["for"] == "2h"
       and start["continue"] is True and not D.paused(), start)

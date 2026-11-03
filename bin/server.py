@@ -8281,6 +8281,12 @@ async def agents_toggle(request: Request):
         want = None
     if not isinstance(want, bool):
         want = os.path.exists(f)
+    try:   # each setting of the switch, kept beside dot_channel's (3 November: on likely means she is home, juggling)
+        with open(f.replace("paused.json", "day-switch-history.jsonl"), "a") as fh:
+            fh.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "ts": time.time(), "on": bool(want),
+                                 "by": "app", "was_on": not os.path.exists(f)}) + "\n")
+    except OSError:
+        pass
     if want:
         if os.path.exists(f):
             os.remove(f)

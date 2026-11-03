@@ -583,6 +583,10 @@ check("... and set to on again leaves it on (no flip)", _toggle({"on": True})["o
 check("set to off pauses it, and off again leaves it paused", _toggle({"on": False})["on"] is False
       and _toggle({"on": False})["on"] is False and os.path.exists(D.PAUSE_FILE))
 check("with no body it still flips, for an older app", _toggle(None)["on"] is True and not os.path.exists(D.PAUSE_FILE))
+_sw = [json.loads(l) for l in open(D.SWITCH_HISTORY)][-5:]
+check("every setting of the app's switch is kept, with what it was before (3 November)",
+      [(r["on"], r["was_on"], r["by"]) for r in _sw] == [(True, False, "app"), (True, True, "app"), (False, True, "app"),
+                                                         (False, False, "app"), (True, False, "app")], _sw)
 for app in (os.path.join(REPO, "clients", "mobile", "index.html"),):
     h = open(app).read()
     check("the app has the toggle", 'id="agents-toggle"' in h and "/api/agents/toggle" in h and "loadAgentsStatus();" in h)
