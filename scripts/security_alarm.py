@@ -21,6 +21,14 @@ import paid_http
 
 PAUSE = 'python3 ~/.vintos/workspace/scripts/paid_http.py pause'
 FLOORS = {'brave': 60, 'kie': 30, 'atlascloud': 30, 'nvidia': 6}
+CEILING = 60   # no threshold, learned or known, is ever higher
+# Scheduled runs whose bursts are known (Aegis's crontab): provider, calling script, local start, day of the month
+# (None: daily), seconds the burst may last. Inside one, the threshold is CEILING, so the run is quiet and a runaway in
+# its window still alarms. Gloria, 3 November: the daily triage had been posted as a surge six times.
+KNOWN_RUNS = (
+    ('anthropic', 'vintos_claude_shim.py', '18:27', None, 300),   # thread-triage.py: 13-18/min for about 20 s
+    ('anthropic', 'vintos_claude_shim.py', '05:30', 1, 600),      # memory_aging.py, monthly: up to 38/min for 4 min
+)
 
 
 def paths():
@@ -125,11 +133,27 @@ def provider_rates(now, ledger=None):
         zeros = max(0, minutes - len(counts)); index = math.ceil(minutes * .95) - 1 - zeros
         p95 = counts[min(index, len(counts)-1)] if index >= 0 and counts else 0
         # A learned baseline cannot silence an extreme surge. Cold start is explicit.
-        threshold = min(60, max(FLOORS.get(name, 12), p95 * 5))
+        threshold = min(CEILING, max(FLOORS.get(name, 12), p95 * 5))
+        known = known_run(name, scripts[name], now)
+        if known: threshold = CEILING
         out.append({'provider': name, 'rate': rate, 'threshold': threshold, 'baseline_p95': p95,
                     'baseline_minutes': minutes, 'cold_start': now - earliest[name] < 86400,
-                    'scripts': scripts[name].most_common(3)})
+                    'scripts': scripts[name].most_common(3), 'known_run': known})
     return out
+
+
+def known_run(name, scripts, now):
+    """The known run that explains this minute's calls, or None. Every script calling in the minute must be the run's,
+    so another caller surging beside it is not hidden."""
+    t = time.localtime(now)
+    for provider, script, start, day, lasts in KNOWN_RUNS:
+        if provider != name or (day is not None and t.tm_mday != day): continue
+        if not scripts or any(s != script and not s.endswith('/' + script) for s in scripts): continue
+        h, m = map(int, start.split(':'))
+        began = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, h, m, 0, 0, 0, -1))
+        if began <= now <= began + lasts + 60:   # plus the rolling minute that trails the run
+            return '%s %s' % (start, script)
+    return None
 
 
 def accounting_health(now, runner=None, since=None):

@@ -8,6 +8,7 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -296,6 +297,38 @@ class SecurityTests(unittest.TestCase):
         self.attempts(61)
         row=A.provider_rates(self.now)[0]
         self.assertLessEqual(row['threshold'],60)
+        self.tick();self.assertEqual(len(self.sent),1)
+
+    SHIM='/home/gloria/Vintos-main/bin/vintos_claude_shim.py'
+    def at_local(self,day,hh,mm,ss):
+        return time.mktime((2033,5,day,hh,mm,ss,0,0,-1))
+
+    def test_daily_triage_burst_is_known_and_quiet(self):
+        # The real burst (F-17dd10e362): 13-18 shim calls between 18:27:05 and 18:27:27, every day.
+        self.now=self.at_local(17,18,27,30);self.attempts(18,script=self.SHIM)
+        row=A.provider_rates(self.now)[0]
+        self.assertEqual(row['known_run'],'18:27 vintos_claude_shim.py');self.assertEqual(row['threshold'],60)
+        self.tick();self.assertEqual(self.sent,[])
+
+    def test_same_burst_outside_its_window_still_alarms(self):
+        self.now=self.at_local(17,18,50,0);self.attempts(18,script=self.SHIM)
+        self.assertIsNone(A.provider_rates(self.now)[0]['known_run'])
+        self.tick();self.assertEqual(len(self.sent),1)
+
+    def test_runaway_inside_known_window_still_alarms(self):
+        self.now=self.at_local(17,18,27,30);self.attempts(61,script=self.SHIM)
+        self.tick();self.assertEqual(len(self.sent),1)
+
+    def test_other_caller_in_known_window_is_not_hidden(self):
+        self.now=self.at_local(17,18,27,30);self.attempts(10,script=self.SHIM);self.attempts(8)
+        self.assertIsNone(A.provider_rates(self.now)[0]['known_run'])
+        self.tick();self.assertEqual(len(self.sent),1)
+
+    def test_monthly_memory_aging_only_on_the_first(self):
+        # 1 November: 144 shim calls from 05:30:02 to 05:34:06, up to 38 a minute.
+        self.now=self.at_local(1,5,33,30);self.attempts(38,script=self.SHIM)
+        self.tick();self.assertEqual(self.sent,[])
+        self.now=self.at_local(2,5,33,30);self.attempts(38,script=self.SHIM)
         self.tick();self.assertEqual(len(self.sent),1)
 
     def test_ordinary_media_polling_is_not_a_surge(self):

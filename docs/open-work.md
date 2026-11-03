@@ -10,8 +10,15 @@
   worst. The 502s at 13:11–13:25 on 2 November came during that deploy. The source_gene_mismatch faults
   (F-73eacb9569 and earlier) are the Lab refusing records for the wrong gene and parking the question after three
   tries, as designed; none since 31 October.
-- **Gloria's:** F-17dd10e362 (shim call surge, five times now, the disagreement recorded further down);
-  F-2fac041dde (an SSH login from her iPhone's tailnet address, so likely hers; the alarm does not know the phone); F-f5bedc0c6b (the new persistent-carry user unit, from the persistent-carry work).
+- **F-17dd10e362, the shim call surge — known runs, quiet in source; a security-alarm change, so Gloria deploys it.**
+  Gloria: "If it's a known run we can turn off the surge alarms for that." All six alarms (22 October to 2 November)
+  are two cron jobs calling through the shim: `thread-triage.py` daily at 18:27 (13-18 calls in about 20 s) and
+  `memory_aging.py` at 05:30 on the 1st (144 calls in 4 minutes, up to 38 a minute). `security_alarm.KNOWN_RUNS`
+  names them; inside a run's window, and only when every caller in the minute is the shim, the threshold is the
+  60/minute ceiling instead of 12. Outside the window, above 60, or with another caller beside it, it still alarms.
+  The ledger still records no caller behind the shim, so a different job calling it at 18:27 would also be quiet.
+- **Gloria's:** F-2fac041dde (an SSH login from her iPhone's tailnet address: Termius. The alarm already reads
+  `known_ssh_addresses` from `memory/security-alarm.json` on Aegis, so this is a one-line config change on Aegis); F-f5bedc0c6b (the new persistent-carry user unit, from the persistent-carry work).
 
 ## 29 October — offline persistence sprint recovered for review
 
