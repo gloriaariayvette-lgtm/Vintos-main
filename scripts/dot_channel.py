@@ -159,6 +159,20 @@ def flush_held(api, channel):
 
 # Her restart, kept: a stop and a start between two passes left nothing to read, and nothing moved (2026-10-08).
 RESUME_FILE = os.path.join(os.path.dirname(PAUSE_FILE), "resumed.json")
+# Each time the day's switch is set, kept (Gloria, 3 November: the switch on "likely means that I'm at home and trying
+# to juggle a couple of things"). paused.json and resumed.json hold only the last setting. The app's server appends
+# the same rows.
+SWITCH_HISTORY = os.path.join(os.path.dirname(PAUSE_FILE), "day-switch-history.jsonl")
+
+
+def _log_switch(on, by, now=None, **extra):
+    now = float(now or time.time())
+    row = {"at": datetime.fromtimestamp(now).astimezone().isoformat(timespec="seconds"), "ts": now, "on": bool(on),
+           "by": by, "was_on": not os.path.exists(PAUSE_FILE), **extra}
+    try:
+        with open(SWITCH_HISTORY, "a") as f: f.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
 # While work in hand is due its next step (or there is no room campaign), he takes a turn this often even when
 # nobody has written (Gloria, 2026-10-08: "He needs to continue with the next step until there's actual cause for
 # pause or he reaches a goal").
@@ -171,6 +185,7 @@ def paused():
 
 
 def set_paused(on, by="gloria", now=None, minutes=None, carry_on=False):
+    _log_switch(not on, by, now, **({"for": _for_words(minutes)} if minutes and not on else {}))
     if on:
         _save(PAUSE_FILE, {"since": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"), "by": by})
     else:
