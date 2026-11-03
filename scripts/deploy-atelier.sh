@@ -64,6 +64,7 @@ ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_N
 KEEPALIVE_UNIT_NAME="vintos-toy-keepalive"; KEEPALIVE_UNIT_SRC="$SRC/broker/$KEEPALIVE_UNIT_NAME.service"; KEEPALIVE_UNIT_DST="$HOME/.config/systemd/user/$KEEPALIVE_UNIT_NAME.service"   # re-asserts his steady holds, as the hand-placed copy did (2026-10-25)
 SCENES_UNIT_NAME="vintos-scenes"; SCENES_UNIT_SRC="$SRC/broker/$SCENES_UNIT_NAME.service"; SCENES_UNIT_DST="$HOME/.config/systemd/user/$SCENES_UNIT_NAME.service"   # the projector's media, one file by its path, never a listing (2026-10-25)
 BEDROOM_UNIT_NAME="vintos-bedroom-arrival"; BEDROOM_UNIT_SRC="$SRC/broker/$BEDROOM_UNIT_NAME.service"; BEDROOM_UNIT_DST="$HOME/.config/systemd/user/$BEDROOM_UNIT_NAME.service"   # the bedroom ESP32 (2026-10-17)
+KITCHEN_UNIT_NAME="vintos-kitchen-presence"; KITCHEN_UNIT_SRC="$SRC/broker/$KITCHEN_UNIT_NAME.service"; KITCHEN_UNIT_DST="$HOME/.config/systemd/user/$KITCHEN_UNIT_NAME.service"   # the coffee maker ESP32 (2026-11-03)
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
 # service: the thing to install and confirm is the TIMER. Until now both files were a
 # manual cp + systemctl --user on the host, so a fresh deploy left him with no weekly read.
@@ -240,6 +241,7 @@ SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2
 SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit from real token counts (2026-10-17)
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
+SCRIPTS="$SCRIPTS kitchen_presence.py"   # the coffee maker ESP32: her phone within 1 m = she is in the kitchen (2026-11-03)
 SCRIPTS="$SCRIPTS health_sleep_import.py"   # her Apple Health export: only the sleep entries, run by her (2026-11-02)
 SCRIPTS="$SCRIPTS room_sources.py"   # proposal 18: read-only view of each presence source, kept apart (2026-10-26)
 SCRIPTS="$SCRIPTS attention_ladder.py attention_call.py phone_voip.py"   # her call-back ladder: silence at home, steps 90 min apart, his call last (2026-10-27)
@@ -271,6 +273,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             [ -f "$BEDROOM_UNIT_SRC" ] && printf 'broker/%s\n' "$BEDROOM_UNIT_NAME.service"
+            [ -f "$KITCHEN_UNIT_SRC" ] && printf 'broker/%s\n' "$KITCHEN_UNIT_NAME.service"
             [ -f "$SCENES_UNIT_SRC" ] && printf 'broker/%s\n' "$SCENES_UNIT_NAME.service"
             [ -f "$KEEPALIVE_UNIT_SRC" ] && printf 'broker/%s\n' "$KEEPALIVE_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
@@ -707,6 +710,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     [ -f "$CARRY_UNIT_SRC" ] && say "  would install + restart (user)   $CARRY_UNIT_NAME -> $CARRY_UNIT_DST"
     [ -f "$KEEPALIVE_UNIT_SRC" ] && say "  would install + restart (user)   $KEEPALIVE_UNIT_NAME -> $KEEPALIVE_UNIT_DST"
     [ -f "$BEDROOM_UNIT_SRC" ] && say "  would install + restart (user)   $BEDROOM_UNIT_NAME -> $BEDROOM_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    [ -f "$KITCHEN_UNIT_SRC" ] && say "  would install + restart (user)   $KITCHEN_UNIT_NAME -> $KITCHEN_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would restart (user)             vintos-claude-shim (the relay), then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
@@ -773,7 +777,7 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$BEDROOM_UNIT_NAME" "$SCENES_UNIT_NAME" "$KEEPALIVE_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$BEDROOM_UNIT_NAME" "$KITCHEN_UNIT_NAME" "$SCENES_UNIT_NAME" "$KEEPALIVE_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
@@ -1127,6 +1131,19 @@ if [ -f "$BEDROOM_UNIT_SRC" ]; then
         confirm_unit --user "$BEDROOM_UNIT_NAME" && say "  $BEDROOM_UNIT_NAME listening to the bedroom"
     else
         flag "$BEDROOM_UNIT_NAME installed but did not start - run: systemctl --user enable $BEDROOM_UNIT_NAME && systemctl --user restart $BEDROOM_UNIT_NAME"
+    fi
+fi
+say
+say "== kitchen presence =="
+if [ -f "$KITCHEN_UNIT_SRC" ]; then
+    mkdir -p "$(dirname -- "$KITCHEN_UNIT_DST")"
+    install -m 644 "$(staged "$KITCHEN_UNIT_SRC")" "$KITCHEN_UNIT_DST" || die "failed to install $KITCHEN_UNIT_DST — rollback: bash $BACKUP/restore.sh"
+    systemctl --user daemon-reload
+    if systemctl --user enable "$KITCHEN_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$KITCHEN_UNIT_NAME" >/dev/null 2>&1; then
+        sleep 1
+        confirm_unit --user "$KITCHEN_UNIT_NAME" && say "  $KITCHEN_UNIT_NAME listening to the kitchen"
+    else
+        flag "$KITCHEN_UNIT_NAME installed but did not start - run: systemctl --user enable $KITCHEN_UNIT_NAME && systemctl --user restart $KITCHEN_UNIT_NAME"
     fi
 fi
 say
