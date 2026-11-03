@@ -1189,7 +1189,30 @@ def _ask(system, prompt, max_tokens=500, temperature=0.75):
         _failed_request_evidence(exc, max_tokens)
         raise
     choice = data["choices"][0]
-    return _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
+    reply = _ModelReply(choice["message"]["content"], _completion_metadata(data, choice, max_tokens))
+    _record_model_call(system, prompt, reply, max_tokens, temperature)
+    return reply
+
+
+# Every model call the Lab makes, exactly as sent and answered (Gloria, 3 November: the worm that will take the local
+# model's place learns from these). Before this, only the parsed inquiry survived, never the prompt or the raw reply,
+# so no past turn could be replayed. Recording never changes or stops a turn, and the file rotates at its cap.
+MODEL_CALLS = os.path.join(ROOT, "model-calls.jsonl")
+MODEL_CALLS_CAP = 256 * 1024 * 1024
+
+
+def _record_model_call(system, prompt, reply, max_tokens, temperature):
+    try:
+        if os.path.exists(MODEL_CALLS) and os.path.getsize(MODEL_CALLS) >= MODEL_CALLS_CAP:
+            os.replace(MODEL_CALLS, MODEL_CALLS + ".1")
+        caller = sys._getframe(2).f_code.co_name
+        _append(MODEL_CALLS, {"at": now_iso(), "model": LLM_MODEL, "url": LLM_URL, "caller": caller,
+                              "temperature": temperature, "max_tokens": max_tokens,
+                              "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                              "system": system, "prompt": prompt, "reply": str(reply),
+                              "completion": getattr(reply, "completion", None)})
+    except Exception:
+        pass
 
 
 

@@ -36,3 +36,43 @@ esp32_ble_tracker:
 
 bluetooth_proxy:
   active: true             # active: Home Assistant can connect through it and press, not only listen
+
+# Her phone, heard here, is her in the kitchen (Gloria, 3 November: "let the coffee maker esp32 know when I pass within
+# 1m"). The phone is found by its IRK, as the bedroom board finds it; the key is gloria_phone_irk in secrets.yaml, never
+# in this file. Each reading goes to the Mosquitto relay on the Mac in the bedroom board's form, where
+# scripts/kitchen_presence.py on Aegis takes within 1 m as the kitchen. Home Assistant is not needed for this.
+mqtt:
+  broker: 192.168.1.91
+  discovery: false         # Home Assistant already has this board through the API
+  reboot_timeout: 0s       # the Mac being off must never restart the Fingerbot's proxy
+
+number:
+  - platform: template     # her phone's signal at 1 m from the board; set from a real reading, no reflash needed
+    id: rssi_at_1m
+    name: "Gloria phone signal at 1 m"
+    optimistic: true
+    min_value: -100
+    max_value: -30
+    step: 1
+    initial_value: -65
+    restore_value: true
+    unit_of_measurement: dBm
+
+sensor:
+  - platform: ble_rssi
+    irk: !secret gloria_phone_irk
+    id: gloria_phone_rssi
+    name: "Gloria phone signal"
+    filters:
+      - median:
+          window_size: 3
+          send_every: 1
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: espresense/devices/gloria-phone/kitchen
+            payload: |-
+              root["id"] = "gloria-phone";
+              root["rssi"] = x;
+              root["rssi@1m"] = id(rssi_at_1m).state;
+              root["distance"] = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
