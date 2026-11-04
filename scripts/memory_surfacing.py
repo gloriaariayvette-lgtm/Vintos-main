@@ -185,15 +185,18 @@ _cache = {"mtime": None, "meta": None, "vecs": None}
 def load_index():
     import numpy as np
     try:
-        m = os.path.getmtime(VECS)
+        st = os.stat(VECS)
     except OSError:
         return None, None
-    if _cache["mtime"] != m:
+    # Size, not mtime alone: two builds in the same second (a short index then a longer one) share an mtime, and
+    # keying the cache on mtime served the stale shorter index until the next second ticked (flaky, 4 November).
+    key = (st.st_mtime_ns, st.st_size)
+    if _cache["mtime"] != key:
         meta = [json.loads(l) for l in open(META)]
         vecs = np.load(VECS).astype("float32")
         if len(meta) != len(vecs):
             return None, None
-        _cache.update(mtime=m, meta=meta, vecs=vecs)
+        _cache.update(mtime=key, meta=meta, vecs=vecs)
     return _cache["meta"], _cache["vecs"]
 
 
