@@ -1,0 +1,12 @@
+[Unit]
+Description=Install the Forge bundle the deploy staged: hashes checked, old bundle put back if it does not come up
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vintos-forge-install
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/atelier/forge-loop /var/lib/vintos-forge /home/gloria/.vintos/deploy/forge-request
+StateDirectory=vintos-forge
