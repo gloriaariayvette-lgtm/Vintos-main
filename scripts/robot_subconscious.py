@@ -21,7 +21,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 ARCHIVE = os.path.join(MEMORY, "robot-ledger-archive.jsonl")
 OUT = os.path.join(MEMORY, "robot-subconscious.json")
 LLM = os.environ.get("VINTOS_GEMMA_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
-MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
+MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "aeon/gemma-4-12b")
 MIN_ENTRIES = 5
 NOISE = {"that", "this", "with", "from", "have", "been", "there", "their", "they", "what", "which", "some", "also",
          "into", "than", "then", "when", "your", "will", "more", "very", "just", "over", "like", "only", "both", "here",

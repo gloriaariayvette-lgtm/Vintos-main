@@ -74,7 +74,7 @@ if _BACKEND == "self":
     SPIKE_THRESHOLD = 0.06
 else:
     LM_API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
-    MODEL = os.environ.get("CAUSALITY_MODEL", "google/gemma-4-12b-qat")
+    MODEL = os.environ.get("CAUSALITY_MODEL", "aeon/gemma-4-12b")
     SPIKE_THRESHOLD = 0.015
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))

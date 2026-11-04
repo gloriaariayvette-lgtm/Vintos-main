@@ -118,7 +118,7 @@ def trace(action_type, **fields):
 # /gemma-aegis/ path falls back to the Mac's Gemma and then to xAI when Aegis's does not answer; /gemma-aegis-local/
 # serves aegis_gemma alone, so a failure is a failure, never another model's answer.
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions")
-LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
+LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "aeon/gemma-4-12b")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 # Named searches have no length ceiling; the bounded range is only for random wandering.
 # ESM-C reads a long protein in overlapping 350-residue windows, up to chemistry_esmc.MAX_LENGTH (2026-10-07; it read

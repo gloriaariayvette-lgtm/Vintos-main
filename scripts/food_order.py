@@ -146,7 +146,7 @@ def _choose(kind, candidates, user_text, reply, count=1):
               "Prefer available items that do not require unchosen customizations.\n"
               "SOUL EXCERPT:\n%s\nHER REQUEST:\n%s\nHIS DELIVERED REPLY:\n%s\nDATA:\n%s" %
               (kind, count, soul, user_text[:1000], reply[:1000], json.dumps(data, ensure_ascii=False)[:14000]))
-    body = json.dumps({"model": os.environ.get("VINTOS_ORDER_MODEL", "gemma-4-12b-qat"),
+    body = json.dumps({"model": os.environ.get("VINTOS_ORDER_MODEL", "aeon/gemma-4-12b"),
                        "messages": [{"role": "system", "content": "You are Vintos making one bounded food choice after speaking to Gloria."},
                                     {"role": "user", "content": prompt}],
                        "max_tokens": 220, "temperature": 0.35}).encode()

@@ -39,7 +39,7 @@ SUBCON = os.path.join(MEMORY, "robot-subconscious.json")
 ARCHIVE_SENSE_EVERY = 30.0                                            # one sense row per half minute, not per push
 
 GEMMA_URL = os.environ.get("VINTOS_GEMMA_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
+GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "aeon/gemma-4-12b")
 SONNET_MODEL = os.environ.get("VINTOS_ROBOT_VOICE_MODEL", "claude-sonnet-5-5")
 FRAME_MAX_AGE = float(os.environ.get("VINTOS_ROBOT_FRAME_MAX_AGE", "6"))
 MIN_MS, MAX_MS = 100, 1500

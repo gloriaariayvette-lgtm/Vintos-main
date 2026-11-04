@@ -26,15 +26,17 @@ assert evo.WATCHDOG_LOCK.startswith(WS), "watchdog lock must cross the service P
 watchdog = open(os.path.join(REPO, "bin", "gemma-watchdog.sh")).read()
 loader = open(os.path.join(REPO, "scripts", "aegis-gemma-load.sh")).read()
 assert 'LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"' in watchdog
-assert 'VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234' in watchdog and 'MODEL="google/gemma-4-12b-qat"' in watchdog
+assert 'VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234' in watchdog and 'MODEL="aeon/gemma-4-12b"' in watchdog
 assert watchdog.index('flock -n 9') < watchdog.index('ntfy.sh/'), "Lab-held reload lock exits before notification"
 assert 'unload "$MODEL"' in watchdog and "unload --all" not in watchdog
 assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in watchdog
-assert 'EXPECTED_VARIANT="google/gemma-4-12b-qat@q4_0"' in loader
-assert '"$LMS" load "$MODEL_KEY"' in loader and 'quantization") or {}).get("name") == "Q4_0"' in loader
+assert 'MODEL_KEY="gemma-4-12b-it-aeon-abliterated-k4"' in loader and 'IDENTIFIER="aeon/gemma-4-12b"' in loader
+assert 'Gemma-4-12B-it-AEON-Abliterated-K4-BF16.Q4_K_M.gguf"' in loader and '"architecture") == "gemma4"' in loader
+assert '"$LMS" load "$MODEL_KEY"' in loader and 'quantization") or {}).get("name") == "Q4_K_M"' in loader
 assert '"$LMS" server start --bind "$SERVER_BIND" --port "$SERVER_PORT"' in loader
 assert '"$LMS" server stop' in loader and '"$BASE/api/v1/models"' in loader
-assert '"$LMS" unload "$IDENTIFIER"' in loader and 'unload --all' not in loader
+assert '"$LMS" unload "$resident"' in loader and 'unload --all' not in loader
+assert 'for resident in "$IDENTIFIER" "google/gemma-4-12b-qat"' in loader, "the replaced model must not stay loaded beside AEON"
 assert '--identifier "$IDENTIFIER"' in loader and '--no-speculative-draft-mtp' in loader
 
 sequence = "ACGT" * 128

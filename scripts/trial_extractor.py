@@ -10,7 +10,7 @@ LM_URL = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
 
 def call_llm(prompt, temp=0.3, max_tokens=600):
     r = requests.post(LM_URL, json={
-        "model": "google/gemma-4-12b-qat",
+        "model": "aeon/gemma-4-12b",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temp, "max_tokens": max_tokens
     }, timeout=60)

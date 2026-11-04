@@ -221,7 +221,7 @@ def check(reply_text, gloria_msg=""):
     patterns_text = "\n".join(pattern_list)
     try:
         _r = _req.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", json={
-            "model":"google/gemma-4-12b-qat","temperature":0.1,"max_tokens":60,
+            "model":"aeon/gemma-4-12b","temperature":0.1,"max_tokens":60,
             "messages":[
                 {"role":"system","content":f"You are evaluating a response against behavioral patterns. Answer with JSON only: {{\"deviation\": 0.0-1.0, \"alignment\": 0.0-1.0}}\n\nPatterns to check:\n{patterns_text}\n\ndeviation = how much the response exhibits the avoidance patterns\nalignment = how much the response moves toward the 'toward' behaviors"},
                 {"role":"user","content":f"SITUATION: {(gloria_msg[:300] if gloria_msg else 'He is writing alone - a post, a journal entry, or an introspection. No one addressed him.')}\n\n"f"HIS RESPONSE:\n{reply_text[:400]}\n\n""Given what was happening, is this response actually FUNCTIONING as avoidance of vulnerability, ""or is introspection simply his genuine mode of engagement? Writing analytically about his own ""patterns is not itself avoidance. Score deviation only if the response is doing the avoiding."}
