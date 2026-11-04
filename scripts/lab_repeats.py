@@ -42,6 +42,14 @@ _WORD = re.compile(r"[a-z0-9][a-z0-9-]{3,}")
 _STOP = set("what which does that this with from into have their there about these those under within "
             "between specific structural structure protein proteins human role function sequence residues domain "
             "region regions record records known based how are the and for its whether".split())
+# The Lab's own prompts frame every review question the same way ("its annotated structural features, its documented
+# function or cellular role, and any source-backed relationship between those features and that function", 11
+# October). Those words say what kind of review it is, not what it is about: counted as content, two questions about
+# different proteins shared most of their words, and SLC26A11 was refused as HFE, SLC12A1 as LDLR (26 of 123 "in other
+# words" refusals on 3-4 November named different proteins). They still count toward a question being long enough to
+# compare; only the overlap is measured without them.
+_FRAME = set("annotated features documented molecular functions cellular roles source-backed relationship "
+             "relationships hallmarks curated establish establishes uniprot specifically".split())
 _ACCESSION = re.compile(r"(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?![A-Z0-9])")
 _SYMBOL = re.compile(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}(?![A-Za-z0-9])")
 _NOT_SUBJECTS = {"ESMFOLD", "DSSP", "PDB", "UNIPROT", "NCBI", "JSON", "DNA", "RNA", "HP", "CONFIDENT_FOLD", "TM",
@@ -286,6 +294,10 @@ def repeat(inquiry, now=None):
                 return ("you already ran this exact lookup on %s (%s); it would return the same thing"
                         % (str(r.get("at", ""))[:16].replace("T", " "), key[:120]))
     own_targets = lookup_targets(key)
+    # what the question is about: its content words and the proteins it names (a 3-letter symbol like HFE is too
+    # short to be a word, and without it a question about HFE was only its frame)
+    named = lambda text: {x.lower() for x in subjects(text)}
+    about = ((mine - _FRAME) | named(inquiry.get("question") if isinstance(inquiry, dict) else "")) or mine
     if len(mine) >= 4:
         for r in reversed(rows):
             # The same unresolved question may legitimately need another instrument/source.
@@ -304,8 +316,12 @@ def repeat(inquiry, now=None):
             previous_targets = lookup_targets(r.get('lookup') or '')
             if own_targets and previous_targets and own_targets.isdisjoint(previous_targets):
                 continue
-            theirs = set(r.get("words") or [])
-            if theirs and len(mine & theirs) / len(mine) >= SIMILAR:
+            theirs = (set(r.get("words") or []) - _FRAME) | named(r.get("question"))
+            # the same named protein asked about again with nothing new beyond its name is a repeat, however it is
+            # spelled out ("aquaporin-1 (AQP1)" after "aquaglyceroporin 1 (AQP1)")
+            mine_named = named(inquiry.get("question") if isinstance(inquiry, dict) else "")
+            same_target = bool(mine_named) and mine_named <= named(r.get("question")) and len(about - mine_named) <= 2
+            if theirs and (same_target or len(about & theirs) / len(about) >= SIMILAR):
                 return "you already asked this on %s, in other words: %s" % (
                     str(r.get("at", ""))[:16].replace("T", " "), str(r.get("question", ""))[:200])
     return ""
