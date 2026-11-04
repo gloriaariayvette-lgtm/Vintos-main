@@ -30,6 +30,7 @@ OUT = os.environ.get("SURFACING_INDEX_DIR", MEM)
 META = os.path.join(OUT, "surfacing-index.jsonl")
 VECS = os.path.join(OUT, "surfacing-index.npy")
 LOCK = os.path.join(OUT, "surfacing-index.lock")
+FAILED = os.path.join(OUT, "surfacing-index.failed")
 SURFACED = os.path.join(MEM, "memory-surfaced.jsonl")
 LEDGER = os.path.join(MEM, "interaction-ledger.json")
 CANON = os.path.join(MEM, "chat-canonical.jsonl")
@@ -52,6 +53,11 @@ RECENT_DAYS = 3         # newer than this is the conversation itself, not a memo
 REPEAT_DAYS = 7         # a passage that surfaced stays quiet this long
 MIN_CHARS, MAX_CHARS, QUOTE_CHARS = 40, 600, 320
 STALE_S = 20 * 3600
+# A build that fails (the embedder down or busy) waits this long before a turn may start another, and a build saves
+# what it has every SAVE_EVERY batches, so the first build of ~10,000 passages is never begun again from nothing
+# (4 November: the live index did not exist yet, and every message could set nomic off on the whole corpus).
+RETRY_S = 3600
+SAVE_EVERY = 10
 
 
 def _test_mode():
@@ -208,27 +214,56 @@ def build_index(batch=32, embed_fn=None):
             pass
         rows = corpus()
         todo = [r for r in rows if r["id"] not in old]
-        for i in range(0, len(todo), batch):
-            chunk = todo[i:i + batch]
-            for r, v in zip(chunk, embed_fn([r["text"] for r in chunk])):
-                old[r["id"]] = np.asarray(v, dtype="float32")
-        _seen = set()
-        keep = [r for r in rows if r["id"] in old and not (r["id"] in _seen or _seen.add(r["id"]))]
-        vecs = np.stack([old[r["id"]] for r in keep]) if keep else np.zeros((0, 768), "float32")
-        vecs = vecs / np.maximum(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-9)
-        tmp_m, tmp_v = META + ".tmp", VECS + ".tmp.npy"
-        with open(tmp_m, "w") as f:
-            for r in keep:
-                f.write(json.dumps(r) + "\n")
-        np.save(tmp_v, vecs.astype("float16"))
-        os.replace(tmp_m, META); os.replace(tmp_v, VECS)
+
+        def save():
+            _seen = set()
+            keep = [r for r in rows if r["id"] in old and not (r["id"] in _seen or _seen.add(r["id"]))]
+            vecs = np.stack([old[r["id"]] for r in keep]) if keep else np.zeros((0, 768), "float32")
+            vecs = vecs / np.maximum(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-9)
+            tmp_m, tmp_v = META + ".tmp", VECS + ".tmp.npy"
+            with open(tmp_m, "w") as f:
+                for r in keep:
+                    f.write(json.dumps(r) + "\n")
+            np.save(tmp_v, vecs.astype("float16"))
+            os.replace(tmp_m, META); os.replace(tmp_v, VECS)
+            return keep
+
+        done = 0
+        try:
+            for i in range(0, len(todo), batch):
+                chunk = todo[i:i + batch]
+                for r, v in zip(chunk, embed_fn([r["text"] for r in chunk])):
+                    old[r["id"]] = np.asarray(v, dtype="float32")
+                done += len(chunk)
+                if (i // batch + 1) % SAVE_EVERY == 0 and done < len(todo):
+                    save()
+        except Exception as exc:
+            if done:
+                save()
+            with open(FAILED, "w") as f:
+                f.write(json.dumps({"t": time.time(), "embedded": done, "of": len(todo), "error": str(exc)[:200]}))
+            return {"failed": str(exc)[:200], "embedded_now": done, "of": len(todo)}
+        keep = save()
+        try:
+            os.remove(FAILED)
+        except OSError:
+            pass
         return {"passages": len(keep), "embedded_now": len(todo), "dropped": len(old) - len(keep)}
 
 
 def _refresh_in_background():
     try:
-        if os.path.exists(VECS) and time.time() - os.path.getmtime(VECS) < STALE_S:
+        if os.path.exists(FAILED):   # an unfinished build: carry on with it, but not more than once an hour
+            if time.time() - os.path.getmtime(FAILED) < RETRY_S:
+                return
+        elif os.path.exists(VECS) and time.time() - os.path.getmtime(VECS) < STALE_S:
             return
+        with open(LOCK, "a") as lk:   # a build already running: nothing to start
+            try:
+                fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return
+            fcntl.flock(lk, fcntl.LOCK_UN)
         subprocess.Popen(["nice", "-n", "15", sys.executable, os.path.abspath(__file__), "index"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except Exception:
