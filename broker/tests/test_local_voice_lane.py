@@ -37,8 +37,14 @@ VO._post = lambda *a, **k: (b'{"ok":true}', "application/json")
 try: VO.synthesize_remote("hello",out); raised=False
 except RuntimeError: raised=True
 check("a JSON success body cannot masquerade as speech", raised)
-heard=MS._heard_fields('## Transcription of Recording:\n"Testing one two three."\n\n## Speaker\'s Delivery Description:\nFlat and steady.')
-check("audio-native response preserves separate words and delivery", heard=={"transcript":"Testing one two three.","audio_reading":"Flat and steady."})
+heard=MS._heard_fields('**WORDS:** "Testing one two three."\n**SOUNDS:** a short laugh at the start; a pause after "two"\n**TONE:** amused, relaxed')
+check("audio-native response preserves the words, the sounds and the tone separately",
+      heard=={"WORDS":"Testing one two three.","SOUNDS":'a short laugh at the start; a pause after "two"',"TONE":"amused, relaxed"})
+try: MS._heard_fields("I am unable to help with that."); raised=False
+except ValueError: raised=True
+check("a reading with no words line is refused, not passed on as words", raised)
+check("Gemma 4's three unlabelled lines are read in order",
+      MS._heard_fields("Oh my god stop it.\nNone\nShocked, incredulous") == {"WORDS": "Oh my god stop it.", "SOUNDS": "None", "TONE": "Shocked, incredulous"})
 fake = type(sys)("voice_kokoro")
 def fallback(text, path, speed=None): open(path,"wb").write(b"RIFFfallback"); return True
 fake.render_to_file=fallback; fake.VOICE_MODEL="am_michael"; sys.modules["voice_kokoro"]=fake
@@ -71,7 +77,7 @@ check("the app offers Vintos Local and retains between-turn framing", "Vintos Lo
 check("the local text toggle names the abliterated local route", "ABLIT GEMMA" in client and "gemma(avatar toggle)" in router)
 check("the server exposes start, turn, heartbeat and unload boundaries", 'provider == "local"' in server and '/api/voice/local/turn' in server and '/api/voice/local/heartbeat' in server and '/api/voice/local/end' in server)
 check("the live start receipt names the promoted voice", '"voice":"chatterbox-turbo-onyx"' in server)
-check("Mac ears route the waveform through Gemma 3n's audio tower", '"type":"audio"' in stage and '"audio_native_gemma": True' in stage and "mlx_whisper" not in stage)
+check("Mac ears route the waveform itself through Gemma 4's audio encoder, the instruction first", '{"type": "text", "text": HEAR_REQUEST}, {"type": "audio", "audio": y}' in stage and 'google/gemma-4-E4B-it' in stage and '"audio_native_gemma": True' in stage and "mlx_whisper" not in stage)
 check("the ears stay warm until a heavy bench explicitly evicts them", 'elif evict_ears: _ears_unload()' in stage and '"evict_ears": bool(evict_ears)' in open(os.path.join(REPO,"scripts","voice_local.py")).read())
 check("the expressive MLX voice is call-scoped and Kokoro remains the outage fallback",
       "_chatterbox_load(); _chatterbox_call_active = True" in stage and
@@ -84,11 +90,18 @@ render_body=stage.split("def render(text, room):",1)[1].split("class Handler",1)
 check("avatar-video and ReelRoom speech use Chatterbox-Onyx rather than warming Orpheus",
       "chatterbox-onyx-v1" in render_body and "receipt = chatterbox_wav" in render_body
       and "receipt = orpheus_wav" not in render_body)
-check("short live turns bound both language generations", '"max_tokens":180' in open(os.path.join(REPO,"scripts","voice_local.py")).read() and "max_new_tokens=140 if not attempt else 180" in stage and 'apad=whole_dur=4' in stage)
+check("short live turns bound both language generations", '"max_tokens":180' in open(os.path.join(REPO,"scripts","voice_local.py")).read() and "max_new_tokens=160 if not attempt else 220" in stage and 'res_type="scipy"' in stage and "30 * 16000" in stage)
 check("a malformed first ears reading gets one warm retry", "for attempt in range(2)" in stage)
+check("the ears load and warm up off the start request; a turn waits on their lock, not on a half-loaded model",
+      "threading.Thread(target=_bg, daemon=True).start()" in stage and "with _ears_lock:" in stage.split("def _ears_load():", 1)[1].split("def _ears_unload", 1)[0])
 check("ending during a local turn preserves and finishes its late reply", "if(vc.busy){_avCallLit('thinking');return;}" in client and "if(session.closing)_finishLocalVoiceSession(session)" in client and "then(async d=>{if(window._vc!==session)return" not in client)
 check("local calls stop listening throughout generation and playback",
       "_localMicEnabled(session,false)" in client and "_localMicEnabled(session,true)" in client and "session.busy||session.listening===false" in client)
-check("local ears prompt injects the shared voice vocabulary", "VOICE_VOCAB" in stage and "transcribe them correctly" in stage)
-check("local transcription vocabulary matches the hosted lane's, no drift", MS.VOICE_VOCAB and all(n.strip() and n.strip() in server for n in MS.VOICE_VOCAB.split(",")))
+check("the ears request carries no name list (given one, the model answers with the list; 4 November)",
+      "VOICE_VOCAB" not in stage and "Velqan" not in MS.HEAR_REQUEST)
+import numpy as np
+_y = np.concatenate([np.full(8000, .3, "float32"), np.zeros(int(2.5 * 16000), "float32"), np.full(8000, .3, "float32")])
+_y = _y * np.sin(np.arange(len(_y)) * 0.3).astype("float32")
+_g = MS._pauses(_y)
+check("pauses are measured from the waveform itself (a 2.5 s silence, to a frame)", len(_g) == 1 and abs(_g[0][0] - 2.5) < 0.15 and abs(_g[0][1] - 0.5) < 0.15)
 check("test writes remain under scratch HOME", out.startswith(scratch.name))
