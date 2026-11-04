@@ -12,7 +12,7 @@ socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import numpy as np
 import memory_surfacing as S
-S._refresh_in_background = lambda: None
+_real_refresh, S._refresh_in_background = S._refresh_in_background, (lambda: None)
 
 R = []
 def check(n, ok, d=""):
@@ -75,6 +75,44 @@ check("test mode surfaces nothing", S.block("I am on the pier again") == "")
 os.remove(os.path.join(S.MEM, ".test-mode"))
 S.embed = lambda *a, **k: (_ for _ in ()).throw(OSError("LM Studio down"))
 check("LM Studio down: nothing, and nothing raised", S.block("I am on the pier again") == "")
+
+# ---- the first build is never begun again from nothing, and a failed one does not run again on every turn ----------
+NL = chr(10)
+for f in (S.META, S.VECS):
+    os.remove(f)
+for i in range(30):
+    open(os.path.join(S.MEM, "journal", "2026-09-%02d.md" % (i + 1)), "w").write(
+        "# Journal" + NL + NL + "On day %d the orchard held its breath and so did I, waiting for the bread to rise." % i + NL)
+calls = []
+def flaky(texts, **k):
+    calls.append(len(texts))
+    if len(calls) == 3:
+        raise OSError("the embedder is busy")
+    return fake(texts)
+S.SAVE_EVERY = 1
+r = S.build_index(batch=8, embed_fn=flaky)
+meta, _ = S.load_index()
+check("a build that fails part way keeps what it embedded", r.get("failed") and len(meta) == 16, (r, len(meta or [])))
+spawned = []
+_popen = S.subprocess.Popen
+S.subprocess.Popen = lambda *a, **k: spawned.append(a)
+_real_refresh()
+check("and the next turn does not set it off again within the hour", not spawned and os.path.exists(S.FAILED))
+os.utime(S.FAILED, (time.time() - 2 * S.RETRY_S,) * 2)
+_real_refresh()
+check("after the hour, one build is started", len(spawned) == 1)
+spawned.clear()
+calls.clear()
+r = S.build_index(batch=8, embed_fn=lambda texts, **k: (calls.append(len(texts)), fake(texts))[1])
+check("that build embeds only what is missing and clears the failure", r.get("embedded_now") == sum(calls) < 30
+      and not os.path.exists(S.FAILED) and len(S.load_index()[0]) == len(S.corpus()), (r, calls))
+import fcntl
+with open(S.LOCK, "w") as lk:
+    fcntl.flock(lk, fcntl.LOCK_EX)
+    os.utime(S.VECS, (time.time() - 2 * S.STALE_S,) * 2)
+    _real_refresh()
+check("while a build is running, a turn starts no other", not spawned)
+S.subprocess.Popen = _popen
 
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("every chat route that shows his works also offers a surfaced memory",
