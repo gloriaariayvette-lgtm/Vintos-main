@@ -486,8 +486,10 @@ class Client(unittest.TestCase):
         fn = fn[:fn.index("\n}\n")]
         end = fn[fn.index("/api/voice/local/end"):][:400]
         self.assertIn("ladder_call:session.ladder?session.ladder.id:undefined", end)
-        i = self.html.index("API+'/api/voice/local/turn'")
+        i = self.html.index("streamLocal('/api/voice/local/turn-stream'")   # the streamed turn (4 November)
         self.assertIn("ladder_call:session.ladder?session.ladder.id:undefined", self.html[i:i + 500])
+        i = self.html.index("streamLocal('/api/voice/local/opening-stream'")
+        self.assertIn("ladder_call:session.ladder.id", self.html[i:i + 300])
 
 
 if __name__ == "__main__":

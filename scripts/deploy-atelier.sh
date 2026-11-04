@@ -1510,6 +1510,36 @@ else
             sudo cp -a "$FORGE_BACKUP/." "$FORGE_DIR/" && sudo systemctl restart "$FORGE_UNIT"
             say "  Diagnose with: sudo journalctl -u $FORGE_UNIT -n 40"
         fi
+    elif [ -x /usr/local/sbin/vintos-forge-install ] && systemctl is-enabled --quiet vintos-forge-install.path 2>/dev/null; then
+        # Root installs it (Gloria, 4 November). The Study's deploy runs under NoNewPrivileges, so no sudo rule could
+        # reach it; instead the changed files and their sha256 are staged here, and root's own installer (installed
+        # once by her, vintos-forge-install.path) checks each hash, installs, restarts the Forge, puts the old files
+        # back if it does not come up, and answers in /var/lib/vintos-forge/result.json. Nothing here runs as root.
+        FORGE_REQ="$HOME/.vintos/deploy/forge-request"
+        FORGE_RESULT="${VINTOS_FORGE_RESULT:-/var/lib/vintos-forge/result.json}"
+        forge_req_id="$(date +%s)-$$"
+        rm -rf "$FORGE_REQ" && mkdir -p "$FORGE_REQ/bundle"
+        for f in $forge_changed; do cp -p "$FORGE_STAGE/$f" "$FORGE_REQ/bundle/$f"; done
+        python3 -c 'import hashlib, json, os, sys
+d, rid, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+files = {n: hashlib.sha256(open(os.path.join(d, "bundle", n), "rb").read()).hexdigest() for n in names}
+json.dump({"id": rid, "files": files}, open(os.path.join(d, "request.json"), "w"))' "$FORGE_REQ" "$forge_req_id" $forge_changed
+        : > "$FORGE_REQ/ready"
+        say "  changed:$forge_changed"
+        forge_res=""
+        for _i in $(seq 1 "${VINTOS_FORGE_WAIT:-60}"); do
+            forge_res="$(python3 -c 'import json, sys
+r = json.load(open(sys.argv[1]))
+print(("OK " if r.get("ok") else "NO ") + str(r.get("message", "")) if r.get("id") == sys.argv[2] else "")' "$FORGE_RESULT" "$forge_req_id" 2>/dev/null)"
+            [ -n "$forge_res" ] && break
+            sleep 2
+        done
+        case "$forge_res" in
+            OK*) say "  Forge updated and running (installed by root's own installer)"
+                 mkdir -p "$(dirname "$FORGE_MARK")" && printf '%s\n' "$forge_mark_lines" > "$FORGE_MARK" ;;
+            NO*) flag "forge not updated: ${forge_res#NO }" ;;
+            *)   flag "forge not updated: root's installer did not answer (sudo systemctl status vintos-forge-install)" ;;
+        esac
     else
         # One command for her, not eleven lines (2026-09-29): the same install, backup and put-back as above.
         FORGE_SCRIPT="$HOME/.vintos/deploy/forge-install.sh"

@@ -136,8 +136,8 @@ class FakeVoice:
         voice_calls.append(("turn",audio,sample_rate,instructions,framing))
         return {"ok":True,"transcript":"hello","reply":"hi","audio":"UklGRg=="}
     @staticmethod
-    def models(active):
-        voice_calls.append(("models",active)); return {"ok":True,"active":active}
+    def models(active, evict_ears=False):
+        voice_calls.append(("models",active) if not evict_ears else ("models",active,"ears too")); return {"ok":True,"active":active}
 touches=[]; voice_live=os.path.join(mem,".voice-live")
 voice_router=WR.router(voice_module=FakeVoice,foreground=lambda:touches.append("touch"),voice_live_path=voice_live)
 endpoints={route.path:route.endpoint for route in voice_router.routes}
@@ -153,8 +153,8 @@ beat=asyncio.run(endpoints["/api/watch/voice/local/heartbeat"](FakeRequest()))
 check("the Watch heartbeat touches foreground compute and only the scratch live marker",
       beat["ok"] and touches==["touch","touch"] and os.path.exists(voice_live),touches)
 ended=asyncio.run(endpoints["/api/watch/voice/local/end"](FakeRequest()))
-check("ending the Watch call unloads the stubbed local voice and removes its scratch marker",
-      ended["ok"] and voice_calls[-1]==("models",False) and not os.path.exists(voice_live),voice_calls)
+check("ending the Watch call unloads the stubbed local voice and its ears, and removes its scratch marker",
+      ended["ok"] and voice_calls[-1]==("models",False,"ears too") and not os.path.exists(voice_live),voice_calls)
 check("the voice route test has no provider or host sender", all(call[0] in ("turn","models") for call in voice_calls))
 check("every voice path written by the suite stayed in scratch",os.path.commonpath([tmp,voice_live])==tmp)
 

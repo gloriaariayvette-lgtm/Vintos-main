@@ -532,6 +532,41 @@ class Ladder(unittest.TestCase):
         self.assertEqual(self.to_the_call()["action"], "ended")
         self.assertNotIn("ring", self.calls)
 
+    def local_voice_stub(self):
+        def local_voice(on):
+            self.calls.append("local_voice:" + ("on" if on else "off"))
+            return "loading" if on else "unloading"
+        AL.ACTUATORS["local_voice"] = local_voice
+
+    def test_a_local_call_loads_its_ears_and_voice_as_it_rings(self):
+        self.local_voice_stub()
+        self.voice = '{"lane": "local", "why": "Just us."}'
+        self.to_the_call()
+        self.assertEqual(AC.load(self.state()["chain"]["call"])["lane"], "local")
+        self.assertLess(self.calls.index("local_voice:on"), self.calls.index("ring"))   # warm before the first ring
+
+    def test_another_lane_loads_nothing_on_the_mac(self):
+        self.local_voice_stub()
+        self.to_the_call()                                                # he picks grok
+        self.assertFalse([c for c in self.calls if c.startswith("local_voice")])
+
+    def test_a_local_call_she_did_not_pick_up_unloads_them(self):
+        self.local_voice_stub()
+        self.voice = '{"lane": "local", "why": "Just us."}'
+        self.to_the_call()
+        self.tick(7.5 * H + 16 * 60)                                       # rang out
+        self.assertEqual(self.calls[-1], "local_voice:off")
+
+    def test_a_local_call_she_picked_up_keeps_them_until_the_call_ends(self):
+        self.local_voice_stub()
+        self.voice = '{"lane": "local", "why": "Just us."}'
+        self.to_the_call()
+        cid = self.state()["chain"]["call"]
+        AL.call_answer(cid, now=T0 + 7.55 * H)
+        self.tick(7.6 * H)                                                 # the chain ends: she answered
+        self.assertIsNone(self.state()["chain"])
+        self.assertNotIn("local_voice:off", self.calls)                    # the call's own end unloads them
+
     def test_an_unanswered_call_ends_the_chain_and_the_ladder_rests(self):
         self.to_the_call()
         cid = self.state()["chain"]["call"]

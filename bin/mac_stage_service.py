@@ -34,7 +34,9 @@ W2L_CKPT = os.path.join(W2L, "checkpoints", "wav2lip_gan.pth")
 VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_onyx")
 PORT = int(os.environ.get("VINTOS_STAGE_PORT", "8511"))
 LM_BASE = os.environ.get("VINTOS_MAC_LM_BASE", "http://127.0.0.1:1234").rstrip("/")
-EARS_MODEL = os.environ.get("VINTOS_EARS_MODEL", "unsloth/gemma-3n-E2B-it")
+# His ears for the Local call (Gloria, 4 November): Gemma 4 E4B, audio-native at 25 tokens a second, chosen over
+# Gemma 3n E2B / E4B and Qwen2-Audio on the same clips: the best words, the gasp and the pause heard, nothing invented.
+EARS_MODEL = os.environ.get("VINTOS_EARS_MODEL", "google/gemma-4-E4B-it")
 LMS = os.path.expanduser("~/.lmstudio/bin/lms")
 CHATTERBOX_MODEL = os.environ.get("VINTOS_CHATTERBOX_MODEL",
     os.path.expanduser("~/.lmstudio/models/mlx-community/chatterbox-turbo-4bit"))
@@ -145,14 +147,26 @@ def orpheus_wav(text, out_path, voice=None, speed=None):
     return receipt
 
 def _ears_load():
-    """Load a complete multimodal checkpoint; the LM Studio GGUF is text-only."""
+    """Gemma 4 E4B, the complete multimodal checkpoint (transformers on the Mac's GPU); the LM Studio GGUF is text-only."""
     global _ears_pipe
     with _ears_lock:
         if _ears_pipe is None:
             import torch
-            from transformers import pipeline
-            _ears_pipe = pipeline("image-text-to-text", model=EARS_MODEL,
-                                  device="mps", dtype=torch.bfloat16)
+            from transformers import AutoProcessor, AutoModelForMultimodalLM
+            proc = AutoProcessor.from_pretrained(EARS_MODEL)
+            model = AutoModelForMultimodalLM.from_pretrained(EARS_MODEL, dtype=torch.bfloat16).to("mps").eval()
+            _ears_pipe = (proc, model)
+            # The GPU's first audio pass took ~15 s (4 November); spend it here, at the ring, not on her first words.
+            try:
+                import numpy as np
+                warm = [{"role": "user", "content": [{"type": "text", "text": "Transcribe."},
+                         {"type": "audio", "audio": (np.random.default_rng(0).standard_normal(16000) * 1e-3).astype("float32")}]}]
+                inp = proc.apply_chat_template(warm, tokenize=True, return_dict=True, return_tensors="pt",
+                                               add_generation_prompt=True).to("mps")
+                with torch.inference_mode():
+                    model.generate(**inp, max_new_tokens=4, do_sample=False)
+            except Exception as exc:
+                log("ears warm-up skipped: %s" % str(exc)[:120])
         return True
 
 def _ears_unload():
@@ -165,71 +179,74 @@ def _ears_unload():
             torch.mps.empty_cache()
         except Exception: pass
 
+# Google's audio guide (ai.google.dev/gemma/docs/capabilities/audio): the instruction first, then the audio; 16 kHz
+# mono float32 in [-1, 1], resampled with a Fourier method; at most 30 s. No name list in the request: given one, the
+# model answers with the list instead of what was said (4 November tests). His prompt already hears "Ventos" as him.
+HEAR_REQUEST = ("Listen to this recording carefully. Answer in exactly three lines:\n"
+    "WORDS: the exact words spoken, nothing else\n"
+    "SOUNDS: every non-speech vocal sound you hear (laughter, sigh, breath, gasp, moan, cough, whimper) and where it "
+    "happens, and every noticeable pause; or none\n"
+    "TONE: the speaker's tone and emotion, in a few words\n"
+    "Only report what is audible.")
+
 def _heard_fields(text):
-    text = str(text or "").replace("```json", "").replace("```", "").strip()
-    a, b = text.find("{"), text.rfind("}")
-    if a >= 0 and b > a:
-        try:
-            value = json.loads(text[a:b+1])
-            if value.get("transcript") and value.get("audio_reading"): return value
-        except Exception: pass
-    import re
-    trans = re.search(r"(?is)transcription(?: of recording)?\s*:\s*[\"']?(.+?)[\"']?\s*(?:\n|$)", text)
-    reading = re.search(r"(?is)speaker(?:'s)? delivery description\s*:\s*(.+)$", text)
-    if not trans or not reading: raise ValueError("audio model omitted transcript or delivery reading")
-    return {"transcript": trans.group(1).strip(" \t\r\n\"'"),
-            "audio_reading": reading.group(1).strip()}
+    """WORDS / SOUNDS / TONE lines, tolerant of markdown; the words are required, the rest may be empty."""
+    text = str(text or "").replace("**", "").strip()
+    out = {}
+    for key in ("WORDS", "SOUNDS", "TONE"):
+        m = re.search(r"(?im)^\s*[*-]?\s*%s\s*:\s*(.+?)\s*$" % key, text)
+        v = m.group(1).strip() if m else ""
+        out[key] = v[1:-1].strip() if len(v) > 1 and v[0] == v[-1] == '"' else v   # quoted whole, not a quote inside
+    if not out["WORDS"]:
+        # Gemma 4 often answers the three lines in order without their labels; exactly three lines are read so,
+        # anything else (one line of refusal, an essay) is not taken as her words
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if len(lines) == 3 and not any(re.match(r"(?i)(words|sounds|tone)\s*:", l) for l in lines):
+            out = dict(zip(("WORDS", "SOUNDS", "TONE"), (l.strip('"') if l[:1] == l[-1:] == '"' else l for l in lines)))
+    if not out["WORDS"]:
+        raise ValueError("the ears gave no words line")
+    return out
 
-# Same transcription vocabulary the hosted lanes prime their transcriber with
-# (server.py's OpenAI lane: "Expect these names and words: ..."). Copied here so the
-# local ears reach for the same proper nouns instead of mangling them; kept as a
-# literal copy for now (not yet a shared source — keep in sync with server.py).
-VOICE_VOCAB = "Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel, Nifrathir, EmoClaw, MoltBook, Claude"
+def _pauses(y, sr=16000):
+    """Pauses measured from the waveform itself (no model): silences of 0.4 s or more between sounds."""
+    import librosa
+    iv = librosa.effects.split(y, top_db=35, frame_length=1024, hop_length=256)
+    return [((a1 - b0) / sr, b0 / sr) for (a0, b0), (a1, b1) in zip(iv[:-1], iv[1:]) if (a1 - b0) / sr >= 0.4]
 
-def _hear_audio(wav_path):
-    """Give the waveform itself to Gemma 3n's USM audio tower."""
+def _hear_audio(y):
+    """Give the waveform itself (16 kHz float32) to Gemma 4's audio encoder."""
+    import torch
     _ears_load()
-    request = ('Listen to the recording itself. You may hear these names and words — '
-        'transcribe them correctly when you hear them: ' + VOICE_VOCAB + '. Return JSON only as '
-        '{"transcript":"exact words","audio_reading":"one concise sentence about audible '
-        'inflection, tone, pace, emphasis, hesitation, laughter, or breath"}. Preserve '
-        'explicit language. Do not infer anything that is not audible.')
-    messages = [{"role":"user", "content":[{"type":"audio", "audio":wav_path},
-                                             {"type":"text", "text":request}]}]
+    msgs = [{"role": "user", "content": [{"type": "text", "text": HEAR_REQUEST}, {"type": "audio", "audio": y}]}]
     last_error = None
     for attempt in range(2):
         with _ears_lock:
-            # A live turn needs a transcript plus a compact delivery reading,
-            # not an essay. Retry one malformed first generation while the
-            # model is already warm; the old path exposed that parse miss as a
-            # phone-visible 500 and made Gloria start the call over.
-            result = _ears_pipe(text=messages, max_new_tokens=140 if not attempt else 180)
-        generated = result[0]["generated_text"][-1]["content"]
+            proc, model = _ears_pipe
+            inp = proc.apply_chat_template(msgs, tokenize=True, return_dict=True, return_tensors="pt",
+                                           add_generation_prompt=True).to("mps")
+            with torch.inference_mode():
+                o = model.generate(**inp, max_new_tokens=160 if not attempt else 220, do_sample=False)
+            generated = proc.decode(o[0][inp["input_ids"].shape[-1]:], skip_special_tokens=True)
         try: return _heard_fields(generated)
         except Exception as exc: last_error = exc
     raise last_error or ValueError("audio model returned no readable fields")
 
 def hear_pcm(audio_b64, rate=24000):
-    pcm = base64.b64decode(audio_b64)
-    fd, raw_path = tempfile.mkstemp(suffix=".wav"); os.close(fd)
-    fd, wav_path = tempfile.mkstemp(suffix=".wav"); os.close(fd)
-    try:
-        with wave.open(raw_path, "wb") as out:
-            out.setnchannels(1); out.setsampwidth(2); out.setframerate(int(rate)); out.writeframes(pcm)
-        # The audio tower needs enough frames for its convolutional subsampler.
-        # Normalize to its documented 16 kHz mono input and pad short turns only.
-        subprocess.run([FFMPEG,"-y","-loglevel","error","-i",raw_path,
-            "-af","apad=whole_dur=4","-t","30","-ar","16000","-ac","1",wav_path],
-            check=True, timeout=20, env=ENV)
-        heard = _hear_audio(wav_path); transcript = str(heard.get("transcript", "")).strip()
-        reading = str(heard.get("audio_reading", "")).strip()[:1200]
-        return {"ok": bool(transcript), "transcript": transcript,
-                "audio_reading": reading, "ears": "gemma3n-audio-native-mlx-vlm",
-                "audio_native_gemma": True, "model": EARS_MODEL}
-    finally:
-        for path in (raw_path, wav_path):
-            try: os.unlink(path)
-            except OSError: pass
+    import numpy as np, librosa
+    pcm = np.frombuffer(base64.b64decode(audio_b64), dtype="<i2").astype("float32") / 32768.0
+    y = librosa.resample(pcm, orig_sr=int(rate), target_sr=16000, res_type="scipy") if int(rate) != 16000 else pcm
+    y = np.clip(y[:30 * 16000], -1.0, 1.0).astype("float32")
+    if len(y) < 1600:
+        return {"ok": False, "error": "too short to hear"}
+    heard = _hear_audio(y)
+    gaps = _pauses(y)
+    measured = ", ".join("%.1f s pause at %.1f s" % (d, at) for d, at in gaps) or "none"
+    reading = "Sounds: %s. Tone: %s. Pauses measured in the recording: %s." % (
+        heard["SOUNDS"] or "none", heard["TONE"] or "not said", measured)
+    return {"ok": bool(heard["WORDS"]), "transcript": heard["WORDS"], "audio_reading": reading[:1200],
+            "sounds": heard["SOUNDS"], "tone": heard["TONE"],
+            "pauses": [{"seconds": round(d, 2), "at": round(at, 2)} for d, at in gaps],
+            "ears": "gemma4-e4b-audio-native", "audio_native_gemma": True, "model": EARS_MODEL}
 
 def voice_models(active, evict_ears=False):
     """The live voice is call-scoped; the ears stay warm unless a heavy bench evicts them."""
@@ -246,11 +263,18 @@ def voice_models(active, evict_ears=False):
         actions.append({"model": "chatterbox-turbo-4bit", "ok": False,
                         "detail": str(exc)[:160]})
     try:
-        if active: _ears_load()
+        if active:
+            # Loading and warming the ears takes ~25 s cold: off this request, so the call opens as soon as his voice
+            # is ready; a first turn that comes sooner waits on the ears' lock, never on a half-loaded model.
+            def _bg():
+                try: _ears_load()
+                except Exception as exc: log("ears load failed: %s" % str(exc)[:160])
+            threading.Thread(target=_bg, daemon=True).start()
         elif evict_ears: _ears_unload()
         actions.append({"model": EARS_MODEL, "ok": True,
                         "detail": "audio-native model %s" %
-                                  ("loaded" if active else ("evicted" if evict_ears else "kept warm"))})
+                                  (("loaded" if _ears_pipe is not None else "loading") if active else
+                                   ("evicted" if evict_ears else "kept warm"))})
     except Exception as exc:
         actions.append({"model": EARS_MODEL, "ok": False, "detail": str(exc)[:160]})
     return {"ok": all(a["ok"] for a in actions), "active": bool(active), "actions": actions}

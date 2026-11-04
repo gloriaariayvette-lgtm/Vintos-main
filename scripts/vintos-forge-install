@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+"""vintos-forge-install — root installs the Forge bundle the deploy staged, so neither the deploy nor the Study needs
+sudo (Gloria, 4 November: the Study runs sandboxed with NoNewPrivileges, so a passwordless sudo rule could never reach
+it, and a root-run script in her own folder was root for anything that could write it).
+
+Installed once by her as /usr/local/sbin/vintos-forge-install (root:root 0755) and run by vintos-forge-install.path
+when the deploy marks a request ready. It runs nothing from her folders. It only:
+  - reads request.json and the staged files from ~gloria/.vintos/deploy/forge-request, refusing symlinks, anything not a
+    plain file owned by her, names outside [A-Za-z0-9_.-] with an allowed extension, and any file whose sha256 is not
+    the one the request names;
+  - keeps a copy of the running bundle, writes the files into /home/atelier/forge-loop (root:root 0644, as before),
+    restarts atelier-forge-loop, and puts the old files back if it does not come up;
+  - writes its answer to /var/lib/vintos-forge/result.json, which the deploy reads.
+"""
+import fcntl, hashlib, json, os, re, shutil, stat, subprocess, sys, time
+
+TESTING = os.geteuid() != 0 and os.environ.get("VINTOS_FORGE_INSTALL_TEST") == "1"   # paths movable only for tests
+OWNER = int(os.environ.get("VINTOS_FORGE_OWNER_UID", "1000")) if TESTING else 1000
+REQ = os.environ.get("VINTOS_FORGE_REQUEST", "/home/gloria/.vintos/deploy/forge-request") if TESTING else "/home/gloria/.vintos/deploy/forge-request"
+DEST = os.environ.get("VINTOS_FORGE_DIR", "/home/atelier/forge-loop") if TESTING else "/home/atelier/forge-loop"
+STATE = os.environ.get("VINTOS_FORGE_STATE", "/var/lib/vintos-forge") if TESTING else "/var/lib/vintos-forge"
+UNIT = "atelier-forge-loop"
+NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,80}\.(py|html|txt|json)$")
+MAX_FILE, MAX_FILES = 4 * 1024 * 1024, 64
+
+
+def systemctl(*args):
+    if TESTING:
+        cmd = os.environ.get("VINTOS_FORGE_SYSTEMCTL", "true")
+        return subprocess.run([cmd] + list(args), capture_output=True, text=True).returncode
+    return subprocess.run(["/usr/bin/systemctl"] + list(args), capture_output=True, text=True).returncode
+
+
+def read_plain(dir_fd, name):
+    """A plain file of hers in the request folder, never through a link."""
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != OWNER or st.st_size > MAX_FILE:
+            raise ValueError("%s is not a plain file of hers under %d bytes" % (name, MAX_FILE))
+        out = b""
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                return out
+            out += chunk
+    finally:
+        os.close(fd)
+
+
+def answer(result):
+    os.makedirs(STATE, mode=0o755, exist_ok=True)
+    tmp = os.path.join(STATE, ".result.json.tmp")
+    with open(tmp, "w") as f:
+        json.dump(dict(result, at=time.time()), f, indent=1)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(STATE, "result.json"))
+    return result
+
+
+def main():
+    os.makedirs(STATE, mode=0o755, exist_ok=True)
+    with open(os.path.join(STATE, ".lock"), "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            dir_fd = os.open(REQ, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError:
+            return None   # no request folder: nothing asked
+        try:
+            st = os.fstat(dir_fd)
+            if st.st_uid != OWNER:
+                return answer({"ok": False, "id": None, "message": "the request folder is not hers; nothing installed"})
+            try:
+                os.unlink("ready", dir_fd=dir_fd)   # taken; the path unit fires again only for a new request
+            except FileNotFoundError:
+                pass
+            try:
+                req = json.loads(read_plain(dir_fd, "request.json"))
+            except Exception as exc:
+                return answer({"ok": False, "id": None, "message": "no readable request: %s" % str(exc)[:160]})
+            rid = str(req.get("id") or "")[:80]
+            files = req.get("files") or {}
+            try:
+                last = json.load(open(os.path.join(STATE, "result.json")))
+                if rid and last.get("id") == rid:
+                    return last   # already answered
+            except Exception:
+                pass
+            if not rid or not isinstance(files, dict) or not files or len(files) > MAX_FILES:
+                return answer({"ok": False, "id": rid, "message": "the request names no files; nothing installed"})
+            staged = {}
+            bundle_fd = os.open("bundle", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd)
+            try:
+                for name, sha in files.items():
+                    if not NAME.match(str(name)) or not re.fullmatch(r"[0-9a-f]{64}", str(sha)):
+                        return answer({"ok": False, "id": rid, "message": "refused name or hash: %r" % str(name)[:80]})
+                    data = read_plain(bundle_fd, name)
+                    if hashlib.sha256(data).hexdigest() != sha:
+                        return answer({"ok": False, "id": rid, "message": "%s is not the file the request names" % name})
+                    staged[name] = data
+            finally:
+                os.close(bundle_fd)
+        finally:
+            os.close(dir_fd)
+
+        backup = os.path.join(STATE, "backup")
+        if os.path.isdir(backup):
+            shutil.rmtree(backup)
+        os.makedirs(backup, mode=0o700)
+        had = {}
+        for name in staged:
+            p = os.path.join(DEST, name)
+            if os.path.isfile(p) and not os.path.islink(p):
+                shutil.copy2(p, os.path.join(backup, name)); had[name] = True
+            else:
+                had[name] = False
+
+        def put(name, data):
+            tmp = os.path.join(DEST, "." + name + ".new")
+            with open(tmp, "wb") as f:
+                f.write(data)
+            if not TESTING:
+                os.chown(tmp, 0, 0)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, os.path.join(DEST, name))
+
+        for name, data in staged.items():
+            put(name, data)
+        systemctl("restart", UNIT); time.sleep(0 if TESTING else 3)
+        if systemctl("is-active", "--quiet", UNIT) == 0:
+            return answer({"ok": True, "id": rid, "message": "Forge updated and running.",
+                           "installed": {n: hashlib.sha256(d).hexdigest() for n, d in staged.items()}})
+        for name in staged:   # did not come up: the old files back
+            if had[name]:
+                put(name, open(os.path.join(backup, name), "rb").read())
+            else:
+                try: os.unlink(os.path.join(DEST, name))
+                except FileNotFoundError: pass
+        systemctl("restart", UNIT)
+        return answer({"ok": False, "id": rid, "message": "Forge did not come up; old bundle put back."})
+
+
+if __name__ == "__main__":
+    r = main()
+    print(json.dumps(r) if r else "no request")

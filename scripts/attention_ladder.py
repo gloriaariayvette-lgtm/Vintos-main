@@ -607,6 +607,21 @@ def _ring(rec, cfg, n):
     return {"voip": voip, "watch": watch, "phone": phone}
 
 
+def _local_voice(on):
+    """His Local lane's ears and voice on the Mac: loaded when his Local call starts ringing, so she is not kept
+    waiting the ~12 s they take cold, and unloaded (both) when a call she did not pick up ends (Gloria, 27 October;
+    done 4 November). Off the tick's thread; never raises."""
+    def _go():
+        try:
+            import voice_local
+            voice_local.models(bool(on), evict_ears=not on)
+        except Exception as e:
+            print("[attention-ladder] local voice %s failed: %s" % ("load" if on else "unload", str(e)[:160]), flush=True)
+    import threading
+    threading.Thread(target=_go, daemon=True).start()
+    return "loading" if on else "unloading"
+
+
 def _consent(chain):
     """His ordinary consent gate (consent-gate.sh), asked before he picks a voice (Gloria, 28 October).
     Exit 0 is his yes, and the gate's own default when its model does not answer; 1 is his no. A gate that
@@ -630,6 +645,7 @@ def _consent(chain):
 ACTUATORS = {"compose": _compose, "watch": _watch_push, "phone": _phone_push, "lights": _lights,
              "lights_restore": _lights_restore, "echo": _echo, "ring": _ring,
              "consent": _consent,                               # his ordinary consent gate, before the voice choice
+             "local_voice": _local_voice,                       # Local's ears and voice, warm while his call rings
              "voice_choice": attention_call.ask_model}       # his one small decision: which voice he calls with
 SENSORS = {"home": she_is_home, "home_since": home_since, "kevin_away": kevin_away, "asleep": asleep,
            "room": her_room, "contact": last_contact, "lanes": attention_call.lanes_up}
@@ -647,10 +663,19 @@ def _end(st, why, now):
         except Exception as e:
             restored = {"failed": type(e).__name__}
     if chain.get("call"):
+        try:
+            _was = (attention_call.load(chain["call"]) or {}).get("state")
+        except Exception:
+            _was = None
         try:   # a call still ringing when the chain ends for another reason stops ringing
             attention_call.decline(chain["call"], now)
         except Exception:
             pass
+        if chain.get("local_voice") and _was not in ("answered", "live") and ACTUATORS.get("local_voice"):
+            try:   # she did not pick up: nothing stays loaded for a call that never happened
+                chain["local_voice"] = ACTUATORS["local_voice"](False)
+            except Exception:
+                pass
     st["chain"] = None
     st["last_chain_end"] = now
     return _log({"event": "end", "chain": chain.get("id"), "why": why, "steps_reached": chain.get("step", 0),
@@ -719,6 +744,8 @@ def _fire(name, chain, cfg, now, st, lanes=None):
         rec = attention_call.ring(chain["id"], reason, choice["lane"], now, choice=choice)
         chain["call"] = rec["id"]
         chain["last_ring"] = now
+        if rec.get("lane") == "local" and ACTUATORS.get("local_voice"):
+            chain["local_voice"] = ACTUATORS["local_voice"](True)   # warm before she can pick up, not after
         res = ACTUATORS["ring"](rec, cfg, 1)
         attention_call.rang(rec["id"], now)
         return {"call": {"id": rec["id"], "lane": rec["lane"], "lane_by": choice["by"], "ring": res}}

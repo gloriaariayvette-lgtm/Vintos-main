@@ -1,0 +1,8 @@
+[Unit]
+Description=Install the Forge bundle the deploy staged (root's own installer; the deploy needs no sudo)
+
+[Path]
+PathExists=/home/gloria/.vintos/deploy/forge-request/ready
+
+[Install]
+WantedBy=multi-user.target
