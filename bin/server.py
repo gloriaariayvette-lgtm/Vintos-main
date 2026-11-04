@@ -9017,6 +9017,7 @@ async def voice_token(request: Request, provider: str = "grok", ladder_call: str
         try:
             import voice_local as _vl
             _jit = await __import__("asyncio").to_thread(_vl.models, True)
+            __import__("threading").Thread(target=_vl.prewarm_brain, args=(instructions,), daemon=True).start()   # his prompt read before her first words (4 November)
         except Exception as _ve:
             return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
                     "provider":"local", "instructions":instructions}
@@ -9063,6 +9064,62 @@ async def voice_local_turn(request: Request):
             str(body.get("framing") or ""), _ladder)
     except Exception as exc:
         return {"ok":False,"stage":"transport","error":str(exc)[:300]}
+
+
+def _voice_local_stream(work):
+    """Run a streamed Local turn in a thread and hand its events to the app as they come, one JSON object a line.
+    text/plain on purpose: the app's request wrapper reads any JSON-typed body whole before returning it."""
+    import queue as _vq, threading as _vt, json as _vj
+    from fastapi.responses import StreamingResponse as _VSR
+    q = _vq.Queue()
+
+    def run():
+        try:
+            final = work(q.put)
+        except Exception as exc:
+            final = {"ok": False, "stage": "transport", "error": str(exc)[:300]}
+        q.put(dict(final or {}, kind="done")); q.put(None)
+    _vt.Thread(target=run, daemon=True).start()
+
+    async def lines():
+        while True:
+            item = await __import__("asyncio").to_thread(q.get)
+            if item is None:
+                break
+            yield _vj.dumps(item) + "\n"
+    return _VSR(lines(), media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/voice/local/turn-stream")
+async def voice_local_turn_stream(request: Request):
+    """voice/local/turn, spoken as it is written (4 November): her words heard, then his voice a sentence at a time."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    body = await request.json()
+    _ladder = _voice_local_ladder_call(body)
+    if _ladder is False:
+        return {"ok": False, "stage": "call", "error": "that call is no longer waiting for you"}
+    import voice_local as _vl
+    from compute_admission import touch_foreground as _vlf
+    _vlf()
+    return _voice_local_stream(lambda emit: _vl.turn_stream(str(body.get("audio") or ""), int(body.get("sample_rate") or 24000),
+        str(body.get("instructions") or ""), str(body.get("framing") or ""), _ladder, emit))
+
+
+@app.post("/api/voice/local/opening-stream")
+async def voice_local_opening_stream(request: Request):
+    """voice/local/opening, spoken as it is written."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    body = await request.json()
+    import attention_call as _vlo_ac, voice_local as _vl
+    rec = _vlo_ac.live(str(body.get("ladder_call") or ""))
+    if not rec:
+        return {"ok": False, "stage": "call", "error": "that call is no longer waiting for you"}
+    from compute_admission import touch_foreground as _vlf
+    _vlf()
+    return _voice_local_stream(lambda emit: _vl.opening_stream(str(body.get("instructions") or ""),
+        str(body.get("framing") or ""), _vlo_ac.opening_instruction(rec), emit))
 
 
 def _voice_local_ladder_call(body):

@@ -203,3 +203,251 @@ def opening(instructions, framing="", opening_instruction=""):
         return {"ok": False, "stage": "voice", "error": "voice returned no WAV", "reply": reply}
     return {"ok": True, "transcript": "", "reply": reply, "audio": base64.b64encode(voice_raw).decode(),
             "audio_format": "wav", "voice_engine": headers.get("X-Vintos-Voice", "unknown"), "model": BRAIN}
+
+
+# ---- warm and streamed (Gloria, 4 November: "Let's do one and two") ----------------------------------------------
+# One: his brain is warmed with his instructions as the call opens, so the first turn does not pay for reading his
+# ~4,000-token prompt cold (4.1 s against 1.1-2.4 s warm, measured that day).
+# Two: his reply is spoken as it is written. The brain streams; each finished sentence is voiced and sent while the
+# next is still being thought, so she hears him after the first sentence instead of after the whole reply. What is
+# spoken is always redacted first: nothing inside a private <stratagem> block, even a half-written one, reaches the
+# voice. The eligibility guard runs before the first sentence plays, as it ran before the whole reply did, and the
+# full reply still goes through interaction.complete() (consume, the turn record) at the end.
+
+def prewarm_brain(instructions):
+    """A one-token request carrying his instructions, so LM Studio holds their prefix for the call's first turn."""
+    try:
+        _post(LM + "/v1/chat/completions", {"model": BRAIN, "temperature": 0, "max_tokens": 1,
+              "messages": [{"role": "system", "content": str(instructions or "")}, {"role": "user", "content": "."}]}, 120)
+        return True
+    except Exception as exc:
+        print("[voice-local/prewarm]", str(exc)[:200], flush=True)
+        return False
+
+
+def _brain_stream(system, user, max_tokens):
+    """His reply as it is generated (LM Studio's streamed chat completions): yields text pieces."""
+    body = {"model": BRAIN, "stream": True, "temperature": .85, "max_tokens": int(max_tokens),
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    req = urllib.request.Request(LM + "/v1/chat/completions", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=180) as response:
+        for line in response:
+            line = line.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                choices = json.loads(data).get("choices") or []
+            except ValueError:
+                continue
+            for c in choices:
+                piece = (c.get("delta") or {}).get("content")
+                if piece:
+                    yield piece
+
+
+def speakable(raw):
+    """What may be voiced of the reply so far: private blocks (closed or still open) removed, and nothing after a '<'
+    whose tag has not closed yet, since it may be the start of one."""
+    try:
+        import stratagem
+        text = stratagem.redact(raw)
+    except Exception:
+        import re
+        text = re.sub(r"<stratagem(?:_move)?\b[\s\S]*?(?:</stratagem(?:_move)?\s*>|$)", "", str(raw or ""), flags=re.I).strip()
+    cut = text.rfind("<")
+    if cut >= 0 and ">" not in text[cut:]:
+        text = text[:cut]
+    return text
+
+
+def sentences_ready(text, final=False, first=True):
+    """Split the speakable text into what can be voiced now and what waits. The first piece goes as soon as one
+    sentence is whole; later pieces gather to ~80 characters so the voice is not asked for many tiny clips."""
+    import re
+    ends = [m.end() for m in re.finditer(r"[.!?…]+[\"'”’)\]]*(?=\s|$)", text)]
+    if final:
+        return (text.strip(), "") if text.strip() else ("", "")
+    ends = [e for e in ends if e < len(text)] or []   # a sentence end at the very edge may still be "..." growing
+    if not ends:
+        return "", text
+    if first:
+        e = ends[0]
+    else:
+        good = [e for e in ends if e >= 80]
+        if not good:
+            return "", text
+        e = good[0]
+    return text[:e].strip(), text[e:]
+
+
+def _wav_join(wavs):
+    """One WAV of everything he said this turn (what the media index keeps), from the clips as they were sent."""
+    import io, wave
+    frames, params = [], None
+    for w in wavs:
+        try:
+            with wave.open(io.BytesIO(w)) as r:
+                params = params or r.getparams()
+                frames.append(r.readframes(r.getnframes()))
+        except Exception:
+            continue
+    if not params:
+        return b""
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setparams(params)
+        for f in frames:
+            w.writeframes(f)
+    return out.getvalue()
+
+
+def _speak_streamed(system, user, max_tokens, emit, may_speak):
+    """Stream his brain, voice each ready piece, emit {"kind": "audio", ...} as each is ready. A reader thread keeps
+    the brain flowing while the voice renders. may_speak() is asked once, before the first piece is voiced; False
+    stops the turn silently. Returns (raw_reply, wavs, suppressed)."""
+    import queue, threading
+    q, raw = queue.Queue(), []
+
+    def read():
+        try:
+            for piece in _brain_stream(system, user, max_tokens):
+                raw.append(piece); q.put(piece)
+        except Exception as exc:
+            q.put(exc)
+        q.put(None)
+    threading.Thread(target=read, daemon=True).start()
+    spoken, wavs, first, checked, done = "", [], True, False, False
+    while not done:
+        item = q.get()
+        if isinstance(item, Exception):
+            raise item
+        done = item is None
+        text = speakable("".join(raw))
+        if not text.startswith(spoken):   # what was already voiced is no longer the reply's start: speak no more
+            break
+        while True:
+            piece, rest = sentences_ready(text[len(spoken):], final=done, first=first)
+            if not piece:
+                break
+            spoken = text[:len(text) - len(rest)]
+            if not checked:
+                checked = True
+                if not may_speak():
+                    return "".join(raw), wavs, True
+            wav, headers = _post(STAGE + "/tts", {"text": piece}, 210)
+            if wav.startswith(b"RIFF"):
+                wavs.append(wav)
+                emit({"kind": "audio", "audio": base64.b64encode(wav).decode(), "audio_format": "wav",
+                      "text": _display_text(piece), "voice_engine": headers.get("X-Vintos-Voice", "unknown")})
+            first = False
+            if done:
+                break
+    while not done:   # stopped early: let the reader finish before the reply is read whole
+        done = q.get() is None
+    return "".join(raw), wavs, False
+
+
+def turn_stream(audio_b64, sample_rate, instructions, framing="", ladder_call=None, emit=None):
+    """turn(), with his reply spoken as it is written. emit() receives {"kind": "heard"} once the ears have her words
+    and {"kind": "audio"} for each piece of his voice; the return is the same receipt turn() gives, without audio."""
+    import time as _t
+    emit = emit or (lambda e: None)
+    t0 = _t.monotonic(); timing = {}
+    heard_raw, _ = _post(STAGE + "/listen", {"audio": audio_b64, "sample_rate": int(sample_rate or 24000)}, 180)
+    heard = json.loads(heard_raw); timing["ears_s"] = round(_t.monotonic() - t0, 2)
+    if not heard.get("ok") or not heard.get("transcript"):
+        return {"ok": False, "stage": "ears", "error": heard.get("error", "no words heard"), "hearing": heard}
+    emit({"kind": "heard", "transcript": heard["transcript"]})
+    evidence = {"reading": heard.get("audio_reading"), "pipeline": heard.get("ears"),
+                "audio_native_gemma": bool(heard.get("audio_native_gemma"))}
+    user = ("Gloria said aloud:\n" + heard["transcript"] +
+            "\n\n[AUDIO-NATIVE READING — Gemma received the recording itself:]\n" + json.dumps(evidence, ensure_ascii=False))
+    from stratagem_turn import Interaction, control, guard_reply
+    command = control(heard["transcript"])
+    if command is not None:
+        return {"ok": True, "transcript": heard["transcript"], "reply": command, "audio_format": "wav"}
+    interaction = Interaction(heard["transcript"], "voice")
+    if interaction.turn.duplicate_event:
+        return {"ok": True, "reply": "", "duplicate": True, "transcript": heard["transcript"]}
+    _test_turn = bool(getattr(interaction.turn, "test_mode", False))
+    _remember_how_it_sounded(audio_b64, sample_rate, heard, interaction.turn.turn_id, _test_turn, ladder_call)
+    _hold_audio(audio_b64, "gloria", interaction.turn.turn_id, sample_rate, test=_test_turn, ladder_call=ladder_call)
+    if not ladder_call:
+        from intent_engine import note_response
+        note_response(heard["transcript"])
+    from intent_context import admit_voice_lead
+    intent_target, intent_prompt = admit_voice_lead(interaction.turn.turn_id)
+    system = str(instructions or "") + interaction.prompt()
+    if intent_prompt:
+        system += "\n\n" + intent_prompt
+    if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
+    system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
+        "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "
+        "native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, "
+        "only when you genuinely mean it. Never write any other bracketed stage direction and "
+        "never describe the cue in prose.")
+    interaction.admitted(system)
+    timing["context_s"] = round(_t.monotonic() - t0 - timing["ears_s"], 2)
+    t1 = _t.monotonic()
+    first_audio = []
+    def _emit(e):
+        if e.get("kind") == "audio" and not first_audio:
+            first_audio.append(round(_t.monotonic() - t0, 2))
+        emit(e)
+    raw_reply, wavs, suppressed = _speak_streamed(system, user, 180, _emit,
+                                                  lambda: bool(guard_reply("x", interaction.turn)))
+    timing["brain_and_voice_s"] = round(_t.monotonic() - t1, 2)
+    timing["first_audio_s"] = first_audio[0] if first_audio else None
+    raw_reply = interaction.complete(raw_reply)
+    reply = _display_text(raw_reply)
+    if suppressed:
+        return {"ok": True, "reply": "", "transcript": heard["transcript"], "suppressed": "stratagem ended before playback"}
+    if not reply or not wavs:
+        return {"ok": False, "stage": "brain" if not reply else "voice", "error": "no words" if not reply else "voice returned no WAV",
+                "reply": reply, "hearing": heard}
+    _hold_audio(_wav_join(wavs), "vintos", interaction.turn.turn_id, test=_test_turn, ladder_call=ladder_call)
+    if intent_target and not ladder_call:
+        from intent_engine import record_delivery
+        record_delivery(reply, "voice", interaction.turn.turn_id, target=intent_target, input_text=heard["transcript"])
+    timing["total_s"] = round(_t.monotonic() - t0, 2)
+    print("[voice-local/turn] " + json.dumps(timing), flush=True)
+    return {"ok": True, "transcript": heard["transcript"], "audio_reading": heard.get("audio_reading"),
+            "reply": reply, "audio_format": "wav", "streamed": True, "model": BRAIN, "timing": timing}
+
+
+def opening_stream(instructions, framing="", opening_instruction="", emit=None):
+    """opening(), spoken as it is written."""
+    import time as _t
+    emit = emit or (lambda e: None)
+    t0 = _t.monotonic()
+    system = str(instructions or "")
+    if framing:
+        system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
+    if opening_instruction:
+        system += "\n\n" + str(opening_instruction)
+    system += ("\n\nLOCAL LIVE VOICE: one to four conversational sentences. Your Chatterbox voice performs these "
+               "exact native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, only "
+               "when you genuinely mean it. Never write any other bracketed stage direction.")
+    first_audio = []
+    def _emit(e):
+        if e.get("kind") == "audio" and not first_audio:
+            first_audio.append(round(_t.monotonic() - t0, 2))
+        emit(e)
+    raw_reply, wavs, _ = _speak_streamed(system, "[The call you placed has just connected. She is listening. Speak first.]",
+                                         200, _emit, lambda: True)
+    try:
+        import stratagem
+        raw_reply = stratagem.consume(raw_reply, "voice")
+    except Exception:
+        pass
+    reply = _display_text(raw_reply)
+    if not reply or not wavs:
+        return {"ok": False, "stage": "brain" if not reply else "voice", "error": "no words" if not reply else "voice returned no WAV"}
+    timing = {"first_audio_s": first_audio[0] if first_audio else None, "total_s": round(_t.monotonic() - t0, 2)}
+    print("[voice-local/opening] " + json.dumps(timing), flush=True)
+    return {"ok": True, "transcript": "", "reply": reply, "audio_format": "wav", "streamed": True, "model": BRAIN,
+            "timing": timing}
