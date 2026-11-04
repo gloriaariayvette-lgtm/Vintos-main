@@ -76,7 +76,7 @@ XAI_OK = lambda body, h: {"id": "cc_9", "model": "grok-4", "choices": [{"index":
                                                                     "finish_reason": "stop"}], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}}
 ANTH_ERR = lambda body, h: urllib.error.HTTPError("u", 529, "overloaded", {}, __import__("io").BytesIO(b'{"error":{"message":"Overloaded"}}'))
 XAI_DOWN = lambda body, h: urllib.error.URLError(ConnectionRefusedError("refused"))
-AEGIS_OK = lambda body, h: {"model_instance_id": "google/gemma-4-12b-qat", "response_id": "aegis_1",
+AEGIS_OK = lambda body, h: {"model_instance_id": "aeon/gemma-4-12b", "response_id": "aegis_1",
                              "output": [{"type": "message", "content": "hello from aegis"}],
                              "stats": {"input_tokens": 7, "total_output_tokens": 3,
                                        "reasoning_output_tokens": 0}}
@@ -99,7 +99,7 @@ check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 20
 check("named Aegis utility lane does not inherit the Mac Gemma default",
       S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["aegis_gemma", "gemma", "xai"]
       and S.AEGIS_GEMMA_URL == "http://172.18.16.1:1234/api/v1/chat"
-      and S.AEGIS_GEMMA_MODEL == "google/gemma-4-12b-qat")
+      and S.AEGIS_GEMMA_MODEL == "aeon/gemma-4-12b")
 s, h, b = run(dict(BASE), path="/gemma-aegis/v1/chat/completions", gemma=AEGIS_OK,
               xai=XAI_DOWN)
 sent = CALLS[0][1]

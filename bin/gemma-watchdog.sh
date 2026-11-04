@@ -3,7 +3,7 @@
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
 LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
-MODEL="google/gemma-4-12b-qat"
+MODEL="aeon/gemma-4-12b"
 # Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
 # /tmp lock would be two unrelated locks carrying the same name.
 LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"

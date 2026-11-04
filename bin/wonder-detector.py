@@ -24,7 +24,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 WONDER_LOG = os.path.join(MEMORY, "wonder-log.json")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 LM_API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"  # Aegis Gemma through the thinking-off shim
-MODEL = "google/gemma-4-12b-qat"
+MODEL = "aeon/gemma-4-12b"
 
 def log(msg):
     print(f"[Wonder {datetime.now().strftime('%H:%M')}] {msg}")

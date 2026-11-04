@@ -141,7 +141,7 @@ def check_contradiction_llm(new_statement, existing_statement):
     )
     try:
         r = requests.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "aeon/gemma-4-12b",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1, "max_tokens": 10
         }, timeout=15)

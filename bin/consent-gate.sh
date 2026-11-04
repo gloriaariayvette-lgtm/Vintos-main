@@ -61,7 +61,7 @@ RESPONSE=$(python3 << 'PYEOF'
 import requests, json, os
 
 API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+MODEL = "aeon/gemma-4-12b"
 
 def call(system, prompt, temp, tokens):
     try:
