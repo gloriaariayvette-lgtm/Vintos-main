@@ -180,18 +180,22 @@ def _unpark_changed(d, now=None):
     return said
 
 
-def pick(skip=None, held=None):
+def pick(skip=None, held=None, *, instead=False):
     """The line this cycle works, or None for a free cycle (one in FREE_EVERY, or when no line is open).
 
     A parked line is not picked, and neither is one `skip` says is waiting (the investigation's question cooldown).
     Skipping happens here, before anything is planned or written: on 29 October a line on cooldown was picked, refused
     and logged every pass (699 rows). When every open line is waiting on a line cycle, None is returned and the lines
-    that were held back are put in `held` (a list), so the caller can tell that from a free cycle."""
+    that were held back are put in `held` (a list), so the caller can tell that from a free cycle.
+
+    instead=True asks for another line for a line cycle whose picked line is held: it is not a new cycle, so it is
+    never the free one and doesn't advance the count."""
     said = []
     with _locked():
         d = _read()
         said = _unpark_changed(d)
-        d["cycle"] = int(d.get("cycle") or 0) + 1
+        if not instead:
+            d["cycle"] = int(d.get("cycle") or 0) + 1
         lines = [l for l in d["lines"] if l.get("state") == "open"]
         waiting = [l for l in lines if l.get("parked")]
         if skip is not None:
@@ -203,9 +207,10 @@ def pick(skip=None, held=None):
                         pass
         lines = [l for l in lines if l not in waiting]
         chosen = None
-        if waiting and not lines and d["cycle"] % FREE_EVERY and held is not None:
+        line_cycle = instead or d["cycle"] % FREE_EVERY
+        if waiting and not lines and line_cycle and held is not None:
             held.extend(waiting)
-        if lines and d["cycle"] % FREE_EVERY:
+        if lines and line_cycle:
             recent = d.get("worked") or []
             standing = [l for l in lines if l.get("standing")]
             ids = {l["id"] for l in standing}

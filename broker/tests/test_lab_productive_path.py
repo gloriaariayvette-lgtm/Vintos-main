@@ -200,6 +200,21 @@ class Productive(unittest.TestCase):
   q=self.exhaust()
   for _ in range(2):self.yielded_pass(q)
 
+ def test_held_line_hands_its_pass_to_another_open_line(self):
+  # 4 November: 7 of 12 open lines were held and each held line's pass became free curiosity (about 63% of passes
+  # free). The pass now goes to the next open line that isn't held; only when every line is held is it free.
+  self.exhaust()
+  other={'id':'L-casr','question':positive['inquiry']['question'],'next_step':'Read saved receptor evidence'}
+  asked=[]
+  def pick(skip=None,held=None,instead=False):
+   asked.append(instead);return other if instead else self.line
+  self.lines.pick=pick
+  with patch.object(C,'_ask',return_value=json.dumps(positive['inquiry'])) as model,patch.object(C,'_strategy_change',return_value=None),patch.object(C,'_next_evidence_work',return_value=None):
+   result=C.tick()
+  self.assertEqual(result.get('kind'),'inquiry',result);self.assertEqual(model.call_count,1)
+  admitted=C._load(C.STATE,{})['inquiry']
+  self.assertEqual(admitted['planning_scope']['line']['id'],'L-casr');self.assertIn(True,asked)
+
  def test_unrelated_new_assignment_proceeds(self):
   self.exhaust();self.line={'id':'L-casr','question':positive['inquiry']['question'],'next_step':'Read saved receptor evidence'}
   with patch.object(C,'_ask',return_value=json.dumps(positive['inquiry'])) as model:

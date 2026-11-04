@@ -156,6 +156,12 @@ check("... not the same question twice", LL.opened_by("again", "Why does the AQP
 picks = [LL.pick() for _ in range(8)]
 ids = [p["id"] if p else None for p in picks]
 check("one cycle in four is free curiosity; the rest work a line", ids.count(None) == 2 and ids[3] is None and ids[7] is None, ids)
+before = LL._read()["cycle"]
+instead = [LL.pick(instead=True) for _ in range(4)]
+check("another line for a held line's cycle is never the free one and doesn't advance the count",
+      all(instead) and LL._read()["cycle"] == before, (instead, before, LL._read()["cycle"]))
+first = instead[0]["id"]
+check("... and skips the lines already tried", LL.pick(skip=lambda l: l["id"] == first, instead=True)["id"] != first)
 line_ids = [i for i in ids if i]
 check("Gloria's standing line is worked at least every other line-cycle",
       all("L-gloria-phage-rt" in line_ids[k:k + 2] for k in range(0, len(line_ids) - 1)), line_ids)

@@ -1771,6 +1771,26 @@ def _held_question(inquiry):
     return None
 
 
+def _unheld_line(held_line, repeats, spent, step, lean, atlas_due):
+    """Another open line for a line cycle whose picked line is held, with its scope: (line, scope), or None when
+    every open line is held. Each candidate is checked against its own hold exactly as the picked line was."""
+    import lab_lines
+    tried = {held_line.get('id')}
+    for _ in range(64):     # each try adds a distinct open line to tried, so this ends long before the bound
+        try:
+            other = lab_lines.pick(skip=lambda l: l.get('id') in tried, instead=True)
+        except Exception as exc:
+            _fault("lab_lines_instead", exc); return None
+        if not other or other.get('id') in tried:
+            return None
+        tried.add(other.get('id'))
+        scope = {'line': {k: other.get(k) for k in ('id', 'question', 'next_step')}, 'frontier': None,
+                 'lean': lean, 'atlas': atlas_due}
+        if not _planning_hold(scope, repeats, spent, step):
+            return other, scope
+    return None
+
+
 def _planning_hold(scope, repeats, spent, step):
     """An exhausted planning assignment waits for changed evidence or direction.
 
@@ -1898,9 +1918,17 @@ def _orient(context, lean=None):
                         admitted, value = _held_to_plan('', '', alternate, {}, lean, step, lab_repeats, spent=spent)
                         if not admitted.get('refused'): return scoped(_on_line(admitted, value, None))
                 if assigned_line and not step:
-                    # The held line keeps its hold (no repeat calls on it), but it does not take the pass: this
-                    # pass plans free curiosity. Waiting is per line, not for the whole Lab (11 October from 07:21
-                    # UTC: every line held, every pass logged evidence_wait, no new question for over an hour).
+                    # The held line keeps its hold (no repeat calls on it), and its line cycle goes to the next open
+                    # line that isn't held. Only when every line is held does the pass plan free curiosity
+                    # (4 November: 7 of 12 open lines were held, so about 63% of passes since 25 October were free,
+                    # against FREE_EVERY's one in four, and those lines' turns never reached a line at all).
+                    other = _unheld_line(assigned_line, lab_repeats, spent, step, lean, atlas_due)
+                    if other:
+                        line = assigned_line = other[0]
+                        scope, held = other[1], None
+                if assigned_line and not step and held:
+                    # Waiting is per line, not for the whole Lab (11 October from 07:21 UTC: every line held, every
+                    # pass logged evidence_wait, no new question for over an hour).
                     waiting = (assigned_line, held)
                     line = assigned_line = None
                     basis = re.sub(r'\[LATEST LAB EVENT - pointer to append-only notebook\]\n[^\n]*', '', context)
