@@ -26,6 +26,10 @@ case "$*" in
   cat*) [ "$HAS_UNIT" = 1 ] ;;
   restart*) exit 0 ;;
   is-active*) [ "${ACTIVE:-1}" = 1 ] ;;
+  # this suite tests the sudo / one-command (forge-install.sh) fallbacks. The root installer's path unit
+  # is reported not-enabled so the deploy does not take that newer branch (covered by test_forge_root_installer.py)
+  # just because the host happens to have /usr/local/sbin/vintos-forge-install present.
+  is-enabled*) exit 1 ;;
 esac
 ''')
 # sudo: -n succeeds only when SUDO_OK=1; install loses its -o/-g (no root in a test).
