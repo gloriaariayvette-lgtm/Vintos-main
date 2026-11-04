@@ -37,6 +37,20 @@ check("generic review wording does not merge distinct protein-name targets", L.r
     {"question":generic % "catalase", "uniprot_query":'protein_name:"catalase" AND reviewed:true'}, now=NOW) == "")
 check("the same protein-name target remains a repeat", bool(L.repeat(
     {"question":generic % "myoglobin", "uniprot_query":'reviewed:true AND protein_name:"myoglobin"'}, now=NOW)))
+# 3-4 November: the Lab's own framing words made questions about different proteins look alike
+frame = "What are the specific structural hallmarks, documented cellular roles, and source-backed relationships of the human %s protein?"
+L.record({"question": frame % "HFE"}, now=NOW - timedelta(hours=3))
+check("the Lab's question frame around another protein is not a repeat (SLC26A11 was refused as HFE)",
+      L.repeat({"question": frame % "SLC26A11"}, now=NOW) == "")
+check("nor is it for a protein with no digit in its name (AQP5 was refused as HFE)",
+      L.repeat({"question": frame % "Aquaporin-5 (AQP5)"}, now=NOW) == "")
+check("the same frame around the same three-letter protein still is", "in other words" in L.repeat(
+      {"question": frame.replace("cellular roles", "functions") % "HFE"}, now=NOW))
+L.record({"question": frame % "aquaglyceroporin 1 (AQP1)"}, now=NOW - timedelta(hours=3))
+check("the same named protein spelled out another way still is", "in other words" in L.repeat(
+      {"question": frame % "aquaporin-1 (AQP1)"}, now=NOW))
+check("a narrower question about it with new content is not", L.repeat(
+      {"question": "Which residues line the NPA water pore of human AQP1, and how do they exclude protons?"}, now=NOW) == "")
 check("a ten-character UniProt accession is parsed as one accession",
       L._ACCESSION.findall("Read A0A6B8MBU4, then A0A023GPI8") == ["A0A6B8MBU4", "A0A023GPI8"])
 L.record({"question": "x", "source_query": {"source": "pdb", "entry_id": "8SGW"}}, now=NOW, refused="repeat: test")

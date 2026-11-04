@@ -156,6 +156,12 @@ check("... not the same question twice", LL.opened_by("again", "Why does the AQP
 picks = [LL.pick() for _ in range(8)]
 ids = [p["id"] if p else None for p in picks]
 check("one cycle in four is free curiosity; the rest work a line", ids.count(None) == 2 and ids[3] is None and ids[7] is None, ids)
+before = LL._read()["cycle"]
+instead = [LL.pick(instead=True) for _ in range(4)]
+check("another line for a held line's cycle is never the free one and doesn't advance the count",
+      all(instead) and LL._read()["cycle"] == before, (instead, before, LL._read()["cycle"]))
+first = instead[0]["id"]
+check("... and skips the lines already tried", LL.pick(skip=lambda l: l["id"] == first, instead=True)["id"] != first)
 line_ids = [i for i in ids if i]
 check("Gloria's standing line is worked at least every other line-cycle",
       all("L-gloria-phage-rt" in line_ids[k:k + 2] for k in range(0, len(line_ids) - 1)), line_ids)
@@ -196,6 +202,11 @@ check("a frontier model can open a line it sees in his work", applied[2].get("li
 fb = LL.frontier_block()
 check("the frontier review reads every open line with its tests", "L-gloria-phage-rt" in fb and "Retron msr-msd" in fb
       and "stalled_tests" in fb and mine["id"] not in fb)
+# 4 November: 12 open lines with their tests were 57,707 characters and the review kept 9,000 (3 lines seen)
+open_ids = [l["id"] for l in LL.open_lines()]
+small = LL.frontier_block(budget=len(fb) // 2)
+check("under a budget every open line is still in the frontier block, with less detail",
+      len(small) <= len(fb) // 2 and all(i in small for i in open_ids), (len(small), len(fb), open_ids))
 
 import chemistry_alignment as AL
 os.makedirs(lab.ROOT, exist_ok=True)

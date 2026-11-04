@@ -16,6 +16,7 @@ NOT_TO_A_MODEL = {
     "scripts/pressure_gemma.py": "the ledger only gives old lines of hers as voice samples to imitate; a date would be copied "
                                  "into the lines it writes, and those are embedded",
     "scripts/relationship_pressure.py": "the ledger text goes to embeddings and voice samples, never as a conversation",
+    "scripts/memory_surfacing.py": "the ledger's lines go to nomic embeddings only; the one line he is shown names its day",
 }
 READS = re.compile(r"interaction-ledger\.json")
 GLORIA_TEXT = re.compile(r"""get\(\s*['"]gloria['"]|\[\s*['"]gloria['"]\s*\]""")

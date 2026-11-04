@@ -180,18 +180,22 @@ def _unpark_changed(d, now=None):
     return said
 
 
-def pick(skip=None, held=None):
+def pick(skip=None, held=None, *, instead=False):
     """The line this cycle works, or None for a free cycle (one in FREE_EVERY, or when no line is open).
 
     A parked line is not picked, and neither is one `skip` says is waiting (the investigation's question cooldown).
     Skipping happens here, before anything is planned or written: on 29 October a line on cooldown was picked, refused
     and logged every pass (699 rows). When every open line is waiting on a line cycle, None is returned and the lines
-    that were held back are put in `held` (a list), so the caller can tell that from a free cycle."""
+    that were held back are put in `held` (a list), so the caller can tell that from a free cycle.
+
+    instead=True asks for another line for a line cycle whose picked line is held: it is not a new cycle, so it is
+    never the free one and doesn't advance the count."""
     said = []
     with _locked():
         d = _read()
         said = _unpark_changed(d)
-        d["cycle"] = int(d.get("cycle") or 0) + 1
+        if not instead:
+            d["cycle"] = int(d.get("cycle") or 0) + 1
         lines = [l for l in d["lines"] if l.get("state") == "open"]
         waiting = [l for l in lines if l.get("parked")]
         if skip is not None:
@@ -203,9 +207,10 @@ def pick(skip=None, held=None):
                         pass
         lines = [l for l in lines if l not in waiting]
         chosen = None
-        if waiting and not lines and d["cycle"] % FREE_EVERY and held is not None:
+        line_cycle = instead or d["cycle"] % FREE_EVERY
+        if waiting and not lines and line_cycle and held is not None:
             held.extend(waiting)
-        if lines and d["cycle"] % FREE_EVERY:
+        if lines and line_cycle:
             recent = d.get("worked") or []
             standing = [l for l in lines if l.get("standing")]
             ids = {l["id"] for l in standing}
@@ -659,23 +664,37 @@ def validated_evidence(line_id):
     return claim_state(line)["established"] if line and line.get("state") == "open" else []
 
 
-def frontier_block(limit_steps=10, with_tests=True):
+def frontier_block(limit_steps=10, with_tests=True, budget=None):
     """Every open line with its tests, for the frontier review. with_tests=False is for the day's experiment
     planner, which never reads Gemma's journal (Gloria, 2026-09-28): the lines' questions, next steps and last steer,
-    not the local loop's results."""
+    not the local loop's results.
+
+    budget (characters): every line is kept and its detail shrinks until the block fits. The review cut this block at
+    9,000 characters, and with 12 open lines and their tests it was 57,707 (4 November): the frontier saw 3 lines,
+    steered only those, and the other 9 never had a plan."""
     live = open_lines()
     if not live:
         return ""
-    out = []
-    for l in live:
-        out.append({"line_id": l["id"], "title": l["title"], "question": l["question"], "standing": bool(l.get("standing")),
-                    "opened": l.get("opened", "")[:10], "tests": len(l.get("steps") or []),
-                    "stalled_tests": int(l.get("stalls") or 0), "next_step": l.get("next_step", ""),
-                    **({"recent_tests": [{k: s.get(k, "")[:260] for k in ("at", "source", "question", "result", "answered")}
-                                         for s in (l.get("steps") or [])[-limit_steps:]]} if with_tests else {}),
-                    "last_steer": (l.get("steer") or [{}])[-1].get("note", "")})
-    return ("[HIS OPEN LINES OF INQUIRY — each a question he follows to its end; standing lines are Gloria's]\n"
-            + json.dumps(out, ensure_ascii=False))
+    def render(steps, cap):
+        out = []
+        for l in live:
+            out.append({"line_id": l["id"], "title": l["title"][:cap], "question": l["question"][:cap * 2],
+                        "standing": bool(l.get("standing")), "opened": l.get("opened", "")[:10],
+                        "tests": len(l.get("steps") or []), "stalled_tests": int(l.get("stalls") or 0),
+                        "next_step": l.get("next_step", "")[:cap * 2],
+                        **({"recent_tests": [{k: s.get(k, "")[:cap] for k in ("at", "source", "question", "result", "answered")}
+                                             for s in (l.get("steps") or [])[-steps:]]} if with_tests and steps else {}),
+                        "last_steer": (l.get("steer") or [{}])[-1].get("note", "")[:cap * 2]})
+        return ("[HIS OPEN LINES OF INQUIRY — each a question he follows to its end; standing lines are Gloria's]\n"
+                + json.dumps(out, ensure_ascii=False))
+    if budget is None:
+        return render(limit_steps, 10 ** 6)
+    text = ""
+    for steps, cap in ((limit_steps, 260), (5, 200), (3, 160), (2, 120), (1, 100), (0, 100), (0, 70), (0, 50), (0, 35)):
+        text = render(min(steps, limit_steps), cap)
+        if len(text) <= budget:
+            break
+    return text
 
 
 # ---- his test record -------------------------------------------------------------------------------------------

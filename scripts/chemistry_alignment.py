@@ -177,7 +177,10 @@ def _lines():
     settled for his Lab in Slack."""
     try:
         import lab_lines
-        return "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=14, budget=2400), _leans()) if x)
+        # _prompt keeps the first 9,000 characters of this: every open line fits in what the tests and leans leave
+        rest = [x for x in (lab_lines.tests_block(limit=14, budget=2400), _leans()) if x]
+        room = 9000 - sum(len(x) + 2 for x in rest)
+        return "\n\n".join(x for x in [lab_lines.frontier_block(budget=max(2000, room))] + rest if x)
     except Exception:
         return _leans()
 
