@@ -9118,7 +9118,7 @@ async def voice_local_end(request: Request):
     except Exception: _held_call = False
     try:
         import voice_local as _vl
-        result = await __import__("asyncio").to_thread(_vl.models, False)
+        result = await __import__("asyncio").to_thread(_vl.models, False, True)   # voice and ears both unloaded after the call (4 November)
         try: os.unlink(os.path.join(MEMORY, ".voice-live"))
         except OSError: pass
         try:

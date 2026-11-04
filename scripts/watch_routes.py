@@ -148,7 +148,7 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         auth(request)
         try:
             voice_local = local_voice()
-            result = await __import__("asyncio").to_thread(voice_local.models, False)
+            result = await __import__("asyncio").to_thread(voice_local.models, False, True)   # voice and ears both unloaded after the call
             try: os.unlink(voice_live_path)
             except OSError: pass
             try: voice_local.end_call()   # embed this call's held audio in a batch, then delete it (media_embed.py)
