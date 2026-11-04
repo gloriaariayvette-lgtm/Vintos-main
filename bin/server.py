@@ -886,6 +886,20 @@ def _works_near(msg):
         return ""
 
 
+def _memory_surfaced(msg):
+    """One exact past line - something they said to each other, or his own writing - when what she just said is
+    truly near it (memory_surfacing.py, nomic; 4 November, Gloria: "only if it's truly relevant"). '' almost always,
+    and whenever LM Studio or the index is missing; the reply goes on without it."""
+    try:
+        import sys as _ms_s; _ms_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import memory_surfacing as _ms
+        return _ms.block(str(getattr(msg, "message", "") or "")[-1500:],
+                         surface=str(getattr(msg, "surface", "") or ""), turn_id=str(getattr(msg, "turn_id", "") or ""))
+    except Exception as _msx:
+        print("[chat] memory-surfaced skipped:", _msx, flush=True)
+        return ""
+
+
 def _her_turn_text(msg):
     """Her own words on this request, for every record and organ that takes the turn as HERS (16 October).
 
@@ -4514,6 +4528,7 @@ Your sense of time right now:
 {outreach_ctx}
 {discovery_ctx}
 {_works_near(msg)}
+{_memory_surfaced(msg)}
 {pending_blush_ctx}
 {self_model}
 {f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
@@ -5408,6 +5423,7 @@ Your sense of time right now:
 {outreach_ctx}
 {discovery_ctx}
 {_works_near(msg)}
+{_memory_surfaced(msg)}
 {pending_blush_ctx}
 Your current self-model (excerpt):
 {_self_model(800)}
@@ -6297,6 +6313,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
 {outreach_ctx}
 {discovery_ctx}
 {_works_near(msg)}
+{_memory_surfaced(msg)}
 
 You are speaking with Gloria through your somatic interface.
 If memories were found, weave them naturally into your response.
@@ -10654,6 +10671,7 @@ Your sense of time right now:
 {creative_ctx}
 {discovery_ctx}
 {_works_near(msg)}
+{_memory_surfaced(msg)}
 {_value_map_block}
 {wal_ctx}
 {ledger_ctx}
