@@ -196,6 +196,11 @@ check("a frontier model can open a line it sees in his work", applied[2].get("li
 fb = LL.frontier_block()
 check("the frontier review reads every open line with its tests", "L-gloria-phage-rt" in fb and "Retron msr-msd" in fb
       and "stalled_tests" in fb and mine["id"] not in fb)
+# 4 November: 12 open lines with their tests were 57,707 characters and the review kept 9,000 (3 lines seen)
+open_ids = [l["id"] for l in LL.open_lines()]
+small = LL.frontier_block(budget=len(fb) // 2)
+check("under a budget every open line is still in the frontier block, with less detail",
+      len(small) <= len(fb) // 2 and all(i in small for i in open_ids), (len(small), len(fb), open_ids))
 
 import chemistry_alignment as AL
 os.makedirs(lab.ROOT, exist_ok=True)

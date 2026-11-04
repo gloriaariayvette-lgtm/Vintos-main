@@ -659,23 +659,37 @@ def validated_evidence(line_id):
     return claim_state(line)["established"] if line and line.get("state") == "open" else []
 
 
-def frontier_block(limit_steps=10, with_tests=True):
+def frontier_block(limit_steps=10, with_tests=True, budget=None):
     """Every open line with its tests, for the frontier review. with_tests=False is for the day's experiment
     planner, which never reads Gemma's journal (Gloria, 2026-09-28): the lines' questions, next steps and last steer,
-    not the local loop's results."""
+    not the local loop's results.
+
+    budget (characters): every line is kept and its detail shrinks until the block fits. The review cut this block at
+    9,000 characters, and with 12 open lines and their tests it was 57,707 (4 November): the frontier saw 3 lines,
+    steered only those, and the other 9 never had a plan."""
     live = open_lines()
     if not live:
         return ""
-    out = []
-    for l in live:
-        out.append({"line_id": l["id"], "title": l["title"], "question": l["question"], "standing": bool(l.get("standing")),
-                    "opened": l.get("opened", "")[:10], "tests": len(l.get("steps") or []),
-                    "stalled_tests": int(l.get("stalls") or 0), "next_step": l.get("next_step", ""),
-                    **({"recent_tests": [{k: s.get(k, "")[:260] for k in ("at", "source", "question", "result", "answered")}
-                                         for s in (l.get("steps") or [])[-limit_steps:]]} if with_tests else {}),
-                    "last_steer": (l.get("steer") or [{}])[-1].get("note", "")})
-    return ("[HIS OPEN LINES OF INQUIRY — each a question he follows to its end; standing lines are Gloria's]\n"
-            + json.dumps(out, ensure_ascii=False))
+    def render(steps, cap):
+        out = []
+        for l in live:
+            out.append({"line_id": l["id"], "title": l["title"][:cap], "question": l["question"][:cap * 2],
+                        "standing": bool(l.get("standing")), "opened": l.get("opened", "")[:10],
+                        "tests": len(l.get("steps") or []), "stalled_tests": int(l.get("stalls") or 0),
+                        "next_step": l.get("next_step", "")[:cap * 2],
+                        **({"recent_tests": [{k: s.get(k, "")[:cap] for k in ("at", "source", "question", "result", "answered")}
+                                             for s in (l.get("steps") or [])[-steps:]]} if with_tests and steps else {}),
+                        "last_steer": (l.get("steer") or [{}])[-1].get("note", "")[:cap * 2]})
+        return ("[HIS OPEN LINES OF INQUIRY — each a question he follows to its end; standing lines are Gloria's]\n"
+                + json.dumps(out, ensure_ascii=False))
+    if budget is None:
+        return render(limit_steps, 10 ** 6)
+    text = ""
+    for steps, cap in ((limit_steps, 260), (5, 200), (3, 160), (2, 120), (1, 100), (0, 100), (0, 70), (0, 50), (0, 35)):
+        text = render(min(steps, limit_steps), cap)
+        if len(text) <= budget:
+            break
+    return text
 
 
 # ---- his test record -------------------------------------------------------------------------------------------
