@@ -299,6 +299,13 @@ def name_from_reply(word, sentence, pleasure, impulse="", turn_id=None):
     differs) or one older than PENDING_MAX_AGE_S is not named by this reply; it stays pending for the
     sweep, and this reply's FELT is recorded as unbound."""
     pend = _load(os.path.join(MEM, ".pleasure-pending.json"), None)
+    try:   # his naming, kept with the session it came from (intimate_stream.py, 4 November)
+        import intimate_stream as _ist
+        _ist.record("felt", word=str(word)[:60], sentence=str(sentence)[:300],
+                    pleasure=pleasure if pleasure in (True, False) else "unsure", impulse=str(impulse or "")[:120],
+                    turn_id=str(turn_id or ""), pending_turn=str((pend or {}).get("turn_id") or ""))
+    except Exception:
+        pass
     if not pend: return False
     _ptid = str(pend.get("turn_id") or "")
     if (_ptid and turn_id and str(turn_id) != _ptid) or (time.time() - float(pend.get("t", 0)) > PENDING_MAX_AGE_S):

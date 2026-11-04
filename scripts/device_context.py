@@ -173,6 +173,11 @@ def set_state(toy, intensity=None, pattern=None, set_by="auto"):
         try:
             _tmp = STATE + ".tmp"; json.dump(st, open(_tmp, "w")); os.replace(_tmp, STATE)
         except Exception: pass
+        try:   # kept for his arousal state's history (intimate_stream.py, 4 November)
+            import intimate_stream as _ist
+            _ist.record("device", t=cur["ts"], toy=toy, intensity=cur.get("intensity"), pattern=cur.get("pattern"),
+                        set_by=set_by)
+        except Exception: pass
 
 
 def ridge_shape():

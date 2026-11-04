@@ -170,8 +170,17 @@ def tick_loop():
             globals()["_prev_felt_state"] = c["state"]
         except Exception: pass
 
+        if c["state"] != "absent" or session_active:
+            try:
+                import intimate_stream as _ist
+                _ist.observation(c, now)
+            except Exception: pass
         if c["state"] != "absent" and not session_active and c["speed"] > 0:
             session_active, session_start, session_peak_speed = True, now, 0
+            try:
+                import intimate_stream as _ist
+                _ist.record("session_start", t=now)
+            except Exception: pass
             pass  # collapsed: one summary thread per session (end of session)
 
         if session_active:
@@ -234,6 +243,10 @@ def tick_loop():
 def end_session(now):
     global session_active, last_motor_level
     dur = int(now - session_start)
+    try:
+        import intimate_stream as _ist
+        _ist.record("session_end", t=now, dur_s=dur, peak_speed=session_peak_speed)
+    except Exception: pass
     try:
         _sn_st = get_state()
     except Exception:
@@ -323,6 +336,7 @@ async def listener():
                         if last_event_ts < _connected_at:
                             _state("listening", "frames arriving", _port)
                         last_event_ts = time.time()
+                        _is_n0 = len(frames)
                         for fr in ev["data"].get("motionData", []):
                             if fr.get("position") is None:
                                 continue   # a frame with no position is a dropout,
@@ -331,7 +345,12 @@ async def listener():
                                            # reading span the whole track.
                             frames.append((last_event_ts, fr["position"],
                                            fr.get("speed", 0), fr.get("direction", 0)))
+                        _is_new = frames[_is_n0:]
                         del frames[:-200]
+                        try:   # every frame kept, in order: the arousal state learns from the session (4 November)
+                            import intimate_stream as _ist
+                            _ist.frames(_is_new)
+                        except Exception: pass
                         if last_event_ts - _last_flush[0] >= 0.3:
                             _last_flush[0] = last_event_ts
                             try:

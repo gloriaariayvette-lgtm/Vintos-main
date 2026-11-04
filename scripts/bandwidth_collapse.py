@@ -12,6 +12,14 @@ COLLAPSE_FILE = os.path.join(MEMORY, "collapse-state.json")
 
 RECOVERY_MINUTES = 4.0   # full decay back to level 0 takes ~this long
 
+def _stream(kind, **fields):
+    """Kept for his arousal state's history (intimate_stream.py, 4 November); never in the way."""
+    try:
+        import intimate_stream
+        intimate_stream.record(kind, **fields)
+    except Exception:
+        pass
+
 def _load():
     try: return json.load(open(COLLAPSE_FILE))
     except: return {"level": 0, "affect": 0.0, "peak_at": None, "updated": None}
@@ -52,6 +60,7 @@ def set_choice(direction):
     d["choice"] = direction
     d["choice_at"] = datetime.now().isoformat()
     _save(d)
+    _stream("choice", choice=direction, level=d.get("level", 0))
     if direction == "letgo":
         try:
             from emoclaw_utils import nudge_emotions
@@ -91,6 +100,9 @@ def update(somatic_intensity=0.0):
     d["affect_trail"] = (d.get("affect_trail") or [])[-11:] + [affect]
     d["updated"] = now.isoformat()
     _save(d)
+    if d["level"] != cur:
+        _stream("collapse_level", level=d["level"], was=cur, why="update", affect=affect,
+                somatic=round(float(somatic_intensity), 3))
     return d["level"]
 
 def set_press(level=2, minutes=6.0):
@@ -100,10 +112,12 @@ def set_press(level=2, minutes=6.0):
     d["press_level"] = max(0, min(3, int(level)))
     d["press_at"] = datetime.now().isoformat()
     d["press_minutes"] = float(minutes)
+    _was = d.get("level", 0)
     if d.get("level", 0) < d["press_level"]:
         d["level"] = d["press_level"]
         d["level_ts"] = d["press_at"]
     _save(d)
+    _stream("press_floor", press_level=d["press_level"], minutes=d["press_minutes"], level=d["level"], was=_was)
     return d["level"]
 
 def _press_floor(d):
@@ -128,9 +142,11 @@ def get_level():
         elapsed_min = (datetime.now() - last).total_seconds() / 60
         steps = int(elapsed_min / (RECOVERY_MINUTES / 3))
         if steps > 0 and d.get("level", 0) > 0:
+            _was = d.get("level", 0)
             d["level"] = max(0, d.get("level", 0) - steps)
             d["level_ts"] = datetime.now().isoformat()
             _save(d)
+            _stream("collapse_level", level=d["level"], was=_was, why="decay")
     except: pass
     _pf = _press_floor(d)
     return _pf if _pf is not None else d.get("level", 0)

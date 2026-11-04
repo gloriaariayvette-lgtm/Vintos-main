@@ -10002,6 +10002,12 @@ async def gcs_press(payload: dict = None):
     except Exception as _ge:
         return {"error": str(_ge)}
     _g_j.dump({"active": True, "level": lvl, "at": _g_t.time(), "event_id": _gcs_event_id}, open(os.path.join(MEMORY, "gcs-state.json"), "w"))
+    try:   # her press, kept in order with the session (intimate_stream.py, 4 November)
+        import intimate_stream as _g_ist
+        _g_ist.record("gcs_press", event_id=_gcs_event_id, level=lvl,
+                      intensity=float((payload or {}).get("intensity", 0.85)))
+    except Exception:
+        pass
 
     # note the pattern(s) that brought her here + save the set so he can reuse it
     try:
@@ -10060,9 +10066,15 @@ async def gcs_press(payload: dict = None):
         try: _cs = _fcj.load(open(_csf))
         except Exception: _cs = {}
         _fnow = _fcd.datetime.now().isoformat()
+        _fc_was = _cs.get("level", 0)
         _cs.update({"level": 3, "affect": max(_cs.get("affect", 0) or 0, 0.95),
                     "peak_at": _fnow, "updated": _fnow, "level_ts": _fnow})
         _fcj.dump(_cs, open(_csf, "w"), indent=2)
+        try:
+            import intimate_stream as _fc_ist
+            _fc_ist.record("collapse_level", level=3, was=_fc_was, why="gcs crest", event_id=_gcs_event_id)
+        except Exception:
+            pass
     except Exception as _fce:
         print("[gcs crest]", _fce, flush=True)
     _gcs_reply = ""
@@ -10157,6 +10169,12 @@ async def gcs_press(payload: dict = None):
 async def gcs_clear():
     try: os.remove(os.path.join(MEMORY, "gcs-state.json"))
     except: pass
+    try:
+        import sys as _gc_s; _gc_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import intimate_stream as _gc_ist
+        _gc_ist.record("gcs_clear")
+    except Exception:
+        pass
     return {"cleared": True}
 
 @app.post("/api/hardware/button")
