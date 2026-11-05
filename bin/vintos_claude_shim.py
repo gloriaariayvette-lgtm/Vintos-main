@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 for _gp in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.vintos/workspace/scripts"), os.path.expanduser("~/.vintos/workspace/bin")):
     if os.path.isdir(_gp) and _gp not in sys.path: sys.path.insert(0, _gp)   # gen_result.py may be installed beside either twin on the host
 import gen_result as GR   # the one stage/result contract shared with model_router (review 43)
+import local_pool          # which machine a local call goes to (Gloria 2026-11-05)
 
 HOST, PORT = "127.0.0.1", 8599
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -39,6 +40,7 @@ PROVIDER_CAPS = {
     "xai":       {"temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice", "images"},
     "gemma":     {"temperature", "top_p", "max_tokens", "stop", "response_format"},
     "aegis_gemma":{"temperature", "top_p", "max_tokens"},
+    "pool":      {"temperature", "top_p", "max_tokens", "stop", "response_format"},
 }
 SAMPLING_KEYS = ("temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice")
 
@@ -358,6 +360,59 @@ def aegis_gemma_complete(j, call=None):
     result["finish_reason_source"] = finish_source
     return result
 
+# ---------------------------------------------------------------- local pool (Gloria 2026-11-05)
+# A /pool/<task>/... call goes to the best model for that task on whichever machine has room (local_pool.py).
+# Aegis's AEON and the MacBook 26B keep their own lanes above (thinking-off check, forced model); any other pool
+# machine is a llama-server reached OpenAI-style. When the pool can't place a call, the chain moves on to the
+# task's old direct lane, so nothing is lost when the pool is down or its config is missing.
+POOL = local_pool.Pool()
+POOL_FALLBACK = {"subconscious": ["gemma"], "deep": ["gemma", "aegis_gemma"], "aeon": ["aegis_gemma", "gemma"]}
+POOL_FALLBACK_DEFAULT = ["aegis_gemma", "gemma"]
+
+def _pool_tokens(j):
+    """Rough context this call needs: ~3 characters per token for the messages, plus the reply."""
+    return len(json.dumps(j.get("messages") or [], ensure_ascii=False)) // 3 + int(j.get("max_tokens") or 1024)
+
+def llama_complete(j, call, b):
+    """One pool llama-server, OpenAI-style, thinking off. Any reasoning in the reply breaks the contract."""
+    name = "pool_" + b["machine"]
+    unsup = unsupported_features(j, "pool")
+    if unsup: return GR.make_result(name, status="unavailable", reason="unsupported on pool: " + ",".join(unsup))
+    body = {k: v for k, v in j.items() if k not in ("route", "stream", "paid_reserved")}
+    body["model"] = b["model"]
+    body["chat_template_kwargs"] = dict(body.get("chat_template_kwargs") or {}, enable_thinking=False)
+    _, d, err = _post_json(name, b["url"], body, {"Content-Type": "application/json"}, 180, call)
+    if err is not None and d is None: _log(f"{name} error: {err['reason']}"); return err
+    msg = ((d or {}).get("choices") or [{}])[0].get("message") or {}
+    if msg.get("reasoning_content"):
+        return GR.make_result(name, model=b["model"], status="error", reason="thinking-off contract violated")
+    res = GR.from_openai(d, name)
+    if not res["model"]: res["model"] = b["model"]
+    return res
+
+def pool_complete(j, call, task):
+    """Try the pool's choices for this task in order; unavailable (with every reason) when none answers."""
+    backends, verdicts = POOL.choose(task, _pool_tokens(j))
+    if not backends:
+        why = "; ".join("%s@%s %s" % (v.get("model", ""), v.get("machine", ""), v["reason"]) if v.get("machine") else v["reason"]
+                        for v in verdicts)
+        return GR.make_result("pool", status="unavailable", reason="pool: " + (why or "nothing has room")[:300])
+    tried = []
+    for b in backends:
+        if b["machine"] == "aegis" and b.get("kind") == "lmstudio" and b["model"] == AEGIS_GEMMA_MODEL:
+            res = aegis_gemma_complete(j, call)
+        elif b.get("kind") == "lmstudio" and b["model"] == GEMMA_MODEL:
+            res = gemma_complete(j, call)
+        elif b.get("kind") == "llama":
+            res = llama_complete(j, call, b)
+        else:
+            continue
+        if GR.usable(res):
+            res["pool_machine"], res["pool_model"] = b["machine"], b["label"]
+            return res
+        tried.append("%s@%s %s: %s" % (b["label"], b["machine"], res["status"], res["reason"][:80]))
+    return GR.make_result("pool", status="unavailable", reason="pool: " + ("; ".join(tried) or "no lane for its choices")[:300])
+
 PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
              "aegis_gemma": aegis_gemma_complete}
 
@@ -378,9 +433,17 @@ def forward_xai(path, raw):
 
 # ---------------------------------------------------------------- orchestration (40, 41, 43)
 
+def pool_task(path):
+    """'quick' from /pool/quick/v1/chat/completions; None for any other path."""
+    parts = path.split("/")
+    return parts[2] if len(parts) > 3 and parts[1] == "pool" and parts[2] else None
+
 def provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
-    if path.startswith("/gemma-aegis"): return ["aegis_gemma", "gemma", "xai"]
+    task = pool_task(path)
+    if task: return ["pool:" + task] + POOL_FALLBACK.get(task, POOL_FALLBACK_DEFAULT)
+    # the Aegis lane may spill to another machine's AEON when Aegis is busy (pool task "aeon")
+    if path.startswith("/gemma-aegis"): return ["pool:aeon", "aegis_gemma", "gemma", "xai"]
     if path.startswith("/gemma"): return ["gemma", "xai"]
     if j.get("route") == "grok": return ["xai"]
     # one-word verdicts / mechanical calls up to 120 tokens ride local gemma first (Gloria 2026-08-26/09-02)
@@ -391,7 +454,7 @@ def run_chain(j, path, chain=None):
     """Try providers in order; return (final_result_or_None, all_stage_results, call)."""
     call = _Call(j)
     for name in (chain or provider_chain(j, path)):
-        res = PROVIDERS[name](j, call)
+        res = pool_complete(j, call, name[5:]) if name.startswith("pool:") else PROVIDERS[name](j, call)
         call.results.append(res)
         if GR.usable(res):
             _log(f"{name} ok ({res['model']}, {res['status']})"); return res, call.results, call
@@ -426,8 +489,10 @@ def handle_chat(j, path):
     """Route one chat request. Returns (http_status, headers_dict, body_bytes). Never 200 with empty content (40)."""
     res, results, call = run_chain(j, path)
     if res is not None:
-        return 200, {"x-vintos-provider": res["provider"], "x-vintos-model": res["model"], "x-vintos-request-id": res["request_id"],
-                     "x-vintos-idempotency-key": call.key}, openai_wrap(res, str(j.get("model", "")))
+        h = {"x-vintos-provider": res["provider"], "x-vintos-model": res["model"], "x-vintos-request-id": res["request_id"],
+             "x-vintos-idempotency-key": call.key}
+        if res.get("pool_machine"): h["x-vintos-pool-machine"] = res["pool_machine"]
+        return 200, h, openai_wrap(res, str(j.get("model", "")))
     # every provider that could honour the request failed. If *none* could honour a feature, say so as 400.
     unsup = [r for r in results if r["reason"].startswith("unsupported on ")]
     if results and len(unsup) == len(results):
@@ -473,7 +538,7 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
         raw = _mend_request(raw)
-        chat = self.path == "/v1/chat/completions" or self.path.startswith("/gemma")
+        chat = self.path == "/v1/chat/completions" or self.path.startswith("/gemma") or pool_task(self.path) is not None
         # anything that isn't a chat endpoint -> straight to x.ai on the same path
         if not chat:
             _log(f"passthrough path {self.path}"); s, b = forward_xai(self.path, raw); return self._send(s, b)
@@ -527,4 +592,5 @@ if __name__ == "__main__":
         install()
     else:
         print(f"vintos-claude-shim on http://{HOST}:{PORT}  (log: {LOG})")
+        POOL.start()
         ThreadingHTTPServer((HOST, PORT), H).serve_forever()
