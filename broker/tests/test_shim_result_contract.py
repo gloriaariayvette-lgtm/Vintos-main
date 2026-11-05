@@ -97,7 +97,7 @@ check("empty completions from every provider -> 502, not 200+empty", s == 502 an
 s, h, b = run(dict(BASE), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: socket.timeout("timed out"), xai=EMPTY_XAI)
 check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 200 empty)", s == 502, (s, b))
 check("named Aegis utility lane does not inherit the Mac Gemma default",
-      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["aegis_gemma", "gemma", "xai"]
+      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "gemma", "xai"]
       and S.AEGIS_GEMMA_URL == "http://172.18.16.1:1234/api/v1/chat"
       and S.AEGIS_GEMMA_MODEL == "aeon/gemma-4-12b")
 s, h, b = run(dict(BASE), path="/gemma-aegis/v1/chat/completions", gemma=AEGIS_OK,
