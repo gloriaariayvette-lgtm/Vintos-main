@@ -255,7 +255,10 @@ rc, out = run_py(resolve, dict(env, STUB_JUDGE="I think so"))
 check("judge garbled: no consumption, verdict 'no-verdict'", not by_id("t03").get("consumed") and by_id("t03")["last_dream_verdict"] == "no-verdict", out[-120:])
 rc, out = run_py(resolve, dict(env, STUB_JUDGE="UNRESOLVED"))
 check("judge UNRESOLVED: thread stays in pool, night ledger lists it unresolved", not by_id("t03").get("consumed") and "t03" in json.load(open(DREAM_LOG))["nights"][-1]["threads_unresolved"])
+# a two-thread dream: a bare RESOLVED does not say which thread settled, so neither is consumed
 rc, out = run_py(resolve, dict(env, STUB_JUDGE="RESOLVED"))
+check("two-thread dream, bare RESOLVED: no verdict for either thread", not by_id("t03").get("consumed") and not by_id("t04").get("consumed") and by_id("t03")["last_dream_verdict"] == "no-verdict", out[-150:])
+rc, out = run_py(resolve, dict(env, STUB_JUDGE="THREAD 1: RESOLVED" + chr(10) + "THREAD 2: RESOLVED"))
 check("judge RESOLVED: consumed by dream-resolved, night ledger lists it consumed",
       by_id("t03").get("consumed_by") == "dream-resolved" and "t03" in json.load(open(DREAM_LOG))["nights"][-1]["threads_consumed"])
 check("... and dream_passes was not advanced by the verdict step (still 1)", by_id("t03")["dream_passes"] == 1)
