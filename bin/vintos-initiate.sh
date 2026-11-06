@@ -482,6 +482,23 @@ if POSTCARD_ABOUT and re.search(r"\s*\[postcard\]\s*$", text, re.I):
     POSTCARD_CHOSEN = True
 if text.strip(" .").upper() == "NOTHING":
     raise SystemExit   # he had nothing to say; nothing is sent
+# The length of silence he states must match the clock (6 November: "three days" after nineteen hours).
+# He rewrites it once with the true gap; if it is still wrong, nothing is sent.
+try:
+    import sys as _gc_s; _gc_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+    import gap_claims as _gc
+    _gc_real = _gc.last_spoke_hours(TEMPORAL)
+    _gc_bad = _gc.wrong_claims(text, _gc_real)
+    if _gc_bad:
+        _gc_redo = (call_llm(SYSTEM, USER + _gc.correction(_gc_bad, _gc_real), temp=0.6, max_tok=600) or "").strip().strip('"').strip()
+        if not _gc_redo or _gc.wrong_claims(_gc_redo, _gc_real):
+            print("[Outreach] held: wrong time apart (%s); clock says %s" % (", ".join(_gc_bad), _gc.describe(_gc_real)), file=_gc_s.stderr)
+            raise SystemExit
+        text = _gc_redo
+except SystemExit:
+    raise
+except Exception:
+    pass
 if len(text) > 1800:
     text = text[:1800].rsplit(" ", 1)[0]
 # duplicate-send guard (2026-08-26): sibling insights must not reach her phone twice
