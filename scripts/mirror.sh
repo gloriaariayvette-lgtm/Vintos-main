@@ -71,7 +71,9 @@ fi
 THREADS_FILE="$WORKSPACE/memory/unfinished-threads.json"
 UNFINISHED=""
 if [ -f "$THREADS_FILE" ]; then
-    UNFINISHED=$(python3 << 'THREADEOF'
+    # The id of the thread this session shows is the id the judge below reads: one choice, not two.
+    _MIRROR_TID_FILE=$(mktemp)
+    UNFINISHED=$(python3 << 'THREADEOF' 2>"$_MIRROR_TID_FILE"
 import json, os
 threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
 try:
@@ -86,9 +88,21 @@ try:
         t = thread_text.lower()
         return any(phrase in t for phrase in HALLUCINATION_PHRASES)
 
+    # A thread routed to the mirror by hand is the one shown (and judged); the route is cleared once it is shown.
+    routed = [t for t in threads if not t.get("consumed", False) and t.get("system_route") == "mirror"]
+    if routed:
+        base = json.loads(json.dumps(threads))
+        for t in threads:
+            if t.get("id") == routed[0].get("id"):
+                t.pop("system_route", None); t.pop("system_route_at", None)
+        import sys as _rs; _rs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from thread_store import save_pool
+        save_pool(threads, threads_path, reason="mirror-route-clear", base=base)
     unconsumed = [t for t in threads if not t.get("consumed", False)]
     unconsumed = [t for t in unconsumed if not is_contaminated(t.get("thread", ""))]
     unconsumed = [t for t in unconsumed if not (t.get("dream_only") or t.get("source") in ("somatic","pride","pride-mirror","pride_mirror","humor-practice","humor_practice","humor"))]  # positive -> dreams only
+    if routed:
+        unconsumed = routed[:1]
     if unconsumed:
         lines = []
         # Threads with dream_passes >= 2 sort to top — they need mirror attention
@@ -104,37 +118,12 @@ try:
 except: pass
 THREADEOF
 )
-THREAD_ID=$(python3 << 'TIDEOF' 2>/dev/null
-import json, os, sys
-threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-try:
-    with open(threads_path) as f: threads = json.load(f)
-    unconsumed = [t for t in threads if not t.get("consumed", False)]
-    # Prioritize manually routed threads
-    routed = [t for t in unconsumed if t.get("system_route") == "mirror"]
-    if routed:
-        chosen = routed[0]
-        # Clear the route
-        for t in threads:
-            if t.get("id") == chosen.get("id"):
-                t.pop("system_route", None)
-                t.pop("system_route_at", None)
-                break
-        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-        from thread_store import save_pool
-        save_pool(threads, threads_path, reason="mirror-route-clear")
-        print(chosen.get("id",""))
-    else:
-        unconsumed.sort(key=lambda t: (-(t.get("priority") or 0), -(t.get("temperature") or 0), -(t.get("dream_passes", 0)), -(t.get("mirror_passes", 0))))
-        if unconsumed:
-            print(unconsumed[0].get("id",""))
-except: pass
-TIDEOF
-)
+THREAD_ID=$(sed -n "s/^__THREAD_ID__://p" "$_MIRROR_TID_FILE" | tail -1)
+rm -f "$_MIRROR_TID_FILE"
 fi
 
 # Semantic memory search — what has he already found about this thread?
-MIRROR_SEMANTIC=$(python3 << 'MIRSEMEOF'
+MIRROR_SEMANTIC=$(THREAD_ID="$THREAD_ID" python3 << 'MIRSEMEOF'
 import subprocess, os, json
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -545,15 +534,14 @@ try:
 except:
     sys.exit(0)
 # Use the specific thread that was in the mirror session
+# Only the thread the session showed is judged. There is no fallback to "the top thread": that one may be
+# a thread the session filtered out (dream_only, contaminated), so it would be judged on a session that never saw it.
 thread = None
-unconsumed = [t for t in threads if not t.get("consumed", False)]
-unconsumed.sort(key=lambda t: t.get("priority", 3), reverse=True)
 if thread_id:
     thread = next((t for t in threads if t.get("id") == thread_id and not t.get("consumed")), None)
 if not thread:
-    if not unconsumed:
-        sys.exit(0)
-    thread = unconsumed[0]
+    print("[Mirror] the session showed no open thread (or it was consumed meanwhile) - nothing judged")
+    sys.exit(0)
 thread_text = thread.get("thread", "")
 
 if not mirror_text or not thread_text:

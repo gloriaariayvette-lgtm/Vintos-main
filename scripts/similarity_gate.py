@@ -25,6 +25,9 @@ WANT_THRESHOLD = 0.72
 THREAD_THRESHOLD = 0.78
 WANT_WINDOW_DAYS = 45
 THREAD_WINDOW_DAYS = 21
+# Every retirement in the window is compared (about 96 in 21 days in November 2026). The bound keeps the cost
+# fixed if retirements surge: vectors are cached per id, so only rows not seen before are embedded.
+THREAD_RETIRED_MAX = 200
 
 def _embed_many(texts):
     if not texts: return []
@@ -43,11 +46,15 @@ def _cos(a, b):
     return dot/(ma*mb) if ma and mb else 0.0
 
 def _recent(entries, key_ts, days):
+    """Entries dated within the window. key_ts is one field name or several, tried in order (the thread
+    archive dates its rows retired_at; a few old rows carry only timestamp)."""
+    keys = (key_ts,) if isinstance(key_ts, str) else tuple(key_ts)
     cutoff = datetime.now() - timedelta(days=days)
     out = []
     for e in entries:
         try:
-            if datetime.fromisoformat(str(e.get(key_ts, ""))[:19]) >= cutoff: out.append(e)
+            stamp = next((e.get(k) for k in keys if e.get(k)), "")
+            if datetime.fromisoformat(str(stamp)[:19]) >= cutoff: out.append(e)
         except Exception: pass
     return out
 
@@ -78,14 +85,29 @@ def check_want_against_fulfilled(text, threshold=WANT_THRESHOLD):
         if s > best: best, best_t = s, t
     return {"matched": best_t, "similarity": best} if best >= threshold else None
 
+def _open_pool_ids():
+    try:
+        pool = json.load(open(os.path.join(MEMORY, "unfinished-threads.json")))
+        return {t.get("id") for t in pool if isinstance(t, dict) and t.get("id")
+                and not t.get("consumed") and not t.get("retired")}
+    except Exception:
+        return set()
+
 def check_thread_against_resolved(text, threshold=THREAD_THRESHOLD):
     """Compare a candidate thread against recent pearls, black pearls, and retired threads."""
     items = []
     try:
         retired = json.load(open(os.path.join(MEMORY, "retired-threads.json")))
-        for e in _recent(retired, "timestamp", THREAD_WINDOW_DAYS)[-25:]:
-            t = (e.get("thread") or e.get("text") or "") if isinstance(e, dict) else ""
-            if t: items.append((e.get("id", t[:20]), t))
+        if isinstance(retired, dict): retired = retired.get("threads", [])
+        retired = [e for e in retired if isinstance(e, dict)]
+        # A thread reinstated by hand is open again: its archive row is not a resolution any more.
+        open_ids = _open_pool_ids()
+        seen_text = set()
+        for e in _recent(retired, ("retired_at", "timestamp"), THREAD_WINDOW_DAYS)[-THREAD_RETIRED_MAX:]:
+            if e.get("id") and e.get("id") in open_ids: continue
+            t = e.get("thread") or e.get("text") or ""
+            if t and t not in seen_text:   # identical rows (one text retired many times) embed once
+                seen_text.add(t); items.append((e.get("id", t[:20]), t))
     except Exception: pass
     try:
         idx = json.load(open(os.path.join(MEMORY, "pearls", "index.json")))

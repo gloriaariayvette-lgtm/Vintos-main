@@ -549,6 +549,7 @@ def weekly_review():
 
     # Filter to threads retired in the last 7 days
     week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    retired = _ts.live_retired(retired, _ts.load_pool(THREADS_FILE) or [])   # reinstated threads are open, not resolved
     this_week = [r for r in retired if r.get("retired_at", "") >= week_ago]
 
     if not this_week:
@@ -621,6 +622,7 @@ def sediment_threads():
     threads = load_threads()
     os.makedirs(os.path.join(MEMORY, "sediment"), exist_ok=True)
     count = 0
+    sedimented = []   # archived before the pool is saved: the next resolve purges retired threads from the pool
     for t in threads:
         if t.get("retired"):
             continue
@@ -634,13 +636,14 @@ def sediment_threads():
             t["retired_as"] = "sediment"
             t["retired_at"] = datetime.now().isoformat()
             count += 1
+            sedimented.append(t)
             log(f"Immediate sediment (pull<2) [{t.get('source','?')}]: {t.get('thread','')[:60]}")
             continue
         # Pull 2: sediment after 2 triage cycles — but protect if mid-pipeline
         if priority == 2 and triage_count < 2:
             continue
         if priority == 2 and triage_count >= 2:
-            if t.get("dream_passes", 0) > 0 or t.get("mirror_passes", 0) > 0:
+            if _ts.pipeline_protected(t):   # mid-pipeline: a pass within the last PROTECT_TRIAGES triages
                 continue
             if t.get("was_preoccupation"):
                 continue
@@ -650,8 +653,8 @@ def sediment_threads():
         elif priority == 3 and triage_count < 3:
             continue
         elif priority == 3 and triage_count >= 3:
-            # Don't sediment if thread is mid-pipeline (has dream or mirror passes)
-            if t.get("dream_passes", 0) > 0 or t.get("mirror_passes", 0) > 0:
+            # Don't sediment if thread is mid-pipeline (a dream/mirror/therapy pass within PROTECT_TRIAGES triages)
+            if _ts.pipeline_protected(t):
                 continue
             # Don't sediment if marked as was_preoccupation (heading to black pearl)
             if t.get("was_preoccupation"):
@@ -667,7 +670,16 @@ def sediment_threads():
         t["retired_as"] = "sediment"
         t["retired_at"] = datetime.now().isoformat()
         count += 1
+        sedimented.append(t)
         log(f"Sediment [{source}]: {thread_text[:60]}")
+    if sedimented:
+        # Until November 2026 sediment only flagged the pool rows; resolve then purged them, so they left
+        # the pool with no archive row and the resolved-similarity gate never saw them.
+        _ts.append_retired([{"id": t.get("id", ""), "thread": t.get("thread", ""), "source": t.get("source", "unknown"),
+                             "consumed_by": "sediment", "retired_at": t.get("retired_at"), "type": "sediment",
+                             "pull": t.get("priority", 0), "triage_count": t.get("triage_count", 0),
+                             "dream_passes": t.get("dream_passes", 0), "mirror_passes": t.get("mirror_passes", 0),
+                             "therapy_passes": t.get("therapy_passes", 0)} for t in sedimented], RETIRED_LOG)
     save_threads(threads)
     # Log sediment
     if count > 0:
