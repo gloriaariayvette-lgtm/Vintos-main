@@ -81,7 +81,27 @@ def complete(want, how, by, note="", evidence=None):
             from emoclaw_utils import fulfill_want as _fw
         except Exception as e:
             row["result"] = "fulfill_want unavailable: %s" % str(e)[:80]; _log(row); return row
-        _fw(text, note=note, fulfilled_by=by, want_id=wid)
+        # fulfill_want logs its own ending when a caller goes to it directly; through this door the row below
+        # is the one, so the ending is recorded once
+        _prev_door = os.environ.get("VINTOS_WANT_DOOR")
+        os.environ["VINTOS_WANT_DOOR"] = "1"
+        try:
+            _fw(text, note=note, fulfilled_by=by, want_id=wid)
+        finally:
+            if _prev_door is None:
+                os.environ.pop("VINTOS_WANT_DOOR", None)
+            else:
+                os.environ["VINTOS_WANT_DOOR"] = _prev_door
+        if evidence is None:
+            try:
+                _arch = _load(os.path.join(MEMORY, "fulfilled-wants.json"), [])
+                _mine = [a for a in (_arch if isinstance(_arch, list) else []) if isinstance(a, dict) and wid and a.get("id") == wid]
+                if _mine:
+                    row["evidence"] = _mine[-1].get("produced")
+                    if _mine[-1].get("unevidenced_fulfilment"):
+                        row["unevidenced"] = True
+            except Exception:
+                pass
         try:   # review 240/265: a fulfilled want is evidence; a held plan it names reopens
             import plan as _plan
             row["reopened_plans"] = _plan.reopen_on_evidence(text, source="want:%s" % (wid or ""))
@@ -95,8 +115,10 @@ def complete(want, how, by, note="", evidence=None):
     if how == "dismissed":
         w["dismissed"] = True; w["dismissed_reason"] = note
         d = _load(DISMISSED, [])
-        rec = {k: w.get(k) for k in ("id", "want", "source", "timestamp", "intensity") if k in w}
-        rec.update({"dismissed_reason": note, "dismissed_at": row["at"], "dismissed_by": by})
+        # the whole want is kept, steps and history with it: an archive of five keys could not say what was
+        # tried, and could not put a wrongly dismissed want back as it was
+        rec = {k: v for k, v in dict(w).items() if k != "_delete"}
+        rec.update({"dismissed": True, "dismissed_reason": note, "dismissed_at": row["at"], "dismissed_by": by})
         (d if isinstance(d, list) else d.setdefault("wants", [])).append(rec)
         _atomic(DISMISSED, d)
     else:
@@ -134,6 +156,53 @@ def _steps_done(w):
     return all(isinstance(x, dict) and x.get("status") == "completed" for x in steps)
 
 
+def routed_to_gloria(w):
+    """True when this want was actually put to Gloria: the router marked it gloria_routed when it opened her
+    discussion, or the board parked it awaiting her. Only such a want can be waiting on her answer."""
+    return bool(w.get("gloria_routed")) or w.get("board") == "awaiting_gloria"
+
+
+_GENERIC = None
+
+
+def step_evidence(w):
+    """What each step of this want actually produced, as [{step, capability, kind, produced}].
+
+    kind is "file" (a receipt naming a file), "text" (findings that say something), or "none" - a bare
+    "Web search completed" says a step ran, not what it found, so it is not evidence. A want with no step
+    history is read from its fulfilment note the same way (kind "note")."""
+    global _GENERIC
+    import re
+    if _GENERIC is None:
+        _GENERIC = re.compile(r"^\s*(web search|search|step|task|action|done|ok|completed?|success)\b[^.]{0,40}\.?\s*$", re.I)
+
+    def _says(text):
+        t = str(text or "").strip()
+        return len(t) >= 40 and not _GENERIC.match(t)
+
+    out = []
+    for h in w.get("step_history") or []:
+        if not isinstance(h, dict):
+            continue
+        rc = h.get("receipt") if isinstance(h.get("receipt"), dict) else {}
+        found = str(h.get("findings") or "").strip()
+        if rc.get("kind") == "file" and rc.get("ref"):
+            kind, made = "file", str(rc.get("ref"))[:200]
+        elif _says(found):
+            kind, made = "text", found[:160]
+        else:
+            kind, made = "none", found[:80]
+        out.append({"step": h.get("step"), "capability": h.get("capability"), "kind": kind, "produced": made})
+    if not out and _says(w.get("fulfillment_note")):
+        out.append({"step": None, "capability": w.get("fulfilled_by"), "kind": "note",
+                    "produced": str(w.get("fulfillment_note"))[:160]})
+    return out
+
+
+def has_evidence(produced):
+    return any(p.get("kind") in ("file", "text", "note") for p in produced or [])
+
+
 def move_on(now=None, quiet_days=QUIET_DAYS):
     """Wants do not stay live forever (Gloria, 2026-10-13: "They need to move on after being completed or to
     move on after me not responding for 3 days").
@@ -141,8 +210,10 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
     - a want whose steps are all done leaves: fulfilled when the fulfilment door takes it, otherwise dismissed
       with the reason. The router's judge used to HOLD it whenever the judge model could not answer, and a held
       want stayed live with its whole step history in every prompt that lists wants.
-    - a want she has not answered for `quiet_days` - counted from the newer of when it was made and her last
-      word in its discussion - is dismissed, with that as the reason.
+    - a want routed to her (routed_to_gloria) that she has not answered for `quiet_days` - counted from the
+      newer of when it was made and her last word in its discussion - is dismissed, with that as the reason.
+      Until 2026-11-06 this applied to every want: 42 of the 120 dismissed "no answer from Gloria in 3 days"
+      had never been put to her (scripts/repairs/restore_moved_on_wants.py can put them back).
     Everything goes through complete(), so each ending is logged in want-completions.jsonl and kept in
     dismissed-wants.json / fulfilled-wants.json. Returns the rows."""
     now = time.time() if now is None else now
@@ -159,6 +230,10 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
                 r = complete(w, "dismissed", "moved-on",
                              note="its steps are done; not credited as fulfilled (%s)" % str(r.get("result"))[:120])
             out.append(r)
+            continue
+        if not routed_to_gloria(w):
+            # Not put to her, so not waiting on her: silence from Gloria is no reason for it to end. A blocked
+            # or idle want is the board's (want_board: parked, then released after its own 7 + 7 days).
             continue
         made = _when(w.get("timestamp") or w.get("created") or w.get("created_at"))
         if not made:

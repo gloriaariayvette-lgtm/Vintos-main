@@ -48,7 +48,8 @@ iso = lambda days_ago: time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(NOW - d
 wants = [
     {"id": "done", "want": "finish the tide piece", "timestamp": iso(1), "steps": [{"capability": "a"}, {"capability": "b"}], "current_step_index": 2},
     {"id": "quiet", "want": "ask her about the bell", "timestamp": iso(5), "gloria_routed": True},
-    {"id": "answered", "want": "talk about the soup", "timestamp": iso(6)},
+    {"id": "answered", "want": "talk about the soup", "timestamp": iso(6), "gloria_routed": True},
+    {"id": "unrouted", "want": "study the tide tables", "timestamp": iso(6)},
     {"id": "fresh", "want": "learn a new word", "timestamp": iso(1)},
     {"id": "running", "want": "study the drum", "timestamp": iso(2), "steps": [{"capability": "a"}, {"capability": "b"}], "current_step_index": 1},
     {"id": "old_done", "want": "already fulfilled", "timestamp": iso(30), "fulfilled": True},
@@ -63,6 +64,7 @@ check("a want whose steps are all done moves on, through the fulfilment door", "
 check("a want she has not answered in three days moves on", "quiet" not in left, left)
 check("his own message on it does not count as her answer", "quiet" not in left)
 check("one she answered within three days stays", "answered" in left, left)
+check("a want never routed to her is not dismissed for her silence", "unrouted" in left, left)
 check("a want made yesterday stays", "fresh" in left, left)
 check("a want still working through its steps stays", "running" in left, left)
 dis = json.load(open(WC.DISCUSSIONS.replace("want-discussions", "dismissed-wants")))
@@ -77,7 +79,7 @@ WC.move_on(now=NOW)
 check("a finished want the door refuses is dismissed instead of held", json.load(open(WC.WANTS)) == [])
 
 # the wants log runs it, and leaves completed ambitions out
-json.dump([{"id": "stale", "want": "an old want", "timestamp": iso(9)}], open(WC.WANTS, "w"))
+json.dump([{"id": "stale", "want": "an old want", "timestamp": iso(9), "gloria_routed": True}], open(WC.WANTS, "w"))
 json.dump({"goals": [{"goal": "BUILT THE BELL", "progress": "Completed"}, {"goal": "learn the tides", "progress": "in progress"}]},
           open(os.path.join(MEM, "ambitions.json"), "w"))
 spec = importlib.util.spec_from_file_location("wal_t", os.path.join(REPO, "bin", "wants-ambitions-log.py"))
