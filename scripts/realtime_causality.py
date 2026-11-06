@@ -40,6 +40,10 @@ def parse_ts(x):
     except Exception:
         return None
 
+def _mark_seen(newest):
+    json.dump({"last": newest.isoformat(), "updated": datetime.now(timezone.utc).isoformat()},
+              open(STATE, "w"), indent=2)
+
 def main():
     sys.path.insert(0, SCRIPTS)
     from causality_engine import load_emotional_trajectory, find_spikes
@@ -53,6 +57,19 @@ def main():
         return                                             # no NEW spike — cheap poll, exit quiet
 
     since = (last or times[0]).isoformat()
+    # The day's JEPA slice spent means nothing this poll forms can be kept: mark the spike
+    # seen and stop before the evidence pass and the model call (they used to run for every
+    # spike all evening after the budget was gone).
+    try:
+        spec = importlib.util.spec_from_file_location("ceng", CENG)
+        c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+        budget = c.formation_budget(c.load_existing_hypotheses(), "causal-jepa")
+    except Exception as e:
+        log(f"engine load failed: {e}"); return
+    if budget <= 0:
+        _mark_seen(newest)
+        log(f"NEW spike {newest.isoformat()} — today's JEPA formation budget is used; not reasoned")
+        return
     log(f"NEW spike {newest.isoformat()} (last {last.isoformat() if last else 'none'}) — forming now")
 
     # 1) evidence for the new spike(s) only (torch venv)
@@ -65,8 +82,6 @@ def main():
     # 2) reason + RECORD into the same 7-day trial db (reuses the engine's function)
     n = 0
     try:
-        spec = importlib.util.spec_from_file_location("ceng", CENG)
-        c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
         db = c.load_existing_hypotheses()
         # one spike, one hypothesis. At cap=3 every 20 minutes this pool grew ~45/day against a
         # 7-day expiry, so almost everything died unmarked and the few real ones drowned.
@@ -82,8 +97,7 @@ def main():
     except Exception as e:
         log(f"consumers failed: {e}")
 
-    json.dump({"last": newest.isoformat(), "updated": datetime.now(timezone.utc).isoformat()},
-              open(STATE, "w"), indent=2)
+    _mark_seen(newest)
     log(f"realtime: recorded {n} hypothesis/es for spike {newest.isoformat()} + routed to subconscious")
 
 if __name__ == "__main__":

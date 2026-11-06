@@ -147,7 +147,7 @@ class CausalityLifecycleTests(unittest.TestCase):
         self.assertEqual(ready["state"], "HELD")
         self.assertEqual(ready["reason"], "nightly_history_incomplete")
 
-    def test_unreachable_reviewer_retires_at_the_tenure_gate(self):
+    def test_unreachable_reviewer_defers_then_holds_after_the_retry_cap(self):
         h = self.hypothesis(formed="2026-08-01")
         for n in range(1, 8):
             day = f"2026-08-{n+1:02d}"
@@ -164,6 +164,16 @@ class CausalityLifecycleTests(unittest.TestCase):
             self.c.MEMORY = td
             sys.modules["requests"] = fake_requests
             try:
+                outcomes = []
+                for _ in range(self.c.REVIEW_RETRY_CAP - 1):
+                    outcomes.append(self.c.graduate_hypotheses(db))
+                    # A broken reviewer is not a rejection: still eligible, retried next night.
+                    self.assertIn(h, db["hypotheses"])
+                    self.assertEqual(h["status"], "eligible_day_7")
+                    self.assertEqual(h["graduation_review"]["state"], "error")
+                    self.assertNotIn("retirement", h)
+                self.assertEqual(h["graduation_review"]["attempts"], self.c.REVIEW_RETRY_CAP - 1)
+                self.assertEqual(outcomes, [(0, 0)] * (self.c.REVIEW_RETRY_CAP - 1))
                 graduated, retired = self.c.graduate_hypotheses(db)
             finally:
                 if old_requests is None:
@@ -171,6 +181,7 @@ class CausalityLifecycleTests(unittest.TestCase):
                 else:
                     sys.modules["requests"] = old_requests
         self.assertEqual((graduated, retired), (0, 1))
+        self.assertEqual(h["retirement"]["reviewer_errors"], self.c.REVIEW_RETRY_CAP)
         self.assertFalse(h["graduated"])
         self.assertEqual(h["status"], "retired")
         self.assertEqual(h["retirement"]["reason"], "graduation_review_held")

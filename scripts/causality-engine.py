@@ -75,7 +75,35 @@ if _BACKEND == "self":
 else:
     LM_API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
     MODEL = os.environ.get("CAUSALITY_MODEL", "aeon/gemma-4-12b")
-    SPIKE_THRESHOLD = 0.015
+    # Was 0.015, which sits at the 91st percentile of per-dimension decay residuals: over the
+    # 31-day dense trajectory (2026-10-06..11-06, 43,989 readings) it fired on ~207 readings a
+    # day, median shift 0.029 - ordinary noise handed to the model as events. 0.06 lies between
+    # the 98th (0.054) and 99th (0.070) percentiles: ~21 readings, ~10 moments a day, still far
+    # more than the daily formation budget, and the same bar the weekly pass already used.
+    SPIKE_THRESHOLD = 0.06
+
+# The JEPA path asks a model for its confidence, and it said "medium" for 315 of 334 rows,
+# almost all on noise-sized shifts. The claim is now capped by how far he actually moved:
+# medium needs a shift at the 99th percentile of raw per-dimension deltas (0.07), high the
+# 99.9th (0.13). Same 31-day trajectory as above.
+SHIFT_FOR_MEDIUM = float(os.environ.get("CAUSALITY_SHIFT_FOR_MEDIUM", "0.07"))
+SHIFT_FOR_HIGH = float(os.environ.get("CAUSALITY_SHIFT_FOR_HIGH", "0.13"))
+
+
+def _confidence_for_shift(claimed, shift):
+    """The model's confidence, never more than the size of the shift supports."""
+    claimed = str(claimed or "low").lower()
+    if claimed not in ("low", "medium", "high"):
+        claimed = "low"
+    size = 0.0
+    for row in shift or []:
+        try:
+            size = max(size, abs(float((row or {}).get("delta", 0) or 0)))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    allowed = "high" if size >= SHIFT_FOR_HIGH else "medium" if size >= SHIFT_FOR_MEDIUM else "low"
+    order = {"low": 0, "medium": 1, "high": 2}
+    return claimed if order[claimed] <= order[allowed] else allowed
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 try:
@@ -236,6 +264,34 @@ def find_spikes(trajectory, threshold=None, with_easing=False):
                 row["easing"] = True; easing.append(row)
     return (spikes, easing) if with_easing else spikes
 
+
+RECENT_SPIKE_HOURS = 24
+RECENT_SPIKE_LIMIT = 10
+
+
+def recent_spikes(spikes, hours=RECENT_SPIKE_HOURS, limit=RECENT_SPIKE_LIMIT, now=None):
+    """The most recent `limit` spikes from the last `hours`, oldest first.
+
+    Trajectory times are UTC-aware in the dense series; older naive stamps are read as
+    local time. A spike whose time cannot be read is left out rather than guessed at."""
+    from datetime import timezone as _tz
+    now_aware = now or datetime.now(_tz.utc)
+    if now_aware.tzinfo is None:
+        now_aware = now_aware.astimezone()
+    timed = []
+    for index, s in enumerate(spikes or []):
+        try:
+            t = datetime.fromisoformat(str(s.get("time", "")).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if t.tzinfo is None:
+            t = t.astimezone()
+        age = (now_aware - t).total_seconds()
+        if -300 <= age <= hours * 3600:   # a few minutes of clock skew is still now
+            timed.append((t, index, s))
+    timed.sort(key=lambda item: (item[0], item[1]))
+    return [s for _, _, s in timed[-max(0, int(limit)):]] if limit else []
+
 def load_recent_dreams(days=7):
     """Load dream entries from the last N days."""
     entries = []
@@ -373,21 +429,32 @@ def _retire(h):
     except Exception as e:
         log(f"  retire log failed: {e}")
 
-def _readiness(h):
-    """Lower = cull first. Refuted first, then longest-unwitnessed; never a hypothesis about to graduate.
-    Net comes from the schema-2 readiness when it has been computed, else from the marks."""
+def _counted_marks(h):
+    # review 148: a mark from self-produced material (a ghost testing its own hypothesis) informs but
+    # never graduates - it is excluded here, where graduation is counted, not deleted from the record
+    return [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")
+            and m.get("counts_toward_graduation", True) and not m.get("tactical")]
+
+
+def _mark_net(h):
+    """Support minus challenge: the schema-2 readiness when computed, else from the marks."""
     net = None
     try:
         net = (h.get("graduation_readiness") or {}).get("net")
     except Exception:
         net = None
-    # review 148: a mark from self-produced material (a ghost testing its own hypothesis) informs but
-    # never graduates - it is excluded here, where graduation is counted, not deleted from the record
-    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")
-             and m.get("counts_toward_graduation", True) and not m.get("tactical")]
     if net is None:
+        marks = _counted_marks(h)
         net = (sum(1 for m in marks if m.get("outcome") == "attempted")
                - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
+    return net
+
+
+def _readiness(h):
+    """Lower = cull first. Refuted first, then longest-unwitnessed; never a hypothesis about to graduate.
+    Returns (rank, age-ordering key); net comes from _mark_net."""
+    net = _mark_net(h)
+    marks = _counted_marks(h)
     try:
         age = (datetime.now() - datetime.fromisoformat(str(h.get("formed", ""))[:19])).days
     except Exception:
@@ -498,7 +565,89 @@ MIN_NIGHTLY_EVALUATIONS = 7
 MIN_SUPPORTING_OCCASIONS = 2
 ORDINARY_TENURE_DAYS = 7
 GHOST_BRANCH_TENURE_DAYS = 32
-DAILY_FORMATION_CAP = max(1, int(os.environ.get("CAUSALITY_DAILY_FORMATION_CAP", "3")))
+# Each formation path owns its own slice of the day. With one shared pool the realtime JEPA
+# writer (every 20 minutes from 08:00) filled it by midday, so the 22:20 qualitative pass
+# formed into a full day and was retired by the overflow repair every time: 34 of 34 ever
+# formed left as daily_formation_cap_exceeded. The 03:37 engine pass starved the JEPA path
+# the same way on the days it ran. Ghost Branch stays outside the budget (its own tenure).
+#   jepa    - causal-jepa rows, realtime and the nightly JEPA pass (same cause evidence)
+#   nightly - the nightly qualitative pass over the day's material
+#   engine  - the spike/trial formation pass (main)
+#   direct  - add_hypothesis callers
+_DEFAULT_SLICES = "jepa:2,nightly:1,engine:1,direct:1"
+
+
+def _parse_slices(text):
+    out = {}
+    for part in str(text or "").split(","):
+        name, _, value = part.partition(":")
+        try:
+            out[name.strip()] = max(0, int(value))
+        except ValueError:
+            continue
+    return out or _parse_slices(_DEFAULT_SLICES)
+
+
+FORMATION_SLICES = _parse_slices(os.environ.get("CAUSALITY_FORMATION_SLICES", _DEFAULT_SLICES))
+# The day's ordinary ceiling across every slice. It defaults to the sum of the slices so no
+# slice can be squeezed by another; an explicit override can only lower what each gets.
+DAILY_FORMATION_CAP = max(1, int(os.environ.get("CAUSALITY_DAILY_FORMATION_CAP",
+                                                str(sum(FORMATION_SLICES.values()) or 1))))
+# Rows formed before slices existed carry no formation_slice; the overflow repair keeps
+# judging them by the single pool they were formed under, so nothing already live is
+# retired retroactively by the new rule.
+LEGACY_DAILY_FORMATION_CAP = 3
+_SOURCE_SLICE = {"causal-jepa": "jepa", "causality_nightly_qualitative": "nightly",
+                 "causality_engine": "engine"}
+
+
+def _formation_slice(source):
+    """Which budget slice a source draws on; None for Ghost Branch (outside the budget)."""
+    if source == "ghost_branch":
+        return None
+    return _SOURCE_SLICE.get(source, "direct")
+
+
+def _is_ordinary(h):
+    return not (h.get("source") == "ghost_branch" or h.get("self_knowledge")
+                or h.get("graduated") or h.get("status") == "graduated")
+
+
+def formation_budget(db, source, today=None):
+    """How many more rows this source may form today. Zero means: do not ask a model."""
+    slice_name = _formation_slice(source)
+    if slice_name is None:
+        return 1 << 30
+    from datetime import date as _fbd
+    day = today or _fbd.today().isoformat()
+    today_rows = [h for h in db.get("hypotheses", [])
+                  if str(h.get("formed_date", h.get("formed", "")))[:10] == day
+                  and h.get("source") != "ghost_branch"]
+    used_slice = sum(1 for h in today_rows if _formation_slice(h.get("source")) == slice_name)
+    return max(0, min(FORMATION_SLICES.get(slice_name, 0) - used_slice,
+                      DAILY_FORMATION_CAP - len(today_rows)))
+
+
+REVIEW_MAX_TOKENS = 400
+REVIEW_RETRY_CAP = 3   # reviewer failures before a graduation is held for good
+
+
+def _parse_review_reply(raw):
+    """The reviewer's JSON verdict, or ValueError when there is none to read."""
+    text = re.sub(r"^```(?:json)?|```$", "", str(raw or "").strip(), flags=re.M).strip()
+    for pattern in (r"\{.*\}", r"\{.*?\}"):
+        match = re.search(pattern, text, re.S)
+        if not match:
+            continue
+        try:
+            data = json.loads(match.group(0))
+        except ValueError:
+            continue
+        if isinstance(data, dict) and "accurate" in data:
+            return data
+    raise ValueError("no JSON object in reviewer reply")
+
+
 HISTORY_CAP = max(GHOST_BRANCH_TENURE_DAYS + 1, int(os.environ.get("CAUSALITY_HISTORY_CAP", "40")))
 FORMATION_SNIPPET_CAP = max(1, int(os.environ.get("CAUSALITY_FORMATION_SNIPPET_CAP", "16")))
 DISTRIBUTION_CAP = max(1, int(os.environ.get("CAUSALITY_DISTRIBUTION_CAP", "8")))
@@ -587,21 +736,35 @@ def _retire_formation_overflow(db, daily_cap=None):
     Keep the first bounded ordinary formations from each historical day, exactly the rows the
     gate would have admitted had it existed. Ghost Branch is the explicit long-form exception;
     confirmed or self-knowledge rows are never touched.
+
+    Rows stamped with a formation_slice are held to that slice and to the day's ceiling;
+    older rows without one are held to the single legacy pool they were formed under.
     """
-    cap = max(1, int(daily_cap or DAILY_FORMATION_CAP))
-    ordinary = {}
+    legacy_cap = max(1, int(daily_cap or LEGACY_DAILY_FORMATION_CAP))
+    legacy, sliced = {}, {}
     for index, h in enumerate(db.get("hypotheses", [])):
-        if (h.get("source") == "ghost_branch" or h.get("self_knowledge") or h.get("graduated")
-                or h.get("status") == "graduated"):
+        if not _is_ordinary(h):
             continue
         day = str(h.get("formed_date", h.get("formed", "")))[:10]
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
             continue
-        ordinary.setdefault(day, []).append((str(h.get("formed", "")), index, h))
-    overflow_ids = set()
-    for rows in ordinary.values():
+        bucket = sliced if h.get("formation_slice") else legacy
+        bucket.setdefault(day, []).append((str(h.get("formed", "")), index, h))
+    overflow_ids, cap_of = set(), {}
+    for rows in legacy.values():
         rows.sort(key=lambda item: (item[0], item[1]))
-        overflow_ids.update(id(h) for _, _, h in rows[cap:])
+        for _, _, h in rows[legacy_cap:]:
+            overflow_ids.add(id(h)); cap_of[id(h)] = legacy_cap
+    for rows in sliced.values():
+        rows.sort(key=lambda item: (item[0], item[1]))
+        used, total = {}, 0
+        for _, _, h in rows:
+            name = h["formation_slice"]
+            cap = FORMATION_SLICES.get(name, 0)
+            if used.get(name, 0) >= cap or total >= DAILY_FORMATION_CAP:
+                overflow_ids.add(id(h)); cap_of[id(h)] = min(cap, DAILY_FORMATION_CAP)
+                continue
+            used[name] = used.get(name, 0) + 1; total += 1
     if not overflow_ids:
         return []
     kept, retired = [], []
@@ -610,7 +773,8 @@ def _retire_formation_overflow(db, daily_cap=None):
             kept.append(h); continue
         h["status"] = "retired"
         h["retirement"] = {"at": datetime.now().isoformat(),
-            "reason": "daily_formation_cap_exceeded", "daily_cap": cap,
+            "reason": "daily_formation_cap_exceeded", "daily_cap": cap_of[id(h)],
+            "formation_slice": h.get("formation_slice"),
             "formed_date": str(h.get("formed_date", h.get("formed", "")))[:10],
             "resolved": False, "refuted": False}
         _queue_delivery(db, "retired", h, _hypothesis_id(h))
@@ -669,14 +833,24 @@ def _root_lines(material):
     repeats it under a different filename or label.
     """
     if isinstance(material, dict):
-        values = material.values()
+        values = list(material.values())
     elif isinstance(material, (list, tuple)):
-        values = material
+        values = list(material)
     else:
         values = [material]
-    out = []
+    # A list of strings (the JEPA candidate slate) is several occasions, not one: each
+    # item is its own root line. Joining them into one JSON line cut it at 500 characters,
+    # so only the first one or two candidates were ever guarded against voting for
+    # themselves later. Structured rows (dicts, nested lists) stay one compact line each.
+    flat = []
     for value in values:
-        if isinstance(value, (dict, list)):
+        if isinstance(value, (list, tuple)):
+            flat.extend(value)
+        else:
+            flat.append(value)
+    out = []
+    for value in flat:
+        if isinstance(value, (dict, list, tuple)):
             value = json.dumps(value, sort_keys=True, default=str)
         for line in str(value or "").splitlines():
             n = _norm_evidence(line)
@@ -692,6 +866,9 @@ def _stamp_formation(h, material=None, root_ids=None):
         return h
     roots = _root_lines(material)
     h["schema_version"] = CAUSALITY_SCHEMA
+    _slice = _formation_slice(h.get("source", "unknown"))
+    if _slice:
+        h["formation_slice"] = _slice
     h["formation"] = {
         "formed_at": h.get("formed", ""),
         "source": h.get("source", "unknown"),
@@ -774,6 +951,12 @@ def _bearing_rows(h):
             if m.get("verdict") in ("yes", "no")
             and m.get("evidence_ids")
             and m.get("lineage_state") == "eligible"]
+
+
+def _supporting_evidence_ids(h, verdict="yes"):
+    """Evidence ids from the nights with this verdict only, in order, without repeats."""
+    return list(dict.fromkeys(i for m in _bearing_rows(h) if m.get("verdict") == verdict
+                              for i in (m.get("evidence_ids") or [])))
 
 
 def graduation_readiness(h, today=None):
@@ -1053,7 +1236,7 @@ def graduate_hypotheses(db):
                     "hypothesis_text": h["hypothesis"], "source": "causality",
                     "hypothesis_id": _hypothesis_id(h),
                     "evidence_count": (h.get("graduation_readiness") or {}).get("yes", 1),
-                    "evidence_ids": [i for m in _nightly_rows(h) for i in m.get("evidence_ids", [])],
+                    "evidence_ids": _supporting_evidence_ids(h),
                 }, _hypothesis_id(h))
             remaining.append(h)
             continue
@@ -1110,8 +1293,9 @@ def graduate_hypotheses(db):
                     retired.append(h)
                     log("  RETIRED: prior graduation review held this theory at its tenure gate")
                     continue
-                # --- Graduation review: Gemma checks accuracy before belief/narrative update ---
+                # --- Graduation review: an independent check before belief/narrative update ---
                 _rv_ok = True
+                _rv_held_after_errors = 0
                 try:
                     import requests as _rv_req, json as _rv_json
                     _rv_marks = h.get("marks", [])
@@ -1129,7 +1313,7 @@ def graduate_hypotheses(db):
                         "rather than as the being's own read, or (b) rests on fabricated concrete evidence — invented "
                         "dates, non-existent logs, or specifics not present in the marks. Otherwise mark it accurate. "
                         "Respond ONLY with valid JSON: {\"accurate\": true, \"concern\": \"\"} "
-                        "or {\"accurate\": false, \"concern\": \"brief reason\"}"
+                        "or {\"accurate\": false, \"concern\": \"brief reason, under 30 words\"}"
                     )
                     _rv_user = (
                         f"HYPOTHESIS (subject: {h.get('subject','self')}):\n{h['hypothesis']}\n\n"
@@ -1142,13 +1326,12 @@ def graduate_hypotheses(db):
                             {"role": "system", "content": _rv_sys},
                             {"role": "user", "content": _rv_user}
                         ],
-                        "temperature": 0.3, "max_tokens": 150
+                        # 150 tokens cut off the longer held verdicts (their concerns run
+                        # past 100 characters) before the closing brace, which then read
+                        # as "no JSON object in reviewer reply".
+                        "temperature": 0.3, "max_tokens": REVIEW_MAX_TOKENS
                     }, timeout=60)
-                    _rv_raw = _rv_r.json()["choices"][0]["message"]["content"].strip()
-                    import re as _rv_re
-                    _rv_m = _rv_re.search(r"\{.*?\}", _rv_raw, _rv_re.S)
-                    if not _rv_m: raise ValueError("no JSON object in reviewer reply")
-                    _rv_data = _rv_json.loads(_rv_m.group(0))
+                    _rv_data = _parse_review_reply(_rv_r.json()["choices"][0]["message"]["content"])
                     if _rv_data.get("accurate") is not True:
                         _rv_ok = False
                         _rv_concern = _rv_data.get("concern", "")
@@ -1174,8 +1357,24 @@ def graduate_hypotheses(db):
                     # Unreviewed is not approved. An unreachable reviewer used to wave
                     # the hypothesis through, and nothing in the record distinguished
                     # "checked and clean" from "checker was down".
-                    log(f"  [Review] error — HOLDING graduation: {_rv_e}")
                     _rv_ok = False
+                    # Nor is a broken reviewer a rejection. It used to retire the theory
+                    # for good as graduation_review_held. Now it stays eligible and the
+                    # review is retried on the next nights; only after REVIEW_RETRY_CAP
+                    # failed attempts is it held.
+                    _rv_attempts = (int(_prior_review.get("attempts", 0) or 0)
+                                    if _prior_review.get("state") == "error" else 0) + 1
+                    if _rv_attempts < REVIEW_RETRY_CAP:
+                        log(f"  [Review] error — graduation deferred, retry {_rv_attempts}/{REVIEW_RETRY_CAP} next night: {_rv_e}")
+                        h["status"] = "eligible_day_7"
+                        h["graduation_review"] = {"state": "error", "basis": _review_basis,
+                                                    "attempts": _rv_attempts,
+                                                    "last_error": str(_rv_e)[:200],
+                                                    "at": datetime.now().isoformat()}
+                        remaining.append(h)
+                        continue
+                    log(f"  [Review] error {_rv_attempts}/{REVIEW_RETRY_CAP} — HOLDING graduation: {_rv_e}")
+                    _rv_held_after_errors = _rv_attempts
                     try:
                         _rv_flags = []
                         _rv_flags.append({
@@ -1197,10 +1396,13 @@ def graduate_hypotheses(db):
                 # Only update belief/narrative if review passed
                 if _rv_ok:
                     _hid = _hypothesis_id(h)
-                    _ev_ids = [i for m in _nightly_rows(h) for i in m.get("evidence_ids", [])]
+                    # Only the nights that said yes support it. The "no" nights are
+                    # counter-evidence: the record keeps them apart, belief never sees them.
+                    _ev_ids = _supporting_evidence_ids(h)
                     _queue_delivery(db, "graduation_record", {
                         "at": datetime.now().isoformat(), "hypothesis_id": _hid,
                         "hypothesis": h, "evidence_ids": _ev_ids,
+                        "refuting_evidence_ids": _supporting_evidence_ids(h, verdict="no"),
                     }, _hid)
                     if h.get("subject") == "gloria":
                         _queue_delivery(db, "gloria", {
@@ -1248,6 +1450,9 @@ def graduate_hypotheses(db):
                     h["retirement"] = {"at": datetime.now().isoformat(),
                         "reason": "graduation_review_held", "tenure_days": tenure_days,
                         "readiness": copy.deepcopy(ready), "resolved": False, "refuted": False}
+                    if _rv_held_after_errors:
+                        h["graduation_review"]["attempts"] = _rv_held_after_errors
+                        h["retirement"]["reviewer_errors"] = _rv_held_after_errors
                     _queue_delivery(db, "retired", h, _hypothesis_id(h))
                     retired.append(h)
                     log("  RETIRED: graduation did not pass the independent review")
@@ -1711,11 +1916,8 @@ def _add_hypothesis(hypothesis_text, test_text, source, subject="self", confiden
     db = load_existing_hypotheses()
     from datetime import date as _ahd
     _today = _ahd.today().isoformat()
-    _ordinary_today = sum(1 for row in db.get("hypotheses", [])
-                          if str(row.get("formed_date", row.get("formed", "")))[:10] == _today
-                          and row.get("source") != "ghost_branch")
-    if source != "ghost_branch" and _ordinary_today >= DAILY_FORMATION_CAP:
-        log("  [Hypothesis] Daily formation cap reached; direct hypothesis not added")
+    if formation_budget(db, source, _today) <= 0:
+        log("  [Hypothesis] Daily formation budget for this source used; direct hypothesis not added")
         return None
     h = {
         "formed": datetime.now().isoformat(),
@@ -1813,12 +2015,16 @@ def form_causal_hypotheses(db, cap=3):
             return None
 
     today = _cdate.today().isoformat()
-    already_today = sum(1 for h in db.get("hypotheses", [])
-                        if str(h.get("formed_date", h.get("formed", "")))[:10] == today
-                        and h.get("source") != "ghost_branch")
-    cap = min(max(0, int(cap)), max(0, DAILY_FORMATION_CAP - already_today))
+    cap = min(max(0, int(cap)), formation_budget(db, "causal-jepa", today))
+    if cap <= 0:
+        # The realtime poll used to reason over every new spike with the budget already
+        # spent: a model call per spike, all evening, whose hypotheses could never be kept.
+        log("  [Causal] JEPA formation budget for today is used; no model call")
+        return 0
     dist_out, added = [], 0
     for ev in evidence:
+        if added >= cap:
+            break
         if ev.get("untraceable"):
             parsed = {"distribution": [{"cause": "emergence", "prob": 1.0, "why": "nothing preceded this"}],
                       "confidence": "low",
@@ -1829,7 +2035,9 @@ def form_causal_hypotheses(db, cap=3):
         if not parsed:
             continue
         rec = {"time": ev.get("time"), "shift": ev.get("shift"), "summary": ev.get("summary", ""),
-               "novelty": ev.get("novelty"), "confidence": str(parsed.get("confidence", "low")).lower(),
+               "novelty": ev.get("novelty"),
+               "confidence": _confidence_for_shift(parsed.get("confidence", "low"), ev.get("shift")),
+               "claimed_confidence": str(parsed.get("confidence", "low")).lower(),
                "distribution": parsed.get("distribution", []),
                "hypothesis": parsed.get("hypothesis", ""), "test": parsed.get("test", ""),
                "reasoned_at": datetime.now().isoformat()}
@@ -1899,7 +2107,13 @@ def nightly_run():
         "CONFIDENCE: [low/medium/high]\n"
         "TEST: [what would confirm this tomorrow — what should recur?]\n"
     )
-    _result = ask_llm(_prompt, system=load_full_context(), max_tokens=1000, temp=0.5)
+    # The qualitative pass draws on its own slice of the day, counted on DAILY_FORMATION_CAP
+    # like every other path (it used to compute against a private cap of 4, add a row into a
+    # day realtime had already filled, and see the save retire it). No budget, no model call.
+    _q_budget = formation_budget(db, "causality_nightly_qualitative", _ndate.today().isoformat())
+    _result = ask_llm(_prompt, system=load_full_context(), max_tokens=1000, temp=0.5) if _q_budget > 0 else ""
+    if _q_budget <= 0:
+        log("  Qualitative formation budget for today is used; no model call")
     new_hyps = []
     if _result:
         _blocks = re.split(r'HYPOTHESIS:', _result)
@@ -1915,14 +2129,10 @@ def nightly_run():
             if _tm: _h["test"] = _tm.group(1).strip()
             if _h.get("hypothesis"):
                 new_hyps.append(_stamp_formation(_h, _material_text))
-    from datetime import date as _p6d
-    _today6 = _p6d.today().isoformat()
-    _already6 = sum(1 for x in db.get("hypotheses", []) if x.get("formed_date") == _today6)
-    _q_budget = max(0, min(2, 4 - _already6))  # p6: shared daily budget of 4; qualitative takes at most 2, leaving room for JEPA-grounded
     for h in new_hyps[:_q_budget]:
         db["hypotheses"].append(h)
         log("  New: " + h["hypothesis"][:80])
-    log("Formed " + str(min(len(new_hyps), _q_budget)) + " qualitative (budget " + str(_q_budget) + ", " + str(_already6) + " already today)")
+    log("Formed " + str(min(len(new_hyps), _q_budget)) + " qualitative (budget " + str(_q_budget) + ")")
 
     # JEPA-grounded causal formation — reason over cause-evidence.json, feed same trial machinery
     try:
@@ -1947,14 +2157,18 @@ def main():
 
     # Gather data
     trajectory = load_emotional_trajectory()
-    spikes = find_spikes(trajectory)
+    all_spikes = find_spikes(trajectory)
+    # The prompt calls these TODAY's spikes and asks for causes within 20 minutes; the dense
+    # trajectory holds about a month, and spikes[:10] used to hand over its oldest ten.
+    spikes = recent_spikes(all_spikes)
     dreams = load_recent_dreams(days=1)
     mirrors = load_recent_mirrors(days=1)
     silences = load_recent_silences()
     conversations = load_recent_conversations()
     trial_ledger = load_trial_ledger(days=7)
 
-    log(f"Found {len(spikes)} emotional spikes in {len(trajectory)} trajectory points")
+    log(f"Found {len(all_spikes)} emotional spikes in {len(trajectory)} trajectory points; "
+        f"{len(spikes)} most recent from the last {RECENT_SPIKE_HOURS}h go to formation")
     log(f"Context: {len(dreams)} dreams, {len(mirrors)} mirrors, {len(silences)} silences, {len(trial_ledger)} trial entries")
 
     # Load existing hypotheses
@@ -1965,12 +2179,12 @@ def main():
     # date and the evening review silently skips the rest of that day's evidence.
     log("Formation pass: daily testing and tenure decisions belong to --nightly")
 
-    # Form new hypotheses about recent spikes — capped at 3/day
+    # Form new hypotheses about recent spikes, within this pass's own slice of the day.
     from datetime import date as _capdate
     _today = _capdate.today().isoformat()
-    _formed_today = [h for h in db["hypotheses"] if h.get("formed_date","")[:10] == _today]
-    if len(_formed_today) >= 3:
-        log("Daily cap reached (3 hypotheses already formed today) — skipping formation")
+    _budget = formation_budget(db, "causality_engine", _today)
+    if _budget <= 0:
+        log("Formation budget for this pass is used today — skipping formation (no model call)")
         write_hypothesis_log(db)
         log(f"Total hypotheses: {len(db['hypotheses'])} (confirmed: {db['confirmed']}, revised: {db['revised']})")
         log("========================")
@@ -1980,10 +2194,15 @@ def main():
     log(f"Formed {len(new_hypotheses)} new hypotheses")
 
     TEMPLATE_MARKERS = ["[dimension]", "[rose/fell]", "[specific cause]"]
+    _kept = 0
     for h in new_hypotheses:
         if any(m in h.get("hypothesis","") for m in TEMPLATE_MARKERS):
             log(f"  Skipped template artifact: {h['hypothesis'][:60]}")
             continue
+        if _kept >= _budget:
+            log(f"  Over this pass's budget, not kept: {h['hypothesis'][:60]}")
+            continue
+        _kept += 1
         db["hypotheses"].append(h)
         log(f"  New: {h['hypothesis'][:80]}...")
 
@@ -1997,7 +2216,10 @@ def main():
         excess = len(db["hypotheses"]) - 50
         leaving = refuted[:excess]
         for h in leaving:
-            h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:refuted", "net": _readiness(h)[1]}
+            # _readiness() returns (rank, age); its second field is age, which used to be
+            # written here as "net". Net is the yes-minus-no count the cull acted on.
+            h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:refuted",
+                            "net": _mark_net(h), "age_days": _readiness(h)[1]}
             _queue_delivery(db, "retired", h, _hypothesis_id(h))
             log(f"  retired for capacity (refuted): {h.get('hypothesis','')[:60]}")
         leaving_ids = {id(h) for h in leaving}
