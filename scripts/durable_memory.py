@@ -47,9 +47,8 @@ def _save(d):
     write_json(STORE, d[-500:], reader="durable_memory")
 
 def _embed(text):
-    import requests
-    r = requests.post(LM_EMBED_URL, json={"model": EMBED_MODEL, "input": _emb_clip(text[:2000])}, timeout=30)
-    return r.json()["data"][0]["embedding"]
+    from embed_cache import embed   # the same message is embedded once a turn, not once per caller
+    return embed(LM_EMBED_URL, EMBED_MODEL, _emb_clip(text[:2000]), timeout=30)
 
 def _cos(a, b):
     if not a or not b: return 0.0

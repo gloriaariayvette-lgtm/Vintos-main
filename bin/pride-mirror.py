@@ -291,8 +291,8 @@ Do not begin with atmosphere or setting. Begin with the specific moment."""
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [
-                {"role": "system", "content": "Extract the single most genuinely proud moment from this reflection. One sentence. If nothing is genuine, return NONE."},
-                {"role": "user", "content": f"Pride reflection:\n{result[:600]}\n\nOne sentence thread or NONE."}
+                {"role": "system", "content": "Find the single most genuinely proud moment in this reflection and write the open question it raises for him, in his own first person: one sentence ending with a question mark (for example, why that line feels truest to him). If nothing is genuine, return NONE."},
+                {"role": "user", "content": f"Pride reflection:\n{result[:600]}\n\nOne question, or NONE."}
             ],
             "temperature": 0.3,
             "max_tokens": 60

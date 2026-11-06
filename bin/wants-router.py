@@ -303,14 +303,14 @@ def _want_end_verdict(want):
         # run); it is never fulfilled on nothing. Stranding is prevented by the retry, not by crediting.
         return "held", "judge unavailable: %s" % str(_je)[:80]
 
-def _dismiss_want_with_reason(want, haiku):
+def _dismiss_want_with_reason(want, haiku, by="haiku-verdict"):
     want["dismissed"] = True
     want["dismissed_reason"] = haiku
     want["_delete"] = True
     try:   # review 254: one completion door; the ledger write below stays as the fallback when it is unavailable
         import sys as _wc_s; _wc_s.path.insert(0, SCRIPTS)
         import want_completion as _wc
-        if _wc.complete(want, "dismissed", "haiku-verdict", note=haiku).get("result") == "dismissed":
+        if _wc.complete(want, "dismissed", by, note=haiku).get("result") == "dismissed":
             return
     except Exception as _wce:
         log(f"want_completion unavailable: {_wce}")
@@ -2390,7 +2390,9 @@ def main():
                 action = "dismiss"
                 log(f"  → Journal-seeded (non-communicative) want to gloria — dismissing")
             if action == "dismiss":
-                want["_delete"] = True
+                # through the one door, so the ending is archived and logged (it used to vanish with _delete)
+                _dismiss_want_with_reason(want, "the router found no route for it" if not want.get("journal_seeded")
+                                          else "journal-seeded want routed to Gloria, not communicative", by="router-dismiss")
                 log(f"  → Auto-dismissed and removed")
                 continue
 

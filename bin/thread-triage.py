@@ -46,7 +46,7 @@ LM_API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-from thread_store import save_pool, append_retired  # one door: shrink-guarded pool writes, one archive shape
+from thread_store import save_pool, append_retired, note_triage, pipeline_protected, PROTECT_TRIAGES  # one door: shrink-guarded pool writes, one archive shape
 HAS_EMOCLAW = False
 try:
     from emoclaw_utils import get_state, seed_thread, recent_pearls
@@ -293,6 +293,7 @@ PULL: [1-5]"""
             log(f"  [{source}] no PULL verdict (model error/empty) — counters untouched")
             continue
         t["triage_last_status"] = "verdict"
+        note_triage(t)   # counts triages since the last dream/mirror/therapy pass
 
         # Update thread with priority and voice
         t["priority"] = pull
@@ -306,19 +307,19 @@ PULL: [1-5]"""
             t["consumed_by"] = "triage-dissolved"
             log(f"  [{source}] pull=1 — dissolved on contact")
         elif pull == 2 and tc >= 2:
-            if t.get("dream_passes", 0) == 0 and t.get("mirror_passes", 0) == 0 and t.get("therapy_passes", 0) == 0:
+            if not pipeline_protected(t):   # no passes, or none new in PROTECT_TRIAGES triages
                 t["consumed"] = True
                 t["consumed_by"] = "triage-aged-out"
                 log(f"  [{source}] pull=2 aged out after {tc} passes")
             else:
-                log(f"  [{source}] pull=2 protected from age-out (pipeline passes present)")
+                log(f"  [{source}] pull=2 protected from age-out (a pass within the last {PROTECT_TRIAGES} triages)")
         elif pull == 3 and tc >= 3:
-            if t.get("dream_passes", 0) == 0 and t.get("mirror_passes", 0) == 0 and t.get("therapy_passes", 0) == 0:
+            if not pipeline_protected(t):   # no passes, or none new in PROTECT_TRIAGES triages
                 t["consumed"] = True
                 t["consumed_by"] = "triage-aged-out"
                 log(f"  [{source}] pull=3 aged out after {tc} passes")
             else:
-                log(f"  [{source}] pull=3 protected from age-out (pipeline passes present)")
+                log(f"  [{source}] pull=3 protected from age-out (a pass within the last {PROTECT_TRIAGES} triages)")
 
         triage_entries.append({
             "id": t.get("id", ""),

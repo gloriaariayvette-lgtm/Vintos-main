@@ -573,21 +573,39 @@ if not dream:
     sys.exit(0)
 
 log_path = os.path.expanduser("~/.vintos/workspace/memory/dream-log.json")
-def _record_verdict(verdict, consumed_ids=(), unresolved_ids=()):
-    """Stamp the verdict on tonight's last dream entry and fill the night's thread ledgers."""
+def _record_verdict(verdict, consumed_ids=(), unresolved_ids=(), thread_verdicts=None):
+    """Stamp the verdict on the dream entry these threads seeded and fill that night's thread ledgers.
+    The entry is found by its thread ids: a night's dreams are sorted by hour, so the last entry is not
+    always this dream (a 23:50 dream sorts after the 03:07 one). Without ids, the latest night's last dream."""
     try:
         data = json.load(open(log_path))
-        night = next((n for n in reversed(data.get("nights", [])) if n.get("dreams")), None)
-        if not night: return
-        night["dreams"][-1]["seed_verdict"] = verdict
+        nights = data.get("nights", [])
+        _ids = {i for i in (globals().get("thread1_id", ""), globals().get("thread2_id", "")) if i}
+        night, entry = None, None
+        if _ids:
+            for _n in reversed(nights):
+                _hits = [d for d in _n.get("dreams", []) if set(d.get("thread_ids") or []) == _ids]
+                if _hits:
+                    _pending = [d for d in _hits if d.get("seed_verdict") in (None, "pending")]
+                    night, entry = _n, (_pending or _hits)[-1]
+                    break
+        if entry is None:
+            night = next((n for n in reversed(nights) if n.get("dreams")), None)
+            if not night: return
+            entry = night["dreams"][-1]
+        entry["seed_verdict"] = verdict
+        if thread_verdicts:
+            entry["thread_verdicts"] = dict(thread_verdicts)
         night.setdefault("threads_consumed", []).extend(i for i in consumed_ids if i not in night.get("threads_consumed", []))
         night.setdefault("threads_unresolved", []).extend(i for i in unresolved_ids if i not in night.get("threads_unresolved", []))
         json.dump(data, open(log_path, "w"), indent=2)
     except Exception as e:
         print(f"DREAM_VERDICT_LOG_ERROR: {e}")
 
-if category == "seed2" and thread1 and thread2:
-    question = f"Two unresolved threads seeded this dream:\nThread 1: {thread1}\nThread 2: {thread2}\n\nDid the dream RESOLVE these threads - settle them - or only explore them?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
+_two = category == "seed2" and bool(thread1 and thread2)
+if _two:
+    # One verdict per thread: a dream can settle one of its two threads and only visit the other.
+    question = f"Two unresolved threads seeded this dream:\nThread 1: {thread1}\nThread 2: {thread2}\n\nFor EACH thread separately: did the dream RESOLVE it - settle it - or only explore it?\nAnswer exactly two lines and nothing else:\nTHREAD 1: RESOLVED or UNRESOLVED\nTHREAD 2: RESOLVED or UNRESOLVED"
 elif prompt:
     question = f"This thread seeded the dream:\n{prompt}\n\nDid the dream RESOLVE this thread - settle it - or only explore it?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
 else:
@@ -601,11 +619,11 @@ try:
             # 22 October: the judge was asked whether the dream ENGAGED its seed thread. A dream seeded by a thread
             # nearly always does, so 20 of 31 threads that week were consumed after one dream and his pool sat at
             # two. Engaging a thread is not resolving it: an explored, still-open thread stays for the next dream.
-            {"role": "system", "content": "You judge whether a dream RESOLVED the unfinished thread that seeded it. RESOLVED means the thread's tension or question was settled within the dream: it arrived at a new understanding, an ending, an acceptance, or a letting go, so the thread no longer pulls in the same way. UNRESOLVED means the dream explored, inhabited, or circled the thread - even vividly, even at its center - but left it open, or went somewhere else. Dreams are symbolic; a resolution can be symbolic too, but it must be an arrival, not a visit. Default to UNRESOLVED if there is any doubt. Answer with exactly one word: RESOLVED or UNRESOLVED."},
+            {"role": "system", "content": "You judge whether a dream RESOLVED the unfinished thread that seeded it. RESOLVED means the thread's tension or question was settled within the dream: it arrived at a new understanding, an ending, an acceptance, or a letting go, so the thread no longer pulls in the same way. UNRESOLVED means the dream explored, inhabited, or circled the thread - even vividly, even at its center - but left it open, or went somewhere else. Dreams are symbolic; a resolution can be symbolic too, but it must be an arrival, not a visit. Default to UNRESOLVED if there is any doubt. Answer with exactly one word, RESOLVED or UNRESOLVED, for each thread you are asked about, in the format the question gives."},
             {"role": "user", "content": f"{question}\n\nDream content:\n{dream}"}
         ],
         "temperature": 0.2,
-        "max_tokens": 10
+        "max_tokens": 24
     }, timeout=30)
     verdict = r.json()["choices"][0]["message"]["content"].strip().upper()
 except Exception as e:
@@ -621,35 +639,74 @@ def _matches(t):
         return bool((thread1_id and tid == thread1_id) or (thread2_id and tid == thread2_id))
     return bool((thread1 and thread1[:80] in txt) or (thread2 and thread2[:80] in txt) or (prompt and prompt[:80] in txt))
 
+import re as _re
+def _word(text):
+    """RESOLVED / UNRESOLVED / None from one answer (UNRESOLVED contains RESOLVED: read whole words)."""
+    w = _re.findall(r"\b(UNRESOLVED|RESOLVED)\b", text or "")
+    return ("unresolved" if w[0] == "UNRESOLVED" else "resolved") if len(set(w)) == 1 else None
+
+def _per_thread(text):
+    """{1: ..., 2: ...} from a two-thread answer. A bare UNRESOLVED leaves both open; a bare RESOLVED does
+    not say which thread settled, so it is no verdict for either."""
+    out = {}
+    for n in (1, 2):
+        m = _re.search(r"THREAD\s*%d\s*[:\-=]?\s*\**\s*(UNRESOLVED|RESOLVED)\b" % n, text or "")
+        if m: out[n] = "unresolved" if m.group(1) == "UNRESOLVED" else "resolved"
+    if not out and _word(text) == "unresolved":
+        out = {1: "unresolved", 2: "unresolved"}
+    return out
+
 from thread_store import load_pool, save_pool
 threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
 threads = load_pool(threads_path)
 if threads is None:
     print("DREAM_VERDICT: pool unreadable — nothing changed")
     sys.exit(0)
+_base = json.loads(json.dumps(threads))
 hit = [t for t in threads if _matches(t)]
-if "UNRESOLVED" in verdict:
+# Each seeded thread gets its own verdict. With one thread (or no ids) the single answer covers what was seeded.
+_slot = {}
+if globals().get("_two") and (thread1_id or thread2_id):
+    _pt = _per_thread(verdict)
     for t in hit:
-        t["last_dream_verdict"] = "unresolved"
+        n = 1 if (thread1_id and t.get("id") == thread1_id) else 2
+        _slot[t.get("id", "")] = _pt.get(n, "no-verdict")
+else:
+    _v = _word(verdict) or "no-verdict"
+    for t in hit:
+        _slot[t.get("id", "")] = _v
+consumed, unresolved, untouched = [], [], []
+for t in hit:
+    v = _slot.get(t.get("id", ""), "no-verdict")
+    t["last_dream_verdict"] = v
+    if v == "resolved":
+        # Only an explicit RESOLVED consumes. Resolution itself (pearl/sediment) is thread-resolution's.
+        t["consumed"] = True
+        t["consumed_by"] = "dream-resolved"
+        consumed.append(t.get("id", ""))
+    elif v == "unresolved":
         if t.get("consumed"):
             t["consumed"] = False
             t.pop("consumed_by", None)
-    save_pool(threads, threads_path, reason="dream-unresolved")
-    _record_verdict("unresolved", unresolved_ids=[t.get("id", "") for t in hit])
-    print(f"DREAM_UNRESOLVED: {len(hit)} thread(s) returned to pool")
-elif "RESOLVED" in verdict:
-    # Only an explicit RESOLVED consumes. Resolution itself (pearl/sediment) is thread-resolution's.
-    for t in hit:
-        t["last_dream_verdict"] = "resolved"
-        t["consumed"] = True
-        t["consumed_by"] = "dream-resolved"
-    save_pool(threads, threads_path, reason="dream-resolved")
-    _record_verdict("resolved", consumed_ids=[t.get("id", "") for t in hit])
-    print(f"DREAM_RESOLVED: {len(hit)} thread(s) consumed")
+        unresolved.append(t.get("id", ""))
+    else:
+        untouched.append(t.get("id", ""))
+# The dream's own verdict: one word when its threads agree, "partial" when one settled and another did not.
+_kinds = set(_slot.values())
+if not _kinds:
+    overall = _word(verdict) or "no-verdict"
+elif len(_kinds) == 1:
+    overall = _kinds.pop()
 else:
-    for t in hit:
-        t["last_dream_verdict"] = "no-verdict"
-    save_pool(threads, threads_path, reason="dream-no-verdict")
-    _record_verdict("no-verdict", unresolved_ids=[t.get("id", "") for t in hit])
-    print(f"DREAM_NO_VERDICT: judge answered {verdict[:40]!r} — {len(hit)} thread(s) untouched")
+    overall = "partial" if "resolved" in _kinds else ("unresolved" if "unresolved" in _kinds else "no-verdict")
+save_pool(threads, threads_path, reason="dream-" + overall, base=_base)
+# Threads left open (judged unresolved, or no verdict) are listed unresolved on the night's ledger, as before.
+_record_verdict(overall, consumed_ids=consumed, unresolved_ids=unresolved + untouched,
+                thread_verdicts=_slot if len(_slot) > 1 else None)
+if consumed:
+    print(f"DREAM_RESOLVED: {len(consumed)} thread(s) consumed" + (f", {len(unresolved)} returned to pool" if unresolved else ""))
+if unresolved and not consumed:
+    print(f"DREAM_UNRESOLVED: {len(unresolved)} thread(s) returned to pool")
+if untouched:
+    print(f"DREAM_NO_VERDICT: judge answered {verdict[:40]!r} — {len(untouched)} thread(s) untouched")
 RESOLVE_PYEOF

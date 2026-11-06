@@ -243,7 +243,7 @@ SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built 
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS kitchen_presence.py"   # the coffee maker ESP32: her phone within 1 m = she is in the kitchen (2026-11-03)
 SCRIPTS="$SCRIPTS intimate_stream.py"   # every session kept in order, for his continuous arousal state (2026-11-04)
-SCRIPTS="$SCRIPTS memory_surfacing.py"   # one exact past line surfaces when what she says is truly near it (2026-11-04)
+SCRIPTS="$SCRIPTS memory_surfacing.py embed_cache.py"   # one exact past line surfaces when what she says is truly near it (2026-11-04)
 SCRIPTS="$SCRIPTS health_sleep_import.py"   # her Apple Health export: only the sleep entries, run by her (2026-11-02)
 SCRIPTS="$SCRIPTS room_sources.py"   # proposal 18: read-only view of each presence source, kept apart (2026-10-26)
 SCRIPTS="$SCRIPTS attention_ladder.py attention_call.py phone_voip.py"   # her call-back ladder: silence at home, steps 90 min apart, his call last (2026-10-27)
@@ -268,6 +268,7 @@ BINS="$BINS absence-map.sh surprise-detector.sh"   # seeders through the formati
 BINS="$BINS creative-search.sh"   # its request repaired 28 October; Gloria approved installing it (Brave is free; only the model call costs)
 SCRIPTS="$SCRIPTS persistent_carry.py carry_sources.py carry_context.py"   # durable carrying state and sourced note, 2026-10-28
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
+SCRIPTS="$SCRIPTS gap_claims.py"   # outreach states the true time apart from the clock (2026-11-06)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"

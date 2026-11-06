@@ -32,10 +32,8 @@ def _j(path):
 
 def _embed(text, timeout=3):
     """3s hard limit - his reply is never held hostage by a busy embedder."""
-    import requests
-    r = requests.post(EMB_URL, json={"model": EMB_MODEL, "input": _emb_clip(text[:2000])},
-                      headers={"Authorization": "Bearer lm-studio"}, timeout=timeout)
-    return r.json()["data"][0]["embedding"]
+    from embed_cache import embed   # the same message is embedded once a turn, not once per caller
+    return embed(EMB_URL, EMB_MODEL, _emb_clip(text[:2000]), timeout=timeout, headers={"Authorization": "Bearer lm-studio"})
 
 def _cos(a, b):
     dot = sum(x * y for x, y in zip(a, b))

@@ -25,6 +25,9 @@ WANT_THRESHOLD = 0.72
 THREAD_THRESHOLD = 0.78
 WANT_WINDOW_DAYS = 45
 THREAD_WINDOW_DAYS = 21
+# Every retirement in the window is compared (about 96 in 21 days in November 2026). The bound keeps the cost
+# fixed if retirements surge: vectors are cached per id, so only rows not seen before are embedded.
+THREAD_RETIRED_MAX = 200
 
 def _embed_many(texts):
     if not texts: return []
@@ -43,11 +46,15 @@ def _cos(a, b):
     return dot/(ma*mb) if ma and mb else 0.0
 
 def _recent(entries, key_ts, days):
+    """Entries dated within the window. key_ts is one field name or several, tried in order (the thread
+    archive dates its rows retired_at; a few old rows carry only timestamp)."""
+    keys = (key_ts,) if isinstance(key_ts, str) else tuple(key_ts)
     cutoff = datetime.now() - timedelta(days=days)
     out = []
     for e in entries:
         try:
-            if datetime.fromisoformat(str(e.get(key_ts, ""))[:19]) >= cutoff: out.append(e)
+            stamp = next((e.get(k) for k in keys if e.get(k)), "")
+            if datetime.fromisoformat(str(stamp)[:19]) >= cutoff: out.append(e)
         except Exception: pass
     return out
 
@@ -78,14 +85,29 @@ def check_want_against_fulfilled(text, threshold=WANT_THRESHOLD):
         if s > best: best, best_t = s, t
     return {"matched": best_t, "similarity": best} if best >= threshold else None
 
+def _open_pool_ids():
+    try:
+        pool = json.load(open(os.path.join(MEMORY, "unfinished-threads.json")))
+        return {t.get("id") for t in pool if isinstance(t, dict) and t.get("id")
+                and not t.get("consumed") and not t.get("retired")}
+    except Exception:
+        return set()
+
 def check_thread_against_resolved(text, threshold=THREAD_THRESHOLD):
     """Compare a candidate thread against recent pearls, black pearls, and retired threads."""
     items = []
     try:
         retired = json.load(open(os.path.join(MEMORY, "retired-threads.json")))
-        for e in _recent(retired, "timestamp", THREAD_WINDOW_DAYS)[-25:]:
-            t = (e.get("thread") or e.get("text") or "") if isinstance(e, dict) else ""
-            if t: items.append((e.get("id", t[:20]), t))
+        if isinstance(retired, dict): retired = retired.get("threads", [])
+        retired = [e for e in retired if isinstance(e, dict)]
+        # A thread reinstated by hand is open again: its archive row is not a resolution any more.
+        open_ids = _open_pool_ids()
+        seen_text = set()
+        for e in _recent(retired, ("retired_at", "timestamp"), THREAD_WINDOW_DAYS)[-THREAD_RETIRED_MAX:]:
+            if e.get("id") and e.get("id") in open_ids: continue
+            t = e.get("thread") or e.get("text") or ""
+            if t and t not in seen_text:   # identical rows (one text retired many times) embed once
+                seen_text.add(t); items.append((e.get("id", t[:20]), t))
     except Exception: pass
     try:
         idx = json.load(open(os.path.join(MEMORY, "pearls", "index.json")))
@@ -125,26 +147,53 @@ DISMISSED_STORE = os.path.join(MEMORY, "dismissed-wants.json")
 
 def _harvest_dismissed():
     """Persist dismissed wants so deleting them from current-wants.json doesn't erase
-    the block memory. Returns the windowed persistent list."""
+    the block memory. Returns the windowed list that blocks re-formation.
+
+    dismissed-wants.json is the archive every door writes; this only adds to it, under the store lock. It used
+    to rewrite the whole file with just the last DISMISSED_WINDOW_DAYS, dropping older dismissals and any row
+    without an id from the archive itself.
+
+    A want ended by the house's own bookkeeping - moved on for a silence (want_completion.move_on) or pushed
+    off by the population cap - was not let go by him or by her, so it does not block the same want forming
+    again (2026-11-06: 42 wants never put to Gloria were dismissed "no answer from Gloria in 3 days")."""
     try: store = json.load(open(DISMISSED_STORE))
     except Exception: store = []
-    by_id = {e.get("id"): e for e in store if isinstance(e, dict) and e.get("id")}
+    store = store if isinstance(store, list) else []
+    have = {e.get("id") for e in store if isinstance(e, dict) and e.get("id")}
     try: cur = json.load(open(os.path.join(MEMORY, "current-wants.json")))
     except Exception: cur = []
-    changed = False
-    for e in cur:
+    new = []
+    for e in cur if isinstance(cur, list) else []:
         if isinstance(e, dict) and e.get("dismissed") and e.get("want"):
             i = e.get("id")
-            if i and i not in by_id:
-                by_id[i] = {"id": i, "want": e.get("want", ""),
-                            "dismissed_at": e.get("dismissed_at") or datetime.now().isoformat()}
-                changed = True
-    merged = list(by_id.values())
-    kept = _recent(merged, "dismissed_at", DISMISSED_WINDOW_DAYS)
-    if changed or len(kept) != len(merged):
-        try: (_sg_write(DISMISSED_STORE, kept, "similarity_gate.py") or json.dump(kept, open(DISMISSED_STORE, "w"), indent=2))
-        except Exception: pass
-    return kept
+            if i and i not in have:
+                have.add(i)
+                new.append({"id": i, "want": e.get("want", ""), "dismissed_by": e.get("dismissed_by"),
+                            "dismissed_reason": e.get("dismissed_reason"),
+                            "dismissed_at": e.get("dismissed_at") or datetime.now().isoformat()})
+    if new:
+        try:
+            import sys as _hs
+            _hs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from store_guard import locked_update as _lu
+            def _add(rows):
+                rows = rows if isinstance(rows, list) else []
+                ids = {r.get("id") for r in rows if isinstance(r, dict)}
+                return rows + [n for n in new if n["id"] not in ids]
+            _lu(DISMISSED_STORE, _add, default=[], reader="similarity_gate.py")
+        except Exception:
+            pass
+        store = store + new
+    return [e for e in _recent([e for e in store if isinstance(e, dict)], "dismissed_at", DISMISSED_WINDOW_DAYS)
+            if not house_ended(e)]
+
+
+HOUSE_ENDINGS = ("moved-on", "population_cap")
+
+
+def house_ended(row):
+    """True for a dismissal the house made on its own clock rather than one he or she chose."""
+    return str(row.get("dismissed_by") or "") in HOUSE_ENDINGS
 
 def check_want(text, fulfilled_threshold=FULFILLED_THRESHOLD,
                dismissed_threshold=DISMISSED_THRESHOLD,

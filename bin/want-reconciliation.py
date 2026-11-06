@@ -97,6 +97,65 @@ def grok_evolve(want, evidence):
         log(f"grok error: {e}")
     return None
 
+CHECK_FIELDS = ("reconcile_checked_at", "reconcile_refused", "artifact_unverified")
+
+
+def _guard():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    from store_guard import locked_update
+    return locked_update
+
+
+def merge_back(wants_path, checked, fulfilled_ids):
+    """Write this run's results onto current-wants.json as it is NOW, under the store lock.
+
+    The checks take minutes of model calls; the list read at the start is stale by the end. Dumping that copy
+    back erased every want formed, stepped or ended meanwhile. Only what this run decided is applied, by id:
+    fulfilled wants leave, checked ones carry their stamps; every other row stays as the other writers left it."""
+    by_id = {w.get("id"): w for w in checked if isinstance(w, dict) and w.get("id")}
+
+    def _apply(cur):
+        out = []
+        for row in cur if isinstance(cur, list) else []:
+            rid = row.get("id") if isinstance(row, dict) else None
+            if rid in fulfilled_ids:
+                continue
+            if rid in by_id:
+                row = dict(row)
+                for k in CHECK_FIELDS:
+                    if k in by_id[rid]:
+                        row[k] = by_id[rid][k]
+            out.append(row)
+        return out
+    try:
+        _guard()(wants_path, _apply, default=[], reader="want-reconciliation")
+    except ImportError:
+        json.dump(_apply(load(wants_path, [])), open(wants_path, "w"), indent=2)
+
+
+def archive_fulfilled(path, rows):
+    """Append to fulfilled-wants.json under the store lock (a want already archived is not added twice), and
+    log each ending in want-completions.jsonl, as the completion door does."""
+    def _add(cur):
+        cur = cur if isinstance(cur, list) else []
+        have = {r.get("id") for r in cur if isinstance(r, dict) and r.get("id")}
+        return cur + [r for r in rows if r.get("id") not in have]
+    try:
+        _guard()(path, _add, default=[], reader="want-reconciliation")
+    except ImportError:
+        _sg_write(path, _add(load(path, [])), "want-reconciliation") or json.dump(_add(load(path, [])), open(path, "w"), indent=2)
+    try:
+        import want_completion as _wc
+        for r in rows:
+            _wc._log({"at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "want_id": r.get("id"),
+                      "want": str(r.get("want", ""))[:250], "how": "fulfilled", "by": r.get("fulfilled_by"),
+                      "note": str(r.get("fulfillment_note", ""))[:300], "evidence": r.get("fulfillment_note"),
+                      "result": "fulfilled", "door": "want-reconciliation"})
+    except Exception as e:
+        log(f"completion log skipped: {e}")
+
+
 def main():
     wants_path = os.path.join(MEMORY, "current-wants.json")
     wants = load(wants_path, [])
@@ -168,14 +227,12 @@ def main():
             except Exception as _fe:
                 log(f"  feel skipped: {_fe}")
     if not fulfilled_now:
-        try: json.dump(wants, open(wants_path, "w"), indent=2)   # the checked-at stamps persist even when nothing fulfilled
+        try: merge_back(wants_path, active[:MAX_CHECKS], set())   # the checked-at stamps persist even when nothing fulfilled
         except Exception as _se: log(f"stamp save skipped: {_se}")
         log("Nothing newly fulfilled."); return
     ids = {w.get("id") for w in fulfilled_now}
-    store = load(os.path.join(MEMORY, "fulfilled-wants.json"), [])
-    store.extend(fulfilled_now)
-    _sg_write(os.path.join(MEMORY, "fulfilled-wants.json"), store, "want-reconciliation") or json.dump(store, open(os.path.join(MEMORY, "fulfilled-wants.json"), "w"), indent=2)
-    json.dump([w for w in wants if w.get("id") not in ids], open(wants_path, "w"), indent=2)
+    archive_fulfilled(os.path.join(MEMORY, "fulfilled-wants.json"), fulfilled_now)
+    merge_back(wants_path, active[:MAX_CHECKS], ids)
     log(f"Moved {len(fulfilled_now)} want(s) to fulfilled-wants.json.")
     try:
         from emoclaw_utils import express_want

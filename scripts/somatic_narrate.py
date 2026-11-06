@@ -17,6 +17,9 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 SCRIPTS = os.path.join(WS, "scripts")
 PENDING = os.path.join(MEMORY, "somatic-session-pending.json")
+# What the last run already read: the 06:00 timer and the 06:20 cron both run this, and each narrated the
+# same session into its own thread (6 November). A run reads only turns after the last one already narrated.
+NARRATED = os.path.join(MEMORY, "somatic-narrated.json")
 _ceng_try = [os.environ.get("CENG_PATH"), os.path.join(SCRIPTS, "causality-engine.py"),
              os.path.expanduser("~/Vintos/causality-engine.py")]
 # Default to the DEPLOYED workspace copy, not the ~/Vintos orphan tree, or the engine load
@@ -87,11 +90,24 @@ def call_llm(prompt, system, model, api, max_tokens=220, temp=0.7):
         log(f"llm call failed: {e}")
     return ""
 
+def _mark_narrated(through, narration):
+    """Remember the last turn this run read, so the next run never narrates the same session again."""
+    try:
+        tmp = NARRATED + ".tmp"
+        json.dump({"through": through, "at": datetime.now(timezone.utc).isoformat(), "narration": narration[:200]},
+                  open(tmp, "w"))
+        os.replace(tmp, NARRATED)
+    except Exception as e:
+        log(f"could not remember the narration: {e}")
+
+
 def main():
     now = datetime.now(timezone.utc).timestamp()
-    turns = gather_turns(now - 86400.0, now)
+    through = float((load(NARRATED, {}) or {}).get("through") or 0)
+    turns = gather_turns(max(now - 86400.0, through), now)
+    turns = [t for t in turns if t[0] > through]
     if not turns:
-        log("no conversation in the last day — nothing to narrate"); return
+        log("no conversation since the last narration — nothing to narrate"); return
 
     transcript = "\n".join("%s: %s" % (who, text[:300]) for _, who, text in turns)
 
@@ -119,6 +135,7 @@ def main():
     narration = call_llm(prompt, system, model, api).strip().strip('"')
     if not narration:
         log("no narration produced — LLM returned nothing"); return
+    _mark_narrated(turns[-1][0], "" if narration.strip().upper().startswith("NONE") else narration)
     if narration.strip().upper().startswith("NONE"):
         log("no session in the last day (narrative judgment) — nothing to narrate"); return
 

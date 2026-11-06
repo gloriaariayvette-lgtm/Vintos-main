@@ -132,7 +132,14 @@ def _ferment(moment):
         import sys as _s
         _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from joke_fermentation import seed as _seed
-        who = moment.get("perpetrator", "gloria")
+        # Only her own bits ripen into callbacks. A MoltBook line is another bot's,
+        # and a moment with no named author must not be filed as hers.
+        src = str(moment.get("source") or "") + " " + str(moment.get("context") or "")
+        if "moltbook" in src.lower():
+            return moment
+        who = moment.get("perpetrator")
+        if not who:
+            return moment
         bit = (moment.get("original") or moment.get("stated") or
                moment.get("what_makes_it_funny") or "")
         if bit:
