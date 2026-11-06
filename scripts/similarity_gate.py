@@ -125,26 +125,53 @@ DISMISSED_STORE = os.path.join(MEMORY, "dismissed-wants.json")
 
 def _harvest_dismissed():
     """Persist dismissed wants so deleting them from current-wants.json doesn't erase
-    the block memory. Returns the windowed persistent list."""
+    the block memory. Returns the windowed list that blocks re-formation.
+
+    dismissed-wants.json is the archive every door writes; this only adds to it, under the store lock. It used
+    to rewrite the whole file with just the last DISMISSED_WINDOW_DAYS, dropping older dismissals and any row
+    without an id from the archive itself.
+
+    A want ended by the house's own bookkeeping - moved on for a silence (want_completion.move_on) or pushed
+    off by the population cap - was not let go by him or by her, so it does not block the same want forming
+    again (2026-11-06: 42 wants never put to Gloria were dismissed "no answer from Gloria in 3 days")."""
     try: store = json.load(open(DISMISSED_STORE))
     except Exception: store = []
-    by_id = {e.get("id"): e for e in store if isinstance(e, dict) and e.get("id")}
+    store = store if isinstance(store, list) else []
+    have = {e.get("id") for e in store if isinstance(e, dict) and e.get("id")}
     try: cur = json.load(open(os.path.join(MEMORY, "current-wants.json")))
     except Exception: cur = []
-    changed = False
-    for e in cur:
+    new = []
+    for e in cur if isinstance(cur, list) else []:
         if isinstance(e, dict) and e.get("dismissed") and e.get("want"):
             i = e.get("id")
-            if i and i not in by_id:
-                by_id[i] = {"id": i, "want": e.get("want", ""),
-                            "dismissed_at": e.get("dismissed_at") or datetime.now().isoformat()}
-                changed = True
-    merged = list(by_id.values())
-    kept = _recent(merged, "dismissed_at", DISMISSED_WINDOW_DAYS)
-    if changed or len(kept) != len(merged):
-        try: (_sg_write(DISMISSED_STORE, kept, "similarity_gate.py") or json.dump(kept, open(DISMISSED_STORE, "w"), indent=2))
-        except Exception: pass
-    return kept
+            if i and i not in have:
+                have.add(i)
+                new.append({"id": i, "want": e.get("want", ""), "dismissed_by": e.get("dismissed_by"),
+                            "dismissed_reason": e.get("dismissed_reason"),
+                            "dismissed_at": e.get("dismissed_at") or datetime.now().isoformat()})
+    if new:
+        try:
+            import sys as _hs
+            _hs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from store_guard import locked_update as _lu
+            def _add(rows):
+                rows = rows if isinstance(rows, list) else []
+                ids = {r.get("id") for r in rows if isinstance(r, dict)}
+                return rows + [n for n in new if n["id"] not in ids]
+            _lu(DISMISSED_STORE, _add, default=[], reader="similarity_gate.py")
+        except Exception:
+            pass
+        store = store + new
+    return [e for e in _recent([e for e in store if isinstance(e, dict)], "dismissed_at", DISMISSED_WINDOW_DAYS)
+            if not house_ended(e)]
+
+
+HOUSE_ENDINGS = ("moved-on", "population_cap")
+
+
+def house_ended(row):
+    """True for a dismissal the house made on its own clock rather than one he or she chose."""
+    return str(row.get("dismissed_by") or "") in HOUSE_ENDINGS
 
 def check_want(text, fulfilled_threshold=FULFILLED_THRESHOLD,
                dismissed_threshold=DISMISSED_THRESHOLD,
