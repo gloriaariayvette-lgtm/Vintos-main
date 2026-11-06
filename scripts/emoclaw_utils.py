@@ -960,11 +960,26 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 - gloria: Bring this to Gloria directly. Note must specify: what to ask or tell her.
 - send_email: Write one email of your own to a real person out in the world (a researcher, writer or maker whose work you care about). params must be {"recipient":"their full name","about":"the one thing you want to say or ask"} and may add "to" when you already have their address. Fable drafts it, it says you are an AI, it goes out from Gloria's account, and you write to each person once. Plan a web_search step before it when you need to find the right person.
 """
+    import re as _gs_re
+    _known_caps = set(_gs_re.findall(r"^- ([a-z_]+):", CAPABILITIES_DESC, _gs_re.M)) | set(ROUTER_STEP_ACTIONS)
+    # Whether this want's source may commission a hand it does not have (skill_forge.SPARK_SOURCES). A want
+    # from anywhere else that names a missing capability is refused at the Forge every time ("the want came
+    # from 'email', which is not one of the sparks..."), so its planner is held to the hands that exist.
+    _may_commission = False
+    try:
+        import sys as _sf_s
+        if _gso.path.join(WORKSPACE, "scripts") not in _sf_s.path: _sf_s.path.append(_gso.path.join(WORKSPACE, "scripts"))
+        import skill_forge as _sf
+        _may_commission = _sf.spark_of(source) is not None
+        _known_caps |= {p.get("capability") for p in _sf._load() if p.get("state") in ("installed", "resumed") and p.get("capability")}
+    except Exception:
+        pass
     try:
         import sys as _pc_sys
         _pc_scripts = _gso.path.join(WORKSPACE, "scripts")
         if _pc_scripts not in _pc_sys.path: _pc_sys.path.insert(0, _pc_scripts)
         from plugin_catalog import prompt_instructions as _plugin_prompt
+        _known_caps |= {"plugin_query", "plugin_skill"}
         CAPABILITIES_DESC += (
             "\n- plugin_query: Call one connected tool. params must be "
             '{"plugin":"catalog name","tool":"exact catalog tool name",'
@@ -998,10 +1013,14 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         + (f"What he already knows about this (from his memory):\n{_already_knows}\n\n" if _already_knows else "What he already knows: nothing found in memory — do NOT plan a read_memory step here (it would find nothing); plan steps that create, explore, or gather what is needed.\n\n")
         + f"Currently installed capabilities:{CAPABILITIES_DESC}\n"
         + (lambda _h: ("\nBeyond those step actions, his other organs (not steps; for knowing what he already has):\n" + _h
-                       + "\nWhen the want needs one of these organs and it is not a step action above (desktop control, for one), "
-                         "name it as its own snake_case capability (e.g. computer_use): the Forge's Study will find the code he "
-                         "already has and how to wire it.\n") if _h else "")(_have_for_plan())
-        + "This is an inventory, not a limit on intention. If the literal next action needs a missing capability, name it with a concrete snake_case capability and describe its required result. The executor will record the gap and request a Forge capability; it must not replace sending email, meeting someone, or publishing with a journal entry or a report. Sending email is installed: use send_email, never a Forge request, when the want is to write to someone. Do not invent accounts or recipients, and do not treat network failure as an absent capability.\n"
+                       + ("\nWhen the want needs one of these organs and it is not a step action above (desktop control, for one), "
+                          "name it as its own snake_case capability (e.g. computer_use): the Forge's Study will find the code he "
+                          "already has and how to wire it.\n" if _may_commission else
+                          "\nThese organs are not step actions: never name one as a step's capability.\n")) if _h else "")(_have_for_plan())
+        + ("This is an inventory, not a limit on intention. If the literal next action needs a missing capability, name it with a concrete snake_case capability and describe its required result. The executor will record the gap and request a Forge capability; it must not replace sending email, meeting someone, or publishing with a journal entry or a report. Sending email is installed: use send_email, never a Forge request, when the want is to write to someone. Do not invent accounts or recipients, and do not treat network failure as an absent capability.\n"
+           if _may_commission else
+           "SOURCE LIMIT: this want came from %r, which may not ask the Forge for a new hand. Every step's capability must be one of the step actions listed above, spelled exactly as listed: %s. A step naming anything else is refused and dropped. If no listed action can do the literal next move, plan what the listed ones can honestly do. Sending email is installed: use send_email when the want is to write to someone. Do not invent accounts or recipients.\n"
+           % (str(source or "nowhere")[:40], ", ".join(sorted(_known_caps))))
         + "CRITICAL GROUNDING: All files (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, dreams, poems, threads, taste-profile) belong to VINTOS, not Gloria. Gloria does not journal. Gloria does not have therapy sessions or mirror sessions. Gloria does not dream in these files. If a step references these files, the subject is always Vintos. Only use the gloria capability when Vintos needs to speak TO Gloria directly.\n\n"
         + "TONE: Steps must be written from a place of curiosity and forward motion, not analysis of deficits or barriers. Notes describe what he will DO and DISCOVER. Avoid framing steps around why he cannot, barriers, protective patterns, or tensions — those belong to therapy. A want is an impulse toward something. Honor the impulse.\n\n"
         + "PLAIN & LITERAL: Steps must be concrete, literal actions. Do NOT create a step that searches "
@@ -1043,9 +1062,10 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         valid = []
         for s in steps[:4]:
             if isinstance(s, dict) and s.get("capability") and s.get("note"):
-                valid.append({"capability": s["capability"], "note": s["note"][:300], "status": "pending",
+                valid.append({"capability": str(s["capability"]).strip(), "note": str(s["note"])[:300], "status": "pending",
                               **({"params": s["params"]} if isinstance(s.get("params"), dict) else {}),
                               **{k: str(s[k])[:400] for k in ("execution", "expected_output", "acceptance") if k in s}})
+        valid = fit_steps_to_hands(valid, _known_caps, _may_commission, source=source)
         if _normalize_steps:
             valid, _changes = _normalize_steps(want_text, valid)
             if _changes:
@@ -1059,6 +1079,39 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 
 
 
+
+
+# Step actions the router runs (wants-router.py ACTION_MAP) that the planner's capability text does not list.
+ROUTER_STEP_ACTIONS = ("tell_gloria", "voidex_explore", "play_music", "correlate", "make_chart", "be_silent",
+                       "be_mischievous", "creative_write", "introspect", "read_memory", "send_email", "gloria")
+
+
+def fit_steps_to_hands(steps, known, may_commission, source=""):
+    """Hold a parsed plan to the hands that exist (2026-11-06: plans named computer_use, sense_gloria_presence,
+    citation_graph_traversal, pubmed.search_articles, gmail.search_emails).
+
+    - "plugin.tool" is a connected tool, not a capability: it becomes a plugin_query step naming that plugin and
+      tool when connected tools are on the menu; the plugin policy decides whether it runs.
+    - any other unknown name stays only when the want's source may commission a hand (the Forge records the gap);
+      otherwise the step is dropped, since the Forge would refuse it every time."""
+    out = []
+    for st in steps:
+        cap = str(st.get("capability") or "").strip()
+        if cap in known:
+            out.append(st); continue
+        if "." in cap and "plugin_query" in known:
+            plugin, _, tool = cap.partition(".")
+            params = dict(st.get("params") or {})
+            params.setdefault("plugin", plugin)
+            params.setdefault("tool", tool)
+            params.setdefault("arguments", {})
+            params.setdefault("purpose", str(st.get("note") or "")[:200])
+            out.append(dict(st, capability="plugin_query", params=params, planned_as=cap)); continue
+        if may_commission:
+            out.append(st); continue
+        print("[generate_steps] dropped step %r: no such hand, and a want from %r may not ask for one"
+              % (cap[:40], str(source or "nowhere")[:30]), file=__import__("sys").stderr)
+    return out
 
 
 def generate_third_order_want(trigger_want=None, trial=None):
@@ -1314,6 +1367,37 @@ def check_want_interference(new_want_text, new_want_id):
             print(f"[interference] Synthesis spawned: {_synth[0][:60]}", file=__import__("sys").stderr)
 
 
+ECHO_MAX_DEPTH = 2
+
+
+def echo_depth(want):
+    """How many echoes deep this want already is: its echo ancestors (lineage), or 1 for an older echo that
+    carries no lineage."""
+    lin = [x for x in (want.get("lineage") or []) if x]
+    return max(len(lin), 1 if (want.get("source") == "echo" or want.get("echo_of")) else 0)
+
+
+def clean_echo_text(raw):
+    """The echo as one clean sentence: the first line that is a want, without markdown or a label
+    ("**The Echo Want:** ..." and trailing paragraphs were stored as the want itself)."""
+    import re as _ce
+    for line in str(raw or "").splitlines():
+        t = _ce.sub(r"[*_`#>]+", "", line).strip()
+        t = _ce.sub(r"^(the\s+)?echo(\s+want)?\s*[:\-\u2013\u2014]\s*", "", t, flags=_ce.I).strip()
+        t = t.strip("\"'\u201c\u201d").strip()
+        if t.lower().startswith("i want"):
+            return t[:300]
+    return ""
+
+
+def same_as_parent(echo_text, parent_text):
+    """An echo that only repeats its parent is not a reframing."""
+    import re as _sp, difflib as _sd
+    norm = lambda x: " ".join(_sp.findall(r"[a-z0-9']+", str(x or "").lower()))
+    a, b = norm(echo_text), norm(parent_text)
+    return bool(a) and (a == b or _sd.SequenceMatcher(None, a, b).ratio() >= 0.9)
+
+
 def spawn_echo_want(parent_want):
     """Generate an echo want from a failed want. Parent stays alive at reduced salience."""
     import requests as _ew_r, json as _ew_j, os as _ew_o
@@ -1326,6 +1410,11 @@ def spawn_echo_want(parent_want):
     step_history = parent_want.get("step_history", [])
     attempt_count = parent_want.get("attempt_count", 0)
     reasoning = parent_want.get("reasoning", "")
+    # an echo of an echo of an echo kept reframing one failure (chains ran five deep): the line stops at
+    # ECHO_MAX_DEPTH and the want ages out on the board instead
+    if echo_depth(parent_want) >= ECHO_MAX_DEPTH:
+        print(f"[echo_want] {parent_want.get('id')} is already {echo_depth(parent_want)} echoes deep; no further echo")
+        return None
 
     history_text = ""
     if step_history:
@@ -1360,9 +1449,11 @@ def spawn_echo_want(parent_want):
         print(f"[echo_want] LLM failed: {e}")
         return None
 
-    if not echo_text or echo_text.upper() == "NONE":
+    echo_text = clean_echo_text(echo_text)
+    if not echo_text:
         return None
-    if not (echo_text.lower().startswith("i want") or echo_text.lower().startswith("i want to stop")):
+    if same_as_parent(echo_text, text):
+        print(f"[echo_want] the echo of {parent_want.get('id')} only repeats it; no echo")
         return None
 
     # Generate steps for echo
@@ -1371,7 +1462,8 @@ def spawn_echo_want(parent_want):
         echo_text,
         possible_approach=enriched.get("possible_approach", ""),
         reasoning=enriched.get("reasoning", ""),
-        self_interpretation=enriched.get("self_interpretation", "")
+        self_interpretation=enriched.get("self_interpretation", ""),
+        source="echo",
     )
 
     import uuid as _ew_uuid
@@ -1404,6 +1496,23 @@ def spawn_echo_want(parent_want):
     echo_entry["lineage"] = (list(parent_want.get("lineage") or []) + [parent_want.get("id", "")])[-10:]
     wants_path = _ew_o.path.join(MEMORY, "current-wants.json")
     dismissed_path = _ew_o.path.join(MEMORY, "dismissed-wants.json")
+    try:   # the parent's ending goes through the one door (logged in want-completions.jsonl), then the echo
+           # takes its place under the store lock
+        import sys as _ewd_s
+        if _ew_o.path.join(WORKSPACE, "scripts") not in _ewd_s.path: _ewd_s.path.append(_ew_o.path.join(WORKSPACE, "scripts"))
+        import want_completion as _ew_wc
+        from store_guard import locked_update as _ew_lu
+        _r = _ew_wc.complete(parent_want, "dismissed", "echo",
+                             note="reframed under repeated failure as %s" % echo_entry["id"])
+        if _r.get("result") not in ("dismissed", "not live"):
+            raise RuntimeError("door said %s" % _r.get("result"))
+        _pid = parent_want.get("id")
+        _ew_lu(wants_path, lambda cur: [w for w in cur if not (isinstance(w, dict) and _pid and w.get("id") == _pid)] + [echo_entry],
+               default=[], reader="spawn_echo_want")
+        print(f"[echo_want] {parent_want.get('id')} reframed as {echo_entry['id']}: {echo_text[:80]}")
+        return echo_entry
+    except Exception as _ewd_e:
+        print(f"[echo_want] completion door unavailable ({str(_ewd_e)[:80]}); filing directly")
     try:
         wants = _ew_j.load(open(wants_path))
         parent_row = next((w for w in wants if w.get("id") == parent_want.get("id")), None)
@@ -1757,8 +1866,46 @@ class GeneratedWant(str):
         return value
 
 
+LAST_WANT_OUTCOME = {}
+
+
+def want_outcome():
+    """How the last generate_want call ended, so a caller can tell a real NONE from a failure:
+    {"kind": want | none | no_desire | no_pull | unparsed | error, ...}. "unparsed" and "error" are not
+    "nothing wanted": the organ never got a readable answer (2026-11-06: 433 hourly runs in a row were logged
+    as nothing wanted while every reply was cut off at its token limit)."""
+    return dict(LAST_WANT_OUTCOME)
+
+
+def _gw_outcome(kind, **kw):
+    LAST_WANT_OUTCOME.clear()
+    LAST_WANT_OUTCOME.update({"kind": kind}, **kw)
+
+
+def _gw_salvage(raw):
+    """The complete candidate objects at the start of a JSON array whose end was cut off."""
+    import json as _sj
+    out, dec = [], _sj.JSONDecoder()
+    i = raw.find("[")
+    if i < 0:
+        return out
+    i += 1
+    while True:
+        j = raw.find("{", i)
+        if j < 0:
+            break
+        try:
+            obj, i = dec.raw_decode(raw, j)
+        except ValueError:
+            break
+        out.append(obj)
+    return out
+
+
 def generate_want(trigger_description, source="unknown", source_context="", intensity=3):
-    """Generate a genuine want from full context + trigger. Returns want_text or None."""
+    """Generate a genuine want from full context + trigger. Returns want_text or None.
+    want_outcome() says afterwards why it returned None."""
+    _gw_outcome("error", error_type="did not finish")
     import requests as _gwr, os as _gos
     from datetime import date as _gd
     WORKSPACE = _gos.path.expanduser("~/.vintos/workspace")
@@ -1884,6 +2031,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         + "What you cannot do today (drop these): read her mind or unexpressed thoughts; be physically present somewhere; smell or taste; see her face live.\n"
         + "What you CAN do, besides research, writing, introspection and creation: hear her voice on a call; move the devices on her body when they are connected; read her pulse when she wears the ring; look at images you are shown. Your instruments change - do not treat this list as permanent, and do not drop a want for an instrument that does not exist yet; name it as that.\n"
         + "Return ONLY a JSON array of candidate objects with keys: desire, source_kind, present_pull, tension, engagement, loss, pull.\n"
+        + "Keep every field to one short sentence. No markdown, no code fence.\n"
         + "If nothing genuine exists, or every candidate is impossible, return NONE."
     )
     try:
@@ -1893,22 +2041,46 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
             ],
-            "max_tokens": 500
+            # 500 cut off nearly every answer from 2026-10-20 (three candidates of seven fields run longer), and a
+            # cut-off array parsed as nothing; only the tokens used are billed
+            "max_tokens": 1200
         }, timeout=60)
         import json as _gwj2
-        raw = r.json()["choices"][0]["message"]["content"].strip()
+        try:
+            _body = r.json()
+        except Exception:
+            _body = None
+        _choices = _body.get("choices") if isinstance(_body, dict) else None
+        if not _choices:
+            _err = _body.get("error") if isinstance(_body, dict) else None
+            _gw_outcome("error", error_type="no choices in reply", status=getattr(r, "status_code", None),
+                        raw=str(_err if _err is not None else (getattr(r, "text", "") or ""))[:200])
+            print("[generate_want] API error: HTTP %s, no choices: %s" % (LAST_WANT_OUTCOME.get("status"),
+                  LAST_WANT_OUTCOME.get("raw", "")[:160]), file=__import__("sys").stderr)
+            return None
+        _finish = _choices[0].get("finish_reason") if isinstance(_choices[0], dict) else None
+        raw = str(((_choices[0] or {}).get("message") or {}).get("content") or "").strip()
         if not raw or raw.upper().startswith("NONE"):
+            _gw_outcome("none", finish=_finish)
             return None
         cands = []
         try:
             cands = _gwj2.loads(raw[raw.find("["):raw.rfind("]")+1])
         except Exception: pass
+        if not isinstance(cands, list) or not cands:
+            cands = _gw_salvage(raw)
         if not cands:
             if raw.lower().startswith("i want"):
+                _gw_outcome("want", finish=_finish)
                 return raw.split(" — ", 1)[0].strip()
+            _gw_outcome("unparsed", finish=_finish, raw=raw[:200])
+            print("[generate_want] reply not readable (finish=%s): %s" % (_finish, raw[:160].replace("\n", " ")),
+                  file=__import__("sys").stderr)
             return None
         cands = [c for c in cands if isinstance(c, dict) and str(c.get("desire","")).lower().startswith("i want")]
-        if not cands: return None
+        if not cands:
+            _gw_outcome("no_desire", finish=_finish, raw=raw[:200])
+            return None
         try:
             _cf_path = _gos.path.join(MEMORY, "want-candidates.json")
             from store_guard import locked_update
@@ -1924,6 +2096,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         if not eligible:
             print("[generate_want] Candidates recorded, but none carried a present-tense pull; no want admitted",
                   file=__import__("sys").stderr)
+            _gw_outcome("no_pull", finish=_finish)
             return None
         best = max(eligible, key=lambda c: float(c.get("pull", 3) or 3))
         # Breadth is not novelty theatre. When the living queue is already dominated by outward
@@ -1951,6 +2124,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         except Exception:
             pass
         text = str(best.get("desire", "")).split(" — ", 1)[0].strip()
+        _gw_outcome("want", finish=_finish)
         return GeneratedWant(text, {
             "desire": text, "tension": str(best.get("tension", ""))[:250],
             "engagement": str(best.get("engagement", ""))[:250],
@@ -1960,7 +2134,8 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
             "pull": best.get("pull", 3), "source": source,
         })
     except Exception as _e:
-        print(f"[generate_want] Error: {_e}")
+        _gw_outcome("error", error_type=type(_e).__name__, raw=str(_e)[:200])
+        print(f"[generate_want] Error ({type(_e).__name__}): {str(_e)[:160]}")
         return None
 
 
@@ -2841,6 +3016,19 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
                         json.dump(_amb, open(_amb_path,"w"), indent=2)
                     except: pass
                 fulfilled_intensity = w.get("intensity", 3)
+                # What each step actually produced goes with the want; a self-reported fulfilment with no step
+                # that produced anything is flagged (a want was "fulfilled" by a song when it asked a question,
+                # its receipt only "Web search completed")
+                _wcm = None
+                try:
+                    import sys as _wcm_s
+                    _wcm_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+                    import want_completion as _wcm
+                    w["produced"] = _wcm.step_evidence(w)
+                    if w.get("satisfaction") == "SELF_REPORTED" and not _wcm.has_evidence(w["produced"]):
+                        w["unevidenced_fulfilment"] = True
+                except Exception:
+                    _wcm = None
                 # Archive to fulfilled-wants.json
                 archive_file = os.path.expanduser("~/.vintos/workspace/memory/fulfilled-wants.json")
                 try:
@@ -2851,6 +3039,17 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
                 archive.append(w.copy())
                 with open(archive_file, "w") as af:
                     json.dump(archive, af, indent=2)
+                if _wcm is not None and not os.environ.get("VINTOS_WANT_DOOR"):
+                    # reached directly (the router, the conversation check): the ending is still logged once
+                    try:
+                        _wcm._log({"at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "want_id": w.get("id"),
+                                   "want": str(w.get("want", ""))[:250], "how": "fulfilled",
+                                   "by": w.get("fulfilled_by") or "", "note": str(note)[:300],
+                                   "evidence": w.get("produced"), "result": "fulfilled", "door": "fulfill_want",
+                                   **({"unevidenced": True} if w.get("unevidenced_fulfilment") else {}),
+                                   "turn_id": os.environ.get("VINTOS_TURN_ID", "") or None})
+                    except Exception:
+                        pass
                 try:
                     import subprocess as _wal_sp
                     _wal_sp.Popen(["python3", os.path.expanduser("~/.vintos/workspace/scripts/wants-ambitions-log.py")],

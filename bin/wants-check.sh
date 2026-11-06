@@ -315,7 +315,24 @@ try:
                source_thread_id=source_thread_id or None, **_wc_e)
         print(f"[Wants] Seeded via organ: {_wc_want[:80]}")
     else:
-        print("[Wants] Organ: nothing genuinely wants movement this hour.")
+        # A failed call or an unreadable reply is not "nothing wanted" (433 hours in a row were logged that way
+        # while every reply was cut off at its token limit): each is said as what it was.
+        _wc_o = {}
+        try:
+            from emoclaw_utils import want_outcome as _wc_oc
+            _wc_o = _wc_oc() or {}
+        except Exception:
+            pass
+        _wc_k = _wc_o.get("kind")
+        _wc_raw = " ".join(str(_wc_o.get("raw", "")).split())[:160]
+        if _wc_k == "error":
+            print(f"[Wants] Organ call failed ({_wc_o.get('error_type')}, HTTP {_wc_o.get('status')}): {_wc_raw} - not counted as nothing wanted")
+        elif _wc_k == "unparsed":
+            print(f"[Wants] Organ reply unreadable (finish={_wc_o.get('finish')}): {_wc_raw} - not counted as nothing wanted")
+        elif _wc_k in ("no_pull", "no_desire"):
+            print(f"[Wants] Organ: candidates, but none admitted ({_wc_k}).")
+        else:
+            print("[Wants] Organ: nothing genuinely wants movement this hour.")
     sys.exit(0)
 except SystemExit: raise
 except Exception as _wc_err:
