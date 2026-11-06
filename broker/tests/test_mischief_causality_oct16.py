@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='oct16-organs-') as scratch:
  assert p.is_pressure_state() is True,'text fallback still works when daemon has no state'
  print('PASS Pearl live high, live low vs stale high, and text fallback')
  # A formation run must not consume the date or finalize tenure before evening.
- db={'hypotheses':[{'formed_date':c.datetime.now().date().isoformat()}]*3,'confirmed':0,'revised':0}
+ db={'hypotheses':[{'formed_date':c.datetime.now().date().isoformat(),'source':'causality_engine'}]*3,'confirmed':0,'revised':0}
  with patch.object(c,'load_emotional_trajectory',return_value=[]),patch.object(c,'find_spikes',return_value=[]),patch.object(c,'load_recent_dreams',return_value=[]),patch.object(c,'load_recent_mirrors',return_value=[]),patch.object(c,'load_recent_silences',return_value=[]),patch.object(c,'load_recent_conversations',return_value=[]),patch.object(c,'load_trial_ledger',return_value=[]),patch.object(c,'load_existing_hypotheses',return_value=db),patch.object(c,'test_existing_hypotheses',side_effect=forbidden),patch.object(c,'graduate_hypotheses',side_effect=forbidden),patch.object(c,'write_hypothesis_log',return_value=None):
   c.main()
  print('PASS formation pass does not spend nightly review or retire before night')

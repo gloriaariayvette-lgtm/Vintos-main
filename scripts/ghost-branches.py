@@ -541,8 +541,27 @@ def detect_primary_pattern(primary_output):
         return "unknown_pattern"
 
 
-def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_type):
-    primary_pattern = detect_primary_pattern(primary_output)
+def _pattern_key(pattern):
+    import re as _re
+    return _re.sub(r"[^a-z0-9]+", "_", str(pattern or "").lower()).strip("_")
+
+
+def _stamp_ghost_formation(entry, material):
+    """Ghost rows get the same formation envelope as every other writer, so the nightly
+    trial can refuse the ghost's own thread and output as a witness for its hypothesis."""
+    try:
+        from causality_engine import _stamp_formation
+    except Exception as exc:
+        print(f"[Ghost] formation envelope unavailable: {exc}", flush=True)
+        return entry
+    return _stamp_formation(entry, material)
+
+
+def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_type, primary_pattern=None):
+    # One run has one primary output, so one pattern: detecting it again for every
+    # successful lean produced near-identical names and one template row per lean.
+    if primary_pattern is None:
+        primary_pattern = detect_primary_pattern(primary_output)
     hypothesis_text = (
         f"{successful_lean['label']} reduces {primary_pattern} avoidance "
         f"in {thread_type.replace('_', '-')} threads"
@@ -573,6 +592,12 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
         "trigger_formed_at": NOW,
         "trigger_interaction_ts": _trigger_ts
     }
+    entry["formed"] = datetime.now().isoformat()
+    _stamp_ghost_formation(entry, {
+        "thread": thread.get("thread", ""),
+        "primary_output": str(primary_output or "")[:2000],
+        "trigger_interaction_ts": _trigger_ts,
+    })
     try:
         with transaction(CAUSALITY_FILE):
             try:
@@ -587,6 +612,20 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
                              and h.get("successful_lean") == successful_lean["id"]), None)
             if existing is not None:
                 return existing
+            # The same thread type and avoidance pattern is one hypothesis, whichever lean
+            # broke it this time; the further lean is recorded on the standing row.
+            key = _pattern_key(primary_pattern)
+            same_pattern = next((h for h in causality.get("hypotheses", [])
+                                 if h.get("source") == "ghost_branch"
+                                 and h.get("thread_type") == thread_type
+                                 and key and _pattern_key(h.get("failed_primary_pattern")) == key), None)
+            if same_pattern is not None:
+                leans = same_pattern.setdefault("also_successful_leans", [])
+                if successful_lean["id"] not in leans:
+                    leans.append(successful_lean["id"])
+                    write_json(CAUSALITY_FILE, causality)
+                print(f"[Ghost] {thread_type}/{primary_pattern} already stands — lean recorded, not duplicated", flush=True)
+                return same_pattern
             causality.setdefault("hypotheses", []).append(entry)
             write_json(CAUSALITY_FILE, causality)
         print(f"[Ghost] Hypothesis seeded: {hypothesis_text}", flush=True)
@@ -897,11 +936,12 @@ def main():
     mark_recurrence_evidence(thread_type, resolutions)
 
     if successful_ghosts:
+        primary_pattern = detect_primary_pattern(primary_output)
         for sg in successful_ghosts:
             if hypothesis_exists(thread_type, sg["axis"]["id"]):
                 print(f"[Ghost] Hypothesis already stands for {thread_type}/{sg['axis']['id']} — marked, not duplicated", flush=True)
                 continue
-            seed_causality_hypothesis(thread, sg["axis"], primary_output, thread_type)
+            seed_causality_hypothesis(thread, sg["axis"], primary_output, thread_type, primary_pattern)
         update_thread(thread["id"], consumed=False, reason=None)
         print(f"[Ghost] {len(successful_ghosts)} ghost(s) resolved. Thread returned. Hypotheses seeded.", flush=True)
     else:

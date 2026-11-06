@@ -84,14 +84,15 @@ check("overflow retirement is honest, not a false resolution",
       all(h["retirement"]["reason"] == "daily_formation_cap_exceeded"
           and not h["retirement"]["resolved"] and not h["retirement"]["refuted"] for h in overflow))
 
-# Direct producers share the same budget instead of appending and letting save silently cull the
-# new row. Ghost Branch remains the sole explicitly protected formation kind.
+# Direct producers draw on their own slice of the day instead of appending and letting save
+# silently cull the new row. Ghost Branch remains the sole explicitly protected formation kind.
 actual_today = date.today().isoformat()
 direct_budget = [dict(same_day[i], formed=actual_today + "T01:00:0%d" % i,
-                      formed_date=actual_today) for i in range(3)]
+                      formed_date=actual_today, source="want_discussion")
+                 for i in range(CE.FORMATION_SLICES["direct"])]
 CE.load_existing_hypotheses = lambda: CE.HypothesisSnapshot({"hypotheses": direct_budget, "deliveries": {}})
-check("direct ordinary formation refuses a fourth row for the day",
-      CE._add_hypothesis("a fourth ordinary theory", "watch tomorrow", "direct") is None)
+check("direct ordinary formation refuses a row once its slice of the day is used",
+      CE._add_hypothesis("one more direct theory", "watch tomorrow", "direct") is None)
 
 fresh = row("fresh-formation", 0)
 CE._stamp_formation(fresh, {"seed": "a real new occasion with enough words to fingerprint"})
