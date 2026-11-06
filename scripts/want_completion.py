@@ -213,7 +213,7 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
     - a want routed to her (routed_to_gloria) that she has not answered for `quiet_days` - counted from the
       newer of when it was made and her last word in its discussion - is dismissed, with that as the reason.
       Until 2026-11-06 this applied to every want: 42 of the 120 dismissed "no answer from Gloria in 3 days"
-      had never been put to her (scripts/repairs/restore_moved_on_wants.py can put them back).
+      had never been put to her.
     Everything goes through complete(), so each ending is logged in want-completions.jsonl and kept in
     dismissed-wants.json / fulfilled-wants.json. Returns the rows."""
     now = time.time() if now is None else now

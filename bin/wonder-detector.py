@@ -159,8 +159,14 @@ def seed_thread(flip_excerpt, score, source):
         log(f"cannot reach the seed_thread door: {_we}")
         return
     try:
+        # His words only: the "A moment of genuine wonder during ..." label and a dangling
+        # "After that she said..." were machine framing, not his (Gloria, 6 November).
+        import re as _wre
+        _words = _wre.sub(r"\s*After that she said\W*$", "", str(flip_excerpt or "")).strip()
+        if len(_words) < 15:
+            return
         _door("wonder-detector",
-              f"A moment of genuine wonder during {source}: {flip_excerpt}",
+              _words,
               reasoning=f"epistemic rupture scored {score:.2f} during {source}")
         log(f"Seeded through the door: wonder during {source}")
     except Exception as _we:

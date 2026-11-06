@@ -232,25 +232,6 @@ src = open(os.path.join(REPO, "bin", "want-reconciliation.py")).read()
 check("no whole-list dump of current-wants is left", "json.dump(wants, open(wants_path" not in src
       and "json.dump([w for w in wants if w.get(\"id\") not in ids]" not in src)
 
-# ---- the repair proposal reads only, by default
-spec = importlib.util.spec_from_file_location("restore_t", os.path.join(REPO, "scripts", "repairs", "restore_moved_on_wants.py"))
-RS = importlib.util.module_from_spec(spec); spec.loader.exec_module(RS)
-check("the repair reads the scratch store", RS.MEM.startswith(HOME), RS.MEM)
-put(DIS, [{"id": "q1", "want": "never asked", "dismissed_by": "moved-on", "dismissed_reason": "no answer from Gloria in 3 days"},
-          {"id": "q2", "want": "asked her", "dismissed_by": "moved-on", "dismissed_reason": "no answer from Gloria in 3 days"},
-          {"id": "q3", "want": "judged", "dismissed_by": "haiku-verdict", "dismissed_reason": "no answer from Gloria in 3 days"}])
-put(os.path.join(MEM, "want-discussions.json"), {"q2": [{"role": "vintos", "text": "may I ask?"}]})
-put(WANTS, [])
-before = (open(WANTS).read(), open(DIS).read())
-RS.main([])
-check("a dry run writes nothing", (open(WANTS).read(), open(DIS).read()) == before)
-restore, skipped = RS.candidates()
-check("it would restore only the want never routed to her", [r["id"] for r in restore] == ["q1"], (restore, skipped))
-RS.main(["--apply"])
-check("applied, the want is live again and out of the dismissed archive",
-      [w["id"] for w in load(WANTS)] == ["q1"] and load(WANTS)[0].get("restored")
-      and {d["id"] for d in load(DIS)} == {"q2", "q3"}, (load(WANTS), load(DIS)))
-
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
