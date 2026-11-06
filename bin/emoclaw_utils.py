@@ -545,6 +545,9 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
         with open(threads_path) as f:
             threads = json.load(f)
         if not isinstance(threads, list): threads = []
+        # The pool as loaded: the judges below take up to a minute, and other writers save meanwhile.
+        # Every save from here merges onto the pool as it is then (save_pool base=), like the other writers.
+        _pool_base = json.loads(json.dumps(threads))
     except Exception:
         # NEVER treat a read failure as an empty ledger - that is how the pool got wiped 2026-08-10.
         print("[seed_thread] REFUSING to seed: ledger unreadable - not risking a wipe", file=__import__("sys").stderr)
@@ -655,10 +658,11 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
         if 0 <= _di < len(_cands):
             _ex = _cands[_di]
             _ex["reseed_count"] = _ex.get("reseed_count", 0) + 1
-            _ex["timestamp"] = __import__("datetime").datetime.now().isoformat()
+            # timestamp is when the thread formed; a recurrence is recorded beside it, never over it
+            _ex["last_reseen_at"] = __import__("datetime").datetime.now().isoformat()
             print("[seed_thread] DEDUP (%s): same as open thread %s (reseen %dx) - recurrence is not novelty"
                   % (source, _ex.get("id"), _ex["reseed_count"]), file=_sys.stderr)
-            _pool_save(threads, threads_path, "seed_thread-dedup")
+            _pool_save(threads, threads_path, "seed_thread-dedup", base=_pool_base)
             return "dedup", _judged
     except Exception as _qj_down:
         # The quality/duplicate judge did not answer. It used to wave the candidate through; now it waits.
@@ -694,7 +698,7 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
     unconsumed = protected + unprotected
     consumed = [t for t in threads if t.get("consumed") or t.get("retired")]
     threads = consumed + unconsumed
-    _pool_save(threads, threads_path, "seed_thread")  # atomic + shrink-guarded: the ledger can never hold a half-write or a truncation
+    _pool_save(threads, threads_path, "seed_thread", base=_pool_base)  # atomic + shrink-guarded: the ledger can never hold a half-write or a truncation
     # What happened is said to the caller (22 October: the journal printed "Seeded unfinished thread" for threads this
     # function had refused). True: admitted to the pool. "latent"/"dedup": taken there or merged. None: refused.
     return True, _judged
@@ -714,13 +718,13 @@ def concrete_line(text, keywords=()):
     return best
 
 
-def _pool_save(threads, threads_path, reason=""):
+def _pool_save(threads, threads_path, reason="", base=None):
     """Every pool write goes through thread_store.save_pool (shrink guard). Fallback is atomic but unguarded, and says so."""
     import os, json, sys as _ps
     try:
         _ps.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from thread_store import save_pool
-        return save_pool(threads, threads_path, reason=reason)
+        return save_pool(threads, threads_path, reason=reason, base=base)
     except ImportError:
         print("[pool] thread_store unavailable - writing unguarded (%s)" % reason, file=_ps.stderr)
         _tmp = threads_path + ".tmp"
