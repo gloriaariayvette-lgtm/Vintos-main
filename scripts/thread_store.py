@@ -185,6 +185,55 @@ def load_retired(path=None):
     return [normalize_retired_entry(e) for e in lst] if lst is not None else []
 
 
+# ---------------------------------------------------------------- pipeline protection
+# A thread a dream, the mirror or therapy has worked on is protected from triage age-out and sediment: it is
+# mid-pipeline. Until November 2026 that protection never lapsed, so a thread with one old dream pass and a low
+# pull stayed forever (cc1c6e80: one dream pass, fifteen triages, pull 2). The protection now lasts while passes keep
+# coming: triage runs once a day, the dream twice a night and the mirror once a day, so a thread still in the
+# rotation gets a new pass well inside a week. PROTECT_TRIAGES verdict triages with no new pass lapse it.
+
+PASS_KEYS = ("dream_passes", "mirror_passes", "therapy_passes")
+PROTECT_TRIAGES = 7
+
+
+def pass_total(t):
+    total = 0
+    for k in PASS_KEYS:
+        try: total += int(t.get(k) or 0)
+        except (TypeError, ValueError): pass
+    return total
+
+
+def note_triage(t):
+    """Called once per verdict triage. Counts the triages since the thread's pass total last grew
+    (triages_since_pass); a thread first seen here starts its count now."""
+    total = pass_total(t)
+    if t.get("passes_at_triage") != total:
+        t["passes_at_triage"] = total
+        t["triages_since_pass"] = 0
+    else:
+        t["triages_since_pass"] = int(t.get("triages_since_pass") or 0) + 1
+    return t
+
+
+def pipeline_protected(t):
+    """True while the thread is mid-pipeline: it has passes and a new one came within PROTECT_TRIAGES triages."""
+    return pass_total(t) > 0 and int(t.get("triages_since_pass") or 0) < PROTECT_TRIAGES
+
+
+def open_ids(pool):
+    """Ids of the threads open in the pool (not consumed, not retired)."""
+    return {t.get("id") for t in (pool or []) if isinstance(t, dict) and t.get("id")
+            and not t.get("consumed") and not t.get("retired")}
+
+
+def live_retired(rows, pool):
+    """Archive rows that still stand as retirements: a thread reinstated into the pool by hand keeps its
+    archive row (the archive is history), but while it is open the row is not a resolution."""
+    ids = open_ids(pool)
+    return [r for r in rows if not (isinstance(r, dict) and r.get("id") and r.get("id") in ids)]
+
+
 # ---------------------------------------------------------------- admission and archive (review 264)
 # Every producer used to build its own thread dict and every consumer retired threads its own way. The
 # store owns both now: admit() is the one shape (with an id, a kind - question or theme - and who
