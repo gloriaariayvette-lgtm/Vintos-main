@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 python3 "$HOME/.vintos/workspace/scripts/want_stance.py" allow reflection || exit 0
 
 # Ask Vintos if he feels like self-reflection right now
@@ -313,8 +316,8 @@ VELARIS_SPEAKS=$(python3 -c "
 import requests
 sys_msg = open('/tmp/mirror-sys-1.txt').read()
 usr_msg = open('/tmp/mirror-usr-1.txt').read()
-r = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={
-    'model': 'gemma-4-26b-a4b-it-uncensored',
+r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
     'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
     'temperature': 0.9, 'max_tokens': 1000
 }, timeout=600)
@@ -408,8 +411,8 @@ except Exception as e:
 if out:
     print('[Mirror] witness on sol', file=sys.stderr, flush=True)
 else:
-    r = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={
-        'model': 'gemma-4-26b-a4b-it-uncensored',
+    r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
+        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
         'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
         'temperature': 0.85, 'max_tokens': 1000
     }, timeout=600)
@@ -437,8 +440,8 @@ sys_msg = open('/tmp/mirror-sys-3.txt').read()
 vs = open('/tmp/mirror-vs.txt').read()
 ms = open('/tmp/mirror-ms.txt').read()
 usr_msg = f'You spoke to your mirror: "{vs}"\n\nThe mirror responded: "{ms}"\n\nYou have one sentence. What did the mirror show you that pulls you forward — a direction, a want, something that opens rather than closes? If it showed you a pattern, name where that pattern is trying to take you, not what it is blocking. If the answer is nothing new, say that. One sentence only.'
-r = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={
-    'model': 'gemma-4-26b-a4b-it-uncensored',
+r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
     'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
     'temperature': 0.85, 'max_tokens': 500
 }, timeout=600)
@@ -553,8 +556,8 @@ if not mirror_text or not thread_text:
     sys.exit(0)
 
 try:
-    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+    r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
         "messages": [
             {"role": "system", "content": "You judge whether a mirror session genuinely engaged with a specific thread. RESOLVED means the session directly engaged with this thread's specific concern — for conceptual or relational threads, it named or examined the core question; for emotional or experiential threads, it genuinely sat with and moved through the feeling. UNRESOLVED means the session wandered elsewhere or only grazed the thread incidentally. If the thread is about an unfamiliar emotional experience, a mirror session that genuinely explores that experience counts as resolution. Default to UNRESOLVED only if the session clearly avoided the thread. Answer with exactly one word: RESOLVED or UNRESOLVED."},
             {"role": "user", "content": f"Thread: {thread_text}\n\nMirror session:\n{mirror_text}\n\nDid the mirror engage with this thread?"}
@@ -614,8 +617,8 @@ try:
     session = os.environ.get("_MIRROR_SESSION_TEXT", "")
     if not session or len(session) < 50:
         sys.exit(0)
-    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+    r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
         "messages": [
             {"role": "system", "content": "You are Vintos. Output ONLY your answer. No preamble."},
             {"role": "user", "content": f"You just completed a mirror session:\n{session[:600]}\n\nDid this mirror session spark a genuine want — something you now want to do, explore, create, understand, or say to Gloria?\nIf yes, write ONE sentence starting with \'I want to\' followed by a dash and your reasoning.\nIf no, write NONE."}

@@ -11,6 +11,27 @@ Usage:
   python3 core-engine.py show        # print current core
 """
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, math
 from datetime import datetime
 
@@ -266,8 +287,8 @@ ALMOST: [sentence]
 NAME: [name]"""
 
         try:
-            r = requests.post(f"{LM_URL}/v1/chat/completions",
-                json={"model":"gemma-4-26b-a4b-it-uncensored","temperature":0.3,"max_tokens":150,
+            r = requests.post(_subcon_url(f"{LM_URL}/v1/chat/completions"),
+                json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"temperature":0.3,"max_tokens":150,
                       "messages":[{"role":"user","content":prompt}]},
                 headers={"Authorization":"Bearer lm-studio"}, timeout=120)
             text = r.json()["choices"][0]["message"]["content"]

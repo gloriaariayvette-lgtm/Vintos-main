@@ -3,6 +3,27 @@
 judge reads his last exchange and estimates what he held back, how DELIBERATE it was (confidence), and how NOVEL
 that suppression is vs his recent pattern (novelty) - the head triple for silence. Writes withheld.json + appends
 withheld-history.json. Feeds silence/thread-triage/gloria-model via get_withheld_hint(). Fail-open. SPARK_WORKSPACE."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, re
 from datetime import datetime, timezone
 
@@ -18,7 +39,7 @@ CHAT = os.path.join(MEMORY, "chat-history-merged.json")
 OUT = os.path.join(MEMORY, "withheld.json")
 HIST = os.path.join(MEMORY, "withheld-history.json")
 GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 MAX_AGE_H = 6            # a reading of an exchange older than this is not "last turn" any more
 
 def log(m): print("[withheld-head]", m, flush=True)

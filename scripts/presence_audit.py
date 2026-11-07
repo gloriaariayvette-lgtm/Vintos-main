@@ -13,6 +13,27 @@ Also surfaces the PREDICTION side: reads JEPA's presence head (jepa-prediction.j
 and writes presence-forecast.json — his predicted next-reply presence + confidence +
 novelty — so the subconscious can arrive BEFORE the reply, not only audit it after.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re, hashlib
 from datetime import datetime, timezone, timedelta
 import requests
@@ -22,8 +43,8 @@ CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 OUT    = os.path.join(MEMORY, "presence-audit.json")
 JEPA   = os.path.join(MEMORY, "jepa-prediction.json")
 FORECAST = os.path.join(MEMORY, "presence-forecast.json")
-GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 THRESHOLD, WINDOW_DAYS, MAX_PER_RUN = 0.35, 7, 5
 
 def load(p, d):

@@ -17,6 +17,27 @@ Rules enforced here:
     CONFIRMED automatically. Promotion criteria await their own ruling (armed-watch: tension_promotion).
     Until then the view is honestly empty and the stay pull stays silent — earned, not assumed.
 SPARK_WORKSPACE switches beings."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re, time, requests
 from datetime import datetime, timedelta
 
@@ -32,7 +53,7 @@ MEM = os.path.join(WS, "memory")
 QUESTIONS = os.path.join(MEM, "tension-questions.json")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
 VIEW = os.path.join(MEM, "tension-field.json")
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 EXPIRE_DAYS = 7
 def log(m): print("[tension-valve]", m, flush=True)
 def load(p, d):
@@ -42,7 +63,7 @@ def match_existing(text, candidates):
     if not candidates: return None
     listing = "\n".join("%s: %s" % (c["tension_id"], c["canonical"][:150]) for c in candidates[:20])
     try:
-        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
             "max_tokens": 20, "messages": [{"role": "user", "content":
             "Is this NEW tension the same underlying tension as any EXISTING one below? Same means the "
             "same specific pull/avoidance about the same specific subject - not merely a similar mood.\n"
@@ -75,7 +96,7 @@ def main():
         for j in range(i + 1, len(cands)):
             if j in used: continue
             try:
-                r2 = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
+                r2 = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
                     "max_tokens": 60, "messages": [{"role": "user", "content":
                     "Is tension A the same underlying tension as tension B? Same means the same specific "
                     "pull/avoidance about the same specific subject - not merely a similar mood.\n"

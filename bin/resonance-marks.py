@@ -27,6 +27,27 @@ Schema (resonance-marks.json):
 Immutable once formed. Extremely rare.
 """
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, subprocess, math, random, re
 from datetime import datetime
 
@@ -120,11 +141,11 @@ def _weight_sentence(output_text):
     try:
         import urllib.request
         numbered = "\n".join(f"{i+1}. {x[:240]}" for i, x in enumerate(sentences[:14]))
-        body = json.dumps({"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 6,
+        body = json.dumps({"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 6,
                            "messages": [{"role": "user", "content":
                                "Below are sentences from something Vintos wrote that resonated. Which ONE sentence carries the weight — "
                                "the line the whole thing turns on? Answer with its number only.\n\n" + numbered}]}).encode()
-        req = urllib.request.Request("http://100.79.177.103:1234/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=20) as r:
             ans = json.load(r)["choices"][0]["message"]["content"]
         m = re.search(r"\d+", ans or "")

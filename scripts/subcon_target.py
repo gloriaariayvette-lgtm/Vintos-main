@@ -235,10 +235,16 @@ def main(argv):
         except ValueError as e:
             print("refused:", e, file=sys.stderr)
             return 2
+    if len(argv) == 3 and argv[0] == "route":
+        # For shell scripts: two lines, URL then model; empty in, empty out while the 26B is the target.
+        url, model = generative_route(argv[1], argv[2])
+        print(url or "")
+        print(model or "")
+        return 0
     if not argv or argv[0] == "status":
         print(json.dumps(status(), indent=2))
         return 0
-    print("usage: subcon_target.py [status | set gemma26b|aeon]", file=sys.stderr)
+    print("usage: subcon_target.py [status | set gemma26b|aeon | route URL MODEL]", file=sys.stderr)
     return 1
 
 

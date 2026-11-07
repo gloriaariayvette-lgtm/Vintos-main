@@ -675,6 +675,27 @@ def hash_ip(ip: str) -> str:
     return hashlib.sha256(f"vintos-witness-{ip}".encode()).hexdigest()[:12]
 
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_mode=False,
                              prompt_style="moment"):
     """Live Gemma emotional read. Runs in a background thread (never blocks chat),
@@ -1286,8 +1307,8 @@ def _relational_compare(user_text):
             else:
                 try:
                     import requests as _rq
-                    _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                        "model": "gemma-4-26b-a4b-it-uncensored",
+                    _r = _rq.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+                        "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
                         "messages": [
                             {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
                             {"role": "user", "content": txt[:400]}],

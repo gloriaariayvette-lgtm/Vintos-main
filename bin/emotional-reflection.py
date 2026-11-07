@@ -7,6 +7,27 @@ Runs daily at 5 PM. Output: memory/emotional-reflections.md
 History: memory/reflection-history.json (drives bias learning)
 Model: override with REFLECT_MODEL env var.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, time, re
 import requests
 from datetime import datetime
@@ -36,8 +57,8 @@ def _now_line():
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
-API = "http://100.79.177.103:1234/v1/chat/completions"
-MODEL = os.environ.get("REFLECT_MODEL", "gemma-4-26b-a4b-it-uncensored")
+API = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+MODEL = os.environ.get("REFLECT_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
 OUTPUT = os.path.join(MEMORY, "emotional-reflections.md")
 HISTORY_FILE = os.path.join(MEMORY, "reflection-history.json")
 CARRY_FILE = os.path.join(MEMORY, "emotional-reflection-carry.txt")

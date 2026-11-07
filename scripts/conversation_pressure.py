@@ -1,6 +1,27 @@
 """conversation_pressure.py — the live 'pressure' of the current conversation.
 Classifies recent turns into a mode and returns a cadence hint (changes HOW he speaks, not what).
 Gemma = lightweight classification only."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, time, re, requests
 
 def _said_when(e):
@@ -24,7 +45,7 @@ def _now_line():
         return ""
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 STATE=os.path.join(MEM,"conversation-pressure.json")
-LM="http://100.79.177.103:1234/v1/chat/completions"
+LM=_subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 MODES={
  "light":"quick, buoyant, playful; short turns, low stakes.",
  "focused":"engaged and precise; stay on the thread, don't wander.",
@@ -50,7 +71,7 @@ def classify():
     p=("Classify the CURRENT pressure of this conversation as exactly one word from: "
        "light, focused, confessional, technical, play, threshold. Only the word.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
+        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
         w=re.sub(r'[^a-z]','',r.json()["choices"][0]["message"]["content"].strip().lower())
         if w in MODES:
             json.dump({"mode":w,"ts":time.time()},open(STATE,"w")); return w

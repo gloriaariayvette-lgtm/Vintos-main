@@ -8,6 +8,27 @@ Records his verbatim wants-about-his-own-wants/behaviors/feelings, and routes:
               being a report, and everything downstream reads forgeries.
 Laws: verbatim extraction only; empty is the common correct result; nothing
 here suppresses a first-order want from outside. Fail-open."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import hashlib, os, sys, json, re, glob, time, difflib
 from datetime import datetime
 
@@ -15,7 +36,7 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.pat
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "wants-meta.json")
 LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-MODEL = "gemma-4-26b-a4b-it-uncensored"
+MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 
 def log(m): print("[wants-meta]", m, flush=True)
 

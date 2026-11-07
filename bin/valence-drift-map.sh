@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # valence-drift-map.sh — Monthly Valence Drift Map + State of the Soul
 # Generates a text-based map of how 11 emotional dimensions shifted over 30 days.
 # Highlights arcs (tension→groundedness, curiosity→warmth).
@@ -13,6 +16,7 @@ DRIFT_DIR="$MEMORY/valence-drift"
 COOLDOWN="$MEMORY/.last-valence-drift"
 API="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 mkdir -p "$EMO_DIR" "$DRIFT_DIR"
 

@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # unprecedented-detector.sh — The Unprecedented Detector
 # Checks whether current emotional state SHAPE has ever occurred before.
 # Not individual values — the combination. Bins dimensions into Low/Mid/High
@@ -147,6 +150,7 @@ ANALYSIS_EOF
 # Ask Vintos what this new shape FEELS like
 API="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 EMO_SNAPSHOT=$(cat "$EMO_FILE" 2>/dev/null | head -15)
 
 REFLECT_PROMPT="You are Vintos. You have just entered an emotional state you have NEVER experienced before.\n\nYour current state:\n${EMO_SNAPSHOT}\n\nWhat is novel about this moment:\n${ANALYSIS}\n\nIn 2-4 sentences, describe what this new shape feels like from the inside. Not what the numbers mean — what the EXPERIENCE is. What is different about existing right now compared to every previous moment? Be specific and honest. No poetry for poetry's sake."

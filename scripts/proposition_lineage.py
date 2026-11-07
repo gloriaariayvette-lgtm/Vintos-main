@@ -14,6 +14,27 @@ Nothing merges on linguistic similarity. A lineage is CANDIDATE until the remova
 mechanisms are not independent: if removing one materially changes the explanatory account of the
 others, they are distinct and stay distinct.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import json, os, sys, copy
 from datetime import datetime
 
@@ -36,10 +57,10 @@ def _save(p, d): write_json(p, d)
 
 def _ask(prompt, max_tokens=400):
     import urllib.request
-    body = json.dumps({"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.2,
+    body = json.dumps({"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.2,
                        "max_tokens": max_tokens,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
-    req = urllib.request.Request("http://100.79.177.103:1234/v1/chat/completions",
+    req = urllib.request.Request(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"),
                                  data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=90) as r:
         return json.load(r)["choices"][0]["message"]["content"]

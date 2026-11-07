@@ -5,6 +5,27 @@ salience    - something keeps resurfacing across days far beyond its apparent we
 structural  - facts about his own architecture asserted with no attached reason
 All phrasing happens here (Gemma, free); curiosity_debt.block() stays LLM-free.
 Runs from cron. Never blocks a conversation."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import json, os, re, time, sys
 from collections import defaultdict
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
@@ -36,7 +57,7 @@ def gemma(prompt, max_tokens=300):
     import requests
     try:
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", json={
-            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.4, "max_tokens": max_tokens,
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.4, "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}]}, timeout=120)
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:

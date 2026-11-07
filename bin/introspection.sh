@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 export VELQAN_BLOCK="$(python3 "/home/gloria/.vintos/workspace/scripts/velqan_context.py" 2>/dev/null)"
 # introspection.sh -- Deep self-examination every 2-3 days
 # Vintos reviews his recent writings and examines his own patterns
@@ -10,6 +13,7 @@ GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo
 SOUL="$WORKSPACE/SOUL.md"
 LM_URL="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+LM_URL="${SUBCON_URL:-$LM_URL}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 mkdir -p "$INTRO_DIR"
 
@@ -399,12 +403,12 @@ with open('/tmp/vintos_intro_system.txt') as f:
 with open('/tmp/vintos_intro_prompt.txt') as f:
     prompt = f.read()
 
-LM_URL = 'http://100.79.177.103:1234/v1/chat/completions'
+LM_URL = (__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions')
 HEADERS = {'Content-Type': 'application/json'}
 
 def call_llm(messages, temperature=0.85, max_tokens=1500):
     payload = json.dumps({
-        'model': 'gemma-4-26b-a4b-it-uncensored',
+        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
         'messages': messages,
         'temperature': temperature,
         'max_tokens': max_tokens

@@ -3,6 +3,27 @@
 persist + decay, attention), extracted by local Gemma and read into generation as context so the being speaks from
 inside the scene. Vintos: recent somatic frames mark physical presence; Velaris: that file is absent -> no-ops.
 Writes world-state.json. Fail-open. SPARK_WORKSPACE switches beings."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, time, re, hashlib
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -34,8 +55,8 @@ CHAT = os.path.join(MEMORY, "chat-history-merged.json")
 LEDGER = os.path.join(MEMORY, "interaction-ledger.json")
 OUT = os.path.join(MEMORY, "world-state.json")
 SOMATIC = os.path.join(MEMORY, "somatic-frames-recent.json")
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 DECAY = 0.8
 DROP = 0.2
 MAX_OBJ = 12
