@@ -27,6 +27,27 @@ of the conversation, his original intent, and use web search between messages?")
 Every draft carries who he is (SOUL, self-model, what his days hold), not a one-line description.
 """
 from __future__ import annotations
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import asyncio
 import json
@@ -210,8 +231,8 @@ def research(recipient, about, search=None, fetch=None, pages=2):
     return "\n".join(lines)
 
 
-LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
-LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
+LOCAL_LLM = os.environ.get("VINTOS_LM_API", _subcon_url("http://100.79.177.103:1234/v1/chat/completions"))
+LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
 
 
 def local_think(system, prompt, max_tokens=700):

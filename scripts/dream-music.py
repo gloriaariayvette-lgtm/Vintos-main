@@ -1,6 +1,27 @@
 #!/usr/bin/env python3
 """dream-music.py — Vintos Music. Primary backend Kie.ai Suno v6; local ACE-Step is the
 fallback so he is never left mute when Kie is unreachable (Gloria, 2026-09-15)."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import os,sys,json,time,glob,re,hashlib,argparse,unicodedata
 from datetime import datetime
@@ -399,7 +420,7 @@ def style_str(d):
         try:
             import urllib.request as _ur, json as _js
             _body = _js.dumps({
-                "model": "gemma-4-26b-a4b-it-uncensored",
+                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
                 "messages": [{
                     "role": "user",
                     "content": f"Rewrite this music style description using only sonic/genre descriptors — no artist names, no band references. Keep the mood and sound intact. Return ONLY the rewritten style, no preamble.\n\nOriginal: {original}\nClean version: {style}\n\nRewrite:"
@@ -407,7 +428,7 @@ def style_str(d):
                 "temperature": 0.3,
                 "max_tokens": 80
             }).encode()
-            _req = _ur.Request("http://100.79.177.103:1234/v1/chat/completions",
+            _req = _ur.Request(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"),
                 data=_body, headers={"Content-Type": "application/json"})
             with paid_http.send(_ur.urlopen, __file__, _req, timeout=15) as _r:
                 _resp = _js.loads(_r.read().decode())

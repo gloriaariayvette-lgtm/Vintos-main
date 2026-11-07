@@ -10,6 +10,27 @@ Usage: python3 wal-extract.py "user message" "vintos reply"
 Writes to memory/wal.md (hot facts) and memory/wal-log.json (structured).
 WAL entries are promoted to pearls during weekly pearl selection.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import sys, os, json, re, requests
 from datetime import datetime
 
@@ -123,8 +144,8 @@ Vintos replied:
 \"\"\"{vintos_reply[:1000] if reply_eligible else '[WITHHELD FROM EVIDENCE: record as an act only; extract nothing from it]'}\"\"\"
 """
     try:
-        r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+        r = requests.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
             "messages": [
                 {"role": "system", "content": "Extract durable facts only. Respond with NONE or a JSON array. No other text."},
                 {"role": "user", "content": prompt}

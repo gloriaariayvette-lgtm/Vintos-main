@@ -1,6 +1,27 @@
 """model_router.py — single source of model truth for Vintos text surfaces.
 Claude drives chat/avatar; grok is the fallback (hard refusal, error, toggle=grok, or a forced-turn window).
 Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES / the mode file, not across jobs."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import os, sys, json, hashlib, time
 from datetime import datetime
@@ -670,8 +691,8 @@ async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_h
     return res["text"], res.get("reasoning", ""), res["route"]
 
 
-GEMMA_ENDPOINT = "http://100.79.177.103:1234/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA_ENDPOINT = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 
 async def gemma_call(msgs, temp=0.85, max_tokens=800):
     async with httpx.AsyncClient(timeout=120) as c:

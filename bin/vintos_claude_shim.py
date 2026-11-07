@@ -393,6 +393,8 @@ def llama_complete(j, call, b):
 def pool_complete(j, call, task):
     """Try the pool's choices for this task in order; unavailable (with every reason) when none answers."""
     backends, verdicts = POOL.choose(task, _pool_tokens(j))
+    if aeon_everywhere():   # after the flip the pool never places a call on the 26B either
+        backends = [b for b in backends if not (b.get("kind") == "lmstudio" and b["model"] == GEMMA_MODEL)]
     if not backends:
         why = "; ".join("%s@%s %s" % (v.get("model", ""), v.get("machine", ""), v["reason"]) if v.get("machine") else v["reason"]
                         for v in verdicts)
@@ -447,7 +449,29 @@ def subconscious_chain():
     except Exception:
         return ["pool:subconscious"] + POOL_FALLBACK["subconscious"]
 
+def aeon_everywhere():
+    """True once Gloria has flipped his subconscious to AEON (subcon_target.py, all-must-pass). Then the 26B is out of
+    every lane here: everything that went to it goes to AEON instead (Gloria 2026-11-07: "EVERYTHING WILL SWITCH")."""
+    try:
+        import subcon_target
+        return subcon_target.active() == "aeon"
+    except Exception:
+        return False
+
+def _without_26b(chain):
+    """Each 26B step becomes the AEON lanes; other steps (Claude, x.ai) keep their place. No duplicates."""
+    out = []
+    for name in chain:
+        for n in (["pool:aeon", "aegis_gemma"] if name == "gemma" else [name]):
+            if n not in out:
+                out.append(n)
+    return out
+
 def provider_chain(j, path):
+    chain = _provider_chain(j, path)
+    return _without_26b(chain) if aeon_everywhere() else chain
+
+def _provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
     task = pool_task(path)
     if task == "subconscious": return subconscious_chain()

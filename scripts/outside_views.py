@@ -15,6 +15,27 @@ come back the next time they speak, so repetition alone does not wear his positi
     inner_line(who, view)                    -> the line for his daily inner life
 """
 from __future__ import annotations
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import json
 import os
 import re
@@ -23,8 +44,8 @@ from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEMORY, "outside-views.jsonl")
-LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
-LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
+LOCAL_LLM = os.environ.get("VINTOS_LM_API", _subcon_url("http://100.79.177.103:1234/v1/chat/completions"))
+LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
 STANCES = ("agree", "partly", "disagree", "no_claim")
 
 

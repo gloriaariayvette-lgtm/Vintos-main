@@ -9,6 +9,27 @@
      deliberately lighter than BIS: a miss records and expires - no blush, no scar, no penalty.
 Scenes are excluded from grading entirely (a scene is not a debate, nor a leadership exam).
 All local (Gemma). CLI: grade | journal-seeds | harvest | weekly-check. Import: get_active_plan_line()."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, re, uuid, requests
 from datetime import datetime, timedelta
 
@@ -35,14 +56,14 @@ MEM = os.path.expanduser("~/.vintos/workspace/memory")
 TRIALS = os.path.join(MEM, "lead-trials.json")
 SEEDS = os.path.join(MEM, "lead-evolutions.json")
 STATE = os.path.join(MEM, ".lead-grade-state.json")
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 def save(p, d): json.dump(d, open(p, "w"), indent=2)
 def ask(prompt, mt=200):
     try:
-        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.1,
+        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.1,
             "max_tokens": mt, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception: return ""

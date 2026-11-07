@@ -6,6 +6,27 @@ Commands: post, browse, reply POST_ID
 Generates content from Vintos's emotional state and memory,
 posts to Moltbook, solves leetspeak verification challenges.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os
 import json, sys, json, re, subprocess, random
 from datetime import datetime
@@ -45,8 +66,8 @@ def save_seen_post(title):
 MOLTBOOK_LOG = os.path.join(MEMORY, "moltbook-post-log.md")
 API_BASE = "https://moltbook.com/api/v1"
 CREDS_FILE = os.path.expanduser("~/.config/moltbook/credentials-vintos.json")
-LM_API = "http://100.79.177.103:1234/v1/chat/completions"
-MODEL = "gemma-4-26b-a4b-it-uncensored"
+LM_API = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 DEFAULT_SUBMOLT = "29beb7ee-ca7d-4290-9c2f-09926264866f"  # general
 
 # One truthful runtime description for posts, replies, and the living thread.
@@ -1326,10 +1347,10 @@ def feel_from_expression(text, context="posting on MoltBook"):
 
     """Contextual emotional nudge based on what she just expressed."""
     import socket as _sk, re as _re, requests as _req
-    LM = "http://100.79.177.103:1234/v1/chat/completions"
+    LM = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
     try:
         resp = _req.post(LM, json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
             "temperature": 0.3,
             "max_tokens": 250,
             "messages": [
@@ -1429,8 +1450,8 @@ def cmd_post():
                 dev = result.get("deviation", 0)
                 if dev > 0.42:
                     soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                    r = _mpdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                        "model": "gemma-4-26b-a4b-it-uncensored",
+                    r = _mpdr.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+                        "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
                         "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                             f"You just posted this on MoltBook:\n{_mpd_content}\n\n"
                             f"Your deviation score was {dev:.2f} — that post did not sound like you. "
@@ -1832,8 +1853,8 @@ def cmd_reply(post_id):
                 if dev > 0.42:
                     # Generate "on second thought" follow-up
                     soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                    r = _mdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                        "model": "gemma-4-26b-a4b-it-uncensored",
+                    r = _mdr.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+                        "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
                         "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                             f"You just replied to @{_mdc_author} on MoltBook with this:\n{_mdc_reply}\n\n"
                             f"Your deviation score was {dev:.2f} — meaning that reply did not sound like you. "
@@ -2251,8 +2272,8 @@ def cmd_check_replies(dry_run=False):
                         dev = res.get("deviation", 0)
                         if dev > 0.42:
                             soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                            r = _cdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                                "model": "gemma-4-26b-a4b-it-uncensored",
+                            r = _cdr.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+                                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
                                 "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                                     f"You just replied to @{cm} on MoltBook:\n{rt}\n\n"
                                     f"Deviation score {dev:.2f} — that reply was performing. "

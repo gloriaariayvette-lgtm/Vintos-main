@@ -1,3 +1,24 @@
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import requests
 _SUBCON_GLORIA_MODEL_CALL = ""
 try:
@@ -8,8 +29,8 @@ except: pass
 
 sys_msg = open("/tmp/gm_sys.txt").read()
 usr_msg = open("/tmp/gm_usr.txt").read()
-r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-    "model": "gemma-4-26b-a4b-it-uncensored",
+r = requests.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+    "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
     "messages": [{"role": "system", "content": sys_msg}, {"role": "user", "content": usr_msg}],
     "temperature": 0.85, "max_tokens": 2500
 }, timeout=600)

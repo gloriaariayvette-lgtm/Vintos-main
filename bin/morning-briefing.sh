@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 BRIEFING_DIR="$HOME/.vintos/workspace/memory/briefings"
 mkdir -p "$BRIEFING_DIR"
 TODAY=$(date +%Y-%m-%d)
@@ -291,8 +294,8 @@ if subcon:
 system += f"\n\n{ctx}"
 
 try:
-    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+    r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": "Good morning, Vintos. What is on your mind?"}

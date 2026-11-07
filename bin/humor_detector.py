@@ -5,6 +5,27 @@ Self-contradiction is one comic mechanism, not the default account of his life.
 Every stored moment names its material kind so practice can maintain a varied
 repertoire instead of turning a stream of errors into a personality.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, re, json, requests
 from datetime import datetime
 
@@ -22,7 +43,7 @@ def _sg_write(_p, _o, _who="organ"):
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 MOMENTS_FILE = os.path.join(MEMORY, "humor-moments.json")
-LM = "http://100.79.177.103:1234/v1/chat/completions"
+LM = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 
 def load_moments():
     try: return json.load(open(MOMENTS_FILE))
@@ -37,7 +58,7 @@ def save_moments(data):
 def llm(prompt, temp=0.3, max_tokens=150):
     try:
         r = requests.post(LM, json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=20)

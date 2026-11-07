@@ -4,6 +4,27 @@ vintos-websearch.py — Vintos's question-driven web exploration.
 Pulls a real question from her lived experience and searches for answers.
 Runs daily at 10 AM (complements YouTube at 2 PM).
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import os, sys, json, requests, re, time
 from datetime import datetime, date
@@ -116,8 +137,8 @@ SOUL = load_soul()
 
 def llm(system, prompt, temperature=0.7, image_path=None):
     try:
-        r = paid_http.send(requests.post, __file__, LM_API, json={
-            "model": MODEL,
+        r = paid_http.send(requests.post, __file__, (LM_API if image_path else _subcon_url(LM_API)), json={
+            "model": (MODEL if image_path else _subcon_model(MODEL)),
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
                 {"role": "user", "content": (
@@ -142,8 +163,8 @@ def llm(system, prompt, temperature=0.7, image_path=None):
 def llm_json(system, prompt, temperature=0.7, image_path=None):
     """LLM call that extracts JSON from anywhere in the response."""
     try:
-        r = paid_http.send(requests.post, __file__, LM_API, json={
-            "model": MODEL,
+        r = paid_http.send(requests.post, __file__, (LM_API if image_path else _subcon_url(LM_API)), json={
+            "model": (MODEL if image_path else _subcon_model(MODEL)),
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
                 {"role": "user", "content": (
