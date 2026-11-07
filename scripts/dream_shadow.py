@@ -70,7 +70,10 @@ WRITE_SAMPLING = {"temperature": 0.95, "max_tokens": 800}
 JUDGE_SAMPLING = {"temperature": 0.2, "max_tokens": 24}
 WRITE_TIMEOUT = 600
 JUDGE_TIMEOUT = 120
-MAX_ITEMS = 6
+MAX_ITEMS = 4
+# The run holds llm-lock; no new dream is started after this many seconds, so the lock is never kept past the
+# next locked job's patience (llm-lock waits 900 s). What is left waits for the next night.
+RUN_BUDGET_S = 1800
 # The live judge's system prompt, verbatim (dream-trigger.sh, since 22 October). A test pins it to the script.
 JUDGE_SYSTEM = ("You judge whether a dream RESOLVED the unfinished thread that seeded it. RESOLVED means the thread's tension or question was settled within the dream: it arrived at a new understanding, an ending, an acceptance, or a letting go, so the thread no longer pulls in the same way. UNRESOLVED means the dream explored, inhabited, or circled the thread - even vividly, even at its center - but left it open, or went somewhere else. Dreams are symbolic; a resolution can be symbolic too, but it must be an arrival, not a visit. Default to UNRESOLVED if there is any doubt. Answer with exactly one word, RESOLVED or UNRESOLVED, for each thread you are asked about, in the format the question gives.")
 VERDICTS = ("resolved", "unresolved")
@@ -565,8 +568,10 @@ def run(max_items=None, transport=None, min_age_s=600):
         done_ids = {e.get("shadow_id") for e in load_entries()}
         dream_log = _read_json(DREAM_LOG, {})
         processed, skipped = [], 0
+        budget = float(_config().get("run_budget_s") or RUN_BUDGET_S)
+        t0 = time.monotonic()
         for p in pending(min_age_s):
-            if len(processed) >= cap:
+            if len(processed) >= cap or time.monotonic() - t0 > budget:
                 break
             item = _read_json(p)
             if not isinstance(item, dict) or not item.get("key"):
