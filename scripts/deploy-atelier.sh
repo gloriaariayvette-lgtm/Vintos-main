@@ -138,6 +138,7 @@ SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good 
 SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py chemistry_mcp.py"   # Lab instrument receipts and bounded protein-design MCP route
 SCRIPTS="$SCRIPTS residual_shadow.py"   # prospective exact-input EmoClaw receipts; residual inference remains offline
 SCRIPTS="$SCRIPTS subcon_target.py aeon-bar-record.json"   # his subconscious stays on the 26B until AEON passes the whole bar (pinned record), 2026-11-07
+SCRIPTS="$SCRIPTS dream_shadow.py"   # the dream shadow trial: AEON writes and judges beside the live dream, into memory/shadow/dream only (2026-11-07)
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from correctness, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
