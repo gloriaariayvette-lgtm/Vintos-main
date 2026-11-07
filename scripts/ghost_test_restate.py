@@ -5,7 +5,11 @@ New ghost rows are written with ghost-branches.real_behaviour_test() (2026-11-07
 watch for a lean "producing movement" when a thread type recurs, which only a ghost run can show. This
 rewrites their `test` the same way new rows are written, keeping the old one in `test_before_restate`.
 
-Nothing else on a row changes: not the hypothesis, its id, formation, marks, tenure or status.
+Nothing else on a row changes: not the hypothesis, its id, formation, marks, tenure or status. Rows on any
+older wording (no basis, or an earlier real-behaviour version) are brought to the current TEST_BASIS; the first
+replaced test stays in `test_before_restate`. Marks are never deleted, but once a row is restated the nightly
+judge counts only marks dated from `test_restated_at` on (they were judged under another test). Graduated or
+retired rows, and rows whose lean label no longer matches their hypothesis, are skipped.
 
 Gloria decides whether to run it. By default it is a DRY RUN: it prints counts and row ids only, never any
 hypothesis or test text, and writes nothing.
@@ -46,16 +50,20 @@ def plan(db, gb):
     for h in (db.get("hypotheses", []) if isinstance(db, dict) else []):
         if not isinstance(h, dict) or h.get("source") != "ghost_branch":
             continue
+        label = labels.get(h.get("successful_lean"))
         if h.get("test_basis") == gb.TEST_BASIS:
-            skipped.append((h, "already_real_behaviour"))
-        elif h.get("graduated"):
+            skipped.append((h, "already_current"))
+        elif h.get("graduated") or h.get("status") == "graduated":
             skipped.append((h, "graduated"))
-        elif h.get("retired"):
+        elif h.get("retired") or h.get("status") == "retired":
             skipped.append((h, "retired"))
-        elif not labels.get(h.get("successful_lean")):
+        elif not label:
             skipped.append((h, "lean_unknown"))
+        elif not str(h.get("hypothesis") or "").startswith(label):
+            # the lean was relabelled since this row formed: the test would name a different lean than the claim
+            skipped.append((h, "label_mismatch"))
         else:
-            todo.append((h, labels[h["successful_lean"]]))
+            todo.append((h, label))
     return todo, skipped
 
 
@@ -65,6 +73,10 @@ def _rid(h):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    unknown = [a for a in argv if a != "--apply"]
+    if unknown:
+        print("unknown argument(s): %s - nothing done. Usage: ghost_test_restate.py [--apply]" % " ".join(unknown))
+        return 2
     apply = "--apply" in argv
     gb = _ghost_module()
     path = gb.CAUSALITY_FILE
@@ -94,8 +106,10 @@ def main(argv=None):
         shutil.copy2(path, backup)
         at = datetime.now().isoformat(timespec="seconds")
         for h, label in todo:
-            h["test_before_restate"] = h.get("test", "")
-            h["test"] = gb.real_behaviour_test(label, h.get("failed_primary_pattern"), h.get("thread_type"))
+            if "test_before_restate" not in h:
+                h["test_before_restate"] = h.get("test", "")
+            h["test"] = gb.real_behaviour_test(label, h.get("failed_primary_pattern"), h.get("thread_type"),
+                                               h.get("successful_lean"))
             h["test_basis"] = gb.TEST_BASIS
             h["test_restated_at"] = at
         from store_guard import save_json
