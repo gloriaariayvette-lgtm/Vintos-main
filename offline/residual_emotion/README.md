@@ -25,6 +25,16 @@ prompt ablations independently (AUC 0.86150–0.94425). See
 `evidence/2026-09-20-ablit26-q4-paper-protocol.json` and
 `evidence/2026-09-20-ablit26-q4-prompt-variants.json`.
 
+### AEON target (2026-11-07)
+
+`model-lock-aeon.json` pins AEON (Gemma 4 12B abliterated, BF16, sha256 `02fd3758…d9ce`). Which lock his
+subconscious readings use is one flag, `~/.vintos/subcon-target.json`, read by `scripts/subcon_target.py`; with
+no flag it stays on the 26B lock above. AEON is held to exactly the 26B's bar: the model-level Pain paper
+protocol and Pain prompt ablations, then per construct nested held-out AUC ≥ 0.85, six mean-pooled prompt
+variants, |cosine| < 0.3 and a named unembedding review. `subcon_target.py` lists the constructs that pass and
+refuses the flip while a model-level item is unmet. The AEON lock carries no host path; extraction uses a private
+copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
+
 ## Evidence law
 
 - A generated score is not a residual measurement.

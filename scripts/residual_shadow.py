@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,6 +46,18 @@ def _finite_map(value) -> dict[str, float]:
         if math.isfinite(number):
             out[key] = round(number, 6)
     return out
+
+
+def _residual_target() -> dict:
+    """The instrument the active subconscious flag names (subcon_target.py); never fails a receipt."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import subcon_target
+        return subcon_target.receipt()
+    except Exception:
+        return {"target": "unavailable"}
 
 
 def _event_id(turn_id: str, surface: str, source: str, text: str, observed_at: str) -> str:
@@ -83,6 +96,7 @@ def record(*, input_text: str, source: str, surface: str = "", turn_id: str = ""
         "response_digest": str(response_digest or ""),
         "error": str(error or "")[:500],
         "residual_status": "pending_offline_measurement",
+        "residual_target": _residual_target(),
         "truth_status": "generated_emoclaw_read_and_state_receipt_not_residual_measurement",
         "causal_effect": "none_from_this_recorder",
     }

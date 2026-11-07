@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
+  "architecture_note": "Gemma 4 12B abliterated, full BF16 GGUF converted from the published safetensors; a distinct checkpoint whose results are never pooled with the 26B lock",
+  "format": "GGUF BF16",
+  "host": "studio",
+  "path": null,
+  "path_note": "host path is private; set VINTOS_RESIDUAL_MODEL_LOCK to a private copy of this lock that carries the path",
+  "sha256": "02fd375821a7b50e783f408a75bf714ea85fc0dc67c933991642ef76d9b0d9ce",
+  "llama_cpp_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "serving_api_is_not_measurement": true,
+  "not_the_household_q4": "the household Q4 AEON server is a different checkpoint; directions fit on this BF16 file are not read from it"
+}

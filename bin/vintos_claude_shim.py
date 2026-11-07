@@ -438,9 +438,19 @@ def pool_task(path):
     parts = path.split("/")
     return parts[2] if len(parts) > 3 and parts[1] == "pool" and parts[2] else None
 
+def subconscious_chain():
+    """/pool/subconscious follows ~/.vintos/subcon-target.json (subcon_target.py): the 26B until Gloria flips it
+    to AEON, then AEON only (no 26B fallback, so his subconscious is never split across the two)."""
+    try:
+        import subcon_target
+        return subcon_target.pool_chain()
+    except Exception:
+        return ["pool:subconscious"] + POOL_FALLBACK["subconscious"]
+
 def provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
     task = pool_task(path)
+    if task == "subconscious": return subconscious_chain()
     if task: return ["pool:" + task] + POOL_FALLBACK.get(task, POOL_FALLBACK_DEFAULT)
     # the Aegis lane may spill to another machine's AEON when Aegis is busy (pool task "aeon")
     if path.startswith("/gemma-aegis"): return ["pool:aeon", "aegis_gemma", "gemma", "xai"]
