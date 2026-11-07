@@ -27,6 +27,7 @@ import subcon_target as T
 FLAG = os.path.join(TMP, ".vintos", "subcon-target.json")
 OLD_URL, OLD_MODEL = "http://old-route/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored"
 REAL_RECORD, REAL_PIN = T.RECORD, T.RECORD_SHA256
+SHIPPED = (T.RECORD, T.RECORD_SHA256)
 
 def write_flag(obj):
     os.makedirs(os.path.dirname(FLAG), exist_ok=True)
@@ -51,11 +52,25 @@ def refused(name="aeon"):
     except ValueError as e:
         return str(e)
 
-print("--- the real pinned record (the Codex's sealed results as of 2026-11-07) ---")
+print("--- the real pinned record (the Codex's sealed all-pass results, 2026-11-07) ---")
 real, problems = T.load_record()
 check("the shipped record matches its pinned sha256 and schema", real is not None and not problems, problems)
+check("it records every item of the 26B's bar as passed", T.unmet() == [], T.unmet())
+check("all eleven constructs, Valence at 37 and Groundedness at 43", sorted(real["constructs"]) == sorted(T.DIMENSIONS)
+      and real["constructs"]["Valence"]["layer"] == 37 and real["constructs"]["Groundedness"]["layer"] == 43)
+check("so the flip is allowed (scratch HOME only)", T.set_target("aeon") == "aeon" and T.active() == "aeon"
+      and sorted(T.constructs()) == sorted(T.DIMENSIONS))
+clear()
+
+print("--- the record as it stood before the all-pass results: refused ---")
+UNMET = copy.deepcopy(real)
+UNMET["pain"] = {"paper_protocol_auc": None, "prompt_variant_aucs": None, "status": "not_run"}
+UNMET["constructs"]["Valence"]["semantic_review"] = "failed"
+UNMET["constructs"]["Groundedness"]["semantic_review"] = "failed"
+use_record(UNMET)
+REAL_RECORD, REAL_PIN = T.RECORD, T.RECORD_SHA256   # the later sections restore this unmet record
 missing = T.unmet()
-check("it names exactly what has not passed: Pain (both), Valence and Groundedness semantic review",
+check("it names exactly what had not passed: Pain (both), Valence and Groundedness semantic review",
       missing == ["Pain paper protocol: not_run", "Pain prompt ablations: not_run",
                   "Valence: semantic review failed", "Groundedness: semantic review failed"], missing)
 msg = refused()
@@ -64,7 +79,7 @@ check("the CLI refusal exits non-zero and writes nothing", T.main(["set", "aeon"
 write_flag({"target": "aeon"})
 check("a hand-written AEON flag is ignored while anything is unmet", T.active() == "gemma26b"
       and T.generative_route(OLD_URL, OLD_MODEL) == (OLD_URL, OLD_MODEL))
-check("no partial switch: under the unmet record AEON reads nothing at all", T.constructs("aeon") == {})
+check("no partial switch: under an unmet record AEON reads nothing at all", T.constructs("aeon") == {})
 clear()
 check("no flag -> the 26B", T.active() == "gemma26b" and T.receipt()["identity"] == "gemma-4-26b-a4b-it-uncensored")
 for bad in ("{not json", json.dumps({"target": "llama"}), json.dumps(["aeon"])):
@@ -83,7 +98,7 @@ check("a complete passing record has nothing unmet", T.unmet() == [], T.unmet())
 check("the flip is then allowed and written", T.set_target("aeon") == "aeon" and T.active() == "aeon"
       and json.load(open(FLAG)) == {"target": "aeon"})
 check("under AEON all eleven constructs are read, at the record's layers",
-      sorted(T.constructs()) == sorted(T.DIMENSIONS) and T.constructs()["Valence"] == (41, "mean"))
+      sorted(T.constructs()) == sorted(T.DIMENSIONS) and T.constructs()["Valence"] == (37, "mean") and T.constructs()["Groundedness"] == (43, "mean"))
 reading = {"Arousal": 0.4, "Tension": True, "Desire": float("nan"), "Safety": "x", "Curiosity": "0.2"}
 check("readings keep only finite numbers", T.admitted_readings(reading) == {"Arousal": 0.4, "Curiosity": 0.2})
 check("a reading set from the other checkpoint is refused whole",
@@ -128,7 +143,7 @@ check("with a bad record even an AEON flag on disk stays on the 26B", T.active()
 clear()
 
 print("--- locks and the public repo ---")
-T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
+T.RECORD, T.RECORD_SHA256 = SHIPPED
 for name, t in T.TARGETS.items():
     lock = json.load(open(os.path.join(REPO, t["lock"])))
     check("%s lock matches identity and hash" % name, lock["identity"] == t["identity"] and lock["sha256"] == t["sha256"])
@@ -139,11 +154,12 @@ for rel in ("scripts/subcon_target.py", "scripts/aeon-bar-record.json", T.TARGET
           not addrs and "/Users/" not in text and "/home/" not in text, addrs)
 
 print("--- receipts, the live reads and the shim follow the gate ---")
+T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
 spec = importlib.util.spec_from_file_location("residual_shadow_subcon", os.path.join(REPO, "scripts", "residual_shadow.py"))
 S = importlib.util.module_from_spec(spec); spec.loader.exec_module(S)
 write_flag({"target": "aeon"})
 S.record(input_text="one exact line", source="exchange", turn_id="T-1", generated_deltas={"Warmth": .1})
-check("under the real (unmet) record a receipt still names the 26B", S.pending()[-1]["residual_target"]["target"] == "gemma26b")
+check("under an unmet record a receipt still names the 26B", S.pending()[-1]["residual_target"]["target"] == "gemma26b")
 use_record(GOOD)
 S.record(input_text="another exact line", source="exchange", turn_id="T-2", generated_deltas={"Warmth": .1})
 row = S.pending()[-1]
@@ -162,9 +178,9 @@ chain = SH.provider_chain({}, "/pool/subconscious/v1/chat/completions")
 check("the flipped shim lane is AEON only, never the 26B", chain == ["pool:aeon", "aegis_gemma"], chain)
 T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
 er = load_reader("26b")
-check("with the real record emotion_read.py is exactly as before", er.MODEL == "gemma-4-26b-a4b-it-uncensored"
+check("under an unmet record emotion_read.py is exactly as before", er.MODEL == "gemma-4-26b-a4b-it-uncensored"
       and er.LM_URL.endswith(":1234/v1/chat/completions"))
-check("with the real record the shim keeps the 26B",
+check("under an unmet record the shim keeps the 26B",
       SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:subconscious", "gemma"])
 check("other pool tasks never follow the flag", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "gemma"])
 srv = open(os.path.join(REPO, "bin", "server.py")).read()

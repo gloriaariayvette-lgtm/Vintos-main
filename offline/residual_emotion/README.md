@@ -34,8 +34,9 @@ stays on the 26B lock above. Gloria: it has to all pass. The flip to AEON is ref
 constructs nested held-out AUC ≥ 0.85, six mean-pooled prompt variants ≥ 0.85 and a passed named unembedding
 review, with every |cosine| < 0.3. The evidence is `scripts/aeon-bar-record.json`, built from the emotion
 Codex's sealed results and pinned by sha256 in `subcon_target.py`; the checker recomputes each verdict from the
-numbers. As of 2026-11-07 it lists four unmet items (`subcon_target.py status`): both Pain tests not run, and the
-Valence and Groundedness semantic reviews failed. The AEON lock carries no host path; extraction uses a private
+numbers. Since the emotion Codex's all-pass handoff (2026-11-07) every item passes: Pain .916 at L27 with 6/6
+ablations, all eleven constructs (Valence now the approved rebuild at L37, Groundedness at L43), max |cosine| .2011;
+the record keeps the sealed scope notes. The AEON lock carries no host path; extraction uses a private
 copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
 
 ## Evidence law

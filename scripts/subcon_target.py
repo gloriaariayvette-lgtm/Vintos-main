@@ -38,7 +38,7 @@ VARIANTS = 6
 COSINE_MAX = 0.3
 
 RECORD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aeon-bar-record.json")
-RECORD_SHA256 = "aaeab5adfbc3d07b47dcfec2ead74690c390125e19f767aef5e2998ac6e55923"
+RECORD_SHA256 = "0c5eabce9d647df5c08c705889e7c7795d2920299afc9257c264477af85cd122"
 RECORD_SCHEMA = "aeon-26b-bar-record/1"
 
 TARGETS = {

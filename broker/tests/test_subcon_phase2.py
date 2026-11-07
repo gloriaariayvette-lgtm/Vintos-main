@@ -60,17 +60,18 @@ def unrouted(f):
                 bad.append((i, l.strip()[:120]))
     return bad
 
+SHIPPED_PIN = T.RECORD_SHA256
 GOOD = copy.deepcopy(T.load_record()[0])
 GOOD["pain"] = {"paper_protocol_auc": 0.9, "prompt_variant_aucs": [0.9] * 6, "status": "passed"}
 for c in GOOD["constructs"].values(): c["semantic_review"] = "passed"
 RAW = json.dumps(GOOD).encode()
-REAL = (T.RECORD, T.RECORD_SHA256)
+UNMET = copy.deepcopy(GOOD)   # the bar as it stood before the all-pass results: the flip is refused
+UNMET["pain"] = {"paper_protocol_auc": None, "prompt_variant_aucs": None, "status": "not_run"}
+UNMET_RAW = json.dumps(UNMET).encode()
 def passing(on):
-    if on:
-        p = os.path.join(TMP, "good-record.json"); open(p, "wb").write(RAW)
-        T.RECORD, T.RECORD_SHA256 = p, hashlib.sha256(RAW).hexdigest()
-    else:
-        T.RECORD, T.RECORD_SHA256 = REAL
+    raw = RAW if on else UNMET_RAW
+    p = os.path.join(TMP, "record-%s.json" % ("good" if on else "unmet")); open(p, "wb").write(raw)
+    T.RECORD, T.RECORD_SHA256 = p, hashlib.sha256(raw).hexdigest()
 
 print("--- every subconscious/emotion caller goes through the flag ---")
 check("the classified list is complete and real", len(SUBCONSCIOUS) == 75 and all(os.path.exists(os.path.join(REPO, f)) for f in SUBCONSCIOUS))
@@ -98,7 +99,7 @@ print("--- the shell scripts ---")
 home2 = os.path.join(TMP, "shellhome"); scripts = os.path.join(home2, ".vintos", "workspace", "scripts"); os.makedirs(scripts)
 mod = src("scripts/subcon_target.py")
 open(os.path.join(scripts, "aeon-bar-record.json"), "wb").write(RAW)
-open(os.path.join(scripts, "subcon_target.py"), "w").write(mod.replace(T.RECORD_SHA256, hashlib.sha256(RAW).hexdigest()))
+open(os.path.join(scripts, "subcon_target.py"), "w").write(mod.replace(SHIPPED_PIN, hashlib.sha256(RAW).hexdigest()))
 def run_shell(f, flag):
     text = src(f)
     lines = text.split("\n")
