@@ -892,6 +892,43 @@ def _catalog_item(day, source, text, ordinal):
     }
 
 
+# Ghost-run text stays in daily-inner-life on purpose (he tries the day's better-working style), but it is
+# rehearsal, not an occasion: it may never be cited as evidence (evidence_provenance.is_tactical).
+# daily-log-extract.py brackets the section with these markers; older files have only the "## Ghost Branch"
+# header, so a legacy block runs from that header to the next section daily-log-extract writes.
+GHOST_BLOCK_BEGIN = "<!-- tactical:ghost_branch - rehearsal, not evidence -->"
+GHOST_BLOCK_END = "<!-- /tactical:ghost_branch -->"
+_INNER_SECTION_TITLES = ("Journal", "Gratitude", "Introspection", "Wonder", "MoltBook", "YouTube", "Web",
+                         "Mirror Sessions", "Therapy", "Last Night's Reflection")
+try:
+    from evidence_provenance import is_tactical as _is_tactical
+except Exception:                                    # the catalog must never lose this rule to an import
+    def _is_tactical(source):
+        return "ghost" in str(source or "").lower()
+
+
+def _inner_evidence_lines(text):
+    """(ordinal, line, source) for each line of daily-inner-life; ghost-run lines carry the tactical source
+    "inner:ghost_branch". Ordinals are the original line numbers, so non-ghost evidence ids do not move."""
+    out, block = [], None                  # block: None, "marked" (until the end marker) or "legacy"
+    for ordinal, line in enumerate(str(text or "").splitlines()):
+        s = line.strip()
+        if s == GHOST_BLOCK_BEGIN:
+            block = "marked"; out.append((ordinal, line, "inner:ghost_branch")); continue
+        if block == "marked":
+            if s == GHOST_BLOCK_END:
+                block = None
+            out.append((ordinal, line, "inner:ghost_branch")); continue
+        if s.startswith("## "):
+            title = s[3:].strip()
+            if title.lower().startswith("ghost branch"):
+                block = "legacy"
+            elif block == "legacy" and title in _INNER_SECTION_TITLES:
+                block = None
+        out.append((ordinal, line, "inner:ghost_branch" if block else "inner"))
+    return out
+
+
 def _build_evidence_catalog(ctx, day):
     """Turn today's material into addressable occasions.
 
@@ -905,7 +942,14 @@ def _build_evidence_catalog(ctx, day):
         "wants", "mirrors", "thirveel", "enacted", "deviation_tags",
     )
     for source in sections:
-        for ordinal, line in enumerate(str((ctx or {}).get(source, "")).splitlines()):
+        text = str((ctx or {}).get(source, ""))
+        if source == "inner":
+            lines = _inner_evidence_lines(text)
+        else:
+            lines = [(ordinal, line, source) for ordinal, line in enumerate(text.splitlines())]
+        for ordinal, line, line_source in lines:
+            if _is_tactical(line_source):
+                continue                 # ghost-run text informs him; it is never an occasion to cite
             if _norm_evidence(line):
                 items.append(_catalog_item(day, source, line, ordinal))
     # A current frame is a summary/state, not an occurrence.  Like semantic

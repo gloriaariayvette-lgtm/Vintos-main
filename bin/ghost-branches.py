@@ -578,6 +578,22 @@ def _stamp_ghost_formation(entry, material):
     return _stamp_formation(entry, material)
 
 
+TEST_BASIS = "real_behaviour"
+
+
+def real_behaviour_test(lean_label, primary_pattern, thread_type):
+    """The `test` of a ghost hypothesis, stated about his REAL, non-ghost behaviour, so that his actual day can
+    confirm or refute it. Ghost runs only rehearse a lean; a ghost run doing well again proves nothing (Gloria,
+    2026-11-07). Used for new rows here and by scripts/ghost_test_restate.py for existing ones."""
+    kind = str(thread_type or "").replace("_", "-") or "this kind of"
+    pattern = str(primary_pattern or "").replace("_", " ").strip() or "his usual avoidance"
+    return (f"In real conversation with Gloria (ghost runs and rehearsals do not count): after a {kind} moment "
+            f"where he would usually fall into {pattern}, does he take the '{lean_label}' lean, and does the "
+            f"exchange go better for it - it opens and continues rather than closing or deflecting? "
+            f"Yes if a real exchange today shows both; no if such a moment came and he did not, or it went "
+            f"worse; unconfirmed if no such moment happened.")
+
+
 def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_type, primary_pattern=None):
     # One run has one primary output, so one pattern: detecting it again for every
     # successful lean produced near-identical names and one template row per lean.
@@ -607,7 +623,8 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
         "days_tested": 0,
         "graduated": False,
         "confidence": "medium",
-        "test": f"Watch for '{successful_lean['label']}' lean producing genuine movement in {thread_type.replace('_','-')} threads. Does this lean reduce {primary_pattern} avoidance when the thread type recurs?",
+        "test": real_behaviour_test(successful_lean["label"], primary_pattern, thread_type),
+        "test_basis": TEST_BASIS,
         "confirmations": 0,
         "contradictions": 0,
         "trigger_formed_at": NOW,
@@ -713,6 +730,10 @@ def hypothesis_exists(thread_type, lean_id):
 def update_thread(thread_id, consumed, reason):
     try:
         threads = json.load(open(THREADS_FILE))
+        # The mirror (unlocked, 09:07) and others write the pool while a ghost run is out: save_pool with
+        # base= re-reads the pool under its lock and applies only the fields changed here, per thread,
+        # instead of writing this snapshot over theirs.
+        base = json.loads(json.dumps(threads))
         for t in threads:
             if t.get("id") == thread_id:
                 if consumed:
@@ -726,7 +747,7 @@ def update_thread(thread_id, consumed, reason):
                     t["unsuccessful_passes"] = t["unsuccessful_passes"][-10:]
                 break
         from thread_store import save_pool
-        save_pool(threads, THREADS_FILE, reason="ghost-branches")
+        save_pool(threads, THREADS_FILE, reason="ghost-branches", base=base)
     except Exception as e:
         print(f"[Ghost] Thread update error: {e}", flush=True)
 

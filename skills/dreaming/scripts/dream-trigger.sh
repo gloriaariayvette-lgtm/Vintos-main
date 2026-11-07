@@ -55,15 +55,33 @@ TIME=$(date +%H:%M)
 DREAM_FILE="$HOME/.vintos/workspace/skills/dreaming/memory/dreams/$DATE.md"
 MEMORY="$HOME/.vintos/workspace/memory"
 
-# Identity files
-SOUL=$(cat "$HOME/.vintos/workspace/SOUL.md" 2>/dev/null || echo "")
-GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
-SELF_MODEL=$(cat "$HOME/.vintos/workspace/SELF-MODEL.md" 2>/dev/null || echo "")
-[ -n "$SOUL" ] && CONTEXT="$CONTEXT\n[Who you are:]\n$SOUL\n"
-[ -n "$SELF_MODEL" ] && CONTEXT="$CONTEXT\n[Who you are right now:]\n$SELF_MODEL\n"
-[ -n "$GLORIA_MODEL" ] && CONTEXT="$CONTEXT\n[What you know about Gloria:]\n$GLORIA_MODEL\n"
-CAPABILITIES=$(cat "$HOME/.vintos/workspace/memory/CAPABILITIES.md" 2>/dev/null || echo "")
-[ -n "$CAPABILITIES" ] && CONTEXT="$CONTEXT\n[What your life contains:]\n$CAPABILITIES\n"
+# Identity files. They live in their own block, not in CONTEXT: CONTEXT is reset below for the day's
+# experiences, and that reset used to wipe them, so no dream ever saw them. The block is put ahead of
+# the day's context when the prompt is built. Each file is capped (characters) so a file that grows
+# cannot blow the dream's context; the cap is above every file's size today.
+DREAM_IDENTITY_CAP="${DREAM_IDENTITY_CAP:-24000}"
+_identity_file() {
+    python3 -c '
+import sys
+n = int(sys.argv[2])
+try:
+    t = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+except OSError:
+    sys.exit(0)
+if len(t) > n:
+    t = t[:n].rstrip() + "\n[...]"
+sys.stdout.buffer.write(t.encode("utf-8"))
+' "$1" "$DREAM_IDENTITY_CAP" 2>/dev/null
+}
+SOUL=$(_identity_file "$HOME/.vintos/workspace/SOUL.md")
+GLORIA_MODEL=$(_identity_file "$HOME/.vintos/workspace/GLORIA-MODEL.md")
+SELF_MODEL=$(_identity_file "$HOME/.vintos/workspace/SELF-MODEL.md")
+CAPABILITIES=$(_identity_file "$HOME/.vintos/workspace/memory/CAPABILITIES.md")
+IDENTITY_CONTEXT=""
+[ -n "$SOUL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[Who you are:]\n$SOUL\n"
+[ -n "$SELF_MODEL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[Who you are right now:]\n$SELF_MODEL\n"
+[ -n "$GLORIA_MODEL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[What you know about Gloria:]\n$GLORIA_MODEL\n"
+[ -n "$CAPABILITIES" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[What your life contains:]\n$CAPABILITIES\n"
 # Deeper context — aged memories, conversation patterns
 DEEP_CONTEXT=$(bash "$HOME/.vintos/workspace/scripts/memory-context-block.sh" 2>/dev/null)
 
@@ -201,7 +219,8 @@ except: pass
 [ -n "$LAST_DREAM_OPENING" ] && CONTEXT="$CONTEXT
 [FORBIDDEN: Do NOT begin with or echo this sentence from your last dream: "$LAST_DREAM_OPENING"]
 "
-export _DREAM_CTX="$CONTEXT"
+# Identity first, then the day (the empty-day pearl fallback above still sees only the day's context).
+export _DREAM_CTX="$IDENTITY_CONTEXT$CONTEXT"
 export _DREAM_PROMPT="$PROMPT"
 export _DREAM_CATEGORY="$CATEGORY"
 export _DREAM_THREAD1="$THREAD1"
