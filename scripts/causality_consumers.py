@@ -21,11 +21,10 @@ pearl_engine.add_candidate). Runs after the nightly cause pass. SPARK_WORKSPACE 
 import os, sys, json
 from datetime import datetime, timezone
 
-# causality thread seeding DISABLED per Gloria 2026-07-14 — was spamming unresolved threads.
-def seed_thread(*_a, **_k):
-    return None
-def set_preoccupation(*_a, **_k):
-    return False
+# Causality THREAD seeding is off (Gloria 2026-07-14: it was spamming unresolved threads); the seeding loop in
+# main() is a deliberate `pass`. Setting tonight's PREOCCUPATION is on: main() imports the real
+# set_preoccupation from emoclaw_utils. Module-level "disabled" stubs for both used to sit here, but main()'s
+# import always replaced them, so they never disabled anything and were removed (2026-11-07).
 
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -83,7 +82,7 @@ def main():
     if seed_thread:
         for o, s in emergent:
             try:
-                pass  # DISABLED causality thread
+                pass  # thread seeding stays off (Gloria 2026-07-14); see the note at the top
                 seeded += 1
             except Exception as e:
                 log(f"seed_thread failed: {e}")
