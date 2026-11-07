@@ -17,6 +17,27 @@ isn't there yet, then to a deterministic posture if Gemma is down. Writes latent
 in the SAME schema living_trajectory / _spark_block already read (content/type/timeliness),
 so nothing downstream changes. Cron: every 2h idle. Prunes >7d, caps 20. Fail-open.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, re, json
 from datetime import datetime, timezone
 import requests
@@ -27,8 +48,8 @@ LT      = os.path.join(MEMORY, "living-trajectory.json")
 JEPA    = os.path.join(MEMORY, "jepa-prediction.json")
 GPRED   = os.path.join(MEMORY, "gloria-prediction.json")
 CACHE   = os.path.join(MEMORY, "latent-cache.json")
-GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 CACHE_CAP, CACHE_TTL_DAYS = 20, 7
 
 def load(p, d):

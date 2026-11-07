@@ -12,6 +12,27 @@ learned-store (what became more true after resolutions) and regret-store (ways o
 he would not repeat) into planning, so introspection doesn't re-plan past what he already
 learned or bend back toward a regretted path. Local-Gemma. Fail-open.
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re
 from datetime import datetime, timezone
 import requests
@@ -24,8 +45,8 @@ PRACTICES = os.path.join(MEMORY, "introspective-practices.json")
 EARNED    = os.path.join(MEMORY, "planning-earned.json")   # separate file (don't clobber existing schemas)
 LEARNED   = os.path.join(MEMORY, "learned.json")           # what became more true after resolutions
 REGRET    = os.path.join(MEMORY, "regret.json")            # ways of reaching he would not repeat
-GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 PERSIST_DAYS, STALE_DAYS, MAX_PER_RUN = 1, 14, 3
 
 def load(p, d):

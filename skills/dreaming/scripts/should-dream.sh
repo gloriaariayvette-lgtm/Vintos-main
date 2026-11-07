@@ -36,6 +36,14 @@ STATE=$(cat "$STATE_FILE")
 LAST_DATE=$(echo "$STATE" | jq -r '.lastDreamDate // ""')
 DREAMS_TONIGHT=$(echo "$STATE" | jq -r '.dreamsTonight // 0')
 MAX_DREAMS=$(echo "$STATE" | jq -r '.maxDreamsPerNight // 2')
+# The night's dreams follow the unresolved pool (Gloria, 2026-11-07): an empty pool keeps its one
+# dream, up to 8 open threads two, more than that three (one per nightly slot: 23:50, 01:37, 03:07).
+OPEN_THREADS=$(python3 -c "import os,sys; sys.path.insert(0, os.environ.get('VINTOS_SCRIPTS', os.path.expanduser('~/.vintos/workspace/scripts'))); import thread_gate as g; p = g._pool(); print(len(g.unresolved_threads(p, 'dream')) if p is not None else -1)" 2>/dev/null || echo -1)
+if [[ "$OPEN_THREADS" =~ ^[0-9]+$ ]]; then
+    if (( OPEN_THREADS == 0 )); then MAX_DREAMS=1
+    elif (( OPEN_THREADS <= 8 )); then MAX_DREAMS=2
+    else MAX_DREAMS=3; fi
+fi
 DREAM_CHANCE=$(echo "$STATE" | jq -r '.dreamChance // 1.0')
 # Reset dream counter at the start of each evening window
 # Evening window starts at QUIET_START (23:00). If hour >= 23 and counter is full,

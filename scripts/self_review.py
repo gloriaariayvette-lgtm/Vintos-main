@@ -37,6 +37,27 @@ Commands:
     self_review.py decide PROPOSAL ACTION [note]  Gloria approval/rejection
     self_review.py report
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import contextlib
 import fcntl
 import hashlib
@@ -72,8 +93,8 @@ LOCK = os.path.join(MEM, ".self-review.lock")
 
 EMBED_URL = os.environ.get("SELF_REVIEW_EMBED_URL", "http://100.79.177.103:1234/v1/embeddings")
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
-GEMMA = os.environ.get("SELF_REVIEW_LLM_URL", "http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("SELF_REVIEW_LLM_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA = os.environ.get("SELF_REVIEW_LLM_URL", _subcon_url("http://100.79.177.103:1234/v1/chat/completions"))
+GEMMA_MODEL = os.environ.get("SELF_REVIEW_LLM_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
 
 DEFAULTS = {
     "collision_window_hours": 72,

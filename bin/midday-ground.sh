@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # midday-ground.sh — Emotional grounding through reflection
 # Triggered by elevated emotions. He names what's running hot,
 # traces it to its source, and consciously sets it down.
@@ -12,6 +15,7 @@ GROUND_DIR="$MEMORY/grounding"
 COOLDOWN_FILE="$MEMORY/.last-grounding"
 API="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 SOCK="/tmp/Vintos-emotion.sock"
 TODAY=$(date +%Y-%m-%d)
 

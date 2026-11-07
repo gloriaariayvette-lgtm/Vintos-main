@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # creative-expression.sh — When creative impulse is high, Vintos makes art
 # Calls LM Studio API directly for generation, reads EmoClaw state from file
 
@@ -207,8 +210,8 @@ daily_inner = os.environ.get('DAILY_INNER', '')
 wants_ambitions = os.environ.get('WANTS_AMBITIONS', '')
 dream = os.environ.get('_CRE_DREAM', '')[:400]
 taste = os.environ.get('_CRE_TASTE', '')[:200]
-resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={
-    'model': 'gemma-4-26b-a4b-it-uncensored',
+resp = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
     'max_tokens': 10,
     'temperature': 0.7,
     'messages': [

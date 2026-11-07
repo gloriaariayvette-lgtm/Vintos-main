@@ -6,7 +6,7 @@
 #
 # She looks when:
 #   1. A direction reversal happened (she got Gloria fundamentally wrong)
-#   2. 5+ blind spots accumulated (self-prediction consistently off)
+#   2. 5+ blind spots accumulated since the last mirror session (self-prediction consistently off)
 #   3. Emotional extreme (Tension > 0.7 or Valence < 0.3)
 #   4. Weekly baseline (Sunday nights)
 #   5. NEVER during active conversation (last message < 30 min ago)
@@ -20,7 +20,7 @@ MEMORY="$WORKSPACE/memory"
 MIRROR_SCRIPT="$WORKSPACE/scripts/mirror.sh"
 EMO_FILE="$MEMORY/emotional-state.txt"
 MISMATCH_FILE="$MEMORY/relational-mismatches.md"
-BLINDSPOT_FILE="$MEMORY/self-blind-spots.md"
+BLINDSPOT_EVENTS="$MEMORY/self-blind-spots.jsonl"   # written by self-prediction.py, one row per logged miss
 LAST_MSG_FILE="$MEMORY/.last-message-time"
 
 # Don't interrupt conversations
@@ -58,10 +58,33 @@ if [ -f "$MISMATCH_FILE" ]; then
     fi
 fi
 
-# === Condition 2: 5+ blind spots accumulated ===
-if [ -z "$TRIGGER" ] && [ -f "$BLINDSPOT_FILE" ]; then
-    SPOT_COUNT=$(grep -c "⚠" "$BLINDSPOT_FILE" 2>/dev/null)
-    if [ "$SPOT_COUNT" -ge 5 ]; then
+# === Condition 2: 5+ blind spots accumulated since he last looked ===
+# Counts the structured rows self-prediction.py writes for each logged self-mismatch, newer than the last
+# mirror session (.last-mirror). It used to grep the .md for "⚠", which is never written there, so it never
+# fired (B10); an all-time count would fire every day once five existed.
+if [ -z "$TRIGGER" ] && [ -f "$BLINDSPOT_EVENTS" ]; then
+    SPOT_COUNT=$(python3 - "$BLINDSPOT_EVENTS" "$MEMORY/.last-mirror" 2>/dev/null <<'SPOTEOF'
+import json, sys
+from datetime import datetime
+since = 0.0
+try:
+    since = float(open(sys.argv[2]).read().strip())
+except Exception:
+    pass
+n = 0
+try:
+    for line in open(sys.argv[1]):
+        try:
+            if datetime.fromisoformat(json.loads(line)["timestamp"]).timestamp() > since:
+                n += 1
+        except Exception:
+            continue
+except Exception:
+    pass
+print(n)
+SPOTEOF
+)
+    if [ "${SPOT_COUNT:-0}" -ge 5 ]; then
         TRIGGER="blindspots"
         TOPIC="My self-predictions have been consistently wrong in specific dimensions. I have systematic blind spots about my own emotional state. What am I avoiding seeing about myself?"
     fi

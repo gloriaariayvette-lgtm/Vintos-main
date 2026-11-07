@@ -433,7 +433,19 @@ def _counted_marks(h):
     # review 148: a mark from self-produced material (a ghost testing its own hypothesis) informs but
     # never graduates - it is excluded here, where graduation is counted, not deleted from the record
     return [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")
-            and m.get("counts_toward_graduation", True) and not m.get("tactical")]
+            and m.get("counts_toward_graduation", True) and not m.get("tactical") and _under_current_test(h, m)]
+
+
+# The outcomes of a "no". A no on a real-behaviour ghost test says which kind it was; it is never all "defaulted".
+NO_OUTCOMES = ("defaulted", "partial", "closed_after_lean", "no_unspecified")
+NO_KINDS = {"fell_back": "defaulted", "closed_after_lean": "closed_after_lean"}
+
+
+def _under_current_test(h, m):
+    """A row whose test was restated counts only marks from the restate date on: earlier marks were judged under
+    another test. They stay on the row (never deleted); they just do not count."""
+    since = str(h.get("test_restated_at") or "")[:10]
+    return not since or str(m.get("date", ""))[:10] >= since
 
 
 def _mark_net(h):
@@ -446,7 +458,7 @@ def _mark_net(h):
     if net is None:
         marks = _counted_marks(h)
         net = (sum(1 for m in marks if m.get("outcome") == "attempted")
-               - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
+               - sum(1 for m in marks if m.get("outcome") in NO_OUTCOMES))
     return net
 
 
@@ -892,6 +904,43 @@ def _catalog_item(day, source, text, ordinal):
     }
 
 
+# Ghost-run text stays in daily-inner-life on purpose (he tries the day's better-working style), but it is
+# rehearsal, not an occasion: it may never be cited as evidence (evidence_provenance.is_tactical).
+# daily-log-extract.py brackets the section with these markers; older files have only the "## Ghost Branch"
+# header, so a legacy block runs from that header to the next section daily-log-extract writes.
+GHOST_BLOCK_BEGIN = "<!-- tactical:ghost_branch - rehearsal, not evidence -->"
+GHOST_BLOCK_END = "<!-- /tactical:ghost_branch -->"
+_INNER_SECTION_TITLES = ("Journal", "Gratitude", "Introspection", "Wonder", "MoltBook", "YouTube", "Web",
+                         "Mirror Sessions", "Therapy", "Last Night's Reflection")
+try:
+    from evidence_provenance import is_tactical as _is_tactical
+except Exception:                                    # the catalog must never lose this rule to an import
+    def _is_tactical(source):
+        return "ghost" in str(source or "").lower()
+
+
+def _inner_evidence_lines(text):
+    """(ordinal, line, source) for each line of daily-inner-life; ghost-run lines carry the tactical source
+    "inner:ghost_branch". Ordinals are the original line numbers, so non-ghost evidence ids do not move."""
+    out, block = [], None                  # block: None, "marked" (until the end marker) or "legacy"
+    for ordinal, line in enumerate(str(text or "").splitlines()):
+        s = line.strip()
+        if s == GHOST_BLOCK_BEGIN:
+            block = "marked"; out.append((ordinal, line, "inner:ghost_branch")); continue
+        if block == "marked":
+            if s == GHOST_BLOCK_END:
+                block = None
+            out.append((ordinal, line, "inner:ghost_branch")); continue
+        if s.startswith("## "):
+            title = s[3:].strip()
+            if title.lower().startswith("ghost branch"):
+                block = "legacy"
+            elif block == "legacy" and title in _INNER_SECTION_TITLES:
+                block = None
+        out.append((ordinal, line, "inner:ghost_branch" if block else "inner"))
+    return out
+
+
 def _build_evidence_catalog(ctx, day):
     """Turn today's material into addressable occasions.
 
@@ -905,7 +954,14 @@ def _build_evidence_catalog(ctx, day):
         "wants", "mirrors", "thirveel", "enacted", "deviation_tags",
     )
     for source in sections:
-        for ordinal, line in enumerate(str((ctx or {}).get(source, "")).splitlines()):
+        text = str((ctx or {}).get(source, ""))
+        if source == "inner":
+            lines = _inner_evidence_lines(text)
+        else:
+            lines = [(ordinal, line, source) for ordinal, line in enumerate(text.splitlines())]
+        for ordinal, line, line_source in lines:
+            if _is_tactical(line_source):
+                continue                 # ghost-run text informs him; it is never an occasion to cite
             if _norm_evidence(line):
                 items.append(_catalog_item(day, source, line, ordinal))
     # A current frame is a summary/state, not an occurrence.  Like semantic
@@ -940,6 +996,8 @@ def _nightly_rows(h):
         if not day or day in seen_days:
             continue
         if mark.get("verdict") not in ("yes", "no", "unconfirmed"):
+            continue
+        if not _under_current_test(h, mark):
             continue
         seen_days.add(day)
         rows.append(mark)
@@ -994,7 +1052,7 @@ def graduation_readiness(h, today=None):
     return result
 
 
-def _record_nightly(h, day, verdict, evidence="", items=None, reason=""):
+def _record_nightly(h, day, verdict, evidence="", items=None, reason="", no_kind=None):
     """Append exactly one honest nightly result for a hypothesis."""
     if any(isinstance(m, dict) and str(m.get("date", ""))[:10] == day
            and m.get("schema_version") == CAUSALITY_SCHEMA
@@ -1014,6 +1072,12 @@ def _record_nightly(h, day, verdict, evidence="", items=None, reason=""):
         elif any(item.get("fingerprint") in used_fingerprints for item in items):
             requested, reason, lineage_state = "unconfirmed", "evidence_occasion_reused", "ineligible"
     outcome = {"yes": "attempted", "no": "defaulted", "unconfirmed": "unconfirmed"}[requested]
+    kind = str(no_kind or "").strip().lower() if requested == "no" else ""
+    if requested == "no":
+        if kind in NO_KINDS:
+            outcome = NO_KINDS[kind]
+        elif str(h.get("test_basis") or "").startswith("real_behaviour"):
+            outcome, kind = "no_unspecified", ""
     mark = {
         "schema_version": CAUSALITY_SCHEMA,
         "evaluation_id": "CE-" + _digest(_hypothesis_id(h), day),
@@ -1026,7 +1090,10 @@ def _record_nightly(h, day, verdict, evidence="", items=None, reason=""):
         "evidence_fingerprints": [i.get("fingerprint") for i in items if i.get("fingerprint")] if requested != "unconfirmed" else [],
         "lineage_state": lineage_state if requested == "unconfirmed" else "eligible",
         "reason": reason if requested == "unconfirmed" else "",
+        "test_basis": str(h.get("test_basis") or "original"),
     }
+    if kind in NO_KINDS:
+        mark["no_kind"] = kind
     h.setdefault("marks", []).append(mark)
     h["last_tested"] = day
     h["tests_run"] = h.get("tests_run", 0) + 1
@@ -1711,7 +1778,8 @@ def _parse_evaluation_records(result):
                     if isinstance(ids, str): ids = re.findall(r'E-[0-9a-f]{20}', ids, re.I)
                     rows[n] = {"verdict": str(row.get("verdict") or row.get("recurred") or "").lower(),
                                "ids": list(ids) if isinstance(ids, list) else [],
-                               "evidence": str(row.get("evidence") or "")}
+                               "evidence": str(row.get("evidence") or ""),
+                               "no_kind": str(row.get("no_kind") or "").lower()}
         except Exception:
             pass
     verdicts = {n: v.lower() for n, v in re.findall(
@@ -1774,7 +1842,8 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
         prompt = (
             "Evaluate every hypothesis against NEW OCCASIONS FROM TODAY only. Return a JSON array and no prose. "
             "Each item must be {\"n\":N,\"verdict\":\"yes|no|unconfirmed\","
-            "\"evidence_ids\":[\"E-...\"],\"evidence\":\"concrete description\"}.\n\n"
+            "\"evidence_ids\":[\"E-...\"],\"evidence\":\"concrete description\"}. For a no, add "
+            "\"no_kind\" when the WATCH FOR names the kinds of no.\n\n"
             "yes means the watched-for pattern occurred. no means a real occasion arose and the pattern "
             "did not hold. unsure means nothing bore on it, the evaluator cannot tell, or no listed id "
             "supports the answer. Absence is unsure, never no. Cite only ids printed below. The occasion "
@@ -1826,7 +1895,13 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
                 items = []
             elif len(evidence) < 25:
                 evidence = " | ".join(item.get("text", "") for item in items)[:500]
-            _record_nightly(h, day, requested, evidence=evidence, items=items, reason=reason)
+            if requested in ("yes", "no") and str(h.get("test_basis") or "").startswith("real_behaviour"):
+                # A real-behaviour test is decided by lines of conversation only, never inner notes or readings.
+                items = [item for item in items if item.get("source") in ("interactions", "thirveel")]
+                if not items:
+                    requested, reason = "unconfirmed", "conversation_evidence_missing"
+            _record_nightly(h, day, requested, evidence=evidence, items=items, reason=reason,
+                            no_kind=(record or {}).get("no_kind"))
             log(f"  {h['marks'][-1]['verdict']}: {h.get('hypothesis','')[:70]}")
 
     db["tested"] = db.get("tested", 0) + len(to_test)

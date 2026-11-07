@@ -22,7 +22,37 @@ def _path(name):
 
 
 def _save(data):
+    _stamp_closed(data)
     lab._atomic(_path('investigations.json'), data)
+
+
+def _stamp_closed(data):
+    """closed_at on every closed investigation, so a later check can tell whether a question was already closed when
+    the planner proposed it (opened_at alone cannot: 7 November). Set when a save first finds it closed. Those closed
+    before this field existed are stamped once from their last step (closed_at_estimated), at the first save that has
+    no closed_at_since. A reopened investigation loses it."""
+    rows = data.get('investigations') if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return
+    now = lab.now_iso()
+    legacy = 'closed_at_since' not in data
+    for inv in rows:
+        if not isinstance(inv, dict):
+            continue
+        if inv.get('state') in CLOSED:
+            if not inv.get('closed_at'):
+                if legacy:
+                    stamps = [str(s.get('at')) for s in inv.get('steps') or [] if isinstance(s, dict) and s.get('at')]
+                    stamps += [str(inv[k]) for k in ('last_step_at', 'opened_at') if inv.get(k)]
+                    inv['closed_at'] = max(stamps) if stamps else now
+                    inv['closed_at_estimated'] = True
+                else:
+                    inv['closed_at'] = now
+        elif inv.get('closed_at'):
+            inv.pop('closed_at', None)
+            inv.pop('closed_at_estimated', None)
+    if legacy:
+        data['closed_at_since'] = now
 
 
 class MissingField(ValueError):
@@ -647,6 +677,9 @@ def _plan(investigation, context, ask, note=None):
     for row in task['results_so_far']:
         row['summary'] = str(row.get('summary') or '')[:800]
         row['output_index'] = (row.get('output_index') or [])[:24]
+    # closed questions are not shown by their words (lab_closed_redaction; off: lab_closed_redaction.py off): their
+    # text in this prompt is what the planner kept proposing again (5-6 November replays: 58 of 60 -> 0)
+    task = __import__('lab_closed_redaction').for_planner(task, investigation)
     prompt = json.dumps(task, ensure_ascii=False)
     limit = lab._plan_chars(system, max_tokens=800) - len(tail.encode('utf-8'))
     if len(prompt) > limit:

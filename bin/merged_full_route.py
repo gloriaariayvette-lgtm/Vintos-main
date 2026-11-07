@@ -1,3 +1,24 @@
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 
 def _sg_write(_p, _o, _who="organ"):
@@ -1149,7 +1170,7 @@ Gloria-specific additions:
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={'model': 'gemma-4-26b-a4b-it-uncensored', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post(_subcon_url('http://100.79.177.103:1234/v1/chat/completions'), json={'model': _subcon_model('gemma-4-26b-a4b-it-uncensored'), 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {'Connection': 0.02, 'Valence': 0.02}\n"

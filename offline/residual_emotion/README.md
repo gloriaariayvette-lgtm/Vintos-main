@@ -25,6 +25,20 @@ prompt ablations independently (AUC 0.86150–0.94425). See
 `evidence/2026-09-20-ablit26-q4-paper-protocol.json` and
 `evidence/2026-09-20-ablit26-q4-prompt-variants.json`.
 
+### AEON target (2026-11-07)
+
+`model-lock-aeon.json` pins AEON (Gemma 4 12B abliterated, BF16, sha256 `02fd3758…d9ce`). Which model his
+subconscious uses is one flag, `~/.vintos/subcon-target.json`, read by `scripts/subcon_target.py`; with no flag it
+stays on the 26B lock above. Gloria: it has to all pass. The flip to AEON is refused until AEON has passed the
+26B's full bar: the Pain paper-protocol replication and its six prompt ablations, and for every one of the eleven
+constructs nested held-out AUC ≥ 0.85, six mean-pooled prompt variants ≥ 0.85 and a passed named unembedding
+review, with every |cosine| < 0.3. The evidence is `scripts/aeon-bar-record.json`, built from the emotion
+Codex's sealed results and pinned by sha256 in `subcon_target.py`; the checker recomputes each verdict from the
+numbers. Since the emotion Codex's all-pass handoff (2026-11-07) every item passes: Pain .916 at L27 with 6/6
+ablations, all eleven constructs (Valence now the approved rebuild at L37, Groundedness at L43), max |cosine| .2011;
+the record keeps the sealed scope notes. The AEON lock carries no host path; extraction uses a private
+copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
+
 ## Evidence law
 
 - A generated score is not a residual measurement.

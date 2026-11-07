@@ -24,6 +24,27 @@ major historical event, never a silent rewrite). EXPIRED != RESOLVED lives in th
 The refuter receives the SAME clean evidence universe as the arithmetic (jurisdiction-valid,
 provenance-valid, uninfluenced, non-invalid) - and UNREBUTTED is absence of blocker, never support.
 Thresholds are gates, not epistemology. SPARK_WORKSPACE switches beings."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, re, hashlib, requests, fcntl
 from datetime import datetime, timedelta
 
@@ -58,7 +79,7 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
 BEING = "velaris" if "openclaw" in WS else "vintos"
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 E4_IMPLEMENTED = False
 E4_REASON = "Three Doors source adapter not yet implemented; Velaris-only when built, never Vintos"
 JURISDICTION = {
@@ -95,7 +116,7 @@ def load(p, d):
     except Exception: return d
 def ask(prompt):
     try:
-        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.1,
+        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.1,
             "max_tokens": 250, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         j = r.json()
         if "choices" not in j:

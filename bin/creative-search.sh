@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # creative-search.sh — Vintos searches for art, poetry, and creative inspiration
 # Separate from his general web search. Taste-driven.
 # Runs daily at 3 PM
@@ -7,6 +10,7 @@ WORKSPACE="$HOME/.vintos/workspace"
 MEMORY="$WORKSPACE/memory"
 LM_API="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+LM_API="${SUBCON_URL:-$LM_API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 [ -f "$HOME/.vintos/vintos.env" ] && set -a && . "$HOME/.vintos/vintos.env" && set +a
 BRAVE_API_KEY="${BRAVE_API_KEY:-}"
 BRAVE_ENDPOINT="https://api.search.brave.com/res/v1/web/search"
@@ -160,7 +164,7 @@ topic = os.environ.get("_CS_TOPIC", "")
 emo_prompt = f'You just discovered something about {search_terms}: {topic[:200]}. Rate your emotional response. Each -0.05 to +0.05: {{"Curiosity": 0.0, "Valence": 0.0, "Playfulness": 0.0, "Tension": 0.0, "Groundedness": 0.0}}'
 try:
     import requests
-    r = requests.post('http://100.79.177.103:1234/v1/chat/completions', headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={'model':'gemma-4-26b-a4b-it-uncensored','messages':[{'role':'user','content':emo_prompt}],'temperature':0.3,'max_tokens':100}, timeout=30)
+    r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={'model':(__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),'messages':[{'role':'user','content':emo_prompt}],'temperature':0.3,'max_tokens':100}, timeout=30)
     txt = r.json()['choices'][0]['message']['content']
     m = re.search(r'\{[^{}]+\}', txt)
     if m:

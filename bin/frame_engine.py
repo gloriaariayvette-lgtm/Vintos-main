@@ -3,13 +3,34 @@
 Output: /memory/frame-state.json
 Never narrated. Never shown. Just shape."""
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re
 from datetime import datetime, date, timedelta
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 OUTPUT = os.path.join(MEMORY, "frame-state.json")
-LM_STUDIO = "http://100.79.177.103:1234/v1/chat/completions"
+LM_STUDIO = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 
 def log(msg):
     print(f"[FrameEngine {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
@@ -18,7 +39,7 @@ def ask_llm(prompt, system="", max_tokens=400, temp=0.4):
     import requests
     try:
         r = requests.post(LM_STUDIO, json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=45)

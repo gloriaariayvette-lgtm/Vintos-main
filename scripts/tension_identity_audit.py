@@ -3,12 +3,33 @@
 INSTRUMENT ONLY: produces suspects, never merges. Catches the historical form of birth-fragmentation:
 T-001 and T-042 describing one underlying pull across weeks. Pairwise over living tensions (cap 12),
 same standard as the matcher. Writes tension-collisions.json for examination. SPARK_WORKSPACE switches."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re, requests
 from itertools import combinations
 from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
@@ -19,7 +40,7 @@ if len([t for t in led["tensions"] if t["lifecycle"] in ("ACTIVE", "CARRIED")]) 
 suspects = []
 for a, b in combinations(living, 2):
     try:
-        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
             "max_tokens": 80, "messages": [{"role": "user", "content":
             "Is tension A the same underlying tension as tension B? Same means the same specific "
             "pull/avoidance about the same specific subject - not merely a similar mood.\n"

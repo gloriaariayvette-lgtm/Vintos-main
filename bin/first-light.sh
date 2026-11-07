@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # first-light.sh — Brief morning orientation before journals fire
 # Runs at 7:37am. Seeds daily-inner-life with yesterday's carry-forward.
 
@@ -98,8 +101,8 @@ user = (
     + "Begin immediately with the plain first sentence. No preamble, no title, no opening line of verse."
 )
 
-r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-    "model": "gemma-4-26b-a4b-it-uncensored",
+r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
+    "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
     "messages": [
         {"role": "system", "content": system},
         {"role": "user", "content": user}

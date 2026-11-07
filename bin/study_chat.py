@@ -25,6 +25,27 @@ What he may edit (the permission boundary, in one place below):
 
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import os, re, json, glob, time, subprocess, shutil
 
@@ -90,7 +111,7 @@ READ_RE = re.compile(r"^\s*READ:\s*(\S+?)(?::(\d+))?\s*$", re.M)   # READ: scrip
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
 GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
 GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 STUDY_AUTO_CONTINUE = int(os.environ.get("STUDY_AUTO_CONTINUE", "2"))   # READ/GREP-only replies continue this many times
 EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 

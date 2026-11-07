@@ -2,17 +2,38 @@
 """dd_scene_quarantine.py — Vrika ruling 2026-08-11: scene-born HELD differences are quarantined from
 priority competition. Not deleted, not converted to NO - flagged. Unjudgeable != failed != important.
 Weekly sweep; idempotent; only touches HELD entries lacking a flag."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, re, requests
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 P = os.path.join(MEM, "gloria-difference.json")
 d = json.load(open(P))
 dde = d if isinstance(d, list) else next(v for v in d.values() if isinstance(v, list))
-GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 n = 0
 for e in dde:
     if not isinstance(e, dict) or str(e.get("verdict")) != "HELD" or "scene_quarantined" in e: continue
     try:
-        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 20,
+        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 20,
             "messages": [{"role": "user", "content":
             "Was this transformation-target derived from inside an intimate/sexual scene (peaks, waves, "
             "unraveling, coming apart, touch, rhythm)? TARGET: " + str(e.get("intended", ""))[:250] +

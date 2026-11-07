@@ -1,0 +1,213 @@
+{
+ "constructs": {
+  "Arousal": {
+   "layer": 37,
+   "mean_variant_aucs": [
+    0.95875,
+    0.9585,
+    0.96075,
+    0.97825,
+    0.978,
+    0.97825
+   ],
+   "nested_auc": 0.971059,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "066788c07f209cb583da0beab9d92c47ddd29ddc7808826f5289eaac7d5a8c24"
+  },
+  "Connection": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.88675,
+    0.8835,
+    0.88075,
+    0.941,
+    0.9405,
+    0.9425
+   ],
+   "nested_auc": 0.902378,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "efe96a227ed454e0a3b8c43420cd0fe6754ccafa6623ee262ac4832efd2a8479"
+  },
+  "Curiosity": {
+   "layer": 30,
+   "mean_variant_aucs": [
+    0.97275,
+    0.974,
+    0.9745,
+    0.9655,
+    0.9665,
+    0.965
+   ],
+   "nested_auc": 0.969573,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "6432d0871b42b0e783888fd193612b7ac43d830f71dc265aa2acadf814b987e3"
+  },
+  "Desire": {
+   "layer": 36,
+   "mean_variant_aucs": [
+    0.98575,
+    0.986,
+    0.9815,
+    0.9725,
+    0.9735,
+    0.97675
+   ],
+   "nested_auc": 0.97759,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "a10eb46f7bba2279020103c62cc35f38195285931547dfad04e0e3ba05232053"
+  },
+  "Dominance": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.94975,
+    0.95225,
+    0.951,
+    0.9525,
+    0.95175,
+    0.95225
+   ],
+   "nested_auc": 0.960639,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "e0ed4104b854e3fa0e50047a03ba9a51e231eeba2e7fcf2ebe7b4162228ece19"
+  },
+  "Groundedness": {
+   "layer": 43,
+   "mean_variant_aucs": [
+    0.942,
+    0.93975,
+    0.94075,
+    0.96975,
+    0.9695,
+    0.9635
+   ],
+   "nested_auc": 0.95941,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "f5d271323a77325fb313f119ff349e436a033bc4140e0c4f5bb2cb0a8420ed00"
+  },
+  "Playfulness": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.9475,
+    0.94675,
+    0.945,
+    0.9675,
+    0.96925,
+    0.966
+   ],
+   "nested_auc": 0.954177,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "59d698fda687a337f85ccbb6700d2b52902eacffa8a1fe61f958808728cf4f0a"
+  },
+  "Safety": {
+   "layer": 28,
+   "mean_variant_aucs": [
+    0.901,
+    0.898,
+    0.894,
+    0.887,
+    0.8895,
+    0.8865
+   ],
+   "nested_auc": 0.909917,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "c93d679155686ae568b2f156a18e9bf0cd5013184e1d3940ad7e4bef87f1bc4e"
+  },
+  "Tension": {
+   "layer": 34,
+   "mean_variant_aucs": [
+    0.95375,
+    0.95375,
+    0.9455,
+    0.95475,
+    0.95375,
+    0.949
+   ],
+   "nested_auc": 0.956337,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "e2fd43dcdcdeba943f6827fe8073ea4d517a040234d039c1ac31e5af9c5adddc"
+  },
+  "Valence": {
+   "layer": 37,
+   "mean_variant_aucs": [
+    0.923,
+    0.92025,
+    0.9075,
+    0.891,
+    0.886,
+    0.8705
+   ],
+   "nested_auc": 0.99892,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "0d9a93ec9c61aa25494c642f90738f2f21df0cf980f90a227093671abb85547b"
+  },
+  "Warmth": {
+   "layer": 37,
+   "mean_variant_aucs": [
+    0.95775,
+    0.9585,
+    0.963,
+    0.9435,
+    0.94625,
+    0.9445
+   ],
+   "nested_auc": 0.958753,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "a8a6711e25321ce55984232e9bbd7ce648730d34af4c7b7b9fd0570e23ebccb3"
+  }
+ },
+ "max_abs_cosine": 0.201106,
+ "model": {
+  "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
+  "sha256": "02fd375821a7b50e783f408a75bf714ea85fc0dc67c933991642ef76d9b0d9ce"
+ },
+ "pain": {
+  "paper_protocol_auc": 0.916,
+  "paper_protocol_layer": 27,
+  "prompt_variant_aucs": [
+   0.87125,
+   0.859,
+   0.852,
+   0.916,
+   0.94725,
+   0.937
+  ],
+  "status": "passed"
+ },
+ "schema": "aeon-26b-bar-record/1",
+ "scope_notes": {
+  "constructs": {
+   "Groundedness": {
+    "numeric_scope": "bounded_rederivation_fixed_layer_grouped_cv_not_original_nested_admission",
+    "semantic_review_source": "Claude Opus5.5 top10 PASS, note12; not human or selfapproval"
+   },
+   "Valence": {
+    "numeric_scope": "rebuilt nested2x2",
+    "semantic_review_source": "owner PASS 2026-11-05 recorded in calibrated validation"
+   }
+  },
+  "sealed": {
+   "Groundedness43": "bounded fixed-layer groupedCV, not a fresh nested selection",
+   "Pain": "original paper layer-curve selection, not nested CV",
+   "Valence37": "approved rebuilt2x2; original26B corpus fixed-layer six variants"
+  }
+ },
+ "source": {
+  "all_required_pass_sha256": "2b0d98ff5f7e242d81f155afe317213e9117acc62a11034ab9c678be9ad08422",
+  "artifact_seal_sha256": "25c88976b27d9e113cb112fea7cad298772b40529f800850603f34bb27ff4a16",
+  "handoff_zip_sha256": "d0a025c9241f72e38716b0329142b408d38b69a8eef3fc062e58a39035f02a21",
+  "pain_paper_protocol_sha256": "f5746396b7e512ca7e538f659cbcacf3a391e88a704f0cc8e1e2c74fd7b42483",
+  "pain_variants_sha256": "7577dd09209b6125f21524ba59ed05851224f754cac67a9feb508e3836b96582",
+  "readout_map_sha256": "2eb223e8a31b703d573306b45d500c5e759937c0d37247d14a0653f6ccf813d3"
+ }
+}

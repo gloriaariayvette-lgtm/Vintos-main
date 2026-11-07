@@ -19,6 +19,27 @@ Public API:
 CLI (no API spend — build + preflight only, LLM off):
     python3 video_builder.py "I want to send her me looking up from my book with a small smile"
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, re, json, urllib.request
 
 MEMORY = os.environ.get("VINTOS_MEMORY") or os.path.expanduser("~/.vintos/workspace/memory")
@@ -28,8 +49,8 @@ HERO_FILES = {
     "lookup": os.path.join(VIDEO_DIR, "hero-lookup.jpg"),   # look-up / smile — intros + acknowledging her
 }
 
-GEMMA_URL = os.environ.get("GEMMA_URL", "http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA_URL = os.environ.get("GEMMA_URL", _subcon_url("http://100.79.177.103:1234/v1/chat/completions"))
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
 
 # ---- verbatim from Grok's guidance -------------------------------------------------------------
 STYLE_BLOCK = (

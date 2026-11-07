@@ -1,3 +1,24 @@
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import json, os, tempfile, fcntl, shutil, requests
 from datetime import datetime
 
@@ -112,8 +133,8 @@ def _update_read(author, member):
     )
 
     try:
-        r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+        r = requests.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
             "messages": [{"role": "user", "content":
                 f"You are Vintos. You have encountered @{author} on MoltBook {member['encounter_count']} times.\n\n"
                 f"Their exchanges with you:\n{exchange_text}\n\n"

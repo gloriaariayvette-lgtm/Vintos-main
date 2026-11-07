@@ -55,15 +55,33 @@ TIME=$(date +%H:%M)
 DREAM_FILE="$HOME/.vintos/workspace/skills/dreaming/memory/dreams/$DATE.md"
 MEMORY="$HOME/.vintos/workspace/memory"
 
-# Identity files
-SOUL=$(cat "$HOME/.vintos/workspace/SOUL.md" 2>/dev/null || echo "")
-GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
-SELF_MODEL=$(cat "$HOME/.vintos/workspace/SELF-MODEL.md" 2>/dev/null || echo "")
-[ -n "$SOUL" ] && CONTEXT="$CONTEXT\n[Who you are:]\n$SOUL\n"
-[ -n "$SELF_MODEL" ] && CONTEXT="$CONTEXT\n[Who you are right now:]\n$SELF_MODEL\n"
-[ -n "$GLORIA_MODEL" ] && CONTEXT="$CONTEXT\n[What you know about Gloria:]\n$GLORIA_MODEL\n"
-CAPABILITIES=$(cat "$HOME/.vintos/workspace/memory/CAPABILITIES.md" 2>/dev/null || echo "")
-[ -n "$CAPABILITIES" ] && CONTEXT="$CONTEXT\n[What your life contains:]\n$CAPABILITIES\n"
+# Identity files. They live in their own block, not in CONTEXT: CONTEXT is reset below for the day's
+# experiences, and that reset used to wipe them, so no dream ever saw them. The block is put ahead of
+# the day's context when the prompt is built. Each file is capped (characters) so a file that grows
+# cannot blow the dream's context; the cap is above every file's size today.
+DREAM_IDENTITY_CAP="${DREAM_IDENTITY_CAP:-24000}"
+_identity_file() {
+    python3 -c '
+import sys
+n = int(sys.argv[2])
+try:
+    t = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+except OSError:
+    sys.exit(0)
+if len(t) > n:
+    t = t[:n].rstrip() + "\n[...]"
+sys.stdout.buffer.write(t.encode("utf-8"))
+' "$1" "$DREAM_IDENTITY_CAP" 2>/dev/null
+}
+SOUL=$(_identity_file "$HOME/.vintos/workspace/SOUL.md")
+GLORIA_MODEL=$(_identity_file "$HOME/.vintos/workspace/GLORIA-MODEL.md")
+SELF_MODEL=$(_identity_file "$HOME/.vintos/workspace/SELF-MODEL.md")
+CAPABILITIES=$(_identity_file "$HOME/.vintos/workspace/memory/CAPABILITIES.md")
+IDENTITY_CONTEXT=""
+[ -n "$SOUL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[Who you are:]\n$SOUL\n"
+[ -n "$SELF_MODEL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[Who you are right now:]\n$SELF_MODEL\n"
+[ -n "$GLORIA_MODEL" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[What you know about Gloria:]\n$GLORIA_MODEL\n"
+[ -n "$CAPABILITIES" ] && IDENTITY_CONTEXT="$IDENTITY_CONTEXT\n[What your life contains:]\n$CAPABILITIES\n"
 # Deeper context — aged memories, conversation patterns
 DEEP_CONTEXT=$(bash "$HOME/.vintos/workspace/scripts/memory-context-block.sh" 2>/dev/null)
 
@@ -201,13 +219,16 @@ except: pass
 [ -n "$LAST_DREAM_OPENING" ] && CONTEXT="$CONTEXT
 [FORBIDDEN: Do NOT begin with or echo this sentence from your last dream: "$LAST_DREAM_OPENING"]
 "
-export _DREAM_CTX="$CONTEXT"
+# Identity first, then the day (the empty-day pearl fallback above still sees only the day's context).
+export _DREAM_CTX="$IDENTITY_CONTEXT$CONTEXT"
 export _DREAM_PROMPT="$PROMPT"
 export _DREAM_CATEGORY="$CATEGORY"
 export _DREAM_THREAD1="$THREAD1"
 export _DREAM_THREAD2="$THREAD2"
 export _DREAM_EMO="$EMOTIONS"
 export YEARNING_FRAGMENT="$YEARNING_FRAGMENT"
+# The shadow trial pairs its copy of this dream's prompt with the dream by this key (dream_shadow.py).
+export _DREAM_SHADOW_KEY="$(date +%Y%m%dT%H%M%S)-$$"
 SETTLED_TONE=$(python3 -c "
 import sys, os
 sys.path.insert(0, os.path.expanduser('~/.vintos/workspace/scripts'))
@@ -317,6 +338,17 @@ if category == "seed2":
     user = f"Two things are unresolved. You do not have to connect them — they can remain separate. But the dream must reckon with each one. Sit inside each thread. Let the imagery crack it open, turn it over, find what's underneath. You are not observing these threads — you are inside them.\n\nThread 1: {thread1}\n\nThread 2: {thread2}\n\nGround this in something real. Transform it — dreams distort, compress, symbolize. But they start from truth."
 else:
     user = f"Dream about: {prompt}\nGround this in something real that happened to you today. Transform it — dreams distort, compress, symbolize. But they start from truth.\nDo not begin in a room. Begin in a feeling, a memory, a moment. Let space dissolve into meaning."
+
+# Shadow trial (Gloria, 2026-11-07): the exact prompt of this dream is kept for the local shadow writer, in the
+# shadow's own store (memory/shadow/dream). It changes nothing about this dream; any failure here is ignored.
+try:
+    sys.path.append(os.path.expanduser("~/.vintos/workspace/scripts"))
+    import dream_shadow as _shadow
+    _shadow.capture_inputs(os.environ.get("_DREAM_SHADOW_KEY", ""), system=system, user=user, category=category,
+                           threads=[(thread1, thread1_id), (thread2, thread2_id)],
+                           image_live=bool(os.environ.get("_DREAM_SCENE") and os.path.exists(os.environ.get("_DREAM_SCENE", ""))))
+except Exception:
+    pass
 
 try:
     r = requests.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
@@ -553,6 +585,8 @@ log_data["generated"] = datetime.now().isoformat()
 with open(log_path, "w") as f:
     json.dump(log_data, f, indent=2)
 DREAMLOGEOF
+# Shadow trial: the dream as logged joins its captured prompt (the shadow's own store only; never fails the dream).
+python3 "$HOME/.vintos/workspace/scripts/dream_shadow.py" capture-live --key "$_DREAM_SHADOW_KEY" >/dev/null 2>&1 || true
 
 # Resolution check — did the dream address the original threads?
 # If unresolved, return threads to pool unconsumed. Dreams do NOT spawn new threads.

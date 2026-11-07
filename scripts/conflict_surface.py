@@ -1,9 +1,30 @@
 """conflict_surface.py — names the friction between the two bilateral passes before synthesis. Permits, never commands, expression."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, time, re, requests
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS=os.path.expanduser("~/.vintos/workspace/scripts")
 F=os.path.join(MEM,"conflict-surface.json")
-LM="http://100.79.177.103:1234/v1/chat/completions"
+LM=_subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 SEED_IN_BACKGROUND=True
 def name_friction(a2,b2):
     if not a2 or not b2: return None
@@ -13,7 +34,7 @@ def name_friction(a2,b2):
        'Output ONLY JSON: {"voices":[{"label":"..","wanted":".."},{"label":"..","wanted":".."}],"friction":0.0}\n\n'
        f"VERSION A:\n{a2[:600]}\n\nVERSION B:\n{b2[:600]}")
     try:
-        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
+        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
         m=re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S)
         if m: return json.loads(m.group(0))
     except Exception: pass

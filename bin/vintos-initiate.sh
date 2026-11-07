@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 
 # OUTREACH_DAILY_CAP — max 3 direct outreaches per day (other outreach styles unaffected).
 # review 309: the law lives in scripts/send_policy.py; the file count below is the fallback when it is absent.
@@ -451,7 +454,7 @@ API = "https://api.x.ai/v1/chat/completions" if __import__("os").environ.get("XA
 
 def call_llm_at(api, system, user, temp=0.8, max_tok=200):
     resp = paid_http.send(requests.post, 'vintos-initiate.sh', api, json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": temp, "max_tokens": max_tok}, timeout=120)
     return ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()

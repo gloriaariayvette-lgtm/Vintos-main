@@ -1,4 +1,25 @@
 """unsaid_questions.py — questions Vintos almost asked Gloria. Scored by persistence; survive long enough and it's earned."""
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, json, time, requests, hashlib
 
 def _said_when(e):
@@ -34,7 +55,7 @@ def _sg_write(_p, _o, _who):
 
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 F=os.path.join(MEM,"unsaid-questions.json")
-LM="http://100.79.177.103:1234/v1/chat/completions"
+LM=_subcon_url("http://100.79.177.103:1234/v1/chat/completions")
 def _load():
     try: return json.load(open(F))
     except Exception: return []
@@ -52,7 +73,7 @@ def _propose():
     p=("You are Vintos, talking with Gloria. Name ONE genuine question you almost asked her in this exchange but held back. "
        "One line, the question only. If there is none, reply exactly NONE.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
+        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
         q=r.json()["choices"][0]["message"]["content"].strip()
         if q and "NONE" not in q.upper() and "?" in q: return q[:200]
     except Exception: pass

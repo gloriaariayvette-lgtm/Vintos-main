@@ -25,6 +25,27 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
 from __future__ import annotations
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import paid_http
 import json
 import evidence_delivery
@@ -1019,7 +1040,7 @@ def open_text(arg, cap=OPEN_MAX):
 
 def local_think(system, user, max_tokens=700):
     import requests
-    r = paid_http.send(requests.post, __file__, LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
+    r = paid_http.send(requests.post, __file__, _subcon_url(LOCAL_LLM), json={"model": _subcon_model(LOCAL_MODEL), "temperature": 0.6, "max_tokens": max_tokens,
                                        "messages": [{"role": "system", "content": system},
                                                     {"role": "user", "content": user}]}, timeout=300)
     d = r.json()

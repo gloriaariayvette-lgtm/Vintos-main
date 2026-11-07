@@ -9,6 +9,27 @@ Can be called:
   python3 avatar-choice.py --event "dream"   # event-triggered prompt
   python3 avatar-choice.py --check           # should he update? (for other scripts to call)
 """
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os, sys, json, re, requests
 from datetime import datetime
 
@@ -54,7 +75,7 @@ MODEL = "grok-4.20-0309-non-reasoning"
 # ablit Gemma first (no x.ai dependency), so a Grok timeout falls back to his own brain
 # instead of freezing the avatar on its last choice (Gloria, 2026-09-15).
 GEMMA_API = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
 
 # === VOCABULARY ===
 # Discrete colors he chooses from — named, not hex

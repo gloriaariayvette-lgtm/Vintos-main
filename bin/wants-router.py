@@ -12,6 +12,27 @@ HARD RULE: Vintos NEVER sees, reads, modifies, or accesses any script,
 config, cron, system file, or source code. He creates. He does not engineer.
 """
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
+def _subcon_url(url):
+    return _subcon_route(url, None)[0]
+
+
+def _subcon_model(model):
+    return _subcon_route(None, model)[1]
+
+
 import os
 import sys
 import json
@@ -288,8 +309,8 @@ def _want_end_verdict(want):
     hist = "\n".join("- %s: %s" % (h.get("capability", ""), str(h.get("note", ""))[:120])
                       for h in want.get("step_history", [])[-4:])
     try:
-        r = _hv_r.post("http://100.79.177.103:1234/v1/chat/completions", json={
-            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 120,
+        r = _hv_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
+            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.3, "max_tokens": 120,
             "messages": [{"role": "user", "content":
                 "A want has run all its steps. WANT: " + str(want.get("want", ""))[:250] +
                 "\nSTEPS DONE:\n" + (hist or "(no step history)") +

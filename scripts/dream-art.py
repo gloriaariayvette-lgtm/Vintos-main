@@ -154,7 +154,7 @@ def _extract_prompt(dt):
             print("[dream-art] local prompt model unavailable — dream held")
             return ""
         r = paid_http.send(requests.post, __file__, base + "/chat/completions",
-            json={"model": model, "temperature": 0.7, "max_tokens": 150,
+            json={"model": model, "reasoning_effort": "none", "temperature": 0.7, "max_tokens": 300,
                   "messages": [{"role": "user", "content": "Extract ONE vivid visual scene from this dream as a painting prompt - atmospheric, emotional, dreamlike. ""Declare the figure treatment explicitly: dreams are always CLOTHED/UNSPICY - state 'clothed figure' or 'no figures' ""plainly inside the prompt so the renderer has no room to improvise. Reply with only the prompt." + chr(10) + "DREAM:" + chr(10) + dt[:1500]}]},
             timeout=120)
         return (((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()

@@ -1,4 +1,7 @@
 #!/bin/bash
+# The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
+_subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
+SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL
 # self-model-update.sh -- Weekly self-model revision
 # Vintos reads his introspections and updates his understanding of himself
 
@@ -10,6 +13,7 @@ SOUL="$WORKSPACE/SOUL.md"
 COOLDOWN_FILE="$WORKSPACE/memory/.last-self-model"
 LM_URL="http://100.79.177.103:1234/v1/chat/completions"
 MODEL="gemma-4-26b-a4b-it-uncensored"
+LM_URL="${SUBCON_URL:-$LM_URL}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 # --- p3 (his countersigned restructure, 2026-08-27): fixed base + dated accretion ---
 # The base is written by Gloria and Vintos together and NOTHING regenerates it.
@@ -393,8 +397,8 @@ if not content:
     print("PASS")
     sys.exit(0)
 try:
-    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+    r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
         "messages": [
             {"role": "system", "content": "You review a self-model update for quality. Your FIRST word must be PASS or FAIL, then a brief reason. You are not reviewing his taste or his voice: he writes warmly and that is not a fault. Fail only what is listed."},
             {"role": "user", "content": (
