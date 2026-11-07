@@ -468,6 +468,7 @@ def _without_26b(chain):
     return out
 
 def provider_chain(j, path):
+    if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]   # Aegis AEON only, before and after the flip
     chain = _provider_chain(j, path)
     return _without_26b(chain) if aeon_everywhere() else chain
 
