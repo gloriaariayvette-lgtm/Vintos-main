@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """subcon_target.py — which model his subconscious emotion work runs on (Gloria 2026-11-07).
 
-One flag decides it: ~/.vintos/subcon-target.json
-    {"target": "gemma26b"}                          the 26B, as before the switch (also: no file, bad file)
-    {"target": "aeon"}                              AEON, for the constructs that passed the 26B's own bar
-    {"target": "aeon", "include_tier_b": true}      also the two tier-B readouts, read with their caveat
+One flag decides it: ~/.vintos/subcon-target.json  {"target": "gemma26b"} or {"target": "aeon"}.
+No file, a bad file or an unknown name means the 26B, as before the switch.
 
-Residual readings. AEON (Gemma 4 12B abliterated, BF16) is held to exactly the per-construct bar the 26B passed
-under the Pain-axis protocol: nested grouped held-out AUC >= .85 with pooling and layer chosen inside each outer
-fold, all six mean-pooled prompt variants >= .85, |cosine| to the other directions < .3, and a passed named
-semantic review of the unembedding. Nine constructs pass all four. Valence (layer 41) and Groundedness (layer 29)
-pass the numbers but failed the semantic review, so they are tier B: off unless the flag opts in. Readings from
-the two checkpoints are never mixed; under AEON a construct it has not passed has no reading, never the 26B's.
+Gloria: "IT HAS TO ALL PASS." AEON can be the target only when it has passed the 26B's full bar, all of it:
+  model level   the Pain paper-protocol replication (S2 feel-colon, final token) AUC >= .85, and all six Pain
+                prompt ablations >= .85;
+  every one of the eleven constructs
+                nested grouped held-out AUC >= .85, all six mean-pooled prompt variants >= .85, and a passed named
+                semantic review of the unembedding; and across the eleven, every |cosine| < .3.
+The evidence is a pass record (aeon-bar-record.json beside this file) built from the emotion Codex's sealed
+results and pinned here by its sha256. The checker recomputes every verdict from the record's numbers; it never
+trusts a "pass" word. A missing, malformed, tampered or incomplete record, or any unmet item, refuses the flip
+and lists exactly what has not passed. There is no partial switch: until everything passes, his whole
+subconscious stays on the 26B, and a hand-written flag is ignored.
 
-Generated readings (the live per-turn emotion read): under AEON they go through the shim's /pool/subconscious
-lane, which then answers from AEON only. That is the quantized AEON generating text, a different contract from
-the BF16 residual measurement; the two are never converted into each other.
-
-This public file carries identities, hashes, layers and admission only. Vector files, host paths and the BF16
-reader live in private config (~/.vintos/residual/). Nothing here loads a model or opens a socket.
-Source of the AEON fields: the emotion Codex's sealed AEON readout handoff of 2026-11-07 (AEON-READOUT-MAP.json).
+When the Codex seals new passing results, the record is rebuilt and the pinned hash below is updated in a commit.
+This public file carries identities, hashes and thresholds only. Nothing here loads a model or opens a socket.
 """
+import hashlib
 import json
 import math
 import os
@@ -33,21 +32,28 @@ DIMENSIONS = ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection
               "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness")
 SHIM_SUBCONSCIOUS = "http://127.0.0.1:8599/pool/subconscious/v1/chat/completions"
 
+# The 26B's bar (offline/residual_emotion/evidence/2026-09-20-*).
+AUC_MIN = 0.85
+VARIANTS = 6
+COSINE_MAX = 0.3
+
+RECORD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aeon-bar-record.json")
+RECORD_SHA256 = "aaeab5adfbc3d07b47dcfec2ead74690c390125e19f767aef5e2998ac6e55923"
+RECORD_SCHEMA = "aeon-26b-bar-record/1"
+
 TARGETS = {
     "gemma26b": {
         "identity": "gemma-4-26b-a4b-it-uncensored",
         "format": "GGUF Q4_K_M",
         "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
         "lock": "offline/residual_emotion/model-lock.json",
-        # (layer, pooling, vector sha256 or None where the sealed 26B receipt does not list it)
-        "admitted": {
-            "Arousal": (25, "mean", None), "Connection": (26, "mean", None), "Curiosity": (24, "mean", None),
-            "Desire": (25, "mean", None), "Dominance": (26, "mean", None), "Groundedness": (25, "mean", None),
-            "Playfulness": (27, "mean", None), "Safety": (22, "mean", "8f6159d9fc9b6dbe3b865b6fbefcc9354946f636850c6f241cdf25dcc0998862"),
-            "Tension": (26, "mean", None), "Valence": (25, "mean", None), "Warmth": (25, "mean", None),
+        # Passed every item in September (Gloria's review receipts); (layer, pooling).
+        "constructs": {
+            "Arousal": (25, "mean"), "Connection": (26, "mean"), "Curiosity": (24, "mean"),
+            "Desire": (25, "mean"), "Dominance": (26, "mean"), "Groundedness": (25, "mean"),
+            "Playfulness": (27, "mean"), "Safety": (22, "mean"), "Tension": (26, "mean"),
+            "Valence": (25, "mean"), "Warmth": (25, "mean"),
         },
-        "tier_b": {},
-        "model_checks": {"pain_paper_protocol": "pass", "pain_prompt_variants": "pass"},
         "pool_chain": ["pool:subconscious", "gemma"],
         "generative": None,   # callers keep their own 26B route
     },
@@ -56,41 +62,83 @@ TARGETS = {
         "format": "GGUF BF16",
         "sha256": "02fd375821a7b50e783f408a75bf714ea85fc0dc67c933991642ef76d9b0d9ce",
         "lock": "offline/residual_emotion/model-lock-aeon.json",
-        "admitted": {
-            "Arousal": (37, "mean", "066788c07f209cb583da0beab9d92c47ddd29ddc7808826f5289eaac7d5a8c24"),
-            "Connection": (29, "mean", "efe96a227ed454e0a3b8c43420cd0fe6754ccafa6623ee262ac4832efd2a8479"),
-            "Curiosity": (30, "mean", "6432d0871b42b0e783888fd193612b7ac43d830f71dc265aa2acadf814b987e3"),
-            "Desire": (36, "mean", "a10eb46f7bba2279020103c62cc35f38195285931547dfad04e0e3ba05232053"),
-            "Dominance": (29, "mean", "e0ed4104b854e3fa0e50047a03ba9a51e231eeba2e7fcf2ebe7b4162228ece19"),
-            "Playfulness": (29, "mean", "59d698fda687a337f85ccbb6700d2b52902eacffa8a1fe61f958808728cf4f0a"),
-            "Safety": (28, "mean", "c93d679155686ae568b2f156a18e9bf0cd5013184e1d3940ad7e4bef87f1bc4e"),
-            "Tension": (34, "mean", "e2fd43dcdcdeba943f6827fe8073ea4d517a040234d039c1ac31e5af9c5adddc"),
-            "Warmth": (37, "mean", "a8a6711e25321ce55984232e9bbd7ce648730d34af4c7b7b9fd0570e23ebccb3"),
-        },
-        # Numbers pass; the original named semantic review failed. Read only when the flag opts in.
-        "tier_b": {
-            "Valence": (41, "mean", "d18baeff204d9d1a42e96dd29308e28f1634673b3dd932bfe8762538778ece65",
-                        "semantic review failed: familiarity/comfort confound; an approved layer-37 rebuild exists "
-                        "but its six prompt variants have not been run"),
-            "Groundedness": (29, "mean", "ea9e22b20d9bf61e7575b889a483db59a0aea9ad0daa5e03b9f6d72f21fa0be9",
-                             "semantic review failed: appearance versus bodily-sensation confound"),
-        },
-        # The 26B's record also has a model-level Pain replication. AEON has not run it; the handoff treats Pain
-        # as exploratory, outside the eleven-key map. Reported by status(), not a gate on the eleven constructs.
-        "model_checks": {"pain_paper_protocol": "not_run", "pain_prompt_variants": "not_run"},
+        "constructs": None,   # from the pass record, only once every item passes
         "pool_chain": ["pool:aeon", "aegis_gemma"],
         "generative": {"url": SHIM_SUBCONSCIOUS, "model": "aeon-gemma-4-12b"},
     },
 }
 
 
-def _flag_path():
-    return os.path.expanduser(FLAG)
+def _num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def load_record(path=None, pinned=None):
+    """(record, problems). problems is non-empty when the record cannot be trusted at all."""
+    path = path or RECORD
+    pinned = RECORD_SHA256 if pinned is None else pinned
+    try:
+        raw = open(path, "rb").read()
+    except OSError:
+        return None, ["pass record missing"]
+    if hashlib.sha256(raw).hexdigest() != pinned:
+        return None, ["pass record does not match its pinned sha256 (tampered or not yet pinned)"]
+    try:
+        rec = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None, ["pass record is not valid JSON"]
+    if not isinstance(rec, dict) or rec.get("schema") != RECORD_SCHEMA:
+        return None, ["pass record has the wrong schema"]
+    model = rec.get("model") if isinstance(rec.get("model"), dict) else {}
+    if model.get("identity") != TARGETS["aeon"]["identity"] or model.get("sha256") != TARGETS["aeon"]["sha256"]:
+        return None, ["pass record is for a different checkpoint"]
+    if not isinstance(rec.get("constructs"), dict) or not isinstance(rec.get("pain"), dict):
+        return None, ["pass record is incomplete"]
+    return rec, []
+
+
+def unmet(path=None, pinned=None):
+    """Every item of the 26B's bar AEON has not passed, as readable lines. Empty means all of it passed."""
+    rec, problems = load_record(path, pinned)
+    if problems:
+        return problems
+    out = []
+    pain = rec["pain"]
+    if not (_num(pain.get("paper_protocol_auc")) and pain["paper_protocol_auc"] >= AUC_MIN):
+        out.append("Pain paper protocol: %s" % (pain.get("paper_protocol_auc") if _num(pain.get("paper_protocol_auc"))
+                                               else pain.get("status") or "missing"))
+    pv = pain.get("prompt_variant_aucs")
+    if not (isinstance(pv, list) and len(pv) == VARIANTS and all(_num(a) and a >= AUC_MIN for a in pv)):
+        out.append("Pain prompt ablations: %s" % ("%d/%d" % (sum(1 for a in pv if _num(a) and a >= AUC_MIN), VARIANTS)
+                                                 if isinstance(pv, list) else pain.get("status") or "missing"))
+    cons = rec["constructs"]
+    for name in DIMENSIONS:
+        c = cons.get(name)
+        if not isinstance(c, dict):
+            out.append("%s: no result" % name)
+            continue
+        if not (_num(c.get("nested_auc")) and c["nested_auc"] >= AUC_MIN):
+            out.append("%s: nested AUC %s" % (name, c.get("nested_auc")))
+        va = c.get("mean_variant_aucs")
+        if not (isinstance(va, list) and len(va) == VARIANTS and all(_num(a) and a >= AUC_MIN for a in va)):
+            out.append("%s: mean-pooled prompt variants %s" % (name, "%d/%d" % (
+                sum(1 for a in va if _num(a) and a >= AUC_MIN), VARIANTS) if isinstance(va, list) else "missing"))
+        if c.get("semantic_review") != "passed":
+            out.append("%s: semantic review %s" % (name, c.get("semantic_review") or "missing"))
+        if not (isinstance(c.get("layer"), int) and c.get("pooling") in ("mean", "final")
+                and isinstance(c.get("vector_sha256"), str) and len(c["vector_sha256"]) == 64):
+            out.append("%s: direction (layer, pooling, vector hash) incomplete" % name)
+    extra = sorted(set(cons) - set(DIMENSIONS))
+    if extra:
+        out.append("unexpected constructs: %s" % ", ".join(extra))
+    if not (_num(rec.get("max_abs_cosine")) and rec["max_abs_cosine"] < COSINE_MAX):
+        out.append("orthogonality: max |cosine| %s" % rec.get("max_abs_cosine"))
+    return out
 
 
 def _flag():
     try:
-        with open(_flag_path(), encoding="utf-8") as f:
+        with open(os.path.expanduser(FLAG), encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -98,36 +146,35 @@ def _flag():
 
 
 def active():
-    """The active target's name. Anything but a readable flag naming a known target means the 26B."""
+    """The active target. AEON only when the flag says so AND its pass record is complete and passing."""
     name = _flag().get("target")
-    return name if name in TARGETS else DEFAULT
-
-
-def tier_b_enabled():
-    return active() != DEFAULT and _flag().get("include_tier_b") is True
+    if name == "aeon" and not unmet():
+        return "aeon"
+    return DEFAULT
 
 
 def target(name=None):
     return TARGETS[name or active()]
 
 
-def admitted(name=None, include_tier_b=None):
-    """{construct: (layer, pooling, vector_sha256)} the active (or named) target may be read for."""
-    t = target(name)
-    out = {k: tuple(v) for k, v in t["admitted"].items()}
-    use_b = tier_b_enabled() if include_tier_b is None else include_tier_b
-    if use_b:
-        out.update({k: tuple(v[:3]) for k, v in t["tier_b"].items()})
-    return out
-
-
-def admitted_readings(readings, name=None, identity=None, include_tier_b=None):
-    """Keep only readings this target has admitted. A reading set made on another checkpoint is refused whole
-    (returns {}), so the two are never pooled; a construct the target has not passed is dropped."""
-    t = target(name)
-    if identity is not None and identity != t["identity"]:
+def constructs(name=None):
+    """{construct: (layer, pooling)} read for the target; under AEON all eleven, from the passing record."""
+    n = name or active()
+    if n == "gemma26b":
+        return dict(TARGETS[n]["constructs"])
+    if unmet():
         return {}
-    keep = admitted(name, include_tier_b)
+    rec, _ = load_record()
+    return {k: (v["layer"], v["pooling"]) for k, v in rec["constructs"].items()}
+
+
+def admitted_readings(readings, name=None, identity=None):
+    """Readings for the target's constructs only. A set made on another checkpoint is refused whole, so the two
+    are never pooled."""
+    n = name or active()
+    if identity is not None and identity != TARGETS[n]["identity"]:
+        return {}
+    keep = constructs(n)
     out = {}
     for k, v in (readings or {}).items():
         if k not in keep or isinstance(v, bool):
@@ -141,12 +188,11 @@ def admitted_readings(readings, name=None, identity=None, include_tier_b=None):
     return out
 
 
-def receipt(name=None):
+def receipt():
     """What a shadow receipt records about the instrument that should measure it."""
-    n = name or active()
+    n = active()
     t = TARGETS[n]
-    return {"target": n, "identity": t["identity"], "sha256": t["sha256"],
-            "admitted": sorted(admitted(n, None if name is None else False))}
+    return {"target": n, "identity": t["identity"], "sha256": t["sha256"], "constructs": sorted(constructs(n))}
 
 
 def pool_chain():
@@ -154,51 +200,37 @@ def pool_chain():
 
 
 def generative_route(default_url, default_model):
-    """(url, model) for a generated emotion/subconscious read: the caller's own 26B route until the flip."""
+    """(url, model) for generated subconscious/emotion work: the caller's own 26B route until the flip."""
     g = target()["generative"]
     return (g["url"], g["model"]) if g else (default_url, default_model)
 
 
-def unrun_model_checks(name):
-    return sorted(k for k, v in TARGETS[name]["model_checks"].items() if v != "pass")
-
-
-def set_target(name, include_tier_b=False):
-    """Write the flag atomically; returns the notes the operator should see."""
+def set_target(name):
+    """Write the flag atomically. AEON is refused, with every unmet item listed, until all of it passes."""
     if name not in TARGETS:
         raise ValueError("unknown target %r (known: %s)" % (name, ", ".join(sorted(TARGETS))))
-    path = _flag_path()
+    if name == "aeon":
+        missing = unmet()
+        if missing:
+            raise ValueError("AEON has not passed the 26B's full bar; not passed yet:\n  - " + "\n  - ".join(missing))
+    path = os.path.expanduser(FLAG)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = {"target": name}
-    if include_tier_b and name != DEFAULT:
-        data["include_tier_b"] = True
     fd, tmp = tempfile.mkstemp(prefix=".subcon-target-", dir=os.path.dirname(path))
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+        json.dump({"target": name}, f)
         f.flush(); os.fsync(f.fileno())
     os.replace(tmp, path)
-    notes = ["subconscious target: %s" % name]
-    unrun = unrun_model_checks(name)
-    if unrun:
-        notes.append("note: model-level checks not run on %s: %s" % (name, ", ".join(unrun)))
-    return notes
+    return name
 
 
 def status():
-    n = active()
-    return {"active": n, "tier_b_enabled": tier_b_enabled(), "flag": _flag_path(),
-            "reading": sorted(admitted()),
-            "targets": {k: {"identity": v["identity"], "admitted": sorted(v["admitted"]),
-                            "tier_b": {c: x[3] for c, x in v["tier_b"].items()},
-                            "unrun_model_checks": unrun_model_checks(k)}
-                        for k, v in TARGETS.items()}}
+    return {"active": active(), "flag": os.path.expanduser(FLAG), "aeon_not_passed": unmet()}
 
 
 def main(argv):
     if len(argv) >= 2 and argv[0] == "set":
         try:
-            for line in set_target(argv[1], include_tier_b="--tier-b" in argv[2:]):
-                print(line)
+            print("subconscious target:", set_target(argv[1]))
             return 0
         except ValueError as e:
             print("refused:", e, file=sys.stderr)
@@ -206,7 +238,7 @@ def main(argv):
     if not argv or argv[0] == "status":
         print(json.dumps(status(), indent=2))
         return 0
-    print("usage: subcon_target.py [status | set gemma26b | set aeon [--tier-b]]", file=sys.stderr)
+    print("usage: subcon_target.py [status | set gemma26b|aeon]", file=sys.stderr)
     return 1
 
 

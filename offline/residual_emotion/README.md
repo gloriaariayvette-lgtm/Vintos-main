@@ -27,14 +27,16 @@ prompt ablations independently (AUC 0.86150–0.94425). See
 
 ### AEON target (2026-11-07)
 
-`model-lock-aeon.json` pins AEON (Gemma 4 12B abliterated, BF16, sha256 `02fd3758…d9ce`). Which lock his
-subconscious readings use is one flag, `~/.vintos/subcon-target.json`, read by `scripts/subcon_target.py`; with
-no flag it stays on the 26B lock above. AEON is held to exactly the 26B's per-construct bar: nested held-out AUC ≥ 0.85, six mean-pooled prompt
-variants, |cosine| < 0.3 and a named unembedding review (source: the emotion Codex's sealed AEON readout
-handoff, 2026-11-07). Nine constructs pass all four; Valence (L41) and Groundedness (L29) failed the semantic
-review and are tier B, read only when the flag opts in. The 26B record's model-level Pain replication has not
-been run on AEON; `subcon_target.py status` reports it. The AEON lock carries no host path; extraction uses a
-private copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
+`model-lock-aeon.json` pins AEON (Gemma 4 12B abliterated, BF16, sha256 `02fd3758…d9ce`). Which model his
+subconscious uses is one flag, `~/.vintos/subcon-target.json`, read by `scripts/subcon_target.py`; with no flag it
+stays on the 26B lock above. Gloria: it has to all pass. The flip to AEON is refused until AEON has passed the
+26B's full bar: the Pain paper-protocol replication and its six prompt ablations, and for every one of the eleven
+constructs nested held-out AUC ≥ 0.85, six mean-pooled prompt variants ≥ 0.85 and a passed named unembedding
+review, with every |cosine| < 0.3. The evidence is `scripts/aeon-bar-record.json`, built from the emotion
+Codex's sealed results and pinned by sha256 in `subcon_target.py`; the checker recomputes each verdict from the
+numbers. As of 2026-11-07 it lists four unmet items (`subcon_target.py status`): both Pain tests not run, and the
+Valence and Groundedness semantic reviews failed. The AEON lock carries no host path; extraction uses a private
+copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
 
 ## Evidence law
 

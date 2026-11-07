@@ -1,0 +1,185 @@
+{
+ "constructs": {
+  "Arousal": {
+   "layer": 37,
+   "mean_variant_aucs": [
+    0.95875,
+    0.9585,
+    0.96075,
+    0.97825,
+    0.978,
+    0.97825
+   ],
+   "nested_auc": 0.971059,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "066788c07f209cb583da0beab9d92c47ddd29ddc7808826f5289eaac7d5a8c24"
+  },
+  "Connection": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.88675,
+    0.8835,
+    0.88075,
+    0.941,
+    0.9405,
+    0.9425
+   ],
+   "nested_auc": 0.902378,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "efe96a227ed454e0a3b8c43420cd0fe6754ccafa6623ee262ac4832efd2a8479"
+  },
+  "Curiosity": {
+   "layer": 30,
+   "mean_variant_aucs": [
+    0.97275,
+    0.974,
+    0.9745,
+    0.9655,
+    0.9665,
+    0.965
+   ],
+   "nested_auc": 0.969573,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "6432d0871b42b0e783888fd193612b7ac43d830f71dc265aa2acadf814b987e3"
+  },
+  "Desire": {
+   "layer": 36,
+   "mean_variant_aucs": [
+    0.98575,
+    0.986,
+    0.9815,
+    0.9725,
+    0.9735,
+    0.97675
+   ],
+   "nested_auc": 0.97759,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "a10eb46f7bba2279020103c62cc35f38195285931547dfad04e0e3ba05232053"
+  },
+  "Dominance": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.94975,
+    0.95225,
+    0.951,
+    0.9525,
+    0.95175,
+    0.95225
+   ],
+   "nested_auc": 0.960639,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "e0ed4104b854e3fa0e50047a03ba9a51e231eeba2e7fcf2ebe7b4162228ece19"
+  },
+  "Groundedness": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.95375,
+    0.95325,
+    0.9505,
+    0.97675,
+    0.976,
+    0.97575
+   ],
+   "nested_auc": 0.959146,
+   "pooling": "mean",
+   "semantic_review": "failed",
+   "vector_sha256": "ea9e22b20d9bf61e7575b889a483db59a0aea9ad0daa5e03b9f6d72f21fa0be9"
+  },
+  "Playfulness": {
+   "layer": 29,
+   "mean_variant_aucs": [
+    0.9475,
+    0.94675,
+    0.945,
+    0.9675,
+    0.96925,
+    0.966
+   ],
+   "nested_auc": 0.954177,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "59d698fda687a337f85ccbb6700d2b52902eacffa8a1fe61f958808728cf4f0a"
+  },
+  "Safety": {
+   "layer": 28,
+   "mean_variant_aucs": [
+    0.901,
+    0.898,
+    0.894,
+    0.887,
+    0.8895,
+    0.8865
+   ],
+   "nested_auc": 0.909917,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "c93d679155686ae568b2f156a18e9bf0cd5013184e1d3940ad7e4bef87f1bc4e"
+  },
+  "Tension": {
+   "layer": 34,
+   "mean_variant_aucs": [
+    0.95375,
+    0.95375,
+    0.9455,
+    0.95475,
+    0.95375,
+    0.949
+   ],
+   "nested_auc": 0.956337,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "e2fd43dcdcdeba943f6827fe8073ea4d517a040234d039c1ac31e5af9c5adddc"
+  },
+  "Valence": {
+   "layer": 41,
+   "mean_variant_aucs": [
+    0.9345,
+    0.93475,
+    0.931,
+    0.9145,
+    0.9105,
+    0.9005
+   ],
+   "nested_auc": 0.930656,
+   "pooling": "mean",
+   "semantic_review": "failed",
+   "vector_sha256": "d18baeff204d9d1a42e96dd29308e28f1634673b3dd932bfe8762538778ece65"
+  },
+  "Warmth": {
+   "layer": 37,
+   "mean_variant_aucs": [
+    0.95775,
+    0.9585,
+    0.963,
+    0.9435,
+    0.94625,
+    0.9445
+   ],
+   "nested_auc": 0.958753,
+   "pooling": "mean",
+   "semantic_review": "passed",
+   "vector_sha256": "a8a6711e25321ce55984232e9bbd7ce648730d34af4c7b7b9fd0570e23ebccb3"
+  }
+ },
+ "max_abs_cosine": 0.201106,
+ "model": {
+  "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
+  "sha256": "02fd375821a7b50e783f408a75bf714ea85fc0dc67c933991642ef76d9b0d9ce"
+ },
+ "pain": {
+  "paper_protocol_auc": null,
+  "prompt_variant_aucs": null,
+  "status": "not_run"
+ },
+ "schema": "aeon-26b-bar-record/1",
+ "source": {
+  "artifact_seal_sha256": "0a6fd180ad945773ce998b8eee3e19dd407a708d7e052dbf596a88299c7a5271",
+  "handoff_zip_sha256": "fe2eda78969da37c7f23caed4615696b6a563c12b073087da753e90d3641971f",
+  "readout_map_sha256": "0b011bf73deed15f5637dad0a512abbab406cc665c8be1c6c52792ca529c86f5"
+ }
+}
