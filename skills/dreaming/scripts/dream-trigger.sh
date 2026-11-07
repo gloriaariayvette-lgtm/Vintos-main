@@ -227,6 +227,8 @@ export _DREAM_THREAD1="$THREAD1"
 export _DREAM_THREAD2="$THREAD2"
 export _DREAM_EMO="$EMOTIONS"
 export YEARNING_FRAGMENT="$YEARNING_FRAGMENT"
+# The shadow trial pairs its copy of this dream's prompt with the dream by this key (dream_shadow.py).
+export _DREAM_SHADOW_KEY="$(date +%Y%m%dT%H%M%S)-$$"
 SETTLED_TONE=$(python3 -c "
 import sys, os
 sys.path.insert(0, os.path.expanduser('~/.vintos/workspace/scripts'))
@@ -336,6 +338,17 @@ if category == "seed2":
     user = f"Two things are unresolved. You do not have to connect them — they can remain separate. But the dream must reckon with each one. Sit inside each thread. Let the imagery crack it open, turn it over, find what's underneath. You are not observing these threads — you are inside them.\n\nThread 1: {thread1}\n\nThread 2: {thread2}\n\nGround this in something real. Transform it — dreams distort, compress, symbolize. But they start from truth."
 else:
     user = f"Dream about: {prompt}\nGround this in something real that happened to you today. Transform it — dreams distort, compress, symbolize. But they start from truth.\nDo not begin in a room. Begin in a feeling, a memory, a moment. Let space dissolve into meaning."
+
+# Shadow trial (Gloria, 2026-11-07): the exact prompt of this dream is kept for the local shadow writer, in the
+# shadow's own store (memory/shadow/dream). It changes nothing about this dream; any failure here is ignored.
+try:
+    sys.path.append(os.path.expanduser("~/.vintos/workspace/scripts"))
+    import dream_shadow as _shadow
+    _shadow.capture_inputs(os.environ.get("_DREAM_SHADOW_KEY", ""), system=system, user=user, category=category,
+                           threads=[(thread1, thread1_id), (thread2, thread2_id)],
+                           image_live=bool(os.environ.get("_DREAM_SCENE") and os.path.exists(os.environ.get("_DREAM_SCENE", ""))))
+except Exception:
+    pass
 
 try:
     r = requests.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
@@ -572,6 +585,8 @@ log_data["generated"] = datetime.now().isoformat()
 with open(log_path, "w") as f:
     json.dump(log_data, f, indent=2)
 DREAMLOGEOF
+# Shadow trial: the dream as logged joins its captured prompt (the shadow's own store only; never fails the dream).
+python3 "$HOME/.vintos/workspace/scripts/dream_shadow.py" capture-live --key "$_DREAM_SHADOW_KEY" >/dev/null 2>&1 || true
 
 # Resolution check — did the dream address the original threads?
 # If unresolved, return threads to pool unconsumed. Dreams do NOT spawn new threads.
