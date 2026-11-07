@@ -144,7 +144,8 @@ check("preoccupation slot: with an unresolved thread it runs as before", ran("dr
 
 # mirror-trigger.sh: five blind spots would call the mirror; mirror.sh is a stub.
 stub(os.path.join(SCR, "mirror.sh"), "mirror")
-open(os.path.join(MEM, "self-blind-spots.md"), "w").write("\n".join(["- ⚠ off"] * 5) + "\n")
+open(os.path.join(MEM, "self-blind-spots.jsonl"), "w").write(
+    "".join(json.dumps({"timestamp": datetime.now().isoformat(timespec="seconds"), "miss_count": 2}) + "\n" for _ in range(5)))
 def mirror():
     reset_markers()
     return subprocess.run(["bash", os.path.join(REPO, "bin", "mirror-trigger.sh")], env=env(), capture_output=True, text=True, timeout=60)

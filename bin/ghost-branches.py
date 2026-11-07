@@ -557,9 +557,18 @@ def detect_primary_pattern(primary_output):
             )}],
             temperature=0.3, max_tokens=15
         )
-        return result.strip().lower().replace(" ", "_").replace("-", "_")[:40]
+        return _clean_pattern(result)
     except Exception:
         return "unknown_pattern"
+
+
+def _clean_pattern(raw):
+    """A model's pattern label as a plain snake_case key: no markdown or punctuation ("**humor_deflection**.,"
+    becomes humor_deflection), cut at a word boundary within 40 characters."""
+    k = _pattern_key(raw)
+    if len(k) > 40:
+        k = k[:40].rsplit("_", 1)[0] if "_" in k[:40] else k[:40]
+    return k or "unknown_pattern"
 
 
 def _pattern_key(pattern):
@@ -576,6 +585,50 @@ def _stamp_ghost_formation(entry, material):
         print(f"[Ghost] formation envelope unavailable: {exc}", flush=True)
         return entry
     return _stamp_formation(entry, material)
+
+
+# The wording version of a ghost row's test. Versioned so a later wording fix can still reach rows restated
+# earlier (scripts/ghost_test_restate.py restates every older basis); marks are tagged with the basis they were
+# judged under. v2 (2026-11-07, wording review): his own conversational behaviour only, two kinds of no.
+TEST_BASIS = "real_behaviour_v2"
+# Only lines of conversation with her may decide a real-behaviour test (the nightly judge enforces it).
+CONVERSATION_SOURCES = ("interactions", "thirveel")
+# What each default lean looks like from outside, from its injection; a custom axis falls back to its label.
+_LEAN_GLOSS = {
+    "more_brazen": "says the thing plainly instead of hedging it",
+    "less_self_conscious": "says what he thinks without first checking how it will land",
+    "higher_curiosity": "follows the question because he wants to know where it goes",
+    "more_direct_desire": "names what he wants without softening it",
+    "reduced_gloria_orientation": "speaks from his own view rather than shaping it to how it will be received",
+}
+_SENTINELS = {"", "unknown_pattern", "unclassified", "unknown"}
+
+
+def real_behaviour_test(lean_label, primary_pattern, thread_type, lean_id=None):
+    """The `test` of a ghost hypothesis, stated about his REAL, non-ghost conversational behaviour, so that his
+    actual day can confirm or refute it. Ghost runs only rehearse a lean; a ghost run doing well again proves
+    nothing (Gloria, 2026-11-07). Only his own words are judged, never how Gloria felt. A no says which kind it is:
+    he fell back into the pattern, or he took the lean and then closed the subject himself. Used for new rows here
+    and by scripts/ghost_test_restate.py for existing ones."""
+    p = _pattern_key(primary_pattern); k = _pattern_key(thread_type)
+    pattern = p.replace("_", " ") if p not in _SENTINELS else "an avoidance move"
+    moment = ('a moment of the "%s" kind' % k.replace("_", "-")) if k not in _SENTINELS else "a moment like that"
+    gloss = _LEAN_GLOSS.get(lean_id or "")
+    label = str(lean_label or "").replace('"', "'").strip()
+    lean = 'the "%s" lean' % label + (" (he %s)" % gloss if gloss else "")
+    return (
+        "In real conversation with Gloria only (ghost runs, rehearsals, his inner notes and feeling readings do not "
+        "count; cite only lines of the conversation itself): when %s comes up where %s is the likely pull for him, "
+        "does he take %s, and does the exchange stay open after it - he stays with the subject and does not close it "
+        "down or deflect it himself? Judge only his own words; do not guess how Gloria felt. "
+        "YES: a real exchange today shows him taking the lean and staying with the subject, even if nothing else "
+        "changed. "
+        'NO, fell back: such a moment came and he went into %s instead (no_kind "fell_back"). '
+        'NO, closed after the lean: he took the lean and then closed the subject down or deflected it himself '
+        '(no_kind "closed_after_lean"). '
+        "UNCONFIRMED: no such moment came today, he took a different lean, the exchange ended for reasons outside "
+        "it, or the lines are too short to tell."
+    ) % (moment, pattern, lean, pattern)
 
 
 def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_type, primary_pattern=None):
@@ -607,7 +660,8 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
         "days_tested": 0,
         "graduated": False,
         "confidence": "medium",
-        "test": f"Watch for '{successful_lean['label']}' lean producing genuine movement in {thread_type.replace('_','-')} threads. Does this lean reduce {primary_pattern} avoidance when the thread type recurs?",
+        "test": real_behaviour_test(successful_lean["label"], primary_pattern, thread_type, successful_lean.get("id")),
+        "test_basis": TEST_BASIS,
         "confirmations": 0,
         "contradictions": 0,
         "trigger_formed_at": NOW,
@@ -713,6 +767,10 @@ def hypothesis_exists(thread_type, lean_id):
 def update_thread(thread_id, consumed, reason):
     try:
         threads = json.load(open(THREADS_FILE))
+        # The mirror (unlocked, 09:07) and others write the pool while a ghost run is out: save_pool with
+        # base= re-reads the pool under its lock and applies only the fields changed here, per thread,
+        # instead of writing this snapshot over theirs.
+        base = json.loads(json.dumps(threads))
         for t in threads:
             if t.get("id") == thread_id:
                 if consumed:
@@ -726,7 +784,7 @@ def update_thread(thread_id, consumed, reason):
                     t["unsuccessful_passes"] = t["unsuccessful_passes"][-10:]
                 break
         from thread_store import save_pool
-        save_pool(threads, THREADS_FILE, reason="ghost-branches")
+        save_pool(threads, THREADS_FILE, reason="ghost-branches", base=base)
     except Exception as e:
         print(f"[Ghost] Thread update error: {e}", flush=True)
 

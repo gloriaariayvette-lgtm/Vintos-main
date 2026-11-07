@@ -42,6 +42,9 @@ except Exception:                                    # never break the compariso
     _PL = None
 HELD_LOG = os.path.join(MEMORY, "self-prediction-held.jsonl")
 BLIND_SPOTS_LOG = os.path.join(MEMORY, "self-blind-spots.md")
+# One JSON row per logged self-mismatch (the same entries as BLIND_SPOTS_LOG). This is what the mirror
+# trigger counts; it used to grep the .md for a glyph that only ever went to stdout (B10).
+BLIND_SPOTS_EVENTS = os.path.join(MEMORY, "self-blind-spots.jsonl")
 BLIND_SPOTS_DATA = os.path.join(MEMORY, ".self-prediction-history.json")
 STATE_FILE = os.path.join(MEMORY, "emotional-state.json")
 API = "http://127.0.0.1:8599/v1/chat/completions"
@@ -364,6 +367,13 @@ Biggest errors: {worst_str}
 
     with open(BLIND_SPOTS_LOG, 'a') as f:
         f.write(entry)
+    try:
+        with open(BLIND_SPOTS_EVENTS, 'a') as f:
+            f.write(json.dumps({"timestamp": datetime.now().isoformat(timespec="seconds"),
+                                "miss_count": result["miss_count"], "total_dims": result["total_dims"],
+                                "dims": sorted(d for d, v in result["mismatches"].items() if v.get("miss"))}) + "\n")
+    except Exception as _bse:
+        print(f"[Self-Predict] blind-spot record not written: {_bse}")
 
     print(f"[Self-Predict] ⚠ Self-mismatch logged: {result['miss_count']} dims off")
 

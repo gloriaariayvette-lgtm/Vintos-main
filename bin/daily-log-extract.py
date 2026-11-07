@@ -16,6 +16,10 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 TODAY = date.today().isoformat()
 NOW = datetime.now().strftime("%H:%M")
+# Brackets around the Ghost Branch section: ghost-run text is rehearsal, not an occasion. The causality
+# catalog reads these exact strings (causality-engine GHOST_BLOCK_BEGIN/END); change both together.
+GHOST_BLOCK_BEGIN = "<!-- tactical:ghost_branch - rehearsal, not evidence -->"
+GHOST_BLOCK_END = "<!-- /tactical:ghost_branch -->"
 
 def section(title, content):
     if not content or not content.strip():
@@ -198,7 +202,10 @@ def build_inner():
                     _gb_lines.append(f"  {_res} {_gb_g['lean']} " + (f"({_trg} reversion)" if _trg else ""))
                 if _gb_run.get("appendage"):
                     _gb_lines.append(f"**Appendage:** {_gb_run['appendage']}")
-                parts.append(section("Ghost Branch", "\n".join(_gb_lines)))
+                # Kept here on purpose (Gloria, 2026-11-07): he reads the day's better-working style and tries it.
+                # The markers say it is tactical (rehearsal, not something that happened), so the causality
+                # catalog never offers these lines as evidence; see causality-engine _inner_evidence_lines.
+                parts.append(section("Ghost Branch", GHOST_BLOCK_BEGIN + "\n" + "\n".join(_gb_lines) + "\n" + GHOST_BLOCK_END))
     except: pass
     # Last night's emotional reflection carry-forward
     try:
