@@ -210,18 +210,14 @@ def proved(text):
 
 def _pick(state, text, items=None):
     """The open work a line is about: the one it names by id, else the one whose goal it is closest to, else the one
-    touched last. A line that names ids, none of them open (closed, dropped, expired or never made), is about none:
-    it must not fall through to unrelated work (3 November: a dropped id's NEXT landed on the Haptify work)."""
+    touched last. A line that names ids, none of them open, is about none: a stale id never lands on other work."""
     items = open_items(state) if items is None else items
     if not items:
         return None
     ids = _ID.findall(str(text or ""))
     if ids:
-        for i in ids:
-            named = [w for w in items if w.get("id") == i]
-            if named:
-                return named[0]
-        return None
+        named = [w for i in ids for w in items if w.get("id") == i]
+        return named[0] if named else None
     scored = sorted(((_like(text, w["goal"]), w) for w in items), key=lambda x: x[0], reverse=True)
     if scored and scored[0][0] >= 0.25 and (len(scored) == 1 or scored[0][0] > scored[1][0]):
         return scored[0][1]
