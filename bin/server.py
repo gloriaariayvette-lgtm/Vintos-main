@@ -690,7 +690,11 @@ def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_m
             try: open("/tmp/emotion-read.log","a").write("["+_dt.datetime.now().isoformat()[:19]+"] "+m+"\n")
             except Exception: pass
         _generated={}; _applied={}; _cur={}; _post={}; _digest=""
-        _model="gemma-4-26b-a4b-it-uncensored"
+        _model="gemma-4-26b-a4b-it-uncensored"; _emo_url="http://100.79.177.103:1234/v1/chat/completions"
+        try:   # the subconscious flag (subcon_target.py): the 26B until Gloria flips it to AEON
+            import subcon_target as _subcon
+            _emo_url, _model = _subcon.generative_route(_emo_url, _model)
+        except Exception: pass
         try:
             _exchange = prompt_style == "exchange"
             _sys = ("Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation."
@@ -702,7 +706,7 @@ def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_m
                     "This just happened ("+source+"): \""+_evidence_text+"\"\nHow did it land for Vintos right now, in his body and feeling? Return JSON only.")
             payload={"model":_model,"temperature":0.3,"max_tokens":200,"messages":[
                 {"role":"system","content":_sys},{"role":"user","content":_usr}]}
-            req=_u.Request("http://100.79.177.103:1234/v1/chat/completions",data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
+            req=_u.Request(_emo_url,data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
             raw=paid_http.send(_u.urlopen, __file__, req,timeout=20).read().decode()
             _digest=hashlib.sha256(raw.encode()).hexdigest()
             content=_re.sub(r"```json|```","",_j.loads(raw)["choices"][0]["message"]["content"]).strip()

@@ -29,11 +29,12 @@ prompt ablations independently (AUC 0.86150–0.94425). See
 
 `model-lock-aeon.json` pins AEON (Gemma 4 12B abliterated, BF16, sha256 `02fd3758…d9ce`). Which lock his
 subconscious readings use is one flag, `~/.vintos/subcon-target.json`, read by `scripts/subcon_target.py`; with
-no flag it stays on the 26B lock above. AEON is held to exactly the 26B's bar: the model-level Pain paper
-protocol and Pain prompt ablations, then per construct nested held-out AUC ≥ 0.85, six mean-pooled prompt
-variants, |cosine| < 0.3 and a named unembedding review. `subcon_target.py` lists the constructs that pass and
-refuses the flip while a model-level item is unmet. The AEON lock carries no host path; extraction uses a private
-copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
+no flag it stays on the 26B lock above. AEON is held to exactly the 26B's per-construct bar: nested held-out AUC ≥ 0.85, six mean-pooled prompt
+variants, |cosine| < 0.3 and a named unembedding review (source: the emotion Codex's sealed AEON readout
+handoff, 2026-11-07). Nine constructs pass all four; Valence (L41) and Groundedness (L29) failed the semantic
+review and are tier B, read only when the flag opts in. The 26B record's model-level Pain replication has not
+been run on AEON; `subcon_target.py status` reports it. The AEON lock carries no host path; extraction uses a
+private copy named through `VINTOS_RESIDUAL_MODEL_LOCK`.
 
 ## Evidence law
 

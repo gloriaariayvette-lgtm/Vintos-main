@@ -3,6 +3,12 @@
 import sys, json, socket, os, re, urllib.request
 LM_URL = "http://100.79.177.103:1234/v1/chat/completions"
 MODEL = "gemma-4-26b-a4b-it-uncensored"
+try:   # the subconscious flag (subcon_target.py): the 26B above until Gloria flips it to AEON
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import subcon_target as _subcon
+    LM_URL, MODEL = _subcon.generative_route(LM_URL, MODEL)
+except Exception:
+    pass
 WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEM = os.path.join(WS, "memory")
 NAME = "Velaris" if ".openclaw" in WS else "Vintos"
