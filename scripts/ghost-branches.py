@@ -692,6 +692,10 @@ def hypothesis_exists(thread_type, lean_id):
 def update_thread(thread_id, consumed, reason):
     try:
         threads = json.load(open(THREADS_FILE))
+        # The mirror (unlocked, 09:07) and others write the pool while a ghost run is out: save_pool with
+        # base= re-reads the pool under its lock and applies only the fields changed here, per thread,
+        # instead of writing this snapshot over theirs.
+        base = json.loads(json.dumps(threads))
         for t in threads:
             if t.get("id") == thread_id:
                 if consumed:
@@ -705,7 +709,7 @@ def update_thread(thread_id, consumed, reason):
                     t["unsuccessful_passes"] = t["unsuccessful_passes"][-10:]
                 break
         from thread_store import save_pool
-        save_pool(threads, THREADS_FILE, reason="ghost-branches")
+        save_pool(threads, THREADS_FILE, reason="ghost-branches", base=base)
     except Exception as e:
         print(f"[Ghost] Thread update error: {e}", flush=True)
 

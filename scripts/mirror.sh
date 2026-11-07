@@ -533,6 +533,10 @@ try:
         threads = json.load(f)
 except:
     sys.exit(0)
+# The judge call below takes time and the mirror does not hold llm-lock, so a ghost run (or any other
+# writer) can save the pool meanwhile. Both saves pass base=: save_pool re-reads the pool under its lock
+# and applies only the fields this script changed, per thread, instead of writing this snapshot over it.
+base = json.loads(json.dumps(threads))
 # Use the specific thread that was in the mirror session
 # Only the thread the session showed is judged. There is no fallback to "the top thread": that one may be
 # a thread the session filtered out (dream_only, contaminated), so it would be judged on a session that never saw it.
@@ -548,7 +552,7 @@ if not mirror_text or not thread_text:
     # Can't judge — increment mirror_passes but do NOT consume
     thread["mirror_passes"] = thread.get("mirror_passes", 0) + 1
     from thread_store import save_pool
-    save_pool(threads, threads_path, reason="mirror-no-session")
+    save_pool(threads, threads_path, reason="mirror-no-session", base=base)
     print(f"[Mirror] No session text to judge — mirror_passes incremented to {thread['mirror_passes']}, thread kept alive")
     sys.exit(0)
 
@@ -600,7 +604,7 @@ else:
     print(f"[Mirror] Thread resolved — mirror_passes={thread['mirror_passes']} dream_passes={thread.get('dream_passes',0)}")
 
 from thread_store import save_pool
-save_pool(threads, threads_path, reason="mirror-resolution")
+save_pool(threads, threads_path, reason="mirror-resolution", base=base)
 RESOLVE_MIRROR
 
 
