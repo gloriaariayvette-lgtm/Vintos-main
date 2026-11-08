@@ -116,6 +116,13 @@ class Tests(unittest.TestCase):
             isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "select" for c in ast.walk(n)))
         guard = next(n for n in outer.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
                      and isinstance(n.value.func, ast.Name) and n.value.func.id == "_sg_guard")
+        boundaries = [c for c in ast.walk(outer) if isinstance(c, ast.Call) and
+                      isinstance(c.func, ast.Attribute) and c.func.attr == "before_final_guard"]
+        self.assertEqual(len(boundaries), 1)
+        boundary = next(n for n in outer.body if isinstance(n, ast.If) and any(
+            isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "before_final_guard" for c in ast.walk(n)))
+        self.assertLess(select.lineno, boundary.lineno)
+        self.assertLess(boundary.lineno, guard.lineno)
         final = next(n for n in outer.body if isinstance(n, ast.If) and any(
             isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "finish_shadow" for c in ast.walk(n)))
         ret = next(n for n in outer.body if isinstance(n, ast.Return) and n.lineno > final.lineno)
@@ -138,7 +145,7 @@ class Tests(unittest.TestCase):
                 ast.ExceptHandler(type=ast.Name(id="Exception", ctx=ast.Load()), body=[ast.Pass()])],
                 orelse=[], finalbody=[]))
         fn = ast.AsyncFunctionDef(name="exercise", args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
-            body=copy.deepcopy(setup + route_body + [select, edit, guard, final, ret]), decorator_list=[])
+            body=copy.deepcopy(setup + route_body + [select, edit, boundary, guard, final, ret]), decorator_list=[])
         return ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[]))
 
     def exercise(self, sink_failure=False, enabled=True, responses=None, retry=False, replacement=False,
@@ -237,6 +244,20 @@ class Tests(unittest.TestCase):
         observed = next(n for n in packet["lineage"] if n.get("observation") == "router_result")
         self.assertEqual(observed["at"], 102)
         self.assertEqual(observed["time_basis"], "observed")
+        boundaries = [n for n in packet["lineage"] if n.get("observation") == "finalization_boundary"]
+        self.assertEqual([n["boundary"] for n in boundaries], ["before_final_guard", "handler_return"])
+        self.assertEqual(boundaries[0]["response_sha256"], W.digest("synthetic raw after postprocessing"))
+        self.assertEqual(boundaries[1]["before_sha256"], boundaries[0]["response_sha256"])
+        self.assertEqual(boundaries[1]["response_sha256"], W.digest(answer["reply"]))
+
+    def test_pre_guard_observation_failure_preserves_the_reply(self):
+        with patch.object(W.Capture, "before_final_guard", side_effect=ValueError("synthetic failure")):
+            answer = self.exercise()
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        self.assertEqual(answer["reply"], "synthetic raw after postprocessing after final guard")
+        boundaries = [n for n in packet["lineage"] if n.get("observation") == "finalization_boundary"]
+        self.assertEqual([n["boundary"] for n in boundaries], ["handler_return"])
+        self.assertEqual(packet["witness_final_text"], answer["reply"])
 
     def test_disabled_and_failed_capture_do_not_change_reply(self):
         disabled = self.exercise(enabled=False)

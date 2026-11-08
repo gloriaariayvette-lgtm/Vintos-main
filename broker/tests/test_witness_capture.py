@@ -21,6 +21,49 @@ def result(text="synthetic raw reply", actual="observed-fixture"):
 
 
 class Tests(unittest.TestCase):
+    def test_finalization_boundaries_bind_selected_output_to_exact_return(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        invocation = c.request("system", [], {}, False, 101)
+        invocation.observe(result("synthetic raw"))
+        c.select("synthetic raw", request=invocation)
+        c.before_final_guard("synthetic edited", 105)
+        p = c.finalize("synthetic guarded", 110)
+        nodes = {n["id"]: n for n in p["lineage"]}
+        before, final = [nodes[k] for k in p["finalization"]["boundary_ids"]]
+        self.assertEqual(before["before_sha256"], digest("synthetic raw"))
+        self.assertEqual(before["response_sha256"], final["before_sha256"])
+        self.assertEqual(final["response_sha256"], digest("synthetic guarded"))
+        self.assertEqual(final["parents"], [before["id"]])
+        self.assertIn(final["id"], p["reply_node"]["parents"])
+        self.assertTrue(before["changed"] and final["changed"])
+        self.assertFalse(before["complete"] or final["complete"])
+        self.assertNotIn("synthetic edited", str(p))
+        self.assertEqual(lineage_status(c.context_id, nodes, 110), "unknown")
+
+    def test_finalization_without_selection_or_boundary_does_not_invent_editor(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        p = c.finalize("synthetic final", 110)
+        nodes = {n["id"]: n for n in p["lineage"]}
+        node = nodes[p["finalization"]["boundary_ids"][0]]
+        self.assertIsNone(node["changed"])
+        self.assertIsNone(node["before_sha256"])
+        self.assertEqual(node["parents"], [])
+        self.assertEqual(node["origin"], "unknown")
+        self.assertEqual(lineage_status(c.context_id, nodes, 110), "unknown")
+
+    def test_finalization_boundaries_reject_reordering_and_reselection(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        c.before_final_guard("same", 105)
+        with self.assertRaises(ValueError): c.before_final_guard("again", 106)
+        with self.assertRaises(ValueError): c.select("same")
+        with self.assertRaises(ValueError): c.request("late", [], {}, False, 106)
+        with self.assertRaises(ValueError): c.observe(result("late"))
+        with self.assertRaises(ValueError): c.finalize("same", 104)
+        p = c.finalize("same", 110)
+        final = next(n for n in p["lineage"] if n.get("boundary") == "handler_return")
+        self.assertFalse(final["changed"])
+        with self.assertRaises(ValueError): c.before_final_guard("late", 111)
+
     def test_explicit_original_binds_only_its_exact_fragment_and_input_version(self):
         c = Capture("turn-1", "fixture-chat", 100)
         message = {"role": "user", "content": "Synthetic framing: αβ. Synthetic tail."}

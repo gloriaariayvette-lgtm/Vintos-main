@@ -65,6 +65,7 @@ class Capture:
         self._requests = []
         self._nodes = []
         self._input_bindings = []
+        self._finalization_nodes = []
 
     def bind_counterpart_input(self, original_text, message, slot):
         """Bind an explicitly marked original fragment to one exact input version.
@@ -138,7 +139,7 @@ class Capture:
         complete ancestry. Even role=user is not evidence of external origin.
         """
         at = instant(at)
-        if self._closed or at < max([self.started_at] + [n["at"] for n in self._nodes]):
+        if self._closed or self._finalization_nodes or at < max([self.started_at] + [n["at"] for n in self._nodes]):
             raise ValueError("invalid request lifecycle")
         if not isinstance(system, str) or not isinstance(messages, list) or not isinstance(params, dict):
             raise ValueError("invalid handler request")
@@ -177,8 +178,8 @@ class Capture:
         Stage lists sometimes contain their enclosing result. Walk one level,
         deduplicate by object identity, and never recurse through that cycle.
         """
-        if self._closed:
-            raise ValueError("capture already finalized")
+        if self._closed or self._finalization_nodes:
+            raise ValueError("observation must precede finalization boundaries")
         if not isinstance(result, dict):
             raise ValueError("generation result must be an object")
         stages = result.get("stages", [])
@@ -227,8 +228,8 @@ class Capture:
 
     def select(self, raw_reply, request=_UNSPECIFIED):
         """Explicit handler selection after fallback/repeat decisions, before edits."""
-        if self._closed:
-            raise ValueError("capture already finalized")
+        if self._closed or self._finalization_nodes:
+            raise ValueError("selection must precede finalization boundaries")
         fingerprint = digest(raw_reply) if isinstance(raw_reply, str) and raw_reply else None
         matches = [a for a in self._attempts if fingerprint and a["_raw_sha256"] == fingerprint]
         if request is not _UNSPECIFIED:
@@ -240,6 +241,31 @@ class Capture:
         # attempt ID, ambiguous matches must not guess the served generator.
         self._selected = matches[0]["attempt_id"] if len(matches) == 1 else None
 
+    def before_final_guard(self, text, at):
+        """Hash the actual pre-guard version; do not claim its editors are known."""
+        if self._finalization_nodes:
+            raise ValueError("pre-guard boundary already recorded")
+        self._record_finalization("before_final_guard", text, at)
+
+    def _record_finalization(self, boundary, text, at):
+        at = instant(at)
+        if self._closed or not isinstance(text, str) or at < max(
+                [self.started_at] + [n["at"] for n in self._nodes]):
+            raise ValueError("invalid finalization boundary")
+        selected = next((a for a in self._attempts if a["attempt_id"] == self._selected), None)
+        previous = self._finalization_nodes[-1] if self._finalization_nodes else None
+        before = previous["response_sha256"] if previous else selected["_raw_sha256"] if selected else None
+        parent = previous["id"] if previous else (
+            self.context_id + ":" + selected["attempt_id"] if selected else None)
+        node = {"id": self.context_id + ":finalization-" + boundary,
+                "kind": "context", "at": at, "complete": False,
+                "parents": [parent] if parent else [], "observation": "finalization_boundary",
+                "boundary": boundary, "origin": "unknown",
+                "before_sha256": before, "response_sha256": digest(text),
+                "changed": before != digest(text) if before else None}
+        self._nodes.append(node)
+        self._finalization_nodes.append(node)
+
     def finalize(self, final_text, finalized_at, transport="unknown"):
         """No delivery inference. Initial context ancestry is explicitly incomplete."""
         if self._closed:
@@ -249,6 +275,7 @@ class Capture:
         final = instant(finalized_at)
         if not isinstance(final_text, str) or final < max([self.started_at] + [n["at"] for n in self._nodes]):
             raise ValueError("invalid finalization")
+        self._record_finalization("handler_return", final_text, finalized_at)
         self._closed = True
         attempts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in self._attempts]
         for attempt in attempts:
@@ -265,17 +292,19 @@ class Capture:
                          "observed_attempts": attempts,
                          "finalization": {"selected_raw_sha256": selected["_raw_sha256"] if selected else None,
                                           "final_sha256": digest(final_text), "scope": "handler_postprocessing",
-                                          "changed": selected["_raw_sha256"] != digest(final_text) if selected else None},
+                                          "changed": selected["_raw_sha256"] != digest(final_text) if selected else None,
+                                          "boundary_ids": [n["id"] for n in self._finalization_nodes]},
                          "identity_claims": [{"attempt_id": a["attempt_id"], "claimed_model": a["_claimed_model"],
                                               "evidence": "relay_claim"} for a in self._attempts
                                              if isinstance(a["_claimed_model"], str) and a["_claimed_model"]],
                          "lineage": [{"id": self.context_id, "kind": "context", "at": final,
                                       "complete": False, "parents": [n["id"] for n in self._nodes
                                           if n.get("request_id") or n.get("observation") in
-                                          ("router_result", "context_selection")]}] + self._nodes,
+                                          ("router_result", "context_selection", "finalization_boundary")]}] + self._nodes,
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
-                             "context_receipt_id": self.context_id, "parents": [self.context_id],
+                             "context_receipt_id": self.context_id,
+                             "parents": [self.context_id, self._finalization_nodes[-1]["id"]],
                              "influence": "unknown"}})
 
 

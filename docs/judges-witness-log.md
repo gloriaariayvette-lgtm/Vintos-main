@@ -374,3 +374,26 @@ the independent self-head audit was recomputed or changed. This corrects the
 new offline instrument only, with no live feed or model change.
 
 Validation: witness 70/70, replay adapter 6/6, ownership 11/11: **87 isolated checks passed**. Before the repair the five added cases failed; after it they pass along with existing duplicate, causal batch and paired-control cases. Whitespace clean. Full Aegis review remains pending with Claude.
+
+
+## 8 November 2026 — reply finalization dependency boundaries
+
+Continued from 0a4162b0 on `codex/judges-finalization-lineage`. The scratch
+capture producer now records the exact pre-final-guard digest and the returned
+digest as ordered dependency nodes, linked to the selected request/attempt. This
+distinguishes edits in the handler from edits across the final guard boundary.
+The intermediate text is not retained. Missing selection or a failed pre-guard
+observation remains explicit unknown; neither boundary claims complete editor
+ancestry, effect execution or delivery. Changed=false means equal boundary bytes,
+not proof that nothing ran between them. Existing packet fields remain compatible.
+
+Selection and generation observations cannot move after a finalization boundary.
+The actual handler hook is failure-isolated and disabled with existing scratch
+capture; its new test executes extracted handler code with synthetic providers.
+No production enablement, live store, feed, model, private-data read or send.
+
+Validation: capture 27/27, handler hooks 15/15, replay adapter 6/6, witness 70/70,
+ownership 11/11: **129 isolated checks passed**. A prior adapter assertion about
+the fixed node count was updated to assert exact deduplicated node identities
+after the added boundary node. Generated reports and whitespace checks are clean.
+Full Aegis validation and review remain Claude's independent step.

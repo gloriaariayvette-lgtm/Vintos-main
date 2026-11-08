@@ -11506,6 +11506,11 @@ Your current self-model (excerpt):
         # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
         from stratagem_turn import guard_reply as _sg_guard
+        if _witness_capture is not None:
+            try:
+                _witness_capture.before_final_guard(reply, time.time())
+            except Exception:
+                print("[witness] pre-guard capture unavailable", flush=True)
         reply = _sg_guard(reply, _turn)
         if _witness_capture is not None:
             try:
