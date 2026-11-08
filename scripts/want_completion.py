@@ -67,6 +67,33 @@ def _find(want):
     return wants, None
 
 
+def _agent_result_matches(expected, current, rows):
+    """Compare under complete's existing store lock before the fulfillment door."""
+    try:
+        import want_agent
+        if not isinstance(expected, dict) or not isinstance(current, dict):
+            return False
+        wid = expected.get('id')
+        if not wid or sum(isinstance(row, dict) and row.get('id') == wid for row in rows) != 1:
+            return False
+        old = expected.get('agent_work') or {}; live = current.get('agent_work') or {}
+        result = live.get('result')
+        digest = want_agent.result_digest(result)
+        return bool(want_agent.specific(current) and current.get('id') == wid
+                    and current.get('want') == expected.get('want')
+                    and not current.get('fulfilled') and not current.get('dismissed')
+                    and old.get('request_id') and old.get('request_id') == live.get('request_id')
+                    and old.get('goal_sha256') == live.get('goal_sha256') == want_agent.fingerprint(current['want'])
+                    and old.get('result') == result
+                    and old.get('result_sha256') == live.get('result_sha256') == digest
+                    and live.get('stage_result_sha256') == digest
+                    and live.get('status') == 'result_ready'
+                    and live.get('delivery', {}).get('state') in ('sent', 'acknowledged')
+                    and live.get('publication', {}).get('url'))
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return False
+
+
 def complete(want, how, by, note="", evidence=None):
     if how not in HOWS:
         raise ValueError("how must be one of %s" % (HOWS,))
@@ -76,6 +103,10 @@ def complete(want, how, by, note="", evidence=None):
     row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "want_id": wid, "want": str(text)[:250], "how": how, "by": by,
            "note": str(note)[:300], "evidence": evidence, "turn_id": os.environ.get("VINTOS_TURN_ID", "") or None}
     if how == "fulfilled":
+        if by == "agent-work" and not _agent_result_matches(want, w, wants):
+            row["result"] = "refused: agent completion no longer matches its exact delivered result"
+            _log(row)
+            return row
         try:
             sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from emoclaw_utils import fulfill_want as _fw

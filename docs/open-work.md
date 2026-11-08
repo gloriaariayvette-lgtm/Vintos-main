@@ -6169,3 +6169,14 @@ arrivals preserve progress; unversioned publication is retained for reconciliati
 469 isolated checks across seven suites pass; see the follow-through log for the
 remote/local atomicity limit. Claude's full Aegis review and Gloria's production
 acceptance remain open. No private records or live services were changed.
+
+
+## 8 November — atomic exact-result completion check
+
+`codex/wants-completion-binding` checks the delivered result under the existing
+completion lock before the agent-work caller can archive it or trigger fulfillment
+side effects. Real completion functions pass synthetic scratch and concurrent-writer
+fixtures. 523 checks in nine affected isolated suites pass, including a quoting-only
+legacy-interpreter compatibility repair in the wants log. See the follow-through
+log for initial failures. Claude's full Aegis review and Gloria's live acceptance
+remain outstanding; no deployment or private-store change occurred.
