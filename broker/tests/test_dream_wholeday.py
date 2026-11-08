@@ -171,6 +171,8 @@ def fake(url, body, timeout, provider="aegis_gemma", model="aeon/gemma-4-12b"):
     if sysmsg == W.JUDGE_V2_SYSTEM:
         text = json.dumps({"verdict": "RESOLVED", "confidence": 5, "evidence": "the kettle finally sang and he let it go",
                            "reason": "arrival"}) if "THREADONE" in user else json.dumps({"verdict": "CANNOT_TELL", "confidence": 2})
+    elif sysmsg == W.VERIFY_SYSTEM:
+        text = "SETTLES" if "THREADONE" in user else "TOUCHES"
     elif sysmsg == DS.JUDGE_SYSTEM:
         text = "RESOLVED"
     elif sysmsg.startswith(W.DREAM_SYSTEM_HEAD[:30]):
@@ -274,6 +276,11 @@ check("a confident-enough threshold is applied", dec({"verdict": "RESOLVED", "co
       and dec({"verdict": "RESOLVED", "confidence": 3, "evidence": "the long question finally rested"}, 3) == "resolved")
 check("abstain and no-verdict", dec({"verdict": "CANNOT_TELL"}) == "abstain" and dec({"verdict": None}) == "no-verdict")
 
+check("the verify step: SETTLES keeps resolved, TOUCHES or unparsed falls to unresolved",
+      W.apply_verify("resolved", "", "SETTLES")[0] == "resolved" and W.apply_verify("resolved", "", "TOUCHES")[0] == "unresolved"
+      and W.apply_verify("resolved", "", None)[0] == "unresolved" and W.apply_verify("abstain", "", "SETTLES")[0] == "abstain")
+check("verify answers parse strictly", W.parse_verify("SETTLES") == "SETTLES" and W.parse_verify("touches.") == "TOUCHES"
+      and W.parse_verify("SETTLES or TOUCHES") is None and W.parse_verify("") is None)
 # ---- calibration: few-shot from train only; held-out test scored against the reference
 pairs = []
 for i in range(12):
@@ -290,7 +297,11 @@ check("few-shot examples come only from the train split", shots and all(s["id"] 
 check("the test split excludes train items", m["split"]["test"] == sum(x["split"] == "test" for x in pairs))
 check("metrics: agreement, kappa, bias and abstain per judge",
       all(set(("agreement", "kappa", "bias", "abstain_or_none_rate")) <= set(m["test"][k]) for k in ("live", "old_aeon", "v2_zero_shot", "v2_calibrated")))
-check("the calibrated threshold is stored in the shadow store", json.load(open(W.JUDGE_CFG))["threshold"] in (1, 2, 3, 4, 5))
+_cfg = json.load(open(W.JUDGE_CFG))
+check("the calibrated threshold and verify choice are stored in the shadow store", _cfg["threshold"] in (1, 2, 3, 4, 5) and isinstance(_cfg["verify"], bool))
+n_calls = len(CALLS)
+m2 = W.calib_eval(transport=fake)
+check("a second calibration run reuses its cache (no new judge calls)", len(CALLS) == n_calls and m2["test"] == m["test"], len(CALLS) - n_calls)
 
 # ---- the report: numbers only
 rep = W.report_section(DAY)

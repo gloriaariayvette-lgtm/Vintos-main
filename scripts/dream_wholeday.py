@@ -791,7 +791,8 @@ def decide_v2(parsed, dream, threshold):
 
 def judge_cfg():
     c = _json(JUDGE_CFG, {}) or {}
-    return {"threshold": int(c.get("threshold") or DEFAULT_THRESHOLD), "fewshot": bool(c.get("fewshot", True))}
+    return {"threshold": int(c.get("threshold") or DEFAULT_THRESHOLD), "fewshot": bool(c.get("fewshot", True)),
+            "verify": bool(c.get("verify", True))}
 
 
 def load_shots():
@@ -799,9 +800,38 @@ def load_shots():
     return [x for x in s if isinstance(x, dict) and x.get("split") == "train"]
 
 
-def judge_v2(thread, dream, transport=None, shots=None, threshold=None, P=None, name="judge"):
+# A second, narrow look at a RESOLVED claim: the quoted passage alone, against the thread. AEON's first pass sees a
+# vivid, warm passage and calls it an arrival; asked only whether that passage settles this thread, it is stricter.
+VERIFY_SYSTEM = ("Someone claimed that a passage from a dream RESOLVES an unfinished thread. Be strict. Read the thread's "
+                 "own tension or question, then the passage. SETTLES means the passage itself gives that particular "
+                 "tension an answer, a decision, an ending, an acceptance or a letting go, so it would stop pulling. "
+                 "TOUCHES means the passage echoes, explores, beautifies or comforts near the thread without settling "
+                 "its question. Answer with exactly one word: SETTLES or TOUCHES.")
+
+
+def verify_messages(thread, passage):
+    return [{"role": "system", "content": VERIFY_SYSTEM},
+            {"role": "user", "content": "Thread:\n%s\n\nPassage:\n%s" % (thread, passage)}]
+
+
+def parse_verify(answer):
+    w = re.findall(r"\b(SETTLES|TOUCHES)\b", str(answer or "").upper())
+    return w[0] if len(set(w)) == 1 else None
+
+
+def apply_verify(verdict, why, check):
+    """A resolved verdict stands only if the verify step says SETTLES; anything else (TOUCHES, unparsed) falls to
+    unresolved. Other verdicts pass through."""
+    if verdict != "resolved":
+        return verdict, why
+    return ("resolved", "quote verified, settles") if check == "SETTLES" else ("unresolved", "verify: only touches")
+
+
+def judge_v2(thread, dream, transport=None, shots=None, threshold=None, P=None, name="judge", verify=None):
+    cfg = judge_cfg()
     shots = load_shots() if shots is None else shots
-    threshold = judge_cfg()["threshold"] if threshold is None else threshold
+    threshold = cfg["threshold"] if threshold is None else threshold
+    verify = cfg["verify"] if verify is None else verify
     msgs = judge_v2_messages(thread, dream, shots)
     t0 = time.monotonic()
     r = DS.call_aeon(msgs, JUDGE2_SAMPLING, DS.JUDGE_TIMEOUT, transport)
@@ -812,8 +842,14 @@ def judge_v2(thread, dream, transport=None, shots=None, threshold=None, P=None, 
         return {"verdict": "error", "why": r["status"], "latency_s": round(time.monotonic() - t0, 2)}
     p = parse_v2(r["text"])
     v, why = decide_v2(p, dream, threshold)
+    if verify and v == "resolved":
+        c = DS.call_aeon(verify_messages(thread, p["evidence"]), {"temperature": 0.0, "max_tokens": 8},
+                         DS.JUDGE_TIMEOUT, transport)
+        if c["status"] != "ok":
+            return {"verdict": "error", "why": "verify: " + c["status"]}
+        v, why = apply_verify(v, why, parse_verify(c["text"]))
     return {"verdict": v, "why": why, "raw_verdict": p["verdict"], "confidence": p["confidence"],
-            "quote_verified": quote_in(p["evidence"], dream), "latency_s": r["latency_s"]}
+            "quote_verified": quote_in(p["evidence"], dream), "latency_s": round(time.monotonic() - t0, 2)}
 
 
 def judge_old(thread, dream, transport=None):
@@ -978,7 +1014,7 @@ def run_night(day=None, transport=None, force=False, mem=None, budget_s=None):
     entry = {
         "schema": SCHEMA, "day": day, "recorded_at": DS._now().isoformat(),
         "model": P.ident or {"model": None, "gguf_sha256": None, "adapter": None, "gguf_sha_source": "no AEON reply"},
-        "judge_v2": {"threshold": cfg["threshold"], "fewshot_examples": len(shots)},
+        "judge_v2": {"threshold": cfg["threshold"], "verify": cfg["verify"], "fewshot_examples": len(shots)},
         "sources": {o: {k: v for k, v in r.items()} for o, r in table.items()},
         "source_map": smap,
         "chars_total": sum(len(i["text"]) for i in items),
@@ -1052,8 +1088,8 @@ def report_section(day=None):
             "night": summarize([e for e in entries if e.get("day") == day]) if day else None,
             "last_7_nights": summarize([e for e in entries if e.get("day") in set(days[-7:])]),
             "cumulative": summarize(entries),
-            "judge_calibration": ({k: metrics.get(k) for k in ("written_at", "split", "test", "train_threshold_sweep",
-                                                               "threshold", "fewshot_examples")} if isinstance(metrics, dict) else
+            "judge_calibration": ({k: metrics.get(k) for k in ("written_at", "split", "test", "train_sweep", "threshold",
+                                                               "verify", "fewshot_examples", "errors_left")} if isinstance(metrics, dict) else
                                   "not run yet"),
             "option3": {"nights_logged": len(days), "nights_needed": OPTION3_NIGHTS, "earliest": OPTION3_EARLIEST,
                         "eligible_by_count": len(days) >= OPTION3_NIGHTS,
@@ -1135,55 +1171,110 @@ def score(judge, ref):
             "bias": (round(jr["resolution_rate"] - rr["resolution_rate"], 4)
                      if jr.get("resolution_rate") is not None and rr.get("resolution_rate") is not None else None),
             "abstain_or_none_rate": jr.get("abstain_or_none_rate"),
+            "accuracy_all": round(agree / len(ref_dec), 4) if ref_dec else None,   # abstain and errors count as misses
             "confusion_ref_rows_judge_cols": {a: {b: sum(1 for x, y in zip(ref, judge) if x == a and y == b)
                                                   for b in ("resolved", "unresolved", "abstain", "no-verdict", "error")}
                                               for a in ("resolved", "unresolved")}}
 
 
+CACHE = os.path.join(JUDGE_DIR, "calibration-cache.json")      # private: per-item judge answers, so a run resumes
+
+
+def _cached(cache, key, fn):
+    """A cached judge answer, or a fresh call. Errors (None) are not cached, so a re-run retries them."""
+    if cache.get(key) is not None:
+        return cache[key]
+    v = fn()
+    if v is not None:
+        cache[key] = v
+        _write_json(CACHE, cache)
+    return v
+
+
+def _v2_raw(p, shots, transport):
+    r = DS.call_aeon(judge_v2_messages(p["thread"], p["dream"], shots), JUDGE2_SAMPLING, DS.JUDGE_TIMEOUT, transport)
+    return parse_v2(r["text"]) if r["status"] == "ok" else None
+
+
+def _verify_call(thread, passage, transport):
+    r = DS.call_aeon(verify_messages(thread, passage), {"temperature": 0.0, "max_tokens": 8}, DS.JUDGE_TIMEOUT, transport)
+    return (parse_verify(r["text"]) or "unparsed") if r["status"] == "ok" else None
+
+
+def _old_call(p, transport):
+    v = judge_old(p["thread"], p["dream"], transport)["verdict"]
+    return None if v == "error" else v
+
+
+def _v2_verdict(p, raw, threshold, verify, cache, tag, transport):
+    if raw is None:
+        return "error"
+    v, why = decide_v2(raw, p["dream"], threshold)
+    if verify and v == "resolved":
+        chk = _cached(cache, "verify|%s|%s" % (tag, p["id"]), lambda: _verify_call(p["thread"], raw.get("evidence", ""), transport))
+        if chk is None:
+            return "error"
+        v, _ = apply_verify(v, why, chk)
+    return v
+
+
 def calib_eval(transport=None, max_items=None, shots_n=4):
-    pairs = _json(CALIB, []) or []
-    pairs = [p for p in pairs if p.get("reference") in ("resolved", "unresolved", "cant_tell")]
+    """Calibrate judge v2 on the train split, then score every judge on the held-out test split against the
+    reference labels. Resumable: answers are cached per item; errors are retried on the next run."""
+    cache = _json(CACHE, {}) or {}
+    pairs = [p for p in (_json(CALIB, []) or []) if p.get("reference") in ("resolved", "unresolved", "cant_tell")]
     train = [p for p in pairs if p["split"] == "train"]
     test = [p for p in pairs if p["split"] == "test"][: max_items or None]
-    # few-shot from train only: balanced, shortest dreams first so the prompt stays small
-    tr_r = sorted([p for p in train if p["reference"] == "resolved"], key=lambda p: len(p["dream"]))
-    tr_u = sorted([p for p in train if p["reference"] == "unresolved"], key=lambda p: len(p["dream"]))
-    shots_src = (tr_r[: shots_n // 2] + tr_u[: shots_n - min(len(tr_r), shots_n // 2)])
+    # 1. zero-shot v2 on train: where it goes wrong shows which examples teach most
+    zs = {p["id"]: _cached(cache, "v2zs|" + p["id"], lambda p=p: _v2_raw(p, [], transport)) for p in train}
+    # 2. few-shot from train only: hard negatives (reference unresolved, zero-shot said RESOLVED) and resolved items
+    #    with the reviewer's quote; shortest dreams first so the prompt stays small
+    short = lambda xs: sorted(xs, key=lambda p: len(p["dream"]))
+    hard = short([p for p in train if p["reference"] == "unresolved" and (zs.get(p["id"]) or {}).get("verdict") == "RESOLVED"])
+    plain_u = short([p for p in train if p["reference"] == "unresolved" and p not in hard])
+    res_q = short([p for p in train if p["reference"] == "resolved" and p.get("reference_quote")])
+    n_neg = shots_n - shots_n // 2
+    picked = (hard + plain_u)[:n_neg] + res_q[: shots_n - min(n_neg, len(hard + plain_u))]
     shots = [{"split": "train", "id": p["id"], "thread": p["thread"], "dream": p["dream"][:1200],
               "verdict": p["reference"].upper(), "confidence": 4,
               "evidence": p.get("reference_quote", "") if p["reference"] == "resolved" else "",
-              "reason": p.get("reference_reason", "")} for p in shots_src]
+              "reason": p.get("reference_reason", "")} for p in picked]
     _write_json(FEWSHOT, shots)
     shot_ids = {s["id"] for s in shots}
-    # threshold sweep on the train split (excluding the shots themselves)
-    raw_train = []
-    for p in train:
-        if p["id"] in shot_ids:
-            continue
-        r = DS.call_aeon(judge_v2_messages(p["thread"], p["dream"], shots), JUDGE2_SAMPLING, DS.JUDGE_TIMEOUT, transport)
-        raw_train.append((p, parse_v2(r["text"]) if r["status"] == "ok" else None))
+    sig = DS._sha(",".join(sorted(shot_ids)))[:10]
+    # 3. sweep threshold x verify on the rest of train
+    rest = [p for p in train if p["id"] not in shot_ids]
+    cal = {p["id"]: _cached(cache, "v2cal|%s|%s" % (sig, p["id"]), lambda p=p: _v2_raw(p, shots, transport)) for p in rest}
     sweep = {}
-    for th in (1, 2, 3, 4, 5):
-        js = [decide_v2(x, p["dream"], th)[0] if x else "error" for p, x in raw_train]
-        sweep[th] = score(js, [p["reference"] for p, _ in raw_train])
-    best = max(sweep, key=lambda th: ((sweep[th]["kappa"] if sweep[th]["kappa"] is not None else -1),
-                                      -abs(sweep[th]["bias"] or 0)))
-    _write_json(JUDGE_CFG, {"threshold": best, "fewshot": True, "calibrated_at": DS._now().isoformat()})
-    # the held-out test split: live label, old AEON judge, v2 (zero-shot, threshold default) and v2 (calibrated)
+    for verify in (False, True):
+        for th in (1, 2, 3, 4, 5):
+            js = [_v2_verdict(p, cal[p["id"]], th, verify, cache, sig, transport) for p in rest]
+            sweep["t%d%s" % (th, "+verify" if verify else "")] = (th, verify, score(js, [p["reference"] for p in rest]))
+    key = lambda k: ((sweep[k][2]["kappa"] if sweep[k][2]["kappa"] is not None else -1), -abs(sweep[k][2]["bias"] or 0),
+                     sweep[k][1], -sweep[k][0])
+    best_k = max(sweep, key=key)
+    best_th, best_verify = sweep[best_k][0], sweep[best_k][1]
+    _write_json(JUDGE_CFG, {"threshold": best_th, "verify": best_verify, "fewshot": True,
+                            "calibrated_at": DS._now().isoformat()})
+    # 4. the held-out test split
     res = {"live": [], "old_aeon": [], "v2_zero_shot": [], "v2_calibrated": []}
     for p in test:
         res["live"].append(p["live"])
-        res["old_aeon"].append(judge_old(p["thread"], p["dream"], transport)["verdict"])
-        res["v2_zero_shot"].append(judge_v2(p["thread"], p["dream"], transport, [], DEFAULT_THRESHOLD)["verdict"])
-        res["v2_calibrated"].append(judge_v2(p["thread"], p["dream"], transport, shots, best)["verdict"])
+        res["old_aeon"].append(_cached(cache, "old|" + p["id"], lambda p=p: _old_call(p, transport)) or "error")
+        z = _cached(cache, "v2zs|" + p["id"], lambda p=p: _v2_raw(p, [], transport))
+        res["v2_zero_shot"].append(_v2_verdict(p, z, DEFAULT_THRESHOLD, False, cache, "zs", transport))
+        c = _cached(cache, "v2cal|%s|%s" % (sig, p["id"]), lambda p=p: _v2_raw(p, shots, transport))
+        res["v2_calibrated"].append(_v2_verdict(p, c, best_th, best_verify, cache, sig, transport))
     ref = [p["reference"] for p in test]
     out = {"written_at": DS._now().isoformat(),
            "split": {"train": len(train), "test": len(test), "fewshot_examples": len(shots),
+                     "fewshot_hard_negatives": sum(1 for p in picked if p in hard),
                      "reference_labels": {k: sum(p["reference"] == k for p in pairs) for k in ("resolved", "unresolved", "cant_tell")},
                      "reference": "Claude Opus reviewer subagent (blind to every judge); not the hosted judge, not Chat"},
-           "train_threshold_sweep": {str(k): {kk: v[kk] for kk in ("agreement", "kappa", "bias", "abstain_or_none_rate")}
-                                     for k, v in sweep.items()},
-           "threshold": best, "fewshot_examples": len(shots),
+           "train_sweep": {k: {kk: v[2][kk] for kk in ("agreement", "accuracy_all", "kappa", "bias", "abstain_or_none_rate")}
+                           for k, v in sweep.items()},
+           "threshold": best_th, "verify": best_verify, "fewshot_examples": len(shots),
+           "errors_left": {k: v.count("error") for k, v in res.items()},
            "test": {k: score(v, ref) for k, v in res.items()},
            "test_by_era": {era: {k: score([v[i] for i, p in enumerate(test) if p["era"] == era],
                                           [p["reference"] for p in test if p["era"] == era]) for k, v in res.items()}
