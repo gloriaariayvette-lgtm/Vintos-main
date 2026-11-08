@@ -355,6 +355,46 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(rows[1]["innovation_percentile"], 50)
         self.assertEqual(rows[2]["innovation_percentile"], 50)
 
+    def test_percentile_cannot_use_outcome_after_forecast_but_before_own_final(self):
+        other,_,f2,e2,_=fixture('slow-target',105,200)
+        _,rows=self.score(rows=[self.row,other],forecasts=[self.f,f2],embeddings=[self.e,e2],minimum=1)
+        self.assertEqual([r['prior_n'] for r in rows],[0,0])
+        self.assertIsNone(rows[1]['innovation_percentile'])
+
+    def test_percentile_equal_outcome_forecast_clock_is_unknown(self):
+        other,_,f2,e2,_=fixture('equal-target',109,200)
+        self.assertEqual(f2['ts'],self.row['witness_receipt']['finalized_at'])
+        _,rows=self.score(rows=[self.row,other],forecasts=[self.f,f2],embeddings=[self.e,e2],minimum=1)
+        self.assertEqual(rows[1]['prior_n'],0)
+
+    def test_equal_error_forecasts_are_not_identical_forecasts(self):
+        self.e['emb']=[1.,0.]
+        a=copy.deepcopy(self.f);a['self']['emb']=[.6,.8]
+        b=copy.deepcopy(self.f);b['self']['emb']=[.6,-.8]
+        report,rows=self.score(forecasts=[a,b])
+        self.assertEqual(rows,[])
+        self.assertEqual(report['held']['conflicting_forecast'],1)
+
+    def test_equivalent_control_scores_cannot_hide_attestation_conflict(self):
+        data=self.controls_fixture();a=data[1][0];b=copy.deepcopy(a)
+        # A distinct producer attestation is not an identical duplicate merely
+        # because its derived error and control summary happen to be equal.
+        b['self']['context']['producer_receipt_id']='different-attestation'
+        report,rows=self.control_score((data[0],[a,b],data[2],data[3]))
+        self.assertEqual(rows,[])
+        self.assertEqual(report['held']['conflicting_forecast'],1)
+
+    def test_innovation_reference_separates_target_generator_and_revision(self):
+        rows=[];forecasts=[];embeddings=[]
+        for i in range(3):
+            r,_,f,e,_=fixture('generator-'+str(i),100+i*30,110+i*30)
+            if i==1:r['witness_receipt']['generation']['attempts'][1]['served_model']='other-generator'
+            if i==2:r['witness_receipt']['generation']['attempts'][1]['served_revision']='other-revision'
+            rows.append(r);forecasts.append(f);embeddings.append(e)
+        report,details=self.score(rows=rows,forecasts=forecasts,embeddings=embeddings,minimum=1)
+        self.assertEqual(len(report['groups']),3)
+        self.assertEqual([r['prior_n'] for r in details],[0,0,0])
+
     def controls_fixture(self):
         first, _, _, e1, _ = fixture("earlier-1", 100, 110)
         second, _, _, e2, _ = fixture("earlier-2", 120, 130)

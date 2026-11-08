@@ -6078,3 +6078,10 @@ practice output plus 4–5-star rating. Missing/low/ambiguous evidence stays unk
 Production authentication/sequence receipts and verified retained-source adapters
 remain open. The existing weak laughter channel is unchanged. See experiment
 README for schema, limitations and private outputs; no feed or training change.
+
+
+`codex/judges-causal-innovation` repairs the shadow scorer's reference clock and
+same-time forecast identity checks, and separates target served-model revisions.
+Reference outcomes must predate the forecast, not merely its eventual reply.
+Retained-data measurements and full Aegis validation still belong to Claude;
+existing live self-head audits and feeds are untouched.

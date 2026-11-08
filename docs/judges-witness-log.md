@@ -355,3 +355,22 @@ backfilled by assumption. Existing humor scripts, inference and every live feed
 remain untouched. Retained-data measurement/full Aegis review stay with Claude.
 
 Validation: witness 65/65, replay adapter 6/6, ownership 11/11: **82 isolated checks passed**. Includes positive and unknown controls, intervening replies, origin/version/clock errors, duplicate conflicts, strict rating joins and private-file restart/permissions. Whitespace clean; no real-data accuracy or installed behavior claim.
+
+
+## 8 November 2026 — causal innovation reference repair
+
+Audited the shadow scorer while prior tips remain under review. Five synthetic
+regressions reproduced: two forecast-time reference leaks (later/equal-time
+outcome), equal-error distinct vectors, different producer attestations with the
+same derived summary, and pooled target generators/revisions. On
+`codex/judges-causal-innovation` from 608eefb5, reference outcomes must now finish
+strictly before the forecast. Complete forecast digests distinguish same-time
+conflicts; exact copies still deduplicate. Target served-model/revision groups
+are kept separate for references and paired comparisons. Requested identity is
+never a substitute. Digests and generator identities remain private.
+
+All five regressions now pass. No retained/private input was read; no result from
+the independent self-head audit was recomputed or changed. This corrects the
+new offline instrument only, with no live feed or model change.
+
+Validation: witness 70/70, replay adapter 6/6, ownership 11/11: **87 isolated checks passed**. Before the repair the five added cases failed; after it they pass along with existing duplicate, causal batch and paired-control cases. Whitespace clean. Full Aegis review remains pending with Claude.

@@ -373,7 +373,8 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
 
     Checkpoint identities/encoder/training times must come from an independently
     retained manifest. Historical forecast logs alone cannot prove these facts.
-    Percentiles use strictly earlier outcomes in this replay, never the target.
+    Percentiles use outcomes finalized strictly before the forecast was made,
+    within the same checkpoint and observed target-generator group.
     """
     if minimum_history < 1:
         raise ValueError("history minimum must be positive")
@@ -418,10 +419,18 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
                 held["missing_or_conflicting_embedding"] += 1
                 continue
             error = cosine_error(head["emb"], matches[0]["emb"])
-            group = (checkpoint, encoder, r["surface"], "on_message", head["source"])
+            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
+                held["unknown_target_generator"] += 1
+                continue
+            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
+                     selected["served_model"], selected.get("served_revision") or "")
+            # Equal errors are not equal forecasts. Retain a private digest of
+            # the complete producer record, including vector and context claims.
+            forecast_sha = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
             candidates[(row["turn_id"], group)].append({
                 "turn_id": row["turn_id"], "response_sha256": r["response_sha256"],
-                "group": group, "forecast_at": made, "finalized_at": r["finalized_at"],
+                "group": group, "forecast_at": made, "forecast_sha256": forecast_sha, "finalized_at": r["finalized_at"],
                 "error": error,
                 "controls": context_controls(f, row, matches[0]["emb"], targets, cache, encoder)})
         except (KeyError, TypeError, ValueError, OverflowError):
@@ -439,13 +448,13 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
     histories = defaultdict(list)
     for row in scored:
         group = tuple(row["group"])
-        prior = [r["error"] for r in histories[group] if r["finalized_at"] < row["finalized_at"]]
+        prior = [r["error"] for r in histories[group] if r["finalized_at"] < row["forecast_at"]]
         row["prior_n"] = len(prior)
         row["innovation_percentile"] = (
             100 * sum((v < row["error"]) + .5 * (v == row["error"]) for v in prior) / len(prior)
             if len(prior) >= minimum_history else None)
         histories[group].append(row)
-    # Never pool different checkpoints/surfaces into one performance claim.
+    # Never pool checkpoints, surfaces or observed target generators into one claim.
     aggregate = []
     for group, rows in histories.items():
         aggregate.append({"checkpoint_group": len(aggregate) + 1, "n": len(rows),

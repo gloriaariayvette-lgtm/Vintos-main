@@ -74,8 +74,11 @@ not an acceptable substitute when a checkpoint was copied. Message arrival must
 not follow response generation start. Equal-time context/arrival batches remain
 unscored rather than assuming an order the timestamps do not establish.
 
-Innovation percentiles use only strictly earlier finalized outcomes from this
-same replay and matching group. Same-time outcomes cannot calibrate each other.
+Innovation percentiles use only outcomes finalized strictly before the forecast
+was made, from this same replay and matching checkpoint/encoder/surface/source
+and observed target-model/revision group. A result that became known while the
+current reply was being generated cannot calibrate that forecast. Equal-time
+outcome/forecast clocks do not establish order.
 The default minimum is 20 earlier outcomes; until then the percentile is null.
 A percentile is relative prediction error, not calibrated confidence in identity.
 Comparator superiority is not presumed. The optional paired controls below require
@@ -338,8 +341,8 @@ checkpoint/encoder/surface/source and explicit evaluation blocks. The aggregate
 uses ordinal comparison/checkpoint groups, never private identifiers; its paired
 head mean is distinct from the overall head mean. Positive improvement means
 baseline error minus head error. These are descriptive errors, not calibrated
-pass verdicts or confidence intervals. Existing head percentiles still use only
-strictly earlier outcomes within their checkpoint group, across blocks.
+pass verdicts or confidence intervals. Head percentiles use only outcomes finalized strictly before the forecast,
+within the same checkpoint and observed target-generator group, across blocks.
 
 No live producer emits this context receipt yet. A supplied receipt is a producer
 attestation, not independent proof of prompt contents. Synthetic contract tests
@@ -447,3 +450,28 @@ collector must establish those facts from actual retained sources, and keep
 unverifiable historical associations unknown. The old three-hour inference is
 preserved as its existing separate channel and is never promoted by this reader.
 No positive receipt bypasses target provenance or transitive influence exclusion.
+
+
+### Forecast-time references and duplicate identity
+
+The causal-innovation revision repairs two shadow-reader errors. Previously, the
+reference set was cut at the target reply's finalization rather than at forecast
+time; an overlapping reply could therefore enter the reference after the
+forecast. Also, duplicate detection compared derived error/control summaries,
+so different same-time forecasts with equal cosine error could look identical.
+
+A private `forecast_sha256` now binds the full canonicalized supplied forecast,
+including its vector and producer/context claims. Earliest-time records must
+agree exactly; different attestations are held even when their numeric errors
+coincide. Exact duplicate copies still count once. Later forecast attempts do
+not replace the earliest eligible prediction. The digest stays in private output,
+not the aggregate; no vector is emitted.
+
+Reference percentiles and paired comparison groups additionally separate the
+observed model and revision that produced the target reply. A chat-model switch
+cannot silently reuse the old target distribution. Unknown served identity is
+held, not inferred from the request. This does not turn a percentile into
+calibrated confidence or establish independence between turns. The strict
+pre-forecast boundary also does not prove when an embedding was computed: that
+requires retained producer evidence. The independent existing self-head audits
+are separate tools and are unchanged by this repair.
