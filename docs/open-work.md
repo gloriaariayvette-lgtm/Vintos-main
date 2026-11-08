@@ -6144,3 +6144,12 @@ fixtures. 523 checks in nine affected isolated suites pass, including a quoting-
 legacy-interpreter compatibility repair in the wants log. See the follow-through
 log for initial failures. Claude's full Aegis review and Gloria's live acceptance
 remain outstanding; no deployment or private-store change occurred.
+
+
+## 8 November — complete synthetic want lifecycle acceptance
+
+`codex/wants-end-to-end-acceptance` adds default-adapter integration coverage
+through real archival, exact promise cleanup, room closure and context awareness,
+including notification failure and post-archive recovery. Tests/docs only; 24
+checks pass in this increment. The parent implementation and independent Aegis/
+live acceptance boundaries are unchanged. See the follow-through log.

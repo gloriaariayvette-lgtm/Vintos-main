@@ -398,3 +398,31 @@ all final listed checks pass. Generated metadata was refreshed.
 This is local synthetic acceptance only. Claude owns the independent full Aegis
 suite/review. Production services, feeds, installed instructions and live wants
 remain untouched; no merge or deploy is authorized by these checks.
+
+
+## End-to-end local acceptance without replacement completion callbacks
+
+`codex/wants-end-to-end-acceptance`, stacked on 36c886f6, changes tests and
+documentation only. Three integrated fixtures now enter through the actual room
+adapter, use the default deliver and completion functions, and continue through
+the actual fulfillment/archive function and completion-context readers. Only
+providers, external transports, emotion/worker/plan effects and evidence side
+channels are stubbed; every store and worker log is in temporary scratch.
+
+The successful flow starts with a newly timestamped journal want, opens its bound
+agent thread immediately, verifies/uploads a real synthetic file, receives a
+synthetic HTTP success, archives the exact want, closes only its matching email
+commitment, closes the room work, and exposes completion in full/compact context.
+Repeating the same result causes no second upload, generation, notification or
+fulfillment side effect. A failed HTTP send preserves the open want and promises;
+retry uses the saved review/upload and completes after success. A simulated crash
+after archival but before source cleanup is reconciled on the next pass without
+repeating prior effects or closing an unrelated promise.
+
+Validation for this test-only increment: 13 completion-binding/integration tests
+and 11 ownership checks pass (24 checks). The parent's 523-check matrix remains
+its own earlier result; it has not been relabelled as a new full run. These tests
+establish local plumbing, not output quality or live provider/agent availability.
+Full isolated Aegis validation, instruction installation, deployment and acceptance
+of an actual want remain with the reviewer and owner. No new production code,
+service change, real send, model call or private data was used.
