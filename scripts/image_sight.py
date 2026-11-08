@@ -8,6 +8,21 @@ Dream-born images are not sighted here - they are weather, not acts."""
 import os, json, base64, subprocess, requests
 from datetime import datetime
 
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -24,6 +39,7 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 GALLERY = os.path.join(MEMORY, "art", "gallery.json")
 LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+LM_API, VISION_MODEL, VISION_EXTRA = _vision_route(LM_API, "gemma-4-26b-a4b-it-uncensored")
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 
 def _key():
@@ -43,7 +59,8 @@ def see(image_path):
     ext = image_path.rsplit(".", 1)[-1].lower()
     mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
     r = requests.post(LM_API, json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+        **VISION_EXTRA,
+        "model": VISION_MODEL,
         "messages": [
             {"role": "system", "content": "Describe this image in detail. Colors, shapes, mood, composition. Be specific and concrete. 3-5 sentences. Do not evaluate quality."},
             {"role": "user", "content": [

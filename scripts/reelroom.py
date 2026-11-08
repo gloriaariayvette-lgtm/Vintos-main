@@ -44,6 +44,21 @@ PLANNER_URL = os.environ.get("VINTOS_REELROOM_PLANNER_URL", "http://127.0.0.1:85
 PLANNER_MODEL = os.environ.get("VINTOS_REELROOM_PLANNER_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
 
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 def _json_in(raw: str, opener: str = "{", closer: str = "}") -> Any:
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.I | re.S)
     a, b = text.find(opener), text.rfind(closer)
@@ -235,6 +250,19 @@ def _react_gemma(messages, temperature=0.3, max_tokens=200, timeout=60):
         return json.loads(response.read())["choices"][0]["message"]["content"]
 
 
+def _look_gemma(messages, temperature=0.2, max_tokens=300, timeout=60):
+    """The frame read: images, so AEON's own vision once the flag is AEON (the MacBook LM Studio address comes from the
+    private pool config); before that, or with no address there, the planner's route as before."""
+    import urllib.request
+    url, model, extra = _vision_route(None, PLANNER_MODEL)
+    if not url:
+        return _react_gemma(messages, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
+    body = json.dumps(dict(extra, model=model, temperature=temperature, max_tokens=max_tokens, messages=messages)).encode()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read())["choices"][0]["message"]["content"]
+
+
 def plan_actions(film: Dict[str, Any], caller=None) -> List[Dict[str, Any]]:
     """Let him choose his timed room acts and return a validated list.
 
@@ -307,7 +335,7 @@ def look(question: str, context: str = "", image_b64: Optional[str] = None, elap
     film = ("\nWhat you know of the film:\n" + context[:1500]) if context else ""
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image_b64}},
                {"type": "text", "text": head + film + "\n\n" + question + "\nDescribe only what is actually in the frame. If asked for JSON, return only JSON."}]
-    return ((caller or _react_gemma)([{"role": "user", "content": content}], temperature=0.2, max_tokens=300) or "").strip()
+    return ((caller or _look_gemma)([{"role": "user", "content": content}], temperature=0.2, max_tokens=300) or "").strip()
 
 
 def decide(question: str, context: str = "", history: Optional[List[Dict[str, str]]] = None, elapsed_min: Optional[int] = None,

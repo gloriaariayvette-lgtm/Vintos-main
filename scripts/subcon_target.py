@@ -57,6 +57,7 @@ TARGETS = {
         "pool_chain": ["pool:subconscious", "gemma"],
         "generative": None,   # callers keep their own 26B route
         "brain": None,        # the local call brain keeps its own 26B route
+        "vision": None,       # image callers keep their own 26B route
     },
     "aeon": {
         "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
@@ -70,6 +71,9 @@ TARGETS = {
         # config, the Studio first), thinking off.
         "brain": {"backend": "aeon-12b", "prefer": ("studio", "aegis"),
                   "extra": {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}},
+        # Image calls: AEON with its own vision projector, in the MacBook's LM Studio (the endpoint the 26B's image
+        # calls already used), thinking off: with thinking on it spends the whole budget reasoning (2026-11-08).
+        "vision": {"model": "aeon-gemma-4-12b", "machine": "macbook", "extra": {"reasoning_effort": "none"}},
     },
 }
 
@@ -231,6 +235,27 @@ def brain_route(default_base, default_model, backends_path=None):
     url = str(rows[0]["url"])
     base = url[: -len("/v1/chat/completions")] if url.endswith("/v1/chat/completions") else url
     return base, str(rows[0].get("model") or b["backend"]), json.loads(json.dumps(b["extra"]))
+
+
+def vision_route(default_url, default_model, backends_path=None):
+    """(chat url, model, extra body fields) for a call that sends images. While the 26B is the target: the caller's own
+    route. Under AEON: AEON's vision model at the caller's own endpoint (the MacBook's LM Studio), or, for a caller with
+    no endpoint of its own, the MacBook LM Studio address from the private pool config. Nothing there: its own route."""
+    v = target().get("vision")
+    if not v:
+        return default_url, default_model, {}
+    url = default_url
+    if not url:
+        try:
+            rows = json.load(open(os.path.expanduser(backends_path or POOL_BACKENDS)))
+        except Exception:
+            rows = []
+        rows = [r for r in rows if isinstance(r, dict) and r.get("machine") == v["machine"]
+                and r.get("kind") == "lmstudio" and str(r.get("url") or "").endswith("/v1/chat/completions")]
+        if not rows:
+            return default_url, default_model, {}
+        url = str(rows[0]["url"])
+    return url, v["model"], json.loads(json.dumps(v["extra"]))
 
 
 def set_target(name):

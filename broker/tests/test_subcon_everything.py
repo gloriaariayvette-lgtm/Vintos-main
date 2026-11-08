@@ -77,21 +77,23 @@ for f in [x for x in OTHER if x.endswith(".sh")]:
     t = src(f)
     check("%s asks the flag at start" % f, 'subcon_target.py" route "" ""' in t)
 
-print("--- callers that send images keep the 26B for those calls only ---")
+print("--- callers that send images take AEON's vision (Gloria 2026-11-08: \"Yes, vision to Aeon\") ---")
 ws = src("bin/vintos-websearch.py")
-check("web search: a screenshot call stays on the 26B, a text call moves",
-      ws.count("(LM_API if image_path else _subcon_url(LM_API))") == 2 and ws.count("(MODEL if image_path else _subcon_model(MODEL))") == 2)
+check("web search: a screenshot call takes AEON's vision, a text call the subconscious lane",
+      ws.count("(_vision_route(LM_API, MODEL)[0] if image_path else _subcon_url(LM_API))") == 2
+      and ws.count("(_vision_route(LM_API, MODEL)[1] if image_path else _subcon_model(MODEL))") == 2
+      and ws.count("**(_vision_route(LM_API, MODEL)[2] if image_path else {})") == 2)
 dc = src("scripts/dot_channel.py").split("\n")
 look = [i for i, l in enumerate(dc) if l.startswith("def gemma_look(")][0]
-check("dot channel: gemma_look (images) keeps the 26B", all("_subcon" not in l for l in dc[look:look + 8]))
+check("dot channel: gemma_look (images) takes AEON's vision", any("_vision_route(LOCAL_LLM, LOCAL_MODEL)" in l for l in dc[look:look + 8]))
 check("dot channel: its text call moves", any("_subcon_url(LOCAL_LLM)" in l and "_subcon_model(LOCAL_MODEL)" in l for l in dc))
 for f in VISION:
-    check("%s (vision/audio) is untouched" % f, "_subcon" not in src(f) and "SUBCON_" not in src(f))
+    check("%s (vision/audio) follows the flag" % f, ("_vision_route(" in src(f)) or (f.endswith("voice_local.py") and "brain_route(" in src(f)))
 srv = src("bin/server.py")
 check("the server's generated nudge-read code takes its route when generated",
       srv.count("requests.post('\" + _subcon_url(\"%s\") + \"'" % CHAT) == 2 and srv.count("_subcon_model(\"%s\") + \"'" % MODEL) == 2)
 photo = srv[srv.index("async def _describe_photo"):srv.index("async def _describe_photo") + 6000]
-check("the server's photo description keeps the 26B", "_subcon" not in photo and CHAT in photo)
+check("the server's photo description takes AEON's vision", "_vision_route(" in photo and '"model": _vmodel' in photo)
 check("the local call reports the brain it uses (voice_local's route), not a fixed 26B label",
       '"model":_vl._brain()[1], "voice"' in srv and '"model":"gemma-4-26b-a4b-it-uncensored", "voice"' not in srv)
 

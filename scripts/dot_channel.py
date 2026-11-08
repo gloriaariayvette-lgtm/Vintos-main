@@ -25,6 +25,21 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
 from __future__ import annotations
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 def _subcon_route(url, model):
     """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
     try:
@@ -793,7 +808,8 @@ def gemma_look(images, prompt):
     """Local Gemma's eyes: jpegs (base64) and a prompt, nothing else in the call."""
     import requests
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images]
-    r = paid_http.send(requests.post, __file__, LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.3, "max_tokens": 700,
+    _vurl, _vmodel, _vx = _vision_route(LOCAL_LLM, LOCAL_MODEL)   # AEON's vision once the flag is AEON
+    r = paid_http.send(requests.post, __file__, _vurl, json={**_vx, "model": _vmodel, "temperature": 0.3, "max_tokens": 700,
                                        "messages": [{"role": "user", "content": content + [{"type": "text", "text": prompt}]}]},
                       timeout=300)
     return str(r.json()["choices"][0]["message"].get("content") or "").strip()

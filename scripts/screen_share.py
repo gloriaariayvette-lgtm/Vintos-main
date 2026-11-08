@@ -32,12 +32,28 @@ from urllib import request as urlrequest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 STATE = os.path.join(MEMORY, "screen-share.json")
 LOG = os.path.join(MEMORY, "screen-share-log.jsonl")
 GEMMA_API = os.environ.get("VINTOS_GEMMA_API", "http://100.79.177.103:1234/v1/chat/completions")
 GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA_API, GEMMA_MODEL, GEMMA_EXTRA = _vision_route(GEMMA_API, GEMMA_MODEL)   # AEON's vision once the flag is AEON
 CAPTURE_S = float(os.environ.get("VINTOS_SHARE_CAPTURE_S", "6"))
 REDESCRIBE_S = float(os.environ.get("VINTOS_SHARE_REDESCRIBE_S", "60"))
 FRESH_S = float(os.environ.get("VINTOS_SHARE_FRESH_S", "120"))
@@ -96,7 +112,7 @@ def describe(shot: bytes, previous: str, caller: Optional[Callable[[str, bytes],
               + (f"\n\nYour previous description: {previous}\nIf the screen is essentially unchanged, say so in one sentence." if previous else ""))
     if caller:
         return caller(prompt, shot).strip()
-    body = json.dumps({"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 220,
+    body = json.dumps({**GEMMA_EXTRA, "model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 220,
                        "messages": [{"role": "user", "content": [
                            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(shot).decode("ascii")}},
                            {"type": "text", "text": prompt}]}]}).encode("utf-8")

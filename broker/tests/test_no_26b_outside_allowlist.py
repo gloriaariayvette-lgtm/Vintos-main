@@ -11,7 +11,7 @@ Three checks, all over the checkout's own files (no network, no model, no ~/.vin
      copies, and those called the 26B directly and kept reloading it on the MacBook.
   3. With the flag on AEON and the shipped pass record, a flag-routed default resolves to AEON's lane.
 """
-import os, re, subprocess, sys, tempfile
+import json, os, re, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -27,42 +27,25 @@ R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:600]) if d and not ok else ""))
 
-TOKEN = re.compile(r"gemma-4-26b-a4b-it-uncensored|26b-a4b|TrevorJS|residual-26b|macbook_26b|100\.79\.177\.103:1234", re.I)
-WRAP = re.compile(r"_subcon_url\(|_subcon_model\(|_subcon_route\(|generative_route\(|brain_route\(|SUBCON_URL|SUBCON_MODEL")
+# The 26B by name. (The MacBook LM Studio address is not a 26B marker any more: AEON's vision is served there too.)
+TOKEN = re.compile(r"gemma-4-26b|26b-a4b|TrevorJS|residual-26b|macbook_26b", re.I)
+WRAP = re.compile(r"_subcon_url\(|_subcon_model\(|_subcon_route\(|_vision_route\(|generative_route\(|brain_route\(|vision_route\(|SUBCON_URL|SUBCON_MODEL")
 SKIP = re.compile(r"^(docs|audit|offline|bench|broker/tests)/|\.(md|jsonl|diff|txt|csv|html)$")
 # A literal assigned to a name: python  NAME = "..."  /  NAME = os.environ.get("X", "...")   shell  NAME="..." / NAME="${X:-...}"
 ASSIGN = re.compile(r"""(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:os\.environ\.get\(\s*["'][A-Z_]+["']\s*,\s*)?["'](?:\$\{[A-Z_]+:-)?(?:https?://)?$""")
 
 # Every direct (unrouted) occurrence that may stay, by file: {reason: count}. Counts are exact, so a new one fails.
-VISION = "vision/screen: sends images; stays on the 26B until AEON has a vision projector (Gloria's exception)"
-ENCODER = "nomic embeddings on the MacBook's LM Studio: an encoder, not the 26B"
-ENCODER_BASE = "LM Studio base address used only for nomic embeddings (checked below)"
-NOT_CHAT = "reads LM Studio's model list; never names or loads the 26B"
-IDENTITY = "the 26B's identity in the flag's own target table"
-SHIM_LANE = "the shim's 26B lane: dropped from every chain once the flag is on AEON (aeon_everywhere)"
-SHIM_PATH = "goes through the shim's /gemma path, which is AEON once the flag is on AEON"
-MANIFEST_LABEL = "static Buzz manifest text; its runner (run-local-gemma.py) follows the flag"
+# Gloria 2026-11-08: "We're just switching the model fully." Vision moved too, so no caller is listed. What remains
+# are the two places that DEFINE the 26B as the flag's rollback target; neither is reachable while the flag is AEON
+# (checked at the end of this file).
+ROLLBACK_TABLE = "the 26B's identity in the flag's own target table (reached only if the flag is set back to the 26B)"
+ROLLBACK_LANE = "the shim's 26B lane: dropped from every chain while the flag is AEON (aeon_everywhere)"
 ALLOW = {
-    "bin/gallery-walk.py": {VISION: 2}, "scripts/gallery-walk.py": {VISION: 2},
-    "scripts/image_sight.py": {VISION: 2},
-    "scripts/screen_share.py": {VISION: 2}, "scripts/desktop_agent.py": {VISION: 2},
-    "bin/server.py": {VISION: 4, ENCODER: 1}, "scripts/server.py": {VISION: 4, ENCODER: 1},
-    "bin/vintos-websearch.py": {ENCODER: 1}, "scripts/vintos-websearch.py": {ENCODER: 1},
-    "scripts/self_review.py": {ENCODER: 1},
-    "bin/deviation_check.py": {ENCODER_BASE: 1}, "bin/deviation-check.py": {ENCODER_BASE: 1},
-    "scripts/deviation_check.py": {ENCODER_BASE: 1}, "scripts/deviation-check.py": {ENCODER_BASE: 1},
-    "scripts/lab_token_measure.py": {NOT_CHAT: 1},
-    "scripts/subcon_target.py": {IDENTITY: 1},
-    "bin/vintos_claude_shim.py": {SHIM_LANE: 2},
-    "scripts/reelroom.py": {SHIM_PATH: 1},
-    "buzz-integration/agents.json": {MANIFEST_LABEL: 2},
+    "scripts/subcon_target.py": {ROLLBACK_TABLE: 1},
+    "bin/vintos_claude_shim.py": {ROLLBACK_LANE: 1},
 }
 # Where in those files the allowed occurrences are (a substring of the line), so a count cannot be "spent" elsewhere.
-WHERE = {
-    VISION: ("image", "vision", "LM_API", '"model": "gemma-4-26b', "GEMMA_API", "GEMMA_MODEL", "client.post", '"http://100.79.177.103:1234/v1/chat/completions",'),
-    ENCODER: ("/v1/embeddings",), ENCODER_BASE: ('LM_URL = "http://100.79.177.103:1234"',), NOT_CHAT: ("LMSTUDIO_BASE",), IDENTITY: ('"identity"',),
-    SHIM_LANE: ("GEMMA_URL =", "GEMMA_MODEL ="), SHIM_PATH: ("PLANNER_MODEL",), MANIFEST_LABEL: ('"model"', '"about"'),
-}
+WHERE = {ROLLBACK_TABLE: ('"identity"',), ROLLBACK_LANE: ("GEMMA_MODEL =",)}
 
 def files():
     out = subprocess.run(["git", "-C", REPO, "ls-files"], capture_output=True, text=True).stdout.split()
@@ -81,7 +64,7 @@ def flag_default(f, text, line, start):
     v = re.escape(m.group(1))
     if f.endswith(".sh"):
         return re.search(r"\$\{SUBCON_(?:URL|MODEL):-\$%s\}" % v, text) is not None
-    return re.search(r"(?:_subcon_url|_subcon_model|_subcon_route|generative_route|brain_route)\((?:[^()]|\([^()]*\))*?(?:\{|\b)%s\b" % v, text) is not None
+    return re.search(r"(?:_subcon_url|_subcon_model|_subcon_route|_vision_route|generative_route|brain_route|vision_route)\((?:[^()]|\([^()]*\))*?(?:\{|\b)%s\b" % v, text) is not None
 
 print("--- every 26B id or MacBook LM Studio address in code goes through the flag, or is listed ---")
 direct, found_allowed = {}, {}
@@ -105,10 +88,6 @@ for f, reasons in sorted(ALLOW.items()):
     check("%s: exactly the listed exceptions (%s)" % (f, "; ".join("%d %s" % (n, r.split(":")[0]) for r, n in reasons.items())),
           found_allowed.get(f, {}) == reasons, found_allowed.get(f, {}))
 
-for f in [f for f, r in ALLOW.items() if ENCODER_BASE in r]:
-    uses = [l.strip() for l in src(f).split("\n") if "LM_URL" in l and not l.startswith("LM_URL =")]
-    check("%s uses its LM Studio address for embeddings only" % f, uses and all("/v1/embeddings" in l for l in uses), uses)
-
 print("--- the flag-routed callers are the ones the deploy installs ---")
 deploy = src("scripts/deploy-atelier.sh")
 block = deploy[deploy.index('SCRIPTS="'):deploy.index('MANIFEST="$(printf')]
@@ -120,9 +99,7 @@ ALIASES = {"frame-engine.py": "frame_engine.py", "resonance_marks.py": "resonanc
            "wants_conversation_check.py": "wants-conversation-check.py", "yearning-scars.py": "yearning_scars.py",
            "yearning_detector.py": "yearning-detector.py"}
 FROM_CHECKOUT = {"buzz-integration/run-local-gemma.py"}
-# Held out of the install list by Gloria's own decision (test_thread_formation): their installed copies still call
-# the 26B until she says yes. Named here so the list cannot grow silently.
-HELD = {"conflict_surface.py", "velqan-coiner.py"}
+HELD = set()   # nothing is held: Gloria 2026-11-08, "I didn't hold those back. Aeon."
 routed = [f for f in files() if f.endswith((".py", ".sh")) and TOKEN.search(src(f)) and WRAP.search(src(f))
           and f != "scripts/subcon_target.py"]
 missing = [f for f in routed if f not in FROM_CHECKOUT and os.path.basename(f) not in installed and os.path.basename(f) not in HELD
@@ -130,10 +107,9 @@ missing = [f for f in routed if f not in FROM_CHECKOUT and os.path.basename(f) n
 check("there are flag-routed callers to check (%d)" % len(routed), len(routed) > 80, len(routed))
 check("every flag-routed caller is installed by the deploy (or is a live alias of one)", not missing, missing)
 for b in ("emotion_read.py", "imprint.py", "resonance-marks.py", "yearning-detector.py", "yearning_scars.py", "reading.py",
-          "introspective_planning.py", "tension_identity_audit.py", "want_learning.py",
+          "introspective_planning.py", "tension_identity_audit.py", "want_learning.py", "conflict_surface.py", "velqan-coiner.py",
           "morning-briefing.sh", "valence-drift-map.sh", "subcon_target.py", "aeon-bar-record.json"):
     check("the deploy installs %s" % b, b in installed)
-check("the held files stay held until she says yes", not (HELD & installed), HELD & installed)
 check("the server-side twin of emoclaw_utils.py is installed too", "for _twin in emoclaw_utils.py" in deploy
       and 'PLAN="$PLAN$SRC/scripts/$_twin|$_tw' in deploy)
 
@@ -151,7 +127,30 @@ for p, j in (("/v1/chat/completions", {"max_tokens": 80}), ("/gemma/v1/chat/comp
     c = S.provider_chain(dict(j), p)
     check("shim %s never reaches the 26B" % p, "gemma" not in c, c)
 
-print("--- text calls inside the browser and desktop helpers follow the flag; their screenshots do not ---")
+print("--- every image call takes AEON's own vision (Gloria 2026-11-08: \"Yes, vision to Aeon\") ---")
+VISION_CALLERS = ("scripts/image_sight.py", "bin/gallery-walk.py", "scripts/screen_share.py", "scripts/desktop_agent.py",
+                  "scripts/dot_channel.py", "bin/vintos-websearch.py", "bin/server.py", "scripts/reelroom.py")
+for f in VISION_CALLERS:
+    check("%s routes its image calls through the flag's vision route" % f, "_vision_route(" in src(f))
+srv = src("bin/server.py")
+for fn in ("async def _describe_photo", "[vision clip] claude failed"):
+    part = srv[srv.index(fn):srv.index(fn) + 6000]
+    check("server %s: the local eye is AEON's vision route" % fn.split()[-1], "_vision_route(" in part and '"model": _vmodel' in part)
+v = T.vision_route("http://lmstudio.invalid/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
+check("with the flag on AEON, an image call resolves to AEON's vision model, thinking off, at the same endpoint",
+      v == ("http://lmstudio.invalid/v1/chat/completions", "aeon-gemma-4-12b", {"reasoning_effort": "none"}), v)
+bk = os.path.join(TMP, "backends.json")
+open(bk, "w").write(json.dumps([{"label": "x", "machine": "macbook", "kind": "lmstudio", "model": "m",
+                                 "url": "http://mac.invalid/v1/chat/completions"}]))
+check("a caller with no endpoint of its own (the Reel Room) gets the MacBook LM Studio address from the pool config",
+      T.vision_route(None, "m", backends_path=bk)[:2] == ("http://mac.invalid/v1/chat/completions", "aeon-gemma-4-12b"))
+check("no MacBook address in the pool config: the caller keeps its own route",
+      T.vision_route(None, "m", backends_path=os.path.join(TMP, "none.json")) == (None, "m", {}))
+er = src("scripts/emotion_read.py")
+check("emotion_read keeps its own emotion-lane hook (resolving to AEON), and the deploy installs that version",
+      "LM_URL, MODEL = _subcon.generative_route(LM_URL, MODEL)" in er and "emotion_read.py" in installed)
+
+print("--- text calls inside the browser and desktop helpers follow the flag ---")
 import ast
 for f, call in (("scripts/browser_jev.py", '_url, _model = _subcon_route(getattr(self.fallback, "endpoint")'),
                 ("scripts/desktop_control.py", "url, name = _subcon_route(MODEL_URL, MODEL_NAME or None)")):
@@ -164,8 +163,6 @@ for f, call in (("scripts/browser_jev.py", '_url, _model = _subcon_route(getattr
           len(fns) == 1 and call in t and got == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), got)
 check("desktop_control: an explicit VINTOS_DESKTOP_MODEL_URL keeps its own route",
       'if "VINTOS_DESKTOP_MODEL_URL" not in os.environ:' in src("scripts/desktop_control.py"))
-check("desktop_agent and screen_share (screenshots) stay on the vision route",
-      all("_subcon" not in src(f) for f in ("scripts/desktop_agent.py", "scripts/screen_share.py", "scripts/image_sight.py")))
 os.remove(os.path.join(TMP, ".vintos", "subcon-target.json"))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
