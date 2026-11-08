@@ -162,9 +162,10 @@ ten-minute coordination heartbeat remains active between batches.
 
 ## Capture increment in progress
 
-`scripts/witness_capture.py` is request-local, with no I/O or global mutable
-capture. The handler will observe results, explicitly select a raw reply after
-fallback/repeat decisions, then finalize the exact return text. A packet records
+`scripts/witness_capture.py` keeps capture state request-local. The avatar handler
+observes results at all three router call sites, explicitly selects a raw reply
+after fallback/repeat decisions, then finalizes the exact return text after its
+last `guard_reply`. A packet records
 `handed_to_framework` separately from `delivery: unknown`; it cannot claim
 delivery. Context and reply nodes are explicitly incomplete. Attempt-history
 coverage remains incomplete until every route/provider attempt is observed.
@@ -176,6 +177,20 @@ receives stage results without changing its return tuple or fallback behaviour;
 observer errors do not interrupt the reply. Raw result text is used only for
 transient selection hashes; capture copies no provider reason/tool text.
 
-This is the first capture increment: **server attachment after `guard_reply`, a
-private scratch sink and end-to-end handler tests are still pending**. The server
-twins have not been changed. No production capture is enabled by this branch.
+Capture is disabled by default. The optional sink requires
+`JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to name the same existing, resolved,
+owner-private scratch directory. Live-store paths, symlinks, repository paths and
+their ancestors are refused. Each packet is a new mode-0600 file; there is no
+live-store writer or background reader. Packets contain the exact final text and
+are private artifacts, never Git inputs. Test-mode and supplied generation
+provenance are retained; absence remains unknown. Sink failures leave the reply
+unchanged. Do not enable this on a serving process: an authorized isolated
+harness must repoint all the handler's other stores and stub all senders too.
+
+Synthetic tests execute the actual handler's capture/router/final-guard/return
+segments with stubbed routing, and verify placement relative to all retries.
+They do **not** run the complete HTTP application or demonstrate live capture.
+On the integrated base, `scripts/server.py` is a symlink to `bin/server.py`;
+the test checks their content parity. Other chat/voice handlers, complete context
+dependency receipts, complete fallback-attempt coverage and source-store
+integration remain pending. No production capture is enabled by this branch.

@@ -1,10 +1,14 @@
-"""Request-local shadow capture primitives. No store access, models or sends.
+"""Request-local shadow capture with an explicit private scratch sink; no sends.
 
 Provider hooks must explicitly label observed identity; configured names alone
 are unknown. A handler selects the raw result before postprocessing, then binds
 the receipt to its exact final return text. Persistence is a separate caller.
 """
 from copy import deepcopy
+import json
+import os
+from pathlib import Path
+import uuid
 from witness_receipts import digest, instant, receipt
 
 
@@ -18,6 +22,7 @@ class Capture:
         self._attempts = []
         self._selected = None
         self._closed = False
+        self._scratch_root = None
 
     def observe(self, result):
         """Copy metadata only; never retain provider text, tool calls or reason text.
@@ -82,3 +87,64 @@ class Capture:
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
                              "context_receipt_id": self.context_id, "parents": [self.context_id],
                              "influence": "unknown"}})
+
+
+def _private_root(value):
+    raw = Path(value).absolute()
+    root = raw.resolve(strict=True)
+    repo = Path(__file__).resolve().parents[1]
+    if (raw != root or not root.is_dir() or root in (Path("/"), Path.home(), repo)
+            or root in repo.parents or repo in root.parents
+            or any(p in (".vintos", ".openclaw") for p in root.parts)
+            or os.environ.get("SPARK_WORKSPACE") != str(root)
+            or root.stat().st_mode & 0o077 or root.stat().st_uid != os.getuid()):
+        raise ValueError("capture requires an explicit private scratch workspace")
+    return root
+
+
+def begin_shadow(turn_id, surface, started_at):
+    """Disabled unless scratch and workspace explicitly name the same private root."""
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if not location:
+        return None
+    root = _private_root(location)
+    capture = Capture(turn_id, surface, started_at)
+    capture._scratch_root = root
+    return capture
+
+
+def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
+    """Write one private packet after the final guard, never to a live store.
+
+    The handler still has no transport receipt: attempted return to the framework
+    is recorded separately from delivery. Caller catches observation failures.
+    """
+    if capture is None:
+        return False
+    root = _private_root(capture._scratch_root)
+    packet = capture.finalize(final_text, finalized_at, "handed_to_framework")
+    from evidence_provenance import normalize
+    p = normalize(provenance if isinstance(provenance, dict) else {
+        "turn_id": capture.turn_id, "output_provenance": "unknown", "may_witness": False})
+    packet["generation_provenance"] = p
+    packet["content"] = final_text
+    packet["role"] = "assistant"
+    packet["test_mode"] = bool(test_mode)
+    if p.get("output_provenance") == "stratagem_influenced":
+        packet["reply_node"]["influence"] = "influenced"
+        packet["reply_node"]["tactical"] = True
+    # No replace/append: one new file, private permissions, directory descriptor
+    # pinned while writing. A preexisting name or symlink can never be followed.
+    directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        if info.st_mode & 0o077 or info.st_uid != os.getuid():
+            raise ValueError("scratch permissions changed")
+        name = "capture-" + uuid.uuid4().hex + ".json"
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        with os.fdopen(fd, "w") as f:
+            json.dump(packet, f, allow_nan=False)
+            f.write("\n")
+    finally:
+        os.close(directory)
+    return True

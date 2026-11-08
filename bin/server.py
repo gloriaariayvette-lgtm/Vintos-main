@@ -10990,6 +10990,17 @@ Your current self-model (excerpt):
 
         # -- model router (single source of truth): Claude primary, grok fallback --
         import model_router as _mr
+        # Observation is disabled unless an isolated private scratch workspace
+        # is explicitly configured. It changes no reply, model choice or feed.
+        _witness_capture = None
+        _witness_module = None
+        try:
+            import witness_capture as _witness_module
+            _witness_capture = _witness_module.begin_shadow(
+                _turn.turn_id if _turn is not None else "", _surface, time.time())
+        except Exception:
+            print("[witness] scratch capture unavailable", flush=True)
+        _witness_kwargs = {"observer": _witness_capture.observe} if _witness_capture is not None else {}
         # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
         # repository's history, and its shared budget cut one reply off at "[SCENE:".
         _reason = False
@@ -11002,7 +11013,7 @@ Your current self-model (excerpt):
             reply, _claude_reasoning, _model_used = await _mr.route_reply(
                 "avatar", messages[0]["content"], messages[1:], params,
                 f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                "grok-4.20-0309-non-reasoning", reason=_reason)
+                "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
         except Exception as _rte:
             print("[router] fatal:", _rte, flush=True)
             reply, _claude_reasoning, _model_used = "", "", "error"
@@ -11015,7 +11026,7 @@ Your current self-model (excerpt):
                 _r2, _cr2, _mu2 = await _mr.route_reply(
                     "avatar", messages[0]["content"], _again, params,
                     f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                    "grok-4.20-0309-non-reasoning", reason=_reason)
+                    "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
                 if _r2 and not _same_as_last_reply(_r2, av_history):
                     reply, _claude_reasoning, _model_used = _r2, _cr2, str(_mu2) + "(after repeat)"
                 else:
@@ -11057,7 +11068,7 @@ Your current self-model (excerpt):
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                            "grok-4.20-0309-non-reasoning", reason=_reason)
+                            "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
                         try:
                             _mr.update_mode(lambda _gm: _gm.update(mode="grok"))
                         except Exception: pass
@@ -11087,6 +11098,11 @@ Your current self-model (excerpt):
 
         # Generation is its own lifecycle axis. Build one typed provenance
         # envelope now; every evidence writer receives this exact object.
+        if _witness_capture is not None:
+            try:
+                _witness_capture.select(reply)
+            except Exception:
+                print("[witness] raw selection unavailable", flush=True)
         _prov_envelope, _prov_writer_env = None, None
         try:
             if _turn is not None and _tc is not None:
@@ -11477,6 +11493,12 @@ Your current self-model (excerpt):
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
         from stratagem_turn import guard_reply as _sg_guard
         reply = _sg_guard(reply, _turn)
+        if _witness_capture is not None:
+            try:
+                _witness_module.finish_shadow(_witness_capture, reply, time.time(), _prov_envelope,
+                                              test_mode=_test_turn)
+            except Exception:
+                print("[witness] final capture unavailable", flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": ("" if _turn is not None and _turn.carries_capsule else (_claude_reasoning or "")),
                 "live_slot": (_turn.turn_id if _turn is not None else ""),
                 **({"image_description": _note} if _note_task is not None else {}),

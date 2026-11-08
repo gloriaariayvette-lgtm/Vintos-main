@@ -93,3 +93,31 @@ entry owners 11/11 (**69 checks**). All fixtures/senders synthetic. Next: attach
 the request-local object and exact finalization to the handler after its final
 guard, test the complete path against stubs, and keep both server spellings in
 parity. No paid calls, real messages or live writes.
+
+## 8 November 2026 — avatar capture hook, private scratch only
+
+Rebased the capture increment onto Claude's integrated deploy tip `1b28c3d4`
+as requested in note 5. The primitives commit is now `78e2800c`. The only rebase
+conflict was generated ownership documentation, resolved by regeneration.
+
+Attached one request-local capture to all three avatar router calls. Selection
+follows retry decisions; finalization follows the final reply guard and binds
+the exact returned text. The optional sink is disabled by default, requires a
+matching private scratch workspace, rejects live/repository/symlink roots and
+creates owner-only packets. Supplied provenance and test mode are retained.
+Observer and sink errors do not alter the reply. Transport remains distinct
+from delivery, and incomplete context/attempt history is still explicit.
+
+The integrated tree uses a server symlink; editing its bin target preserves
+both spellings. Tests execute actual capture-related handler segments with a
+stubbed provider, including postprocessing and final-guard text changes. This
+is not a full HTTP application test, real capture, or evidence of completeness
+on other surfaces. Existing feeds and stores remain unchanged.
+
+Validation: capture hooks 7/7, capture primitives 8/8, strict witness 35/35,
+router regressions 15/15, canonical avatar 6/6, avatar lifecycle 29/29 and
+entry ownership 11/11: **111 checks passed**. Generated reports and whitespace
+checks are current. All are
+OS-isolated synthetic checks. Full Aegis suite and independent review remain
+Claude Code's step. Context dependencies, source-store integration and remaining
+surfaces are still pending; no production activation, merge or deployment.

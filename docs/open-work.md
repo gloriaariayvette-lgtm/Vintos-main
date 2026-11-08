@@ -6024,7 +6024,11 @@ Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full 
 
 `codex/judges-witness-slices` starts slices 1 and 2 with strict generation/effect
 receipts, an explicit snapshot census and causal on-message innovation joins.
-Synthetic-only; no live feed changes or production capture yet. See
+The approved foundation is integrated in deploy commit `1b28c3d4`. The next
+increment, `codex/judges-capture-hooks`, attaches request-local capture to the
+avatar handler and an explicit private scratch sink, disabled by default.
+Synthetic-only; no live feed changes or production capture yet. Complete
+context ancestry, other surfaces and source-store integration remain open. See
 [implementation log](judges-witness-log.md) for the scope and outstanding
 provider/context receipt hooks. Claude Code owns independent review, the full
 isolated Aegis suite and test merge. The ten-minute coordination heartbeat stays
