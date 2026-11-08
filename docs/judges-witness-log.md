@@ -699,3 +699,25 @@ cover direct/finalization influence, unknowns, stale versions, mismatched graph,
 malformed node shapes and the clean control. Reports regenerated and whitespace
 checked. No private input read, model calls, real test sends, live-store writes,
 merge or deploy. Independent full Aegis review remains pending.
+
+
+## 8 November — preserve raw provenance types at scratch capture
+
+`codex/judges-shadow-provenance-types` continues from 84582fc3. Synthetic
+regressions reproduced two assertion failures and one exception: the shared
+legacy normalizer coerced truthy nonboolean witness flags into true and could
+raise on a malformed output marker, dropping the private packet.
+
+The scratch producer now requires an actual boolean witness flag and an explicit
+matching turn identity in a present envelope before retaining eligibility.
+Invalid shapes become malformed/ineligible; normalization errors still produce
+an unknown packet. An explicit tactical marker survives even if other envelope
+fields are malformed. The shared normalizer and all live evidence rules remain
+unchanged. This is a synthetic boundary finding, not a claim about live records.
+
+208 isolated checks pass: witness 98, capture 27, replay adapter 9, hooks 21,
+provenance 11, evidence view 31, ownership 11. Tests assert packet counts,
+nonboolean/mismatched inputs, valid true/false controls and retained tactical
+influence. Reports regenerated and whitespace checked. No private inputs, model
+calls, real test sends, live writes, merge or deployment. Independent review and
+full isolated Aegis validation remain pending.

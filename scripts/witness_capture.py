@@ -347,6 +347,26 @@ def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_mess
     return capture
 
 
+def _shadow_provenance(value, turn_id):
+    """Do not let legacy coercions manufacture explicit shadow evidence."""
+    from evidence_provenance import normalize
+    unknown = {"turn_id": turn_id, "output_provenance": "unknown", "may_witness": False,
+               "envelope_state": "malformed"}
+    try:
+        result = normalize(value if isinstance(value, dict) else unknown)
+    except (TypeError, ValueError, KeyError, OverflowError):
+        result = normalize(unknown)
+    explicit = (isinstance(value, dict) and isinstance(value.get("turn_id"), str)
+                and value["turn_id"] == turn_id and type(value.get("may_witness")) is bool
+                and value.get("envelope_state", "present") == "present")
+    if not explicit:
+        result.update(may_witness=False, envelope_state="malformed")
+    # A malformed envelope does not erase a separately explicit influence marker.
+    if isinstance(value, dict) and value.get("output_provenance") == "stratagem_influenced":
+        result.update(output_provenance="stratagem_influenced", may_witness=False)
+    return result
+
+
 def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
     """Write one private packet after the final guard, never to a live store.
 
@@ -357,9 +377,7 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         return False
     root = _private_root(capture._scratch_root)
     packet = capture.finalize(final_text, finalized_at, "handed_to_framework")
-    from evidence_provenance import normalize
-    p = normalize(provenance if isinstance(provenance, dict) else {
-        "turn_id": capture.turn_id, "output_provenance": "unknown", "may_witness": False})
+    p = _shadow_provenance(provenance, capture.turn_id)
     packet["generation_provenance"] = p
     packet["content"] = final_text
     packet["role"] = "assistant"

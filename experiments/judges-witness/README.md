@@ -663,3 +663,14 @@ supplied nodes remain unknown; influenced descendants remain excluded from this
 strict offline reader. Older rows without this optional node retain their previous
 admission contract; coverage labels them `not_supplied`, never a proved clean
 finalization. Existing captures with incomplete ancestry remain unqualified.
+
+
+### Raw provenance at the scratch producer boundary
+
+Shadow capture checks the raw envelope before retaining a normalized witness
+permission: `may_witness` must be a boolean, the explicit string turn ID must
+match the capture, and the envelope must be present. Truthy strings/numbers do
+not become permission. Malformed inputs produce an ineligible packet rather
+than losing the capture; explicit tactical influence is retained even when
+other fields are malformed. This guard is local to scratch capture. It neither
+changes the shared legacy normalizer nor certifies complete ancestry or delivery.

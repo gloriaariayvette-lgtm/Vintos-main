@@ -6337,3 +6337,12 @@ and graph bindings are checked; capture records the digest and merge retains the
 node. Absent optional nodes remain `not_supplied`, with no historical backfill.
 236 affected isolated checks pass. Existing live evidence readers/feeds unchanged;
 independent review/full Aegis validation remain pending.
+
+
+## 8 November — scratch provenance type preservation
+
+`codex/judges-shadow-provenance-types` prevents legacy coercion from upgrading
+malformed raw shadow provenance into explicit witness permission. Invalid
+identity/flag shapes stay ineligible; known tactical influence survives malformed
+envelopes. Shared normalization/live evidence readers are unchanged. 208 affected
+isolated checks pass; independent review/full Aegis validation remain pending.
