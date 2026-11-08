@@ -292,6 +292,34 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.nodes["old-reply"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
 
+    def test_malformed_lineage_kinds_remain_unknown_without_crashing(self):
+        for kind in ([], {}, None, 1, True):
+            with self.subTest(kind=kind):
+                nodes=copy.deepcopy(self.nodes); nodes['external-0']['kind']=kind
+                self.assertEqual(W.lineage_status('context-1',nodes,100),'unknown')
+                self.assertEqual(W.admission(self.row,nodes,1000),'unknown_lineage')
+
+    def test_reply_lineage_requires_explicit_string_turn_identity(self):
+        nodes=copy.deepcopy(self.nodes)
+        nodes['context-1']['parents']=['earlier-reply']
+        nodes['earlier-context']=dict(id='earlier-context',kind='context',at=50,complete=True,parents=['external-0'])
+        nodes['earlier-reply']=dict(id='earlier-reply',kind='reply',at=60,complete=True,
+            parents=['earlier-context'],context_receipt_id='earlier-context',turn_id='fixture-earlier',influence='clean')
+        self.assertEqual(W.admission(self.row,nodes,1000),'eligible')
+        for turn in (True,1,['fixture-earlier'],{'id':'fixture-earlier'},'', 'x'*257):
+            with self.subTest(turn=turn):
+                nodes['earlier-reply']['turn_id']=turn
+                self.assertEqual(W.admission(self.row,nodes,1000),'unknown_lineage')
+
+    def test_lineage_root_and_boundary_never_guess_invalid_types(self):
+        for root in ([], {}, None, True, 1, ''):
+            with self.subTest(root=root):
+                self.assertEqual(W.lineage_status(root,self.nodes,100),'unknown')
+        for boundary in (None,True,float('nan'),float('inf'),-1,{},'2026-11-08T10:00:00'):
+            with self.subTest(boundary=boundary):
+                self.assertEqual(W.lineage_status('context-1',self.nodes,boundary),'unknown')
+        self.assertEqual(W.lineage_status('context-1',self.nodes,'1970-01-01T00:01:40Z'),'clean')
+
     def test_shared_ancestry_is_memoized_and_edge_clocks_checked(self):
         class Counted(dict):
             calls = 0
