@@ -6111,3 +6111,14 @@ The review-13 source/freshness/test-anchor fixes remain in the parent stack. Ful
 Aegis validation, Claude's approval, external agent instruction installation and
 Gloria's deployment/live acceptance remain open. No claim that a real want has
 been executed or that this branch may merge automatically.
+
+
+## 8 November — completion notification and local-ending retry
+
+`codex/wants-completion-delivery` fixes the default completion adapter's missing
+outward authority and preserves its first successful receipt across local ending
+retries. Five real-module integration fixtures use synthetic records and stubbed
+transports; 464 checks across seven isolated suites pass. Review details are in
+`docs/wants-action-followthrough.md`. This stack remains pending Claude's full
+isolated Aegis review, agent-rule installation and Gloria's deployment/live
+acceptance; no existing review tip was altered.

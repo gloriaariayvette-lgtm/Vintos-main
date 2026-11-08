@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic want→room→files→notification→memory contract. All sends are stubs."""
 import copy
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -287,6 +288,102 @@ class Tests(unittest.TestCase):
         import subconscious_context as C
         self.assertIn('Synthetic score prepared',C.get_subconscious_context(include=['completed_work']))
         self.assertIn('Synthetic score prepared',C.get_subconscious_context_compact(include=['completed_work']))
+
+    def delivery_harness(self, *, http_status=200, stop_at_publication=False, change_source=False):
+        import dot_channel as D
+        import promise_keeper as P
+        import deliver as L
+        calls, sends = [], []
+        def api(method, args):
+            calls.append(method)
+            if method == 'chat.postMessage': return {'ok':True, 'ts':str(self.now)}
+            if method == 'files.getUploadURLExternal':
+                return {'ok':True, 'file_id':'fixture-file', 'upload_url':'https://example.invalid/upload'}
+            if method == 'files.completeUploadExternal': return {'ok':True, 'files':args['files']}
+            if method == 'chat.getPermalink':
+                if stop_at_publication: (self.mem / 'want-work.stop').touch()
+                if change_source:
+                    rows = self.current(); rows[0].pop('source_refs')
+                    self.write('current-wants.json', rows)
+                return {'ok':True, 'permalink':'https://example.invalid/result'}
+            self.fail('unexpected transport method: ' + method)
+        def transport(url, data, headers, timeout):
+            self.assertEqual(url, 'https://example.invalid/fixture-notify')
+            self.assertIn('files.completeUploadExternal', calls)
+            self.assertIn('chat.getPermalink', calls)
+            sends.append((data, headers)); return http_status
+        stack = ExitStack(); self.addCleanup(stack.close)
+        for obj, name, value in (
+            (D, 'STATE', str(self.mem/'room.json')), (D, '_guarded', lambda s:[]),
+            (P, 'results_channel', lambda:'fixture-results'),
+            (L, 'MEMORY', str(self.mem)), (L, 'RECEIPTS', str(self.mem/'delivery-receipts.json')),
+            (L, 'CHANNELS', {'ntfy':'https://example.invalid/fixture-notify'}),
+            (L, 'POST', transport), (L, 'SLEEP', lambda seconds:None), (L, 'RETRIES', 1)):
+            stack.enter_context(patch.object(obj, name, value))
+        self.assertIs(L.POST, transport)
+        self.assertTrue(Path(L.RECEIPTS).is_relative_to(self.ws))
+        def run(**overrides):
+            kwargs=dict(put=lambda url,data:200, complete=self.complete,
+                        writer=self.writer, identity=lambda:'Synthetic identity')
+            kwargs.update(overrides)
+            return D.agent_wants_pass(api, 'fixture-channel', 'fixture-dot', self.state, self.now+2, **kwargs)
+        run(); self.result(); self.receive()
+        return run, calls, sends, L
+
+    def test_default_delivery_sends_once_and_retries_local_ending(self):
+        run, calls, sends, L = self.delivery_harness()
+        run(complete=lambda *args:None)
+        self.assertEqual(len(sends), 1)
+        self.assertFalse(self.endings)
+        self.assertEqual(self.current()[0]['agent_work']['delivery']['state'], 'sent')
+        run()
+        self.assertEqual(len(sends), 1)
+        self.assertEqual(calls.count('files.getUploadURLExternal'), 1)
+        self.assertEqual(len(self.endings), 1)
+        self.assertEqual(list(L.load_receipts().values())[0]['state'], 'sent')
+        self.assertIn('Synthetic score prepared', A.block(ws=self.ws))
+
+    def test_default_delivery_failure_keeps_result_and_reuses_upload(self):
+        run, calls, sends, L = self.delivery_harness(http_status=503)
+        run()
+        self.assertEqual(len(sends), 1)
+        self.assertFalse(self.endings)
+        self.assertTrue(self.current()[0]['agent_work']['publication'])
+        self.assertEqual(list(L.load_receipts().values())[0]['state'], 'failed')
+        with patch.object(L, 'POST', lambda *args: sends.append(args) or 200): run()
+        self.assertEqual(len(sends), 2)
+        self.assertEqual(calls.count('files.getUploadURLExternal'), 1)
+        self.assertEqual(len(self.endings), 1)
+
+    def test_stop_after_upload_prevents_default_notification_and_completion(self):
+        run, calls, sends, L = self.delivery_harness(stop_at_publication=True)
+        run()
+        self.assertEqual(sends, [])
+        self.assertFalse(self.endings)
+        self.assertTrue(self.current()[0]['agent_work']['publication'])
+        (self.mem/'want-work.stop').unlink()
+        run()
+        self.assertEqual(len(sends), 1)
+        self.assertEqual(calls.count('files.getUploadURLExternal'), 1)
+        self.assertEqual(len(self.endings), 1)
+
+    def test_default_delivery_rechecks_source_after_publication(self):
+        run, calls, sends, L = self.delivery_harness(change_source=True)
+        run()
+        self.assertEqual(sends, [])
+        self.assertFalse(self.endings)
+        self.assertEqual(list(L.load_receipts().values())[0]['state'], 'failed')
+
+    def test_default_delivery_requires_accepted_result(self):
+        run, calls, sends, L = self.delivery_harness()
+        def reject(system, user):
+            raw = json.dumps({'message':'The fixture needs another check.', 'accept':False})
+            return {'text':raw, 'observations':[]}
+        run(writer=reject)
+        self.assertEqual(sends, [])
+        self.assertFalse(self.endings)
+        self.assertNotIn('files.getUploadURLExternal', calls)
+        self.assertFalse(L.load_receipts())
 
     def test_real_partial_upload_retries_only_unconfirmed_file(self):
         import dot_channel as D

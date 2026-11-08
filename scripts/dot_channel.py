@@ -3038,6 +3038,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         block_notify = lambda key, message: block_deliver(key, "ntfy", message,
             title="Want needs attention", authority=lambda:(True, "bound want continuation or cost control"))
     calls_left = [2]
+    accepted_results = {}
     def decision(w, work, phase, trigger, instruction):
         if calls_left[0] <= 0:
             raise RuntimeError("working decisions used for this pass; retained")
@@ -3093,8 +3094,24 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
 
     if notify is None:
         from deliver import deliver
-        notify = lambda rid, summary, url: deliver("want-result:" + rid, "ntfy", summary + "\n" + url,
-                                                   title="I finished this", click=url)
+        def notify(rid, summary, url):
+            def authority():
+                ensure_running(want_agent.workspace())
+                # This pass accepted the exact result; publication must still
+                # belong to the same current source-bound working thread.
+                matches = [w for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', [])
+                           if (w.get('agent_work') or {}).get('request_id') == rid]
+                if len(matches) != 1:
+                    return False, "completion request is no longer unique and current"
+                w = matches[0]; a = w['agent_work']
+                accepted = accepted_results.get(rid)
+                ok = (accepted is not None and accepted == (summary, a.get('result'))
+                      and a.get('status') == 'result_ready' and bool(url)
+                      and (a.get('publication') or {}).get('url') == url
+                      and working.binding(w, state) is not None)
+                return bool(ok), "reviewed bound result with retained publication"
+            return deliver("want-result:" + rid, "ntfy", summary + "\n" + url,
+                           title="I finished this", click=url, authority=authority)
     if complete is None:
         import want_completion
         complete = lambda w, note: want_completion.complete(w, "fulfilled", "agent-work", note=note,
@@ -3136,7 +3153,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         if work is None: raise RuntimeError('result has no current want-room binding')
         trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
         chosen = decision(w, work, 'result', trigger, result)
-        if chosen['accept']: return chosen['message']
+        if chosen['accept']:
+            accepted_results[w['agent_work']['request_id']] = (chosen['message'], result)
+            return chosen['message']
         data = working.load(w, work, want_agent.workspace())
         if trigger not in data.get('returned_results', []):
             send_reply(w, work, chosen['message'], ':review:' + trigger)
