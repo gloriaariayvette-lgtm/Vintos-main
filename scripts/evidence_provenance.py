@@ -81,7 +81,7 @@ def normalize(envelope=None):
     if not isinstance(commitment, dict):
         return _unknown("capsule commitment is not an object")
     may = bool(envelope.get("may_witness")) and output == "ordinary_generation"
-    return {"schema": 1, "turn_id": turn_id, "surface": surface,
+    result = {"schema": 1, "turn_id": turn_id, "surface": surface,
             "input_provenance": "counterpart_verbatim",
             "output_provenance": output, "may_witness": may,
             "capsule_commitment": {
@@ -89,6 +89,10 @@ def normalize(envelope=None):
                 "capsule_sha256": str(commitment.get("capsule_sha256", ""))[:64],
             } if commitment else {},
             "envelope_state": str(envelope.get("envelope_state", "present"))[:40]}
+    if "witness_receipt" in envelope:
+        from witness_receipts import normalize_receipt
+        result["witness_receipt"] = normalize_receipt(envelope["witness_receipt"])
+    return result
 
 
 def output_can_witness(envelope=None, claim_kind=None):

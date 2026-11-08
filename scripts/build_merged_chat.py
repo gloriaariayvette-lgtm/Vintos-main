@@ -39,7 +39,8 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          "admitted", "offered", "withheld", "tactical",
          # what she sent and what she herself said: without these a photo's description reads as her words
          # to every reader of the merged file (Chat's subconscious review, 16 October)
-         "input_kind", "original_text")
+         "input_kind", "original_text", "witness_receipt", "context_receipt_id",
+         "character_influenced", "test_mode")
 # Where a per-turn time can legitimately live, in order of preference.
 TIME_KEYS = ("timestamp", "ts", "time", "at", "created")
 
