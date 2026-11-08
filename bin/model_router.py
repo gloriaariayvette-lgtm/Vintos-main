@@ -312,6 +312,7 @@ async def _grok_result(convo, params, endpoint, headers, model, system_text, res
         try: d = r.json()
         except Exception: d = None
     res = GR.from_openai(d, "xai")
+    res["requested_model"] = model
     if not res["model"]: res["model"] = model
     return res
 
@@ -521,6 +522,7 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
         except Exception: d = None
     if isinstance(d, dict): _log_usage(d)
     res = GR.from_anthropic(d)
+    res["requested_model"] = body["model"]
     if not res["model"]: res["model"] = body["model"]
     res["reasoning"] = "".join(b.get("thinking", "") for b in (d or {}).get("content", []) if b.get("type") == "thinking") if isinstance(d, dict) else ""
     return res
@@ -682,10 +684,15 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
     _left = max(ROUTE_FLOOR_S, ROUTE_BUDGET_S + ROUTE_FLOOR_S - (_rb_t.time() - _t0))
     return await grok_stage(why, timeout=_left)
 
-async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
+async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True, observer=None):
     """Returns (reply, reasoning, model_used). The grok path is the safety net.
     Thin view over route_reply_result for existing callers; raises when no stage produced text (as before)."""
     res = await route_reply_result(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason)
+    if observer is not None:
+        try:
+            observer(res)
+        except Exception:
+            pass  # shadow observation must never change the generation path
     if not GR.usable(res):
         raise RuntimeError("route_reply: %s %s: %s" % (res["provider"], res["status"], res["reason"]))
     return res["text"], res.get("reasoning", ""), res["route"]

@@ -26,6 +26,7 @@ def adapt(rows, kind):
         if not isinstance(row, dict):
             raise ValueError("record must be an object")
         out = dict(row)
+        out["_witness_adapter_kind"] = kind
         if kind == "ledger":
             # This census concerns finalized assistant acts, never her input text.
             out.update(role="assistant", content=row.get("vintos"))

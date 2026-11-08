@@ -47,7 +47,9 @@ retain the underlying reasons, counted per denied copy.
 
 For stores that append device marks, optional `witness_final_text` and
 `witness_final_sha256` preserve the exact producer-attested final response.
-Both must agree with each other and the generation receipt. They are carried
+Both must agree with each other and the generation receipt. Final text must
+equal stored content, except ledger rows may append device marks after it.
+Unrelated stored content is held even when the separate digest is valid. They are carried
 through the projection and used for scoring; no heuristic stripping or final
 payload backfill occurs. Producers still need to capture these at finalization.
 
@@ -156,3 +158,24 @@ Gloria's confirmation, and reference turns must stay separate from evaluation.
 Claude Code reviews this branch, runs the full isolated broker suite on an Aegis
 test merge, and handles reviewed integration. Gloria handles deployment. The
 ten-minute coordination heartbeat remains active between batches.
+
+
+## Capture increment in progress
+
+`scripts/witness_capture.py` is request-local, with no I/O or global mutable
+capture. The handler will observe results, explicitly select a raw reply after
+fallback/repeat decisions, then finalize the exact return text. A packet records
+`handed_to_framework` separately from `delivery: unknown`; it cannot claim
+delivery. Context and reply nodes are explicitly incomplete. Attempt-history
+coverage remains incomplete until every route/provider attempt is observed.
+
+`bin/gen_result.py` preserves observed response model metadata separately from
+the compatibility `model` field, which existing callers may fill from config.
+Configured names never become observed identity. The router's optional observer
+receives stage results without changing its return tuple or fallback behaviour;
+observer errors do not interrupt the reply. Raw result text is used only for
+transient selection hashes; capture copies no provider reason/tool text.
+
+This is the first capture increment: **server attachment after `guard_reply`, a
+private scratch sink and end-to-end handler tests are still pending**. The server
+twins have not been changed. No production capture is enabled by this branch.

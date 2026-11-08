@@ -138,8 +138,9 @@ def lineage_status(root, nodes, before):
             own = n["influence"]
             if any(n.get(k) for k in ("character_influenced", "tactical")):
                 own = "influenced"
-        elif kind == "ordinary_source" and any(k in n for k in (
-                "context_receipt_id", "generation_provenance", "output_provenance", "influence")):
+        elif kind == "ordinary_source" and (n.get("role") == "assistant" or any(k in n for k in (
+                "context_receipt_id", "generation_provenance", "output_provenance", "influence",
+                "turn_id", "reply_text", "response_sha256", "witness_receipt"))):
             # Generated outputs must use the reply contract, not an ordinary leaf.
             return "unknown"
         visiting.add(key)
@@ -168,6 +169,10 @@ def final_response(row):
     if "witness_final_text" in row or "witness_final_sha256" in row:
         text = row.get("witness_final_text")
         if not isinstance(text, str) or digest(text) != row.get("witness_final_sha256"):
+            return None
+        stored = row.get("content")
+        ledger = row.get("_witness_adapter_kind") == "ledger" or row.get("source") == "ledger"
+        if not isinstance(stored, str) or (stored != text and not (ledger and stored.startswith(text))):
             return None
         return text
     return row.get("content")

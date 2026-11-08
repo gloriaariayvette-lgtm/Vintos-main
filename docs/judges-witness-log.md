@@ -66,3 +66,30 @@ results for that earlier revision, not results for this fix commit. Locally,
 the affected isolated suites passed: witness 33/33, provenance 11/11, merged
 chat 30/30 and persistence sprint 21/21 (**95 checks**). No private inputs,
 model calls, live writes, merge or deployment. Re-review remains with Claude.
+
+
+## 8 November 2026 — offline approval and capture primitives
+
+Claude's note 4 approves c6591481 for the offline slice, reporting 591/591 and
+594/594 test-merge suites. Integration belongs to Claude; this checkout has not
+merged or deployed. The next increment is on `codex/judges-capture-hooks`, based
+on c6591481.
+
+The reviewer checked key presence only and reports that newly retained ancestry
+and exclusion keys are absent in live stores today. Once producers emit them,
+existing latent-feed/self-head evidence readers will exclude corresponding
+ineligible rows. That is the intended protection effect of preserving metadata;
+it is not a claim that those future exclusions have no downstream effect.
+
+Implemented the two carry-forward low findings: exact final text must agree with
+stored content (ledger-only suffix allowed), and reply-shaped ordinary-source
+nodes are held. Added a pure request-local capture object, observed identity
+metadata in response parsers, and an optional noninterfering router observer.
+Finalization keeps transport separate; context/reply ancestry and attempt
+coverage remain incomplete. No sink or server hook enabled yet.
+
+Focused OS-isolated checks: capture 8/8, witness 35/35, router regressions 15/15,
+entry owners 11/11 (**69 checks**). All fixtures/senders synthetic. Next: attach
+the request-local object and exact finalization to the handler after its final
+guard, test the complete path against stubs, and keep both server spellings in
+parity. No paid calls, real messages or live writes.

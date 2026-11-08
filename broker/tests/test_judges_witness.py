@@ -104,9 +104,16 @@ class WitnessTests(unittest.TestCase):
         self.row["witness_final_text"] = self.row["content"]
         self.row["witness_final_sha256"] = W.digest(self.row["content"])
         self.row["content"] += " [synthetic device annotation]"
+        self.assertEqual(self.admit(), "missing_final_response")
+        self.row["source"] = "ledger"
         self.assertEqual(self.admit(), "eligible")
         self.assertEqual(len(self.score()[1]), 1)
         self.row["witness_final_sha256"] = W.digest("a different synthetic final")
+        self.assertEqual(self.admit(), "missing_final_response")
+
+    def test_exact_final_text_cannot_substitute_unrelated_store_text(self):
+        self.row.update(source="ledger", witness_final_text="a different synthetic reply",
+                        witness_final_sha256=W.digest("a different synthetic reply"))
         self.assertEqual(self.admit(), "missing_final_response")
 
     def test_duplicate_hold_retains_copy_reason(self):
@@ -180,6 +187,13 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
     def test_lineage_root_must_be_context(self):
         self.nodes["context-1"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_reply_shaped_ordinary_leaf_is_unknown(self):
+        self.nodes["context-1"]["parents"] = ["pretend-source"]
+        for shape in ({"role": "assistant"}, {"turn_id": "prior-reply"}, {"reply_text": "synthetic"}):
+            self.nodes["pretend-source"] = dict(id="pretend-source", kind="ordinary_source",
+                                                at=80, complete=True, parents=[], **shape)
+            self.assertEqual(self.admit(), "unknown_lineage")
 
     def test_reply_node_propagates_direct_and_indirect_influence(self):
         self.nodes.update({
