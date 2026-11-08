@@ -7,7 +7,7 @@ Epistemics (Vrika): extracted patterns are OBSERVATIONS, not knowledge. falls-fl
 low-presence turns before it may steer. Every served hint gets an id + since in hint-ledger.json so
 hint_outcome_audit.py can grade whether steering actually helped (prediction -> intervention -> outcome)."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -34,7 +34,7 @@ AUDIT = os.path.join(MEMORY, "presence-audit.json")
 OUT = os.path.join(MEMORY, "interaction-model.json")
 LEDGER = os.path.join(MEMORY, "hint-ledger.json")
 GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 HI, LO, WINDOW = 0.72, 0.60, 40
 MIN_FLAT_EVIDENCE = 4
 # "What lands" needs as much as "what falls flat" (16 October, Chat's review: with no high-presence reply in the window,

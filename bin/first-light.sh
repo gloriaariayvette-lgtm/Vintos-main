@@ -102,7 +102,7 @@ user = (
 )
 
 r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
-    "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
+    "model": (__import__("os").environ.get("SUBCON_MODEL") or "aeon-gemma-4-12b"),
     "messages": [
         {"role": "system", "content": system},
         {"role": "user", "content": user}

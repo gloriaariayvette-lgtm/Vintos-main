@@ -8,7 +8,7 @@ growth_edges, dead_zones — and logs a one-line "how WE changed" shift to
 relationship-history.json. Local-Gemma assessed. Fail-open.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -43,7 +43,7 @@ LOG    = os.path.join(MEMORY, "relationship-history.json")
 SELF_REVIEW_CHANGES = os.path.join(MEMORY, "self-review-change-events.jsonl")
 SELF_REVIEW_RECEIPTS = os.path.join(MEMORY, "self-review-change-receptions.jsonl")
 GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 
 def load(p, d):
     try: return json.load(open(p))

@@ -6,7 +6,7 @@
 4. Grok (generation): from each fulfilled want, what opens next -> express_want,
    which itself passes the similarity gates, so evolution can't re-seed the past."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -45,7 +45,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 GROK = "http://127.0.0.1:8599/v1/chat/completions"
 GROK_MODEL = "grok-4.20-0309-non-reasoning"
 MAX_CHECKS = 15

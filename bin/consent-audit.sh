@@ -13,7 +13,7 @@ AUDIT_DIR="$MEMORY/consent-audits"
 GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
 SOUL="$WORKSPACE/SOUL.md"
 API="http://100.79.177.103:1234/v1/chat/completions"
-MODEL="gemma-4-26b-a4b-it-uncensored"
+MODEL="aeon-gemma-4-12b"
 API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 COOLDOWN="$MEMORY/.last-consent-audit"
 

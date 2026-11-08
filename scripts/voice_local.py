@@ -11,7 +11,7 @@ import base64, json, os, urllib.error, urllib.request
 
 STAGE = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
 LM = os.environ.get("VINTOS_MAC_LM_BASE_REMOTE", "http://100.79.177.103:1234").rstrip("/")
-BRAIN = os.environ.get("VINTOS_LOCAL_BRAIN", "gemma-4-26b-a4b-it-uncensored")
+BRAIN = os.environ.get("VINTOS_LOCAL_BRAIN", "aeon-gemma-4-12b")
 
 
 def _brain():

@@ -12,7 +12,7 @@ GLORIA_MODEL=$(head -30 "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null ||
 SOUL="$WORKSPACE/SOUL.md"
 COOLDOWN_FILE="$WORKSPACE/memory/.last-self-model"
 LM_URL="http://100.79.177.103:1234/v1/chat/completions"
-MODEL="gemma-4-26b-a4b-it-uncensored"
+MODEL="aeon-gemma-4-12b"
 LM_URL="${SUBCON_URL:-$LM_URL}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 # --- p3 (his countersigned restructure, 2026-08-27): fixed base + dated accretion ---
@@ -398,7 +398,7 @@ if not content:
     sys.exit(0)
 try:
     r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "aeon-gemma-4-12b"),
         "messages": [
             {"role": "system", "content": "You review a self-model update for quality. Your FIRST word must be PASS or FAIL, then a brief reason. You are not reviewing his taste or his voice: he writes warmly and that is not a fault. Fail only what is listed."},
             {"role": "user", "content": (

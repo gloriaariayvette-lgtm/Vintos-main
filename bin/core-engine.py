@@ -12,7 +12,7 @@ Usage:
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -288,7 +288,7 @@ NAME: [name]"""
 
         try:
             r = requests.post(_subcon_url(f"{LM_URL}/v1/chat/completions"),
-                json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"temperature":0.3,"max_tokens":150,
+                json={"model":_subcon_model("aeon-gemma-4-12b"),"temperature":0.3,"max_tokens":150,
                       "messages":[{"role":"user","content":prompt}]},
                 headers={"Authorization":"Bearer lm-studio"}, timeout=120)
             text = r.json()["choices"][0]["message"]["content"]

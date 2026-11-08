@@ -34,7 +34,7 @@ Schema (behavior-boundaries.json):
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -62,7 +62,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 VENV = os.path.join(WORKSPACE, "emotion_model/.venv/bin/python3")
 LM = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+MODEL = _subcon_model("aeon-gemma-4-12b")
 
 BOUNDARIES_FILE = os.path.join(MEMORY, "behavior-boundaries.json")
 DECAY_PER_HOUR = 0.001  # very slow drift toward baseline

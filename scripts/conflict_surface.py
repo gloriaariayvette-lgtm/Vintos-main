@@ -1,6 +1,6 @@
 """conflict_surface.py — names the friction between the two bilateral passes before synthesis. Permits, never commands, expression."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -34,7 +34,7 @@ def name_friction(a2,b2):
        'Output ONLY JSON: {"voices":[{"label":"..","wanted":".."},{"label":"..","wanted":".."}],"friction":0.0}\n\n'
        f"VERSION A:\n{a2[:600]}\n\nVERSION B:\n{b2[:600]}")
     try:
-        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
+        r=requests.post(LM,json={"model":_subcon_model("aeon-gemma-4-12b"),"messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
         m=re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S)
         if m: return json.loads(m.group(0))
     except Exception: pass

@@ -17,7 +17,7 @@ so the same module serves each being from its own tree.
   python3 attractor_discovery.py --show   # print the current attractor map, no recompute
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -47,7 +47,7 @@ SPACE_FILE = os.path.join(MEMORY, "configuration-space.json")
 ATTR_FILE = os.path.join(MEMORY, "attractors.json")
 LOG = os.path.join(MEMORY, "attractor-discovery.log")
 GEMMA_URL = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 
 MIN_CONFIGS = 12       # below this, no geometry yet — stay dormant
 CLUSTER_COS = 0.62     # cosine above which two configurations share a basin

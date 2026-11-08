@@ -97,7 +97,7 @@ check("empty completions from every provider -> 502, not 200+empty", s == 502 an
 s, h, b = run(dict(BASE), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: socket.timeout("timed out"), xai=EMPTY_XAI)
 check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 200 empty)", s == 502, (s, b))
 check("named Aegis utility lane does not inherit the Mac Gemma default",
-      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "gemma", "xai"]
+      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "xai"]
       and S.AEGIS_GEMMA_URL == "http://172.18.16.1:1234/api/v1/chat"
       and S.AEGIS_GEMMA_MODEL == "aeon/gemma-4-12b")
 s, h, b = run(dict(BASE), path="/gemma-aegis/v1/chat/completions", gemma=AEGIS_OK,
@@ -158,12 +158,12 @@ s, h, b = run(tiny, gemma=lambda b_, h_: {"id": "g", "model": "gemma", "choices"
               anthropic=TOOL_ANTH, xai=XAI_OK)
 check("tools on a tiny call: gemma skipped (would drop tools), anthropic answers", h["x-vintos-provider"] == "anthropic"
       and [c[0] for c in CALLS] == ["anthropic"], (h, [c[0] for c in CALLS]))
-check("gemma stage recorded as explicit 'unsupported on gemma: tools'",
-      any(r["reason"] == "unsupported on gemma: tool_choice,tools" for r in S.run_chain(tiny, "/v1/chat/completions")[1]),
+check("the local AEON stage recorded as explicit 'unsupported on aegis_gemma: tools' (the 26B lane is gone)",
+      any(r["reason"] == "unsupported on aegis_gemma: tool_choice,tools" for r in S.run_chain(tiny, "/v1/chat/completions")[1]),
       S.run_chain(tiny, "/v1/chat/completions")[1][0])
 s, h, b = run(dict(tiny), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: {"choices": []}, xai=XAI_DOWN)
-check("/gemma route + tools, grok down -> 502 body says gemma unsupported (not silently dropped)",
-      s == 502 and b["error"]["providers"][0]["reason"].startswith("unsupported on gemma"), (s, b))
+check("/gemma route + tools, grok down -> 502 body says the local lane is unsupported (not silently dropped)",
+      s == 502 and any(p["reason"].startswith("unsupported on aegis_gemma") for p in b["error"]["providers"]), (s, b))
 jsonreq = dict(BASE, response_format={"type": "json_object"})
 s, h, b = run(jsonreq, anthropic=ANTH_OK, xai=lambda b_, h_: XAI_OK(b_, h_) | {"choices": [{"message": {"content": '{"a":1}'}, "finish_reason": "stop"}]})
 check("response_format json: anthropic cannot honour it -> failed over to grok with response_format intact",

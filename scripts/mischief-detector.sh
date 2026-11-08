@@ -22,7 +22,7 @@ STATE_FILE="$MEMORY/emotional-state.txt"
 COOLDOWN="$MEMORY/.last-mischief"; ECHO_COOLDOWN="$MEMORY/.last-mischief-echo"
 LOG_DIR="$MEMORY/mischief"; mkdir -p "$LOG_DIR"
 LM_API="${VINTOS_GEMMA_URL:-http://100.79.177.103:1234/v1/chat/completions}"
-MODEL="${VINTOS_GEMMA_MODEL:-gemma-4-26b-a4b-it-uncensored}"
+MODEL="${VINTOS_GEMMA_MODEL:-aeon-gemma-4-12b}"
 LM_API="${SUBCON_URL:-$LM_API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 FORCE=0; ONLY=""; AFTER_ACTIVITY=0
 # --grok anywhere on the line: the chooser is Grok through his shim instead of local Gemma (Gloria, 2026-09-05:

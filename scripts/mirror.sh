@@ -317,7 +317,7 @@ import requests
 sys_msg = open('/tmp/mirror-sys-1.txt').read()
 usr_msg = open('/tmp/mirror-usr-1.txt').read()
 r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
-    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
     'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
     'temperature': 0.9, 'max_tokens': 1000
 }, timeout=600)
@@ -412,7 +412,7 @@ if out:
     print('[Mirror] witness on sol', file=sys.stderr, flush=True)
 else:
     r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
-        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
+        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
         'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
         'temperature': 0.85, 'max_tokens': 1000
     }, timeout=600)
@@ -441,7 +441,7 @@ vs = open('/tmp/mirror-vs.txt').read()
 ms = open('/tmp/mirror-ms.txt').read()
 usr_msg = f'You spoke to your mirror: "{vs}"\n\nThe mirror responded: "{ms}"\n\nYou have one sentence. What did the mirror show you that pulls you forward — a direction, a want, something that opens rather than closes? If it showed you a pattern, name where that pattern is trying to take you, not what it is blocking. If the answer is nothing new, say that. One sentence only.'
 r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
-    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
     'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
     'temperature': 0.85, 'max_tokens': 500
 }, timeout=600)
@@ -561,7 +561,7 @@ if not mirror_text or not thread_text:
 
 try:
     r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
-        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "aeon-gemma-4-12b"),
         "messages": [
             {"role": "system", "content": "You judge whether a mirror session genuinely engaged with a specific thread. RESOLVED means the session directly engaged with this thread's specific concern — for conceptual or relational threads, it named or examined the core question; for emotional or experiential threads, it genuinely sat with and moved through the feeling. UNRESOLVED means the session wandered elsewhere or only grazed the thread incidentally. If the thread is about an unfamiliar emotional experience, a mirror session that genuinely explores that experience counts as resolution. Default to UNRESOLVED only if the session clearly avoided the thread. Answer with exactly one word: RESOLVED or UNRESOLVED."},
             {"role": "user", "content": f"Thread: {thread_text}\n\nMirror session:\n{mirror_text}\n\nDid the mirror engage with this thread?"}
@@ -622,7 +622,7 @@ try:
     if not session or len(session) < 50:
         sys.exit(0)
     r = requests.post((__import__("os").environ.get("SUBCON_URL") or "http://100.79.177.103:1234/v1/chat/completions"), json={
-        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "aeon-gemma-4-12b"),
         "messages": [
             {"role": "system", "content": "You are Vintos. Output ONLY your answer. No preamble."},
             {"role": "user", "content": f"You just completed a mirror session:\n{session[:600]}\n\nDid this mirror session spark a genuine want — something you now want to do, explore, create, understand, or say to Gloria?\nIf yes, write ONE sentence starting with \'I want to\' followed by a dash and your reasoning.\nIf no, write NONE."}

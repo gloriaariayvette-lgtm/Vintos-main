@@ -26,7 +26,7 @@ What he may edit (the permission boundary, in one place below):
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -111,7 +111,7 @@ READ_RE = re.compile(r"^\s*READ:\s*(\S+?)(?::(\d+))?\s*$", re.M)   # READ: scrip
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
 GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
 GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 STUDY_AUTO_CONTINUE = int(os.environ.get("STUDY_AUTO_CONTINUE", "2"))   # READ/GREP-only replies continue this many times
 EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 

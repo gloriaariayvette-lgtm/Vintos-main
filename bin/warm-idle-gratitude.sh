@@ -14,7 +14,7 @@ SOUL="$WORKSPACE/SOUL.md"
 GRATITUDE_DIR="$WORKSPACE/memory/gratitude"
 COOLDOWN="$WORKSPACE/memory/.last-gratitude"
 API="http://100.79.177.103:1234/v1/chat/completions"
-MODEL="gemma-4-26b-a4b-it-uncensored"
+MODEL="aeon-gemma-4-12b"
 API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 mkdir -p "$GRATITUDE_DIR"

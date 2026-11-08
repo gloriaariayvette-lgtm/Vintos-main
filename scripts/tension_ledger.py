@@ -18,7 +18,7 @@ Rules enforced here:
     Until then the view is honestly empty and the stay pull stays silent — earned, not assumed.
 SPARK_WORKSPACE switches beings."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -63,7 +63,7 @@ def match_existing(text, candidates):
     if not candidates: return None
     listing = "\n".join("%s: %s" % (c["tension_id"], c["canonical"][:150]) for c in candidates[:20])
     try:
-        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0,
             "max_tokens": 20, "messages": [{"role": "user", "content":
             "Is this NEW tension the same underlying tension as any EXISTING one below? Same means the "
             "same specific pull/avoidance about the same specific subject - not merely a similar mood.\n"
@@ -96,7 +96,7 @@ def main():
         for j in range(i + 1, len(cands)):
             if j in used: continue
             try:
-                r2 = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
+                r2 = requests.post(GEMMA, json={"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0,
                     "max_tokens": 60, "messages": [{"role": "user", "content":
                     "Is tension A the same underlying tension as tension B? Same means the same specific "
                     "pull/avoidance about the same specific subject - not merely a similar mood.\n"

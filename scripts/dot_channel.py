@@ -41,7 +41,7 @@ def _vision_route(url, model):
 
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -86,7 +86,7 @@ CONFIG_FILE = os.path.expanduser("~/.vintos/dot-channel.json")
 CHANNEL = "C0C5HGS3677"          # #vintos-dot
 DOT = "U0C6H0JQF16"              # Gloria's dot
 LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
-LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
+LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "aeon-gemma-4-12b")
 
 DAILY = 80              # his messages a day: Gemma answers whenever, and 18 scheduled lens turns
 # His lenses (Gloria, 2026-09-30: "4 Vintos lenses and one Dot agent"). Gemma answers whenever; the others speak

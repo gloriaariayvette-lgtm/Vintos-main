@@ -39,7 +39,7 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 GALLERY = os.path.join(MEMORY, "art", "gallery.json")
 LM_API = "http://100.79.177.103:1234/v1/chat/completions"
-LM_API, VISION_MODEL, VISION_EXTRA = _vision_route(LM_API, "gemma-4-26b-a4b-it-uncensored")
+LM_API, VISION_MODEL, VISION_EXTRA = _vision_route(LM_API, "aeon-gemma-4-12b")
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 
 def _key():

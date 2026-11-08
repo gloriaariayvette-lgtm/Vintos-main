@@ -15,7 +15,7 @@ mechanisms are not independent: if removing one materially changes the explanato
 others, they are distinct and stay distinct.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -57,7 +57,7 @@ def _save(p, d): write_json(p, d)
 
 def _ask(prompt, max_tokens=400):
     import urllib.request
-    body = json.dumps({"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.2,
+    body = json.dumps({"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.2,
                        "max_tokens": max_tokens,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"),

@@ -32,7 +32,7 @@ Simulation (presence audits), Relational Geometry (never shown to him), Configur
 from __future__ import annotations
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -82,7 +82,7 @@ AXES = ("field",) + PEOPLE + ("self",)
 LM_URL = "http://127.0.0.1:8599/v1/chat/completions"          # intent_engine / desired_difference: the shim
 MODEL = "grok-4.20-0309-non-reasoning"                         # "shim routes this to his real model"
 GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")        # reciprocal_modification
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 STALE_DAYS = 14                                                 # desired_difference._live
 MAX_TURNS, MAX_DAYS, MAX_SUSP = 7, 3, 2                         # campaign
 RECIPROCAL_EVERY_S = 3600                                       # reciprocal_modification runs hourly

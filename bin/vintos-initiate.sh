@@ -454,7 +454,7 @@ API = "https://api.x.ai/v1/chat/completions" if __import__("os").environ.get("XA
 
 def call_llm_at(api, system, user, temp=0.8, max_tok=200):
     resp = paid_http.send(requests.post, 'vintos-initiate.sh', api, json={
-        "model": (__import__("os").environ.get("SUBCON_MODEL") or "gemma-4-26b-a4b-it-uncensored"),
+        "model": (__import__("os").environ.get("SUBCON_MODEL") or "aeon-gemma-4-12b"),
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": temp, "max_tokens": max_tok}, timeout=120)
     return ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()

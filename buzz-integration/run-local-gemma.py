@@ -5,7 +5,7 @@ Bubblewrap exposes only binaries, TLS roots and this agent's private workspace.
 The owner key, live house and other agent homes are not mounted.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -37,7 +37,7 @@ env={'HOME':'/workspace','PATH':'/app:/usr/bin:/bin',
  'BUZZ_AUTH_TAG':(identity/'auth.json').read_text().strip(),
  'BUZZ_RELAY_URL':'ws://100.72.225.119:8792','BUZZ_ACP_AGENT_OWNER':public['owner'],
  'BUZZ_AGENT_PROVIDER':'openai','OPENAI_COMPAT_API_KEY':'local-only','OPENAI_COMPAT_API':'chat',
- 'OPENAI_COMPAT_BASE_URL':_subcon_url('http://100.79.177.103:1234/v1/chat/completions').rsplit('/chat/completions',1)[0],'BUZZ_AGENT_MODEL':_subcon_model('gemma-4-26b-a4b-it-uncensored')}
+ 'OPENAI_COMPAT_BASE_URL':_subcon_url('http://100.79.177.103:1234/v1/chat/completions').rsplit('/chat/completions',1)[0],'BUZZ_AGENT_MODEL':_subcon_model('aeon-gemma-4-12b')}
 args=['bwrap','--unshare-all','--share-net','--die-with-parent','--new-session']
 for path in ['/usr','/lib','/lib64','/etc/ssl','/etc/resolv.conf','/etc/hosts']:
  if Path(path).exists():args+=['--ro-bind',path,path]
@@ -51,7 +51,7 @@ manifest=json.loads((h/'repos/vintos/buzz-integration/agents.json').read_text())
 prompt=next(row['instructions'] for row in manifest if row['id']=='gemma')
 args+=['/app/buzz-acp','--channels','9c8a20c4-9d1c-4ebe-8895-6745d38b4515,57ab7a2f-b925-4e7d-bfbd-471c305b8c57',
  '--agent-command','/app/buzz-agent','--agent-args=','--mcp-command','/app/buzz-dev-mcp',
- '--model',_subcon_model('gemma-4-26b-a4b-it-uncensored'),'--respond-to','owner-signed','--allowed-respond-to','owner-signed',
+ '--model',_subcon_model('aeon-gemma-4-12b'),'--respond-to','owner-signed','--allowed-respond-to','owner-signed',
  '--subscribe','mentions','--agents','1','--lazy-pool','--idle-pool-sleep','300',
  '--heartbeat-interval','0','--session-policy','thread','--multiple-event-handling','queue',
  '--idle-timeout','180','--max-turn-duration','600','--system-prompt',prompt]

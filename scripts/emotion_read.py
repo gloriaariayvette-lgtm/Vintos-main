@@ -2,7 +2,7 @@
 # emotion_read.py -- real-time content-driven emotion via the local LLM, scene-aware.
 import sys, json, socket, os, re, urllib.request
 LM_URL = "http://100.79.177.103:1234/v1/chat/completions"
-MODEL = "gemma-4-26b-a4b-it-uncensored"
+MODEL = "aeon-gemma-4-12b"
 try:   # the subconscious flag (subcon_target.py): the 26B above until Gloria flips it to AEON
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import subcon_target as _subcon

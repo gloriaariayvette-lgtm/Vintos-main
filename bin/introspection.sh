@@ -12,7 +12,7 @@ COOLDOWN_FILE="$WORKSPACE/memory/.last-introspection"
 GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
 SOUL="$WORKSPACE/SOUL.md"
 LM_URL="http://100.79.177.103:1234/v1/chat/completions"
-MODEL="gemma-4-26b-a4b-it-uncensored"
+MODEL="aeon-gemma-4-12b"
 LM_URL="${SUBCON_URL:-$LM_URL}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 
 mkdir -p "$INTRO_DIR"
@@ -408,7 +408,7 @@ HEADERS = {'Content-Type': 'application/json'}
 
 def call_llm(messages, temperature=0.85, max_tokens=1500):
     payload = json.dumps({
-        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
+        'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
         'messages': messages,
         'temperature': temperature,
         'max_tokens': max_tokens

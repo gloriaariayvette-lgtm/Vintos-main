@@ -4,7 +4,7 @@ INSTRUMENT ONLY: produces suspects, never merges. Catches the historical form of
 T-001 and T-042 describing one underlying pull across weeks. Pairwise over living tensions (cap 12),
 same standard as the matcher. Writes tension-collisions.json for examination. SPARK_WORKSPACE switches."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -40,7 +40,7 @@ if len([t for t in led["tensions"] if t["lifecycle"] in ("ACTIVE", "CARRIED")]) 
 suspects = []
 for a, b in combinations(living, 2):
     try:
-        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0,
             "max_tokens": 80, "messages": [{"role": "user", "content":
             "Is tension A the same underlying tension as tension B? Same means the same specific "
             "pull/avoidance about the same specific subject - not merely a similar mood.\n"

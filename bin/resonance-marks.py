@@ -28,7 +28,7 @@ Immutable once formed. Extremely rare.
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -141,7 +141,7 @@ def _weight_sentence(output_text):
     try:
         import urllib.request
         numbered = "\n".join(f"{i+1}. {x[:240]}" for i, x in enumerate(sentences[:14]))
-        body = json.dumps({"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 6,
+        body = json.dumps({"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0, "max_tokens": 6,
                            "messages": [{"role": "user", "content":
                                "Below are sentences from something Vintos wrote that resonated. Which ONE sentence carries the weight — "
                                "the line the whole thing turns on? Answer with its number only.\n\n" + numbered}]}).encode()

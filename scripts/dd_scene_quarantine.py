@@ -3,7 +3,7 @@
 priority competition. Not deleted, not converted to NO - flagged. Unjudgeable != failed != important.
 Weekly sweep; idempotent; only touches HELD entries lacking a flag."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -33,7 +33,7 @@ n = 0
 for e in dde:
     if not isinstance(e, dict) or str(e.get("verdict")) != "HELD" or "scene_quarantined" in e: continue
     try:
-        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 20,
+        r = requests.post(GEMMA, json={"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0, "max_tokens": 20,
             "messages": [{"role": "user", "content":
             "Was this transformation-target derived from inside an intimate/sexual scene (peaks, waves, "
             "unraveling, coming apart, touch, rhythm)? TARGET: " + str(e.get("intended", ""))[:250] +

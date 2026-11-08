@@ -9,7 +9,7 @@ Output: memory/humor-drafts.json (working material)
         memory/humor-profile.json (refined style)
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -55,7 +55,7 @@ def get_temporal_context():
 DRAFTS_FILE = os.path.join(MEMORY, "humor-drafts.json")
 PROFILE_FILE = os.path.join(MEMORY, "humor-profile.json")
 API = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+MODEL = _subcon_model("aeon-gemma-4-12b")
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 
