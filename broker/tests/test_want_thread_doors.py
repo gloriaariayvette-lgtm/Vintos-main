@@ -72,7 +72,7 @@ les = WL.lessons_from_attempts(w)
 check("each identified attempt is a lesson row: the step, the refused claim, the checkpoint in his words", [x["attempt"] for x in les] == ["step 0", "completion claimed", "checkpoint CP-1"] and "refused" in les[1]["finding"] and "renderer down" in les[2]["finding"], les)
 check("the learned item carries its attempts", '"attempts": lessons_from_attempts(w)' in src("scripts/want_learning.py"))
 rs = src("bin/wants-router.py")
-check("the router skips a PAUSED pursuit until its horizon, in any session", '_pp.get("state") == "PAUSED"' in rs and 'float(_pp.get("paused_until") or 0) > ' in rs and rs.index('_pp.get("state") == "PAUSED"') < rs.index("# 24-hour hold"))
+check("the router skips a PAUSED pursuit until its horizon, in any session", '_pp.get("state") == "PAUSED"' in rs and 'float(_pp.get("paused_until") or 0) > ' in rs and rs.index('_pp.get("state") == "PAUSED"') < rs.index('_in_progress = want.get("current_step_index", 0)'))
 
 print("\n--- 283: revise and compare drafts ---")
 AM = load("artifact_manifest", os.path.join(REPO, "scripts", "artifact_manifest.py"))

@@ -54,8 +54,8 @@ bound room thread:
 python3 scripts/want_agent.py result WA-<request-id> \
   --summary "What was actually made" \
   --acceptance "How the literal task was checked, and what remains uncertain" \
-  --artifact memory/art/example-score.txt \
-  --artifact memory/art/example-audio.wav
+  --artifact memory/want-artifacts/requests/WA-<request-id>/example-score.txt \
+  --artifact memory/want-artifacts/requests/WA-<request-id>/example-audio.wav
 ```
 
 `SPARK_WORKSPACE` selects scratch for development. The CLI refuses unknown
@@ -181,3 +181,39 @@ including direct paused-room, spoof-tag, task-pause, persistent-context, served
 identity, correction/delivery and owner-request restart cases. All model and
 transport calls were stubs. The matrix is recorded separately in
 `wants-working-thread-validation.json`; the original 863-check result is retained.
+
+
+## Review 13 repair batch: source binding and result freshness
+
+`codex/wants-review-repairs` rebases both wants commits onto 788439c9, preserving
+the old review branches. Both additive open-work conflicts were resolved by
+keeping the judges and wants sections. The obsolete comment-based incubation
+test now checks pause ordering against the actual incubation assignment.
+
+The agent lane now requires an operational journal/email want with an exact
+goal digest, source reference and matching source-event receipt. Dream, curiosity,
+room-derived and unmarked sources cannot request work, enter intake or reuse a
+queued request/working-thread exemption. The stored row is checked again under
+its update lock. All router fallback sites use the same predicate. No historical
+source receipt is invented; these checks affect the new agent lane only.
+
+Result files must be inside the exact request directory and have a modification
+time at or after its creation, bounded by the current clock. Old and unrelated
+shelf files are refused even with matching content hashes. Request control files
+(including the private working thread) are never deliverables. Hash checks and
+authenticated thread arrival still apply. These are filesystem provenance checks,
+not proof that an agent performed an adequate scientific or musical analysis.
+
+**Integration remains blocked:** context-limit continuation and owner notification,
+per-want/global daily budgets, dedicated kill switch, subscription-only default
+without paid fallback, and crash-repeat protection remain to be implemented. The
+previous 916-check matrix records the earlier tip, not acceptance of these repairs.
+No live stores, model calls, sends from tests, merge or deployment.
+
+This repair batch passes **408 isolated checks** across six suites: agent
+follow-through 37, room channel 320, thread doors 22, journal extraction 7,
+artifact guard 11 and entry ownership 11. Negative fixtures cover dream, curiosity,
+room-derived, absent/malformed/stale sources and existing queued work; positive
+fixtures cover bound journal and email tasks. Result fixtures reject old timestamps,
+foreign fresh shelves, future timestamps and private working-thread records.
+All transports/models were stubs. Full Aegis validation remains Claude's step.

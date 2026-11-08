@@ -6084,3 +6084,14 @@ approval and verified-delivery doors retained. 916 checks across 26 affected
 isolated suites pass. Independent Aegis full-suite review, external agent rule
 installation, Gloria's deploy and actual journal-want acceptance remain open.
 See `docs/wants-action-followthrough.md`. No live music task has been executed.
+
+
+## 8 November — wants review 13 repair status
+
+`codex/wants-review-repairs` is rebased on 788439c9 with both agents' open-work
+sections retained. Source-bound request/intake/thread admission, request-scoped
+fresh output verification and the obsolete incubation-test anchor are repaired.
+The stack is still **not ready to integrate**: explicit context continuation and
+owner notification, configurable call caps, kill switch, subscription-only default
+and crash-repeat protection remain open, followed by Claude's full Aegis review.
+See the repair batch in `docs/wants-action-followthrough.md`. No deployment.

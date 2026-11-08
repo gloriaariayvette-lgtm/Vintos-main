@@ -1385,6 +1385,8 @@ import want_working_thread as _WT
 _w_now = _time.time()
 _w_fixture = dict(id='fixture-bound-want', want='I want to run the synthetic audio analysis and export its score.',
                   journal_seeded=True, source='idle-journal', timestamp='2026-01-01T00:00:00')
+from journal_wants import source_receipt as _source_receipt
+_w_fixture.update(_source_receipt('journal', 'fixture-journal', _w_fixture['want']))
 _w_path = os.path.join(os.environ['SPARK_WORKSPACE'], 'memory', 'current-wants.json')
 json.dump([_w_fixture], open(_w_path, 'w'))
 _w_slack = Slack()

@@ -13,6 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import want_agent as A
+from journal_wants import source_receipt
 
 
 class Tests(unittest.TestCase):
@@ -26,6 +27,7 @@ class Tests(unittest.TestCase):
         self.want = dict(id='synthetic-want', want='I want to run an exact analysis on my synthetic audio and export the checked score.',
                          source='idle-journal', journal_seeded=True, timestamp='2026-11-08T14:00:00',
                          steps=[{'capability':'make_music'}], current_step_index=0)
+        self.want.update(source_receipt('journal','fixture-journal',self.want['want']))
         self.write('current-wants.json', [self.want]); self.write('fulfilled-wants.json', [])
         self.state = {}; self.posts=[]; self.published=[]; self.notifications=[]; self.endings=[]
         self.now = 2000000000.0
@@ -77,6 +79,44 @@ class Tests(unittest.TestCase):
         args.update(kw)
         return A.finish(self.state, now=self.now+2, ws=self.ws, **args)
 
+    def test_unbound_sources_cannot_request_or_intake_even_with_queued_work(self):
+        for source in ('dream', 'curiosity', 'vintos-dot', 'unknown', None, []):
+            w = dict(self.want, source=source)
+            self.write('current-wants.json', [w])
+            self.assertIsNone(A.request(w, 'missing capability', ws=self.ws), source)
+            w['agent_work'] = dict(request_id='WA-'+'a'*24, goal_sha256=A.fingerprint(w['want']),status='queued')
+            self.write('current-wants.json', [w])
+            self.intake()
+            self.assertEqual(self.posts, [], source)
+            self.assertFalse(self.state.get('room_work', {}).get('open'))
+        for field in ('source_refs', 'source_event_id'):
+            w = copy.deepcopy(self.want);w.pop(field)
+            self.write('current-wants.json', [w])
+            self.assertIsNone(A.request(w, ws=self.ws), field)
+            self.intake();self.assertEqual(self.posts, [])
+
+    def test_source_receipt_must_bind_current_goal_and_persisted_row(self):
+        w = dict(self.want, want='I want to buy a different synthetic task.')
+        self.assertFalse(A.specific(w))
+        forged = copy.deepcopy(self.want);forged['source_refs'][0]['text_sha256']='0'*64
+        self.write('current-wants.json', [forged])
+        self.assertIsNone(A.request(self.want, ws=self.ws))
+        self.assertNotIn('agent_work', self.current()[0])
+        self.intake();self.assertEqual(self.posts, [])
+
+    def test_email_bound_goal_can_enter_lane(self):
+        w = dict(self.want, source='email', journal_seeded=False, timestamp='2020-01-01T00:00:00')
+        w.update(source_receipt('email','fixture-mail', w['want']))
+        self.write('current-wants.json', [w]);self.intake()
+        self.assertEqual(len(self.posts), 1)
+
+    def test_bound_thread_loses_exemption_if_source_receipt_disappears(self):
+        import want_working_thread as working
+        self.intake();w=self.current()[0]
+        self.assertIsNotNone(working.binding(w,self.state,w['agent_work']['thread']))
+        w.pop('source_refs')
+        self.assertIsNone(working.binding(w,self.state,w['agent_work']['thread']))
+
     def test_exact_handoff_once_and_never_a_completed_step(self):
         self.assertTrue(A.bypass(self.want))
         self.intake(); self.intake()
@@ -116,9 +156,33 @@ class Tests(unittest.TestCase):
         self.want['want']='I want to buy an account for the synthetic analysis service.'
         A.request(self.want,ws=self.ws)  # wrong literal version is rejected
         self.assertNotIn('agent_work',self.current()[0])
+        self.want.update(source_receipt('journal','fixture-journal',self.want['want']))
         self.write('current-wants.json',[self.want]); A.request(self.want,'purchase',ws=self.ws)
         self.intake(); self.assertEqual(self.posts[0][1],'muse')
         self.assertIn('not permission to spend',self.posts[0][0])
+
+    def test_result_rejects_old_or_foreign_shelf_artifacts(self):
+        self.intake(); rec, artifact = self.result()
+        created = self.current()[0]['agent_work']['created_at']
+        os.utime(artifact, (created-60, created-60))
+        self.assertEqual(self.receive(), 0)
+        rec, artifact = self.result()
+        other = self.mem / 'art' / 'fresh-unbound.txt'; other.parent.mkdir()
+        other.write_text('Synthetic newly-created but unrelated result')
+        rec['artifacts'] = [dict(path=str(other.relative_to(self.ws)), sha256=hashlib.sha256(other.read_bytes()).hexdigest())]
+        (artifact.parent/'result.json').write_text(json.dumps(rec))
+        self.assertEqual(self.receive(), 0)
+        self.finish(); self.assertEqual(self.published, [])
+
+    def test_result_cannot_publish_private_working_thread_or_future_timestamp(self):
+        self.intake(); rec, artifact = self.result()
+        private = artifact.parent/'working-thread.json'
+        rec['artifacts'] = [dict(path=str(private.relative_to(self.ws)), sha256=hashlib.sha256(private.read_bytes()).hexdigest())]
+        (artifact.parent/'result.json').write_text(json.dumps(rec))
+        self.assertEqual(self.receive(), 0)
+        _, artifact = self.result()
+        os.utime(artifact, (A.time.time()+86400, A.time.time()+86400))
+        self.assertEqual(self.receive(), 0)
 
     def test_result_needs_real_unchanged_files(self):
         self.intake(); _, artifact=self.result(); artifact.write_text('changed')

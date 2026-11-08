@@ -12,7 +12,8 @@ import uuid
 
 
 def binding(want, state, thread=None, *, respect_pause=True):
-    from want_agent import fingerprint
+    from want_agent import fingerprint, specific
+    if not specific(want): return None
     a = want.get('agent_work') or {}
     pursuit = want.get('pursuit') or {}
     if respect_pause and pursuit.get('state') == 'PAUSED' and float(pursuit.get('paused_until') or 0) > time.time():
