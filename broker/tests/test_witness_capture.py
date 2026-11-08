@@ -84,6 +84,16 @@ class Tests(unittest.TestCase):
         r = c.finalize("final", 110)["witness_receipt"]
         self.assertEqual([a["outcome"] for a in r["generation"]["attempts"]], ["discarded", "selected"])
 
+    def test_equal_text_cannot_identify_which_attempt_was_selected(self):
+        for same_model in (True, False):
+            with self.subTest(same_model=same_model):
+                c = Capture("turn-1", "fixture-chat", 100)
+                c.observe(result("identical synthetic reply", actual="fixture-first"))
+                c.observe(result("identical synthetic reply", actual=(
+                    "fixture-first" if same_model else "fixture-second")))
+                c.select("identical synthetic reply")
+                self.assertEqual(c.finalize("synthetic final", 110)["witness_receipt"]["status"], "unknown")
+
     def test_router_observer_is_optional_and_noninterfering(self):
         # Execute only the wrapper with an async recorder; never import provider clients.
         tree = ast.parse((ROOT / "bin/model_router.py").read_text())

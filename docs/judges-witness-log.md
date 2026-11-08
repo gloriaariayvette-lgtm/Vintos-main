@@ -144,3 +144,19 @@ canonical avatar writer runs before the handler's last reply guard: a future
 source-store integration cannot blindly attach a later final-text receipt to
 earlier stored content. Exact binding and a separate delivery receipt remain
 required. These are source findings, not measurements of private records.
+
+## 8 November 2026 — ambiguous attempt selection remains unknown
+
+Source review and a pure synthetic reproduction exposed an attribution ambiguity:
+two distinct observed attempts with identical raw text were resolved to the last
+one. The handler currently supplies text, not a selected attempt ID, so that
+choice was unsupported. Capture now requires a unique raw-text match; otherwise
+the generation receipt stays unknown. Same-model duplicate attempts are also
+ambiguous. No reply, routing, legacy eligibility or feed changes.
+
+This is a conservative stopgap until explicit per-invocation identity is passed
+by the handler; it does not claim complete fallback coverage. The prior hook tip
+stays fixed for review; this follow-up is on `codex/judges-capture-replay`.
+Validation: capture 9/9, hook integration 7/7, offline capture replay 6/6 and
+ownership 11/11: **33 OS-isolated checks passed**. Reports regenerated; whitespace
+clean. No real data, provider calls or live changes.

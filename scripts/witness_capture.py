@@ -60,7 +60,10 @@ class Capture:
             raise ValueError("capture already finalized")
         fingerprint = digest(raw_reply) if isinstance(raw_reply, str) and raw_reply else None
         matches = [a for a in self._attempts if fingerprint and a["_raw_sha256"] == fingerprint]
-        self._selected = matches[-1]["attempt_id"] if matches else None
+        # Equal text is not an attempt identity. In particular, an observed
+        # retry may be discarded by the handler. Until it supplies an explicit
+        # attempt ID, ambiguous matches must not guess the served generator.
+        self._selected = matches[0]["attempt_id"] if len(matches) == 1 else None
 
     def finalize(self, final_text, finalized_at, transport="unknown"):
         """No delivery inference. Initial context ancestry is explicitly incomplete."""

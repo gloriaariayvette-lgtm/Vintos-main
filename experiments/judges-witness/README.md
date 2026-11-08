@@ -176,6 +176,9 @@ Configured names never become observed identity. The router's optional observer
 receives stage results without changing its return tuple or fallback behaviour;
 observer errors do not interrupt the reply. Raw result text is used only for
 transient selection hashes; capture copies no provider reason/tool text.
+Selection by raw text is accepted only when exactly one observed attempt
+matches. Identical text from multiple attempts remains unknown, even when their
+model labels agree; explicit selected-attempt identity is still future work.
 
 Capture is disabled by default. The optional sink requires
 `JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to name the same existing, resolved,
