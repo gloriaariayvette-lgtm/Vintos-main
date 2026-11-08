@@ -144,6 +144,9 @@ def lineage_status(root, nodes, before):
             return "unknown"
         if any(not isinstance(p, str) or not p for p in parents):
             return "unknown"
+        if not parents and kind != "ordinary_source":
+            # Empty generated ancestry is missing evidence, not a clean base case.
+            return "unknown"
         own = "influenced" if kind in INFLUENCING else "clean"
         if kind == "reply":
             context_id = n.get("context_receipt_id")

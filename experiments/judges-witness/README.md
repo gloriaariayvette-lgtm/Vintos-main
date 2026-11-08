@@ -294,3 +294,16 @@ one external fragment does not establish the origin of framing, images,
 subconscious material or history. This is a producer attestation based on an
 explicit client field, not independent authentication of the words. Binding
 errors affect observation only; ordinary reply generation and feeds are unchanged.
+
+### Parentless generated ancestry
+
+A complete flag with an empty parent list is insufficient for any generated
+node kind, including context and value-map nodes. Such a leaf remains unknown;
+only an explicitly attested allowlisted external source can end a clean chain.
+An external sibling does not compensate for a missing generated ancestor.
+`operator_configuration` means static operator configuration only; generated
+self-model/context content must retain its generated parents.
+
+The separate production capture proposal is
+[documented here](../../docs/judges-capture-enable-proposal.md). The current
+scratch sink must not be enabled on a serving process by changing its workspace.

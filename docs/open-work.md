@@ -1,3 +1,14 @@
+## 8 November — shadow witness ancestry and enablement boundary
+
+On `codex/judges-ancestry-leaves`, parentless generated nodes remain unknown;
+clean synthetic ancestry now ends in an explicit external source. No existing
+feed or live eligibility is changed. [Review log](judges-witness-log.md) records
+106 isolated checks. [Production enablement proposal](judges-capture-enable-proposal.md)
+is separate and disabled; do not repoint the serving workspace to use a scratch
+capture flag. Reviewer-provided private census remains zero strict-eligible
+turns. Paired innovation controls, complete producer ancestry, production sink
+implementation and full Aegis review remain open.
+
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 
 - **F-c3b63fc7a2, "Lab running, and no review for 16 hours" — fixed in source, waiting for a deploy.** The Lab was

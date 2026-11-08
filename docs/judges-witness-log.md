@@ -274,3 +274,27 @@ include Unicode spans, structured text beside an image, missing and duplicated
 originals, stale bindings, retries, and observation failure leaving the reply
 unchanged. Reports regenerated; whitespace clean. This validates synthetic
 contracts, not real-turn eligibility or a full serving HTTP request.
+
+## 8 November 2026 — parentless generated ancestry repaired
+
+Claude note 10 confirmed the source-origin increment integrated at 239c3467 and
+identified a remaining clean-base-case error: a parentless value-map/context
+node could still terminate the graph as clean. On the new stacked branch
+`codex/judges-ancestry-leaves`, all parentless non-external node kinds now remain
+unknown. Only an allowlisted ordinary-source node with its exact source hash can
+terminate a clean ancestry chain. An external sibling cannot hide the missing
+parents, in either traversal order. Synthetic clean controls now explicitly
+include their external source; the memoized deep-DAG and indirect-influence
+controls still pass with complete fixtures.
+
+No historical data, served model, delivery or ancestry is fabricated. This only
+changes the new shadow reader, not the existing feeds/eligibility rules. Sealed
+experiments are untouched. The dedicated production enablement proposal is
+`docs/judges-capture-enable-proposal.md`; it explicitly forbids setting the
+scratch workspace variables on a serving service. No enablement is performed.
+Claude's real-copy census/timing results are attributed to his note, not rerun.
+
+Validation: witness 40/40, replay adapter 6/6, capture 24/24, handler/sink 14/14,
+existing provenance 11/11 and ownership 11/11: **106 isolated checks passed**.
+Generated reports and whitespace are clean. Full Aegis suite/review remain
+Claude's step; no live writes, enablement, merge or deployment.

@@ -31,7 +31,8 @@ def fixture(turn="fixture-turn", start=100, final=110):
                "turn_id": turn, "output_provenance": "ordinary_generation", "may_witness": True},
            "witness_receipt": receipt}
     nodes = {"context-1": {"id": "context-1", "kind": "context", "at": 90,
-                           "complete": True, "parents": []}}
+                           "complete": True, "parents": ["external-0"]},
+             "external-0": W.source_node("external-0", "counterpart_verbatim", 0, "Synthetic input.")}
     forecast = {"turn_id": turn, "surface": "fixture-chat", "mode": "on_message", "ts": start + 1,
                 "arrived_at": start - 1, "self": {"emb": [1., 0.], "mode": "on_message",
                     "source": "fixture-self", "checkpoint_id": "fixture-checkpoint", "context_last_ts": 80}}
@@ -188,8 +189,26 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
     def test_effect_through_value_map(self):
         self.nodes["context-1"]["parents"] = ["map"]
         self.nodes["map"] = {"id": "map", "kind": "value_map", "at": 70, "complete": True, "parents": ["effect"]}
-        self.nodes["effect"] = {"id": "effect", "kind": "behaviour_receipt", "at": 60, "complete": True, "parents": []}
+        self.nodes["effect"] = {"id": "effect", "kind": "behaviour_receipt", "at": 60, "complete": True, "parents": ["external-0"]}
         self.assertEqual(self.admit(), "influenced_lineage")
+
+    def test_parentless_generated_nodes_are_unknown(self):
+        for kind in sorted(W.KINDS - {"ordinary_source"}):
+            with self.subTest(kind=kind):
+                nodes = copy.deepcopy(self.nodes)
+                nodes["context-1"]["parents"] = ["empty"]
+                nodes["empty"] = {"id": "empty", "kind": kind, "at": 80, "complete": True, "parents": []}
+                self.assertEqual(W.lineage_status("context-1", nodes, 100), "unknown")
+        self.nodes["context-1"]["parents"] = []
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_external_sibling_cannot_launder_parentless_value_map(self):
+        self.nodes["map"] = {"id": "map", "kind": "value_map", "at": 80, "complete": True, "parents": []}
+        for parents in (["external-0", "map"], ["map", "external-0"]):
+            self.nodes["context-1"]["parents"] = parents
+            self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["map"]["parents"] = ["external-0"]
+        self.assertEqual(self.admit(), "eligible")
 
     def test_external_source_requires_origin_and_exact_version(self):
         self.nodes["context-1"]["parents"] = ["external"]
@@ -235,7 +254,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
 
     def test_reply_node_propagates_direct_and_indirect_influence(self):
         self.nodes.update({
-            "old-context": {"id": "old-context", "at": 60, "kind": "context", "parents": [], "complete": True},
+            "old-context": {"id": "old-context", "at": 60, "kind": "context", "parents": ["external-0"], "complete": True},
             "old-reply": {"id": "old-reply", "at": 70, "kind": "reply", "parents": ["old-context"],
                           "context_receipt_id": "old-context", "turn_id": "old-turn", "influence": "influenced", "complete": True}})
         self.nodes["context-1"]["parents"] = ["old-reply"]
@@ -245,7 +264,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(self.admit(), "influenced_lineage")
         del self.nodes["old-reply"]["character_influenced"]
         self.nodes["old-context"]["parents"] = ["effect"]
-        self.nodes["effect"] = {"id": "effect", "at": 50, "kind": "judge_effect", "parents": [], "complete": True}
+        self.nodes["effect"] = {"id": "effect", "at": 50, "kind": "judge_effect", "parents": ["external-0"], "complete": True}
         self.assertEqual(self.admit(), "influenced_lineage")
         self.nodes["old-reply"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
@@ -261,6 +280,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             key = str(i)
             nodes[key] = {"id": key, "at": i, "kind": "context", "complete": True,
                           "parents": [str(i - 1)] * 2 if i else []}
+        nodes["0"] = W.source_node("0", "sensor_observation", 0, "Synthetic observation.")
         self.assertEqual(W.lineage_status("59", nodes, 100), "clean")
         self.assertLess(nodes.calls, 200)
         nodes["59"]["parents"] = ["58", "earlier-parent"]
