@@ -303,6 +303,7 @@ class Capture:
                                           ("router_result", "context_selection", "finalization_boundary")]}] + self._nodes,
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
+                             "response_sha256": digest(final_text),
                              "context_receipt_id": self.context_id,
                              "parents": [self.context_id, self._finalization_nodes[-1]["id"]],
                              "influence": "unknown"}})

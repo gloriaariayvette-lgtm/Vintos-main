@@ -6327,3 +6327,13 @@ capture/private-packet/CLI-replay test. Request identity survives, relay claims
 stay unknown, and delivery alone does not admit incomplete ancestry. All 9
 capture/replay integration tests pass; production code unchanged from ef2c9c8d.
 Independent review/full Aegis validation remain pending.
+
+
+## 8 November — explicit final-reply ancestry
+
+`codex/judges-final-reply-lineage` prevents a clean prompt context from clearing
+an explicitly supplied influenced/unknown final-output node. Exact reply/version
+and graph bindings are checked; capture records the digest and merge retains the
+node. Absent optional nodes remain `not_supplied`, with no historical backfill.
+236 affected isolated checks pass. Existing live evidence readers/feeds unchanged;
+independent review/full Aegis validation remain pending.

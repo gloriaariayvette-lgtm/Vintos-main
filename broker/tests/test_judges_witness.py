@@ -435,6 +435,50 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(coverage["receipt"], "unknown")
         self.assertEqual(coverage["request_binding"], "not_evaluated")
 
+    def target_reply_node(self, influence="clean"):
+        node = {"id": "fixture-final-reply", "kind": "reply", "turn_id": self.row["turn_id"],
+                "context_receipt_id": "context-1", "at": 110, "complete": True,
+                "parents": ["context-1"], "influence": influence,
+                "response_sha256": self.row["witness_receipt"]["response_sha256"]}
+        self.row["reply_node"] = node
+        self.nodes[node["id"]] = node
+        return node
+
+    def test_explicit_final_reply_effect_cannot_hide_behind_clean_prompt(self):
+        node = self.target_reply_node()
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "eligible")
+        node["influence"] = "influenced"
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "influenced_reply_lineage")
+        node["influence"] = "unknown"
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        node["influence"] = "clean"
+        node["parents"].append("effect-final")
+        self.nodes["effect-final"] = {"id": "effect-final", "kind": "judge_effect", "at": 105,
+            "complete": False, "parents": []}
+        summary, rows = R.census([("canonical", [self.row])], self.nodes, 1000)
+        self.assertEqual(rows, [])
+        self.assertEqual(summary["held"], {"influenced_incomplete_reply_lineage": 1})
+        self.assertEqual(summary["evidence_coverage"]["fields"]["context_lineage"], {"clean": 1})
+        self.assertEqual(summary["evidence_coverage"]["fields"]["final_reply_lineage"], {"influenced_incomplete": 1})
+
+    def test_final_reply_node_requires_exact_target_and_graph_binding(self):
+        node = self.target_reply_node()
+        for key, value in (("turn_id", "other"), ("context_receipt_id", "other"),
+                           ("response_sha256", W.digest("other")), ("at", 109),
+                           ("kind", "ordinary_source")):
+            with self.subTest(key=key):
+                changed = dict(node, **{key: value})
+                row = dict(self.row, reply_node=changed)
+                nodes = dict(self.nodes, **{node["id"]: changed})
+                self.assertEqual(W.admission(row, nodes, 1000), "unknown_reply_lineage")
+        self.assertEqual(W.admission(self.row, {}, 1000), "unknown_lineage")
+        self.nodes.pop(node["id"])
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        self.nodes[node["id"]] = dict(node, influence="influenced")
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        for bad in (None, [], "unknown"):
+            self.assertEqual(W.admission(dict(self.row, reply_node=bad), self.nodes, 1000), "unknown_reply_lineage")
+
     def test_ledger_and_missing_sources(self):
         ledger = dict(self.row, vintos=self.row["content"])
         del ledger["role"]; del ledger["content"]

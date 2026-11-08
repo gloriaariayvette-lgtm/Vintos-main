@@ -33,6 +33,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(before["before_sha256"], digest("synthetic raw"))
         self.assertEqual(before["response_sha256"], final["before_sha256"])
         self.assertEqual(final["response_sha256"], digest("synthetic guarded"))
+        self.assertEqual(p["reply_node"]["response_sha256"], digest("synthetic guarded"))
         self.assertEqual(final["parents"], [before["id"]])
         self.assertIn(final["id"], p["reply_node"]["parents"])
         self.assertTrue(before["changed"] and final["changed"])

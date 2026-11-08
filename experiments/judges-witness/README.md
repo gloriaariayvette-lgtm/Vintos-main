@@ -616,7 +616,7 @@ not evidence that a source stream is complete.
 Receipt state is `absent`, `unknown`, `conflicting` or `recorded`. Only an agreeing
 recorded receipt supplies further field observations: row identity/surface binding,
 observed selected generator, selected request/input-hash binding, delivery state,
-exact response binding, and context-lineage standing. An absent, malformed or
+exact response binding, context-lineage standing, and supplied final-reply lineage. An absent, malformed or
 conflicting receipt leaves those fields `not_evaluated`. A recorded request
 binding means the receipt names the request and valid hash; it does not verify
 the original provider input or claim complete provider-attempt coverage.
@@ -644,3 +644,22 @@ Duplicate-key diagnostics deliberately omit the key and values. Valid JSON with
 malformed evidence records still follows the existing held/counting contracts;
 this does not repair records, alter live-store readers or change scoring for
 valid evidence. All earlier private snapshot and aggregate-publication rules apply.
+
+
+### Supplied final-reply ancestry also constrains the strict reader
+
+A clean pre-generation context cannot clear an explicitly supplied influenced or
+unknown final reply. When a row contains `reply_node`, the strict reader requires
+its ID to resolve to the same complete JSON node in the supplied graph; its turn,
+context, response digest and final timestamp must match the generation receipt.
+It then evaluates that reply's ancestry through finalization time, separately
+from the prompt-context check at generation start. Finalization effects and
+unknown editors therefore cannot disappear behind a clean prompt reference.
+
+The scratch capture adds the exact final response digest to its reply node. The
+merged projection carries a supplied reply node without rewriting it. Existing
+live evidence consumers are unchanged. Missing, stale, malformed or conflicting
+supplied nodes remain unknown; influenced descendants remain excluded from this
+strict offline reader. Older rows without this optional node retain their previous
+admission contract; coverage labels them `not_supplied`, never a proved clean
+finalization. Existing captures with incomplete ancestry remain unqualified.

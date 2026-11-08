@@ -675,3 +675,27 @@ file is mode 0600. All 9 capture/replay integration tests pass. The production c
 is unchanged from ef2c9c8d (its earlier 160-check validation is not a new run here).
 Reports regenerated and whitespace checked. No private data, model calls, test
 sends, live writes, merge or deploy; independent full Aegis review remains pending.
+
+
+## 8 November — honor explicitly supplied final-reply ancestry
+
+`codex/judges-final-reply-lineage` continues from 8299a02e, keeping earlier review
+tips fixed. Two new synthetic regression methods exposed seven failed assertions:
+a clean pre-generation context could admit a supplied final reply node whose
+own influence, version binding or graph record contradicted that admission.
+
+The strict reader now checks supplied reply nodes against the exact turn, context,
+response hash, final timestamp and retained graph, then traverses final-output
+ancestry through finalization time. Prompt-context traversal retains its previous
+start-time boundary and context-root requirement. The scratch producer records
+the reply-node response hash; merged-chat carries the optional node unchanged.
+Coverage reports final-reply standing separately; absent optional nodes remain
+`not_supplied` and retain their prior admission contract. No missing history is
+backfilled and no live consumer's evidence rule is changed.
+
+236 isolated checks pass: witness 98, capture 27, replay adapter 9, hooks 18,
+merge retention 31, provenance 11, evidence view 31, ownership 11. Regressions
+cover direct/finalization influence, unknowns, stale versions, mismatched graph,
+malformed node shapes and the clean control. Reports regenerated and whitespace
+checked. No private input read, model calls, real test sends, live-store writes,
+merge or deploy. Independent full Aegis review remains pending.

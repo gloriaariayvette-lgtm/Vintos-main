@@ -4,6 +4,7 @@ This instrument does not change legacy evidence eligibility or any live feed.
 Receipt producers must supply observed facts; configured models are not served models.
 """
 import hashlib
+import json
 import math
 from datetime import datetime
 
@@ -118,6 +119,11 @@ def receipt(turn_id, surface, started_at, finalized_at, final_response,
 
 
 def lineage_status(root, nodes, before):
+    """Context-root ancestry; a reply cannot masquerade as a prompt context."""
+    return _lineage_status(root, nodes, before, "context")
+
+
+def _lineage_status(root, nodes, before, root_kind):
     """Memoize within a depth budget; check every edge clock before cache reuse."""
     try:
         root, before = _name(root), instant(before)
@@ -125,7 +131,7 @@ def lineage_status(root, nodes, before):
         return "unknown"
     if not isinstance(nodes, dict) or not isinstance(nodes.get(root), dict):
         return "unknown"
-    if nodes[root].get("kind") != "context":
+    if nodes[root].get("kind") != root_kind:
         return "unknown"
     memo, visiting = {}, set()
 
@@ -236,6 +242,25 @@ def envelope_status(row):
     return "explicit_witness"
 
 
+def final_reply_status(row, nodes, r):
+    """Honor explicitly supplied final-output ancestry, bound to this exact reply."""
+    try:
+        node = row["reply_node"]
+        if not isinstance(node, dict) or not isinstance(nodes, dict):
+            return "unknown"
+        key = _name(node["id"])
+        if (node.get("kind") != "reply" or node.get("turn_id") != r["turn_id"]
+                or node.get("context_receipt_id") != r["context_receipt_id"]
+                or node.get("response_sha256") != r["response_sha256"]
+                or instant(node.get("at")) != r["finalized_at"]):
+            return "unknown"
+        if json.dumps(node, sort_keys=True, allow_nan=False) != json.dumps(nodes.get(key), sort_keys=True, allow_nan=False):
+            return "unknown"
+        return _lineage_status(key, nodes, r["finalized_at"], "reply")
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return "unknown"
+
+
 def admission(row, nodes, cutoff):
     if not isinstance(row, dict) or row.get("role") != "assistant":
         return "not_reply"
@@ -285,7 +310,13 @@ def admission(row, nodes, cutoff):
     if selected["served_model"] is None:
         return "unknown_served_model"
     state = lineage_status(r["context_receipt_id"], nodes, r["started_at"])
-    return "eligible" if state == "clean" else state + "_lineage"
+    if state != "clean":
+        return state + "_lineage"
+    if "reply_node" in row:
+        state = final_reply_status(row, nodes, r)
+        if state != "clean":
+            return state + "_reply_lineage"
+    return "eligible"
 
 
 def row_receipt(row):

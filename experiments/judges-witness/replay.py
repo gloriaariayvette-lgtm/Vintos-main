@@ -16,7 +16,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status
+from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
 def adapt(rows, kind):
@@ -95,7 +95,7 @@ def evidence_coverage(row, nodes):
     status = ("absent" if not receipts else "conflicting" if any(r != receipts[0] for r in receipts)
               else "recorded" if receipts[0]["status"] == "recorded" else "unknown")
     result = dict.fromkeys(("identity_binding", "served_identity", "request_binding",
-                           "delivery", "response_binding", "context_lineage"), "not_evaluated")
+                           "delivery", "response_binding", "context_lineage", "final_reply_lineage"), "not_evaluated")
     result["receipt"] = status
     if status != "recorded":
         return result
@@ -109,7 +109,8 @@ def evidence_coverage(row, nodes):
         request_binding="recorded" if selected.get("request_id") and selected.get("input_sha256") else "unknown",
         delivery=r["delivery"],
         response_binding="matched" if isinstance(text, str) and digest(text) == r["response_sha256"] else "missing_or_changed",
-        context_lineage=lineage_status(r["context_receipt_id"], nodes, r["started_at"]))
+        context_lineage=lineage_status(r["context_receipt_id"], nodes, r["started_at"]),
+        final_reply_lineage=final_reply_status(row, nodes, r) if "reply_node" in row else "not_supplied")
     return result
 
 

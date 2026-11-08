@@ -41,7 +41,7 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          # to every reader of the merged file (Chat's subconscious review, 16 October)
          "input_kind", "original_text", "witness_receipt", "context_receipt_id",
          "character_influenced", "test_mode", "generated_output_witness_eligible",
-         "witness_final_text", "witness_final_sha256", "witness_origin_source", "derived_from", "parents", "ancestors",
+         "witness_final_text", "witness_final_sha256", "witness_origin_source", "reply_node", "derived_from", "parents", "ancestors",
          "evidence_standing", "dream_only", "imported", "transplanted", "timestamp_estimated",
          "forgotten", "deleted")
 # Where a per-turn time can legitimately live, in order of preference.
