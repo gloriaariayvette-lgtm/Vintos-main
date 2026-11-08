@@ -197,7 +197,7 @@ def reconcile(want, work, ws, call_id, outcome, evidence, response=None):
         if outcome=='observed':
             # Operator-supplied recovery is not observed provider identity.
             observation=dict(text=response,status='valid',identity_evidence='unknown',
-                             lane=item.get('active_lane','unknown'))
+                             lane='unknown',origin='operator_recovery')
             item.update(state='response_observed',result={'text':response,'observations':[observation]})
         else:
             item.update(state='retry',retry_after=0)
@@ -292,12 +292,15 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
         if len(system) + len(RULES) + len(user) > policy(ws)['context_chars']:
             raise WorkBlocked('context_needs_continuation')
         now = time.time(); run = str(uuid.uuid4())
+        handler_input = dict(system=system + '\n\n' + RULES,
+                             messages=[{'role':'user','content':user}], params={}, reason='want_work')
         def intent(current):
             old = current['generations'].get(key) or {}
             if old.get('state') in ('running','uncertain','response_observed','done'):
                 raise WorkBlocked('working_call_already_recorded')
             current['generations'][key] = dict(state='running',request_id=run,at=now,
                                                attempts=old.get('attempts', []),observations=[],
+                                               handler_input=deepcopy(handler_input),
                                                reconciliation_history=old.get('reconciliation_history', [])
                                                + ([old['reconciliation']] if old.get('reconciliation') else []))
         _mutate(want, work, ws, intent)
@@ -315,10 +318,10 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
             _mutate(want, work, ws, save)
         try:
             if writer is ask:
-                result = writer(system + '\n\n' + RULES, user, before_attempt=before_attempt, observed=observed)
+                result = writer(handler_input['system'], handler_input['messages'][0]['content'], before_attempt=before_attempt, observed=observed)
             else:
                 before_attempt('provided_writer')
-                result = writer(system + '\n\n' + RULES, user)
+                result = writer(handler_input['system'], handler_input['messages'][0]['content'])
             if not isinstance(result, dict) or not isinstance(result.get('text'),str):
                 raise ValueError('writer must return text and observations')
             def save_result(current):
@@ -347,7 +350,13 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
     # Recovery after a response was observed is local only, including invalid JSON.
     try:
         capture = Capture(run, 'want_work', record['at'])
-        for observation in result.get('observations', []): capture.observe(observation)
+        invocation = None
+        if record.get('handler_input') is not None:
+            invocation = capture.request(**record['handler_input'], at=record['at'])
+        recovered = record.get('reconciliation', {}).get('outcome') == 'observed'
+        for observation in result.get('observations', []):
+            # Recovered text is an operator claim, not a provider observation.
+            capture.observe(observation, invocation.request_id if invocation and not recovered else None)
         capture.select(raw)
         decision = json.loads(raw)
     except Exception as exc:
@@ -362,7 +371,9 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
     lanes = [o.get('lane') for o in result.get('observations', [])
              if o.get('status') in ('valid','truncated') and o.get('text') == raw
              and o.get('lane') in ('subscription','openai')]
-    packet['selected_lane'] = lanes[0] if len(lanes) == 1 else 'unknown'
+    packet['selected_lane'] = lanes[0] if len(lanes) == 1 and not recovered else 'unknown'
+    packet['response_origin'] = 'operator_recovery' if recovered else 'adapter_result'
+    packet['input_scope'] = 'writer_arguments' if invocation else 'unknown'
     def done(current):
         item = current['generations'][key]
         if item['request_id'] != run: raise WorkBlocked('working_request_superseded')

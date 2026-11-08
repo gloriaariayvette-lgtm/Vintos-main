@@ -6200,3 +6200,13 @@ freshness checks are implemented. 602 affected isolated checks pass. See the
 follow-through log for operator commands, proof limits and validation. Claude's
 independent full Aegis suite/review and Gloria's install/live acceptance remain
 pending. Judges through 29380277 are reported approved/integrated at cb10d8b8.
+
+
+## 8 November — wants call-input receipts
+
+`codex/wants-call-input-receipts` follows review 15 without changing its pushed tip.
+Exact writer inputs are retained privately before calls and reused for restart
+receipts; operator recovery no longer treats an attempted lane as an observed
+answer origin. Legacy input ancestry stays unknown. 125 affected isolated checks
+pass; see the follow-through log. Full Aegis review and installation/live acceptance
+remain pending. No model/provider behavior or existing feeds changed.

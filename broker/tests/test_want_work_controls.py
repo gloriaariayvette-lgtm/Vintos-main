@@ -262,6 +262,74 @@ class Tests(unittest.TestCase):
         self.assertEqual(rec['reconciliation']['prior']['state'],'uncertain')
         self.assertIsNone(rec['capture']['witness_receipt']['generation']['attempts'][0]['served_model'])
 
+    def test_exact_writer_inputs_persist_before_call_and_survive_restart(self):
+        from witness_capture import Capture
+        captured=[]
+        def writer(system,user):
+            rec=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))
+            self.assertEqual(rec['state'],'running')
+            self.assertEqual(rec['handler_input']['system'],system)
+            self.assertEqual(rec['handler_input']['messages'],[{'role':'user','content':user}])
+            captured.append(copy.deepcopy(rec))
+            return self.writer(system,user)
+        with patch.object(Capture,'finalize',side_effect=RuntimeError('synthetic local crash')):
+            with self.assertRaises(RuntimeError): self.gen(writer=writer)
+        before=copy.deepcopy(self.ledger())
+        W.append(self.want,self.work,self.ws,'fixture:new','dot','Later synthetic context must not replace original input.')
+        self.gen(writer=lambda *a:self.fail('restart repeated provider'))
+        rec=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))
+        packet=rec['capture']; expected=Capture(rec['request_id'],'want_work',rec['at'])
+        expected.request(**captured[0]['handler_input'],at=rec['at'])
+        expected_packet=expected.finalize('fixture',time.time())
+        self.assertEqual(packet['requests'],expected_packet['requests'])
+        attempt=packet['witness_receipt']['generation']['attempts'][0]
+        self.assertEqual(attempt['request_id'],packet['requests'][0]['request_id'])
+        self.assertEqual(attempt['input_sha256'],packet['requests'][0]['input_sha256'])
+        self.assertEqual(packet['input_scope'],'writer_arguments')
+        self.assertEqual(packet['response_origin'],'adapter_result')
+        self.assertEqual(packet['witness_receipt']['delivery'],'unknown')
+        self.assertFalse(packet['reply_node']['complete'])
+        serialized=json.dumps(packet)
+        for value in self.calls[0]: self.assertNotIn(value,serialized)
+        self.assertEqual(self.ledger(),before)
+        self.assertEqual(len(self.calls),1)
+
+    def test_legacy_observed_response_never_reconstructs_input(self):
+        from witness_capture import Capture
+        with patch.object(Capture,'finalize',side_effect=RuntimeError('synthetic local crash')):
+            with self.assertRaises(RuntimeError): self.gen()
+        def legacy(data):
+            next(iter(data['generations'].values())).pop('handler_input')
+        W._mutate(self.want,self.work,self.ws,legacy)
+        self.gen(writer=lambda *a:self.fail('legacy recovery repeated provider'))
+        packet=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))['capture']
+        self.assertEqual(packet['requests'],[])
+        self.assertEqual(packet['input_scope'],'unknown')
+        self.assertIsNone(packet['witness_receipt']['generation']['attempts'][0].get('request_id'))
+
+    def test_operator_recovery_cannot_attest_attempted_lane_or_input_binding(self):
+        call=self.interrupted(); (self.ws/'memory/want-work.stop').touch()
+        def attempted(data):
+            next(iter(data['generations'].values()))['active_lane']='subscription'
+        W._mutate(self.want,self.work,self.ws,attempted)
+        response=json.dumps({'message':'Synthetic operator recovery.','accept':False})
+        W.reconcile(self.want,self.work,self.ws,call,'observed','Fixture evidence',response)
+        # Also handle records reconciled before the explicit origin field existed.
+        def legacy(data):
+            obs=next(iter(data['generations'].values()))['result']['observations'][0]
+            self.assertEqual(obs['lane'],'unknown')
+            obs['lane']='subscription'; obs.pop('origin')
+        W._mutate(self.want,self.work,self.ws,legacy)
+        (self.ws/'memory/want-work.stop').unlink()
+        self.gen(writer=lambda *a:self.fail('operator recovery repeated provider'))
+        packet=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))['capture']
+        self.assertEqual(packet['response_origin'],'operator_recovery')
+        self.assertEqual(packet['selected_lane'],'unknown')
+        self.assertEqual(len(packet['requests']),1)
+        attempt=packet['witness_receipt']['generation']['attempts'][0]
+        self.assertIsNone(attempt.get('request_id'))
+        self.assertIsNone(attempt['served_model'])
+
     def test_reconcile_failed_preserves_history_and_consumed_attempts(self):
         call=self.interrupted(); (self.ws/'memory/want-work.stop').touch()
         W.reconcile(self.want,self.work,self.ws,call,'failed','Operator verified no response and stopped worker.')

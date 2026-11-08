@@ -478,3 +478,33 @@ limits, preserved history, local-only observed completion, refusal to reopen a
 completed call and private CLI output. Freshness fixtures cover shelf copies,
 earlier request output and prior revisions. No private inputs, model calls,
 real sends, installs, merge or deploy. Independent full Aegis review remains open.
+
+
+## 8 November — durable call inputs and honest recovery provenance
+
+The next stacked branch, `codex/wants-call-input-receipts`, preserves the review-15
+tip. Each new generation now retains its exact system and user arguments in its
+existing private working-thread record before invoking the writer. Final capture
+hashes those retained inputs and links adapter observations to that invocation;
+it never rebuilds them from context that arrived after the call. This is a
+writer-argument receipt, not a complete wire retry ledger or proof of upstream
+provenance. Input nodes and delivery remain unknown/incomplete. Private prompt
+snapshots stay in the private store; capture nodes contain hashes, not prompts.
+Old response records without retained inputs remain unbound, without guessing.
+
+An operator-recovered response is explicitly marked operator_recovery and keeps
+both lane and served identity unknown. The attempted lane is preserved in prior
+state but cannot attest the origin of supplied response text. Its capture keeps
+the original request if available, without linking the supplied answer as an
+independently observed result of that invocation. This also handles previously
+reconciled records. Budgets and completion/retry behavior are unchanged.
+
+Validation: **125 checks across five isolated suites** pass: working controls 23,
+follow-through 51, completion integration 13, capture 27 and ownership 11. Three
+new fixtures prove pre-call persistence, recovery after a local crash with changed
+context and no repeated call, legacy unknown inputs, and operator-origin handling.
+Two initial test assertions expected a null request_id where the receipt contract
+omits unknown optional fields; corrected to test absence or null. No production
+behavior was altered to satisfy those assertions. Reports regenerated. Synthetic
+inputs and stubbed effects only; no live reads/writes, model calls, merge or deploy.
+Independent full Aegis validation remains with the reviewer.
