@@ -148,7 +148,8 @@ def admission(row, nodes, cutoff):
         return "not_reply"
     if any(row.get(k) for k in ("test_mode", "tactical", "withheld", "character_influenced")):
         return "excluded_act"
-    if row.get("admitted") is False or row.get("eligible") is False or row.get("may_witness") is False:
+    if any(row.get(k) is False for k in (
+            "admitted", "eligible", "may_witness", "generated_output_witness_eligible")):
         return "excluded_act"
     status = envelope_status(row)
     if status != "explicit_witness":

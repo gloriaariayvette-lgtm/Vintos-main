@@ -29,3 +29,17 @@ four focused suites**. Generated ownership/untested reports refreshed; diff
 whitespace check passed. Scratch restart produced byte-identical aggregate
 reports from the same synthetic input. These are correctness/isolation checks,
 not evidence of real-data predictive accuracy.
+
+## 8 November 2026 — follow-up contract hardening
+
+While independent review remains pending, source reconnaissance identified the
+ledger's explicit `generated_output_witness_eligible` denial field. Preserve it
+through merged chat and honor false in the new strict reader even alongside a
+permissive provenance envelope. Tighten causal joins: past context must precede
+the current message arrival, and that arrival cannot follow generation start.
+This changes neither live legacy eligibility nor the underlying turn feeds.
+
+Re-ran the two affected OS-isolated suites: witness **23/23**, merged chat
+**27/27**. Synthetic-only; no provider hooks or real-data run added. Earlier
+provenance/ownership results remain as recorded above; the full Aegis suite is
+still Claude Code's review step.

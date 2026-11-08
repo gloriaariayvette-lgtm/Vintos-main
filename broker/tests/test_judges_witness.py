@@ -72,6 +72,10 @@ class WitnessTests(unittest.TestCase):
         self.row["generation_provenance"] = dict(p, may_witness=False)
         self.assertEqual(self.admit(), "ineligible_provenance")
 
+    def test_ledger_explicit_denial_survives_permissive_envelope(self):
+        self.row["generated_output_witness_eligible"] = False
+        self.assertEqual(self.admit(), "excluded_act")
+
     def test_legacy_stays_unknown_only_for_new_reader(self):
         del self.row["generation_provenance"]
         self.assertEqual(self.admit(), "unknown_provenance")
@@ -144,6 +148,15 @@ class WitnessTests(unittest.TestCase):
             self.assertEqual(self.score(forecasts=[dict(self.f, **mutation)])[1], [])
         self.f["self"]["context_last_ts"] = 100
         self.assertEqual(self.score()[1], [])
+
+    def test_arrival_precedes_generation_and_context_precedes_arrival(self):
+        self.f["arrived_at"] = 101
+        self.assertEqual(self.score()[1], [])
+        self.f["arrived_at"] = 99
+        self.f["self"]["context_last_ts"] = 99
+        self.assertEqual(self.score()[1], [])
+        self.f["self"]["context_last_ts"] = 98
+        self.assertEqual(len(self.score()[1]), 1)
 
     def test_checkpoint_and_embedding_required(self):
         self.assertEqual(self.score(checkpoints={})[1], [])

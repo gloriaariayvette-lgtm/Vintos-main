@@ -43,7 +43,8 @@ with open(os.path.join(MEM, "chat-canonical.jsonl"), "w") as f:
         {"role": "assistant", "content": "a tactical reply", "ts": 1792700005, "turn_id": "t-c1",
          "generation_provenance": {"may_witness": False, "source": "stratagem"}, "capsule_commitment": "abc123",
          "witness_receipt": {"schema": "behaviour-witness-v1", "status": "unknown"},
-         "context_receipt_id": "fixture-context", "character_influenced": True, "test_mode": True},
+         "context_receipt_id": "fixture-context", "character_influenced": True, "test_mode": True,
+         "generated_output_witness_eligible": False},
         {"role": "user", "content": "shared turn her words", "ts": 1792710000, "turn_id": "t-shared",
          "input_kind": "text", "original_text": "shared turn her words"},
         {"role": "assistant", "content": "shared turn his reply (canonical)", "ts": 1792710173, "turn_id": "t-shared"},
@@ -107,6 +108,7 @@ check("witness receipt survives without becoming clean", by["a tactical reply"].
       {"schema": "behaviour-witness-v1", "status": "unknown"})
 check("context lineage and effect exclusions survive", by["a tactical reply"].get("context_receipt_id") == "fixture-context"
       and by["a tactical reply"].get("character_influenced") is True and by["a tactical reply"].get("test_mode") is True)
+check("explicit generated-output denial survives", by["a tactical reply"].get("generated_output_witness_eligible") is False)
 check("ordinary turns are not falsely marked", "generation_provenance" not in by["canonical ask"])
 check("her words and input_kind are carried", by["canonical ask"].get("original_text") == "canonical ask"
       and by["canonical ask"].get("input_kind") == "text")

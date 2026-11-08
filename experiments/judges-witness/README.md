@@ -34,15 +34,21 @@ length and question fraction. It assigns no authenticity, emotion or relational
 verdict. Counts over input rows and counts over unique identified replies are
 separate; their denominators must not be confused.
 
+An explicit ledger `generated_output_witness_eligible: false` also denies new
+witness admission even when another envelope claims eligibility. This denial
+survives the merged-chat projection.
+
 The innovation reader joins existing **on-message** self forecasts to exact
 final responses by stable ID, surface and content digest. It requires an
 independently retained checkpoint manifest with encoder identity and training
 time, and cached embeddings of those exact responses. It imports no encoder.
-Forecasts at/after finalization, context at/after generation start, incompatible
+Forecasts at/after finalization, context at/after message arrival, incompatible
 vectors and ambiguous matches are unscored. One earliest unambiguous forecast
 per target/checkpoint/encoder/surface/source counts; ahead forecasts are separate
 and not used here. Training time is required before forecasting; file mtime is
-not an acceptable substitute when a checkpoint was copied.
+not an acceptable substitute when a checkpoint was copied. Message arrival must
+not follow response generation start. Equal-time context/arrival batches remain
+unscored rather than assuming an order the timestamps do not establish.
 
 Innovation percentiles use only strictly earlier finalized outcomes from this
 same replay and matching group. Same-time outcomes cannot calibrate each other.

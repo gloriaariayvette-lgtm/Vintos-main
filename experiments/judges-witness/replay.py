@@ -122,10 +122,10 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
                 held["checkpoint_source_mismatch"] += 1
                 continue
             made = instant(f["ts"])
+            arrived = instant(f["arrived_at"])
             if not (instant(manifest["trained_at"]) < made < r["finalized_at"]
-                    and instant(f["arrived_at"]) <= made
-                    and instant(head["context_last_ts"]) < r["started_at"]
-                    and instant(head["context_last_ts"]) <= made):
+                    and arrived <= made and arrived <= r["started_at"]
+                    and instant(head["context_last_ts"]) < arrived):
                 held["noncausal_forecast"] += 1
                 continue
             matches = [e for e in cache[row["turn_id"]]
