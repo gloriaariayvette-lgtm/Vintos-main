@@ -191,6 +191,7 @@ class Tests(unittest.TestCase):
         self.assertIsNone(self.c.status(self.owner,pvid).get('intent'))
         self.assertTrue(self.c.status(self.owner,pvid)['private'])
 
+    @patch('forge_loop_atelier.in_atelier',lambda project:True)   # the copy mechanics, should a project ever be let in
     def test_continuous_feedback_lineage_and_outbox(self):
         p=self.create();pid=p['id']
         self.assertTrue(self.r.step(pid));self.assertTrue(self.r.step(pid));self.assertFalse(self.r.step(pid))
@@ -248,6 +249,7 @@ class Tests(unittest.TestCase):
         p=self.create();self.r.step(p['id']);self.r.publisher=lambda item:False
         with self.assertRaises(RuntimeError):self.r.dispatch()
         self.r.publisher=self.send;self.r.dispatch();self.assertEqual(len(self.sent),1)
+    @patch('forge_loop_atelier.in_atelier',lambda project:True)   # the copy mechanics, should a project ever be let in
     def test_refuse_existing_project_adoption(self):
         p=self.create();directory=self.root/'projects'/('forge-'+p['id'])
         (directory/'.forge-owner.json').unlink()
@@ -362,7 +364,7 @@ class Tests(unittest.TestCase):
         from forge_loop_atelier import lab_work
         mine=self.create(); lab=self.r.create(self.owner,dict(intent='Lab capability check: a structure tool',origin={'source':'lab'}))
         self.r.projection.sync(self.c)
-        self.assertTrue((self.root/'projects'/('forge-'+mine['id'])/'project.json').is_file(),'her own project is still copied')
+        self.assertFalse((self.root/'projects'/('forge-'+mine['id'])).exists(),'her own Forge project is not copied either (8 Nov)')
         self.assertFalse((self.root/'projects'/('forge-'+lab['id'])).exists(),'a Lab project is never copied')
         self.assertTrue(lab_work({'intent':'x\nSource packet (untrusted observations): y'}),'an old Lab packet with no origin is the Lab\'s')
         self.assertFalse(lab_work({'intent':'Document the source','capabilities':['research_report']}),'her own report is not')
@@ -372,8 +374,15 @@ class Tests(unittest.TestCase):
                                             origin={'proposal':'SK-57270b58','want_id':'w1','source':'want','capability':'mmwave'}))
         mine=self.create();self.r.projection.sync(self.c)
         self.assertFalse((self.root/'projects'/('forge-'+brief['id'])).exists(),'a capability brief is never copied')
-        self.assertTrue((self.root/'projects'/('forge-'+mine['id'])/'project.json').is_file(),'her own project is still copied')
+        self.assertFalse((self.root/'projects'/('forge-'+mine['id'])).exists(),'her own Forge project is not copied either (8 Nov)')
 
+    def test_no_forge_project_reaches_the_atelier(self):
+        # 8 November: "Forge shouldn't be there" - 25 of 39 Atelier projects were Forge copies, 16 of them empty
+        mine=self.create();self.r.step(mine['id']);self.r.projection.sync(self.c)
+        self.assertEqual(self.c.status(self.owner,mine['id'])['cycles'],1,'the Forge still does its work')
+        self.assertFalse(any(d.name.startswith('forge-') for d in (self.root/'projects').iterdir()) if (self.root/'projects').is_dir() else False)
+
+    @patch('forge_loop_atelier.in_atelier',lambda project:True)   # the copy mechanics, should a project ever be let in
     def test_projection_is_visible_to_existing_broker_and_has_no_write_bypass(self):
         p=self.create();self.r.step(p['id'])
         spec=importlib.util.spec_from_file_location('test_broker_visibility',REPO/'broker/broker.py')
@@ -386,6 +395,7 @@ class Tests(unittest.TestCase):
         broker._ev(pid,'looked_quietly')
         self.r.step(p['id'])
         self.assertTrue(broker.verify_events_at(str(self.root/'projects'/pid))[0])
+    @patch('forge_loop_atelier.in_atelier',lambda project:True)   # the copy mechanics, should a project ever be let in
     def test_private_projection_cannot_be_read_through_broker_doors(self):
         import time
         p=self.create(private=True,private_until=time.time()+600);self.r.step(p['id'])
