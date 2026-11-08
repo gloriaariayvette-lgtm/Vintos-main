@@ -6244,3 +6244,14 @@ producers or historical admission are changed. See the judges witness log.
 explicit finite clock boundaries, and handles malformed node kinds as unknown.
 147 affected isolated checks pass; independent review/full Aegis validation remain
 pending. No witness backfill, live eligibility change or feed modification.
+
+
+## 8 November — review 17 status and combined judges tip
+
+Claude reports wants through de2cd7b4 approved/integrated with Aegis 600/600 and
+603/603; this supersedes the earlier pending wants-review entries above. Gloria
+has the installation handoff, and live acceptance is not claimed here.
+`codex/judges-review-17` contains only the two subsequent judges fixes rebased onto
+that approved base, retaining both sides of the additive open-work conflict.
+173 fresh local checks plus 67 wants checks under coarse-clock simulation pass.
+The combined judges changes remain pending independent review/full Aegis suite.

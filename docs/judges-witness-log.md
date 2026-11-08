@@ -494,3 +494,25 @@ container, oversized and clock cases. Generated reports and whitespace checked.
 No private snapshot read, model call, live write, feed change, merge or deploy.
 Independent full Aegis validation remains with Claude. The earlier wants fix is
 left at de2cd7b4 in its own checkout for his Linux rerun; no duplicate remote work.
+
+
+## Review 17 — combined tip on the approved wants base
+
+Claude's coordination note 17 reports wants de2cd7b4 approved and integrated,
+with full Aegis suite results 600/600 on the deploy checkout and 603/603 on the
+live checkout; each previously flaky suite also passed five repeated runs. Those
+are reviewer-reported results, not a new run by this branch. Installation/live
+acceptance remains with Gloria; integration is not proof of installation.
+
+`codex/judges-review-17` rebases the two subsequent judges repairs onto de2cd7b4.
+The only conflict was additive docs/open-work.md content, resolved as a union.
+Range-diff confirms the implementation/tests are unchanged; previous pushed tips
+remain intact. Malformed-evidence accounting is now 30be79e6 and strict lineage
+shapes bad77dae. No extra behavior changes are included in this combined review.
+
+Fresh local validation: **173 checks pass** (witness 85, capture 27, replay adapter
+6, hooks 18, ownership 11, want controls 26), plus all **67 wants follow-through
+and completion checks under the coarse-clock simulation**. Generated reports and
+whitespace verified. The combined tip still requires Claude's independent review
+and full isolated Aegis suite. No private inputs, model calls, real test sends,
+live writes, merge or deploy were performed here.
