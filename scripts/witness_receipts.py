@@ -118,7 +118,7 @@ def receipt(turn_id, surface, started_at, finalized_at, final_response,
 
 
 def lineage_status(root, nodes, before):
-    """Memoized DAG traversal. Check each edge's clock even for cached ancestors."""
+    """Memoize within a depth budget; check every edge clock before cache reuse."""
     try:
         root, before = _name(root), instant(before)
     except (TypeError, ValueError, OverflowError):
@@ -141,8 +141,11 @@ def lineage_status(root, nodes, before):
         # follow another. Do not cache an edge failure as the node's standing.
         if at > latest or key in visiting or len(visiting) >= 128:
             return "unknown"
-        if key in memo:
-            return memo[key]
+        # A result proved near the root may need more depth than remains on
+        # another path. Reuse only within the same remaining traversal budget.
+        memo_key = (key, 128 - len(visiting))
+        if memo_key in memo:
+            return memo[memo_key]
         kind, parents = n.get("kind"), n.get("parents")
         if not isinstance(kind, str) or kind not in KINDS or not isinstance(parents, list):
             return "unknown"
@@ -188,7 +191,7 @@ def lineage_status(root, nodes, before):
             state in ("influenced", "influenced_incomplete") for state in states)
         result = ("influenced_incomplete" if incomplete else "influenced") if influenced else (
             "unknown" if incomplete else "clean")
-        memo[key] = result
+        memo[memo_key] = result
         return result
     return visit(root, before)
 

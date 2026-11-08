@@ -516,3 +516,22 @@ and completion checks under the coarse-clock simulation**. Generated reports and
 whitespace verified. The combined tip still requires Claude's independent review
 and full isolated Aegis suite. No private inputs, model calls, real test sends,
 live writes, merge or deploy were performed here.
+
+
+## 8 November — depth-consistent shared ancestry
+
+`codex/judges-depth-consistency` continues from the submitted combined tip
+c7e9638f, leaving it fixed for independent review. A synthetic graph reproduced
+order-dependent admission: traversing a shared ancestor by its short path first
+cached clean standing, which was then reused along an over-deep path. Reversing
+the root's parents correctly returned unknown. The memo now includes remaining
+traversal depth; edge clocks and active-cycle checks still precede cache lookup.
+The existing 128-level bound is unchanged and cannot be bypassed by cache order.
+
+**148 isolated checks pass:** witness 86, capture 27, replay adapter 6, hooks 18,
+ownership 11. The new regression checks both orders of an over-deep shared graph
+and both orders of a valid shorter graph, with fewer than 400 node lookups per
+case. The previous 60-level diamond performance bound and causal-edge fixtures
+still pass. Reports regenerated and whitespace verified. Synthetic evidence only;
+no retained-data read, model call, live write, feed change, merge or deployment.
+Full Aegis review remains with Claude; no duplicate remote work was started.

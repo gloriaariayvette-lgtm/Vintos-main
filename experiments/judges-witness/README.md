@@ -27,7 +27,8 @@ The ancestry root must be a `context` node. Reply-to-next-context hops use a
 explicit `influence` (`clean`, `influenced`, `unknown`). A clean assertion cannot
 clear influencing parents or explicit tactical/character-influenced flags. A
 generated-output node cannot use `ordinary_source` to bypass this contract.
-Traversal memoizes node standing and checks every edge's clock independently;
+Traversal memoizes node standing within its remaining depth budget and checks
+every edge's clock independently;
 shared ancestry does not cause exponential replay.
 
 `replay.py` accepts only explicitly supplied snapshots of canonical chat, merged
@@ -519,3 +520,14 @@ the shared explicit timestamp parser: booleans, nonfinite values, negative times
 and timezone-naive strings are unknown. Valid offset-aware boundary strings are
 handled consistently with epoch timestamps. These checks tighten shadow evidence
 admission only; they do not rewrite legacy records or alter any live feed.
+
+
+### Shared ancestry and depth limits
+
+The existing 128-level traversal bound applies to every path, including paths
+through cached ancestors. A shorter path cannot lend its cached clean result to
+a longer path whose remaining budget cannot reach the same leaves. Memoization
+is keyed by node and remaining depth, while each edge's clock and active-cycle
+check still run before cache reuse. Over-deep ancestry remains unknown in either
+parent order; within-bound shared graphs retain their result without exponential
+re-walking. This is a strict shadow-consumer repair, not a new live gating rule.

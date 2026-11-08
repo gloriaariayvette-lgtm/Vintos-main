@@ -338,6 +338,31 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         nodes["earlier-parent"] = {"id": "earlier-parent", "at": 10, "kind": "context", "complete": True, "parents": ["57"]}
         self.assertEqual(W.lineage_status("59", nodes, 100), "unknown")
 
+    def test_shared_ancestry_depth_limit_does_not_depend_on_parent_order(self):
+        class Counted(dict):
+            calls=0
+            def get(self,*args):
+                self.calls+=1
+                return super().get(*args)
+        for depth,prefix_count,expected in ((120,20,'unknown'),(100,10,'clean')):
+            nodes=Counted({'leaf':W.source_node('leaf','sensor_observation',0,'Synthetic observation.')})
+            previous='leaf'
+            for i in range(depth):
+                key='chain-'+str(i)
+                nodes[key]=dict(id=key,kind='context',at=0,complete=True,parents=[previous])
+                previous=key
+            direct=previous
+            for i in range(prefix_count):
+                key='prefix-'+str(i)
+                nodes[key]=dict(id=key,kind='context',at=0,complete=True,parents=[previous])
+                previous=key
+            for parents in ([direct,previous],[previous,direct]):
+                with self.subTest(depth=depth,parents=parents):
+                    nodes['root']=dict(id='root',kind='context',at=0,complete=True,parents=parents)
+                    nodes.calls=0
+                    self.assertEqual(W.lineage_status('root',nodes,1),expected)
+                    self.assertLess(nodes.calls,400)
+
     def test_cutoff_and_naive_clock(self):
         self.assertEqual(W.admission(self.row, self.nodes, 110), "outside_cutoff")
         for v in (True, float("nan"), "2026-01-01T10:00:00"):

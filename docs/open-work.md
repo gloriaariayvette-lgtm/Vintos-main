@@ -6255,3 +6255,11 @@ has the installation handoff, and live acceptance is not claimed here.
 that approved base, retaining both sides of the additive open-work conflict.
 173 fresh local checks plus 67 wants checks under coarse-clock simulation pass.
 The combined judges changes remain pending independent review/full Aegis suite.
+
+
+## 8 November — consistent ancestry depth limit
+
+`codex/judges-depth-consistency` makes the existing traversal limit apply even
+when a shared ancestor has a cached result from a shorter path. Over-deep evidence
+stays unknown regardless of parent order. 148 affected isolated checks pass;
+independent review/full Aegis validation remain pending. Existing feeds unchanged.
