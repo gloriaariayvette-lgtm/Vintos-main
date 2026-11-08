@@ -6074,3 +6074,13 @@ Judges slice 2 now has offline paired last-reply/recent-mean controls on
 are required; serving capture of that contract and real paired coverage remain
 open. Missing controls do not discard head observations. See the experiment
 README for causal joins and descriptive-only interpretation. No feed is changed.
+
+## 8 November — want working-thread follow-up
+
+On `codex/wants-working-thread`, stacked on ad88092f: explicit working-model route,
+persistent private goal/source/identity/agent conversation and observed generation
+receipts; narrow stored-binding exemption from the room switch; existing owner
+approval and verified-delivery doors retained. 916 checks across 26 affected
+isolated suites pass. Independent Aegis full-suite review, external agent rule
+installation, Gloria's deploy and actual journal-want acceptance remain open.
+See `docs/wants-action-followthrough.md`. No live music task has been executed.

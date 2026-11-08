@@ -1,0 +1,144 @@
+{
+  "date": "2026-11-08",
+  "kind": "isolated_synthetic_contract_and_regression_tests",
+  "runner": "scripts/run_isolated_test.py",
+  "host": "macOS",
+  "suite_count": 26,
+  "checks_passed": 916,
+  "checks_failed": 0,
+  "full_aegis_suite": "pending Claude Code review",
+  "live_task_executed": false,
+  "suites": [
+    {
+      "suite": "test_dot_channel",
+      "passed": 320,
+      "failed": 0
+    },
+    {
+      "suite": "test_dot_channel_media",
+      "passed": 48,
+      "failed": 0
+    },
+    {
+      "suite": "test_email_reading_and_approval",
+      "passed": 31,
+      "failed": 0
+    },
+    {
+      "suite": "test_email_whole",
+      "passed": 16,
+      "failed": 0
+    },
+    {
+      "suite": "test_entry_owners",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "suite": "test_journal_action_followthrough",
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "suite": "test_letter_promises",
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "suite": "test_local_analysis",
+      "passed": 15,
+      "failed": 0
+    },
+    {
+      "suite": "test_promise_after_pause",
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "suite": "test_promise_keeper",
+      "passed": 38,
+      "failed": 0
+    },
+    {
+      "suite": "test_room_work",
+      "passed": 31,
+      "failed": 0
+    },
+    {
+      "suite": "test_room_work_stale_ids",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_agent_followthrough",
+      "passed": 31,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_artifact_guard",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_board",
+      "passed": 43,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_contract",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_email_and_outward",
+      "passed": 123,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_formation_fixes",
+      "passed": 19,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_formation_routes",
+      "passed": 14,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_music_step",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_parameter_block",
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_plan_lifecycle",
+      "passed": 9,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_planner_resumption",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "suite": "test_wants_endings",
+      "passed": 50,
+      "failed": 0
+    },
+    {
+      "suite": "test_claude_cache",
+      "passed": 24,
+      "failed": 0
+    },
+    {
+      "suite": "test_claude_sub",
+      "passed": 12,
+      "failed": 0
+    }
+  ],
+  "scope": "persistent want working thread and narrow room-switch exemption"
+}

@@ -118,3 +118,66 @@ deploy: one genuine journal task should reach its agent, produce the named files
 notify the deliverable, close the same want/linked commitment and appear as
 completed in his next agent-letter context. The music example has not yet been
 executed by this branch. No live want was backfilled or rewritten during review.
+
+
+## 8 November follow-up: persistent working conversation and explicit route
+
+`codex/wants-working-thread` is stacked on ad88092f, preserving that review tip.
+A concrete want now gets one private `working-thread.json` beside its existing
+request artifacts. It retains the exact goal/source references, initial identity
+context, prior steps, all ingested authenticated agent replies, working decisions,
+transport acknowledgements and final delivery. A restart reloads this record.
+Nothing silently truncates or summarizes its history; a malformed/conflicting
+record fails visibly instead of resetting it. The file is mode 0600 under a 0700
+request directory. It contains private context and must never enter Git.
+
+The dedicated lane explicitly requests `claude-sonnet-5-5` for initial planning
+and agent request, subsequent replies, result review and completion wording.
+It bypasses the generic room composer and its local rewrites. Request-local
+capture records the response's actual model field when present; missing identity
+or a subscription string stays unknown. Requested identity is never substituted
+for served identity. Other model routes are unchanged. The capture's lineage and
+delivery remain unknown for judge eligibility; this is not a clean witness.
+
+Working decisions are cached by event. Polls without new messages/results make no
+model call. At most two calls are attempted per room pass, with 1800 output tokens
+per call; failed work retains its context with a ten-minute retry backoff. An
+interrupted in-flight call has a fifteen-minute lease. There can still be a repeat
+provider charge after a response/local-persistence crash: no exactly-once claim.
+This path uses the existing paid API route and ledger after deployment; its cost
+scales with the retained input and actual working events. No paid call was made
+for implementation or tests. Context beyond the 250000-character call budget
+remains on disk and requires an explicit continuation decision, never a reset.
+
+The room switch no longer stops this bound-want lane. Ordinary messages still
+obey it. The exemption requires the current want's exact goal hash, an open RW
+item and the stored Slack thread, plus an authenticated participant for replies.
+A copied `[want:...]` label establishes nothing. Task-specific pauses/cancellation
+remain effective. Bound messages are persisted and handled by this lane once,
+not answered again by the rotating room composer. Existing room capacity and
+other task execution/approval limits remain. The separate hold while Gloria is
+actively chatting is unchanged; this is specifically the room-switch exemption.
+
+Muse BUY and credential/owner questions reuse the existing owner-request doors,
+including while room conversation is stopped. Requests retry from the saved
+thread after an interruption. Results first pass exact file/hash checks, then
+Vintos reviews the manifest and stated acceptance. A deficient result returns
+for correction in the same thread; it is not a completed want. This review does
+not listen to audio or independently run the analysis: the agent must provide
+real acceptance evidence, and the model must not claim inspection it did not do.
+Accepted completion wording goes through the existing file upload, delivery and
+ending doors and remains in the working conversation and fulfilled-want record.
+
+The three checked-in agent instruction files now describe the same exception and
+read-only `want_agent.py binding REQUEST_ID --thread THREAD_TS` verification.
+**External agent instructions are not installed by this code change.** Claude
+must include their update in the review handoff; Gloria's deployment and agent
+configuration are distinct acceptance steps. No settings, services or live
+records were changed here. Full isolated Aegis suite and real-want acceptance
+remain Claude/Gloria's steps; the original music task is still not executed.
+
+Validation for this increment: **916 checks across 26 isolated affected suites**,
+including direct paused-room, spoof-tag, task-pause, persistent-context, served
+identity, correction/delivery and owner-request restart cases. All model and
+transport calls were stubs. The matrix is recorded separately in
+`wants-working-thread-validation.json`; the original 863-check result is retained.
