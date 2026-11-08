@@ -120,16 +120,20 @@ ALIASES = {"frame-engine.py": "frame_engine.py", "resonance_marks.py": "resonanc
            "wants_conversation_check.py": "wants-conversation-check.py", "yearning-scars.py": "yearning_scars.py",
            "yearning_detector.py": "yearning-detector.py"}
 FROM_CHECKOUT = {"buzz-integration/run-local-gemma.py"}
+# Held out of the install list by Gloria's own decision (test_thread_formation): their installed copies still call
+# the 26B until she says yes. Named here so the list cannot grow silently.
+HELD = {"conflict_surface.py", "velqan-coiner.py"}
 routed = [f for f in files() if f.endswith((".py", ".sh")) and TOKEN.search(src(f)) and WRAP.search(src(f))
           and f != "scripts/subcon_target.py"]
-missing = [f for f in routed if f not in FROM_CHECKOUT and os.path.basename(f) not in installed
+missing = [f for f in routed if f not in FROM_CHECKOUT and os.path.basename(f) not in installed and os.path.basename(f) not in HELD
            and ALIASES.get(os.path.basename(f)) not in installed]
 check("there are flag-routed callers to check (%d)" % len(routed), len(routed) > 80, len(routed))
 check("every flag-routed caller is installed by the deploy (or is a live alias of one)", not missing, missing)
 for b in ("emotion_read.py", "imprint.py", "resonance-marks.py", "yearning-detector.py", "yearning_scars.py", "reading.py",
-          "introspective_planning.py", "tension_identity_audit.py", "want_learning.py", "conflict_surface.py",
+          "introspective_planning.py", "tension_identity_audit.py", "want_learning.py",
           "morning-briefing.sh", "valence-drift-map.sh", "subcon_target.py", "aeon-bar-record.json"):
     check("the deploy installs %s" % b, b in installed)
+check("the held files stay held until she says yes", not (HELD & installed), HELD & installed)
 check("the server-side twin of emoclaw_utils.py is installed too", "for _twin in emoclaw_utils.py" in deploy
       and 'PLAN="$PLAN$SRC/scripts/$_twin|$_tw' in deploy)
 
