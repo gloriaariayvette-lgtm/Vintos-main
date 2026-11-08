@@ -45,8 +45,8 @@ bin/study_chat.py bin/video_builder.py bin/vintos-initiate.sh bin/wal-decay.py s
 bin/wal_extract.py bin/weekly-summary.py scripts/conflict_surface.py scripts/lead_trials.py scripts/lounge_field.py
 scripts/outside_views.py scripts/scholar.py scripts/self_review.py scripts/velqan-coiner.py scripts/want_email.py
 buzz-integration/run-local-gemma.py""".split()
-VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py scripts/desktop_control.py
-scripts/browser_jev.py scripts/reelroom.py scripts/voice_local.py""".split()
+VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py
+scripts/reelroom.py scripts/voice_local.py""".split()   # browser_jev and desktop_control: their text-only calls follow the flag (2026-11-08)
 
 def src(f): return open(os.path.join(REPO, f), encoding="utf-8").read()
 def unrouted(f):
@@ -92,7 +92,8 @@ check("the server's generated nudge-read code takes its route when generated",
       srv.count("requests.post('\" + _subcon_url(\"%s\") + \"'" % CHAT) == 2 and srv.count("_subcon_model(\"%s\") + \"'" % MODEL) == 2)
 photo = srv[srv.index("async def _describe_photo"):srv.index("async def _describe_photo") + 6000]
 check("the server's photo description keeps the 26B", "_subcon" not in photo and CHAT in photo)
-check("the local voice brain label is untouched (voice_local is audio, class b)", '"model":"gemma-4-26b-a4b-it-uncensored", "voice"' in srv)
+check("the local call reports the brain it uses (voice_local's route), not a fixed 26B label",
+      '"model":_vl._brain()[1], "voice"' in srv and '"model":"gemma-4-26b-a4b-it-uncensored", "voice"' not in srv)
 
 print("--- the shim: no 26B lane after the flip ---")
 import vintos_claude_shim as S

@@ -31,7 +31,6 @@ except: print('No value map yet')
 ART_DIR="$MEMORY/art"
 SONG_MEMORY="$WORKSPACE/scripts/song_memory.py"
 [ -f "$SONG_MEMORY" ] || SONG_MEMORY="$(dirname "$(readlink -f "$0")")/song_memory.py"
-LM_API="http://100.79.177.103:1234/v1"
 SELF_MODEL=$(cat "$WORKSPACE/SELF-MODEL.md" 2>/dev/null || echo "")
 GLORIA_MODEL=$(cat "$WORKSPACE/GLORIA-MODEL.md" 2>/dev/null || echo "")
 CAPABILITIES=$(cat "$MEMORY/CAPABILITIES.md" 2>/dev/null || echo "")

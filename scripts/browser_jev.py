@@ -35,6 +35,20 @@ Use the goal, labels, filled/selected state, and recent outcomes. Choose only an
 Do not choose a disabled element or a field already holding the requested value."""
 
 
+def _subcon_route(url, model):
+    """The subconscious flag (subcon_target.py): the given route until AEON has passed the whole bar and Gloria flips
+    it; then AEON's subconscious lane (2026-11-08: the text helper only; screenshots keep the vision route)."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.generative_route(url, model)
+    except Exception:
+        return url, model
+
+
 def configured() -> bool: return bool(os.environ.get("TYPESAFE_API_KEY", "").strip())
 
 
@@ -144,9 +158,10 @@ class JevPlanner:
                   "TASK: %s\nFIELD: %s\nPAGE: %s\nVISIBLE TEXT: %s\nRECENT: %s\nPLAN/NOTES: %s" %
                   (task[:1600], json.dumps(field, ensure_ascii=False), str(state.get("title") or "")[:300],
                    (text or "")[:2500], json.dumps(_recent(recent), ensure_ascii=False)[:1500], notes[:1200]))
-        body = json.dumps({"model": getattr(self.fallback, "model", "gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0,
+        _url, _model = _subcon_route(getattr(self.fallback, "endpoint"), getattr(self.fallback, "model", "gemma-4-26b-a4b-it-uncensored"))
+        body = json.dumps({"model": _model, "temperature": 0.0,
                            "max_tokens": 180, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
-        req = urlrequest.Request(getattr(self.fallback, "endpoint"), data=body, headers={"Content-Type": "application/json"})
+        req = urlrequest.Request(_url, data=body, headers={"Content-Type": "application/json"})
         with HTTP(req, timeout=getattr(self.fallback, "timeout", 60.0)) as response: payload = json.loads(response.read())
         raw = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").replace("```json", "").replace("```", "")
         a, b = raw.find("{"), raw.rfind("}"); parsed = json.loads(raw[a:b + 1]) if a >= 0 and b > a else {}

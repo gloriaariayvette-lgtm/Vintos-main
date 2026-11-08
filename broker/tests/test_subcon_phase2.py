@@ -39,8 +39,8 @@ scripts/unsaid_frontier.py scripts/unsaid_questions.py scripts/want_learning.py 
 scripts/world_model.py scripts/mischief-detector.sh bin/absence-map.sh bin/consent-audit.sh bin/decade-function.sh
 bin/first-light.sh bin/introspection.sh bin/midday-ground.sh bin/surprise-detector.sh bin/unprecedented-detector.sh
 bin/valence-drift-map.sh bin/warm-idle-gratitude.sh scripts/mirror.sh bin/self-model-update.sh""".split()
-VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py scripts/desktop_control.py
-scripts/browser_jev.py scripts/reelroom.py scripts/voice_local.py""".split()
+VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py
+scripts/reelroom.py scripts/voice_local.py""".split()   # browser_jev and desktop_control: their text-only calls follow the flag (2026-11-08)
 
 def src(f): return open(os.path.join(REPO, f), encoding="utf-8").read()
 

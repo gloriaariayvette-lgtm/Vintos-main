@@ -9047,7 +9047,7 @@ async def voice_token(request: Request, provider: str = "grok", ladder_call: str
             return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
                     "provider":"local", "instructions":instructions}
         return {"token":"local", "instructions":instructions, "provider":"local", "opening":_ladder_open,
-                "model":"gemma-4-26b-a4b-it-uncensored", "voice":"chatterbox-turbo-onyx", "jit":_jit,
+                "model":_vl._brain()[1], "voice":"chatterbox-turbo-onyx", "jit":_jit,
                 "audio_understanding":"Gemma 3n audio-native MLX-VLM"}
     if provider == "openai":
         _ok = _openai_key()
