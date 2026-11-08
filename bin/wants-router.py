@@ -2367,14 +2367,15 @@ def main():
         # Specific operational wants need an agent-capable route, even when a
         # planner produced an easier but different song/reflection plan.
         from want_agent import specific as _agent_specific, request as _agent_request
-        if _agent_specific(want) or want.get("agent_work"):
+        if _agent_specific(want):
             if _agent_request(want, "concrete task needs agent follow-through"):
                 log("  → Bound to agent room; handoff is not fulfillment")
                 continue
 
         if not _ensure_plan(want, force=bool(_args.force_want_id)):
             block = want.get("plan_block") or {}
-            _agent_request(want, "planner block: " + str(block.get("evidence", "unknown")))
+            if _agent_specific(want):
+                _agent_request(want, "planner block: " + str(block.get("evidence", "unknown")))
             log("  → PLAN BLOCKED (%s): %s" %
                 (block.get("block_type", "unknown"), block.get("evidence", "no detail")))
             continue
@@ -2717,7 +2718,8 @@ def main():
                         log("  → Analysis receipt not bound to the current step; not advanced")
                         continue
                     if success.get("status") != "SUCCEEDED":
-                        _agent_request(want, "local analysis: " + str(success.get("reason", "unfinished")))
+                        if _agent_specific(want):
+                            _agent_request(want, "local analysis: " + str(success.get("reason", "unfinished")))
                         log("  → Analysis %s; concrete result retained on this step" % success.get("status", "UNKNOWN"))
                         continue
                     success = success["findings"]
@@ -2807,7 +2809,8 @@ def main():
         else:
             from want_spine import missing_hand
             proposal = missing_hand(action, text, want, path=os.path.join(MEMORY, "current-wants.json"))
-            _agent_request(want, "missing capability: " + str(action))
+            if _agent_specific(want):
+                _agent_request(want, "missing capability: " + str(action))
             log(f"  → Missing capability {action}: {proposal}")
 
 

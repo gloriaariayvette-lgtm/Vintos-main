@@ -7,6 +7,7 @@ rows, room work stays in room_work, and endings use want_completion.
 from pathlib import Path
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -33,9 +34,29 @@ def fingerprint(text):
 
 
 def specific(want):
-    from journal_wants import operational
-    return bool(want.get('id') and (want.get('journal_seeded') or want.get('source') in ('idle-journal', 'email', 'letter-promise'))
-                and operational(want.get('want', '')))
+    """This lane requires a literal operational goal bound to a journal/email source."""
+    from journal_wants import operational, source_receipt
+    if (not isinstance(want, dict) or not isinstance(want.get('id'), str) or not want['id']
+            or not isinstance(want.get('want'), str) or not isinstance(want.get('source'), str)
+            or not operational(want['want'])):
+        return False
+    kind = {'idle-journal':'journal', 'email':'email', 'letter-promise':'email'}.get(want.get('source'))
+    if kind is None or want.get('dream_only'):
+        return False
+    refs = want.get('source_refs')
+    if not isinstance(refs, list):
+        return False
+    for ref in refs:
+        if not isinstance(ref, dict) or ref.get('kind') != kind:
+            continue
+        try:
+            expected = source_receipt(kind, ref.get('id'), want['want'])
+        except (TypeError, ValueError):
+            continue
+        if (ref.get('text_sha256') == expected['source_refs'][0]['text_sha256']
+                and want.get('source_event_id') == expected['source_event_id']):
+            return True
+    return False
 
 
 def bypass(want):
@@ -44,12 +65,14 @@ def bypass(want):
 
 def request(want, reason='', *, ws=None):
     """Bind the entire literal goal; preserve its plan as context, never count a handoff as done."""
+    if not specific(want):
+        return None
     ws = Path(ws or workspace())
     from store_guard import locked_update
     found = []
     def mutate(rows):
         for row in rows:
-            if row.get('id') != want.get('id') or row.get('want') != want.get('want') or row.get('fulfilled') or row.get('dismissed'):
+            if not specific(row) or row.get('id') != want.get('id') or row.get('want') != want.get('want') or row.get('fulfilled') or row.get('dismissed'):
                 continue
             goal = row.get('want', '')
             digest = fingerprint(goal)
@@ -96,22 +119,33 @@ def directory(rid, ws=None):
     return path
 
 
-def _artifact(ws, relative):
+def _artifact(ws, relative, want):
     if not isinstance(relative, str):
         raise ValueError('relative artifact path required')
     path = ws / relative
     if Path(relative).is_absolute() or '..' in Path(relative).parts or path.resolve() != path.absolute():
         raise ValueError('artifact path must be a nonlinked workspace-relative file')
-    if not any(path.is_relative_to(ws / prefix) for prefix in ('memory/art', 'memory/want-artifacts')):
-        raise ValueError('only output shelves can be delivered')
+    request = want.get('agent_work') or {}
+    root = directory(request.get('request_id'), ws)
+    if not path.is_relative_to(root) or any(part.startswith('.') for part in path.relative_to(root).parts):
+        raise ValueError('deliverable must belong to this exact request directory')
+    if path.name in ('result.json', 'working-thread.json') or path.name.endswith('.lock'):
+        raise ValueError('request control records are not deliverables')
     if not path.is_file() or not 0 < path.stat().st_size <= 32 * 1024 * 1024:
         raise ValueError('artifact missing, empty or above the delivery budget')
+    created = request.get('created_at')
+    if (isinstance(created, bool) or not isinstance(created, (int, float))
+            or not math.isfinite(created) or created <= 0
+            or not created <= path.stat().st_mtime <= time.time() + 1):
+        raise ValueError('deliverable must have been modified after this request')
     return path
 
 
 def verify(want, ws=None):
     """A trusted agent's attestation plus actual hashed files, not a prose 'done'."""
     ws = Path(ws or workspace())
+    if not specific(want):
+        raise ValueError('agent result requires a bound journal/email source')
     a = want['agent_work']; root = directory(a['request_id'], ws)
     manifest = root / 'result.json'
     if manifest.resolve() != manifest.absolute() or manifest.stat().st_size > 32000:
@@ -127,7 +161,7 @@ def verify(want, ws=None):
         raise ValueError('completed work must include one to eight deliverables')
     paths = []
     for entry in artifacts:
-        path = _artifact(ws, entry['path'])
+        path = _artifact(ws, entry['path'], want)
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry.get('sha256'):
             raise ValueError('artifact changed after the agent reported completion')
         paths.append(path)
@@ -147,11 +181,11 @@ def opening(want, a, wid):
             'A setup step, a new song, a journal reflection or a plan is not the requested analysis. '
             'Report blockers in this thread and keep working on the other steps. '
             'When the whole task is complete, use scripts/want_agent.py result %s --summary "what was made" '
-            '--acceptance "how the exact task was checked, including limits" --artifact memory/art/path '
+            '--acceptance "how the exact task was checked, including limits" --artifact memory/want-artifacts/requests/%s/output-file '
             '(repeat --artifact for each deliverable), then post WANT RESULT %s on its own line IN THIS THREAD. '
             'That verifies files, delivers them to Gloria and records that I did it. Never put secrets in the artifacts.'
             % (a['request_id'], wid, want['id'], json.dumps(want['want'], ensure_ascii=False), json.dumps(want.get('source_refs', []), ensure_ascii=False),
-               json.dumps(want.get('step_history', [])[-4:], ensure_ascii=False)[:1800], a['request_id'], a['request_id']))
+               json.dumps(want.get('step_history', [])[-4:], ensure_ascii=False)[:1800], a['request_id'], a['request_id'], a['request_id']))
 
 
 def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None):
@@ -160,6 +194,8 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
     ws = Path(ws or workspace()); lines = []
     wants = read(ws / 'memory/current-wants.json', [])
     for w in wants:
+        if not specific(w):
+            continue
         if w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed') or w.get('board') == 'awaiting_gloria':
             continue
         pursuit = w.get('pursuit') or {}
@@ -261,7 +297,7 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
     ws = Path(ws or workspace()); lines = []
     for archived in read(ws / 'memory/fulfilled-wants.json', []):
         a = archived.get('agent_work') or {}
-        if archived.get('fulfilled') and a.get('result') and a.get('delivery', {}).get('state') in ('sent', 'acknowledged'):
+        if specific(archived) and archived.get('fulfilled') and a.get('result') and a.get('delivery', {}).get('state') in ('sent', 'acknowledged'):
             close_sources(archived, a['result']['summary'], a.get('publication', {}).get('url', ''), ws)
             item = next((x for x in room_work.board(state)['open'] if x.get('want_request_id') == a.get('request_id')), None)
             if item:
@@ -354,6 +390,7 @@ def main():
     w = next((w for w in read(ws / 'memory/current-wants.json', [])
               if (w.get('agent_work') or {}).get('request_id') == args.request_id), None)
     if w is None: parser.error('no current want with this exact request')
+    if not specific(w): parser.error('request lacks a bound journal/email source')
     if args.command == 'binding':
         import want_working_thread as working
         work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), args.thread)
@@ -364,7 +401,7 @@ def main():
     result = dict(schema=SCHEMA, request_id=args.request_id, goal_sha256=fingerprint(w['want']), status='completed',
                   summary=args.summary[:2000], acceptance=args.acceptance[:4000], artifacts=[])
     for relative in args.artifact:
-        path = _artifact(ws, relative)
+        path = _artifact(ws, relative, w)
         result['artifacts'].append(dict(path=relative, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
     if not 1 <= len(result['artifacts']) <= 8: parser.error('one to eight artifacts required')
     from store_guard import write_json
