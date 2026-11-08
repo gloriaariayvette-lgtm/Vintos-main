@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 import uuid
-from witness_receipts import digest, instant, receipt
+from witness_receipts import digest, instant, receipt, source_node
 _UNSPECIFIED = object()
 
 
@@ -64,6 +64,50 @@ class Capture:
         self._scratch_root = None
         self._requests = []
         self._nodes = []
+        self._input_bindings = []
+
+    def bind_counterpart_input(self, original_text, message, slot):
+        """Bind an explicitly marked original fragment to one exact input version.
+
+        The caller must supply the authenticated request's original_text field,
+        never a fallback to composed message text. Locate it only within the
+        supplied current-message slot; role or a matching historical quote does
+        not establish origin. Ambiguous/missing spans establish nothing.
+        """
+        if self._closed or self._requests or self._input_bindings:
+            raise ValueError("bind current input once, before routing")
+        if not isinstance(original_text, str) or not original_text.strip():
+            return False
+        if isinstance(slot, bool) or not isinstance(slot, int) or slot < 0:
+            return False
+        if not isinstance(message, dict) or message.get("role") != "user":
+            return False
+        content = message.get("content")
+        if isinstance(content, str):
+            parts = [(None, content)]
+        elif isinstance(content, list):
+            parts = [(i, part["text"]) for i, part in enumerate(content)
+                     if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str)]
+        else:
+            return False
+        spans = []
+        for index, text in parts:
+            start = text.find(original_text)
+            if start < 0:
+                continue
+            if text.find(original_text, start + 1) >= 0:
+                return False
+            spans.append({"part": index, "start": start, "end": start + len(original_text),
+                          "unit": "unicode_codepoints"})
+        if len(spans) != 1:
+            return False
+        node = source_node(self.context_id + ":counterpart", "counterpart_verbatim",
+                           self.started_at, original_text)
+        binding = {"source_id": node["id"], "slot": slot, "message_sha256": _fingerprint(message),
+                   "span": spans[0], "basis": "explicit_original_text"}
+        self._nodes.append(node)
+        self._input_bindings.append(binding)
+        return True
 
     def context_selection(self, value):
         """Retain the existing offered-input receipt, never claim offers were admitted."""
@@ -107,8 +151,12 @@ class Capture:
         for index, item in enumerate(inputs):
             key = node_id + ":input-%d" % index
             parents.append(key)
+            version = _fingerprint(item)
+            bindings = [b for b in self._input_bindings if index == b["slot"] + 1
+                        and version == b["message_sha256"]]
             nodes.append({"id": key, "kind": "context", "at": at, "complete": False,
-                          "parents": [], "origin": "unknown", "input_sha256": _fingerprint(item),
+                          "parents": [b["source_id"] for b in bindings],
+                          "source_bindings": deepcopy(bindings), "origin": "unknown", "input_sha256": version,
                           "slot": index, "role": item.get("role", "unknown") if isinstance(item, dict) else "unknown"})
         # A retry is conditional on earlier calls and their results. Retain those
         # edges even if their text did not enter the next prompt explicitly.
@@ -244,7 +292,7 @@ def _private_root(value):
     return root
 
 
-def begin_shadow(turn_id, surface, started_at):
+def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_message=None, input_slot=None):
     """Disabled unless scratch and workspace explicitly name the same private root."""
     location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
     if not location:
@@ -252,6 +300,10 @@ def begin_shadow(turn_id, surface, started_at):
     root = _private_root(location)
     capture = Capture(turn_id, surface, started_at)
     capture._scratch_root = root
+    try:
+        capture.bind_counterpart_input(original_text, input_message, input_slot)
+    except Exception:
+        pass
     # Do not import a live organ just to observe it, nor read its on-disk store.
     # A context-local offer receipt is supplementary; a cached/stale one cannot
     # establish which material actually reached the provider.

@@ -141,7 +141,8 @@ class Tests(unittest.TestCase):
             body=copy.deepcopy(setup + route_body + [select, edit, guard, final, ret]), decorator_list=[])
         return ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[]))
 
-    def exercise(self, sink_failure=False, enabled=True, responses=None, retry=False, replacement=False):
+    def exercise(self, sink_failure=False, enabled=True, responses=None, retry=False, replacement=False,
+                 original_text=None):
         calls = []
         responses = responses or ["synthetic raw"]
         async def provider(*args):
@@ -162,7 +163,8 @@ class Tests(unittest.TestCase):
         turn = types.SimpleNamespace(turn_id="fixture-turn", carries_capsule=False)
         clock = iter(range(100, 200))
         ns = {"_turn": turn, "_surface": "fixture-chat", "time": types.SimpleNamespace(time=lambda: next(clock)),
-              "messages": [{"content": "synthetic system"}], "params": {}, "LM_STUDIO_API": "unused",
+              "messages": [{"content": "synthetic system"}, {"role": "user", "content": "prefix explicit original suffix"}],
+              "msg": types.SimpleNamespace(original_text=original_text), "params": {}, "LM_STUDIO_API": "unused",
               "LLM_AUTH_HEADERS": {}, "_reason": False, "_prov_envelope": None, "_test_turn": True,
               "_note_task": None, "_rr_keep": False, "_sg_guard": lambda text, turn: text + " after final guard",
               "av_history": [], "_same_as_last_reply": lambda text, history: text == "synthetic repeat"}
@@ -176,6 +178,27 @@ class Tests(unittest.TestCase):
                 answer = asyncio.run(ns["exercise"]())
         self.assertEqual(len(calls), len(responses))
         return answer
+
+    def test_actual_handler_uses_only_explicit_original_fragment(self):
+        self.exercise(original_text="explicit original")
+        path = next(self.root.glob("capture-*.json"))
+        packet = json.loads(path.read_text()); path.unlink()
+        sources = [n for n in packet["lineage"] if n["kind"] == "ordinary_source"]
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["source_sha256"], W.digest("explicit original"))
+        bound = [n for n in packet["lineage"] if n.get("source_bindings")]
+        self.assertEqual([n["slot"] for n in bound], [1])
+        self.assertFalse(bound[0]["complete"])
+        self.exercise(original_text=None)
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        self.assertFalse(any(n["kind"] == "ordinary_source" for n in packet["lineage"]))
+
+    def test_origin_binding_failure_cannot_suppress_capture_or_change_reply(self):
+        with patch.object(W.Capture, "bind_counterpart_input", side_effect=ValueError("synthetic failure")):
+            answer = self.exercise(original_text="explicit original")
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        self.assertEqual(packet["witness_final_text"], answer["reply"])
+        self.assertFalse(any(n["kind"] == "ordinary_source" for n in packet["lineage"]))
 
     def test_actual_repeat_selection_accept_reject_and_failure(self):
         for response, selected in (("synthetic new", "request-2"), ("synthetic repeat", None),

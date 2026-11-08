@@ -10997,7 +10997,8 @@ Your current self-model (excerpt):
         try:
             import witness_capture as _witness_module
             _witness_capture = _witness_module.begin_shadow(
-                _turn.turn_id if _turn is not None else "", _surface, time.time())
+                _turn.turn_id if _turn is not None else "", _surface, time.time(),
+                original_text=msg.original_text, input_message=messages[-1], input_slot=len(messages) - 2)
         except Exception:
             print("[witness] scratch capture unavailable", flush=True)
         _witness_selected = None

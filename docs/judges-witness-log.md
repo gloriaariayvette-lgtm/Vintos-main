@@ -252,3 +252,25 @@ ownership 11/11: **163 OS-isolated checks passed**. Handler tests execute select
 actual AST segments with stubbed routing, not a full HTTP service or model call.
 Generated reports are current and whitespace is clean. Claude owns the full
 isolated Aegis suites and integration; Gloria deploys. No merge or deployment.
+
+## 8 November 2026 — explicit counterpart fragments on a new producer branch
+
+Continued on `codex/judges-producer-origins` from 113cfc69, leaving the invocation
+review tip untouched. The scratch avatar hook now binds the explicitly supplied
+original-text field to an exact span of the actual current-message input. It
+records the source digest and exact message version/slot/part/span. A missing
+origin marker stays unknown; there is no fallback to composed message text.
+
+Repeated/ambiguous spans, changed versions, shifted slots, history matches and
+nontext parts do not acquire external origin. Retry instructions remain unknown.
+Only the explicit fragment gets the external leaf: the assembled prompt/context
+retains incomplete ancestry. Nothing is enabled, sent, merged or deployed, and
+no live store or private record is accessed. Claude's copied-record census and
+Aegis timing task remain his concurrent work, not duplicated here.
+
+Validation: capture 24/24; actual handler/sink 14/14; capture replay 6/6; witness
+38/38; provenance 11/11; ownership 11/11: **104 isolated checks passed**. Cases
+include Unicode spans, structured text beside an image, missing and duplicated
+originals, stale bindings, retries, and observation failure leaving the reply
+unchanged. Reports regenerated; whitespace clean. This validates synthetic
+contracts, not real-turn eligibility or a full serving HTTP request.

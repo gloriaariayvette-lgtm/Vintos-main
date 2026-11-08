@@ -6034,8 +6034,10 @@ current packets as held and does not enable production capture.
 The capture stack is now approved and integrated at `6e452ae6` (Claude reports
 594/594 and 597/597 full suites). `codex/judges-context-receipts` continues with
 explicit external-source origins. `codex/judges-request-dependencies` adds
-handler request/attempt identity and partial producer dependency capture. Full
-upstream ancestry remains open. The earlier authentication blocker was a wrong
+handler request/attempt identity and partial producer dependency capture.
+`codex/judges-producer-origins` binds explicit counterpart fragments to exact
+input versions without upgrading the assembled context. Full upstream ancestry
+remains open. The earlier authentication blocker was a wrong
 login inference: the existing Mac route works. Per coordination note 9, Claude
 owns the copied-record census and Aegis timing run; Codex is not duplicating it. See
 [implementation log](judges-witness-log.md) for the scope and outstanding

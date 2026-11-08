@@ -21,6 +21,87 @@ def result(text="synthetic raw reply", actual="observed-fixture"):
 
 
 class Tests(unittest.TestCase):
+    def test_explicit_original_binds_only_its_exact_fragment_and_input_version(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        message = {"role": "user", "content": "Synthetic framing: αβ. Synthetic tail."}
+        self.assertTrue(c.bind_counterpart_input("αβ", message, 0))
+        c.request("system", [message], {}, False, 101)
+        p = c.finalize("final", 110)
+        source = next(n for n in p["lineage"] if n.get("kind") == "ordinary_source")
+        self.assertEqual(source["source_sha256"], digest("αβ"))
+        self.assertEqual(source["origin"], "counterpart_verbatim")
+        node = next(n for n in p["lineage"] if n.get("slot") == 1)
+        self.assertEqual(node["parents"], [source["id"]])
+        span = node["source_bindings"][0]["span"]
+        self.assertEqual(message["content"][span["start"]:span["end"]], "αβ")
+        self.assertEqual(span["unit"], "unicode_codepoints")
+        self.assertEqual(node["origin"], "unknown")
+        self.assertFalse(node["complete"])
+        self.assertNotIn("αβ", str(p))
+        self.assertNotIn(message["content"], str(p))
+
+    def test_absent_empty_ambiguous_or_unlocated_original_never_becomes_external(self):
+        for original, message in ((None, {"role": "user", "content": "unmarked text"}),
+                ("", {"role": "user", "content": "event text"}),
+                (" ", {"role": "user", "content": "event text"}),
+                ("missing", {"role": "user", "content": "other text"}),
+                ("same", {"role": "user", "content": "same then same"}),
+                ("same", {"role": "assistant", "content": "same"}),
+                ("same", {"role": "user", "content": [{"type": "image", "text": "same"}]}),
+                ("same", {"role": "user", "content": [{"type": "text", "text": "same"},
+                                                        {"type": "text", "text": "same"}]})):
+            c = Capture("turn-1", "fixture-chat", 100)
+            self.assertFalse(c.bind_counterpart_input(original, message, 0))
+            c.request("system", [message], {}, False, 101)
+            p = c.finalize("final", 110)
+            self.assertFalse(any(n["kind"] == "ordinary_source" for n in p["lineage"]))
+            self.assertFalse(any(n.get("source_bindings") for n in p["lineage"]))
+
+    def test_structured_input_records_text_part_and_leaves_images_unknown(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        message = {"role": "user", "content": [{"type": "image", "data": "synthetic-image"},
+                    {"type": "text", "text": "prefix original suffix"}]}
+        self.assertTrue(c.bind_counterpart_input("original", message, 0))
+        c.request("system", [message], {}, False, 101)
+        p = c.finalize("final", 110)
+        node = next(n for n in p["lineage"] if n.get("slot") == 1)
+        self.assertEqual(node["source_bindings"][0]["span"]["part"], 1)
+        self.assertFalse(node["complete"])
+        self.assertEqual(len([n for n in p["lineage"] if n["kind"] == "ordinary_source"]), 1)
+
+    def test_bindings_do_not_move_to_identical_history_or_changed_inputs(self):
+        for change in ("move", "edit"):
+            c = Capture("turn-1", "fixture-chat", 100)
+            message = {"role": "user", "content": "original"}
+            self.assertTrue(c.bind_counterpart_input("original", message, 1))
+            history = [{"role": "assistant", "content": "previous"}, message]
+            if change == "move": history.reverse()
+            else: message["content"] = "edited original"
+            c.request("system", history, {}, False, 101)
+            p = c.finalize("final", 110)
+            self.assertFalse(any(n.get("source_bindings") for n in p["lineage"]))
+
+    def test_retry_preserves_exact_bound_current_input_and_not_new_instructions(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        message = {"role": "user", "content": "original"}
+        self.assertTrue(c.bind_counterpart_input("original", message, 0))
+        c.request("system", [message], {}, False, 101)
+        c.request("system", [message, {"role": "user", "content": "synthetic retry"}], {}, False, 102)
+        p = c.finalize("final", 110)
+        bound = [n for n in p["lineage"] if n.get("source_bindings")]
+        self.assertEqual(len(bound), 2)
+        self.assertTrue(all(n["slot"] == 1 and not n["complete"] for n in bound))
+        self.assertEqual(lineage_status(c.context_id, {n["id"]: n for n in p["lineage"]}, 110), "unknown")
+
+    def test_external_binding_lifecycle_is_immutable_after_routing(self):
+        message = {"role": "user", "content": "original"}
+        for slot in (True, -1, "0"):
+            c = Capture("turn-1", "fixture-chat", 100)
+            self.assertFalse(c.bind_counterpart_input("original", message, slot))
+        c = Capture("turn-1", "fixture-chat", 100)
+        c.request("system", [message], {}, False, 101)
+        with self.assertRaises(ValueError): c.bind_counterpart_input("original", message, 0)
+
     def test_explicit_request_disambiguates_identical_responses(self):
         for selected_index in (0, 1):
             c = Capture("turn-1", "fixture-chat", 100)

@@ -274,3 +274,23 @@ value-map/organ ancestry, admission receipts, internal provider attempts and
 client-delivery acknowledgement are still missing. These packets therefore do
 not certify strict eligibility or enable any feed; all capture remains opt-in to
 private scratch and disabled in ordinary serving.
+
+### Explicit counterpart fragments
+
+The scratch avatar producer now uses the authenticated request's explicitly
+supplied `original_text` field to attest a counterpart fragment. It never uses
+the older fallback from that field to the composed `message`. A fragment must
+occur exactly once in the supplied current-message slot, either in its plain
+text or in exactly one structured text part. It records a source-version hash,
+whole-message hash, slot, text-part index and Unicode-codepoint span; it copies
+none of the incoming text or attachments into the receipt.
+
+On each invocation the binding is applied only if that exact message version
+is still at that exact slot. A retry's extra instruction is not counterpart
+input. Identical history elsewhere, moved/edited messages, absent or empty
+markers, ambiguous occurrences and nontext parts cannot borrow the binding.
+The full assembled input and turn context remain incomplete/unknown: knowing
+one external fragment does not establish the origin of framing, images,
+subconscious material or history. This is a producer attestation based on an
+explicit client field, not independent authentication of the words. Binding
+errors affect observation only; ordinary reply generation and feeds are unchanged.
