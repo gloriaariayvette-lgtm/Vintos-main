@@ -379,6 +379,62 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(rows, [])
         self.assertEqual(summary["held"]["duplicate_held"], 1)
 
+    def test_coverage_exposes_independent_gaps_behind_delivery_hold(self):
+        row = copy.deepcopy(self.row)
+        row["witness_receipt"]["delivery"] = "unknown"
+        row["witness_receipt"]["generation"]["attempts"][-1]["identity_evidence"] = "unknown"
+        summary, admitted = R.census([("canonical", [row])], {}, 1000)
+        self.assertEqual(admitted, [])
+        self.assertEqual(summary["held"], {"unconfirmed_delivery": 1})
+        coverage = summary["evidence_coverage"]
+        self.assertEqual(coverage["assistant_copies"], 1)
+        for field in ("served_identity", "request_binding", "delivery", "context_lineage"):
+            self.assertEqual(coverage["fields"][field], {"unknown": 1})
+        self.assertEqual(coverage["fields"]["response_binding"], {"matched": 1})
+
+    def test_coverage_counts_copies_and_does_not_admit_excluded_acts(self):
+        excluded = dict(self.row, tactical=True)
+        summary, admitted = R.census([("canonical", [self.row, excluded, {"role": "user"}])], self.nodes, 1000)
+        self.assertEqual(admitted, [])
+        self.assertEqual(summary["held"]["duplicate_held"], 1)
+        coverage = summary["evidence_coverage"]
+        self.assertEqual(coverage["assistant_copies"], 2)
+        self.assertEqual(coverage["fields"]["served_identity"], {"observed": 2})
+        for counts in coverage["fields"].values():
+            self.assertEqual(sum(counts.values()), 2)
+
+    def test_coverage_conflicts_never_select_a_receipt(self):
+        row = copy.deepcopy(self.row)
+        conflicting = copy.deepcopy(row["witness_receipt"])
+        conflicting["delivery"] = "unknown"
+        row["generation_provenance"]["witness_receipt"] = conflicting
+        for other in (conflicting, {"status": "unknown"}):
+            row["generation_provenance"]["witness_receipt"] = other
+            coverage = R.evidence_coverage(row, self.nodes)
+            self.assertEqual(coverage.pop("receipt"), "conflicting")
+            self.assertEqual(set(coverage.values()), {"not_evaluated"})
+        row.pop("witness_receipt")
+        row["generation_provenance"].pop("witness_receipt")
+        self.assertEqual(R.evidence_coverage(row, {})["receipt"], "absent")
+        row["witness_receipt"] = {"schema": "invalid"}
+        self.assertEqual(R.evidence_coverage(row, {})["receipt"], "unknown")
+
+    def test_coverage_binding_requires_matching_identity_and_response(self):
+        row = copy.deepcopy(self.row)
+        attempt = row["witness_receipt"]["generation"]["attempts"][-1]
+        attempt.update(request_id="fixture-request", input_sha256=W.digest("Synthetic request"))
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["request_binding"], "recorded")
+        self.assertEqual(coverage["identity_binding"], "matched")
+        row.update(surface="different", content="Changed synthetic response")
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["identity_binding"], "mismatch")
+        self.assertEqual(coverage["response_binding"], "missing_or_changed")
+        attempt.pop("input_sha256")
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["receipt"], "unknown")
+        self.assertEqual(coverage["request_binding"], "not_evaluated")
+
     def test_ledger_and_missing_sources(self):
         ledger = dict(self.row, vintos=self.row["content"])
         del ledger["role"]; del ledger["content"]

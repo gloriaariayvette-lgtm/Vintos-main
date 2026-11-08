@@ -6300,3 +6300,12 @@ separately approved enablement. This supersedes its stale next-increment list;
 it does not authorize a new producer claim or production change. Latest code
 validation remains 184 local isolated checks at 0ab38cdf. Later judges review
 and full Aegis validation remain pending; note 17 approved the separate wants work.
+
+
+## 8 November — independent evidence coverage
+
+`codex/judges-evidence-coverage` exposes missing receipt fields even behind an
+earlier delivery/admission hold. Counts are per supplied assistant copy, not
+unique eligible turns; conflicting receipts remain unselected. 158 affected
+isolated checks pass. No private snapshot run or admission/feed change. Review
+and the full isolated Aegis suite remain pending.

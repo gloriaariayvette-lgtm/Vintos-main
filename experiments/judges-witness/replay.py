@@ -16,7 +16,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response
+from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status
 
 
 def adapt(rows, kind):
@@ -81,9 +81,42 @@ def snapshot_nodes(sources, lineage):
     return nodes
 
 
+def evidence_coverage(row, nodes):
+    """Independent per-copy coverage, never an admission or completeness verdict.
+
+    An early delivery hold must not conceal missing ancestry or request binding.
+    Conflicting receipts contribute no selected facts. Recorded facts on excluded
+    acts remain coverage observations, not evidence eligible for learning.
+    """
+    candidates = [row["witness_receipt"]] if "witness_receipt" in row else []
+    candidates += [row[k]["witness_receipt"] for k in ("generation_provenance", "provenance")
+                   if isinstance(row.get(k), dict) and "witness_receipt" in row[k]]
+    receipts = [normalize_receipt(r) for r in candidates]
+    status = ("absent" if not receipts else "conflicting" if any(r != receipts[0] for r in receipts)
+              else "recorded" if receipts[0]["status"] == "recorded" else "unknown")
+    result = dict.fromkeys(("identity_binding", "served_identity", "request_binding",
+                           "delivery", "response_binding", "context_lineage"), "not_evaluated")
+    result["receipt"] = status
+    if status != "recorded":
+        return result
+    r = receipts[0]
+    selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+    identity, _ = joined_identity(row)
+    text = final_response(row)
+    result.update(
+        identity_binding="matched" if identity == r["turn_id"] and row.get("surface") == r["surface"] else "mismatch",
+        served_identity="observed" if selected["served_model"] is not None else "unknown",
+        request_binding="recorded" if selected.get("request_id") and selected.get("input_sha256") else "unknown",
+        delivery=r["delivery"],
+        response_binding="matched" if isinstance(text, str) and digest(text) == r["response_sha256"] else "missing_or_changed",
+        context_lineage=lineage_status(r["context_receipt_id"], nodes, r["started_at"]))
+    return result
+
+
 def census(sources, nodes, cutoff):
     groups, reasons, envelopes = defaultdict(list), Counter(), Counter()
     source_counts, identity_joins, duplicate_reasons = {}, 0, Counter()
+    coverage, coverage_n = defaultdict(Counter), 0
     for kind, rows in sources:
         adapted = list(adapt(rows, kind))
         source_counts[kind] = source_counts.get(kind, 0) + len(adapted)
@@ -91,6 +124,9 @@ def census(sources, nodes, cutoff):
             if row.get("role") != "assistant":
                 reasons["not_reply"] += 1
                 continue
+            coverage_n += 1
+            for field, status in evidence_coverage(row, nodes).items():
+                coverage[field][status] += 1
             key, identity_status = joined_identity(row)
             if key is None:
                 envelopes[envelope_status(row)] += 1
@@ -121,7 +157,11 @@ def census(sources, nodes, cutoff):
     summary = {"source_rows": source_counts, "envelope_rows": dict(envelopes),
                "unique_identified_replies": len(groups), "eligible_replies": len(admitted),
                "held": dict(reasons), "duplicate_held_copy_reasons": dict(duplicate_reasons),
-               "envelope_id_joins": identity_joins, "behaviour": {
+               "envelope_id_joins": identity_joins,
+               "evidence_coverage": {"assistant_copies": coverage_n,
+                   "fields": {k: dict(v) for k, v in sorted(coverage.items())},
+                   "meaning": "per-copy independent coverage, including excluded acts; not eligibility or complete-stream proof"},
+               "behaviour": {
                    "mean_words": statistics.mean(lengths) if lengths else None,
                    "question_fraction": sum("?" in final_response(r) for r in admitted) / len(admitted)
                    if admitted else None},

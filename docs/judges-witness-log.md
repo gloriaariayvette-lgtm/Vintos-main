@@ -611,3 +611,26 @@ wants integration does not approve later judges repairs. No new tests were run
 for this documentation-only change; the map attributes 184 passing local checks
 to the prior code tip rather than claiming a fresh run. Relative links and
 whitespace checked. No production commands, configuration or code changed.
+
+
+## 8 November — independent evidence coverage counts
+
+`codex/judges-evidence-coverage` continues from af247ebb, keeping prior review tips
+fixed. The census's first admission failure is useful for disjoint hold counts
+but hides later missing evidence: an unconfirmed delivery can conceal unknown
+served identity, request binding and context ancestry. Added independent per-copy
+coverage for receipt state, identity/surface binding, observed generator, selected
+request/input hash, delivery, response binding and context lineage.
+
+Unknown/malformed/conflicting receipts do not supply selected facts. All supplied
+assistant copies, including excluded/duplicate/out-of-cutoff copies, contribute
+to coverage; they do not become eligible. User rows do not contribute. Four new
+synthetic regressions verify hidden gaps, duplicate/excluded denominators, receipt
+conflicts and binding mismatches. Admission and the existing hold reasons remain
+unchanged. Coverage reports contain only statuses and counts.
+
+158 isolated checks pass: witness 94, capture 27, replay adapter 8, hooks 18,
+ownership 11. Reports regenerated and whitespace checked. No private evidence
+was read and no actual-coverage result is claimed. Full isolated Aegis review
+remains pending. No model calls, test sends, live writes, feed changes, merge or
+deployment. Production capture enablement remains a separate decision.

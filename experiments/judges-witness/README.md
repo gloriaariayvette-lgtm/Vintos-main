@@ -166,7 +166,7 @@ an isolated private directory. **Do not set these on production.** The separate
 describes the future dedicated destination, retention bounds and acceptance.
 Capture alone cannot supply missing ancestry or delivery evidence.
 
-Latest submitted code tip for this map: `0ab38cdf`, including the preceding
+Code baseline when this map was prepared: `0ab38cdf`, including the preceding
 manifest, embedding-copy and dependency-copy repairs. Its 184 affected local
 isolated checks passed; the latest independent note read is #17, which approves
 wants through `de2cd7b4`, not these later judges repairs. Their independent review
@@ -602,3 +602,28 @@ this exact-copy contract. Object key ordering is irrelevant; array order remains
 part of the attestation. Conflicts abort the supplied snapshot, preserving the
 existing policy of never choosing a winning dependency claim. Valid identical
 copies keep the first node. No live merger or eligibility rule is changed.
+
+
+### Independent evidence coverage
+
+`census.evidence_coverage` reports independent field counts alongside the existing
+first-failure admission reasons. Its denominator is every supplied assistant copy,
+including duplicates, excluded acts and copies outside the cutoff. User rows are
+not included. Each field's counts sum to `assistant_copies`; empty input has zero
+copies and an empty field map. These counts are not unique-turn counts and are
+not evidence that a source stream is complete.
+
+Receipt state is `absent`, `unknown`, `conflicting` or `recorded`. Only an agreeing
+recorded receipt supplies further field observations: row identity/surface binding,
+observed selected generator, selected request/input-hash binding, delivery state,
+exact response binding, and context-lineage standing. An absent, malformed or
+conflicting receipt leaves those fields `not_evaluated`. A recorded request
+binding means the receipt names the request and valid hash; it does not verify
+the original provider input or claim complete provider-attempt coverage.
+
+For example, a row held for unconfirmed delivery can independently report unknown
+served identity, request binding and ancestry. A tactical row can have observed
+generator metadata and still be excluded. Coverage never substitutes for the
+strict admission result, clears a hold, infers a missing fact or feeds a live
+consumer. The report carries statuses/counts only, never the identities or hashes
+being assessed. Existing private-artifact and aggregate-review rules still apply.
