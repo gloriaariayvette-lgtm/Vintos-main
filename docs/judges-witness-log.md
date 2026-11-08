@@ -121,3 +121,26 @@ checks are current. All are
 OS-isolated synthetic checks. Full Aegis suite and independent review remain
 Claude Code's step. Context dependencies, source-store integration and remaining
 surfaces are still pending; no production activation, merge or deployment.
+
+## 8 November 2026 — scratch capture to offline census
+
+Kept capture-hook review tip `01078956` fixed. Continued on the separate stacked
+branch `codex/judges-capture-replay`. The offline replay now accepts explicitly
+supplied capture packets and merges their context/reply nodes without overwriting
+conflicting attestations. Existing canonical/merged/ledger adapters and strict
+admission are unchanged. Current packets remain held: a framework handoff is
+not delivery, and incomplete ancestry is not clean evidence.
+
+Synthetic private-sink-to-CLI replay, restart equality, source immutability,
+provenance exclusions and conflicting-node checks pass. Capture replay **6/6**
+and existing witness **35/35**, OS-isolated: **41 checks passed**. No model calls
+or real snapshots. Full Aegis suite remains with Claude Code. No live reader,
+serving edit, merge or deployment in this increment.
+
+Source tracing confirms that on-message forecasts already carry the turn ID,
+surface, arrival time, completion time and checkpoint ID. Their completion can
+lag the reply, so the strict join must continue rejecting late forecasts. The
+canonical avatar writer runs before the handler's last reply guard: a future
+source-store integration cannot blindly attach a later final-text receipt to
+earlier stored content. Exact binding and a separate delivery receipt remain
+required. These are source findings, not measurements of private records.

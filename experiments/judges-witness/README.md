@@ -194,3 +194,21 @@ On the integrated base, `scripts/server.py` is a symlink to `bin/server.py`;
 the test checks their content parity. Other chat/voice handlers, complete context
 dependency receipts, complete fallback-attempt coverage and source-store
 integration remain pending. No production capture is enabled by this branch.
+
+## Replaying scratch capture packets
+
+The offline bundle also accepts a source with `kind: "capture"` whose `rows`
+are explicit `witness-capture-v1` packet objects. There is no directory scan or
+live discovery: an authorized scratch harness supplies those objects in its
+private bundle and uses the same replay command above. The adapter retains each
+packet's reply node, incomplete context nodes, provenance and test exclusions.
+Identical repeated nodes are allowed across packets; conflicting nodes abort
+the replay, including conflicts with the bundle's explicit lineage. Duplicate
+identities in the explicit lineage list remain errors.
+
+Current packets have unconfirmed delivery and incomplete ancestry, so they
+contribute source/hold counts, **not eligible behaviour or innovation scores**.
+The adapter never substitutes framework handoff for delivery or fabricates
+missing dependencies. Synthetic integration tests run the private sink through
+the real offline CLI twice, preserving the input and reproducing the report.
+This is contract validation, not a real-data census or model accuracy result.

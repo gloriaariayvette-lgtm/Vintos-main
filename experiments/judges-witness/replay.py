@@ -20,17 +20,56 @@ from witness_receipts import admission, digest, envelope_status, instant, row_re
 def adapt(rows, kind):
     if not isinstance(rows, list):
         raise ValueError("snapshot must contain a list of records")
-    if kind not in ("canonical", "merged", "ledger"):
+    if kind not in ("canonical", "merged", "ledger", "capture"):
         raise ValueError("unsupported source adapter")
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("record must be an object")
+        if kind == "capture" and row.get("schema") != "witness-capture-v1":
+            raise ValueError("unsupported capture packet schema")
         out = dict(row)
         out["_witness_adapter_kind"] = kind
         if kind == "ledger":
             # This census concerns finalized assistant acts, never her input text.
             out.update(role="assistant", content=row.get("vintos"))
         yield out
+
+
+def snapshot_nodes(sources, lineage):
+    """Join explicit ancestry and packet nodes without silently overwriting either.
+
+    Reading a capture does not attest delivery, complete its ancestry, or make
+    its reply an ordinary source. Identical node copies are harmless;
+    conflicting attestations abort the snapshot rather than selecting a winner.
+    """
+    nodes = {}
+
+    def add(node, repeated=False):
+        if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
+            raise ValueError("invalid lineage identity")
+        key = node["id"]
+        if key in nodes and (not repeated or nodes[key] != node):
+            raise ValueError("duplicate or conflicting lineage identity")
+        nodes[key] = node
+
+    if not isinstance(lineage, list):
+        raise ValueError("lineage must be a list")
+    for node in lineage:
+        add(node)
+    for kind, rows in sources:
+        if kind != "capture":
+            continue
+        for packet in adapt(rows, kind):
+            parents = packet.get("lineage")
+            reply = packet.get("reply_node")
+            if (not isinstance(parents, list) or not isinstance(reply, dict)
+                    or reply.get("kind") != "reply" or not packet.get("turn_id")
+                    or reply.get("turn_id") != packet["turn_id"]):
+                raise ValueError("capture requires its explicit reply node and lineage")
+            for node in parents:
+                add(node, repeated=True)
+            add(reply, repeated=True)
+    return nodes
 
 
 def census(sources, nodes, cutoff):
@@ -241,13 +280,9 @@ def main():
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
-    nodes = {}
-    for node in bundle.get("lineage", []):
-        if node["id"] in nodes:
-            raise ValueError("duplicate lineage identity")
-        nodes[node["id"]] = node
-    summary, admitted = census([(s["kind"], s["rows"]) for s in bundle.get("sources", [])],
-                               nodes, instant(args.cutoff))
+    sources = [(s["kind"], s["rows"]) for s in bundle.get("sources", [])]
+    nodes = snapshot_nodes(sources, bundle.get("lineage", []))
+    summary, admitted = census(sources, nodes, instant(args.cutoff))
     scores, details = innovation(admitted, bundle.get("forecasts", []),
                                  bundle.get("embeddings", []), bundle.get("checkpoints", {}))
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
