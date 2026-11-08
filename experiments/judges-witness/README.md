@@ -236,3 +236,41 @@ producer integration still must verify which source it actually read.
 This does not backfill origins or make current capture roots complete. Existing
 live eligibility/readers are unchanged; stricter ancestry applies only to the
 new shadow witness.
+
+## Handler request identity and dependency observation
+
+The scratch avatar hook now assigns a distinct invocation token before each of
+its three router call sites. It keeps the token belonging to the result the
+handler actually chooses, including repeat acceptance/rejection and replacement
+failure. Selection uses both that request token and the observed returned-root
+attempt ID; an exact raw-text digest additionally checks the binding. Identical
+text in two attempts is no longer ambiguous on this path. A missing, invalidated
+or foreign token remains unknown. The older text-only helper still refuses
+ambiguous matches and is not used by this handler.
+
+Each request fingerprint covers the exact ordered handler arguments: system,
+conversation (including structured message parts), parameters and reasoning flag.
+It excludes endpoint/authentication material. This is a **handler-argument**
+receipt, not a claim about provider wire serialization or complete internal
+fallback/retry history. The packet separately retains all observed attempts,
+including when no result is selected, and raw-to-final digest changes after
+postprocessing. Request IDs and fingerprints survive provenance normalization
+and the merged projection in the generation receipt.
+
+Dependency nodes record every system/history slot, each invocation, observed
+result and conditional retry edge. The context-local organ selection receipt is
+recorded as **offers, not admission**; its error prose is never copied. An offer
+is not proof that material reached the final prompt. Existing tactical generation
+provenance adds a direct effect dependency. Unknown origin on any assembled
+message remains unknown, even for role=user. Generated/history content is never
+promoted to an external leaf from its wording or role.
+
+The turn's aggregate dependency root is finalized after the calls. It deliberately
+remains incomplete and is not a pre-generation clean-context attestation. Actual
+handler request/result wall clocks are recorded; pure synthetic callers without
+a result clock explicitly mark their result timestamp as a request-start lower
+bound. Clock regressions invalidate observation, not the reply. Full upstream
+value-map/organ ancestry, admission receipts, internal provider attempts and
+client-delivery acknowledgement are still missing. These packets therefore do
+not certify strict eligibility or enable any feed; all capture remains opt-in to
+private scratch and disabled in ordinary serving.

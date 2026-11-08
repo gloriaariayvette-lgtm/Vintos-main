@@ -7,9 +7,48 @@ the receipt to its exact final return text. Persistence is a separate caller.
 from copy import deepcopy
 import json
 import os
+import sys
 from pathlib import Path
 import uuid
 from witness_receipts import digest, instant, receipt
+_UNSPECIFIED = object()
+
+
+def _fingerprint(value):
+    return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
+
+
+class Invocation:
+    """One handler invocation, including its returned root and observed stages.
+
+    This is not a wire-request or complete provider-retry ledger. In particular,
+    an unobserved internal fallback stays unobserved, not an invented attempt.
+    """
+    def __init__(self, capture, request_id):
+        self.capture, self.request_id = capture, request_id
+        self.returned_attempt_id = None
+        self.observed = False
+        self.clock = None
+
+    def observe(self, result):
+        if self.observed:
+            self.returned_attempt_id = None
+            raise ValueError("one result per invocation")
+        self.observed = True
+        self.returned_attempt_id = self.capture.observe(result, self.request_id,
+                                                       self.clock() if self.clock else None)
+
+
+def prepare_shadow(capture, system, messages, params, reason, at):
+    """Observation failure never prevents routing; no endpoint/auth enters a receipt."""
+    if capture is None:
+        return None, {}
+    try:
+        invocation = capture.request(system, messages, params, reason, at() if callable(at) else at)
+        invocation.clock = at if callable(at) else None
+        return invocation, {"observer": invocation.observe}
+    except Exception:
+        return None, {}
 
 
 class Capture:
@@ -23,8 +62,68 @@ class Capture:
         self._selected = None
         self._closed = False
         self._scratch_root = None
+        self._requests = []
+        self._nodes = []
 
-    def observe(self, result):
+    def context_selection(self, value):
+        """Retain the existing offered-input receipt, never claim offers were admitted."""
+        if self._closed or not isinstance(value, dict):
+            raise ValueError("invalid selection")
+        at = instant(value["ts"])
+        if at > self.started_at or not isinstance(value.get("selection_id"), str):
+            raise ValueError("invalid selection clock or identity")
+        offers = value.get("offers")
+        if not isinstance(offers, dict):
+            raise ValueError("invalid offers")
+        observed = []
+        for name, offer in sorted(offers.items()):
+            if not isinstance(name, str) or not isinstance(offer, dict):
+                raise ValueError("invalid offer")
+            observed.append({"organ": name, "state": offer.get("state", "unknown"),
+                             "influence_id": offer.get("influence_id"), "source_hash": offer.get("source_hash")})
+        self._nodes.append({"id": self.context_id + ":selection", "kind": "context", "at": at,
+                            "complete": False, "parents": [], "observation": "context_selection",
+                            "scope": "offers_not_admission", "selection_id": value["selection_id"],
+                            "selection_version": value.get("selection_version"), "offers": deepcopy(observed)})
+
+    def request(self, system, messages, params, reason, at):
+        """Bind exact handler arguments and their ordered dependencies before routing.
+
+        A digest says what was read, not where it originated. All assembled
+        prompt/history entries remain unknown until their producers supply
+        complete ancestry. Even role=user is not evidence of external origin.
+        """
+        at = instant(at)
+        if self._closed or at < max([self.started_at] + [n["at"] for n in self._nodes]):
+            raise ValueError("invalid request lifecycle")
+        if not isinstance(system, str) or not isinstance(messages, list) or not isinstance(params, dict):
+            raise ValueError("invalid handler request")
+        request_id = "request-%d" % (len(self._requests) + 1)
+        node_id = self.context_id + ":" + request_id
+        body = {"system": system, "messages": messages, "params": params, "reason": reason}
+        fingerprint = _fingerprint(body)
+        inputs = [{"role": "system", "content": system}] + messages
+        nodes, parents = [], []
+        for index, item in enumerate(inputs):
+            key = node_id + ":input-%d" % index
+            parents.append(key)
+            nodes.append({"id": key, "kind": "context", "at": at, "complete": False,
+                          "parents": [], "origin": "unknown", "input_sha256": _fingerprint(item),
+                          "slot": index, "role": item.get("role", "unknown") if isinstance(item, dict) else "unknown"})
+        # A retry is conditional on earlier calls and their results. Retain those
+        # edges even if their text did not enter the next prompt explicitly.
+        parents += [r["context_receipt_id"] for r in self._requests]
+        parents += [n["id"] for n in self._nodes if n.get("observation") == "router_result"]
+        nodes.append({"id": node_id, "kind": "context", "at": at, "complete": False,
+                      "parents": parents, "input_sha256": fingerprint, "request_id": request_id})
+        record = {"request_id": request_id, "at": at, "context_receipt_id": node_id,
+                  "input_sha256": fingerprint, "scope": "handler_arguments",
+                  "input_count": len(inputs), "provider_attempts_complete": False}
+        self._nodes.extend(nodes)
+        self._requests.append(record)
+        return Invocation(self, request_id)
+
+    def observe(self, result, request_id=None, observed_at=None):
         """Copy metadata only; never retain provider text, tool calls or reason text.
 
         Stage lists sometimes contain their enclosing result. Walk one level,
@@ -38,6 +137,14 @@ class Capture:
         if not isinstance(stages, list):
             raise ValueError("stages must be a list")
         seen = set()
+        returned = None
+        request = next((r for r in self._requests if r["request_id"] == request_id), None)
+        if request_id is not None and request is None:
+            raise ValueError("unknown request")
+        if observed_at is not None:
+            observed_at = instant(observed_at)
+            if request is None or observed_at < request["at"]:
+                raise ValueError("invalid result clock")
         for stage in list(stages) + [result]:
             if not isinstance(stage, dict) or id(stage) in seen:
                 continue
@@ -45,7 +152,7 @@ class Capture:
             usable = stage.get("status") in ("valid", "truncated") and bool(stage.get("text"))
             evidence = stage.get("identity_evidence", "unknown")
             actual = stage.get("observed_model") if evidence in ("response_metadata", "runtime_receipt") else None
-            self._attempts.append({
+            attempt = {
                 "attempt_id": "attempt-%d" % (len(self._attempts) + 1),
                 "outcome": "discarded" if usable else "failed",
                 "requested_model": stage.get("requested_model"),
@@ -53,14 +160,33 @@ class Capture:
                 "served_revision": stage.get("observed_revision") if actual else None,
                 "identity_evidence": evidence if actual else "unknown",
                 "_claimed_model": stage.get("claimed_model") if evidence == "claimed" else None,
-                "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None})
+                "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None}
+            if request is not None:
+                attempt.update(request_id=request_id, input_sha256=request["input_sha256"])
+            self._attempts.append(attempt)
+            if stage is result and usable:
+                returned = attempt["attempt_id"]
+            if request is not None:
+                self._nodes.append({"id": self.context_id + ":" + attempt["attempt_id"],
+                                    "kind": "context", "at": observed_at if observed_at is not None else request["at"],
+                                    "time_basis": "observed" if observed_at is not None else "request_start_lower_bound",
+                                    "complete": False,
+                                    "parents": [request["context_receipt_id"]],
+                                    "observation": "router_result", "origin": "unknown",
+                                    "attempt_id": attempt["attempt_id"],
+                                    "response_sha256": attempt["_raw_sha256"]})
+        return returned
 
-    def select(self, raw_reply):
+    def select(self, raw_reply, request=_UNSPECIFIED):
         """Explicit handler selection after fallback/repeat decisions, before edits."""
         if self._closed:
             raise ValueError("capture already finalized")
         fingerprint = digest(raw_reply) if isinstance(raw_reply, str) and raw_reply else None
         matches = [a for a in self._attempts if fingerprint and a["_raw_sha256"] == fingerprint]
+        if request is not _UNSPECIFIED:
+            matches = [a for a in matches if isinstance(request, Invocation) and request.capture is self
+                       and a.get("request_id") == request.request_id
+                       and a["attempt_id"] == request.returned_attempt_id]
         # Equal text is not an attempt identity. In particular, an observed
         # retry may be discarded by the handler. Until it supplies an explicit
         # attempt ID, ambiguous matches must not guess the served generator.
@@ -72,7 +198,8 @@ class Capture:
             raise ValueError("capture already finalized")
         if transport not in ("unknown", "handed_to_framework", "failed"):
             raise ValueError("capture cannot attest delivery")
-        if not isinstance(final_text, str) or instant(finalized_at) < self.started_at:
+        final = instant(finalized_at)
+        if not isinstance(final_text, str) or final < max([self.started_at] + [n["at"] for n in self._nodes]):
             raise ValueError("invalid finalization")
         self._closed = True
         attempts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in self._attempts]
@@ -81,15 +208,23 @@ class Capture:
                 attempt["outcome"] = "selected"
         r = receipt(self.turn_id, self.surface, self.started_at, finalized_at, final_text,
                     self.context_id, attempts, self._selected, delivery="unknown")
+        selected = next((a for a in self._attempts if a["attempt_id"] == self._selected), None)
         return deepcopy({"schema": "witness-capture-v1", "turn_id": self.turn_id,
                          "surface": self.surface, "witness_receipt": r,
                          "witness_final_text": final_text, "witness_final_sha256": digest(final_text),
                          "transport": transport, "attempt_history_complete": False,
+                         "requests": self._requests,
+                         "observed_attempts": attempts,
+                         "finalization": {"selected_raw_sha256": selected["_raw_sha256"] if selected else None,
+                                          "final_sha256": digest(final_text), "scope": "handler_postprocessing",
+                                          "changed": selected["_raw_sha256"] != digest(final_text) if selected else None},
                          "identity_claims": [{"attempt_id": a["attempt_id"], "claimed_model": a["_claimed_model"],
                                               "evidence": "relay_claim"} for a in self._attempts
                                              if isinstance(a["_claimed_model"], str) and a["_claimed_model"]],
-                         "lineage": [{"id": self.context_id, "kind": "context", "at": self.started_at,
-                                      "complete": False, "parents": []}],
+                         "lineage": [{"id": self.context_id, "kind": "context", "at": final,
+                                      "complete": False, "parents": [n["id"] for n in self._nodes
+                                          if n.get("request_id") or n.get("observation") in
+                                          ("router_result", "context_selection")]}] + self._nodes,
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
                              "context_receipt_id": self.context_id, "parents": [self.context_id],
@@ -117,6 +252,16 @@ def begin_shadow(turn_id, surface, started_at):
     root = _private_root(location)
     capture = Capture(turn_id, surface, started_at)
     capture._scratch_root = root
+    # Do not import a live organ just to observe it, nor read its on-disk store.
+    # A context-local offer receipt is supplementary; a cached/stale one cannot
+    # establish which material actually reached the provider.
+    try:
+        module = sys.modules.get("inner_context")
+        value = module.current_selection() if module is not None else None
+        if value is not None:
+            capture.context_selection(value)
+    except Exception:
+        pass
     return capture
 
 
@@ -140,6 +285,10 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
     if p.get("output_provenance") == "stratagem_influenced":
         packet["reply_node"]["influence"] = "influenced"
         packet["reply_node"]["tactical"] = True
+        effect_id = "effect:" + capture.turn_id
+        packet["lineage"].append({"id": effect_id, "kind": "tactical", "at": instant(finalized_at),
+                                  "complete": False, "parents": [], "origin": "generation_provenance"})
+        packet["reply_node"]["parents"].append(effect_id)
     # Write an invisible temporary name, then atomically publish a complete file.
     # link (rather than replacing rename) also refuses an existing final name.
     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)

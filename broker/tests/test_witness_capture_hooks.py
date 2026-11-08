@@ -81,7 +81,7 @@ class Tests(unittest.TestCase):
         self.assertFalse(packet["generation_provenance"]["may_witness"])
         self.assertEqual(packet["reply_node"]["influence"], "influenced")
 
-    def handler_segments(self):
+    def handler_segments(self, retry=False, replacement=False):
         source = (ROOT / "bin/server.py").read_text()
         self.assertEqual(source, (ROOT / "scripts/server.py").read_text())
         tree = ast.parse(source)
@@ -91,12 +91,24 @@ class Tests(unittest.TestCase):
         start = next(i for i, n in enumerate(outer.body) if isinstance(n, ast.Import)
                      and any(a.name == "model_router" for a in n.names))
         setup = outer.body[start:start + 5]
-        self.assertTrue(isinstance(setup[-1], ast.Assign) and setup[-1].targets[0].id == "_witness_kwargs")
+        self.assertTrue(isinstance(setup[-1], ast.Assign) and setup[-1].targets[0].id == "_witness_selected")
         routed = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign)
                          and isinstance(n.value, ast.Await) and isinstance(n.value.value, ast.Call)
                          and isinstance(n.value.value.func, ast.Attribute)
                          and n.value.value.func.attr == "route_reply"], key=lambda n: n.lineno)
         self.assertEqual(len(routed), 3)
+        prepared = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign) and any(
+            isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "prepare_shadow"
+            for c in ast.walk(n.value))], key=lambda n: n.lineno)
+        chosen = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign)
+                         and isinstance(n.value, ast.Name) and n.value.id == "_witness_request"
+                         and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "_witness_selected"],
+                        key=lambda n: n.lineno)
+        self.assertEqual(len(prepared), 3)
+        self.assertEqual(len(chosen), 3)
+        for before, route, after in zip(prepared, routed, chosen):
+            self.assertLess(before.lineno, route.lineno)
+            self.assertLess(route.lineno, after.lineno)
         for node in routed:
             self.assertTrue(any(k.arg is None and isinstance(k.value, ast.Name) and k.value.id == "_witness_kwargs"
                                 for k in node.value.value.keywords))
@@ -114,15 +126,29 @@ class Tests(unittest.TestCase):
         # A stubbed postprocessing edit proves the final guard output, rather
         # than the raw generation, is what reaches the sink and return value.
         edit = ast.parse('reply = reply + " after postprocessing"').body[0]
+        route_body = [prepared[0], routed[0], chosen[0]]
+        if retry:
+            # Execute the actual repeat decision and its exception path; no
+            # provider, judge, store, device or notification code is imported.
+            repeat = next(n for n in outer.body if isinstance(n, ast.Try) and any(
+                isinstance(c, ast.Assign) and c.lineno == routed[1].lineno for c in ast.walk(n)))
+            route_body.append(repeat)
+        if replacement:
+            route_body.append(ast.Try(body=[prepared[2], routed[2], chosen[2]], handlers=[
+                ast.ExceptHandler(type=ast.Name(id="Exception", ctx=ast.Load()), body=[ast.Pass()])],
+                orelse=[], finalbody=[]))
         fn = ast.AsyncFunctionDef(name="exercise", args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
-            body=copy.deepcopy(setup + [routed[0], select, edit, guard, final, ret]), decorator_list=[])
+            body=copy.deepcopy(setup + route_body + [select, edit, guard, final, ret]), decorator_list=[])
         return ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[]))
 
-    def exercise(self, sink_failure=False, enabled=True):
+    def exercise(self, sink_failure=False, enabled=True, responses=None, retry=False, replacement=False):
         calls = []
+        responses = responses or ["synthetic raw"]
         async def provider(*args):
             calls.append(args)
-            r = G.from_openai({"model": "fixture-observed", "choices": [{"message": {"content": "synthetic raw"},
+            response = responses[len(calls) - 1]
+            if isinstance(response, Exception): raise response
+            r = G.from_openai({"model": "fixture-observed", "choices": [{"message": {"content": response},
                                       "finish_reason": "stop"}]}, "fixture")
             r["route"] = "fixture-route"
             r.update(observed_model="fixture-observed", identity_evidence="response_metadata")
@@ -134,12 +160,13 @@ class Tests(unittest.TestCase):
         router = types.ModuleType("model_router"); router.route_reply = router_ns["route_reply"]
         self.assertIs(router_ns["route_reply_result"], provider)
         turn = types.SimpleNamespace(turn_id="fixture-turn", carries_capsule=False)
-        clock = iter([100, 110])
+        clock = iter(range(100, 200))
         ns = {"_turn": turn, "_surface": "fixture-chat", "time": types.SimpleNamespace(time=lambda: next(clock)),
               "messages": [{"content": "synthetic system"}], "params": {}, "LM_STUDIO_API": "unused",
               "LLM_AUTH_HEADERS": {}, "_reason": False, "_prov_envelope": None, "_test_turn": True,
-              "_note_task": None, "_rr_keep": False, "_sg_guard": lambda text, turn: text + " after final guard"}
-        code = compile(self.handler_segments(), "actual-handler-capture-segments", "exec")
+              "_note_task": None, "_rr_keep": False, "_sg_guard": lambda text, turn: text + " after final guard",
+              "av_history": [], "_same_as_last_reply": lambda text, history: text == "synthetic repeat"}
+        code = compile(self.handler_segments(retry, replacement), "actual-handler-capture-segments", "exec")
         def failed(*args, **kwargs): raise OSError("synthetic sink failure")
         with patch.dict(sys.modules, {"model_router": router}), contextlib.redirect_stdout(io.StringIO()):
             with contextlib.ExitStack() as stack:
@@ -147,8 +174,34 @@ class Tests(unittest.TestCase):
                 if not enabled: stack.enter_context(patch.dict(os.environ, JUDGES_CAPTURE_SCRATCH=""))
                 exec(code, ns)
                 answer = asyncio.run(ns["exercise"]())
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), len(responses))
         return answer
+
+    def test_actual_repeat_selection_accept_reject_and_failure(self):
+        for response, selected in (("synthetic new", "request-2"), ("synthetic repeat", None),
+                                   (OSError("synthetic router failure"), "request-1")):
+            with self.subTest(selected=selected):
+                self.exercise(responses=["synthetic repeat", response], retry=True)
+                path = next(self.root.glob("capture-*.json"))
+                packet = json.loads(path.read_text()); path.unlink()
+                self.assertEqual(len(packet["requests"]), 2)
+                attempts = packet["observed_attempts"]
+                chosen = [a["request_id"] for a in attempts if a["outcome"] == "selected"]
+                self.assertEqual(chosen, [selected] if selected else [])
+                if selected is None:
+                    self.assertEqual(packet["witness_receipt"]["status"], "unknown")
+
+    def test_replacement_route_equal_text_uses_its_own_attempt(self):
+        self.exercise(responses=["synthetic raw", "synthetic raw"], replacement=True)
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        chosen = [a for a in packet["observed_attempts"] if a["outcome"] == "selected"]
+        self.assertEqual(chosen[0]["request_id"], "request-2")
+
+    def test_replacement_route_failure_keeps_original_identity(self):
+        self.exercise(responses=["synthetic raw", OSError("synthetic router failure")], replacement=True)
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        chosen = [a for a in packet["observed_attempts"] if a["outcome"] == "selected"]
+        self.assertEqual(chosen[0]["request_id"], "request-1")
 
     def test_actual_handler_segments_bind_final_guard_output(self):
         answer = self.exercise()
@@ -156,6 +209,11 @@ class Tests(unittest.TestCase):
         self.assertEqual(packet["witness_final_text"], answer["reply"])
         self.assertEqual(answer["reply"], "synthetic raw after postprocessing after final guard")
         self.assertEqual(packet["witness_receipt"]["generation"]["attempts"][0]["served_model"], "fixture-observed")
+        self.assertEqual(packet["witness_receipt"]["generation"]["attempts"][0]["request_id"], "request-1")
+        self.assertEqual(packet["requests"][0]["at"], 101)
+        observed = next(n for n in packet["lineage"] if n.get("observation") == "router_result")
+        self.assertEqual(observed["at"], 102)
+        self.assertEqual(observed["time_basis"], "observed")
 
     def test_disabled_and_failed_capture_do_not_change_reply(self):
         disabled = self.exercise(enabled=False)

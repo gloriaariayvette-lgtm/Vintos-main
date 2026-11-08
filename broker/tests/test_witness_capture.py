@@ -9,8 +9,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "bin")]
 import gen_result as G
-from witness_capture import Capture
-from witness_receipts import digest, lineage_status
+from witness_capture import Capture, prepare_shadow
+from witness_receipts import digest, lineage_status, normalize_receipt
 
 
 def result(text="synthetic raw reply", actual="observed-fixture"):
@@ -21,6 +21,113 @@ def result(text="synthetic raw reply", actual="observed-fixture"):
 
 
 class Tests(unittest.TestCase):
+    def test_explicit_request_disambiguates_identical_responses(self):
+        for selected_index in (0, 1):
+            c = Capture("turn-1", "fixture-chat", 100)
+            requests = []
+            for i in range(2):
+                invocation = c.request("synthetic system", [], {}, False, 101 + i)
+                invocation.observe(result("identical", actual="fixture-%d" % i))
+                requests.append(invocation)
+            c.select("identical", request=requests[selected_index])
+            p = c.finalize("final", 110)
+            attempts = p["witness_receipt"]["generation"]["attempts"]
+            chosen = next(a for a in attempts if a["outcome"] == "selected")
+            self.assertEqual(chosen["served_model"], "fixture-%d" % selected_index)
+            self.assertEqual(chosen["request_id"], "request-%d" % (selected_index + 1))
+            self.assertEqual(chosen["input_sha256"], p["requests"][selected_index]["input_sha256"])
+
+    def test_explicit_root_in_equal_text_stages(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        invocation = c.request("system", [], {}, False, 101)
+        r = result("same", actual="fixture-selected")
+        r["stages"] = [result("same", actual="fixture-discarded"), r]
+        invocation.observe(r)
+        c.select("same", request=invocation)
+        attempts = c.finalize("same", 110)["witness_receipt"]["generation"]["attempts"]
+        self.assertEqual([a["outcome"] for a in attempts], ["discarded", "selected"])
+
+    def test_missing_foreign_or_invalidated_request_never_falls_back_to_text(self):
+        for token_kind in ("none", "foreign", "double_observed", "wrong_text"):
+            c = Capture("turn-1", "fixture-chat", 100)
+            token = c.request("system", [], {}, False, 101)
+            token.observe(result("same"))
+            raw = "same"
+            if token_kind == "none": token = None
+            if token_kind == "foreign":
+                other = Capture("turn-2", "fixture-chat", 100)
+                token = other.request("system", [], {}, False, 101)
+                token.observe(result("same"))
+            if token_kind == "double_observed":
+                with self.assertRaises(ValueError): token.observe(result("same"))
+            if token_kind == "wrong_text": raw = "unobserved"
+            c.select(raw, request=token)
+            self.assertEqual(c.finalize("same", 110)["witness_receipt"]["status"], "unknown")
+
+    def test_request_is_snapshot_of_actual_arguments_not_configured_identity(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        messages = [{"role": "user", "content": [{"type": "text", "text": "synthetic input"}]}]
+        params = {"temperature": 0.25}
+        a = c.request("synthetic system", messages, params, False, 101)
+        messages[0]["content"][0]["text"] = "edited input"
+        params["temperature"] = 0.5
+        b = c.request("synthetic system", messages, params, False, 102)
+        p = c.finalize("synthetic final", 110)
+        self.assertNotEqual(p["requests"][0]["input_sha256"], p["requests"][1]["input_sha256"])
+        self.assertNotIn("synthetic input", str(p))
+        self.assertNotIn("synthetic system", str(p))
+        self.assertNotIn("edited input", str(p))
+        inputs = [n for n in p["lineage"] if "slot" in n]
+        self.assertEqual(len(inputs), 4)
+        self.assertTrue(all(n["origin"] == "unknown" and n["complete"] is False for n in inputs))
+        self.assertNotEqual(a.request_id, b.request_id)
+
+    def test_retry_retains_previous_request_and_result_dependencies(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        a = c.request("system", [], {}, False, 101)
+        a.observe(result("old"))
+        b = c.request("system", [], {}, False, 102)
+        b.observe(result("new"))
+        c.select("new", request=b)
+        p = c.finalize("new", 110)
+        nodes = {n["id"]: n for n in p["lineage"]}
+        second = nodes[p["requests"][1]["context_receipt_id"]]
+        self.assertIn(p["requests"][0]["context_receipt_id"], second["parents"])
+        self.assertIn(c.context_id + ":attempt-1", second["parents"])
+        self.assertEqual(lineage_status(c.context_id, nodes, 110), "unknown")
+        self.assertFalse(p["attempt_history_complete"])
+
+    def test_clock_regressions_and_partial_observation_stay_unknown(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        clock = iter([101, 105])
+        a, kwargs = prepare_shadow(c, "system", [], {}, False, lambda: next(clock))
+        kwargs["observer"](result("same"))
+        with self.assertRaises(ValueError): c.request("system", [], {}, False, 104)
+        with self.assertRaises(ValueError): c.finalize("same", 104)
+        c.select("same", request=a)
+        self.assertEqual(c.finalize("same", 106)["witness_receipt"]["status"], "recorded")
+        self.assertEqual(prepare_shadow(c, "system", [], {}, False, 107), (None, {}))
+
+    def test_selection_is_offered_not_admitted_and_does_not_copy_errors(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        c.context_selection({"ts": 99, "selection_id": "fixture-selection", "selection_version": 3,
+            "offers": {"fixture-organ": {"state": "organ_error", "err": "private synthetic exception"},
+                       "fixture-other": {"state": "offered", "influence_id": "fixture-version"}}})
+        p = c.finalize("final", 110)
+        selection = next(n for n in p["lineage"] if n.get("observation") == "context_selection")
+        self.assertEqual(selection["scope"], "offers_not_admission")
+        self.assertFalse(selection["complete"])
+        self.assertIn(selection["id"], p["lineage"][0]["parents"])
+        self.assertNotIn("private synthetic exception", str(p))
+
+    def test_incomplete_request_binding_is_rejected_by_normalization(self):
+        c = Capture("turn-1", "fixture-chat", 100)
+        a = c.request("system", [], {}, False, 101); a.observe(result("same"))
+        c.select("same", request=a)
+        r = c.finalize("same", 110)["witness_receipt"]
+        del r["generation"]["attempts"][0]["input_sha256"]
+        self.assertEqual(normalize_receipt(r)["status"], "unknown")
+
     def test_observed_identity_is_separate_from_configuration(self):
         r = G.make_result("fixture", model="configured-fixture", status="valid", text="synthetic")
         c = Capture("turn-1", "fixture-chat", 100)

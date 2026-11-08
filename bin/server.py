@@ -11000,7 +11000,7 @@ Your current self-model (excerpt):
                 _turn.turn_id if _turn is not None else "", _surface, time.time())
         except Exception:
             print("[witness] scratch capture unavailable", flush=True)
-        _witness_kwargs = {"observer": _witness_capture.observe} if _witness_capture is not None else {}
+        _witness_selected = None
         # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
         # repository's history, and its shared budget cut one reply off at "[SCENE:".
         _reason = False
@@ -11010,10 +11010,14 @@ Your current self-model (excerpt):
                 _cap_j.dump(messages, open('/tmp/avatar-last-prompt.json', 'w'))
             except Exception:
                 pass
+            _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
+                _witness_capture, messages[0]["content"], messages[1:], params, _reason, time.time)
+                if _witness_module is not None else (None, {}))
             reply, _claude_reasoning, _model_used = await _mr.route_reply(
                 "avatar", messages[0]["content"], messages[1:], params,
                 f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                 "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
+            _witness_selected = _witness_request
         except Exception as _rte:
             print("[router] fatal:", _rte, flush=True)
             reply, _claude_reasoning, _model_used = "", "", "error"
@@ -11023,14 +11027,19 @@ Your current self-model (excerpt):
                 _again = list(messages[1:]) + [{"role": "user", "content":
                     "[You have just sent that exact message. It does not answer what she said this time. Answer "
                     "THIS message, in your own words, and do not repeat your previous reply.]"}]
+                _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
+                    _witness_capture, messages[0]["content"], _again, params, _reason, time.time)
+                    if _witness_module is not None else (None, {}))
                 _r2, _cr2, _mu2 = await _mr.route_reply(
                     "avatar", messages[0]["content"], _again, params,
                     f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                     "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
                 if _r2 and not _same_as_last_reply(_r2, av_history):
                     reply, _claude_reasoning, _model_used = _r2, _cr2, str(_mu2) + "(after repeat)"
+                    _witness_selected = _witness_request
                 else:
                     reply, _model_used = "", str(_model_used) + "(repeat)"
+                    _witness_selected = None
         except Exception as _dup:
             print("[router] repeat check skipped:", _dup, flush=True)
         print(f"[router] avatar served by {_model_used}", flush=True)
@@ -11065,10 +11074,14 @@ Your current self-model (excerpt):
                         _declined_by = {"argon": "Argon", "sol": "Sol", "gemini": "Argon"}.get(
                             str(_model_used).split(":")[0].split("(")[0].lower(), "Claude")
                         _mr.arm_grok_turns(1)
+                        _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
+                            _witness_capture, messages[0]["content"], messages[1:], params, _reason, time.time)
+                            if _witness_module is not None else (None, {}))
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                             "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
+                        _witness_selected = _witness_request
                         try:
                             _mr.update_mode(lambda _gm: _gm.update(mode="grok"))
                         except Exception: pass
@@ -11100,7 +11113,7 @@ Your current self-model (excerpt):
         # envelope now; every evidence writer receives this exact object.
         if _witness_capture is not None:
             try:
-                _witness_capture.select(reply)
+                _witness_capture.select(reply, request=_witness_selected)
             except Exception:
                 print("[witness] raw selection unavailable", flush=True)
         _prov_envelope, _prov_writer_env = None, None

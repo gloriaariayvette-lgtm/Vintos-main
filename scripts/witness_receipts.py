@@ -93,6 +93,8 @@ def normalize_receipt(value):
                          "served_model": _name(model) if model else None,
                          "served_revision": _name(revision) if revision else None,
                          "identity_evidence": evidence})
+            if "request_id" in a or "input_sha256" in a:
+                kept[-1].update(request_id=_name(a["request_id"]), input_sha256=_hash(a["input_sha256"]))
         selected = _name(value["generation"]["selected_attempt_id"])
         if [a["attempt_id"] for a in kept if a["outcome"] == "selected"] != [selected]:
             raise ValueError("ambiguous selected attempt")

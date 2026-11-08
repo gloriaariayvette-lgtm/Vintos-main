@@ -212,3 +212,43 @@ data numbers are claimed. Required blocker notification was delivered.
 Focused validation: strict witness 37/37, capture replay 6/6, existing provenance
 11/11 and ownership 11/11: **65 isolated checks passed**. Reports regenerated;
 whitespace clean. Full Aegis review remains pending for this increment.
+
+## 8 November 2026 — explicit invocation selection and observed dependencies
+
+Continued on `codex/judges-request-dependencies`, stacked on 239c3467; the prior
+review tip is untouched. Approved integrated base remains 6e452ae6. No review
+wait: further increments use new branches while independent review proceeds.
+
+The avatar handler now carries the exact invocation token through primary,
+repeat and replacement paths. The observer identifies the returned-root attempt
+by identity, including self-referential stage lists. Handler selection additionally
+checks the raw digest. Equal text across attempts no longer guesses identity;
+missing/foreign/invalidated tokens remain unknown. Failed replacements retain
+the original selected token; discarded repeats clear it. Request ID and exact
+handler-argument fingerprint survive the generation receipt, normalization and
+merge. The shared result schema and router return tuple remain unchanged.
+
+Private scratch packets now include ordered input fingerprints, invocation/result
+nodes, retry dependencies, the existing context-local offer receipt (never
+mistaken for admission), a direct tactical-provenance effect edge, observed
+attempt metadata even without selection, and the raw-to-final digest change.
+No request endpoint/auth material, prompt text or offer-error prose is added.
+Existing final reply content remains only in the private packet. Unknown input
+origin stays unknown, including user-role history. The finalized aggregate DAG
+is explicitly incomplete; it is not a clean pre-generation context attestation.
+Full provider-internal retries, upstream organ/value-map ancestry, admission and
+client acknowledgement remain open. No feeds, routing choices or models change.
+
+Correction to the previous entry: the authentication failure was for the wrong
+login, not a demonstrated lack of access. The already-authorized Mac agent route
+passed a constant-output access check; no private records were read or copied.
+After reading coordination note 9, left the copied-record census and Aegis timing
+measurement to Claude's reviewer, without duplicating that work or running more
+remote commands. This is ownership of concurrent work, not a blocker.
+
+Validation: capture 18/18; actual handler segments and sink 12/12; offline adapter
+6/6; witness 38/38; shared result contract 52/52; provenance 11/11; router 15/15;
+ownership 11/11: **163 OS-isolated checks passed**. Handler tests execute selected
+actual AST segments with stubbed routing, not a full HTTP service or model call.
+Generated reports are current and whitespace is clean. Claude owns the full
+isolated Aegis suites and integration; Gloria deploys. No merge or deployment.

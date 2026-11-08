@@ -134,6 +134,19 @@ class WitnessTests(unittest.TestCase):
         self.assertEqual(normalized["witness_receipt"], W.normalize_receipt(p["witness_receipt"]))
         self.assertNotIn("untrusted_payload", normalized["witness_receipt"])
 
+    def test_request_binding_survives_provenance_and_merge(self):
+        import build_merged_chat as merge
+        attempt = self.row["witness_receipt"]["generation"]["attempts"][-1]
+        attempt.update(request_id="fixture-request", input_sha256=W.digest("synthetic handler request"))
+        p = dict(self.row["generation_provenance"], witness_receipt=self.row["witness_receipt"])
+        normalized = EP.normalize(p)
+        row = dict(self.row, generation_provenance=normalized)
+        projected = merge.entry(row, "assistant", row["content"], "2026-01-01T00:00:00Z", "canonical")
+        for receipt in (projected["witness_receipt"], projected["generation_provenance"]["witness_receipt"]):
+            selected = receipt["generation"]["attempts"][-1]
+            self.assertEqual(selected["request_id"], "fixture-request")
+            self.assertEqual(selected["input_sha256"], W.digest("synthetic handler request"))
+
     def test_missing_receipt_module_is_explicit_unknown(self):
         p = dict(self.row["generation_provenance"], witness_receipt=self.row["witness_receipt"])
         with patch.dict(sys.modules, {"witness_receipts": None}):
