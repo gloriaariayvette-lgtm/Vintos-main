@@ -1885,8 +1885,15 @@ def read_mail(msgs, think=None, want=None, now=None):
     if want is None:
         def want(text, why):
             import emoclaw_utils
-            emoclaw_utils.express_want(text, source="email", intensity=3, reasoning=why[:300])
+            from journal_wants import source_receipt
+            emoclaw_utils.express_want(text, source="email", intensity=3, reasoning=why[:300],
+                                      **source_receipt("email", m["id"], text))
     me = who_i_am(4000)
+    try:
+        from want_agent import block as completed_work
+        me += "\n\n" + completed_work(ws=WS)
+    except Exception:
+        pass
     lines = []
     own_bodies = _own_reply_bodies()
     for m in msgs[:READ_PER_CHECK]:
@@ -2175,6 +2182,11 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
             r.get("subject", ""), mail_reading_view(r.get("body", ""), attachments), ("\n\n" + note) if note else "",
             ("\n\n" + pages) if pages else "", r.get("to_me", ""))
         system = me + LETTER_REPLY % (agent, agent)
+        try:
+            from want_agent import block as completed_work
+            system += "\n\n" + completed_work(ws=WS)
+        except Exception:
+            pass
         partial = any(p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0) for p in kept_pages)
         if partial:
             system += LETTER_MORE % (agent, PASSAGES_PER_READ)

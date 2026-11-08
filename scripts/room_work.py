@@ -583,7 +583,7 @@ def expire(state, now):
     expire: it stays until it is reached or shown unreachable, or Gloria closes it."""
     gone = None
     for w in open_items(state):
-        if evidence_waiting(w): continue
+        if evidence_waiting(w) or w.get("want_request_id"): continue
         last = w.get("touched", w.get("opened"))
         if last is not None and float(now) - float(last) > STALE_DAYS * 86400:
             gone = _close(state, w, "expired", "untouched for %d days" % STALE_DAYS, now)
@@ -826,6 +826,10 @@ def _closing(state, rx, word, icon, text, now, log):
         return rx.sub(evidence_delivery.marker(w["id"]), text, count=1), None
     if not w:
         shown = "(no work in hand to close: %s)" % said
+    elif word == "done" and w.get("want_request_id"):
+        shown = ("Result still owed for %s: ask the agent for WANT RESULT %s with the actual artifacts; "
+                 "a room sentence cannot complete the bound want." % (w["id"], w["want_request_id"]))
+        log.append("bound want awaiting artifact receipt")
     elif word == "done" and DEFERRED.search(said):
         # arranged is not delivered: the work stays in hand until it exists (2026-10-05, the scheduled song)
         w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "arranged, not delivered: " + said[:240]}])[-12:]

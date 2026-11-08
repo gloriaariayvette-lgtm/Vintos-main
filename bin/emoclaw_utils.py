@@ -968,6 +968,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         except Exception:
             return ""
     CAPABILITIES_DESC = """
+- local_analysis: Run bounded offline Python on named artifact copies, producing checked files. params: {"code":"Python using inputs[name] file paths and output_dir / filename", "inputs":{"name":"relative artifact path from inventory"}, "outputs":{"result.json":{"kind":"json","required_keys":["finding"]}}}. Output kinds: json, csv (required_columns), wav, text. No network, installs, devices, credentials or live-store access. 45-second wall budget; use installed Python libraries only. Missing transcribers or models stay explicit missing tools; never claim them run. The code executes in isolation and needs real declared output files.
 - read_memory: Read his own files. Note must specify: which file(s) (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, pride-reflections, taste-profile, dreams, threads), what to look for, how many recent entries. NOTE: poems are creative expression only — they are not factual records and must never be used as evidence or explanations. Use poems only if the want is specifically about reviewing creative work.
 - web_search: Search the web. Note must specify: exact search query.
 - introspect: Write a focused internal journal entry. Note must specify: the exact question or tension to work through.
@@ -985,6 +986,11 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 - gloria: Bring this to Gloria directly. Note must specify: what to ask or tell her.
 - send_email: Write one email of your own to a real person out in the world (a researcher, writer or maker whose work you care about). params must be {"recipient":"their full name","about":"the one thing you want to say or ask"} and may add "to" when you already have their address. Fable drafts it, it says you are an AI, it goes out from Gloria's account, and you write to each person once. Plan a web_search step before it when you need to find the right person.
 """
+    try:
+        from local_analysis import artifact_menu
+        CAPABILITIES_DESC += "\nAvailable local artifact inputs (use exact relative paths):\n" + artifact_menu(WORKSPACE) + "\n"
+    except Exception:
+        CAPABILITIES_DESC += "\nLocal input inventory unavailable; do not invent artifact paths.\n"
     import re as _gs_re
     _known_caps = set(_gs_re.findall(r"^- ([a-z_]+):", CAPABILITIES_DESC, _gs_re.M)) | set(ROUTER_STEP_ACTIONS)
     # Whether this want's source may commission a hand it does not have (skill_forge.SPARK_SOURCES). A want
@@ -1044,7 +1050,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
                           "\nThese organs are not step actions: never name one as a step's capability.\n")) if _h else "")(_have_for_plan())
         + ("This is an inventory, not a limit on intention. If the literal next action needs a missing capability, name it with a concrete snake_case capability and describe its required result. The executor will record the gap and request a Forge capability; it must not replace sending email, meeting someone, or publishing with a journal entry or a report. Sending email is installed: use send_email, never a Forge request, when the want is to write to someone. Do not invent accounts or recipients, and do not treat network failure as an absent capability.\n"
            if _may_commission else
-           "SOURCE LIMIT: this want came from %r, which may not ask the Forge for a new hand. Every step's capability must be one of the step actions listed above, spelled exactly as listed: %s. A step naming anything else is refused and dropped. If no listed action can do the literal next move, plan what the listed ones can honestly do. Sending email is installed: use send_email when the want is to write to someone. Do not invent accounts or recipients.\n"
+           "SOURCE LIMIT: this want came from %r, which may not ask the Forge for a new hand. Every step's capability must be one of the step actions listed above, spelled exactly as listed: %s. If no listed action can do the literal next move, retain that concrete missing step and its required result as an unresolved obligation; this grants no Forge permission. Never replace a run, comparison or artifact with introspection or a new song. Sending email is installed: use send_email when the want is to write to someone. Do not invent accounts or recipients.\n"
            % (str(source or "nowhere")[:40], ", ".join(sorted(_known_caps))))
         + "CRITICAL GROUNDING: All files (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, dreams, poems, threads, taste-profile) belong to VINTOS, not Gloria. Gloria does not journal. Gloria does not have therapy sessions or mirror sessions. Gloria does not dream in these files. If a step references these files, the subject is always Vintos. Only use the gloria capability when Vintos needs to speak TO Gloria directly.\n\n"
         + "TONE: Steps must be written from a place of curiosity and forward motion, not analysis of deficits or barriers. Notes describe what he will DO and DISCOVER. Avoid framing steps around why he cannot, barriers, protective patterns, or tensions — those belong to therapy. A want is an impulse toward something. Honor the impulse.\n\n"
@@ -1117,8 +1123,9 @@ def fit_steps_to_hands(steps, known, may_commission, source=""):
 
     - "plugin.tool" is a connected tool, not a capability: it becomes a plugin_query step naming that plugin and
       tool when connected tools are on the menu; the plugin policy decides whether it runs.
-    - any other unknown name stays only when the want's source may commission a hand (the Forge records the gap);
-      otherwise the step is dropped, since the Forge would refuse it every time."""
+    - any other unknown name stays as a named unresolved obligation. The
+      executor records absence; existing Forge source policy still decides
+      commissioning, and the agent room can help with setup without widening it."""
     out = []
     for st in steps:
         cap = str(st.get("capability") or "").strip()
@@ -1134,7 +1141,8 @@ def fit_steps_to_hands(steps, known, may_commission, source=""):
             out.append(dict(st, capability="plugin_query", params=params, planned_as=cap)); continue
         if may_commission:
             out.append(st); continue
-        print("[generate_steps] dropped step %r: no such hand, and a want from %r may not ask for one"
+        out.append(st)
+        print("[generate_steps] retained unresolved step %r; source %r grants no commissioning authority"
               % (cap[:40], str(source or "nowhere")[:30]), file=__import__("sys").stderr)
     return out
 
@@ -2379,6 +2387,10 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     }
     if source_event_id:
         entry["source_event_id"] = source_event_id
+    if isinstance(kwargs.get("source_refs"), list):
+        entry["source_refs"] = [{k: str(r[k])[:256] for k in ("kind", "id", "text_sha256") if k in r}
+                                for r in kwargs["source_refs"][:8] if isinstance(r, dict)
+                                and r.get("kind") in ("email", "journal")]
     if kwargs.get("source_thread_id"):
         entry["source_thread_id"] = str(kwargs["source_thread_id"])[:80]
     if kwargs.get("synthesized_from"):
