@@ -74,11 +74,15 @@ not an acceptable substitute when a checkpoint was copied. Message arrival must
 not follow response generation start. Equal-time context/arrival batches remain
 unscored rather than assuming an order the timestamps do not establish.
 
-Innovation percentiles use only strictly earlier finalized outcomes from this
-same replay and matching group. Same-time outcomes cannot calibrate each other.
+Innovation percentiles use only outcomes finalized strictly before the forecast
+was made, from this same replay and matching checkpoint/encoder/surface/source
+and observed target-model/revision group. A result that became known while the
+current reply was being generated cannot calibrate that forecast. Equal-time
+outcome/forecast clocks do not establish order.
 The default minimum is 20 earlier outcomes; until then the percentile is null.
 A percentile is relative prediction error, not calibrated confidence in identity.
-No comparator superiority is claimed: baseline vectors are not yet supplied.
+Comparator superiority is not presumed. The optional paired controls below require
+an explicitly attested forecast-context receipt; missing controls remain unknown.
 
 Rebuilds use the full explicitly supplied snapshot. There is no incremental
 checkpoint to become stale when an input is removed; identical inputs reproduce
@@ -337,9 +341,152 @@ checkpoint/encoder/surface/source and explicit evaluation blocks. The aggregate
 uses ordinal comparison/checkpoint groups, never private identifiers; its paired
 head mean is distinct from the overall head mean. Positive improvement means
 baseline error minus head error. These are descriptive errors, not calibrated
-pass verdicts or confidence intervals. Existing head percentiles still use only
-strictly earlier outcomes within their checkpoint group, across blocks.
+pass verdicts or confidence intervals. Head percentiles use only outcomes finalized strictly before the forecast,
+within the same checkpoint and observed target-generator group, across blocks.
 
 No live producer emits this context receipt yet. A supplied receipt is a producer
 attestation, not independent proof of prompt contents. Synthetic contract tests
 are not a real-data baseline win, and this adds no feed or eligibility backfill.
+
+
+### Bounded shadow behaviour receipt
+
+The optional summary consumes only the existing strict census's unique admitted
+replies. Specify both an inclusive `--behaviour-start` and one or more
+`--behaviour-surface` arguments; the existing exclusive `--cutoff` ends the window.
+For example, append these arguments to the scratch command above, using an actual
+surface name from the retained receipt schema:
+
+```sh
+--behaviour-start '2026-11-02T00:00:00-06:00' --behaviour-surface chat
+```
+
+`chat` is an example configuration, not an inferred alias for every surface.
+Omitting the window/scope leaves this instrument `not_configured`. No store or
+surface is discovered automatically. Selecting a surface is analysis scope, not
+permission to bypass witness admission. Means are never pooled across surfaces,
+observed served models or served revisions. A requested model is not a group
+identity. Missing revision stays explicitly unknown rather than guessed.
+
+`aggregate.json.behaviour_receipt` contains ordinal groups, observation counts,
+mean/median whitespace-delimited word counts and literal question-mark fractions.
+Empty windows have no trait values: no eligible observations is not zero curiosity
+or engagement. These counts describe this snapshot only. They do not establish
+stream completeness, activity on absent days, character, emotions or relationship
+quality. No daily breakdown, text, identity, hash or date is emitted in this new
+aggregate object. Group numbers are local to one report, not persistent identities.
+The original census-wide descriptive fields remain available for compatibility.
+
+`private-behaviour.json` is mode 0600 and contains the window, explicit scope,
+group identities and exact member turn IDs, response digests, generation-receipt
+digests, context references and per-member measurements. It contains no raw text
+or vectors, but is still private. Its versioned receipt ID hashes this manifest;
+the CLI also binds the canonicalized source bundle digest. Preserve that private
+bundle to audit admission/ancestry; the output is not an independently sufficient
+proof. Reordering admitted rows is deterministic. Removing a member or changing
+a contributing receipt/window changes the receipt identity. Rebuilding after
+source removal cannot retain a stale incremental reference.
+
+There is no writer into his context or value map. If a later reviewed consumer
+reads this summary, it must record a `behaviour_receipt` effect dependency: a
+new name or a weekly schedule cannot make its descendants independent evidence.
+Current transitive influence checks already exclude such descendants. This
+increment is a scratch instrument, not a deployed character judge. Claude owns
+retained-data measurement and full isolated Aegis review; synthetic fixture
+results do not demonstrate real-world accuracy.
+
+
+### Explicit feedback joins (shadow only)
+
+The optional bundle `feedback_events` implements the operational labels from
+Claude coordination note 2, separately from the existing inferred-laughter feed.
+No live humor script, practice store or training input is changed. Missing events
+remain missing evidence. `aggregate.json.feedback` reports observations, reasons,
+held counts and unique targets with a recorded positive marker, never a flop rate.
+A target without positive evidence is unknown, including after a delayed return.
+
+Each event needs `schema: witness-feedback-v1` and a stable `event_id`. Feedback
+must explicitly carry `witnessed: true`; inferred, deleted, forgotten, estimated,
+imported or transplanted evidence is held. Identical event copies count once;
+conflicting copies are all held, with their timeline positions still occupied.
+Even a record with a missing or malformed event ID occupies any valid claimed
+stream/position; it cannot disappear and make a neighbour look unambiguous.
+
+For chat, provide both timeline events:
+
+- An `assistant_reply`: `turn_id`, `content_sha256`, `surface`, exact `at` equal
+  to its finalization time, `stream_id`, integer `position`, and
+  `sequence_complete: true` and `witnessed: true`. This timeline attestation must
+  itself have no inferred/deleted/forgotten/estimated/imported/transplanted marker;
+  an eligible target reply cannot repair missing or denied sequence evidence.
+- The immediately following `counterpart_message`: the same surface/stream,
+  `position` exactly one larger, `previous_event_id` naming the reply event,
+  `sequence_complete: true`, `origin: authenticated_owner_message`, `witnessed:
+  true`, offset-aware/epoch `at`, private `text`, and its exact `content_sha256`.
+
+The target must be independently strict-eligible in the census. The predecessor
+is resolved from all supplied timeline positions, never the eligible subset.
+Intervening excluded replies, gaps, collisions, changed versions/surfaces, missing
+sequence evidence and equal/reversed clocks cannot create a positive join.
+Private chat observations bind both the feedback event digest and the exact
+predecessor event digest; practice ratings have no predecessor digest.
+An isolated token `haha` or longer repeated `ha` (case-insensitive, optional final
+`h`) is the positive marker. A single `ha`, `lol`, an emoji or no such token stays
+unknown under this particular rule. This is literal marker detection, not a
+semantic or emotional judgment: quoted or sarcastic uses are not understood.
+
+For a practice, a `practice_rating` carries `origin: authenticated_owner_rating`,
+`witnessed: true`, `at`, integer `stars` 1–5, `target_turn_id`, `target_sha256`,
+and `surface: humor_practice`. It joins only that exact version of a strict
+census-admitted practice output on that surface. No text-prefix join or implicit
+mapping from a historical joke string. A 4 or 5 is positive; 1–3 are retained
+ratings with an unknown label, never negatives. Distinct repeated ratings remain
+separate observations but contribute at most one unique positive target. The
+summary says a positive was recorded, not that it is the latest preference.
+
+`private-feedback.json` (0600) contains event/target identities, feedback and
+target digests, timestamps, ratings and reason/label. It emits no raw message text
+or vector. It must stay outside Git. Aggregate reason counts are not permission
+to publish private timing/activity details elsewhere.
+
+Origin, complete sequence and practice surface are **producer attestations**;
+this reader does not authenticate an owner from JSON or manufacture a complete
+stream from a capped log. No live producer is added by this increment. A reviewed
+collector must establish those facts from actual retained sources, and keep
+unverifiable historical associations unknown. The old three-hour inference is
+preserved as its existing separate channel and is never promoted by this reader.
+No positive receipt bypasses target provenance or transitive influence exclusion.
+
+
+### Forecast-time references and duplicate identity
+
+The causal-innovation revision repairs two shadow-reader errors. Previously, the
+reference set was cut at the target reply's finalization rather than at forecast
+time; an overlapping reply could therefore enter the reference after the
+forecast. Also, duplicate detection compared derived error/control summaries,
+so different same-time forecasts with equal cosine error could look identical.
+
+A private `forecast_sha256` now binds the full canonicalized supplied forecast,
+including its vector and producer/context claims. Earliest-time records must
+agree exactly; different attestations are held even when their numeric errors
+coincide. Exact duplicate copies still count once. Later forecast attempts do
+not replace the earliest eligible prediction. The digest stays in private output,
+not the aggregate; no vector is emitted.
+
+Reference percentiles and paired comparison groups additionally separate the
+observed model and revision that produced the target reply. A chat-model switch
+cannot silently reuse the old target distribution. Unknown served identity is
+held, not inferred from the request. This does not turn a percentile into
+calibrated confidence or establish independence between turns. The strict
+pre-forecast boundary also does not prove when an embedding was computed: that
+requires retained producer evidence. The independent existing self-head audits
+are separate tools and are unchanged by this repair.
+
+### Incomplete known influence
+
+A known judge-effect node with missing ancestry is `influenced_incomplete`, not
+a clean leaf and not merely unknown. This state propagates through incomplete
+contexts and unknown siblings; the census reports `influenced_incomplete_lineage`.
+It remains excluded exactly like complete influence and unknown lineage. Invalid
+clocks/identities do not become trusted influence attestations. This distinction
+improves counts only and changes no live evidence admission.

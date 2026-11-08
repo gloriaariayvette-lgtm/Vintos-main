@@ -198,8 +198,31 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                 nodes = copy.deepcopy(self.nodes)
                 nodes["context-1"]["parents"] = ["empty"]
                 nodes["empty"] = {"id": "empty", "kind": kind, "at": 80, "complete": True, "parents": []}
-                self.assertEqual(W.lineage_status("context-1", nodes, 100), "unknown")
+                self.assertEqual(W.lineage_status("context-1", nodes, 100),
+                                 "influenced_incomplete" if kind in W.INFLUENCING else "unknown")
         self.nodes["context-1"]["parents"] = []
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_incomplete_effect_ancestry_retains_influence_without_admission(self):
+        self.nodes["effect"] = dict(id="effect",kind="judge_effect",at=70,complete=False,parents=[])
+        for parents in (["effect", "missing"], ["missing", "effect"]):
+            self.nodes["context-1"]["parents"] = parents
+            self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["context-1"].update(complete=False,parents=["effect"])
+        self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["effect"].update(complete=True,parents=["external-0"])
+        self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["context-1"]["complete"] = True
+        self.assertEqual(self.admit(), "influenced_lineage")
+
+    def test_incomplete_effect_clock_and_unknown_ordinary_material_stay_unknown(self):
+        self.nodes["context-1"]["parents"] = ["effect"]
+        self.nodes["effect"] = dict(id="effect",kind="judge_effect",at=101,complete=False,parents=[])
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["context-1"].update(complete=False,parents=["external-0"])
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["context-1"]["complete"] = True
+        self.nodes["external-0"]["complete"] = False
         self.assertEqual(self.admit(), "unknown_lineage")
 
     def test_external_sibling_cannot_launder_parentless_value_map(self):
@@ -355,6 +378,46 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(rows[1]["innovation_percentile"], 50)
         self.assertEqual(rows[2]["innovation_percentile"], 50)
 
+    def test_percentile_cannot_use_outcome_after_forecast_but_before_own_final(self):
+        other,_,f2,e2,_=fixture('slow-target',105,200)
+        _,rows=self.score(rows=[self.row,other],forecasts=[self.f,f2],embeddings=[self.e,e2],minimum=1)
+        self.assertEqual([r['prior_n'] for r in rows],[0,0])
+        self.assertIsNone(rows[1]['innovation_percentile'])
+
+    def test_percentile_equal_outcome_forecast_clock_is_unknown(self):
+        other,_,f2,e2,_=fixture('equal-target',109,200)
+        self.assertEqual(f2['ts'],self.row['witness_receipt']['finalized_at'])
+        _,rows=self.score(rows=[self.row,other],forecasts=[self.f,f2],embeddings=[self.e,e2],minimum=1)
+        self.assertEqual(rows[1]['prior_n'],0)
+
+    def test_equal_error_forecasts_are_not_identical_forecasts(self):
+        self.e['emb']=[1.,0.]
+        a=copy.deepcopy(self.f);a['self']['emb']=[.6,.8]
+        b=copy.deepcopy(self.f);b['self']['emb']=[.6,-.8]
+        report,rows=self.score(forecasts=[a,b])
+        self.assertEqual(rows,[])
+        self.assertEqual(report['held']['conflicting_forecast'],1)
+
+    def test_equivalent_control_scores_cannot_hide_attestation_conflict(self):
+        data=self.controls_fixture();a=data[1][0];b=copy.deepcopy(a)
+        # A distinct producer attestation is not an identical duplicate merely
+        # because its derived error and control summary happen to be equal.
+        b['self']['context']['producer_receipt_id']='different-attestation'
+        report,rows=self.control_score((data[0],[a,b],data[2],data[3]))
+        self.assertEqual(rows,[])
+        self.assertEqual(report['held']['conflicting_forecast'],1)
+
+    def test_innovation_reference_separates_target_generator_and_revision(self):
+        rows=[];forecasts=[];embeddings=[]
+        for i in range(3):
+            r,_,f,e,_=fixture('generator-'+str(i),100+i*30,110+i*30)
+            if i==1:r['witness_receipt']['generation']['attempts'][1]['served_model']='other-generator'
+            if i==2:r['witness_receipt']['generation']['attempts'][1]['served_revision']='other-revision'
+            rows.append(r);forecasts.append(f);embeddings.append(e)
+        report,details=self.score(rows=rows,forecasts=forecasts,embeddings=embeddings,minimum=1)
+        self.assertEqual(len(report['groups']),3)
+        self.assertEqual([r['prior_n'] for r in details],[0,0,0])
+
     def controls_fixture(self):
         first, _, _, e1, _ = fixture("earlier-1", 100, 110)
         second, _, _, e2, _ = fixture("earlier-2", 120, 130)
@@ -453,6 +516,235 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual([g["n"] for g in report["baselines"]["paired_groups"]], [1, 1])
         self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
 
+    def behaviour(self, rows=None, start=100, cutoff=200, surfaces=None):
+        return R.behaviour_receipt(rows if rows is not None else [self.row], start, cutoff,
+                                   surfaces if surfaces is not None else ['fixture-chat'])
+
+    def test_behaviour_positive_control_and_private_manifest(self):
+        report, private = self.behaviour()
+        self.assertEqual(report['status'],'descriptive')
+        self.assertEqual(report['groups'],[dict(group=1,n=1,mean_words=3,median_words=3,question_mark_fraction=1)])
+        member=private['groups'][0]['members'][0]
+        self.assertEqual(member['turn_id'],self.row['turn_id'])
+        self.assertEqual(member['response_sha256'],W.digest(self.row['content']))
+        self.assertEqual(member['context_receipt_id'],'context-1')
+        for forbidden in ('fixture-turn','fixture-chat','fixture-b','context-1',self.row['content']):
+            self.assertNotIn(forbidden,json.dumps(report))
+        self.assertNotIn(self.row['content'],json.dumps(private))
+        self.assertIn('completeness',report['coverage'])
+
+    def test_behaviour_cross_midnight_window_is_inclusive_exclusive(self):
+        start=W.instant('2026-11-08T00:00:00-06:00');end=W.instant('2026-11-09T00:00:00-06:00')
+        rows=[fixture('boundary-'+str(i),at-1,at)[0] for i,at in enumerate((start-1,start,end-1,end))]
+        report,private=self.behaviour(rows,start,end)
+        self.assertEqual(report['eligible_observations'],2)
+        self.assertEqual(report['not_in_summary'],{'outside_window':2})
+        self.assertEqual([m['turn_id'] for m in private['groups'][0]['members']],['boundary-1','boundary-2'])
+        with self.assertRaises(ValueError):self.behaviour(start=end,cutoff=start)
+        with self.assertRaises(ValueError):self.behaviour(start='2026-11-08T00:00:00')
+
+    def test_behaviour_does_not_pool_surfaces_models_or_revisions(self):
+        rows=[fixture('group-'+str(i))[0] for i in range(4)]
+        rows[1]['witness_receipt']['surface']='fixture-other'
+        rows[2]['witness_receipt']['generation']['attempts'][1]['served_model']='fixture-other-model'
+        rows[3]['witness_receipt']['generation']['attempts'][1]['served_revision']='fixture-revision'
+        report,private=self.behaviour(rows,surfaces=['fixture-chat','fixture-other'])
+        self.assertEqual([g['n'] for g in report['groups']],[1,1,1,1])
+        self.assertEqual(len(private['groups']),4)
+        report,_=self.behaviour(rows)
+        self.assertEqual(report['eligible_observations'],3)
+        self.assertEqual(report['not_in_summary'],{'outside_surface_scope':1})
+        with self.assertRaises(ValueError):self.behaviour(surfaces=[])
+
+    def test_behaviour_empty_window_is_unknown_not_zero_traits(self):
+        report,private=self.behaviour([])
+        self.assertEqual(report['status'],'no_eligible_observations')
+        self.assertEqual(report['groups'],[])
+        self.assertEqual(private['groups'],[])
+        self.assertNotIn('mean_words',report)
+        self.assertNotIn('question_mark_fraction',report)
+
+    def test_behaviour_rebuild_order_and_source_removal(self):
+        second=fixture('second',120,130)[0]
+        first=self.behaviour([self.row,second])
+        self.assertEqual(first,self.behaviour([second,self.row]))
+        self.assertNotEqual(first[1]['receipt_id'],self.behaviour([self.row])[1]['receipt_id'])
+        self.assertNotEqual(first[1]['receipt_id'],self.behaviour([self.row,second],start=99)[1]['receipt_id'])
+        census,admitted=R.census([('canonical',[self.row]),('merged',[self.row])],self.nodes,1000)
+        self.assertEqual(self.behaviour(admitted)[0]['eligible_observations'],1)
+        _,empty=R.census([],self.nodes,1000)
+        self.assertEqual(self.behaviour(empty)[0]['status'],'no_eligible_observations')
+
+    def test_behaviour_refuses_double_count_bad_content_and_unknown_generator(self):
+        with self.assertRaises(ValueError):self.behaviour([self.row,self.row])
+        wrong=copy.deepcopy(self.row);wrong['content']='Different synthetic text'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+        wrong=copy.deepcopy(self.row)
+        wrong['witness_receipt']['generation']['attempts'][1]['identity_evidence']='unknown'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+        wrong=copy.deepcopy(self.row);wrong['turn_id']='wrong-turn'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+
+    def test_behaviour_requested_identity_cannot_change_group(self):
+        first=self.behaviour()[0]
+        self.row['witness_receipt']['generation']['attempts'][1]['requested_model']='other-requested'
+        self.assertEqual(first,self.behaviour()[0])
+
+    def test_behaviour_influenced_descendants_do_not_enter_summary(self):
+        self.nodes['effect']=dict(id='effect',kind='behaviour_receipt',at=50,complete=True,parents=['external-0'])
+        self.nodes['context-1']['parents'].append('effect')
+        report,admitted=R.census([('canonical',[self.row])],self.nodes,1000)
+        self.assertEqual(report['eligible_replies'],0)
+        self.assertEqual(self.behaviour(admitted)[0]['eligible_observations'],0)
+
+    def reaction_events(self, text='haha'):
+        before=dict(schema='witness-feedback-v1',event_id='fixture-before',kind='assistant_reply',
+                    stream_id='fixture-stream',position=1,sequence_complete=True,witnessed=True,at=110,
+                    turn_id=self.row['turn_id'],surface='fixture-chat',content_sha256=W.digest(self.row['content']))
+        after=dict(schema='witness-feedback-v1',event_id='fixture-reaction',kind='counterpart_message',
+                   origin='authenticated_owner_message',witnessed=True,stream_id='fixture-stream',position=2,
+                   sequence_complete=True,previous_event_id=before['event_id'],at=120,surface='fixture-chat',
+                   text=text,content_sha256=W.digest(text))
+        return [before,after]
+
+    def feedback(self, events=None, rows=None, cutoff=1000):
+        return R.feedback_receipts(rows if rows is not None else [self.row],
+                                   events if events is not None else self.reaction_events(),cutoff)
+
+    def test_feedback_haha_positive_exact_target_and_private_output(self):
+        report,private=self.feedback()
+        self.assertEqual(report['positive_targets'],1)
+        self.assertEqual(private[0]['target_turn_id'],self.row['turn_id'])
+        self.assertEqual(private[0]['label'],'positive')
+        self.assertEqual(report['observation_reasons'],{'literal_haha_marker':1})
+        for value in ('fixture-reaction','fixture-turn','fixture-stream',self.row['content']):
+            self.assertNotIn(value,json.dumps(report))
+        self.assertNotIn('"text"',json.dumps(private))
+
+    def test_feedback_ha_absence_and_lower_signals_are_unknown(self):
+        for text in ('ha','No laugh marker.','lol','😂','a hahalike word'):
+            report,private=self.feedback(self.reaction_events(text))
+            self.assertEqual(report['positive_targets'],0,text)
+            self.assertEqual(private[0]['label'],'unknown')
+        report,private=self.feedback([])
+        self.assertEqual(private,[]);self.assertEqual(report['targets_without_positive_evidence'],1)
+        for text in ('HAHA!','hahaha','hahah'):
+            self.assertEqual(self.feedback(self.reaction_events(text))[0]['positive_targets'],1)
+
+    def test_feedback_cannot_skip_intervening_ineligible_reply(self):
+        events=self.reaction_events()
+        intervening=dict(events[0],event_id='fixture-intervening',turn_id='not-admitted',position=2,at=115)
+        events[1].update(position=3,previous_event_id='fixture-intervening')
+        report,private=self.feedback(events+[intervening])
+        self.assertEqual(private,[]);self.assertEqual(report['held'],{'target_not_eligible':1})
+        events[1]['previous_event_id']='fixture-before'
+        self.assertEqual(self.feedback(events+[intervening])[1],[])
+
+    def test_feedback_requires_attested_adjacent_positions(self):
+        for change in ({'position':4},{'position':True},{'sequence_complete':False},
+                       {'previous_event_id':'wrong'},{'stream_id':'different'}, {'position':0}):
+            events=self.reaction_events();events[1].update(change)
+            self.assertEqual(self.feedback(events)[1],[],change)
+        events=self.reaction_events();events[0]['sequence_complete']=False
+        self.assertEqual(self.feedback(events)[1],[])
+
+    def test_feedback_identity_version_surface_and_time_are_checked(self):
+        for index,change in ((1,{'origin':'inferred'}),(1,{'content_sha256':W.digest('changed')}),
+                (0,{'content_sha256':W.digest('wrong')}),(0,{'at':109}),(1,{'at':110}),
+                (1,{'at':1000}),(1,{'surface':'other'}),(0,{'surface':'other'}),
+                (1,{'at':'2026-11-08T12:00:00'}),(1,{'witnessed':False}),(1,{'deleted':True})):
+            events=self.reaction_events();events[index].update(change)
+            self.assertEqual(self.feedback(events)[1],[],change)
+
+    def test_feedback_receipt_binds_exact_predecessor_attestation(self):
+        events = self.reaction_events()
+        _, first = self.feedback(events)
+        self.assertEqual(first[0]["predecessor_sha256"], W.digest(json.dumps(
+            events[0], sort_keys=True, separators=(",", ":"))))
+        events[0]["producer_revision"] = "fixture-revision"
+        _, second = self.feedback(events)
+        self.assertNotEqual(first[0]["predecessor_sha256"], second[0]["predecessor_sha256"])
+        self.assertEqual(first[0]["feedback_sha256"], second[0]["feedback_sha256"])
+        row, rating = self.practice_rating()
+        self.assertIsNone(self.feedback([rating], [row])[1][0]["predecessor_sha256"])
+
+    def test_feedback_missing_identity_still_occupies_claimed_position(self):
+        for position in (1, 2):
+            for identity in (None, "", [], 7):
+                events = self.reaction_events()
+                unidentified = dict(events[position-1], event_id=identity)
+                report, private = self.feedback(events + [unidentified])
+                self.assertEqual(private, [], (position, identity))
+                self.assertEqual(report["positive_targets"], 0)
+                self.assertEqual(report["held"]["missing_event_identity"], 1)
+
+    def test_feedback_predecessor_denials_cannot_be_laundered_by_eligible_target(self):
+        for flag in ("inferred", "deleted", "forgotten", "timestamp_estimated", "imported", "transplanted"):
+            events = self.reaction_events()
+            events[0][flag] = True
+            self.assertEqual(self.feedback(events)[1], [], flag)
+        events = self.reaction_events()
+        events[0]["witnessed"] = False
+        self.assertEqual(self.feedback(events)[1], [])
+
+    def test_feedback_predecessor_requires_direct_sequence_witness(self):
+        events = self.reaction_events()
+        events[0].pop("witnessed", None)
+        self.assertEqual(self.feedback(events)[1], [])
+
+    def test_feedback_unidentified_other_positions_do_not_poison_valid_join(self):
+        events = self.reaction_events()
+        for stream, position in (("different-stream", 1), ("fixture-stream", 20)):
+            unrelated = dict(events[0], event_id=None, stream_id=stream, position=position)
+            report, private = self.feedback(events + [unrelated])
+            self.assertEqual(report["positive_targets"], 1)
+            self.assertEqual(len(private), 1)
+            self.assertEqual(report["held"]["missing_event_identity"], 1)
+
+    def test_feedback_duplicates_and_conflicts_never_select_favourable_copy(self):
+        events=self.reaction_events()
+        self.assertEqual(self.feedback(events+copy.deepcopy(events))[0]['observations'],1)
+        self.assertEqual(self.feedback(events)[0],self.feedback(list(reversed(events)))[0])
+        changed=dict(events[1],text='ha',content_sha256=W.digest('ha'))
+        self.assertEqual(self.feedback(events+[changed])[1],[])
+        collision=dict(events[0],event_id='position-collision')
+        self.assertEqual(self.feedback(events+[collision])[1],[])
+        conflict=dict(events[0],turn_id='other')
+        self.assertEqual(self.feedback(events+[conflict])[1],[])
+
+    def practice_rating(self, stars=4):
+        row=copy.deepcopy(self.row);row['witness_receipt']['surface']='humor_practice';row['surface']='humor_practice'
+        event=dict(schema='witness-feedback-v1',event_id='fixture-rating',kind='practice_rating',
+                   origin='authenticated_owner_rating',witnessed=True,at=130,stars=stars,
+                   target_turn_id=row['turn_id'],target_sha256=W.digest(row['content']),surface='humor_practice')
+        return row,event
+
+    def test_feedback_practice_ratings_only_high_scores_are_positive(self):
+        for stars in range(1,6):
+            row,event=self.practice_rating(stars)
+            report,private=self.feedback([event],[row])
+            self.assertEqual(private[0]['stars'],stars)
+            self.assertEqual(private[0]['label'],'positive' if stars>=4 else 'unknown')
+            self.assertEqual(report['positive_targets'],int(stars>=4))
+        for bad in (True,4.0,'5',0,6,None):
+            row,event=self.practice_rating(bad)
+            self.assertEqual(self.feedback([event],[row])[1],[])
+
+    def test_feedback_practice_cannot_join_text_prefix_or_unknown_origin(self):
+        for change in ({'target_turn_id':'missing'},{'target_sha256':W.digest('prefix')},
+                       {'origin':'old-inferred-rating'},{'surface':'chat'}):
+            row,event=self.practice_rating();event.update(change)
+            self.assertEqual(self.feedback([event],[row])[1],[],change)
+        row,event=self.practice_rating();row['witness_receipt']['surface']='chat'
+        self.assertEqual(self.feedback([event],[row])[1],[])
+
+    def test_feedback_repeated_ratings_are_not_multiple_positive_targets(self):
+        row,event=self.practice_rating(5);later=dict(event,event_id='fixture-later-rating',at=140,stars=2)
+        report,private=self.feedback([event,later],[row])
+        self.assertEqual(report['observations'],2);self.assertEqual(report['positive_targets'],1)
+        self.assertEqual([r['label'] for r in private],['positive','unknown'])
+        self.assertEqual(self.feedback([event,later],[])[0]['positive_targets'],0)
+
     def test_scratch_rejects_live_parent_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
             root = Path(td).resolve()
@@ -473,18 +765,23 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             self.assertNotIn(".vintos", root.parts)
             bundle = {"input_kind": "synthetic", "sources": [{"kind": "canonical", "rows": [self.row]}],
                       "lineage": list(self.nodes.values()), "forecasts": [self.f],
-                      "embeddings": [self.e], "checkpoints": self.ck}
+                      "embeddings": [self.e], "checkpoints": self.ck, "feedback_events":self.reaction_events()}
             source = root / "fixture.json"; source.write_text(json.dumps(bundle))
             before = source.read_bytes()
             env = dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1")
             for name in ("first", "restart"):
                 result = subprocess.run([sys.executable, str(R.__file__), "--scratch", str(root),
-                    "--input", str(source), "--output", str(root / name), "--cutoff", "1970-01-01T00:16:40Z"],
+                    "--input", str(source), "--output", str(root / name), "--cutoff", "1970-01-01T00:16:40Z",
+                    "--behaviour-start", "1970-01-01T00:01:40Z", "--behaviour-surface", "fixture-chat"],
                     env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(before, source.read_bytes())
             self.assertEqual((root / "first/aggregate.json").read_bytes(), (root / "restart/aggregate.json").read_bytes())
             self.assertEqual((root / "first/aggregate.json").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((root / "first/private-behaviour.json").read_bytes(), (root / "restart/private-behaviour.json").read_bytes())
+            self.assertEqual((root / "first/private-behaviour.json").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((root / "first/private-feedback.json").read_bytes(), (root / "restart/private-feedback.json").read_bytes())
+            self.assertEqual((root / "first/private-feedback.json").stat().st_mode & 0o777, 0o600)
 
     def test_guard_denies_subprocess_rename_and_external_write(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:

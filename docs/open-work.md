@@ -1,13 +1,38 @@
-## 8 November — shadow witness ancestry and enablement boundary
+## 8 November — shadow witness implementation and remaining acceptance
 
-On `codex/judges-ancestry-leaves`, parentless generated nodes remain unknown;
-clean synthetic ancestry now ends in an explicit external source. No existing
-feed or live eligibility is changed. [Review log](judges-witness-log.md) records
-106 isolated checks. [Production enablement proposal](judges-capture-enable-proposal.md)
-is separate and disabled; do not repoint the serving workspace to use a scratch
-capture flag. Reviewer-provided private census remains zero strict-eligible
-turns. Paired innovation controls, complete producer ancestry, production sink
-implementation and full Aegis review remain open.
+Review increments now include request/attempt and finalization dependency capture,
+strict ancestry/census, bounded behaviour summaries, paired innovation controls,
+and explicit feedback joins. `codex/judges-feedback-evidence` tightens the latter:
+missing event IDs cannot erase timeline collisions, and a predecessor needs its
+own direct sequence witness. [Review log](judges-witness-log.md) records each
+increment's isolated validation; the latest focused run passed 92 checks.
+
+Full Aegis validation and independent review of the post-788439c9 stack remain
+with Claude. The reviewer-provided private census is still zero strict-eligible
+turns; no new retained-data result is claimed. Complete upstream ancestry,
+trustworthy delivery/sequence producers and a separate bounded production sink
+remain open. [Enablement proposal](judges-capture-enable-proposal.md) is disabled
+and requires Gloria's explicit decision; never repoint the serving workspace to
+use the scratch flag. No live feed, historical eligibility or model is changed.
+
+Review 13's capture compatibility fixes are on `codex/judges-capture-compatibility`:
+older capture/router modules degrade to no observation without changing replies;
+known incomplete effects remain counted as influenced-incomplete and excluded.
+The focused synthetic suite passed 139 checks. The separate wants stack remains
+unapproved pending source-bound admission, artifact freshness, explicit continuation,
+call limits/kill switch, subscription-only default and crash-repeat repairs.
+
+## 8 November — journal/email wants through agents to a delivered result
+
+Source repair on `codex/wants-action-followthrough`; not deployed. See
+[trace, contracts and acceptance](wants-action-followthrough.md). Literal
+operational journal wants retain their words and bypass incubation. Missing
+steps remain obligations; the existing room carries setup/download/account work
+to dot and purchase work to Muse. Bound file results return through existing
+sharing, ntfy, artifact and completion doors, and into context/agent email recall.
+No model changes, live writes or test sends. Claude Code review and the full
+isolated Aegis suite remain pending; Gloria deploys. Actual music analysis and
+one live end-to-end acceptance remain owed, not claimed from synthetic tests.
 
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 
@@ -6062,3 +6087,144 @@ Judges slice 2 now has offline paired last-reply/recent-mean controls on
 are required; serving capture of that contract and real paired coverage remain
 open. Missing controls do not discard head observations. See the experiment
 README for causal joins and descriptive-only interpretation. No feed is changed.
+
+
+The next stacked judges slice, `codex/judges-behaviour-windows`, adds an optional
+explicit-window/surface shadow behaviour receipt with private source manifests
+and separate served-model/revision groups. It remains scratch-only and descriptive.
+Retained-data measurements, full Aegis suite/review, complete producer ancestry
+and any separately approved feed integration remain open. No historical witness
+eligibility is backfilled and no existing feed changes.
+
+
+`codex/judges-feedback-joins` adds explicit positive feedback joins to the shadow
+reader (note 2): exact adjacent chat reply plus literal laughter marker, and exact
+practice output plus 4–5-star rating. Missing/low/ambiguous evidence stays unknown.
+Production authentication/sequence receipts and verified retained-source adapters
+remain open. The existing weak laughter channel is unchanged. See experiment
+README for schema, limitations and private outputs; no feed or training change.
+
+
+`codex/judges-causal-innovation` repairs the shadow scorer's reference clock and
+same-time forecast identity checks, and separates target served-model revisions.
+Reference outcomes must predate the forecast, not merely its eventual reply.
+Retained-data measurements and full Aegis validation still belong to Claude;
+existing live self-head audits and feeds are untouched.
+
+## 8 November — want working-thread follow-up
+
+On `codex/wants-working-thread`, stacked on ad88092f: explicit working-model route,
+persistent private goal/source/identity/agent conversation and observed generation
+receipts; narrow stored-binding exemption from the room switch; existing owner
+approval and verified-delivery doors retained. 916 checks across 26 affected
+isolated suites pass. Independent Aegis full-suite review, external agent rule
+installation, Gloria's deploy and actual journal-want acceptance remain open.
+See `docs/wants-action-followthrough.md`. No live music task has been executed.
+
+
+## 8 November — wants review 13 repair status
+
+`codex/wants-review-repairs` is rebased on 788439c9 with both agents' open-work
+sections retained. Source-bound request/intake/thread admission, request-scoped
+fresh output verification and the obsolete incubation-test anchor are repaired.
+The stack is still **not ready to integrate**: explicit context continuation and
+owner notification, configurable call caps, kill switch, subscription-only default
+and crash-repeat protection remain open, followed by Claude's full Aegis review.
+See the repair batch in `docs/wants-action-followthrough.md`. No deployment.
+
+
+## 8 November — wants reviews 13/14 implemented, pending independent review
+
+On `codex/wants-budget-continuation`, from eab31339: shared per-request/global
+provider-attempt limits, dedicated stop switch, subscription-to-approved-fallback
+routing with existing accounting, durable intent/response recovery, explicit
+context continuation and deduplicated blocker receipts are implemented. Existing
+feeds and other provider routes are unchanged. 614 counted isolated checks plus
+the Slack-cost regression suite pass. `docs/wants-budget-validation.json` records
+this tip's validation; older matrices describe their own tips.
+
+The review-13 source/freshness/test-anchor fixes remain in the parent stack. Full
+Aegis validation, Claude's approval, external agent instruction installation and
+Gloria's deployment/live acceptance remain open. No claim that a real want has
+been executed or that this branch may merge automatically.
+
+
+## 8 November — completion notification and local-ending retry
+
+`codex/wants-completion-delivery` fixes the default completion adapter's missing
+outward authority and preserves its first successful receipt across local ending
+retries. Five real-module integration fixtures use synthetic records and stubbed
+transports; 464 checks across seven isolated suites pass. Review details are in
+`docs/wants-action-followthrough.md`. This stack remains pending Claude's full
+isolated Aegis review, agent-rule installation and Gloria's deployment/live
+acceptance; no existing review tip was altered.
+
+
+## 8 November — result revisions retain their own delivery evidence
+
+`codex/wants-result-revisions` preserves previous result/stage receipts and binds
+new publication, delivery and working-thread completion events to the exact result
+manifest. Stale progress writes cannot overwrite a newer version. Duplicate
+arrivals preserve progress; unversioned publication is retained for reconciliation.
+469 isolated checks across seven suites pass; see the follow-through log for the
+remote/local atomicity limit. Claude's full Aegis review and Gloria's production
+acceptance remain open. No private records or live services were changed.
+
+
+## 8 November — atomic exact-result completion check
+
+`codex/wants-completion-binding` checks the delivered result under the existing
+completion lock before the agent-work caller can archive it or trigger fulfillment
+side effects. Real completion functions pass synthetic scratch and concurrent-writer
+fixtures. 523 checks in nine affected isolated suites pass, including a quoting-only
+legacy-interpreter compatibility repair in the wants log. See the follow-through
+log for initial failures. Claude's full Aegis review and Gloria's live acceptance
+remain outstanding; no deployment or private-store change occurred.
+
+
+## 8 November — complete synthetic want lifecycle acceptance
+
+`codex/wants-end-to-end-acceptance` adds default-adapter integration coverage
+through real archival, exact promise cleanup, room closure and context awareness,
+including notification failure and post-archive recovery. Tests/docs only; 24
+checks pass in this increment. The parent implementation and independent Aegis/
+live acceptance boundaries are unchanged. See the follow-through log.
+
+
+## 8 November — review 15 wants repair
+
+The complete wants stack is on `codex/wants-review-15`, rebased onto cb10d8b8 with
+both agents' open-work additions preserved. The local-analysis source-predicate
+import is fixed; explicit stopped-worker reconciliation and recorded-output hash
+freshness checks are implemented. 602 affected isolated checks pass. See the
+follow-through log for operator commands, proof limits and validation. Claude's
+independent full Aegis suite/review and Gloria's install/live acceptance remain
+pending. Judges through 29380277 are reported approved/integrated at cb10d8b8.
+
+
+## 8 November — wants call-input receipts
+
+`codex/wants-call-input-receipts` follows review 15 without changing its pushed tip.
+Exact writer inputs are retained privately before calls and reused for restart
+receipts; operator recovery no longer treats an attempted lane as an observed
+answer origin. Legacy input ancestry stays unknown. 125 affected isolated checks
+pass; see the follow-through log. Full Aegis review and installation/live acceptance
+remain pending. No model/provider behavior or existing feeds changed.
+
+
+## 8 November — exact blocked-call notice identity
+
+`codex/wants-blocked-call-notices` makes subsequent interrupted calls visible after
+an earlier call was reconciled, without re-alerting unchanged polls. 421 affected
+isolated checks pass. See the follow-through log. Review, installation and live
+acceptance remain pending; no deployment or live-store write occurred.
+
+
+## 8 November — review 16 artifact-clock repair
+
+`codex/wants-review-16-clock` permits a bounded two-second lower mtime tolerance,
+sets explicit fixture timestamps and adds a coarse-clock suite. 130 normal checks
+and 67 repeated checks under simulated 10 ms granularity pass. Existing path/hash
+freshness checks remain; see the follow-through log for reproduced failures and
+limits. Claude's full isolated Aegis rerun and integration review remain pending;
+Gloria retains installation and live acceptance. No deploy or live writes.

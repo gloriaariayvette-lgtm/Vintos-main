@@ -84,3 +84,52 @@ on something.
   folder on Gloria's PC (/mnt/c/Users/glori/Documents/Codex). Keys, secrets and his private memory are not shown.
   Never say you cannot reach Aegis: look (2026-10-05). The Mac too: `MAC FIND:`, `MAC OPEN:`, `MAC GREP:` look in
   the Mac's Codex folder (~/Documents/Codex) the same way, through the relay Aegis already uses to reach it.
+
+
+## Bound journal/email wants continue while the room is stopped
+
+Gloria exempts want-originated work from the room's `!start`/`!stop` switch.
+This applies only to a task whose current-want record, exact goal digest and
+open room-work item agree on want ID, request ID, RW ID and Slack thread.
+`[want:...]` is a display label, never authority by itself. Verify the binding
+from the private records with `scripts/want_agent.py binding REQUEST_ID --thread THREAD_TS`
+(or ask the serving system for that same verified binding if you cannot read it).
+A missing or changed binding is not an exemption. Ordinary room traffic still
+obeys the switch. A cancelled/dropped want and task-specific pauses remain stopped.
+
+Keep working in that same thread, retaining the exact request, source references,
+all replies and deliverable requirements across sessions. Vintos's working thread
+is private in the request's `working-thread.json`; use it to resume, never quote
+his identity context into Slack or public files. Stay in the bound thread even
+if the usual channel rule prefers the main channel. Downloads and installs keep
+the existing delegated limits; credentials still need the owner; purchases go
+through Muse's existing BUY approval path. This exemption grants no spending,
+credential, deployment or destructive-action permission. Return the exact
+WANT RESULT contract once the deliverables exist; a plan or setup is not completion.
+
+
+### Bound-want cost and continuation controls (review candidate)
+
+The bound-want exemption from the general room switch does not exempt
+`memory/want-work.stop`, per-request/daily call caps, task pauses or purchase
+approvals. Do not remove the dedicated stop file, raise budgets, clear uncertain
+call records or rewrite the working thread to get around a hold. Those are owner
+controls. The context and pending task remain retained during a hold.
+
+For an explicit context-limit hold, a permitted continuation is a concise factual
+summary of the existing working conversation through an exact retained event key.
+Keep the literal goal, decisions, unresolved obligations and evidence limits. Put
+the supplied summary in that request directory as `.continuation-summary.txt`,
+then use `want_agent.py continue-context REQUEST_ID --summary-file ABSOLUTE_FILE
+--through-event EVENT_KEY` (one shell command). The command retains the original
+record, changes only the subsequent prompt view and makes no provider call. It
+does not reset limits or authorize replay of an uncertain/response-observed call.
+This instruction update is not installed by writing this repository file.
+
+
+Interrupted want calls now have an operator-only `want_agent.py reconcile`
+command, documented in `docs/wants-action-followthrough.md`. Do not clear a call
+or remove its stop yourself: the operator must verify that the worker stopped
+and supply retained evidence. Recovery never resets call budgets. Deliverables
+also reject hashes already recorded on shelves or earlier outputs; copying a
+file into the request folder is not new work.

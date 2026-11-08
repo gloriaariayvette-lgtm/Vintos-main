@@ -65,7 +65,7 @@ class Tests(unittest.TestCase):
         p = packet()
         sources = [("capture", [p, copy.deepcopy(p)])]
         nodes = R.snapshot_nodes(sources, [])
-        self.assertEqual(len(nodes), 2)
+        self.assertEqual(set(nodes), {n["id"] for n in p["lineage"]} | {p["reply_node"]["id"]})
         self.assertEqual(nodes[p["reply_node"]["id"]]["kind"], "reply")
         self.assertFalse(nodes[p["reply_node"]["id"]]["complete"])
         bad = copy.deepcopy(p); bad["lineage"][0]["complete"] = True

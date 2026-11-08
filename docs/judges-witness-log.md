@@ -316,3 +316,138 @@ newer history and separate paired coverage. No live producer contract or real-da
 accuracy claim is introduced. Independent Aegis validation remains Claude's step.
 
 Validation: witness 48/48, replay adapter 6/6 and ownership 11/11: **65 isolated checks passed**. Whitespace clean. No private data read, live writes, model calls, enablement, merge or deploy.
+
+
+## 8 November 2026 — bounded shadow behaviour receipts
+
+Continued from 788439c9 on `codex/judges-behaviour-windows`, preserving prior
+review tips. The strict census now feeds an optional explicit-window/surface
+summary, separated by observed served model and revision. Private manifests bind
+every measurement to the exact final response and generation receipt/context;
+the CLI also binds the retained input bundle. Aggregates contain ordinal group
+counts, word-length summaries and literal question-mark fractions only. Missing
+observations remain unknown; snapshot coverage is not stream completeness.
+
+Rebuilds are deterministic and source removal changes membership rather than
+leaving stale state. Synthetic cases cover positive observations, empty windows,
+midnight boundaries, unknown/mismatched identity, duplicate rejection, cross-model
+separation and transitive exclusion when a behaviour receipt later influences a
+reply. No live feeds, source capture, LLM calls, fitting or real-data claims.
+
+Validation: witness 56/56, replay adapter 6/6 and ownership 11/11: **73 isolated checks passed**. CLI rebuilds reproduce both aggregate and private manifest bytes with 0600 output permissions. Full Aegis suite and retained-data results remain Claude's independent step.
+
+
+## 8 November 2026 — explicit feedback receipts
+
+Continued on `codex/judges-feedback-joins` from 0d950e7b. Implemented note 2's
+literal laughter marker and high practice-rating joins in the offline replay.
+Chat adjacency requires exact final-response identity and producer-attested
+consecutive timeline positions, including excluded/intervening events. Practice
+ratings require an exact eligible practice version. No time-window or text-prefix
+inference. Absent laughter, single ha and 1–3 stars remain unknown, not flops.
+Conflicting copies cannot select a favourable label; repeated ratings retain
+observations but do not multiply positive targets. Raw feedback text stays in the
+private input bundle; output receipts contain only private references/digests.
+
+This adds no live collector or authentication claim. Verified origin and complete
+sequence are still a producer obligation; historical capped records cannot be
+backfilled by assumption. Existing humor scripts, inference and every live feed
+remain untouched. Retained-data measurement/full Aegis review stay with Claude.
+
+Validation: witness 65/65, replay adapter 6/6, ownership 11/11: **82 isolated checks passed**. Includes positive and unknown controls, intervening replies, origin/version/clock errors, duplicate conflicts, strict rating joins and private-file restart/permissions. Whitespace clean; no real-data accuracy or installed behavior claim.
+
+
+## 8 November 2026 — causal innovation reference repair
+
+Audited the shadow scorer while prior tips remain under review. Five synthetic
+regressions reproduced: two forecast-time reference leaks (later/equal-time
+outcome), equal-error distinct vectors, different producer attestations with the
+same derived summary, and pooled target generators/revisions. On
+`codex/judges-causal-innovation` from 608eefb5, reference outcomes must now finish
+strictly before the forecast. Complete forecast digests distinguish same-time
+conflicts; exact copies still deduplicate. Target served-model/revision groups
+are kept separate for references and paired comparisons. Requested identity is
+never a substitute. Digests and generator identities remain private.
+
+All five regressions now pass. No retained/private input was read; no result from
+the independent self-head audit was recomputed or changed. This corrects the
+new offline instrument only, with no live feed or model change.
+
+Validation: witness 70/70, replay adapter 6/6, ownership 11/11: **87 isolated checks passed**. Before the repair the five added cases failed; after it they pass along with existing duplicate, causal batch and paired-control cases. Whitespace clean. Full Aegis review remains pending with Claude.
+
+
+## 8 November 2026 — reply finalization dependency boundaries
+
+Continued from 0a4162b0 on `codex/judges-finalization-lineage`. The scratch
+capture producer now records the exact pre-final-guard digest and the returned
+digest as ordered dependency nodes, linked to the selected request/attempt. This
+distinguishes edits in the handler from edits across the final guard boundary.
+The intermediate text is not retained. Missing selection or a failed pre-guard
+observation remains explicit unknown; neither boundary claims complete editor
+ancestry, effect execution or delivery. Changed=false means equal boundary bytes,
+not proof that nothing ran between them. Existing packet fields remain compatible.
+
+Selection and generation observations cannot move after a finalization boundary.
+The actual handler hook is failure-isolated and disabled with existing scratch
+capture; its new test executes extracted handler code with synthetic providers.
+No production enablement, live store, feed, model, private-data read or send.
+
+Validation: capture 27/27, handler hooks 15/15, replay adapter 6/6, witness 70/70,
+ownership 11/11: **129 isolated checks passed**. A prior adapter assertion about
+the fixed node count was updated to assert exact deduplicated node identities
+after the added boundary node. Generated reports and whitespace checks are clean.
+Full Aegis validation and review remain Claude's independent step.
+
+
+## 8 November 2026 — feedback sequence evidence repair
+
+Continued from e59f9d4d on `codex/judges-feedback-evidence`. Three synthetic
+regressions reproduced gaps in the new offline feedback reader: unidentified
+events vanished before position collision checks; predecessor timeline denials
+were ignored; and an un-witnessed predecessor could borrow the target reply's
+eligibility. The reader now keeps every valid claimed stream/position occupied,
+including missing/malformed event IDs, and requires direct witnessed sequence
+evidence for both sides of a chat join. This is a tightening of the new offline
+contract, not a change to existing humor labels or live feeds.
+
+Private observations also retain the exact predecessor-event digest alongside
+the feedback-event digest. No raw feedback is copied. Unknown rows in unrelated
+streams/positions do not suppress a valid local join. No historical witness
+backfill is provided; producers must attest facts they actually observed.
+
+Validation: witness 75/75, replay adapter 6/6 and ownership 11/11: **92 isolated
+checks passed**. Three new cases failed before the repair; five additions cover
+missing IDs at either position, predecessor denials/missing witnesses, unrelated
+positions, and version-bound private receipts. Existing literal-marker, low-rating
+unknown, restart, permissions and scratch-only checks still pass. Reports were
+regenerated and whitespace checked. No retained data, sends, models, merge or
+deploy; independent Aegis validation remains with Claude.
+
+
+## 8 November 2026 — review 13 capture compatibility repairs
+
+On `codex/judges-capture-compatibility` from 41682138, reproduced the review's
+missing prepare symbol failure and an analogous older-router signature failure.
+The handler now owns a small exception boundary around observation preparation
+at all three route sites. Missing/broken setup, invalid observer options and a
+router without the observer parameter disable observation, not generation. No
+provider call is repeated to recover from capture failure. This also works when
+the installed capture module is too old to contain any new helper.
+
+Known judge effects with incomplete ancestry now report `influenced_incomplete`
+(and census reason `influenced_incomplete_lineage`) instead of losing their known
+influence under unknown. The distinction propagates through incomplete context
+and unknown siblings. Every incomplete case remains excluded; invalid clocks
+and unmarked material remain unknown. No clean/admitted population expands.
+
+Validation: handler hooks 18/18, capture 27/27, witness 77/77, replay adapter 6/6,
+ownership 11/11: **139 isolated checks passed**. The three compatibility additions
+failed before the fix and now pass, including original/retry/replacement paths.
+Two influence tests cover missing parents, incomplete enclosing contexts, sibling
+order and clock rejection. Reports regenerated; whitespace clean.
+
+Review 13 reports integration through 788439c9 and Aegis suites 594/594 and
+597/597. Later increments, including this one, still need independent review/full
+Aegis validation. The wants stack remains separately blocked on review 13's source
+binding, result freshness, continuation and cost-control fixes; not approved or
+deployed by this judges repair. No live stores, calls, merge or deployment.

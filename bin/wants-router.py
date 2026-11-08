@@ -1632,6 +1632,9 @@ PARAM_SCHEMAS = {
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
     "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
                       "to": {"type": "str", "required": False}},
+    "local_analysis": {"code": {"type": "str", "required": True},
+                       "inputs": {"type": "dict", "required": True},
+                       "outputs": {"type": "dict", "required": True}},
 }
 
 def validate_step_params(action, params):
@@ -1738,6 +1741,15 @@ def send_email(want_text):
 
 
 ACTION_MAP["send_email"] = send_email
+
+
+def local_analysis(want_text):
+    """Execute a bounded offline artifact job; return its typed factual receipt."""
+    from local_analysis import run
+    return run(json.loads(os.environ.get("STEP_PARAMS", "{}")), os.environ.get("STEP_WANT_ID", ""))
+
+
+ACTION_MAP["local_analysis"] = local_analysis
 
 
 def creative_write(want_text):
@@ -2338,7 +2350,7 @@ def main():
         if _pp.get("state") == "PAUSED" and float(_pp.get("paused_until") or 0) > __import__("time").time() and not _args.force_want_id:
             log("  → PAUSED by his choice until %s — skipping" % __import__("datetime").datetime.fromtimestamp(float(_pp["paused_until"])).strftime("%Y-%m-%d %H:%M"))
             continue
-        # 24-hour hold — skip unless manually routed or old enough
+        # The existing eight-hour incubation does not apply to specific journal tasks.
         _in_progress = want.get("current_step_index", 0) > 0 or (want.get("multistep") and want.get("steps"))
         if not want.get("manually_routed") and not want.get("gloria_routed") and not _args.force_want_id and not _in_progress:
             from datetime import datetime as _dt
@@ -2346,13 +2358,24 @@ def main():
             if _ts:
                 try:
                     _age_h = (_dt.now() - _dt.fromisoformat(_ts)).total_seconds() / 3600
-                    if _age_h < 8 and not want.get("timer_bypass"):
+                    from want_agent import bypass as _want_bypass
+                    if _age_h < 8 and not _want_bypass(want):
                         log(f"  → Holding ({_age_h:.1f}h old, need 8h) — skipping")
                         continue
                 except: pass
 
+        # Specific operational wants need an agent-capable route, even when a
+        # planner produced an easier but different song/reflection plan.
+        from want_agent import specific as _agent_specific, request as _agent_request
+        if _agent_specific(want):
+            if _agent_request(want, "concrete task needs agent follow-through"):
+                log("  → Bound to agent room; handoff is not fulfillment")
+                continue
+
         if not _ensure_plan(want, force=bool(_args.force_want_id)):
             block = want.get("plan_block") or {}
+            if _agent_specific(want):
+                _agent_request(want, "planner block: " + str(block.get("evidence", "unknown")))
             log("  → PLAN BLOCKED (%s): %s" %
                 (block.get("block_type", "unknown"), block.get("evidence", "no detail")))
             continue
@@ -2689,6 +2712,18 @@ def main():
                 if not _ran:
                     log("  → stance deferred this start; want remains pending")
                     continue
+                if action == "local_analysis":
+                    from local_analysis import retain_result
+                    from want_agent import specific as _agent_specific
+                    if not retain_result(want, success, os.path.join(MEMORY, "current-wants.json")):
+                        log("  → Analysis receipt not bound to the current step; not advanced")
+                        continue
+                    if success.get("status") != "SUCCEEDED":
+                        if _agent_specific(want):
+                            _agent_request(want, "local analysis: " + str(success.get("reason", "unfinished")))
+                        log("  → Analysis %s; concrete result retained on this step" % success.get("status", "UNKNOWN"))
+                        continue
+                    success = success["findings"]
                 _actual_output = success if isinstance(success, str) else ""
                 if not _actual_output and is_multistep:
                     try: _actual_output = capture_findings(action, text) or ""
@@ -2775,6 +2810,8 @@ def main():
         else:
             from want_spine import missing_hand
             proposal = missing_hand(action, text, want, path=os.path.join(MEMORY, "current-wants.json"))
+            if _agent_specific(want):
+                _agent_request(want, "missing capability: " + str(action))
             log(f"  → Missing capability {action}: {proposal}")
 
 

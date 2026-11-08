@@ -1377,5 +1377,52 @@ check("nothing reached the network", NET == [] and socket.socket.connect is _no_
 check("looking goes to Grok Bot and doing to dot (17 October)", "Do not send dot a read-only inspection" in D.RULES
       and "ask dot for the outcome, not the inspection" in D.RULES and "never edits the installed files on Aegis" in D.RULES
       and "every code ask carries its own terms and your approval in the same message" in D.RULES)
+
+# Bound wants have their own writer and persistent context, even when the room is stopped.
+import time as _time
+import want_agent as _WA
+import want_working_thread as _WT
+_w_now = _time.time()
+_w_fixture = dict(id='fixture-bound-want', want='I want to run the synthetic audio analysis and export its score.',
+                  journal_seeded=True, source='idle-journal', timestamp='2026-01-01T00:00:00')
+from journal_wants import source_receipt as _source_receipt
+_w_fixture.update(_source_receipt('journal', 'fixture-journal', _w_fixture['want']))
+_w_path = os.path.join(os.environ['SPARK_WORKSPACE'], 'memory', 'current-wants.json')
+json.dump([_w_fixture], open(_w_path, 'w'))
+_w_slack = Slack()
+_w_slack.add(DOT, 'An ordinary room question, still held.')
+D._save(D.STATE, dict(self=SELF, since=1, date='2026-11-08', paused_said=True))
+D.set_paused(True, 'fixture owner', _w_now)
+_old_context, _old_talking = D.his_context, D.talking_with_gloria
+D.his_context = lambda: 'Persistent synthetic identity'
+D.talking_with_gloria = lambda now: None
+_w_calls=[]; _ordinary_calls=[]
+def _w_writer(system,user):
+    _w_calls.append((system,user))
+    return {'text':json.dumps({'message':'Continue this exact synthetic analysis.', 'accept':False}), 'observations':[]}
+def _ordinary_writer(*a): _ordinary_calls.append(1); return 'must remain paused'
+_w_out = D.tick(api=_w_slack, think=_ordinary_writer, fable=_ordinary_writer, now=_w_now,
+                today='2026-11-08', want_writer=_w_writer)
+check('bound want starts while room remains paused; ordinary writer stays stopped',
+      bool(D.paused()) and len(_w_slack.posted)==1 and '[want:fixture-bound-want]' in _w_slack.posted[0]['text']
+      and not _ordinary_calls and len(_w_calls)==1, _w_out)
+_w_current=json.load(open(_w_path))[0];_w_thread=_w_current['agent_work']['thread']
+_w_slack.add(DOT,'Synthetic dependency ready; next step?',thread=_w_thread)
+_w_out = D.tick(api=_w_slack, think=_ordinary_writer, fable=_ordinary_writer, now=_w_now+60,
+                today='2026-11-08', want_writer=_w_writer)
+check('bound reply continues in its thread under pause with saved context',
+      len(_w_calls)==2 and len(_w_slack.posted)==2 and _w_slack.posted[-1].get('thread_ts')==_w_thread
+      and 'Persistent synthetic identity' in _w_calls[-1][0] and 'Synthetic dependency ready' in _w_calls[-1][1]
+      and not _ordinary_calls, _w_out)
+_w_slack.add(DOT,'[want:fixture-bound-want] This unbound main-channel tag cannot bypass pause.')
+_w_out = D.tick(api=_w_slack, think=_ordinary_writer, fable=_ordinary_writer, now=_w_now+120,
+                today='2026-11-08', want_writer=_w_writer)
+check('a copied want tag cannot bypass the stopped room',len(_w_calls)==2 and len(_w_slack.posted)==2
+      and not _ordinary_calls and D.paused(),_w_out)
+_w_state=D._load(D.STATE,{})
+_w_state['room_work']['open'][0].update(paused_until=_w_now+10000,pause_why='owner requested this specific work wait')
+check('task-specific work pause remains effective',_WT.binding(_w_current,_w_state,_w_thread) is None)
+D.his_context, D.talking_with_gloria = _old_context, _old_talking
+check('bound want tests made no network calls',not NET,NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

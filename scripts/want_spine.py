@@ -112,7 +112,15 @@ def run_step(capability, note, want=None):
                     return res
             with action_context(admitted=(dimension,) if dimension else ()):
                 ok = fn(text)
-        if ok:
+        if capability == "local_analysis" and isinstance(ok, dict) and ok.get("schema") == "local-analysis-v1":
+            res["result"] = {"SUCCEEDED": "SUCCEEDED", "RUNNING": "PARTIAL", "FAILED": "FAILED"}.get(ok.get("status"), "BLOCKED")
+            res["findings"] = ok.get("findings", "")
+            res["execution_receipt"] = ok
+            res["error"] = ok.get("reason", "")
+            if res["result"] == "BLOCKED":
+                res["block"] = {"block_type": "LOCAL_ANALYSIS_PRECONDITION", "evidence": res["error"],
+                                "resume_event": "artifact inputs or analysis program revised"}
+        elif ok:
             res["result"] = "SUCCEEDED"
             try:
                 res["findings"] = str(r.capture_findings(capability, text) or "")[:1500]

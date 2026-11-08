@@ -92,6 +92,12 @@ def last_moved(w):
 
 def moving(w, now):
     """Completed a step in the last PROTECT_HOURS: it is being worked, so it is never capped or aged."""
+    a = w.get("agent_work") or {}
+    if a.get("request_id") and a.get("status") in ("queued", "in_work", "result_ready", "needs_result"):
+        # A real agent handoff is unfinished work, not evidence it quietly expired.
+        from want_agent import fingerprint
+        if a.get("goal_sha256") == fingerprint(w.get("want", "")):
+            return True
     done = [_t(h.get("completed_at")) for h in (w.get("step_history") or []) if isinstance(h, dict)]
     return bool(done) and now - max(done) < PROTECT_HOURS * 3600
 

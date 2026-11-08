@@ -137,6 +137,16 @@ def artifact_evidence(w):
 def verify(w):
     """(ok, why). Non-artifact wants pass — words witness words. Artifact wants pass
     only with a file behind them."""
+    if w.get("agent_work"):
+        try:
+            import want_agent
+            a = w["agent_work"]
+            result, paths = want_agent.verify(w, WS)
+            if a.get("status") != "result_ready" or a.get("result") != result or a.get("delivery", {}).get("state") not in ("sent", "acknowledged"):
+                return False, "agent result has not passed arrival and delivery"
+            return True, "bound agent artifacts verified (%d files)" % len(paths)
+        except Exception:
+            return False, "agent result missing or no longer matches its files"
     if not is_artifact_want(w):
         return True, "not artifact-class"
     ev = artifact_evidence(w)

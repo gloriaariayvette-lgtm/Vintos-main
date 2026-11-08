@@ -172,7 +172,7 @@ def build():
             lines.append(f"**{want_text}**")
             lines.append(f"  Fulfilled: {fulfilled_at} via {fulfilled_by}")
             if steps and step_history:
-                lines.append(f"  → multistep: {" → ".join(s.get("capability","?") for s in steps if isinstance(s,dict))}")
+                lines.append(f"  → multistep: {' → '.join(s.get('capability','?') for s in steps if isinstance(s,dict))}")
                 for h in step_history:
                     si = h.get("step", "?")
                     cap = h.get("capability", "?")
