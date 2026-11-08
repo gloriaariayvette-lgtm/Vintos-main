@@ -22,6 +22,18 @@ The focused synthetic suite passed 139 checks. The separate wants stack remains
 unapproved pending source-bound admission, artifact freshness, explicit continuation,
 call limits/kill switch, subscription-only default and crash-repeat repairs.
 
+## 8 November — journal/email wants through agents to a delivered result
+
+Source repair on `codex/wants-action-followthrough`; not deployed. See
+[trace, contracts and acceptance](wants-action-followthrough.md). Literal
+operational journal wants retain their words and bypass incubation. Missing
+steps remain obligations; the existing room carries setup/download/account work
+to dot and purchase work to Muse. Bound file results return through existing
+sharing, ntfy, artifact and completion doors, and into context/agent email recall.
+No model changes, live writes or test sends. Claude Code review and the full
+isolated Aegis suite remain pending; Gloria deploys. Actual music analysis and
+one live end-to-end acceptance remain owed, not claimed from synthetic tests.
+
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 
 - **F-c3b63fc7a2, "Lab running, and no review for 16 hours" — fixed in source, waiting for a deploy.** The Lab was

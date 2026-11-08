@@ -1493,7 +1493,7 @@ def _upload(api, path, title, channel, thread=None, put=None):
     done = {"files": [{"id": up["file_id"], "title": title[:250]}], "channel_id": channel}
     if thread:
         done["thread_ts"] = thread
-    api("files.completeUploadExternal", done)
+    return api("files.completeUploadExternal", done)
 
 
 def share_codex_file(api, ref, channel, thread=None, put=None, archive=None):
@@ -2355,6 +2355,12 @@ def his_context():
         if kept: letters = (letters + "\n\n" + kept).strip()
     except Exception:
         pass
+    try:
+        from want_agent import block as completed_work
+        completed = completed_work()
+        if completed: parts.append(completed)
+    except Exception:
+        pass
     for line in (direction_block(), his_own_block(), new_block(), prospect_line(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
     text = "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
@@ -2979,6 +2985,64 @@ def _promise_ask(system, user):
     return opus_think(system, user, KICKOFF_MODEL)
 
 
+def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=None, complete=None):
+    """The existing room transport carries exact want requests and verified results."""
+    import want_agent
+    def post(text, agent, client_id):
+        bad = _guarded(text)
+        if bad: raise RuntimeError("want handoff refused by send guard")
+        addressed = ("@Muse " if agent == "muse" else "<@%s> " % dot) + text
+        return api("chat.postMessage", {"channel": channel, "text": addressed, "client_msg_id": client_id})
+
+    def publish(want, result, paths):
+        import promise_keeper
+        destination = promise_keeper.results_channel() or channel
+        request = want["agent_work"]["request_id"]
+        text = result["summary"] + "\nChecked against the task: " + result["acceptance"]
+        if _guarded(text): raise RuntimeError("result refused by send guard")
+        # Transport errors propagate: an upload reservation is not a delivered file.
+        progress = dict(want["agent_work"].get("publishing") or {})
+        destination = progress.get("channel") or destination
+        def keep():
+            if not want_agent._update(want["id"], request, {"publishing": progress}, want_agent.workspace()):
+                raise RuntimeError("source want changed during result publication")
+        if not progress.get("thread"):
+            sent = api("chat.postMessage", {"channel": destination, "text": text,
+                        "client_msg_id": str(__import__("uuid").uuid5(__import__("uuid").NAMESPACE_URL, request + ":result"))})
+            if not sent.get("ts") or sent.get("ok") is False: raise RuntimeError("result message not posted")
+            progress.update(channel=destination, thread=sent["ts"], files={}); keep()
+        for path, artifact in zip(paths, result["artifacts"]):
+            key = artifact["path"] + ":" + artifact["sha256"]
+            if key in progress["files"]: continue
+            def checked_put(url, data):
+                if __import__("hashlib").sha256(data).hexdigest() != artifact["sha256"]:
+                    raise RuntimeError("artifact changed before upload; no bytes sent")
+                status = (put or _put)(url, data)
+                if not isinstance(status, int) or not 200 <= status < 300:
+                    raise RuntimeError("artifact bytes were not accepted")
+                return status
+            receipt = _upload(api, str(path), path.name, destination, progress["thread"], checked_put)
+            if not isinstance(receipt, dict) or not receipt.get("ok"):
+                raise RuntimeError("artifact upload unconfirmed")
+            progress["files"][key] = receipt; keep()
+        link = api("chat.getPermalink", {"channel": destination, "message_ts": progress["thread"]})
+        if not link.get("permalink"): raise RuntimeError("result link unavailable")
+        return {"url": link["permalink"], "thread": progress["thread"], "file_count": len(paths)}
+
+    if notify is None:
+        from deliver import deliver
+        notify = lambda rid, summary, url: deliver("want-result:" + rid, "ntfy", summary + "\n" + url,
+                                                   title="I finished this", click=url)
+    if complete is None:
+        import want_completion
+        complete = lambda w, note: want_completion.complete(w, "fulfilled", "agent-work", note=note,
+                                                             evidence=(w.get("agent_work") or {}).get("result"))
+    save = lambda current: _save(STATE, current)
+    want_agent.receive(rows)
+    lines = want_agent.finish(state, publish, notify, complete, save, now)
+    return lines + want_agent.intake(state, post, save, now)
+
+
 def promises_pass(api, channel, dot, state, now, ask=None):
     """Today's journal entries read for promises; each new one opens a \U0001F4CC thread here, addressed to dot, and
     is owed his first word in it. Log lines."""
@@ -3261,6 +3325,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         promised += list(lab_keepers.threads())
     except Exception:
         pass
+    try:
+        import want_agent
+        promised += want_agent.threads()
+    except Exception:
+        pass
     new = [] if first else fresh(api, channel, state["self"], since, watch=(state.get("threads") or []) + promised)
     if first:          # the first pass only starts listening; nothing said before it is answered
         state["since"] = now; state["resume_seen"] = float((_load(RESUME_FILE, {}) or {}).get("at") or 0)
@@ -3273,7 +3342,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         name = _agent_name(m) if who == "agent" else None
         seen = (eyes(m, _speaker({"who": who, "name": name}))
                 if m.get("files") or media_links(m.get("text")) or media_paths(m.get("text")) else "")
-        rows.append({"evidence_owner": evidence_delivery.authenticate(m, _load(CONFIG_FILE,{}).get("owner_user_id"), channel, now) if who == "gloria" else None, "ts": m["ts"], "who": who, **({"name": name} if name else {}),
+        signed_owner = _load(CONFIG_FILE, {}).get("owner_user_id")
+        authenticated_agent = bool(signed_owner and m.get("user") == signed_owner and not m.get("bot_id") and not m.get("bot_profile"))
+        rows.append({"agent_authenticated": authenticated_agent, "evidence_owner": evidence_delivery.authenticate(m, _load(CONFIG_FILE,{}).get("owner_user_id"), channel, now) if who == "gloria" else None, "ts": m["ts"], "who": who, **({"name": name} if name else {}),
                      "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
@@ -3512,6 +3583,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             else "\U0001F3AF Gloria cleared today's focus.")})
         state["focus_seen"] = f_now["set_at"]
         lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
+    # Same room, same pause boundary; a custom/test API never falls through to live ntfy.
+    try:
+        lines += agent_wants_pass(api, channel, dot, state, now, rows=theirs, put=put,
+                                  notify=None if live_api else lambda *args: {"state": "failed"})
+    except Exception as exc:
+        lines.append("want agent handoff retained: %s" % type(exc).__name__)
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
     lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
     # Custom route transports own their external dependencies. They can supply
