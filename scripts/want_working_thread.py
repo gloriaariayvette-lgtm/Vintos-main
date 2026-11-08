@@ -204,18 +204,29 @@ def reconcile(want, work, ws, call_id, outcome, evidence, response=None):
     return _mutate(want,work,ws,change)
 
 
-def notify_block(want, work, ws, reason, sender):
+def notify_block(want, work, ws, reason, sender, *, phase=None, trigger=None):
     """The caller supplies deliver; private receipt deduplication survives restarts."""
     from want_agent import fingerprint
     if reason == 'provider_retry_backoff': return
     data = load(want, work, ws)
-    revision = (data.get('continuation') or {}).get('covered_sha256','initial')
+    continuation = data.get('continuation')
+    revision = fingerprint(json.dumps(continuation, sort_keys=True)) if continuation else 'initial'
     key = reason + ':' + revision
+    call_id = None
+    if reason in ('interrupted_call_needs_review', 'response_needs_review') and phase is not None and trigger is not None:
+        record = data['generations'].get(phase + ':' + fingerprint(trigger)) or {}
+        if record.get('state') in ('running', 'uncertain', 'response_observed'):
+            call_id = record.get('request_id')
+        if call_id:
+            # A new interrupted call needs its own operator action. A summary
+            # edit does not make the same unresolved call a new blocker.
+            key = reason + ':call:' + call_id
     if (data.get('block_notices',{}).get(key) or {}).get('state') in ('sent','acknowledged'): return
     message = ('Request ' + want['agent_work']['request_id'] + ' (want ' + want['id'] + ') needs attention: ' + reason + '. Context is retained. '
                'Use want_agent.py continue-context with this request ID, a private summary file and an exact '
                'through-event boundary for context limits; review policy/stop state for call limits. '
-               'An uncertain call must be reconciled before any new attempt.')
+               'An uncertain call must be reconciled before any new attempt.'
+               + (' Call ID: ' + call_id + '.' if call_id else ''))
     receipt = sender('want-work-block:' + fingerprint(want['agent_work']['request_id'] + key), message)
     _mutate(want, work, ws, lambda d:d.setdefault('block_notices',{}).__setitem__(key,deepcopy(receipt)))
 

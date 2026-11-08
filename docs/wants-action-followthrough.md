@@ -508,3 +508,24 @@ omits unknown optional fields; corrected to test absence or null. No production
 behavior was altered to satisfy those assertions. Reports regenerated. Synthetic
 inputs and stubbed effects only; no live reads/writes, model calls, merge or deploy.
 Independent full Aegis validation remains with the reviewer.
+
+
+## 8 November — new blocked calls remain visible
+
+`codex/wants-blocked-call-notices` fixes a source-level notification gap: the old
+reason-plus-continuation key could suppress a later interrupted call after the
+first had been reconciled. The room adapter now supplies the exact phase/trigger;
+interrupted/response-review notices use that generation's retained call ID.
+Repeated polls or a context-summary edit do not re-alert the same unresolved call.
+A later call has its own receipt and includes its call ID for operator review.
+Failed delivery retries with the same identity; provider backoff remains silent.
+Context-limit notices hash the whole continuation, so a revised summary at the
+same boundary can receive a fresh notice if it still exceeds the limit.
+
+Validation: **421 checks in five isolated suites** pass: controls 26, room 320,
+follow-through 51, completion integration 13, ownership 11. Three synthetic
+fixtures cover a second interruption after explicit reconciliation, same-call
+poll/summary deduplication, revised-summary limits, retry identity and silent
+backoff. Existing capture/model routes, budgets, feeds and completion logic are
+unchanged. This is not evidence that a live notification was missed; no private
+records or live services were inspected. Full Aegis review remains independent.

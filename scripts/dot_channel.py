@@ -3047,7 +3047,8 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             return working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
                                     writer=writer, identity=identity)
         except WorkBlocked as exc:
-            working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify)
+            working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify,
+                                 phase=phase, trigger=trigger)
             raise
     def post(text, agent, client_id):
         ensure_running(want_agent.workspace())

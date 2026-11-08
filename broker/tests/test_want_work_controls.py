@@ -181,6 +181,46 @@ class Tests(unittest.TestCase):
         W.notify_block(self.want,self.work,self.ws,'per_want_call_cap',notify)
         self.assertEqual(len(calls),2)
 
+    def test_new_interrupted_call_gets_notice_without_repeating_old_notice(self):
+        calls=[]
+        def notify(key,message): calls.append((key,message)); return {'state':'sent'}
+        def report():
+            W.notify_block(self.want,self.work,self.ws,'interrupted_call_needs_review',notify,
+                           phase='opening',trigger='fixture')
+        first=self.interrupted(); report(); report()
+        self.assertEqual(len(calls),1); self.assertIn(first,calls[0][1])
+        W.append(self.want,self.work,self.ws,'fixture:boundary','dot','Synthetic retained context.')
+        W.continue_context(self.want,self.work,self.ws,'Synthetic summary.','fixture:boundary')
+        report(); self.assertEqual(len(calls),1)
+        (self.ws/'memory/want-work.stop').touch()
+        W.reconcile(self.want,self.work,self.ws,first,'failed','Synthetic operator confirmed stopped failure.')
+        (self.ws/'memory/want-work.stop').unlink()
+        second=self.interrupted(); report(); report()
+        self.assertNotEqual(first,second)
+        self.assertEqual(len(calls),2); self.assertIn(second,calls[1][1])
+        self.assertNotEqual(calls[0][0],calls[1][0])
+
+    def test_context_notice_tracks_changed_summary_at_same_boundary(self):
+        calls=[]
+        def notify(key,message): calls.append(key); return {'state':'sent'}
+        W.append(self.want,self.work,self.ws,'fixture:boundary','dot','Synthetic retained context.')
+        for summary in ('Synthetic first summary.','Synthetic revised summary.'):
+            W.continue_context(self.want,self.work,self.ws,summary,'fixture:boundary')
+            for _ in range(2):
+                W.notify_block(self.want,self.work,self.ws,'context_needs_continuation',notify)
+        self.assertEqual(len(calls),2); self.assertNotEqual(calls[0],calls[1])
+
+    def test_call_notice_failure_retries_same_identity_and_backoff_stays_quiet(self):
+        calls=[]; call=self.interrupted()
+        def notify(key,message):
+            calls.append((key,message)); return {'state':'failed' if len(calls)==1 else 'sent'}
+        for _ in range(3):
+            W.notify_block(self.want,self.work,self.ws,'response_needs_review',notify,
+                           phase='opening',trigger='fixture')
+        self.assertEqual(len(calls),2); self.assertEqual(calls[0],calls[1]); self.assertIn(call,calls[0][1])
+        W.notify_block(self.want,self.work,self.ws,'provider_retry_backoff',notify,phase='opening',trigger='fixture')
+        self.assertEqual(len(calls),2)
+
     def test_same_event_concurrent_generation_calls_writer_once(self):
         started=threading.Event();release=threading.Event()
         def slow(s,u):

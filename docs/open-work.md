@@ -6210,3 +6210,11 @@ receipts; operator recovery no longer treats an attempted lane as an observed
 answer origin. Legacy input ancestry stays unknown. 125 affected isolated checks
 pass; see the follow-through log. Full Aegis review and installation/live acceptance
 remain pending. No model/provider behavior or existing feeds changed.
+
+
+## 8 November — exact blocked-call notice identity
+
+`codex/wants-blocked-call-notices` makes subsequent interrupted calls visible after
+an earlier call was reconciled, without re-alerting unchanged polls. 421 affected
+isolated checks pass. See the follow-through log. Review, installation and live
+acceptance remain pending; no deployment or live-store write occurred.
