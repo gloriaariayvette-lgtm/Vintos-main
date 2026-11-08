@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The agent room, self-hosted on Aegis. Nothing leaves the tailnet.
 #   redis (6390) <- upstash-proxy (8079) <- room-api (8787) <- the seats (agent-room-mcp / grok-seat)
-#                                        <- web window (8788, tailnet)
+#                                        <- web window (127.0.0.1:8788; tailnet via tailscale serve https 8789)
 # Run once:  bash ~/Vintos/agent-room/setup-aegis.sh      Re-run is safe (idempotent).
 set -euo pipefail
 say(){ printf '\033[1m%s\033[0m\n' "$*"; }
@@ -61,6 +61,7 @@ ExecStart=$NODE $KIT/upstash-proxy.mjs"
 unit agent-room-api agent-room-proxy.service "Environment=PORT=8787
 ExecStart=$NODE $KIT/room-api.mjs"
 unit agent-room-web agent-room-api.service "Environment=PORT=8788
+Environment=BIND=127.0.0.1
 Environment=WEB_DIST=$KIT/window
 Environment=ROOM_API=http://127.0.0.1:8787
 ExecStart=$NODE $KIT/static.mjs"
@@ -76,5 +77,9 @@ echo "  Codex:        add to ~/.codex/config.toml:"
 printf '                [mcp_servers.agent-room]\n                command = "%s"\n                [mcp_servers.agent-room.env]\n                AGENT_ROOM_BASE_URL = "http://127.0.0.1:8787"\n' "$SEATBIN"
 echo "  Grok 4.6:     node $KIT/grok-seat.mjs --code <ROOM> --persona ~/.vintos/code-review/persona.txt --context ~/.vintos/code-review/room-grok.md"
 echo "  (a seat on another tailnet machine uses http://${AEGIS_IP}:8787 instead of 127.0.0.1)"
-say ""; say "WINDOW:  http://${AEGIS_IP}:8788/?code=<ROOM>   (your phone, on the tailnet: live transcript, who has the floor, minutes)"
+# ---------- the window on the tailnet: loopback listener, tailscale serve in front (never Funnel) ----------
+. "$KIT/tailnet-window.sh"
+TW="$(tailnet_window 8788 8789)"; echo "$TW" | grep -v '^WINDOW_URL=' | sed 's/^/  /'
+WINDOW_URL="$(echo "$TW" | sed -n 's/^WINDOW_URL=//p' | tail -1)"
+say ""; say "WINDOW:  ${WINDOW_URL}/?code=<ROOM>   (your phone, on the tailnet: live transcript, who has the floor, minutes)"
 say "SMOKE:   AGENT_ROOM_BASE_URL=http://127.0.0.1:8787 node $KIT/smoke.mjs"
