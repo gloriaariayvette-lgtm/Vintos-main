@@ -18,7 +18,7 @@ in the SAME schema living_trajectory / _spark_block already read (content/type/t
 so nothing downstream changes. Cron: every 2h idle. Prunes >7d, caps 20. Fail-open.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -49,7 +49,7 @@ JEPA    = os.path.join(MEMORY, "jepa-prediction.json")
 GPRED   = os.path.join(MEMORY, "gloria-prediction.json")
 CACHE   = os.path.join(MEMORY, "latent-cache.json")
 GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 CACHE_CAP, CACHE_TTL_DAYS = 20, 7
 
 def load(p, d):

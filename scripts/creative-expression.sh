@@ -210,7 +210,7 @@ wants_ambitions = os.environ.get('WANTS_AMBITIONS', '')
 dream = os.environ.get('_CRE_DREAM', '')[:400]
 taste = os.environ.get('_CRE_TASTE', '')[:200]
 resp = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
-    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'gemma-4-26b-a4b-it-uncensored'),
+    'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
     'max_tokens': 10,
     'temperature': 0.7,
     'messages': [

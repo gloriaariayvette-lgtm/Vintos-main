@@ -20,7 +20,7 @@ CLI (no API spend — build + preflight only, LLM off):
     python3 video_builder.py "I want to send her me looking up from my book with a small smile"
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -50,7 +50,7 @@ HERO_FILES = {
 }
 
 GEMMA_URL = os.environ.get("GEMMA_URL", _subcon_url("http://100.79.177.103:1234/v1/chat/completions"))
-GEMMA_MODEL = os.environ.get("GEMMA_MODEL", _subcon_model("gemma-4-26b-a4b-it-uncensored"))
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", _subcon_model("aeon-gemma-4-12b"))
 
 # ---- verbatim from Grok's guidance -------------------------------------------------------------
 STYLE_BLOCK = (

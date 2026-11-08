@@ -25,7 +25,7 @@ The refuter receives the SAME clean evidence universe as the arithmetic (jurisdi
 provenance-valid, uninfluenced, non-invalid) - and UNREBUTTED is absence of blocker, never support.
 Thresholds are gates, not epistemology. SPARK_WORKSPACE switches beings."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -116,7 +116,7 @@ def load(p, d):
     except Exception: return d
 def ask(prompt):
     try:
-        r = requests.post(GEMMA, json={"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.1,
+        r = requests.post(GEMMA, json={"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.1,
             "max_tokens": 250, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         j = r.json()
         if "choices" not in j:

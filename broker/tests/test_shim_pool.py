@@ -85,12 +85,13 @@ check("a stale reading -> nothing (fallback lane answers)", p.choose("quick", 1)
 check("no config -> nothing", (lambda q: (q.refresh(), q.choose("quick", 1)[0])[1])(LP.Pool(config_dir=os.path.join(TMP, "none"))) == [])
 
 print("--- the shim's chains ---")
-check("/pool/quick -> pool, then Aegis AEON, then the 26B",
-      S.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "gemma"])
-check("/pool/subconscious falls back to the 26B only",
-      S.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:subconscious", "gemma"])
-check("/gemma-aegis may spill to another AEON, then its old chain",
-      S.provider_chain({}, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "gemma", "xai"])
+# the 26B was removed (2026-11-08): every chain is AEON (then Claude / x.ai where it had them)
+check("/pool/quick -> pool, then Aegis AEON, then AEON's pool",
+      S.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "pool:aeon"])
+check("/pool/subconscious is AEON only",
+      S.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:aeon", "aegis_gemma"])
+check("/gemma-aegis may spill to another AEON, then x.ai",
+      S.provider_chain({}, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "xai"])
 check("/gemma-aegis-local stays on Aegis only", S.provider_chain({}, "/gemma-aegis-local/v1/chat/completions") == ["aegis_gemma"])
 check("pool paths are chat paths", S.pool_task("/pool/quick/v1/chat/completions") == "quick" and S.pool_task("/v1/chat/completions") is None
       and S.pool_task("/pool/") is None)
@@ -144,12 +145,13 @@ check("pool has no reading -> the old Aegis lane answers", s == 200 and h["x-vin
 
 s, h, b = run("/pool/aeon/v1/chat/completions", dict(ALL_ROOM, studio=room(10)),
               **{"172.18.16.1": lambda body: socket.timeout("timed out"), "100.79.177.103": oai("from the 26b")})
-check("Aegis timed out via the pool -> not resent on its old lane; the next lane answers",
-      s == 200 and h["x-vintos-provider"] == "gemma" and sum("172.18.16.1" in u for u, _ in CALLS) == 1, (s, h, [u for u, _ in CALLS]))
+check("Aegis timed out via the pool -> not resent on its old lane, and never sent to the MacBook",
+      sum("172.18.16.1" in u for u, _ in CALLS) == 1 and not any("100.79.177.103" in u for u, _ in CALLS), (s, h, [u for u, _ in CALLS]))
 
-s, h, b = run("/pool/subconscious/v1/chat/completions", ALL_ROOM, **{"100.79.177.103": oai("felt")})
-check("subconscious stays on the 26B", s == 200 and h["x-vintos-provider"] == "gemma" and h["x-vintos-pool-machine"] == "macbook"
-      and CALLS[0][1]["model"] == S.GEMMA_MODEL, (s, h))
+s, h, b = run("/pool/subconscious/v1/chat/completions", dict(ALL_ROOM, studio=room(60)),
+              **{"studio:8840": oai("felt"), "172.18.16.1": AEGIS_OK, "aegis/": oai("felt")})
+check("subconscious is answered by AEON, never the MacBook", s == 200 and h["x-vintos-provider"] != "gemma"
+      and not any("100.79.177.103" in u for u, _ in CALLS), (s, h, [u for u, _ in CALLS]))
 
 s, h, b = run("/pool/quick/v1/chat/completions", ALL_ROOM, **{"imac:8840": lambda body: ConnectionRefusedError("refused"),
               "studio:8840": lambda body: ConnectionRefusedError("refused"), "172.18.16.1": lambda body: ConnectionRefusedError("refused"),

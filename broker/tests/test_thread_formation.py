@@ -27,7 +27,7 @@ def fake_post(url, json=None, timeout=None, headers=None, **k):
         raise AssertionError("unexpected host " + url)
     JUDGE["calls"] += 1
     content = json["messages"][-1]["content"]
-    if "127.0.0.1:8599" in url:                       # the weaver's own model
+    if "127.0.0.1:8599" in url and "127.0.0.1:8599/pool/subconscious/" not in url:   # the weaver's own model (the judges use AEON's subconscious lane)
         return _Resp("Both threads are the same ache about the sea, and I keep circling it without saying it.")
     if "UNRESOLVED TENSION" in content:
         if not JUDGE["up"]: raise ConnectionError("judge down")

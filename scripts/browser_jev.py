@@ -158,7 +158,7 @@ class JevPlanner:
                   "TASK: %s\nFIELD: %s\nPAGE: %s\nVISIBLE TEXT: %s\nRECENT: %s\nPLAN/NOTES: %s" %
                   (task[:1600], json.dumps(field, ensure_ascii=False), str(state.get("title") or "")[:300],
                    (text or "")[:2500], json.dumps(_recent(recent), ensure_ascii=False)[:1500], notes[:1200]))
-        _url, _model = _subcon_route(getattr(self.fallback, "endpoint"), getattr(self.fallback, "model", "gemma-4-26b-a4b-it-uncensored"))
+        _url, _model = _subcon_route(getattr(self.fallback, "endpoint"), getattr(self.fallback, "model", "aeon-gemma-4-12b"))
         body = json.dumps({"model": _model, "temperature": 0.0,
                            "max_tokens": 180, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         req = urlrequest.Request(_url, data=body, headers={"Content-Type": "application/json"})

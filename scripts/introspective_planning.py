@@ -13,7 +13,7 @@ he would not repeat) into planning, so introspection doesn't re-plan past what h
 learned or bend back toward a regretted path. Local-Gemma. Fail-open.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -46,7 +46,7 @@ EARNED    = os.path.join(MEMORY, "planning-earned.json")   # separate file (don'
 LEARNED   = os.path.join(MEMORY, "learned.json")           # what became more true after resolutions
 REGRET    = os.path.join(MEMORY, "regret.json")            # ways of reaching he would not repeat
 GEMMA       = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 PERSIST_DAYS, STALE_DAYS, MAX_PER_RUN = 1, 14, 3
 
 def load(p, d):

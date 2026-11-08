@@ -20,7 +20,7 @@ def _vision_route(url, model):
 
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -116,7 +116,7 @@ def _get_recent_dreams(n_nights=1):
 WAL_FILE = os.path.join(MEMORY, "wal.md")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 LM_API = "http://100.79.177.103:1234/v1/chat/completions"
-MODEL = "gemma-4-26b-a4b-it-uncensored"
+MODEL = "aeon-gemma-4-12b"
 BRAVE_API_KEY = _load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")
 BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 

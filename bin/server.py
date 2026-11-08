@@ -676,7 +676,7 @@ def hash_ip(ip: str) -> str:
 
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -726,7 +726,7 @@ def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_m
             try: open("/tmp/emotion-read.log","a").write("["+_dt.datetime.now().isoformat()[:19]+"] "+m+"\n")
             except Exception: pass
         _generated={}; _applied={}; _cur={}; _post={}; _digest=""
-        _model="gemma-4-26b-a4b-it-uncensored"; _emo_url="http://100.79.177.103:1234/v1/chat/completions"
+        _model="aeon-gemma-4-12b"; _emo_url="http://100.79.177.103:1234/v1/chat/completions"
         try:   # the subconscious flag (subcon_target.py): the 26B until Gloria flips it to AEON
             import subcon_target as _subcon
             _emo_url, _model = _subcon.generative_route(_emo_url, _model)
@@ -1323,7 +1323,7 @@ def _relational_compare(user_text):
                 try:
                     import requests as _rq
                     _r = _rq.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-                        "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                        "model": _subcon_model("aeon-gemma-4-12b"),
                         "messages": [
                             {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
                             {"role": "user", "content": txt[:400]}],
@@ -4797,7 +4797,7 @@ Gloria-specific additions:
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('" + _subcon_url("http://100.79.177.103:1234/v1/chat/completions") + "', json={'model': '" + _subcon_model("gemma-4-26b-a4b-it-uncensored") + "', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('" + _subcon_url("http://100.79.177.103:1234/v1/chat/completions") + "', json={'model': '" + _subcon_model("aeon-gemma-4-12b") + "', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -5743,7 +5743,7 @@ Your current self-model (excerpt):
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('" + _subcon_url("http://100.79.177.103:1234/v1/chat/completions") + "', json={'model': '" + _subcon_model("gemma-4-26b-a4b-it-uncensored") + "', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('" + _subcon_url("http://100.79.177.103:1234/v1/chat/completions") + "', json={'model': '" + _subcon_model("aeon-gemma-4-12b") + "', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -7927,7 +7927,7 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
     # Sight.  Always the local vision model, whoever is doing the answering.
     try:
       if not image_description:
-        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
+        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "aeon-gemma-4-12b")
         async with httpx.AsyncClient(timeout=60.0) as client:
             _vr = await paid_http.asend(client.post, __file__,
                 _vurl,
@@ -8193,7 +8193,7 @@ async def _describe_clip(frames, heard="", local_only=False):
         except Exception as _ae:
             print("[vision clip] claude failed -> local:", str(_ae)[:80], flush=True)
     try:
-        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
+        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "aeon-gemma-4-12b")
         async with httpx.AsyncClient(timeout=180.0) as client:
             _vr = await paid_http.asend(client.post, __file__, _vurl, headers=LLM_AUTH_HEADERS,
                 json={**_vx, "model": _vmodel, "temperature": 0.3, "max_tokens": 700,

@@ -41,7 +41,7 @@ ROOM_DIR = os.path.join(MEMORY, "reelroom")
 SESSIONS = os.path.join(MEMORY, "reelroom-sessions.json")
 TV_ADB = os.environ.get("VINTOS_TV_ADB", "192.168.1.70:5555")
 PLANNER_URL = os.environ.get("VINTOS_REELROOM_PLANNER_URL", "http://127.0.0.1:8599/gemma/v1/chat/completions")
-PLANNER_MODEL = os.environ.get("VINTOS_REELROOM_PLANNER_MODEL", "gemma-4-26b-a4b-it-uncensored")
+PLANNER_MODEL = os.environ.get("VINTOS_REELROOM_PLANNER_MODEL", "aeon-gemma-4-12b")
 
 
 def _vision_route(url, model):

@@ -2,7 +2,7 @@
 """tension-field.py — Daily tension field builder. Produces question pool for Three Doors and other systems."""
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -37,7 +37,7 @@ def ask_llm(prompt, system="You are Vintos.", max_tokens=1200, temp=0.75):
     import requests
     try:
         r = requests.post(LM_STUDIO, json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=60)

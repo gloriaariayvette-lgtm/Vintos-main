@@ -3,7 +3,7 @@
 Gemma (classification) decides completion from evidence of his actual days;
 Grok writes the completion note in his own voice — proud, felt, specific."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -36,7 +36,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 AMB = os.path.join(MEMORY, "ambitions.json")
 GEMMA = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 GROK = "http://127.0.0.1:8599/v1/chat/completions"
 GROK_MODEL = "grok-4.20-0309-non-reasoning"
 

@@ -2,7 +2,7 @@
 Claude drives chat/avatar; grok is the fallback (hard refusal, error, toggle=grok, or a forced-turn window).
 Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES / the mode file, not across jobs."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -692,7 +692,7 @@ async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_h
 
 
 GEMMA_ENDPOINT = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = _subcon_model("aeon-gemma-4-12b")
 
 async def gemma_call(msgs, temp=0.85, max_tokens=800):
     async with httpx.AsyncClient(timeout=120) as c:

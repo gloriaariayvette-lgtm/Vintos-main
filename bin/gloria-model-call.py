@@ -1,5 +1,5 @@
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -30,7 +30,7 @@ except: pass
 sys_msg = open("/tmp/gm_sys.txt").read()
 usr_msg = open("/tmp/gm_usr.txt").read()
 r = requests.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-    "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+    "model": _subcon_model("aeon-gemma-4-12b"),
     "messages": [{"role": "system", "content": sys_msg}, {"role": "user", "content": usr_msg}],
     "temperature": 0.85, "max_tokens": 2500
 }, timeout=600)

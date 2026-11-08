@@ -13,7 +13,7 @@ Stages:
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -201,7 +201,7 @@ def check_candidate(candidate_id, response_text, source="chat"):
             f"Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE"
         )
         r = _req.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [
                 {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE."},
                 {"role": "user", "content": prompt}
@@ -276,7 +276,7 @@ def check_candidate(candidate_id, response_text, source="chat"):
                 f"Safe to seal as a permanent identity anchor?"
             )
             _pr_r = _pr_req.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                "model": _subcon_model("aeon-gemma-4-12b"),
                 "messages": [
                     {"role": "system", "content": _pr_sys},
                     {"role": "user", "content": _pr_user}
@@ -357,7 +357,7 @@ def form_pearl(candidate_id):
             f"Write one sentence. Not 'I believe' — 'I no longer struggle to'. Specific. Owned."
         )
         r = _req.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7, "max_tokens": 80
         }, timeout=30)

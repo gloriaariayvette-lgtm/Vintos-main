@@ -33,17 +33,17 @@ json.dump([{"label": "aeon-12b", "machine": "aegis", "model": "aeon/gemma-4-12b"
            {"label": "e4b-duo", "machine": "imac", "model": "e4b", "url": "http://imac.test/v1/chat/completions"}],
           open(os.path.join(HOME, ".vintos", "pool", "backends.json"), "w"))
 
-# before the flip
+# the 26B was removed (2026-11-08): with no flag at all the call brain is AEON on the Studio
 url, body = V._brain_body({"max_tokens": 5})
-check("no flag: the call brain stays on the MacBook 26B",
-      url == V.LM + "/v1/chat/completions" and body["model"] == V.BRAIN and set(body) == {"max_tokens", "model"}, (url, body))
+check("no flag: the call brain is AEON on the Studio",
+      url == "http://studio.test:8840/v1/chat/completions" and body["model"] == "aeon-gemma-4-12b", (url, body))
 
-# the flip with a record that has not all passed: nothing moves
+# a record that has not all passed changes no route (it only withholds residual readings)
 flag("aeon")
 _real_unmet = S.unmet
 S.unmet = lambda *a, **k: ["Valence: not passed"]
 url, body = V._brain_body({"max_tokens": 5})
-check("flag without a full pass: still the 26B", body["model"] == V.BRAIN, body)
+check("flag without a full pass: still AEON", body["model"] == "aeon-gemma-4-12b", body)
 
 # the flip, everything passed
 S.unmet = lambda *a, **k: []
@@ -68,7 +68,7 @@ check("flipped: the generative route is the shim's thinking-off subconscious lan
       S.generative_route("x", "y") == (S.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
 S.unmet = _real_unmet
 os.remove(FLAG)
-check("flag removed: generative route is the caller's own", S.generative_route("x", "y") == ("x", "y"))
+check("flag removed: generative route is still AEON's lane", S.generative_route("x", "y") == (S.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
 
 print("%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -56,7 +56,7 @@ STOP_FILE = STATE_DIR / "STOP"
 LOCK_FILE = STATE_DIR / "agent.lock"
 LOG_FILE = STATE_DIR / "events.jsonl"
 GEMMA_API = os.environ.get("VINTOS_GEMMA_API", "http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "aeon-gemma-4-12b")
 GEMMA_API, GEMMA_MODEL, GEMMA_EXTRA = _vision_route(GEMMA_API, GEMMA_MODEL)   # AEON's vision once the flag is AEON
 
 ALLOWED_ACTIONS = {

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""No code path reaches the MacBook 26B except the listed vision exceptions (Gloria 2026-11-08: "we need to switch
-anything pointing to 26b to aeon and make sure 26b is still unloaded from the MacBook").
+"""The 26B is gone from his code (Gloria 2026-11-08: "we can remove 26b completely once we confirm everything is in
+Aeon"). Everything runs on AEON: text, subconscious, emotion and vision.
 
-Three checks, all over the checkout's own files (no network, no model, no ~/.vintos: HOME is a tempdir):
-  1. Every 26B model id or MacBook LM Studio address in code either goes through the subconscious flag
-     (subcon_target), or is a default that the flag replaces, or is on the allowlist below with its reason.
-     A new direct 26B call anywhere fails here until it is routed or listed.
-  2. Every file that routes a 26B call through the flag is in the deploy's install list (or is a live alias of one
-     that is). On 8 November about twenty routed files had never been installed, so Aegis still ran their old
-     copies, and those called the 26B directly and kept reloading it on the MacBook.
-  3. With the flag on AEON and the shipped pass record, a flag-routed default resolves to AEON's lane.
+Checks, all over the checkout's own files (no network, no model, no ~/.vintos: HOME is a tempdir):
+  1. No 26B model name, file name or target name appears anywhere in code. The allowlist is empty; only historical
+     docs, evidence and tests may still name it.
+  2. Every file that routes through the flag (subcon_target) is in the deploy's install list (or is a live alias
+     of one). On 8 November about twenty routed files had never been installed, so Aegis still ran old copies that
+     called the 26B directly and kept reloading it on the MacBook.
+  3. Every route resolves to AEON: the subconscious lane, the call's brain and the vision model.
 """
 import json, os, re, subprocess, sys, tempfile
 
@@ -27,25 +26,16 @@ R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:600]) if d and not ok else ""))
 
-# The 26B by name. (The MacBook LM Studio address is not a 26B marker any more: AEON's vision is served there too.)
-TOKEN = re.compile(r"gemma-4-26b|26b-a4b|TrevorJS|residual-26b|macbook_26b", re.I)
+# The 26B by name, file or target. (The MacBook LM Studio address is not a 26B marker: AEON's vision is served there.)
+TOKEN = re.compile(r"gemma-4-26b|26b-a4b|TrevorJS|residual-26b|macbook_26b|gemma26b|gemma-26b", re.I)
 WRAP = re.compile(r"_subcon_url\(|_subcon_model\(|_subcon_route\(|_vision_route\(|generative_route\(|brain_route\(|vision_route\(|SUBCON_URL|SUBCON_MODEL")
 SKIP = re.compile(r"^(docs|audit|offline|bench|broker/tests)/|\.(md|jsonl|diff|txt|csv|html)$")
 # A literal assigned to a name: python  NAME = "..."  /  NAME = os.environ.get("X", "...")   shell  NAME="..." / NAME="${X:-...}"
 ASSIGN = re.compile(r"""(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:os\.environ\.get\(\s*["'][A-Z_]+["']\s*,\s*)?["'](?:\$\{[A-Z_]+:-)?(?:https?://)?$""")
 
-# Every direct (unrouted) occurrence that may stay, by file: {reason: count}. Counts are exact, so a new one fails.
-# Gloria 2026-11-08: "We're just switching the model fully." Vision moved too, so no caller is listed. What remains
-# are the two places that DEFINE the 26B as the flag's rollback target; neither is reachable while the flag is AEON
-# (checked at the end of this file).
-ROLLBACK_TABLE = "the 26B's identity in the flag's own target table (reached only if the flag is set back to the 26B)"
-ROLLBACK_LANE = "the shim's 26B lane: dropped from every chain while the flag is AEON (aeon_everywhere)"
-ALLOW = {
-    "scripts/subcon_target.py": {ROLLBACK_TABLE: 1},
-    "bin/vintos_claude_shim.py": {ROLLBACK_LANE: 1},
-}
-# Where in those files the allowed occurrences are (a substring of the line), so a count cannot be "spent" elsewhere.
-WHERE = {ROLLBACK_TABLE: ('"identity"',), ROLLBACK_LANE: ("GEMMA_MODEL =",)}
+# Gloria 2026-11-08: "We're just switching the model fully." Nothing may name the 26B, routed or not.
+ALLOW = {}
+WHERE = {}
 
 def files():
     out = subprocess.run(["git", "-C", REPO, "ls-files"], capture_output=True, text=True).stdout.split()
@@ -74,8 +64,6 @@ for f in files():
         continue
     for i, line in enumerate(text.split("\n"), 1):
         for m in TOKEN.finditer(line):
-            if WRAP.search(line[:m.start()]) or flag_default(f, text, line, m.start()):
-                continue
             reasons = ALLOW.get(f, {})
             why = next((r for r in reasons if any(w in line for w in WHERE[r])), None)
             if why is None:
@@ -100,8 +88,8 @@ ALIASES = {"frame-engine.py": "frame_engine.py", "resonance_marks.py": "resonanc
            "yearning_detector.py": "yearning-detector.py"}
 FROM_CHECKOUT = {"buzz-integration/run-local-gemma.py"}
 HELD = set()   # nothing is held: Gloria 2026-11-08, "I didn't hold those back. Aeon."
-routed = [f for f in files() if f.endswith((".py", ".sh")) and TOKEN.search(src(f)) and WRAP.search(src(f))
-          and f != "scripts/subcon_target.py"]
+routed = [f for f in files() if f.endswith((".py", ".sh")) and f.startswith(("bin/", "scripts/", "buzz-integration/"))
+          and WRAP.search(src(f)) and f != "scripts/subcon_target.py"]
 missing = [f for f in routed if f not in FROM_CHECKOUT and os.path.basename(f) not in installed and os.path.basename(f) not in HELD
            and ALIASES.get(os.path.basename(f)) not in installed]
 check("there are flag-routed callers to check (%d)" % len(routed), len(routed) > 80, len(routed))
@@ -113,13 +101,26 @@ for b in ("emotion_read.py", "imprint.py", "resonance-marks.py", "yearning-detec
 check("the server-side twin of emoclaw_utils.py is installed too", "for _twin in emoclaw_utils.py" in deploy
       and 'PLAN="$PLAN$SRC/scripts/$_twin|$_tw' in deploy)
 
-print("--- with the flag on AEON, the routed defaults resolve to AEON ---")
+print("--- every route resolves to AEON ---")
+def _refused(fn):
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
 import subcon_target as T
 open(os.path.join(TMP, ".vintos", "subcon-target.json"), "w").write('{"target": "aeon"}')
-check("the shipped pass record lets the flag be AEON", T.active() == "aeon", T.unmet())
-url, model = T.generative_route("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
-check("a 26B default resolves to AEON's subconscious lane", (url, model) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), (url, model))
-check("AEON's lane has no 26B fallback", T.pool_chain() == ["pool:aeon", "aegis_gemma"], T.pool_chain())
+check("the shipped pass record is complete, and the target is AEON", T.active() == "aeon" and not T.unmet(), T.unmet())
+check("AEON is the only target there is", sorted(T.TARGETS) == ["aeon"], sorted(T.TARGETS))
+os.remove(os.path.join(TMP, ".vintos", "subcon-target.json"))
+check("with no flag file at all, still AEON", T.active() == "aeon")
+open(os.path.join(TMP, ".vintos", "subcon-target.json"), "w").write('{"target": "old"}')
+check("an unknown name in the flag file: still AEON", T.active() == "aeon")
+check("and the old target cannot be set", _refused(lambda: T.set_target("gemma" + "26b")))
+open(os.path.join(TMP, ".vintos", "subcon-target.json"), "w").write('{"target": "aeon"}')
+url, model = T.generative_route("http://100.79.177.103:1234/v1/chat/completions", "some-old-model")
+check("a caller's default resolves to AEON's subconscious lane", (url, model) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), (url, model))
+check("AEON's lane has no other fallback", T.pool_chain() == ["pool:aeon", "aegis_gemma"], T.pool_chain())
 import vintos_claude_shim as S
 check("the shim's subconscious lane is AEON only", S.subconscious_chain() == ["pool:aeon", "aegis_gemma"], S.subconscious_chain())
 for p, j in (("/v1/chat/completions", {"max_tokens": 80}), ("/gemma/v1/chat/completions", {}), ("/gemma-aegis/v1/chat/completions", {}),
@@ -136,7 +137,7 @@ srv = src("bin/server.py")
 for fn in ("async def _describe_photo", "[vision clip] claude failed"):
     part = srv[srv.index(fn):srv.index(fn) + 6000]
     check("server %s: the local eye is AEON's vision route" % fn.split()[-1], "_vision_route(" in part and '"model": _vmodel' in part)
-v = T.vision_route("http://lmstudio.invalid/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
+v = T.vision_route("http://lmstudio.invalid/v1/chat/completions", "some-old-model")
 check("with the flag on AEON, an image call resolves to AEON's vision model, thinking off, at the same endpoint",
       v == ("http://lmstudio.invalid/v1/chat/completions", "aeon-gemma-4-12b", {"reasoning_effort": "none"}), v)
 bk = os.path.join(TMP, "backends.json")
@@ -158,7 +159,7 @@ for f, call in (("scripts/browser_jev.py", '_url, _model = _subcon_route(getattr
     fns = [n for n in ast.parse(t).body if isinstance(n, ast.FunctionDef) and n.name == "_subcon_route"]
     ns = {"__file__": os.path.join(REPO, f)}
     exec(compile(ast.Module(body=fns, type_ignores=[]), f, "exec"), ns)
-    got = ns["_subcon_route"]("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
+    got = ns["_subcon_route"]("http://100.79.177.103:1234/v1/chat/completions", "some-old-model")
     check("%s: its text call goes through the flag, and resolves to AEON" % f,
           len(fns) == 1 and call in t and got == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), got)
 check("desktop_control: an explicit VINTOS_DESKTOP_MODEL_URL keeps its own route",

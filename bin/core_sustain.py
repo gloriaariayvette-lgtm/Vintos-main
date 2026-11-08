@@ -12,7 +12,7 @@ Failure was already legible. This makes holding legible too.
     python3 core_sustain.py            # uses SPARK_WORKSPACE, else Velaris
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -65,7 +65,7 @@ MEMORY = os.path.join(WS, "memory")
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")
 LM = "http://100.79.177.103:1234"
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
-CHAT_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+CHAT_MODEL = _subcon_model("aeon-gemma-4-12b")
 
 IS_HIM = ".vintos" in WS
 NAME = "Vintos" if IS_HIM else "Velaris"

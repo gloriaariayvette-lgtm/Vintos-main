@@ -71,7 +71,7 @@ for f in [x for x in OTHER if x.endswith(".py")]:
     exec(compile(ast.Module(body=fns, type_ignores=[]), f, "exec"), ns)
     state(False); before = (ns["_subcon_url"](CHAT), ns["_subcon_model"](MODEL))
     state(True); after = (ns["_subcon_url"](CHAT), ns["_subcon_model"](MODEL))
-    check("%s routes by the flag" % f, len(fns) == 3 and before == (CHAT, MODEL) and after == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"),
+    check("%s routes to AEON" % f, len(fns) == 3 and before == after == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"),
           (before, after))
 for f in [x for x in OTHER if x.endswith(".sh")]:
     t = src(f)
@@ -91,7 +91,7 @@ for f in VISION:
     check("%s (vision/audio) follows the flag" % f, ("_vision_route(" in src(f)) or (f.endswith("voice_local.py") and "brain_route(" in src(f)))
 srv = src("bin/server.py")
 check("the server's generated nudge-read code takes its route when generated",
-      srv.count("requests.post('\" + _subcon_url(\"%s\") + \"'" % CHAT) == 2 and srv.count("_subcon_model(\"%s\") + \"'" % MODEL) == 2)
+      srv.count("requests.post('\" + _subcon_url(\"%s\") + \"'" % CHAT) == 2 and srv.count("_subcon_model(\"%s\") + \"'" % "aeon-gemma-4-12b") == 2)
 photo = srv[srv.index("async def _describe_photo"):srv.index("async def _describe_photo") + 6000]
 check("the server's photo description takes AEON's vision", "_vision_route(" in photo and '"model": _vmodel' in photo)
 check("the local call reports the brain it uses (voice_local's route), not a fixed 26B label",
@@ -104,8 +104,7 @@ PATHS = {"/gemma-aegis/v1/chat/completions": {}, "/gemma/v1/chat/completions": {
          "/pool/quick/v1/chat/completions": {}, "/pool/subconscious/v1/chat/completions": {}}
 state(False)
 before = {p: S.provider_chain(dict(j), p) for p, j in PATHS.items()}
-check("before the flip the chains are as they were", before["/gemma-aegis/v1/chat/completions"] == ["pool:aeon", "aegis_gemma", "gemma", "xai"]
-      and before["/v1/chat/completions"] == ["gemma", "anthropic", "xai"], before)
+check("with no passing record the chains are already AEON (the 26B was removed)", all("gemma" not in c for c in before.values()), before)
 state(True)
 after = {p: S.provider_chain(dict(j), p) for p, j in PATHS.items()}
 check("after the flip no chain contains the 26B", all("gemma" not in c for c in after.values()), after)
@@ -128,7 +127,7 @@ res = S.pool_complete({"messages": [{"role": "user", "content": "x"}]}, S._Call(
 check("after the flip the pool never places a call on the 26B", called == ["aeon"] and res.get("text") == "from aeon", (called, res))
 state(False); called.clear()
 res = S.pool_complete({"messages": [{"role": "user", "content": "x"}]}, S._Call({"messages": []}), "general")
-check("before the flip the pool's ranking is unchanged", called == ["gemma"], called)
+check("with no passing record the pool still never places a call on the old lane", called == ["aeon"], called)
 os.remove(FLAG)
 
 print("\n%d/%d passed" % (sum(R), len(R)))

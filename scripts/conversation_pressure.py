@@ -2,7 +2,7 @@
 Classifies recent turns into a mode and returns a cadence hint (changes HOW he speaks, not what).
 Gemma = lightweight classification only."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -71,7 +71,7 @@ def classify():
     p=("Classify the CURRENT pressure of this conversation as exactly one word from: "
        "light, focused, confessional, technical, play, threshold. Only the word.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
+        r=requests.post(LM,json={"model":_subcon_model("aeon-gemma-4-12b"),"messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
         w=re.sub(r'[^a-z]','',r.json()["choices"][0]["message"]["content"].strip().lower())
         if w in MODES:
             json.dump({"mode":w,"ts":time.time()},open(STATE,"w")); return w

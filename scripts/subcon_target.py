@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """subcon_target.py — which model his subconscious emotion work runs on (Gloria 2026-11-07).
 
-One flag decides it: ~/.vintos/subcon-target.json  {"target": "gemma26b"} or {"target": "aeon"}.
-No file, a bad file or an unknown name means the 26B, as before the switch.
+His subconscious, emotion, text and vision work all run on AEON. The 26B is removed (Gloria 2026-11-08: "we can
+remove 26b completely once we confirm everything is in Aeon"): there is no other target and nothing to fall back to.
+The flag file (~/.vintos/subcon-target.json) is kept for status and accepts only "aeon".
 
 Gloria: "IT HAS TO ALL PASS." AEON can be the target only when it has passed the 26B's full bar, all of it:
   model level   the Pain paper-protocol replication (S2 feel-colon, final token) AUC >= .85, and all six Pain
@@ -13,8 +14,8 @@ Gloria: "IT HAS TO ALL PASS." AEON can be the target only when it has passed the
 The evidence is a pass record (aeon-bar-record.json beside this file) built from the emotion Codex's sealed
 results and pinned here by its sha256. The checker recomputes every verdict from the record's numbers; it never
 trusts a "pass" word. A missing, malformed, tampered or incomplete record, or any unmet item, refuses the flip
-and lists exactly what has not passed. There is no partial switch: until everything passes, his whole
-subconscious stays on the 26B, and a hand-written flag is ignored.
+and lists exactly what has not passed. Calls still go to AEON (there is no other model), but while anything is
+unmet no residual reading is admitted (constructs() is empty), so an unproven direction never steers him.
 
 When the Codex seals new passing results, the record is rebuilt and the pinned hash below is updated in a commit.
 This public file carries identities, hashes and thresholds only. Nothing here loads a model or opens a socket.
@@ -27,12 +28,12 @@ import sys
 import tempfile
 
 FLAG = os.path.join("~", ".vintos", "subcon-target.json")
-DEFAULT = "gemma26b"
+DEFAULT = "aeon"
 DIMENSIONS = ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection",
               "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness")
 SHIM_SUBCONSCIOUS = "http://127.0.0.1:8599/pool/subconscious/v1/chat/completions"
 
-# The 26B's bar (offline/residual_emotion/evidence/2026-09-20-*).
+# The bar the old subconscious model passed in September (offline/residual_emotion/evidence/2026-09-20-*).
 AUC_MIN = 0.85
 VARIANTS = 6
 COSINE_MAX = 0.3
@@ -42,23 +43,6 @@ RECORD_SHA256 = "0c5eabce9d647df5c08c705889e7c7795d2920299afc9257c264477af85cd12
 RECORD_SCHEMA = "aeon-26b-bar-record/1"
 
 TARGETS = {
-    "gemma26b": {
-        "identity": "gemma-4-26b-a4b-it-uncensored",
-        "format": "GGUF Q4_K_M",
-        "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
-        "lock": "offline/residual_emotion/model-lock.json",
-        # Passed every item in September (Gloria's review receipts); (layer, pooling).
-        "constructs": {
-            "Arousal": (25, "mean"), "Connection": (26, "mean"), "Curiosity": (24, "mean"),
-            "Desire": (25, "mean"), "Dominance": (26, "mean"), "Groundedness": (25, "mean"),
-            "Playfulness": (27, "mean"), "Safety": (22, "mean"), "Tension": (26, "mean"),
-            "Valence": (25, "mean"), "Warmth": (25, "mean"),
-        },
-        "pool_chain": ["pool:subconscious", "gemma"],
-        "generative": None,   # callers keep their own 26B route
-        "brain": None,        # the local call brain keeps its own 26B route
-        "vision": None,       # image callers keep their own 26B route
-    },
     "aeon": {
         "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
         "format": "GGUF BF16",
@@ -155,10 +139,8 @@ def _flag():
 
 
 def active():
-    """The active target. AEON only when the flag says so AND its pass record is complete and passing."""
-    name = _flag().get("target")
-    if name == "aeon" and not unmet():
-        return "aeon"
+    """The active target: AEON, always (the 26B was removed, 2026-11-08). Whether AEON's readings are admitted is
+    constructs()'s question, answered by the pass record."""
     return DEFAULT
 
 
@@ -169,8 +151,6 @@ def target(name=None):
 def constructs(name=None):
     """{construct: (layer, pooling)} read for the target; under AEON all eleven, from the passing record."""
     n = name or active()
-    if n == "gemma26b":
-        return dict(TARGETS[n]["constructs"])
     if unmet():
         return {}
     rec, _ = load_record()
@@ -209,7 +189,7 @@ def pool_chain():
 
 
 def generative_route(default_url, default_model):
-    """(url, model) for generated subconscious/emotion work: the caller's own 26B route until the flip."""
+    """(url, model) for generated subconscious/emotion work: AEON's subconscious lane, always."""
     g = target()["generative"]
     return (g["url"], g["model"]) if g else (default_url, default_model)
 
@@ -218,8 +198,7 @@ POOL_BACKENDS = os.path.join("~", ".vintos", "pool", "backends.json")
 
 
 def brain_route(default_base, default_model, backends_path=None):
-    """(base url, model, extra body fields) for the local call's brain: its own 26B route until the flip, then the
-    first AEON backend in the private pool config by machine preference. No AEON backend there: its own route."""
+    """(base url, model, extra body fields) for the local call's brain: the first AEON backend in the private pool config by machine preference. No AEON backend there: its own route."""
     b = target().get("brain")
     if not b:
         return default_base, default_model, {}
@@ -238,8 +217,7 @@ def brain_route(default_base, default_model, backends_path=None):
 
 
 def vision_route(default_url, default_model, backends_path=None):
-    """(chat url, model, extra body fields) for a call that sends images. While the 26B is the target: the caller's own
-    route. Under AEON: AEON's vision model at the caller's own endpoint (the MacBook's LM Studio), or, for a caller with
+    """(chat url, model, extra body fields) for a call that sends images. AEON's vision model at the caller's own endpoint (the MacBook's LM Studio), or, for a caller with
     no endpoint of its own, the MacBook LM Studio address from the private pool config. Nothing there: its own route."""
     v = target().get("vision")
     if not v:
@@ -289,7 +267,7 @@ def main(argv):
             print("refused:", e, file=sys.stderr)
             return 2
     if len(argv) == 3 and argv[0] == "route":
-        # For shell scripts: two lines, URL then model; empty in, empty out while the 26B is the target.
+        # For shell scripts: two lines, URL then model; AEON's subconscious lane.
         url, model = generative_route(argv[1], argv[2])
         print(url or "")
         print(model or "")
@@ -297,7 +275,7 @@ def main(argv):
     if not argv or argv[0] == "status":
         print(json.dumps(status(), indent=2))
         return 0
-    print("usage: subcon_target.py [status | set gemma26b|aeon | route URL MODEL]", file=sys.stderr)
+    print("usage: subcon_target.py [status | set aeon | route URL MODEL]", file=sys.stderr)
     return 1
 
 

@@ -149,7 +149,7 @@ ANALYSIS_EOF
 
 # Ask Vintos what this new shape FEELS like
 API="http://100.79.177.103:1234/v1/chat/completions"
-MODEL="gemma-4-26b-a4b-it-uncensored"
+MODEL="aeon-gemma-4-12b"
 API="${SUBCON_URL:-$API}"; MODEL="${SUBCON_MODEL:-$MODEL}"   # the subconscious flag (above)
 EMO_SNAPSHOT=$(cat "$EMO_FILE" 2>/dev/null | head -15)
 

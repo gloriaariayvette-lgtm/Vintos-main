@@ -9,7 +9,7 @@ Records his verbatim wants-about-his-own-wants/behaviors/feelings, and routes:
 Laws: verbatim extraction only; empty is the common correct result; nothing
 here suppresses a first-order want from outside. Fail-open."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -36,7 +36,7 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.pat
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "wants-meta.json")
 LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+MODEL = _subcon_model("aeon-gemma-4-12b")
 
 def log(m): print("[wants-meta]", m, flush=True)
 

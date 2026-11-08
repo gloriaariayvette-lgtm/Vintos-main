@@ -13,7 +13,7 @@ config, cron, system file, or source code. He creates. He does not engineer.
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -310,7 +310,7 @@ def _want_end_verdict(want):
                       for h in want.get("step_history", [])[-4:])
     try:
         r = _hv_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.3, "max_tokens": 120,
+            "model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.3, "max_tokens": 120,
             "messages": [{"role": "user", "content":
                 "A want has run all its steps. WANT: " + str(want.get("want", ""))[:250] +
                 "\nSTEPS DONE:\n" + (hist or "(no step history)") +

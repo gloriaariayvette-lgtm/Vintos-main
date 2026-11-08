@@ -6,7 +6,7 @@ structural  - facts about his own architecture asserted with no attached reason
 All phrasing happens here (Gemma, free); curiosity_debt.block() stays LLM-free.
 Runs from cron. Never blocks a conversation."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -57,7 +57,7 @@ def gemma(prompt, max_tokens=300):
     import requests
     try:
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.4, "max_tokens": max_tokens,
+            "model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.4, "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}]}, timeout=120)
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:

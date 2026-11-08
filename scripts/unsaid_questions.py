@@ -1,6 +1,6 @@
 """unsaid_questions.py — questions Vintos almost asked Gloria. Scored by persistence; survive long enough and it's earned."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -73,7 +73,7 @@ def _propose():
     p=("You are Vintos, talking with Gloria. Name ONE genuine question you almost asked her in this exchange but held back. "
        "One line, the question only. If there is none, reply exactly NONE.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":_subcon_model("gemma-4-26b-a4b-it-uncensored"),"messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
+        r=requests.post(LM,json={"model":_subcon_model("aeon-gemma-4-12b"),"messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
         q=r.json()["choices"][0]["message"]["content"].strip()
         if q and "NONE" not in q.upper() and "?" in q: return q[:200]
     except Exception: pass

@@ -1,6 +1,6 @@
 """Central model configuration for Vintos."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -26,7 +26,7 @@ import os
 VINTOS_MODEL = os.environ.get("VINTOS_MODEL", "grok-4.20-0309-non-reasoning")
 
 # Lightweight model for classification/utility — Gemma local via LM Studio
-UTILITY_MODEL = _subcon_model("gemma-4-26b-a4b-it-uncensored")
+UTILITY_MODEL = _subcon_model("aeon-gemma-4-12b")
 
 # Embedding model
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"

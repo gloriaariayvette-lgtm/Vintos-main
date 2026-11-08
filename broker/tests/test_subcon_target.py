@@ -25,7 +25,7 @@ def check(n, ok, d=""):
 
 import subcon_target as T
 FLAG = os.path.join(TMP, ".vintos", "subcon-target.json")
-OLD_URL, OLD_MODEL = "http://old-route/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored"
+OLD_URL, OLD_MODEL = "http://old-route/v1/chat/completions", "some-old-model"
 REAL_RECORD, REAL_PIN = T.RECORD, T.RECORD_SHA256
 SHIPPED = (T.RECORD, T.RECORD_SHA256)
 
@@ -77,15 +77,18 @@ msg = refused()
 check("so the flip is refused, listing every unmet item", msg and all(m in msg for m in missing) and not os.path.exists(FLAG), msg)
 check("the CLI refusal exits non-zero and writes nothing", T.main(["set", "aeon"]) == 2 and not os.path.exists(FLAG))
 write_flag({"target": "aeon"})
-check("a hand-written AEON flag is ignored while anything is unmet", T.active() == "gemma26b"
-      and T.generative_route(OLD_URL, OLD_MODEL) == (OLD_URL, OLD_MODEL))
-check("no partial switch: under an unmet record AEON reads nothing at all", T.constructs("aeon") == {})
+# The 26B was removed (Gloria 2026-11-08): calls go to AEON whatever the record says; the record decides only
+# whether AEON's residual readings are admitted.
+check("under an unmet record calls still go to AEON (there is no other model)", T.active() == "aeon"
+      and T.generative_route(OLD_URL, OLD_MODEL) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
+check("no partial reading: under an unmet record AEON's readings are not admitted", T.constructs("aeon") == {})
 clear()
-check("no flag -> the 26B", T.active() == "gemma26b" and T.receipt()["identity"] == "gemma-4-26b-a4b-it-uncensored")
+check("no flag -> AEON", T.active() == "aeon" and T.receipt()["identity"] == T.TARGETS["aeon"]["identity"])
 for bad in ("{not json", json.dumps({"target": "llama"}), json.dumps(["aeon"])):
     write_flag(bad)
-    check("a bad flag -> the 26B (%s)" % bad[:12], T.active() == "gemma26b")
+    check("a bad flag -> AEON (%s)" % bad[:12], T.active() == "aeon")
 clear()
+check("AEON is the only target", sorted(T.TARGETS) == ["aeon"])
 check("an unknown target cannot be set", refused("gpt") is not None and not os.path.exists(FLAG))
 
 print("--- a complete, valid pass record ---")
@@ -102,10 +105,10 @@ check("under AEON all eleven constructs are read, at the record's layers",
 reading = {"Arousal": 0.4, "Tension": True, "Desire": float("nan"), "Safety": "x", "Curiosity": "0.2"}
 check("readings keep only finite numbers", T.admitted_readings(reading) == {"Arousal": 0.4, "Curiosity": 0.2})
 check("a reading set from the other checkpoint is refused whole",
-      T.admitted_readings(reading, identity=T.TARGETS["gemma26b"]["identity"]) == {})
+      T.admitted_readings(reading, identity="some-other-checkpoint") == {})
 check("generated reads move to the shim's subconscious lane",
       T.generative_route(OLD_URL, OLD_MODEL) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
-check("flipping back to the 26B is always allowed", T.set_target("gemma26b") == "gemma26b" and T.active() == "gemma26b")
+check("the removed 26B target cannot be set", refused("gemma" + "26b") is not None and T.active() == "aeon")
 
 print("--- one unmet item blocks the whole flip ---")
 cases = []
@@ -139,7 +142,7 @@ check("a record for another checkpoint is refused", "different checkpoint" in (r
 T.RECORD = os.path.join(TMP, "nope.json")
 check("a missing record is refused", "missing" in (refused() or ""))
 write_flag({"target": "aeon"})
-check("with a bad record even an AEON flag on disk stays on the 26B", T.active() == "gemma26b")
+check("with a bad record calls stay on AEON and no reading is admitted", T.active() == "aeon" and T.constructs() == {})
 clear()
 
 print("--- locks and the public repo ---")
@@ -159,7 +162,8 @@ spec = importlib.util.spec_from_file_location("residual_shadow_subcon", os.path.
 S = importlib.util.module_from_spec(spec); spec.loader.exec_module(S)
 write_flag({"target": "aeon"})
 S.record(input_text="one exact line", source="exchange", turn_id="T-1", generated_deltas={"Warmth": .1})
-check("under an unmet record a receipt still names the 26B", S.pending()[-1]["residual_target"]["target"] == "gemma26b")
+check("under an unmet record a receipt names AEON with no admitted constructs",
+      S.pending()[-1]["residual_target"]["target"] == "aeon" and S.pending()[-1]["residual_target"]["constructs"] == [])
 use_record(GOOD)
 S.record(input_text="another exact line", source="exchange", turn_id="T-2", generated_deltas={"Warmth": .1})
 row = S.pending()[-1]
@@ -177,12 +181,12 @@ import vintos_claude_shim as SH
 chain = SH.provider_chain({}, "/pool/subconscious/v1/chat/completions")
 check("the flipped shim lane is AEON only, never the 26B", chain == ["pool:aeon", "aegis_gemma"], chain)
 T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
-er = load_reader("26b")
-check("under an unmet record emotion_read.py is exactly as before", er.MODEL == "gemma-4-26b-a4b-it-uncensored"
-      and er.LM_URL.endswith(":1234/v1/chat/completions"))
-check("under an unmet record the shim keeps the 26B",
-      SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:subconscious", "gemma"])
-check("other pool tasks never follow the flag", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "gemma"])
+er = load_reader("unmet")
+check("under an unmet record emotion_read.py still reads through AEON's lane", er.MODEL == "aeon-gemma-4-12b"
+      and er.LM_URL == T.SHIM_SUBCONSCIOUS, (er.LM_URL, er.MODEL))
+check("under an unmet record the shim's subconscious lane is still AEON only",
+      SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:aeon", "aegis_gemma"])
+check("other pool tasks keep their own lanes, all AEON", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "pool:aeon"])
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 fn = srv[srv.index("def nudge_emotions_from_text"):srv.index("def nudge_emotions_from_text") + 9000]
 check("the server's live read takes its route from the flag", "generative_route(_emo_url, _model)" in fn and "_u.Request(_emo_url," in fn)

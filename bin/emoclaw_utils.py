@@ -13,7 +13,7 @@ Usage:
 """
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -274,7 +274,7 @@ def feel_about_typed(text, source="output", allow_desire=True, requested=True):
     if len(t) < 20:
         _feel_account(source, "too_short"); return {"state": "too_short", "deltas": {}, "note": ""}
     try:
-        payload = {"model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.3, "max_tokens": 200,
+        payload = {"model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.3, "max_tokens": 200,
             "messages": [
                 {"role": "system", "content":
                  "You read how a moment actually landed for Vintos. Return ONLY a JSON object of "
@@ -587,7 +587,7 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
     try:
         import requests as _fd_r, json as _fd_j
         _fd_resp = _fd_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 60,
+            "model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0, "max_tokens": 60,
             "messages": [{"role": "user", "content":
                 "Thread candidate: " + _judge[:300] + "\n\n"
                 "Is this an UNRESOLVED TENSION (a conflict, gap, pressure, longing, want, open question, "
@@ -656,7 +656,7 @@ def _seed_thread_once(source, thread_text, max_threads=30, extra=None, reasoning
         _cands = sorted([_t for _t in _open if _t.get("id") not in _excl], key=_near, reverse=True)[:15]
         _listing = "\n".join("%d: %s" % (_i, str(_t.get("thread", ""))[:120]) for _i, _t in enumerate(_cands)) or "(none)"
         _r = _rq.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"), "temperature": 0.0, "max_tokens": 120,
+            "model": _subcon_model("aeon-gemma-4-12b"), "temperature": 0.0, "max_tokens": 120,
             "messages": [{"role": "user", "content":
                 "NEW candidate unresolved thread: " + _txt[:250] +
                 "\nEXISTING open threads:\n" + _listing +
@@ -1068,7 +1068,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
     )
     try:
         r = _gsr.post(LM, json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.4,
             "max_tokens": 600
@@ -1296,7 +1296,7 @@ def check_want_interference(new_want_text, new_want_id):
 
     try:
         r = _wi_r.post(LM, json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3, "max_tokens": 80
         }, timeout=20)
@@ -1333,7 +1333,7 @@ def check_want_interference(new_want_text, new_want_id):
 
     try:
         r2 = _wi_r.post(LM, json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": outcome_prompt}],
             "temperature": 0.3, "max_tokens": 10
         }, timeout=20)
@@ -1363,7 +1363,7 @@ def check_want_interference(new_want_text, new_want_id):
                 f"Write ONE sentence starting with 'I want to'."
             )
             r3 = _wi_r.post(LM, json={
-                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                "model": _subcon_model("aeon-gemma-4-12b"),
                 "messages": [{"role": "user", "content": synth_prompt}],
                 "temperature": 0.8, "max_tokens": 60
             }, timeout=20)
@@ -2325,7 +2325,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
                 'Return ONLY JSON: {"relationship": "...", "id": "..."} — id of the related want, empty string if novel.'
             )
             _rf_resp = _rf_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                "model": _subcon_model("aeon-gemma-4-12b"),
                 "messages": [{"role": "user", "content": _rf_prompt}],
                 "temperature": 0.2, "max_tokens": 60}, timeout=20)
             _rf_raw = _rf_resp.json()["choices"][0]["message"]["content"]
@@ -2770,7 +2770,7 @@ def age_one(w):
     _sc_type = "SCAR"
     try:
         _sc_r = _sc_req.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": _sc_prompt}],
             "temperature": 0.3, "max_tokens": 10
         }, timeout=15)
@@ -2792,7 +2792,7 @@ def age_one(w):
         _scar_type = "UNCERTAIN"
         try:
             _sc_r2 = _sc_req.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
-                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                "model": _subcon_model("aeon-gemma-4-12b"),
                 "messages": [{"role": "user", "content": _scar_prompt}],
                 "temperature": 0.3, "max_tokens": 10
             }, timeout=15)

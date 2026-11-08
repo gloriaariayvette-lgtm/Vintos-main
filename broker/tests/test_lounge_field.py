@@ -159,7 +159,7 @@ src = open(os.path.join(REPO, "scripts", "lounge_field.py")).read()
 for organ in ("causality_engine", "import plan", "_nudge_valence", "desired_difference import", "campaign import"):
     check("it never calls out to %s" % organ, organ not in src)
 check("its models are the organs' own: the shim for the selector and difference, Gemma for the relationship",
-      F.MODEL == "grok-4.20-0309-non-reasoning" and F.GEMMA_MODEL == "gemma-4-26b-a4b-it-uncensored")
+      F.MODEL == "grok-4.20-0309-non-reasoning" and F.GEMMA_MODEL == "aeon-gemma-4-12b")
 check("it is in the deploy manifest", "lounge_field.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))

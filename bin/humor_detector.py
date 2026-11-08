@@ -6,7 +6,7 @@ Every stored moment names its material kind so practice can maintain a varied
 repertoire instead of turning a stream of errors into a personality.
 """
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -58,7 +58,7 @@ def save_moments(data):
 def llm(prompt, temp=0.3, max_tokens=150):
     try:
         r = requests.post(LM, json={
-            "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+            "model": _subcon_model("aeon-gemma-4-12b"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=20)

@@ -2,7 +2,7 @@
 """dream-music.py — Vintos Music. Primary backend Kie.ai Suno v6; local ACE-Step is the
 fallback so he is never left mute when Kie is unreachable (Gloria, 2026-09-15)."""
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
+    """The subconscious flag (subcon_target.py): AEON (the 26B was removed, Gloria 2026-11-08) (everything moves, 2026-11-07)."""
     try:
         import os as _o, sys as _s
         for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
@@ -420,7 +420,7 @@ def style_str(d):
         try:
             import urllib.request as _ur, json as _js
             _body = _js.dumps({
-                "model": _subcon_model("gemma-4-26b-a4b-it-uncensored"),
+                "model": _subcon_model("aeon-gemma-4-12b"),
                 "messages": [{
                     "role": "user",
                     "content": f"Rewrite this music style description using only sonic/genre descriptors — no artist names, no band references. Keep the mood and sound intact. Return ONLY the rewritten style, no preamble.\n\nOriginal: {original}\nClean version: {style}\n\nRewrite:"
