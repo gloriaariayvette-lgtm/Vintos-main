@@ -6228,3 +6228,11 @@ and 67 repeated checks under simulated 10 ms granularity pass. Existing path/has
 freshness checks remain; see the follow-through log for reproduced failures and
 limits. Claude's full isolated Aegis rerun and integration review remain pending;
 Gloria retains installation and live acceptance. No deploy or live writes.
+
+## 8 November — malformed shadow innovation evidence
+
+`codex/judges-malformed-evidence` adds explicit held counts for malformed records
+and rejects wrong-shaped containers without guessing identities or dropping
+identifiable conflicting copies. 144 affected isolated checks pass. This offline
+reader change requires independent review/full Aegis validation; no live feeds,
+producers or historical admission are changed. See the judges witness log.

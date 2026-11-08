@@ -331,6 +331,50 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(R.census([("ledger", [ledger])], self.nodes, 1000)[0]["eligible_replies"], 1)
         self.assertEqual(R.census([], {}, 1000)[0]["eligible_replies"], 0)
 
+    def test_malformed_record_shapes_do_not_abort_valid_innovation(self):
+        for bad in (None, [], 'synthetic malformed record', 7):
+            with self.subTest(bad=bad):
+                report,rows=self.score(forecasts=[bad,self.f])
+                self.assertEqual(len(rows),1)
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+                report,rows=R.innovation([self.row],[self.f],[bad,self.e],self.ck)
+                self.assertEqual(len(rows),1)
+                self.assertEqual(report['held']['missing_embedding_identity'],1)
+
+    def test_invalid_embedding_identity_is_counted_without_guessing(self):
+        for key in (None, [], {}, True, '', 4):
+            with self.subTest(key=key):
+                bad=dict(self.e,turn_id=key)
+                report,rows=R.innovation([self.row],[self.f],[bad],self.ck)
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_embedding_identity'],1)
+                self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
+
+    def test_malformed_head_or_manifest_is_unscored(self):
+        for bad in (None, [], 'synthetic invalid manifest', 3):
+            with self.subTest(bad=bad):
+                forecast=dict(self.f,self=bad)
+                report,rows=self.score(forecasts=[forecast])
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+                report,rows=R.innovation([self.row],[self.f],[self.e],{'fixture-checkpoint':bad})
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+
+    def test_malformed_matching_embedding_cannot_be_hidden_by_valid_copy(self):
+        for bad in (None, [], 'synthetic invalid vector'):
+            with self.subTest(bad=bad):
+                for embeddings in ([self.e,dict(self.e,emb=bad)],[dict(self.e,emb=bad),self.e]):
+                    report,rows=R.innovation([self.row],[self.f],embeddings,self.ck)
+                    self.assertEqual(rows,[])
+                    self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
+
+    def test_innovation_container_shape_is_not_silently_empty(self):
+        for forecasts,embeddings,checkpoints in (({},[],{}),([],{},{}),([],[],[])):
+            with self.subTest(forecasts=forecasts,embeddings=embeddings,checkpoints=checkpoints):
+                with self.assertRaises(ValueError):
+                    R.innovation([self.row],forecasts,embeddings,checkpoints)
+
     def test_forecast_matches_final_once(self):
         summary, rows = self.score(forecasts=[self.f, copy.deepcopy(self.f)])
         self.assertEqual(len(rows), 1)

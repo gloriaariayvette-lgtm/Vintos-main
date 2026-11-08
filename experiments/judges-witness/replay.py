@@ -389,18 +389,29 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
     """
     if minimum_history < 1:
         raise ValueError("history minimum must be positive")
+    if not isinstance(forecasts, list) or not isinstance(embeddings, list) or not isinstance(checkpoints, dict):
+        raise ValueError("forecast/embedding lists and checkpoint mapping required")
     targets = {r["turn_id"]: r for r in admitted}
     cache = defaultdict(list)
-    for e in embeddings:
-        cache[e.get("turn_id")].append(e)
     held, candidates = Counter(), defaultdict(list)
+    for e in embeddings:
+        if not isinstance(e, dict) or not isinstance(e.get("turn_id"), str) or not e["turn_id"]:
+            held["missing_embedding_identity"] += 1
+            continue
+        # Keep identifiable malformed copies: dropping them could hide a
+        # conflicting vector behind a valid copy for the same target/version.
+        cache[e["turn_id"]].append(e)
     for f in forecasts:
         try:
+            if not isinstance(f, dict):
+                raise ValueError("forecast must be a record")
             row = targets.get(f.get("turn_id"))
             if row is None:
                 held["no_eligible_final_reply"] += 1
                 continue
             r, head = row_receipt(row), f["self"]
+            if not isinstance(head, dict):
+                raise ValueError("forecast head must be a record")
             if f.get("mode") != "on_message" or head.get("mode") != "on_message":
                 held["wrong_mode"] += 1
                 continue
@@ -408,7 +419,11 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
                 held["wrong_surface"] += 1
                 continue
             checkpoint = head["checkpoint_id"]
+            if not isinstance(checkpoint, str) or not checkpoint:
+                raise ValueError("checkpoint identity must be explicit")
             manifest = checkpoints[checkpoint]
+            if not isinstance(manifest, dict):
+                raise ValueError("checkpoint manifest must be a record")
             encoder = manifest["encoder_id"]
             if (not isinstance(encoder, str) or not encoder or not isinstance(head.get("source"), str)
                     or not head["source"]):

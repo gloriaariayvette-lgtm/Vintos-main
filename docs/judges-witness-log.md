@@ -451,3 +451,26 @@ Review 13 reports integration through 788439c9 and Aegis suites 594/594 and
 Aegis validation. The wants stack remains separately blocked on review 13's source
 binding, result freshness, continuation and cost-control fixes; not approved or
 deployed by this judges repair. No live stores, calls, merge or deployment.
+
+
+## 8 November — malformed offline evidence accounting
+
+`codex/judges-malformed-evidence` starts from approved integration cb10d8b8,
+leaving all previous review tips and the separate wants stack untouched. The
+innovation reader previously raised AttributeError/TypeError for malformed
+forecast/head/manifest records or unhashable embedding identities, stopping the
+whole replay. Wrong-shaped empty containers could also appear to be valid empty
+evidence. Added strict container checks and explicit per-record held accounting.
+Unidentified embeddings never get guessed targets; identifiable malformed copies
+remain in duplicate/conflict checks so a valid copy cannot hide them.
+
+Five synthetic regressions reproduced three assertion failures and 14 errors
+before the repair (subcases). Afterward **144 isolated checks pass**: witness 82,
+replay adapter 6, capture 27, capture hooks 18, ownership 11. Fixtures cover malformed
+mixed records alongside valid data, missing/unhashable IDs, malformed manifests,
+invalid matching vectors in either copy order, and wrong top-level shapes.
+Reports regenerated and whitespace checked. No retained-data run, model call,
+live write, feed change, merge or deploy. The held identity count is per embedding
+row, not per unique reply; README documents that denominator. Independent full
+Aegis validation remains with Claude. Review 16's separate wants timestamp fix
+was already pushed as de2cd7b4 and remains awaiting that independent rerun.
