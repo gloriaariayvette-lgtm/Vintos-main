@@ -481,3 +481,12 @@ calibrated confidence or establish independence between turns. The strict
 pre-forecast boundary also does not prove when an embedding was computed: that
 requires retained producer evidence. The independent existing self-head audits
 are separate tools and are unchanged by this repair.
+
+### Incomplete known influence
+
+A known judge-effect node with missing ancestry is `influenced_incomplete`, not
+a clean leaf and not merely unknown. This state propagates through incomplete
+contexts and unknown siblings; the census reports `influenced_incomplete_lineage`.
+It remains excluded exactly like complete influence and unknown lineage. Invalid
+clocks/identities do not become trusted influence attestations. This distinction
+improves counts only and changes no live evidence admission.

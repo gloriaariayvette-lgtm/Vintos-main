@@ -127,7 +127,7 @@ def lineage_status(root, nodes, before):
 
     def visit(key, latest):
         n = nodes.get(key)
-        if not isinstance(n, dict) or n.get("id") != key or n.get("complete") is not True:
+        if not isinstance(n, dict) or n.get("id") != key:
             return "unknown"
         try:
             at = instant(n.get("at"))
@@ -145,8 +145,9 @@ def lineage_status(root, nodes, before):
         if any(not isinstance(p, str) or not p for p in parents):
             return "unknown"
         if not parents and kind != "ordinary_source":
-            # Empty generated ancestry is missing evidence, not a clean base case.
-            return "unknown"
+            # Known effects stay visible without pretending their ancestry is complete.
+            return "influenced_incomplete" if kind in INFLUENCING else "unknown"
+        incomplete = n.get("complete") is not True
         own = "influenced" if kind in INFLUENCING else "clean"
         if kind == "reply":
             context_id = n.get("context_receipt_id")
@@ -173,8 +174,12 @@ def lineage_status(root, nodes, before):
         visiting.add(key)
         states = [visit(p, at) for p in parents]
         visiting.remove(key)
-        result = ("influenced" if own == "influenced" or "influenced" in states else
-                  "unknown" if own == "unknown" or "unknown" in states else "clean")
+        incomplete = incomplete or own == "unknown" or any(
+            state in ("unknown", "influenced_incomplete") for state in states)
+        influenced = own == "influenced" or any(
+            state in ("influenced", "influenced_incomplete") for state in states)
+        result = ("influenced_incomplete" if incomplete else "influenced") if influenced else (
+            "unknown" if incomplete else "clean")
         memo[key] = result
         return result
     return visit(root, before)

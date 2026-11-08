@@ -422,3 +422,32 @@ positions, and version-bound private receipts. Existing literal-marker, low-rati
 unknown, restart, permissions and scratch-only checks still pass. Reports were
 regenerated and whitespace checked. No retained data, sends, models, merge or
 deploy; independent Aegis validation remains with Claude.
+
+
+## 8 November 2026 — review 13 capture compatibility repairs
+
+On `codex/judges-capture-compatibility` from 41682138, reproduced the review's
+missing prepare symbol failure and an analogous older-router signature failure.
+The handler now owns a small exception boundary around observation preparation
+at all three route sites. Missing/broken setup, invalid observer options and a
+router without the observer parameter disable observation, not generation. No
+provider call is repeated to recover from capture failure. This also works when
+the installed capture module is too old to contain any new helper.
+
+Known judge effects with incomplete ancestry now report `influenced_incomplete`
+(and census reason `influenced_incomplete_lineage`) instead of losing their known
+influence under unknown. The distinction propagates through incomplete context
+and unknown siblings. Every incomplete case remains excluded; invalid clocks
+and unmarked material remain unknown. No clean/admitted population expands.
+
+Validation: handler hooks 18/18, capture 27/27, witness 77/77, replay adapter 6/6,
+ownership 11/11: **139 isolated checks passed**. The three compatibility additions
+failed before the fix and now pass, including original/retry/replacement paths.
+Two influence tests cover missing parents, incomplete enclosing contexts, sibling
+order and clock rejection. Reports regenerated; whitespace clean.
+
+Review 13 reports integration through 788439c9 and Aegis suites 594/594 and
+597/597. Later increments, including this one, still need independent review/full
+Aegis validation. The wants stack remains separately blocked on review 13's source
+binding, result freshness, continuation and cost-control fixes; not approved or
+deployed by this judges repair. No live stores, calls, merge or deployment.

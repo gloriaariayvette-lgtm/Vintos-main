@@ -7,13 +7,20 @@ missing event IDs cannot erase timeline collisions, and a predecessor needs its
 own direct sequence witness. [Review log](judges-witness-log.md) records each
 increment's isolated validation; the latest focused run passed 92 checks.
 
-Full Aegis validation and independent review of the post-239c3467 stack remain
+Full Aegis validation and independent review of the post-788439c9 stack remain
 with Claude. The reviewer-provided private census is still zero strict-eligible
 turns; no new retained-data result is claimed. Complete upstream ancestry,
 trustworthy delivery/sequence producers and a separate bounded production sink
 remain open. [Enablement proposal](judges-capture-enable-proposal.md) is disabled
 and requires Gloria's explicit decision; never repoint the serving workspace to
 use the scratch flag. No live feed, historical eligibility or model is changed.
+
+Review 13's capture compatibility fixes are on `codex/judges-capture-compatibility`:
+older capture/router modules degrade to no observation without changing replies;
+known incomplete effects remain counted as influenced-incomplete and excluded.
+The focused synthetic suite passed 139 checks. The separate wants stack remains
+unapproved pending source-bound admission, artifact freshness, explicit continuation,
+call limits/kill switch, subscription-only default and crash-repeat repairs.
 
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 

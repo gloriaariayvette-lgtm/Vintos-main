@@ -90,7 +90,9 @@ class Tests(unittest.TestCase):
             isinstance(x, ast.Import) and any(a.name == "model_router" for a in x.names) for x in n.body))
         start = next(i for i, n in enumerate(outer.body) if isinstance(n, ast.Import)
                      and any(a.name == "model_router" for a in n.names))
-        setup = outer.body[start:start + 5]
+        end = next(i for i, n in enumerate(outer.body) if isinstance(n, ast.Assign)
+                   and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "_witness_selected")
+        setup = outer.body[start:end + 1]
         self.assertTrue(isinstance(setup[-1], ast.Assign) and setup[-1].targets[0].id == "_witness_selected")
         routed = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign)
                          and isinstance(n.value, ast.Await) and isinstance(n.value.value, ast.Call)
@@ -98,7 +100,7 @@ class Tests(unittest.TestCase):
                          and n.value.value.func.attr == "route_reply"], key=lambda n: n.lineno)
         self.assertEqual(len(routed), 3)
         prepared = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign) and any(
-            isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "prepare_shadow"
+            isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "_prepare_witness"
             for c in ast.walk(n.value))], key=lambda n: n.lineno)
         chosen = sorted([n for n in ast.walk(outer) if isinstance(n, ast.Assign)
                          and isinstance(n.value, ast.Name) and n.value.id == "_witness_request"
@@ -149,7 +151,7 @@ class Tests(unittest.TestCase):
         return ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[]))
 
     def exercise(self, sink_failure=False, enabled=True, responses=None, retry=False, replacement=False,
-                 original_text=None):
+                 original_text=None, capture_module=None, old_router=False):
         calls = []
         responses = responses or ["synthetic raw"]
         async def provider(*args):
@@ -167,6 +169,11 @@ class Tests(unittest.TestCase):
         exec(compile(ast.Module(body=[wrapper], type_ignores=[]), "stubbed-router", "exec"), router_ns)
         router = types.ModuleType("model_router"); router.route_reply = router_ns["route_reply"]
         self.assertIs(router_ns["route_reply_result"], provider)
+        if old_router:
+            original_route = router.route_reply
+            async def older_route(*args, reason=True):
+                return await original_route(*args, reason=reason)
+            router.route_reply = older_route
         turn = types.SimpleNamespace(turn_id="fixture-turn", carries_capsule=False)
         clock = iter(range(100, 200))
         ns = {"_turn": turn, "_surface": "fixture-chat", "time": types.SimpleNamespace(time=lambda: next(clock)),
@@ -179,12 +186,35 @@ class Tests(unittest.TestCase):
         def failed(*args, **kwargs): raise OSError("synthetic sink failure")
         with patch.dict(sys.modules, {"model_router": router}), contextlib.redirect_stdout(io.StringIO()):
             with contextlib.ExitStack() as stack:
+                if capture_module is not None:
+                    stack.enter_context(patch.dict(sys.modules, {"witness_capture": capture_module}))
                 if sink_failure: stack.enter_context(patch.object(W, "finish_shadow", failed))
                 if not enabled: stack.enter_context(patch.dict(os.environ, JUDGES_CAPTURE_SCRATCH=""))
                 exec(code, ns)
                 answer = asyncio.run(ns["exercise"]())
         self.assertEqual(len(calls), len(responses))
         return answer
+
+    def test_old_capture_module_cannot_blank_any_route(self):
+        module = types.SimpleNamespace(begin_shadow=W.begin_shadow)
+        for options in ({}, {"retry":True,"responses":["synthetic repeat","synthetic raw"]},
+                        {"replacement":True,"responses":["synthetic raw","synthetic raw"]}):
+            answer = self.exercise(capture_module=module, **options)
+            self.assertEqual(answer["reply"], "synthetic raw after postprocessing after final guard")
+
+    def test_broken_capture_setup_never_retries_or_blocks_generation(self):
+        def broken(*args, **kwargs): raise RuntimeError("synthetic setup failure")
+        for prepare in (broken, lambda *args: (None, None), lambda *args: (None, {"unexpected":True})):
+            module = types.SimpleNamespace(begin_shadow=W.begin_shadow, prepare_shadow=prepare)
+            answer = self.exercise(capture_module=module)
+            self.assertEqual(answer["reply"], "synthetic raw after postprocessing after final guard")
+
+    def test_old_router_without_observer_keeps_normal_reply(self):
+        answer = self.exercise(old_router=True)
+        self.assertEqual(answer["reply"], "synthetic raw after postprocessing after final guard")
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        self.assertEqual(packet["witness_receipt"]["status"], "unknown")
+        self.assertEqual(packet["observed_attempts"], [])
 
     def test_actual_handler_uses_only_explicit_original_fragment(self):
         self.exercise(original_text="explicit original")

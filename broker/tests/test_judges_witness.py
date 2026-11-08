@@ -198,8 +198,31 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                 nodes = copy.deepcopy(self.nodes)
                 nodes["context-1"]["parents"] = ["empty"]
                 nodes["empty"] = {"id": "empty", "kind": kind, "at": 80, "complete": True, "parents": []}
-                self.assertEqual(W.lineage_status("context-1", nodes, 100), "unknown")
+                self.assertEqual(W.lineage_status("context-1", nodes, 100),
+                                 "influenced_incomplete" if kind in W.INFLUENCING else "unknown")
         self.nodes["context-1"]["parents"] = []
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_incomplete_effect_ancestry_retains_influence_without_admission(self):
+        self.nodes["effect"] = dict(id="effect",kind="judge_effect",at=70,complete=False,parents=[])
+        for parents in (["effect", "missing"], ["missing", "effect"]):
+            self.nodes["context-1"]["parents"] = parents
+            self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["context-1"].update(complete=False,parents=["effect"])
+        self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["effect"].update(complete=True,parents=["external-0"])
+        self.assertEqual(self.admit(), "influenced_incomplete_lineage")
+        self.nodes["context-1"]["complete"] = True
+        self.assertEqual(self.admit(), "influenced_lineage")
+
+    def test_incomplete_effect_clock_and_unknown_ordinary_material_stay_unknown(self):
+        self.nodes["context-1"]["parents"] = ["effect"]
+        self.nodes["effect"] = dict(id="effect",kind="judge_effect",at=101,complete=False,parents=[])
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["context-1"].update(complete=False,parents=["external-0"])
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["context-1"]["complete"] = True
+        self.nodes["external-0"]["complete"] = False
         self.assertEqual(self.admit(), "unknown_lineage")
 
     def test_external_sibling_cannot_launder_parentless_value_map(self):
