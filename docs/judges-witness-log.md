@@ -298,3 +298,21 @@ Validation: witness 40/40, replay adapter 6/6, capture 24/24, handler/sink 14/14
 existing provenance 11/11 and ownership 11/11: **106 isolated checks passed**.
 Generated reports and whitespace are clean. Full Aegis suite/review remain
 Claude's step; no live writes, enablement, merge or deployment.
+
+
+## 8 November 2026 — paired forecast-context controls
+
+Continued on `codex/judges-innovation-controls-v2` from f34f4c12, preserving
+previous review tips. Added causal last-reply and normalized recent-mean controls
+using only explicitly attested forecast-context references. Exact versions,
+encoder, eligible same-surface replies and strict order are required. No inferred
+history or selected substitute baseline. Missing controls keep the head score
+and get their own coverage reasons. Paired errors separate evaluation blocks and
+checkpoint groups; they assert neither authenticity nor a pass verdict.
+
+Eight synthetic regression cases cover causal ordering, identity/version,
+encoder/surface conflicts, missing inputs, zero means, normalization, uncited
+newer history and separate paired coverage. No live producer contract or real-data
+accuracy claim is introduced. Independent Aegis validation remains Claude's step.
+
+Validation: witness 48/48, replay adapter 6/6 and ownership 11/11: **65 isolated checks passed**. Whitespace clean. No private data read, live writes, model calls, enablement, merge or deploy.

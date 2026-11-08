@@ -355,6 +355,104 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(rows[1]["innovation_percentile"], 50)
         self.assertEqual(rows[2]["innovation_percentile"], 50)
 
+    def controls_fixture(self):
+        first, _, _, e1, _ = fixture("earlier-1", 100, 110)
+        second, _, _, e2, _ = fixture("earlier-2", 120, 130)
+        target, _, forecast, e3, ck = fixture("target", 300, 310)
+        e1["emb"], e2["emb"], e3["emb"] = [1., 0.], [0., 1.], [1., 0.]
+        forecast["self"]["context_last_ts"] = 200
+        forecast["self"]["context"] = {
+            "schema": "forecast-reply-context-v1", "complete": True,
+            "scope": "forecast_context_assistant_replies", "as_of": 200,
+            "evaluation_block": "synthetic-block-a", "reply_refs": [
+                {"turn_id": r["turn_id"], "response_sha256": W.digest(r["content"])} for r in (first, second)]}
+        return [first, second, target], [forecast], [e1, e2, e3], ck
+
+    def control_score(self, data):
+        return R.innovation(*data)
+
+    def test_paired_controls_use_exact_forecast_context(self):
+        report, rows = self.control_score(self.controls_fixture())
+        self.assertEqual(len(rows), 1)
+        controls = rows[0]["controls"]
+        self.assertEqual(controls["context_n"], 2)
+        self.assertEqual(controls["last_reply_error"], 1.)
+        self.assertAlmostEqual(controls["recent_mean_error"], 1 - 2 ** -.5)
+        self.assertEqual(controls["last_reply_improvement"], 1.)
+        self.assertEqual(report["baselines"]["paired_groups"][0]["n"], 1)
+        self.assertEqual(report["baselines"]["unavailable"], {})
+
+    def test_missing_context_does_not_invent_baselines_or_drop_head(self):
+        report, rows = self.score()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(report["baselines"]["paired_groups"], [])
+        self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
+
+    def test_controls_require_complete_causal_bound_context(self):
+        for mutation, reason in (({"complete": False}, "incomplete_context_receipt"),
+                                 ({"as_of": 299}, "noncausal_context_receipt"),
+                                 ({"evaluation_block": ""}, "missing_evaluation_block"),
+                                 ({"scope": "all_history"}, "wrong_context_scope"),
+                                 ({"reply_refs": []}, "missing_or_oversized_context")):
+            data = self.controls_fixture()
+            data[1][0]["self"]["context"].update(mutation)
+            report, rows = self.control_score(data)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(report["baselines"]["unavailable"], {reason: 1})
+
+    def test_controls_reject_target_duplicate_tied_and_reversed_context(self):
+        for kind in ("target", "duplicate", "tie", "reversed", "future"):
+            data = self.controls_fixture(); context = data[1][0]["self"]["context"]
+            if kind == "target": context["reply_refs"][0]["turn_id"] = "target"
+            if kind == "duplicate": context["reply_refs"][1] = copy.deepcopy(context["reply_refs"][0])
+            if kind == "tie": data[0][1]["witness_receipt"]["finalized_at"] = 110
+            if kind == "reversed": context["reply_refs"].reverse()
+            if kind == "future": data[0][1]["witness_receipt"]["finalized_at"] = 300
+            report, rows = self.control_score(data)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable", kind)
+            self.assertEqual(report["baselines"]["paired_groups"], [])
+
+    def test_control_versions_encoder_surface_and_conflicts_are_checked(self):
+        for kind in ("hash", "encoder", "surface", "conflict", "missing", "not_admitted"):
+            data = self.controls_fixture()
+            if kind == "hash": data[1][0]["self"]["context"]["reply_refs"][0]["response_sha256"] = W.digest("other")
+            if kind == "encoder": data[2][0]["encoder_id"] = "different"
+            if kind == "surface": data[0][0]["witness_receipt"]["surface"] = "other"
+            if kind == "conflict": data[2].append(dict(data[2][0], emb=[0., 1.]))
+            if kind == "missing": data[2].pop(0)
+            if kind == "not_admitted": data[0].pop(0)
+            _, rows = self.control_score(data)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable", kind)
+
+    def test_controls_do_not_use_uncited_more_recent_reply(self):
+        data = self.controls_fixture()
+        extra, _, _, emb, _ = fixture("uncited", 150, 160)
+        emb["emb"] = [1., 0.]
+        data[0].append(extra); data[2].append(emb)
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["last_reply_error"], 1.)
+
+    def test_recent_mean_normalizes_inputs_and_refuses_zero_mean(self):
+        data = self.controls_fixture(); data[2][0]["emb"] = [100., 0.]
+        _, rows = self.control_score(data)
+        self.assertAlmostEqual(rows[0]["controls"]["recent_mean_error"], 1 - 2 ** -.5)
+        data[2][1]["emb"] = [-1., 0.]
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["status"], "unavailable")
+
+    def test_paired_coverage_and_evaluation_blocks_are_not_pooled(self):
+        data = self.controls_fixture()
+        second, _, forecast, emb, _ = fixture("target-b", 400, 410)
+        forecast["self"]["context_last_ts"] = 200
+        forecast["self"]["context"] = copy.deepcopy(data[1][0]["self"]["context"])
+        forecast["self"]["context"]["evaluation_block"] = "synthetic-block-b"
+        third, _, f3, e3, _ = fixture("target-c", 500, 510)  # no context receipt
+        data[0].extend([second, third]); data[1].extend([forecast, f3]); data[2].extend([emb, e3])
+        report, rows = self.control_score(data)
+        self.assertEqual(report["groups"][0]["n"], 3)
+        self.assertEqual([g["n"] for g in report["baselines"]["paired_groups"]], [1, 1])
+        self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
+
     def test_scratch_rejects_live_parent_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
             root = Path(td).resolve()

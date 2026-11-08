@@ -6055,3 +6055,10 @@ owns the copied-record census and Aegis timing run; Codex is not duplicating it.
 provider/context receipt hooks. Claude Code owns independent review, the full
 isolated Aegis suite and test merge. The ten-minute coordination heartbeat stays
 active after batches; Gloria handles deployment.
+
+
+Judges slice 2 now has offline paired last-reply/recent-mean controls on
+`codex/judges-innovation-controls-v2`. Producer-attested forecast-context receipts
+are required; serving capture of that contract and real paired coverage remain
+open. Missing controls do not discard head observations. See the experiment
+README for causal joins and descriptive-only interpretation. No feed is changed.

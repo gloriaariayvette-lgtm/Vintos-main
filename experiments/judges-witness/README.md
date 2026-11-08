@@ -307,3 +307,39 @@ self-model/context content must retain its generated parents.
 The separate production capture proposal is
 [documented here](../../docs/judges-capture-enable-proposal.md). The current
 scratch sink must not be enabled on a serving process by changing its workspace.
+
+
+### Paired forecast-context controls (offline only)
+
+The replay can compare each on-message prediction with the last assistant reply
+and normalized recent mean from the **explicit context used by that forecast**.
+It never reconstructs that context by selecting nearby rows from a global store.
+A forecast may carry `self.context` with this contract:
+
+```json
+{"schema":"forecast-reply-context-v1","complete":true,
+ "scope":"forecast_context_assistant_replies",
+ "as_of":"2026-01-01T00:00:00Z","evaluation_block":"synthetic-block",
+ "reply_refs":[{"turn_id":"synthetic-prior","response_sha256":"exact-final-digest"}]}
+```
+
+The producer attests that these 1–6 references are the complete assistant subset
+of its context, ordered by finalization time. `as_of` must equal
+`self.context_last_ts` and precede arrival. Each reference must be strictly
+eligible, have the same surface, an exact final-response digest and an embedding
+from the forecast checkpoint's encoder. Repeated, target, tied-time, reordered,
+future, missing and conflicting references are unavailable. Individual vectors
+are normalized before averaging; a zero mean is unavailable.
+
+Missing controls retain the head observation and increment a separate reason
+count. Comparisons pair all three errors on the exact same targets and separate
+checkpoint/encoder/surface/source and explicit evaluation blocks. The aggregate
+uses ordinal comparison/checkpoint groups, never private identifiers; its paired
+head mean is distinct from the overall head mean. Positive improvement means
+baseline error minus head error. These are descriptive errors, not calibrated
+pass verdicts or confidence intervals. Existing head percentiles still use only
+strictly earlier outcomes within their checkpoint group, across blocks.
+
+No live producer emits this context receipt yet. A supplied receipt is a producer
+attestation, not independent proof of prompt contents. Synthetic contract tests
+are not a real-data baseline win, and this adds no feed or eligibility backfill.
