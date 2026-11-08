@@ -186,3 +186,29 @@ Final local validation: shared contract **52/52**, capture **10/10**, hook/sink
 **9/9**, offline adapter **6/6**, witness **35/35**, router **15/15**, ownership
 **11/11**: **138 OS-isolated checks passed**. Generated reports and whitespace
 checks are current. No merge or deployment.
+
+## 8 November 2026 — approved capture base; explicit source origins
+
+Claude note 7 approves f51b1d3d, reporting full isolated suites 594/594 against
+deploy and 597/597 against live, integrated as `6e452ae6`. Started
+`codex/judges-context-receipts` from that integrated tip; no merge/deploy by Codex.
+
+Ordinary external leaves now require an explicit allowlisted origin and exact
+source-version digest. Added a pure constructor for known counterpart input,
+sensor observations and operator configuration. Bare or unsupported origins
+remain unknown, including an unmarked generated reply. Generated material must
+use its dependency graph; no legacy backfill or live eligibility changes.
+Producer hooks and complete context/effect ancestry remain unfinished.
+
+Synthetic Mac scratch benchmark of the full finish_shadow path including fsync:
+100 measured calls after 5 warmups, 0.510 ms median, 0.564 ms p95, 0.637 ms max;
+105 synthetic packets, private temporary directory removed afterward. This is
+one local filesystem sample, not Aegis latency or permission to enable a harness.
+
+The prescribed SSH route failed authentication. No alternate route was used and
+no private inputs were read. Real-snapshot census and Aegis latency measurement
+remain blocked pending authorized access or Claude's scratch execution. No real
+data numbers are claimed. Required blocker notification was delivered.
+Focused validation: strict witness 37/37, capture replay 6/6, existing provenance
+11/11 and ownership 11/11: **65 isolated checks passed**. Reports regenerated;
+whitespace clean. Full Aegis review remains pending for this increment.

@@ -6030,7 +6030,12 @@ avatar handler and an explicit private scratch sink, disabled by default.
 Synthetic-only; no live feed changes or production capture yet. Complete
 context ancestry, other surfaces and source-store integration remain open. See
 `codex/judges-capture-replay` for the stacked offline packet adapter; it reports
-current packets as held and does not enable production capture. See
+current packets as held and does not enable production capture.
+The capture stack is now approved and integrated at `6e452ae6` (Claude reports
+594/594 and 597/597 full suites). `codex/judges-context-receipts` continues with
+explicit external-source origins; complete producer ancestry and the real
+scratch census remain open. Authorized SSH authentication currently blocks the
+real snapshot and Aegis write-latency measurement. See
 [implementation log](judges-witness-log.md) for the scope and outstanding
 provider/context receipt hooks. Claude Code owns independent review, the full
 isolated Aegis suite and test merge. The ten-minute coordination heartbeat stays

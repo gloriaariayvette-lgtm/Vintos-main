@@ -221,3 +221,18 @@ The adapter never substitutes framework handoff for delivery or fabricates
 missing dependencies. Synthetic integration tests run the private sink through
 the real offline CLI twice, preserving the input and reproducing the report.
 This is contract validation, not a real-data census or model accuracy result.
+
+## External source leaves
+
+An `ordinary_source` leaf requires an explicit origin from
+`counterpart_verbatim`, `sensor_observation`, or `operator_configuration`, plus
+the SHA-256 of the exact text version used. `source_node()` constructs this
+producer attestation; it never guesses origin from wording. Missing/unsupported
+origins, missing digests, generated-reply markers or parents on an external leaf
+remain unknown. Generated material must retain its typed dependency graph.
+An allowlisted label is a producer contract, not cryptographic authentication;
+producer integration still must verify which source it actually read.
+
+This does not backfill origins or make current capture roots complete. Existing
+live eligibility/readers are unchanged; stricter ancestry applies only to the
+new shadow witness.

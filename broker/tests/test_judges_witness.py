@@ -178,6 +178,31 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.nodes["effect"] = {"id": "effect", "kind": "behaviour_receipt", "at": 60, "complete": True, "parents": []}
         self.assertEqual(self.admit(), "influenced_lineage")
 
+    def test_external_source_requires_origin_and_exact_version(self):
+        self.nodes["context-1"]["parents"] = ["external"]
+        for origin in sorted(W.SOURCE_ORIGINS):
+            self.nodes["external"] = W.source_node("external", origin, 80, "synthetic input")
+            self.assertEqual(self.admit(), "eligible")
+        clean = copy.deepcopy(self.nodes["external"])
+        for field in ("origin", "source_sha256"):
+            self.nodes["external"] = dict(clean)
+            del self.nodes["external"][field]
+            self.assertEqual(self.admit(), "unknown_lineage")
+        for origin in ("reply", "value_map", "journal", "unknown", ""):
+            self.nodes["external"] = dict(clean, origin=origin)
+            self.assertEqual(self.admit(), "unknown_lineage")
+            with self.assertRaises(ValueError): W.source_node("external", origin, 80, "synthetic input")
+        self.nodes["external"] = dict(clean, source_sha256="bad")
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["external"] = dict(clean, parents=["missing-generated-parent"])
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_unmarked_reply_cannot_become_an_external_leaf(self):
+        self.nodes["context-1"]["parents"] = ["unmarked"]
+        self.nodes["unmarked"] = {"id": "unmarked", "kind": "ordinary_source", "at": 80,
+                                  "parents": [], "complete": True}
+        self.assertEqual(self.admit(), "unknown_lineage")
+
     def test_unknown_lineage_never_clean(self):
         for mutation in ({"parents": ["missing"]}, {"parents": ["context-1"]},
                          {"complete": False}, {"at": 101}, {"kind": "unrecognized"}):
@@ -191,8 +216,8 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
     def test_reply_shaped_ordinary_leaf_is_unknown(self):
         self.nodes["context-1"]["parents"] = ["pretend-source"]
         for shape in ({"role": "assistant"}, {"turn_id": "prior-reply"}, {"reply_text": "synthetic"}):
-            self.nodes["pretend-source"] = dict(id="pretend-source", kind="ordinary_source",
-                                                at=80, complete=True, parents=[], **shape)
+            self.nodes["pretend-source"] = dict(W.source_node(
+                "pretend-source", "counterpart_verbatim", 80, "synthetic input"), **shape)
             self.assertEqual(self.admit(), "unknown_lineage")
 
     def test_reply_node_propagates_direct_and_indirect_influence(self):

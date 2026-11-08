@@ -11,10 +11,25 @@ SCHEMA = "behaviour-witness-v1"
 INFLUENCING = frozenset(("character_score", "behaviour_receipt", "judge_effect",
                          "tactical", "emotion_nudge"))
 KINDS = INFLUENCING | frozenset(("context", "value_map", "ordinary_source", "reply"))
+# Only external input or operator configuration may terminate ancestry. Generated
+# material must retain its dependency graph, even when it has no influence marker.
+SOURCE_ORIGINS = frozenset(("counterpart_verbatim", "sensor_observation", "operator_configuration"))
 
 
 def digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def source_node(node_id, origin, at, content):
+    """A producer-attested external leaf, bound to the exact version it read.
+
+    This does not authenticate a producer or infer origin from content. Callers
+    must know the source; generated and legacy unknown material cannot use it.
+    """
+    if not isinstance(origin, str) or origin not in SOURCE_ORIGINS or not isinstance(content, str):
+        raise ValueError("external source origin and exact text required")
+    return {"id": _name(node_id), "kind": "ordinary_source", "origin": origin,
+            "source_sha256": digest(content), "at": instant(at), "complete": True, "parents": []}
 
 
 def instant(value):
@@ -143,6 +158,13 @@ def lineage_status(root, nodes, before):
                 "turn_id", "reply_text", "response_sha256", "witness_receipt"))):
             # Generated outputs must use the reply contract, not an ordinary leaf.
             return "unknown"
+        if kind == "ordinary_source":
+            if not isinstance(n.get("origin"), str) or n["origin"] not in SOURCE_ORIGINS or parents:
+                return "unknown"
+            try:
+                _hash(n.get("source_sha256"))
+            except (TypeError, ValueError):
+                return "unknown"
         visiting.add(key)
         states = [visit(p, at) for p in parents]
         visiting.remove(key)
