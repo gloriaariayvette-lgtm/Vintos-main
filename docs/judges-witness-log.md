@@ -553,3 +553,21 @@ Reports regenerated and whitespace checked. Synthetic fixtures only. The receipt
 stays private and proves neither source authenticity nor complete dependencies.
 Full isolated Aegis review remains with the independent reviewer. No retained
 input reads, model calls, real test sends, live writes, merge or deployment.
+
+
+## 8 November — validate every matching embedding copy
+
+`codex/judges-embedding-copy-validity` continues from eefb3764 with prior review
+tips fixed. Synthetic fixtures reproduced order-dependent acceptance: a numeric
+vector first and a boolean-containing duplicate second compare equal in Python,
+so only validating the first copy incorrectly admitted the evidence. Reversing
+the copies held it. The same issue affected forecast-context baselines.
+
+Every matching copy now passes finite, numeric, dimension and norm validation.
+Malformed target copies hold the forecast; malformed context copies hold only
+its paired controls. Valid equal integer/float copies remain usable. Two new
+regression methods produced four failures before the repair and pass afterward.
+152 affected isolated checks pass: witness 90, capture 27, replay adapter 6,
+hooks 18, ownership 11. Reports regenerated and whitespace checked. Evidence is
+synthetic, not a claim about live data. No model calls, private snapshots, live
+writes, feed changes, merge or deployment. Independent Aegis review remains pending.

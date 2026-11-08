@@ -423,6 +423,32 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                     self.assertEqual(rows,[])
                     self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
 
+    def test_boolean_embedding_copy_never_hides_behind_numeric_equality(self):
+        valid = dict(self.e, emb=[1.0, 0.0])
+        for bad_vector in ([True, 0.0], [1.0, False], [True, False]):
+            bad = dict(valid, emb=bad_vector)
+            for copies in ([valid, bad], [bad, valid]):
+                with self.subTest(vector=bad_vector, bad_first=copies[0] is bad):
+                    _, rows = self.score(embeddings=copies)
+                    self.assertEqual(rows, [])
+        # Integers are numeric evidence, unlike booleans; equal valid copies remain usable.
+        _, rows = self.score(embeddings=[valid, dict(valid, emb=[1, 0])])
+        self.assertEqual(len(rows), 1)
+
+    def test_boolean_context_embedding_copy_holds_only_baselines(self):
+        for bad_first in (False, True):
+            data = self.controls_fixture()
+            bad = dict(data[2][0], emb=[True, False])
+            data[2].insert(0 if bad_first else len(data[2]), bad)
+            report, rows = self.control_score(data)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable")
+            self.assertEqual(report["baselines"]["paired_groups"], [])
+        data = self.controls_fixture()
+        data[2].append(dict(data[2][0], emb=[1, 0]))
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["status"], "available")
+
     def test_innovation_container_shape_is_not_silently_empty(self):
         for forecasts,embeddings,checkpoints in (({},[],{}),([],{},{}),([],[],[])):
             with self.subTest(forecasts=forecasts,embeddings=embeddings,checkpoints=checkpoints):

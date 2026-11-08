@@ -6272,3 +6272,12 @@ the offline replay. 150 affected isolated checks pass. Scoring and witness holds
 are unchanged; no upstream provenance is inferred. The receipt is private and
 not a source-authenticity attestation. Independent review/full Aegis validation
 remain pending; previous pushed review tips stay fixed.
+
+
+## 8 November — duplicate embedding validity
+
+`codex/judges-embedding-copy-validity` removes order-dependent acceptance of
+boolean-containing duplicate embeddings in offline scoring and paired controls.
+Every matching copy must be valid; equal valid numeric copies remain accepted.
+152 affected isolated checks pass. Independent review/full Aegis suite remain
+pending. Prior review tips and every live feed are unchanged.

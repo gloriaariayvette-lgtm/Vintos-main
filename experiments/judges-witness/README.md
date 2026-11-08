@@ -555,3 +555,15 @@ text. It is not a signature, proof of source authenticity, complete dependency
 lock, or attestation of the interpreter's loaded runtime. It does not repair
 missing lineage or prove that a snapshot is complete. All existing strict holds,
 scoring, live feeds and capture enablement remain unchanged.
+
+
+### Every embedding copy must be valid
+
+All cached copies matching a target's response hash and encoder are validated
+individually, including copies that compare numerically equal. Python considers
+booleans equal to 0/1, but boolean embedding components are invalid evidence.
+A valid first copy cannot hide a later malformed one, and input ordering cannot
+change this decision. Matching context copies receive the same check. Invalid
+target copies hold the forecast; invalid context copies make paired baselines
+unavailable while preserving the independently valid head score. Equal valid
+integer/float copies remain usable. This repairs offline scoring only.

@@ -368,8 +368,11 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
                        and e.get("response_sha256") == r["response_sha256"]]
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 return unavailable("missing_or_conflicting_context_embedding")
+            # Python numeric equality can hide booleans behind 0/1 in a later
+            # duplicate. Every matching copy must independently be a valid vector.
+            for match in matches:
+                cosine_error(match.get("emb"), actual)
             vector = matches[0]["emb"]
-            cosine_error(vector, actual)  # same dimension, finite and nonzero
             norm = math.hypot(*vector)
             vectors.append([x / norm for x in vector])
         mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
@@ -448,7 +451,10 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 held["missing_or_conflicting_embedding"] += 1
                 continue
-            error = cosine_error(head["emb"], matches[0]["emb"])
+            # Validate all copies before selecting one; equality alone does not
+            # establish numeric validity (True == 1 and False == 0).
+            errors = [cosine_error(head["emb"], match.get("emb")) for match in matches]
+            error = errors[0]
             selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
             if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
                 held["unknown_target_generator"] += 1
