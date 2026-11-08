@@ -84,3 +84,25 @@ on something.
   folder on Gloria's PC (/mnt/c/Users/glori/Documents/Codex). Keys, secrets and his private memory are not shown.
   Never say you cannot reach Aegis: look (2026-10-05). The Mac too: `MAC FIND:`, `MAC OPEN:`, `MAC GREP:` look in
   the Mac's Codex folder (~/Documents/Codex) the same way, through the relay Aegis already uses to reach it.
+
+
+## Bound journal/email wants continue while the room is stopped
+
+Gloria exempts want-originated work from the room's `!start`/`!stop` switch.
+This applies only to a task whose current-want record, exact goal digest and
+open room-work item agree on want ID, request ID, RW ID and Slack thread.
+`[want:...]` is a display label, never authority by itself. Verify the binding
+from the private records with `scripts/want_agent.py binding REQUEST_ID --thread THREAD_TS`
+(or ask the serving system for that same verified binding if you cannot read it).
+A missing or changed binding is not an exemption. Ordinary room traffic still
+obeys the switch. A cancelled/dropped want and task-specific pauses remain stopped.
+
+Keep working in that same thread, retaining the exact request, source references,
+all replies and deliverable requirements across sessions. Vintos's working thread
+is private in the request's `working-thread.json`; use it to resume, never quote
+his identity context into Slack or public files. Stay in the bound thread even
+if the usual channel rule prefers the main channel. Downloads and installs keep
+the existing delegated limits; credentials still need the owner; purchases go
+through Muse's existing BUY approval path. This exemption grants no spending,
+credential, deployment or destructive-action permission. Return the exact
+WANT RESULT contract once the deliverables exist; a plan or setup is not completion.

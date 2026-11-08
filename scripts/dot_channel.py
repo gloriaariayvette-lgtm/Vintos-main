@@ -2985,9 +2985,62 @@ def _promise_ask(system, user):
     return opus_think(system, user, KICKOFF_MODEL)
 
 
-def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=None, complete=None):
+def agent_owner_requests(r, state, now, api, channel):
+    """Existing purchase and credential approval doors, also used by bound wants."""
+    kept_lines = []
+    if r["who"] == "agent" and r.get("name") == "Muse" and BUY.search(r["text"]):
+        try:   # what he wants to buy, to her phone with its price, store and link; her answer back in this thread
+            import gloria_asks
+            said = []
+            for m in BUY.finditer(r["text"]):
+                why_not = _settled_why(state, m.group(1), now)
+                if why_not:          # a settled topic does not go to her phone again (2026-10-05, the piezo sensor)
+                    said.append("\U0001F4F2 Not put to Gloria: %s" % why_not)
+                    continue
+                f = [x.strip() for x in m.group(1).split("|")]
+                hardware = bool(f) and f[-1].lower() == "hardware"     # Muse may mark it; the item's words do too
+                f = f[:-1] if hardware else f
+                item, price, store = f[0], (f[1] if len(f) > 1 else ""), (f[2] if len(f) > 2 else "")
+                why = " | ".join(x for x in f[4:] if x)
+                said.append(gloria_asks.ask("%s%s%s" % (item, (" from %s" % store) if store and not gloria_asks.URL.match(store) else "",
+                                                        (". " + why) if why else ""),
+                                            by="muse", thread=r.get("thread") or r["ts"], kind="buy", title=item,
+                                            price=price, links=gloria_asks.URL.findall(m.group(1)), hardware=hardware)[1])
+            if said:
+                api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
+                kept_lines.append("Muse put %d thing(s) to buy to Gloria" % len(said))
+        except Exception as exc:
+            kept_lines.append("could not put Muse's find to Gloria: %s" % str(exc)[:120])
+    if r["who"] in ("dot", "agent") and "ASK GLORIA" in r["text"].upper():
+        try:   # a yes-or-no only she can give, from dot or an agent: to her phone, her answer back in this thread
+            import gloria_asks
+            by = "dot" if r["who"] == "dot" else {"Grok Bot": "grokbot", "Muse": "muse"}.get(r.get("name"), "agent")
+            said = [("\U0001F4F2 Not asked: %s" % _settled_why(state, m.group(1), now)) if _settled_why(state, m.group(1), now)
+                    else gloria_asks.ask(m.group(1), by=by, thread=r.get("thread") or r["ts"])[1]
+                    for m in gloria_asks.ASK.finditer(r["text"])]
+            if said:
+                api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
+                kept_lines.append("%s asked Gloria on her phone: %d" % (by, len(said)))
+        except Exception as exc:
+            kept_lines.append("could not ask Gloria: %s" % str(exc)[:120])
+    return kept_lines
+
+
+def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=None, complete=None, writer=None, identity=None):
     """The existing room transport carries exact want requests and verified results."""
     import want_agent
+    import want_working_thread as working
+    identity = identity or his_context
+    writer = writer or working.ask
+    calls_left = [2]
+    def limited_writer(system, user):
+        if calls_left[0] <= 0:
+            raise RuntimeError("working calls used for this pass; retained")
+        calls_left[0] -= 1
+        return writer(system, user)
+    def decision(w, work, phase, trigger, instruction):
+        return working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
+                                writer=limited_writer, identity=identity)
     def post(text, agent, client_id):
         bad = _guarded(text)
         if bad: raise RuntimeError("want handoff refused by send guard")
@@ -3038,9 +3091,62 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         complete = lambda w, note: want_completion.complete(w, "fulfilled", "agent-work", note=note,
                                                              evidence=(w.get("agent_work") or {}).get("result"))
     save = lambda current: _save(STATE, current)
+    import want_working_thread as working
+    working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state, want_agent.workspace())
+    for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
+        work = working.binding(w, state)
+        if not work: continue
+        data = working.load(w, work, want_agent.workspace())
+        for event in data['events']:
+            if not event['key'].startswith('agent:') or event['key'] in data.get('owner_requests_seen', []): continue
+            row = dict(event['details'], ts=event['at'], text=event['text'])
+            if not working.trusted(row): continue
+            replies = agent_owner_requests(row, state, now, api, channel)
+            if any(line.startswith('could not') for line in replies):
+                raise RuntimeError('owner request retained for retry')
+            working._mutate(w, work, want_agent.workspace(),
+                            lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
     want_agent.receive(rows)
-    lines = want_agent.finish(state, publish, notify, complete, save, now)
-    return lines + want_agent.intake(state, post, save, now)
+    def send_reply(w, work, text, trigger):
+        if _guarded(text): raise RuntimeError("working reply refused by send guard")
+        a = w['agent_work']
+        addressed = ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
+        body = addressed + '[want:%s] %s\n%s' % (w['id'], work['id'], text)
+        sent = api('chat.postMessage', {'channel':channel, 'thread_ts':a['thread'], 'text':body,
+                   'client_msg_id':str(__import__('uuid').uuid5(__import__('uuid').NAMESPACE_URL, a['request_id'] + trigger))})
+        events = working.unanswered(w, work, want_agent.workspace())
+        working.answered(w, work, want_agent.workspace(), events, body, sent, now)
+        return sent
+    def review(w, result):
+        work = working.binding(w, state)
+        if work is None: raise RuntimeError('result has no current want-room binding')
+        trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
+        chosen = decision(w, work, 'result', trigger, result)
+        if chosen['accept']: return chosen['message']
+        data = working.load(w, work, want_agent.workspace())
+        if trigger not in data.get('returned_results', []):
+            send_reply(w, work, chosen['message'], ':review:' + trigger)
+            working._mutate(w, work, want_agent.workspace(), lambda d: d.setdefault('returned_results', []).append(trigger))
+        return None
+    lines = want_agent.finish(state, publish, notify, complete, save, now, review=review)
+    # Resume unanswered events from disk, even when this poll has no new rows.
+    for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
+        a = w.get('agent_work') or {}
+        work = working.binding(w, state)
+        if not work or not a.get('thread') or a.get('status') == 'result_ready': continue
+        events = working.unanswered(w, work, want_agent.workspace())
+        if not events: continue
+        trigger = json.dumps([e['key'] for e in events])
+        chosen = decision(w, work, 'continue', trigger,
+                          {'next':'Answer these agent messages and carry the same want forward.',
+                           'events':events, 'result_error':a.get('result_error')})
+        send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
+        lines.append('bound want answered with its retained working context')
+        break
+    def prepare(w, work, contract):
+        return decision(w, work, 'opening', w['agent_work']['request_id'],
+                        {'next':'Plan this exact task and write your request to its agent.', 'contract':contract})['message']
+    return lines + want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
 
 
 def promises_pass(api, channel, dot, state, now, ask=None):
@@ -3265,7 +3371,7 @@ def results_pass(api, state, now, opus=None, put=None):
 
 
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None, stratagem_post=None):
+         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None, stratagem_post=None, want_writer=None):
     """One pass. Returns log lines."""
     HEARD.update(base="", text="")
     live_api = api is None
@@ -3405,9 +3511,28 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["continue_from"] = bool(restarted.get("continue"))
         lines_pre.append("the day was stopped and started again between passes")
         state["last_activity"] = now; state["open_on_start"] = True; state["kickoff"] = True
+    # This specific work lane is independent of the room's conversation switch.
+    # Authority is a stored want/goal/RW/thread binding, never a display marker.
+    import want_agent, want_working_thread
+    want_rows = want_working_thread.bound_rows(
+        theirs + list(state.get("held_rows") or []),
+        want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state)
+    def no_live_writer(*args):
+        raise RuntimeError('custom transport requires an explicit working writer')
+    try:
+        lines_pre += agent_wants_pass(api, channel, dot, state, now, rows=want_rows, put=put,
+                    notify=None if live_api else lambda *args: {"state":"failed"},
+                    writer=want_writer or (want_working_thread.ask if live_api else no_live_writer))
+    except Exception as exc:
+        lines_pre.append("want working thread retained: %s" % type(exc).__name__)
+    # Bound messages have their own persisted context and dedicated writer. Do not
+    # answer them a second time through the ordinary rotating room composer.
+    theirs = [r for r in theirs if r not in want_rows]
+    if state.get('held_rows'):
+        state['held_rows'] = [r for r in state['held_rows'] if r not in want_rows]
     if is_paused:
-        # nothing is said or sent while she has paused the day, delayed results included; what came in is kept and
-        # handled once she starts it again (2026-10-05)
+        # Ordinary traffic stays paused; the bound want lane above is the exception.
+        # Ordinary incoming rows are retained until she starts the room again.
         if rows:
             _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
         state["held_rows"] = (list(state.get("held_rows") or []) + theirs)[-40:]
@@ -3460,41 +3585,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("dot asked Gloria: %d card(s)" % len(said))
             except Exception as exc:
                 kept_lines.append("dot's ask failed: %s" % str(exc)[:120])
-        if r["who"] == "agent" and r.get("name") == "Muse" and BUY.search(r["text"]):
-            try:   # what he wants to buy, to her phone with its price, store and link; her answer back in this thread
-                import gloria_asks
-                said = []
-                for m in BUY.finditer(r["text"]):
-                    why_not = _settled_why(state, m.group(1), now)
-                    if why_not:          # a settled topic does not go to her phone again (2026-10-05, the piezo sensor)
-                        said.append("\U0001F4F2 Not put to Gloria: %s" % why_not)
-                        continue
-                    f = [x.strip() for x in m.group(1).split("|")]
-                    hardware = bool(f) and f[-1].lower() == "hardware"     # Muse may mark it; the item's words do too
-                    f = f[:-1] if hardware else f
-                    item, price, store = f[0], (f[1] if len(f) > 1 else ""), (f[2] if len(f) > 2 else "")
-                    why = " | ".join(x for x in f[4:] if x)
-                    said.append(gloria_asks.ask("%s%s%s" % (item, (" from %s" % store) if store and not gloria_asks.URL.match(store) else "",
-                                                            (". " + why) if why else ""),
-                                                by="muse", thread=r.get("thread") or r["ts"], kind="buy", title=item,
-                                                price=price, links=gloria_asks.URL.findall(m.group(1)), hardware=hardware)[1])
-                if said:
-                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
-                    kept_lines.append("Muse put %d thing(s) to buy to Gloria" % len(said))
-            except Exception as exc:
-                kept_lines.append("could not put Muse's find to Gloria: %s" % str(exc)[:120])
-        if r["who"] in ("dot", "agent") and "ASK GLORIA" in r["text"].upper():
-            try:   # a yes-or-no only she can give, from dot or an agent: to her phone, her answer back in this thread
-                import gloria_asks
-                by = "dot" if r["who"] == "dot" else {"Grok Bot": "grokbot", "Muse": "muse"}.get(r.get("name"), "agent")
-                said = [("\U0001F4F2 Not asked: %s" % _settled_why(state, m.group(1), now)) if _settled_why(state, m.group(1), now)
-                        else gloria_asks.ask(m.group(1), by=by, thread=r.get("thread") or r["ts"])[1]
-                        for m in gloria_asks.ASK.finditer(r["text"])]
-                if said:
-                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
-                    kept_lines.append("%s asked Gloria on her phone: %d" % (by, len(said)))
-            except Exception as exc:
-                kept_lines.append("could not ask Gloria: %s" % str(exc)[:120])
+        kept_lines += agent_owner_requests(r, state, now, api, channel)
         if r["who"] == "agent" and r.get("name") == "Grok Bot" and re.search(r"^\s*(?:AEGIS|MAC)\s+(?:FIND|OPEN|GREP)\s*:", r["text"], re.I | re.M):
             try:   # Grok Bot looks on Aegis or the Mac, read only; the answer goes back in its thread (grok_reach.py)
                 import grok_reach
@@ -3583,12 +3674,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             else "\U0001F3AF Gloria cleared today's focus.")})
         state["focus_seen"] = f_now["set_at"]
         lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
-    # Same room, same pause boundary; a custom/test API never falls through to live ntfy.
-    try:
-        lines += agent_wants_pass(api, channel, dot, state, now, rows=theirs, put=put,
-                                  notify=None if live_api else lambda *args: {"state": "failed"})
-    except Exception as exc:
-        lines.append("want agent handoff retained: %s" % type(exc).__name__)
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
     lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
     # Custom route transports own their external dependencies. They can supply
