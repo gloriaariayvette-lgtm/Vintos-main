@@ -114,7 +114,7 @@ causality_engine.py value_map.py repair_case.py encounter.py
 jepa_predictor.py drift_head.py relational_head.py world_model.py
 gloria_prediction.py withheld_head.py self_pressure.py resonance_felt.py inner_context.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
-effect_gate.py toy_link.py device_patterns.py evidence_provenance.py heart_rate.py
+effect_gate.py toy_link.py device_patterns.py evidence_provenance.py witness_receipts.py heart_rate.py
 stratagem.py stratagem_turn.py stratagem_realtime.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
@@ -138,6 +138,7 @@ SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good 
 SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py chemistry_mcp.py"   # Lab instrument receipts and bounded protein-design MCP route
 SCRIPTS="$SCRIPTS residual_shadow.py"   # prospective exact-input EmoClaw receipts; residual inference remains offline
 SCRIPTS="$SCRIPTS subcon_target.py aeon-bar-record.json"   # his subconscious stays on the 26B until AEON passes the whole bar (pinned record), 2026-11-07
+SCRIPTS="$SCRIPTS emotion_read.py reading.py introspective_planning.py tension_identity_audit.py dd_scene_quarantine.py want_learning.py conflict_surface.py velqan-coiner.py image_sight.py"   # 26B -> AEON (Gloria 2026-11-08): these follow the flag in the checkout since 7 November, but were in no list, so Aegis kept running copies that call the MacBook 26B directly. conflict_surface and velqan-coiner too: "I didn't hold those back. Aeon."
 SCRIPTS="$SCRIPTS dream_shadow.py"   # the dream shadow trial: AEON writes and judges beside the live dream, into memory/shadow/dream only (2026-11-07)
 SCRIPTS="$SCRIPTS dream_wholeday.py"   # the whole-day dream shadow (option 2): AEON reads his whole day, dreams and judges, into memory/shadow/dream only (2026-11-08)
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
@@ -238,6 +239,7 @@ BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
 BINS="$BINS dream_poetry.py dream-poetry.py vintos-journal.sh"   # never in the manifest: the 2026-09-24 fix keeping poems out of the journal, and the journal's own changes, never reached Aegis (2026-09-30)
+BINS="$BINS gallery-walk.py imprint.py resonance-marks.py resonance_marks.py yearning-detector.py yearning_detector.py yearning_scars.py yearning-scars.py wants-conversation-check.py wants_conversation_check.py frame-engine.py frame_engine.py gloria-model-call.py model_config.py video_builder.py consent-audit.sh decade-function.sh midday-ground.sh morning-briefing.sh valence-drift-map.sh warm-idle-gratitude.sh"   # 26B -> AEON (2026-11-08): flag-routed in the checkout, in no list, so the installed copies still called the 26B
 BINS="$BINS resonance_afterglow.py resonance-afterglow.py resonance_pulse.py resonance-pulse.py output_shaping.py output-shaping.py behavior_boundaries.py behavior-boundaries.py self_drift.py self-drift.py"   # the map's nodes 1, 2, 8 and the field's self side: in no list, so never installed (2026-10-17)
 SCRIPTS="$SCRIPTS mutual_modification.py"   # the field between them (map node 35): in no list (2026-10-17)
 SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2026-10-17)
@@ -256,7 +258,7 @@ BINS="$BINS paid_http.py briefing-audio.sh introspection.sh idle-journal.sh"
 SCRIPTS="$SCRIPTS person_pages.py"   # his recurring interest in a person, gathered onto their page between emails (2026-10-19)   # every failure on Aegis, posted once to #fault-fix for the nightly fix (2026-10-19)   # his Spotify pick, on her Watch, in the avatar chat (2026-10-18)
 SCRIPTS="$SCRIPTS latent_diffuser.py"   # installed by hand before; a fix never reached Aegis (audit, 18 October)
 SCRIPTS="$SCRIPTS media_embed.py"   # his paintings, videos and music embedded by content (EmbeddingGemma 2, its own venv and store, beside nomic), 2026-10-22
-SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py"   # subconscious stores seed unresolved threads; a seeder that was never installed (2026-10-25). conflict_surface held: installing it turns on a Gemma call in every two-pass reply, waiting on her yes
+SCRIPTS="$SCRIPTS subcon_thread_seeds.py graph_mae.py"   # subconscious stores seed unresolved threads; a seeder that was never installed (2026-10-25). conflict_surface: installed with the 26B -> AEON switch (2026-11-08)
 SCRIPTS="$SCRIPTS toy_keepalive.py"   # the toy keepalive, until now a hand-placed copy the deploy never updated (2026-10-25)
 SCRIPTS="$SCRIPTS scenes_server.py"   # the projector's media server, until now a hand-placed copy that listed his whole art store (2026-10-25)
 SCRIPTS="$SCRIPTS outreach_feelings.py"   # feelings that may start an outreach, and the repetition limits on every trigger (2026-10-25)
@@ -559,6 +561,22 @@ if server_dst="$(dest bin/server.py)"; then
         printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"
         PLAN="$PLAN$SRC/$spec|$d
 "
+    done
+    # Twins: a regular copy beside the server, which scripts run from that tree import before the workspace copy.
+    # dest() picks one copy per name, so the server-side emoclaw_utils.py stayed on its October code, with its
+    # model calls hard-coded to the MacBook 26B (2026-11-08). The same reviewed source goes to both.
+    for _twin in emoclaw_utils.py; do
+        _tw_main="$(dest "scripts/$_twin")" && _tw_main="$(canonical_dest "$_tw_main")" || continue
+        for _tw_dir in "$(dirname -- "$server_dst")" ${live_server:+"$(dirname -- "$live_server")"}; do
+            _tw="$_tw_dir/$_twin"
+            [ -f "$_tw" ] && [ ! -L "$_tw" ] || continue
+            [ "$(canonical_dest "$_tw")" != "$_tw_main" ] || continue
+            case "$PLAN" in *"|$_tw
+"*) continue ;; esac
+            printf '  %-7s %-26s -> %s\n' "twin" "$_twin" "$_tw"
+            PLAN="$PLAN$SRC/scripts/$_twin|$_tw
+"
+        done
     done
 else
     ambiguous=1

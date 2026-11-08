@@ -4,6 +4,21 @@ vintos-websearch.py — Vintos's question-driven web exploration.
 Pulls a real question from her lived experience and searches for answers.
 Runs daily at 10 AM (complements YouTube at 2 PM).
 """
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 def _subcon_route(url, model):
     """The subconscious flag (subcon_target.py): this 26B route until AEON has passed the whole bar and Gloria flips it (everything moves, 2026-11-07)."""
     try:
@@ -137,8 +152,8 @@ SOUL = load_soul()
 
 def llm(system, prompt, temperature=0.7, image_path=None):
     try:
-        r = paid_http.send(requests.post, __file__, (LM_API if image_path else _subcon_url(LM_API)), json={
-            "model": (MODEL if image_path else _subcon_model(MODEL)),
+        r = paid_http.send(requests.post, __file__, (_vision_route(LM_API, MODEL)[0] if image_path else _subcon_url(LM_API)), json={
+            "model": (_vision_route(LM_API, MODEL)[1] if image_path else _subcon_model(MODEL)),
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
                 {"role": "user", "content": (
@@ -147,7 +162,8 @@ def llm(system, prompt, temperature=0.7, image_path=None):
                 )}
             ],
             "temperature": temperature,
-            "max_tokens": 2000
+            "max_tokens": 2000,
+            **(_vision_route(LM_API, MODEL)[2] if image_path else {})
         }, timeout=1200)
         msg = r.json()["choices"][0]["message"]
         text = msg.get("content", "") or ""
@@ -163,8 +179,8 @@ def llm(system, prompt, temperature=0.7, image_path=None):
 def llm_json(system, prompt, temperature=0.7, image_path=None):
     """LLM call that extracts JSON from anywhere in the response."""
     try:
-        r = paid_http.send(requests.post, __file__, (LM_API if image_path else _subcon_url(LM_API)), json={
-            "model": (MODEL if image_path else _subcon_model(MODEL)),
+        r = paid_http.send(requests.post, __file__, (_vision_route(LM_API, MODEL)[0] if image_path else _subcon_url(LM_API)), json={
+            "model": (_vision_route(LM_API, MODEL)[1] if image_path else _subcon_model(MODEL)),
             "messages": [
                 {"role": "system", "content": SOUL + "\n\n" + system},
                 {"role": "user", "content": (
@@ -173,7 +189,8 @@ def llm_json(system, prompt, temperature=0.7, image_path=None):
                 )}
             ],
             "temperature": temperature,
-            "max_tokens": 2000
+            "max_tokens": 2000,
+            **(_vision_route(LM_API, MODEL)[2] if image_path else {})
         }, timeout=1200)
         msg = r.json()["choices"][0]["message"]
         # Search ALL fields for JSON

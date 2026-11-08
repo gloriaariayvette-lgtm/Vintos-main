@@ -6020,3 +6020,12 @@ Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full 
   `6056939`. Merging it makes every deploy refuse until the cutover is prepared, so it is merged on the evening she
   does it: prepare on Aegis, deploy, finalize, enrol the rebuilt phone app (Xcode on the Mac), the Pi if active.
   Steps: docs/security-auth-rollout.md on that branch. Until then the house on Funnel :8443 accepts the default secret.
+## 8 November — judges witness slices, offline foundation
+
+`codex/judges-witness-slices` starts slices 1 and 2 with strict generation/effect
+receipts, an explicit snapshot census and causal on-message innovation joins.
+Synthetic-only; no live feed changes or production capture yet. See
+[implementation log](judges-witness-log.md) for the scope and outstanding
+provider/context receipt hooks. Claude Code owns independent review, the full
+isolated Aegis suite and test merge. The ten-minute coordination heartbeat stays
+active after batches; Gloria handles deployment.

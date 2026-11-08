@@ -34,6 +34,21 @@ from urllib import request as urlrequest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 HOME = Path.home()
 STATE_DIR = Path(os.environ.get("VINTOS_DESKTOP_STATE_DIR", HOME / ".vintos" / "desktop"))
 STATE_FILE = STATE_DIR / "state.json"
@@ -42,6 +57,7 @@ LOCK_FILE = STATE_DIR / "agent.lock"
 LOG_FILE = STATE_DIR / "events.jsonl"
 GEMMA_API = os.environ.get("VINTOS_GEMMA_API", "http://100.79.177.103:1234/v1/chat/completions")
 GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA_API, GEMMA_MODEL, GEMMA_EXTRA = _vision_route(GEMMA_API, GEMMA_MODEL)   # AEON's vision once the flag is AEON
 
 ALLOWED_ACTIONS = {
     "move", "click", "double_click", "right_click", "drag", "scroll",
@@ -296,6 +312,7 @@ To open an application use launch, or press "win", type its name, press enter. T
 Long tasks: work in stages and keep going until the task itself is done - opening the site is not done, finding the thing is not done, the thing playing or posted or visible IS done. Scroll to see more when what you want is not on screen; read titles before clicking; click the thumbnail or title of the exact result you chose; after a page loads, wait, then look again. For a video, done means the player is visibly playing that video. If the same action did nothing twice, do something different.
 Do not claim success unless it is verified: for anything visible, the current screenshot must show it. The mouse cursor is NOT drawn in screenshots - for cursor position use the DESKTOP "mouse" field (true desktop pixels) together with LAST RESULT. If the task is already done, return done now; do not repeat an action that already succeeded. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
         body = json.dumps({
+            **(GEMMA_EXTRA if self.model == GEMMA_MODEL else {}),
             "model": self.model,
             "messages": [{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + encoded}},
@@ -321,7 +338,7 @@ class GemmaVerifier:
         prompt = (f"TASK: {task}\nCLAIM: {claim}\n\nLook only at this screenshot. Does it visibly show that the claim is true "
                   "and the task is complete? Any error message, wrong value, or missing result means NO. "
                   'Answer with one JSON object only: {"verified": true|false, "seen": "what the screenshot actually shows, one sentence"}')
-        body = json.dumps({"model": self.model, "temperature": 0.0, "max_tokens": 120,
+        body = json.dumps({**(GEMMA_EXTRA if self.model == GEMMA_MODEL else {}), "model": self.model, "temperature": 0.0, "max_tokens": 120,
                            "messages": [{"role": "user", "content": [
                                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + encoded}},
                                {"type": "text", "text": prompt}]}]}).encode("utf-8")

@@ -39,8 +39,8 @@ scripts/unsaid_frontier.py scripts/unsaid_questions.py scripts/want_learning.py 
 scripts/world_model.py scripts/mischief-detector.sh bin/absence-map.sh bin/consent-audit.sh bin/decade-function.sh
 bin/first-light.sh bin/introspection.sh bin/midday-ground.sh bin/surprise-detector.sh bin/unprecedented-detector.sh
 bin/valence-drift-map.sh bin/warm-idle-gratitude.sh scripts/mirror.sh bin/self-model-update.sh""".split()
-VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py scripts/desktop_control.py
-scripts/browser_jev.py scripts/reelroom.py scripts/voice_local.py""".split()
+VISION = """bin/gallery-walk.py scripts/image_sight.py scripts/screen_share.py scripts/desktop_agent.py
+scripts/reelroom.py scripts/voice_local.py""".split()   # browser_jev and desktop_control: their text-only calls follow the flag (2026-11-08)
 
 def src(f): return open(os.path.join(REPO, f), encoding="utf-8").read()
 
@@ -123,13 +123,13 @@ for f in [x for x in SUBCONSCIOUS if x.endswith(".sh")]:
 check("the route command prints empty lines before the flip", subprocess.run(
     ["python3", os.path.join(REPO, "scripts", "subcon_target.py"), "route", "", ""], capture_output=True, text=True).stdout == "\n\n")
 
-print("--- vision and other callers are untouched ---")
+print("--- vision callers follow the flag to AEON's vision (2026-11-08) ---")
 for f in VISION:
     t = src(f)
-    check("%s stays on its own route" % f, ("_subcon" not in t and "SUBCON_" not in t), f)
+    check("%s follows the flag" % f, ("_vision_route(" in t) or (f.endswith("voice_local.py") and "brain_route(" in t), f)
 srv = src("bin/server.py").split("\n")
 photo = "\n".join(srv[srv.index(next(l for l in srv if l.startswith("async def _describe_photo"))):][:120])
-check("the server's photo and clip descriptions keep the 26B", "_subcon" not in photo and CHAT in photo)
+check("the server's photo and clip descriptions take AEON's vision", "_vision_route(" in photo)
 tone = [l for l in srv if "Rate the emotional tone of this message" in l]
 check("the server's tone read of her message follows the flag", any("_subcon_url(" in l for l in srv) and tone)
 

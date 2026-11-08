@@ -688,6 +688,21 @@ def _subcon_route(url, model):
         return url, model
 
 
+def _vision_route(url, model):
+    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
+    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
+    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
+    try:
+        import os as _o, sys as _s
+        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
+            if _d not in _s.path:
+                _s.path.append(_d)
+        import subcon_target
+        return subcon_target.vision_route(url, model)
+    except Exception:
+        return url, model, {}
+
+
 def _subcon_url(url):
     return _subcon_route(url, None)[0]
 
@@ -7912,12 +7927,14 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
     # Sight.  Always the local vision model, whoever is doing the answering.
     try:
       if not image_description:
+        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
         async with httpx.AsyncClient(timeout=60.0) as client:
             _vr = await paid_http.asend(client.post, __file__,
-                "http://100.79.177.103:1234/v1/chat/completions",
+                _vurl,
                 headers=LLM_AUTH_HEADERS,
                 json={
-                    "model": "gemma-4-26b-a4b-it-uncensored",
+                    **_vx,
+                    "model": _vmodel,
                     "messages": [{"role": "user", "content": [
                         {"type": "image_url", "image_url": {
                             "url": "data:" + content_type + ";base64," + photo_b64}},
@@ -8176,9 +8193,10 @@ async def _describe_clip(frames, heard="", local_only=False):
         except Exception as _ae:
             print("[vision clip] claude failed -> local:", str(_ae)[:80], flush=True)
     try:
+        _vurl, _vmodel, _vx = _vision_route("http://100.79.177.103:1234/v1/chat/completions", "gemma-4-26b-a4b-it-uncensored")
         async with httpx.AsyncClient(timeout=180.0) as client:
-            _vr = await paid_http.asend(client.post, __file__, "http://100.79.177.103:1234/v1/chat/completions", headers=LLM_AUTH_HEADERS,
-                json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 700,
+            _vr = await paid_http.asend(client.post, __file__, _vurl, headers=LLM_AUTH_HEADERS,
+                json={**_vx, "model": _vmodel, "temperature": 0.3, "max_tokens": 700,
                       "messages": [{"role": "user", "content":
                           [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in imgs]
                           + [{"type": "text", "text": prompt}]}]})
@@ -9047,7 +9065,7 @@ async def voice_token(request: Request, provider: str = "grok", ladder_call: str
             return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
                     "provider":"local", "instructions":instructions}
         return {"token":"local", "instructions":instructions, "provider":"local", "opening":_ladder_open,
-                "model":"gemma-4-26b-a4b-it-uncensored", "voice":"chatterbox-turbo-onyx", "jit":_jit,
+                "model":_vl._brain()[1], "voice":"chatterbox-turbo-onyx", "jit":_jit,
                 "audio_understanding":"Gemma 3n audio-native MLX-VLM"}
     if provider == "openai":
         _ok = _openai_key()

@@ -234,11 +234,11 @@ toks = set(" ".join(l.split("=", 1)[1].split("#")[0] for l in man.splitlines()
                    if l.startswith(("SCRIPTS=", "BINS="))).replace('"', " ").replace("$SCRIPTS", " ").replace("$BINS", " ").split())
 check("absence-map, graph_mae, surprise-detector and the feed are installed",
       {"absence-map.sh", "graph_mae.py", "surprise-detector.sh", "subcon_thread_seeds.py"} <= toks)
-check("conflict_surface is held out until she says yes: installing it adds a Gemma call to every two-pass reply",
-      "conflict_surface.py" not in toks)
-check("creative-search is installed (approved 28 October); velqan-coiner is not",
-      "creative-search.sh" in toks and "velqan-coiner.py" not in toks)
-check("velqan-coiner is not installed", "velqan-coiner.py" not in toks)
+# Gloria 2026-11-08: "I didn't hold those back. Aeon." Both are installed with the 26B -> AEON switch.
+check("conflict_surface is installed (its friction read follows the flag, so AEON)", "conflict_surface.py" in toks)
+check("creative-search is installed (approved 28 October); so is velqan-coiner",
+      "creative-search.sh" in toks and "velqan-coiner.py" in toks)
+check("velqan-coiner is installed", "velqan-coiner.py" in toks)
 check("idle-journal runs surprise-detector although the deploy installs it 644",
       '[ -f "$SCRIPTS/surprise-detector.sh" ]' in open(os.path.join(REPO, "bin", "idle-journal.sh")).read())
 cs = open(os.path.join(REPO, "scripts", "conflict_surface.py")).read()
