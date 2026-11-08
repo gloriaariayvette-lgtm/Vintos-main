@@ -6098,3 +6098,12 @@ same-time forecast identity checks, and separates target served-model revisions.
 Reference outcomes must predate the forecast, not merely its eventual reply.
 Retained-data measurements and full Aegis validation still belong to Claude;
 existing live self-head audits and feeds are untouched.
+
+
+## 8 November — malformed shadow innovation evidence
+
+`codex/judges-malformed-evidence` adds explicit held counts for malformed records
+and rejects wrong-shaped containers without guessing identities or dropping
+identifiable conflicting copies. 144 affected isolated checks pass. This offline
+reader change requires independent review/full Aegis validation; no live feeds,
+producers or historical admission are changed. See the judges witness log.
