@@ -323,7 +323,12 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
                 if not _update(w['id'], rid, {'publication': publication}, ws):
                     continue
                 a['publication'] = publication
-            delivery = notify(rid, result['summary'], publication['url'])
+            # Keep the first successful receipt stable across local ending retries.
+            # Re-entering the delivery door may add repeat metadata, which is not
+            # a new event in the persistent working conversation.
+            delivery = a.get('delivery')
+            if not delivery or delivery.get('state') not in ('sent', 'acknowledged'):
+                delivery = notify(rid, result['summary'], publication['url'])
             if not delivery or delivery.get('state') not in ('sent', 'acknowledged'):
                 raise ValueError('ntfy delivery unconfirmed; result retained for retry')
             # Persist result before the existing ending door archives the full want.

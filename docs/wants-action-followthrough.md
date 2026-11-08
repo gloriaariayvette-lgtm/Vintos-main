@@ -302,3 +302,34 @@ identity, crash/observer failures, concurrent identical events, continuation CLI
 retained history and notification deduplication. The existing want suite now has
 39 tests, including stop-switch message retention and actual room-boundary alerts.
 See `wants-budget-validation.json`. Full independent Aegis review remains pending.
+
+
+## Completion delivery follow-through
+
+`codex/wants-completion-delivery`, stacked on 31ec539a, repairs two failures
+reproduced through the actual delivery module with a synthetic HTTP transport.
+The default completion adapter previously omitted the required authority callback,
+so every completion notification was refused. It now supplies the existing task
+acceptance: this pass accepted this exact result and summary, and the retained
+publication still belongs to the unique current source-bound working thread.
+The dedicated stop switch is checked again at dispatch, including when it appears
+during upload. This adds no blanket permission for other notifications.
+
+A successful notification followed by a failed local ending also exposed a
+restart conflict: the delivery door's repeat metadata differed from the saved
+working-thread event. Local ending retries now reuse the first persisted successful
+receipt. Failed sends still retry through deliver without repeating file uploads;
+no send is represented as evidence that the owner read it.
+
+Five new integration fixtures cover the default adapter's successful send/local
+ending retry, HTTP failure/retry, stop arriving during publication, a source
+receipt changing before dispatch, and a result that the working review rejects.
+All store paths and outbound transports are explicitly isolated. Three tests
+failed against the parent; after the authority repair the ending retry reproduced
+the second failure, then passed with stable receipt reuse.
+
+Validation: 464 checks across seven isolated suites (follow-through 44, room 320,
+working controls 17, artifact delivery 39, artifact guard 11, thread doors 22,
+ownership 11). Full Aegis suite and independent review remain Claude's work.
+No real want, provider, upload or notification was exercised by these tests;
+external agent rules and production integration remain uninstalled.
