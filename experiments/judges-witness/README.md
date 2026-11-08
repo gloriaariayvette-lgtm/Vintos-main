@@ -47,7 +47,9 @@ retain the underlying reasons, counted per denied copy.
 
 For stores that append device marks, optional `witness_final_text` and
 `witness_final_sha256` preserve the exact producer-attested final response.
-Both must agree with each other and the generation receipt. They are carried
+Both must agree with each other and the generation receipt. Final text must
+equal stored content, except ledger rows may append device marks after it.
+Unrelated stored content is held even when the separate digest is valid. They are carried
 through the projection and used for scoring; no heuristic stripping or final
 payload backfill occurs. Producers still need to capture these at finalization.
 
@@ -156,3 +158,66 @@ Gloria's confirmation, and reference turns must stay separate from evaluation.
 Claude Code reviews this branch, runs the full isolated broker suite on an Aegis
 test merge, and handles reviewed integration. Gloria handles deployment. The
 ten-minute coordination heartbeat remains active between batches.
+
+
+## Capture increment in progress
+
+`scripts/witness_capture.py` keeps capture state request-local. The avatar handler
+observes results at all three router call sites, explicitly selects a raw reply
+after fallback/repeat decisions, then finalizes the exact return text after its
+last `guard_reply`. A packet records
+`handed_to_framework` separately from `delivery: unknown`; it cannot claim
+delivery. Context and reply nodes are explicitly incomplete. Attempt-history
+coverage remains incomplete until every route/provider attempt is observed.
+
+The shared `bin/gen_result.py` constructor and parsers keep their existing wire
+contract. Only the router's direct-response adapter adds observed identity,
+separate from its compatibility `model` field. Relay labels are retained as
+claims, never as verified served identity; missing identity stays unknown.
+The router's optional observer receives a deep copy of stage results, including
+cyclic stage lists, without changing its return tuple or fallback behaviour;
+observer errors or mutations do not alter the reply. Raw result text is used only for
+transient selection hashes; capture copies no provider reason/tool text.
+Selection by raw text is accepted only when exactly one observed attempt
+matches. Identical text from multiple attempts remains unknown, even when their
+model labels agree; explicit selected-attempt identity is still future work.
+
+Capture is disabled by default. The optional sink requires
+`JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to name the same existing, resolved,
+owner-private scratch directory. Live-store paths, symlinks, repository paths and
+their ancestors are refused. Each packet is a new mode-0600 file. It is written
+and synced under a temporary name, then published atomically using a hard link
+that refuses existing names; temporary files are removed on success or caught
+failure. An abrupt process kill can leave a hidden temporary file, which is
+never a published capture packet. There is no
+live-store writer or background reader. Packets contain the exact final text and
+are private artifacts, never Git inputs. Test-mode and supplied generation
+provenance are retained; absence remains unknown. Sink failures leave the reply
+unchanged. Do not enable this on a serving process: an authorized isolated
+harness must repoint all the handler's other stores and stub all senders too.
+
+Synthetic tests execute the actual handler's capture/router/final-guard/return
+segments with stubbed routing, and verify placement relative to all retries.
+They do **not** run the complete HTTP application or demonstrate live capture.
+On the integrated base, `scripts/server.py` is a symlink to `bin/server.py`;
+the test checks their content parity. Other chat/voice handlers, complete context
+dependency receipts, complete fallback-attempt coverage and source-store
+integration remain pending. No production capture is enabled by this branch.
+
+## Replaying scratch capture packets
+
+The offline bundle also accepts a source with `kind: "capture"` whose `rows`
+are explicit `witness-capture-v1` packet objects. There is no directory scan or
+live discovery: an authorized scratch harness supplies those objects in its
+private bundle and uses the same replay command above. The adapter retains each
+packet's reply node, incomplete context nodes, provenance and test exclusions.
+Identical repeated nodes are allowed across packets; conflicting nodes abort
+the replay, including conflicts with the bundle's explicit lineage. Duplicate
+identities in the explicit lineage list remain errors.
+
+Current packets have unconfirmed delivery and incomplete ancestry, so they
+contribute source/hold counts, **not eligible behaviour or innovation scores**.
+The adapter never substitutes framework handoff for delivery or fabricates
+missing dependencies. Synthetic integration tests run the private sink through
+the real offline CLI twice, preserving the input and reproducing the report.
+This is contract validation, not a real-data census or model accuracy result.
