@@ -22,6 +22,14 @@ def get_subconscious_context(include=None, *, carrying=False):
     parts = []
     all_systems = include is None
 
+    if all_systems or "completed_work" in include:
+        try:
+            from want_agent import block as completed_work
+            s = completed_work()
+            if s: parts.append(s)
+        except Exception:
+            pass
+
     # Self-statements — who he believes he is
     if all_systems or "statements" in include:
         try:
@@ -158,6 +166,14 @@ def get_subconscious_context_compact(include=None, *, carrying=False):
     [EMOCLAW PRESSURE] block at 200 characters, which left its tag open mid-sentence."""
     parts = []
     want = (lambda name: True) if include is None else (lambda name: name in include)
+
+    if want("completed_work"):
+        try:
+            from want_agent import block as completed_work
+            s = completed_work(limit=2)
+            if s: parts.append(s)
+        except Exception:
+            pass
 
     if want("statements"):
         try:

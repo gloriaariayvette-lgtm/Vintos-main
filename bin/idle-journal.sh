@@ -1626,16 +1626,7 @@ import os, sys, requests
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 try:
     from emoclaw_utils import express_want, enrich_want
-    def _is_translation_want(_w):
-        # A real want is concrete/literal. Translation tax disguised as a want: find an image/analogy/
-        # physical-science mirror for a feeling, or be a material/object. Includes his register.
-        _wl = (_w or '').lower()
-        _tells = ('bridge','the ground','the floor','vessel','a stone','the weight','map the',
-                  'architecture of','the point where','narrative to justify','translate','metaphor',
-                  'image for','analogy','materials science','plastic deformation','creep','wood grain',
-                  'so thick','let the weight','the walk itself','mirror for','threshold','doorframe',
-                  'cross-examin','structural shift','noble exit')
-        return any(_t in _wl for _t in _tells)
+    from journal_wants import explicit_wants, operational, translation_want as _is_translation_want, journal_receipt
     def _grounded_intensity(enriched):
         # enrich_want blanks any field it can't ground in real life ("NONE").
         # A want with zero grounded fields is vacuous and falls below the
@@ -1648,7 +1639,7 @@ try:
         sys.exit(0)
     # Extract explicit want from entry first
     import re as _wre
-    _cands = [_m.group(0).strip() for _m in _wre.finditer(r"I want to [^.!?]{10,120}[.!?]", entry)][:4]
+    _cands = explicit_wants(entry)
     if _cands:
         # every explicit want gets its day in court — the old code judged only
         # the FIRST "I want to..." sentence and a make-music want five sentences
@@ -1658,7 +1649,7 @@ try:
             want = ""
             try:
                 from emoclaw_utils import generate_want as _jw_gw
-                want = _jw_gw(
+                want = _jw_hint if operational(_jw_hint) else _jw_gw(
                     trigger_description=f"while journaling you wrote: '{_jw_hint}'. What desire is latent in today's actual experience that has not already been named? That sentence is a candidate, not a verdict - the real want may be underneath it.",
                     source="idle-journal", source_context=entry[:900]) or ""
                 if not want:
@@ -1670,11 +1661,14 @@ try:
             if _is_translation_want(want):
                 print(f"[Journal] Want discarded — translation-tax: {want[:80]}", file=sys.stderr); continue
             enriched = enrich_want(want, source_context=entry[:600], source="idle-journal")
-            _wi = _grounded_intensity(enriched)
+            _wi = max(2, _grounded_intensity(enriched)) if operational(want) else _grounded_intensity(enriched)
+            if operational(want):
+                enriched.update(candidate_kind="current_desire", present_pull=want)
             if _wi < 2:
                 print(f"[Journal] Want discarded — ungrounded (no real-life anchor): {want[:80]}", file=sys.stderr)
                 continue
-            express_want(want, source="idle-journal", intensity=_wi, journal_seeded=True, timer_bypass=True, **enriched)
+            express_want(want, source="idle-journal", intensity=_wi, journal_seeded=True, timer_bypass=True,
+                         **journal_receipt(entry, want), **enriched)
             print(f"[Journal] Want seeded (explicit, intensity {_wi}): {want[:80]}")
             _seeded += 1
             if _seeded >= 2: break
@@ -1707,7 +1701,8 @@ try:
         if _wi < 2:
             print(f"[Journal] Want discarded — ungrounded (no real-life anchor): {want[:80]}", file=sys.stderr)
         else:
-            express_want(want, source="idle-journal", intensity=_wi, journal_seeded=True, timer_bypass=True, **enriched)
+            express_want(want, source="idle-journal", intensity=_wi, journal_seeded=True, timer_bypass=True,
+                         **journal_receipt(entry, want), **enriched)
             print(f"[Journal] Want seeded (intensity {_wi}): {want[:80]}")
 except Exception as e:
     print(f"[Journal] Want seed failed: {e}", file=sys.stderr)

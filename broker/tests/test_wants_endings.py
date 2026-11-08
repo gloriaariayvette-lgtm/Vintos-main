@@ -4,7 +4,7 @@
 1. move_on dismisses for Gloria's silence only a want that was routed to her.
 2. An API error or a cut-off reply from the formation organ is not "nothing wanted"; a cut-off array keeps its
    complete candidates.
-3. The planner is held to the hands a want's source may use: unknown capabilities are dropped for a source that
+3. The planner is held to the hands a want's source may use: unknown capabilities remain obligations for a source that
    may not commission one, "plugin.tool" becomes plugin_query, and a spark source keeps its gap request.
 4. A dismissal archives the whole want.
 5. A dismissal the house made on its own clock (moved-on, population_cap) does not block re-formation, and the
@@ -168,8 +168,8 @@ REPLY["body"] = _plan
 steps = E.generate_steps("I want to find the paper she mentioned in her email", source="email")
 caps = [s["capability"] for s in steps]
 prompt = POSTS[-1][1]["messages"][0]["content"]
-check("for a source that may not commission a hand, unknown capabilities are dropped",
-      "gmail" not in caps and "computer_use" not in caps and "web_search" in caps, caps)
+check("a source without Forge authority keeps its missing steps as obligations",
+      "gmail" in caps and "computer_use" in caps and "web_search" in caps, caps)
 check("a plugin.tool name is never kept as a capability", "pubmed.search_articles" not in caps, caps)
 check("the prompt holds that source to the listed hands", "SOURCE LIMIT" in prompt and "e.g. computer_use" not in prompt, prompt[-1500:])
 steps = E.generate_steps("I want to work the thread about the pulse", source="latent_thread")
@@ -186,7 +186,7 @@ block = router[router.index("ACTION_MAP = {"):]
 acts |= set(re.findall(r'^\s+"([a-z_]+)":', block[:block.index("\n}")], re.M))
 desc_caps = {"read_memory", "web_search", "introspect", "write_poem", "make_art", "make_music", "make_video",
              "creative_write", "analyze_memory", "write_journal", "echo_announce", "play_on_tv", "be_mischievous",
-             "change_lights", "gloria", "send_email", "plugin_query", "plugin_skill"}
+             "change_lights", "gloria", "send_email", "plugin_query", "plugin_skill", "local_analysis"}
 missing = acts - set(E.ROUTER_STEP_ACTIONS) - desc_caps
 check("every action the router runs is a known hand to the planner", not missing, missing)
 
