@@ -6070,3 +6070,11 @@ and separate served-model/revision groups. It remains scratch-only and descripti
 Retained-data measurements, full Aegis suite/review, complete producer ancestry
 and any separately approved feed integration remain open. No historical witness
 eligibility is backfilled and no existing feed changes.
+
+
+`codex/judges-feedback-joins` adds explicit positive feedback joins to the shadow
+reader (note 2): exact adjacent chat reply plus literal laughter marker, and exact
+practice output plus 4–5-star rating. Missing/low/ambiguous evidence stays unknown.
+Production authentication/sequence receipts and verified retained-source adapters
+remain open. The existing weak laughter channel is unchanged. See experiment
+README for schema, limitations and private outputs; no feed or training change.

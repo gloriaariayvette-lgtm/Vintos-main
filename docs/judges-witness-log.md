@@ -335,3 +335,23 @@ separation and transitive exclusion when a behaviour receipt later influences a
 reply. No live feeds, source capture, LLM calls, fitting or real-data claims.
 
 Validation: witness 56/56, replay adapter 6/6 and ownership 11/11: **73 isolated checks passed**. CLI rebuilds reproduce both aggregate and private manifest bytes with 0600 output permissions. Full Aegis suite and retained-data results remain Claude's independent step.
+
+
+## 8 November 2026 — explicit feedback receipts
+
+Continued on `codex/judges-feedback-joins` from 0d950e7b. Implemented note 2's
+literal laughter marker and high practice-rating joins in the offline replay.
+Chat adjacency requires exact final-response identity and producer-attested
+consecutive timeline positions, including excluded/intervening events. Practice
+ratings require an exact eligible practice version. No time-window or text-prefix
+inference. Absent laughter, single ha and 1–3 stars remain unknown, not flops.
+Conflicting copies cannot select a favourable label; repeated ratings retain
+observations but do not multiply positive targets. Raw feedback text stays in the
+private input bundle; output receipts contain only private references/digests.
+
+This adds no live collector or authentication claim. Verified origin and complete
+sequence are still a producer obligation; historical capped records cannot be
+backfilled by assumption. Existing humor scripts, inference and every live feed
+remain untouched. Retained-data measurement/full Aegis review stay with Claude.
+
+Validation: witness 65/65, replay adapter 6/6, ownership 11/11: **82 isolated checks passed**. Includes positive and unknown controls, intervening replies, origin/version/clock errors, duplicate conflicts, strict rating joins and private-file restart/permissions. Whitespace clean; no real-data accuracy or installed behavior claim.

@@ -391,3 +391,59 @@ Current transitive influence checks already exclude such descendants. This
 increment is a scratch instrument, not a deployed character judge. Claude owns
 retained-data measurement and full isolated Aegis review; synthetic fixture
 results do not demonstrate real-world accuracy.
+
+
+### Explicit feedback joins (shadow only)
+
+The optional bundle `feedback_events` implements the operational labels from
+Claude coordination note 2, separately from the existing inferred-laughter feed.
+No live humor script, practice store or training input is changed. Missing events
+remain missing evidence. `aggregate.json.feedback` reports observations, reasons,
+held counts and unique targets with a recorded positive marker, never a flop rate.
+A target without positive evidence is unknown, including after a delayed return.
+
+Each event needs `schema: witness-feedback-v1` and a stable `event_id`. Feedback
+must explicitly carry `witnessed: true`; inferred, deleted, forgotten, estimated,
+imported or transplanted evidence is held. Identical event copies count once;
+conflicting copies are all held, with their timeline positions still occupied.
+
+For chat, provide both timeline events:
+
+- An `assistant_reply`: `turn_id`, `content_sha256`, `surface`, exact `at` equal
+  to its finalization time, `stream_id`, integer `position`, and
+  `sequence_complete: true`.
+- The immediately following `counterpart_message`: the same surface/stream,
+  `position` exactly one larger, `previous_event_id` naming the reply event,
+  `sequence_complete: true`, `origin: authenticated_owner_message`, `witnessed:
+  true`, offset-aware/epoch `at`, private `text`, and its exact `content_sha256`.
+
+The target must be independently strict-eligible in the census. The predecessor
+is resolved from all supplied timeline positions, never the eligible subset.
+Intervening excluded replies, gaps, collisions, changed versions/surfaces, missing
+sequence evidence and equal/reversed clocks cannot create a positive join.
+An isolated token `haha` or longer repeated `ha` (case-insensitive, optional final
+`h`) is the positive marker. A single `ha`, `lol`, an emoji or no such token stays
+unknown under this particular rule. This is literal marker detection, not a
+semantic or emotional judgment: quoted or sarcastic uses are not understood.
+
+For a practice, a `practice_rating` carries `origin: authenticated_owner_rating`,
+`witnessed: true`, `at`, integer `stars` 1–5, `target_turn_id`, `target_sha256`,
+and `surface: humor_practice`. It joins only that exact version of a strict
+census-admitted practice output on that surface. No text-prefix join or implicit
+mapping from a historical joke string. A 4 or 5 is positive; 1–3 are retained
+ratings with an unknown label, never negatives. Distinct repeated ratings remain
+separate observations but contribute at most one unique positive target. The
+summary says a positive was recorded, not that it is the latest preference.
+
+`private-feedback.json` (0600) contains event/target identities, feedback and
+target digests, timestamps, ratings and reason/label. It emits no raw message text
+or vector. It must stay outside Git. Aggregate reason counts are not permission
+to publish private timing/activity details elsewhere.
+
+Origin, complete sequence and practice surface are **producer attestations**;
+this reader does not authenticate an owner from JSON or manufacture a complete
+stream from a capped log. No live producer is added by this increment. A reviewed
+collector must establish those facts from actual retained sources, and keep
+unverifiable historical associations unknown. The old three-hour inference is
+preserved as its existing separate channel and is never promoted by this reader.
+No positive receipt bypasses target provenance or transitive influence exclusion.

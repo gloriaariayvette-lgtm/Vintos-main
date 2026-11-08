@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 import json
 import math
 import os
+import re
 from pathlib import Path
 import statistics
 import sys
@@ -184,6 +185,117 @@ def behaviour_receipt(admitted, start, cutoff, surfaces, snapshot_sha256=None):
                "coverage":"explicit snapshot only; stream completeness and missing-day activity unknown",
                "meaning":"word lengths and literal question marks, not authenticity, emotion or relationship quality"}
     return summary, receipt
+
+
+def feedback_receipts(admitted, events, cutoff):
+    """Explicit positive markers, not inferred mood or negative outcomes.
+
+    Timeline positions and origin are producer attestations. Never reconstruct
+    adjacency from the admitted subset: an excluded/intervening turn still breaks
+    the join. Practice ratings require an exact versioned practice target.
+    """
+    cutoff = instant(cutoff)
+    targets = {r["turn_id"]:r for r in admitted}
+    if len(targets) != len(admitted):
+        raise ValueError("feedback needs unique admitted targets")
+    if not isinstance(events, list): raise ValueError("feedback_events must be a list")
+    copies, held = defaultdict(list), Counter()
+    for event in events:
+        if not isinstance(event, dict) or not isinstance(event.get("event_id"), str) or not event["event_id"]:
+            held["missing_event_identity"] += 1
+            continue
+        copies[event["event_id"]].append(event)
+    unique = {}
+    for key, rows in copies.items():
+        if any(r != rows[0] for r in rows):
+            held["conflicting_event_identity"] += 1
+        else: unique[key] = rows[0]
+    # Include every claimed position, even excluded/conflicting/unknown events.
+    # They cannot disappear and create apparently immediate neighbours.
+    positions = defaultdict(set)
+    for rows in copies.values():
+        for e in rows:
+            if (isinstance(e.get("stream_id"), str) and e["stream_id"]
+                    and type(e.get("position")) is int and e["position"] >= 0):
+                positions[(e["stream_id"],e["position"])].add(e["event_id"])
+    observations = []
+    for key, event in sorted(unique.items()):
+        kind = event.get("kind")
+        if kind == "assistant_reply": continue
+        try:
+            if event.get("schema") != "witness-feedback-v1":
+                held["unsupported_feedback_schema"] += 1; continue
+            if (event.get("witnessed") is not True or any(event.get(k) for k in
+                    ("inferred", "deleted", "forgotten", "timestamp_estimated", "imported", "transplanted"))):
+                held["feedback_not_direct_witness"] += 1; continue
+            at = instant(event["at"])
+            if at >= cutoff:
+                held["feedback_at_or_after_cutoff"] += 1; continue
+            if kind == "counterpart_message":
+                if event.get("origin") != "authenticated_owner_message":
+                    held["unknown_feedback_origin"] += 1; continue
+                text = event["text"]
+                if not isinstance(text,str) or digest(text) != event["content_sha256"]:
+                    held["feedback_version_mismatch"] += 1; continue
+                stream, position = event["stream_id"], event["position"]
+                if (not isinstance(stream,str) or not stream or type(position) is not int or position < 1
+                        or event.get("sequence_complete") is not True):
+                    held["unknown_adjacency"] += 1; continue
+                here, prior = positions[(stream,position)], positions[(stream,position-1)]
+                if here != {key} or len(prior) != 1:
+                    held["ambiguous_or_missing_predecessor"] += 1; continue
+                previous = unique.get(next(iter(prior)))
+                if not previous or previous.get("kind") != "assistant_reply":
+                    held["predecessor_not_reply"] += 1; continue
+                if (previous.get("schema") != "witness-feedback-v1" or previous.get("sequence_complete") is not True
+                        or event.get("previous_event_id") != previous["event_id"]):
+                    held["unknown_adjacency"] += 1; continue
+                target = targets.get(previous.get("turn_id"))
+                if target is None:
+                    held["target_not_eligible"] += 1; continue
+                r = row_receipt(target)
+                if (previous.get("content_sha256") != r["response_sha256"]
+                        or previous.get("surface") != r["surface"] or event.get("surface") != r["surface"]
+                        or instant(previous["at"]) != r["finalized_at"]):
+                    held["target_version_surface_or_clock_mismatch"] += 1; continue
+                # The owner's literal marker rule, not an emotion classifier.
+                positive = bool(re.search(r"(?<!\w)(?:ha){2,}h?(?!\w)",text,re.I))
+                reason = "literal_haha_marker" if positive else "no_explicit_positive_marker"
+                value = None
+            elif kind == "practice_rating":
+                if event.get("origin") != "authenticated_owner_rating":
+                    held["unknown_feedback_origin"] += 1; continue
+                target = targets.get(event.get("target_turn_id"))
+                if target is None:
+                    held["target_not_eligible"] += 1; continue
+                r = row_receipt(target)
+                if (r["surface"] != "humor_practice" or event.get("surface") != r["surface"]
+                        or event.get("target_sha256") != r["response_sha256"]):
+                    held["practice_target_mismatch"] += 1; continue
+                value = event["stars"]
+                if type(value) is not int or not 1 <= value <= 5:
+                    held["invalid_rating"] += 1; continue
+                positive = value >= 4
+                reason = "explicit_high_practice_rating" if positive else "rating_not_a_negative_label"
+            else:
+                held["unsupported_feedback_kind"] += 1; continue
+            if not r["finalized_at"] < at:
+                held["feedback_not_after_target"] += 1; continue
+            observations.append({"feedback_event_id":key,"kind":kind,"at":at,
+                "feedback_sha256":digest(json.dumps(event,sort_keys=True,separators=(",", ":"))),
+                "target_turn_id":r["turn_id"],"target_sha256":r["response_sha256"],
+                "label":"positive" if positive else "unknown","reason":reason,"stars":value})
+        except (KeyError, TypeError, ValueError, OverflowError):
+            held["invalid_feedback_evidence"] += 1
+    observations.sort(key=lambda r:(r["at"],r["feedback_event_id"]))
+    positive_targets = {r["target_turn_id"] for r in observations if r["label"] == "positive"}
+    counts = Counter((r["reason"] for r in observations))
+    report = {"schema":"judges-feedback-summary-v1","observations":len(observations),
+              "positive_targets":len(positive_targets),"targets_without_positive_evidence":len(targets)-len(positive_targets),
+              "observation_reasons":dict(counts),"held":dict(held),
+              "meaning":"explicit markers only; absence, lower ratings and missing history are unknown, never negative",
+              "coverage":"producer-attested origin and adjacency; no independent authentication or complete-stream claim"}
+    return report, observations
 
 def cosine_error(a, b):
     if not isinstance(a, list) or not isinstance(b, list) or not a or len(a) != len(b):
@@ -439,10 +551,12 @@ def main():
     if args.behaviour_start:
         behaviour, private_behaviour = behaviour_receipt(admitted, args.behaviour_start, args.cutoff, args.behaviour_surface,
             digest(json.dumps(bundle, sort_keys=True, separators=(",", ":"))))
+    feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
-              "census": summary, "innovation": scores, "behaviour_receipt":behaviour}
+              "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
     output.mkdir(mode=0o700)
-    outputs = [("aggregate.json", report), ("private-innovation.json", details)]
+    outputs = [("aggregate.json", report), ("private-innovation.json", details),
+               ("private-feedback.json", private_feedback)]
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
     for name, value in outputs:
