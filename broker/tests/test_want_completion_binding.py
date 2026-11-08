@@ -3,6 +3,8 @@
 import copy
 import builtins
 import threading
+import time
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -63,14 +65,19 @@ class Tests(unittest.TestCase):
 
     def write(self, rows): (self.mem/'current-wants.json').write_text(json.dumps(rows))
     def current(self): return json.loads((self.mem/'current-wants.json').read_text())
-    def version(self, name):
-        rows = self.current(); w = rows[0]; a = w['agent_work']
+    def manifest(self, name):
+        w = self.current()[0]; a = w['agent_work']
         root = A.directory(a['request_id'], self.ws); root.mkdir(parents=True,exist_ok=True)
         artifact = root/(name+'.txt'); artifact.write_text('Synthetic checked output '+name)
         result = dict(schema=A.SCHEMA,request_id=a['request_id'],goal_sha256=a['goal_sha256'],status='completed',
                       summary='Synthetic '+name,acceptance='Fixture check passed.',artifacts=[dict(
                           path=str(artifact.relative_to(self.ws)),sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())])
         (root/'result.json').write_text(json.dumps(result))
+        return result
+
+    def version(self, name):
+        result = self.manifest(name)
+        rows = self.current(); a = rows[0]['agent_work']
         digest = A.result_digest(result)
         a.update(result=result,result_sha256=digest,stage_result_sha256=digest,status='result_ready',
                  publication={'url':'https://example.invalid/'+name}, delivery={'state':'sent','artifact_id':'fixture-'+name})
@@ -158,6 +165,116 @@ class Tests(unittest.TestCase):
         self.assertFalse(thread.is_alive()); self.assertEqual(errors,[])
         self.assertEqual(result['result'],'fulfilled'); self.assertTrue(entered.is_set())
         self.assertEqual([w['id'] for w in self.current()],['unrelated-fixture'])
+
+
+    def room_round(self, status):
+        import dot_channel as D
+        import deliver as L
+        import promise_keeper as P
+        import room_work as R
+        w=copy.deepcopy(self.snapshot); w.pop('agent_work')
+        w['timestamp']=datetime.now().isoformat()
+        self.write([w])
+        commitments=[{'id':'fixture-exact-promise','what':w['want'],'state':'open'},
+                     {'id':'fixture-unrelated-promise','what':'A different synthetic task.','state':'open'}]
+        (self.mem/'email-commitments.json').write_text(json.dumps(commitments))
+        state={}; calls=[]; sends=[]; generations=[]
+        def api(method,args):
+            calls.append((method,copy.deepcopy(args)))
+            if method=='chat.postMessage': return {'ok':True,'ts':str(1000+len(calls))}
+            if method=='files.getUploadURLExternal':
+                return {'ok':True,'file_id':'fixture-upload','upload_url':'https://example.invalid/upload'}
+            if method=='files.completeUploadExternal': return {'ok':True,'files':args['files']}
+            if method=='chat.getPermalink':return {'ok':True,'permalink':'https://example.invalid/finished-result'}
+            self.fail('unexpected transport method '+method)
+        def post(url,data,headers,timeout):
+            self.assertEqual(url,'https://example.invalid/fixture-notify')
+            self.assertIn('files.completeUploadExternal',[method for method,_ in calls])
+            self.assertEqual(len(self.current()),1)
+            self.assertEqual(self.nudges,[])
+            sends.append(data); return status[0]
+        def writer(system,user):
+            phase=json.loads(user)['phase']; generations.append(phase)
+            raw=json.dumps({'message':'Checked synthetic deliverable.' if phase=='result' else 'Make the exact synthetic output.',
+                            'accept':phase=='result'})
+            return {'text':raw,'observations':[]}
+        for obj,name,value in ((D,'STATE',str(self.mem/'room.json')),(D,'_guarded',lambda text:[]),
+                (P,'results_channel',lambda:'fixture-results'),(R,'evidence_sync',lambda s:None),
+                (R,'evidence_finish',lambda *a,**k:'untracked'),(L,'MEMORY',str(self.mem)),
+                (L,'RECEIPTS',str(self.mem/'delivery-receipts.json')),
+                (L,'CHANNELS',{'ntfy':'https://example.invalid/fixture-notify'}),(L,'POST',post),
+                (L,'SLEEP',lambda seconds:None),(L,'RETRIES',1)):
+            patcher=patch.object(obj,name,value); patcher.start(); self.addCleanup(patcher.stop)
+        self.assertIs(L.POST,post); self.assertTrue(Path(L.RECEIPTS).is_relative_to(self.ws))
+        def run(rows=()):
+            return D.agent_wants_pass(api,'fixture-channel','fixture-dot',state,time.time(),rows=rows,
+                put=lambda url,data:200,writer=writer,identity=lambda:'Synthetic retained identity.')
+        run()
+        self.assertEqual(generations,['opening'])
+        self.assertEqual(len(state['room_work']['open']),1)
+        self.assertEqual(len(calls),1)
+        self.manifest('delivered')
+        a=self.current()[0]['agent_work']
+        arrival={'who':'dot','thread':a['thread'],'ts':str(time.time()),'text':'WANT RESULT '+a['request_id']}
+        return run,arrival,state,calls,sends,generations
+
+    def test_full_default_path_closes_exact_promise_and_exposes_completion(self):
+        import want_working_thread as W
+        import subconscious_context as S
+        run,arrival,state,calls,sends,generations=self.room_round([200])
+        run([arrival])
+        self.assertEqual(self.current(),[])
+        done=json.loads((self.mem/'fulfilled-wants.json').read_text())[0]
+        self.assertEqual(done['agent_work']['delivery']['state'],'sent')
+        self.assertEqual(done['agent_work']['completion_message'],'Checked synthetic deliverable.')
+        self.assertEqual(len(sends),1); self.assertEqual(len(self.nudges),1)
+        self.assertEqual(generations,['opening','result'])
+        commitments=json.loads((self.mem/'email-commitments.json').read_text())
+        self.assertEqual([c['state'] for c in commitments],['done','open'])
+        self.assertEqual(commitments[0]['result_url'],'https://example.invalid/finished-result')
+        work=state['room_work']['history'][-1]
+        self.assertEqual(work['state'],'done'); self.assertEqual(state['room_work']['open'],[])
+        retained=W.load(done,work,self.ws)
+        self.assertTrue(any(event['key'].startswith('delivered:') for event in retained['events']))
+        self.assertIn('Synthetic delivered',A.block(ws=self.ws))
+        self.assertIn('do not promise them again',A.block(ws=self.ws))
+        self.assertIn('Synthetic delivered',S.get_subconscious_context(include=['completed_work']))
+        self.assertIn('Synthetic delivered',S.get_subconscious_context_compact(include=['completed_work']))
+        run([arrival])
+        self.assertEqual(len(sends),1); self.assertEqual(len(self.nudges),1)
+        self.assertEqual(generations,['opening','result'])
+        self.assertEqual(len(json.loads((self.mem/'fulfilled-wants.json').read_text())),1)
+
+    def test_full_default_path_waits_for_notification_before_real_ending(self):
+        status=[503]
+        run,arrival,state,calls,sends,generations=self.room_round(status)
+        run([arrival])
+        self.assertEqual(len(self.current()),1)
+        self.assertFalse((self.mem/'fulfilled-wants.json').exists())
+        self.assertEqual(self.nudges,[]); self.assertEqual(self.children,[])
+        self.assertEqual([c['state'] for c in json.loads((self.mem/'email-commitments.json').read_text())],['open','open'])
+        self.assertEqual(A.block(ws=self.ws),'')
+        status[0]=200; run()
+        self.assertEqual(self.current(),[]); self.assertEqual(len(sends),2)
+        self.assertEqual(len(self.nudges),1); self.assertEqual(len(self.children),1)
+        self.assertEqual(generations,['opening','result'])
+        self.assertEqual([method for method,_ in calls].count('files.getUploadURLExternal'),1)
+
+
+    def test_full_default_path_recovers_cleanup_after_archive(self):
+        run,arrival,state,calls,sends,generations=self.room_round([200])
+        with patch.object(A,'close_sources',side_effect=OSError('synthetic crash after archival')):
+            run([arrival])
+        self.assertEqual(self.current(),[])
+        self.assertEqual(len(json.loads((self.mem/'fulfilled-wants.json').read_text())),1)
+        self.assertEqual([c['state'] for c in json.loads((self.mem/'email-commitments.json').read_text())],['open','open'])
+        self.assertEqual(len(state['room_work']['open']),1)
+        run()
+        self.assertEqual([c['state'] for c in json.loads((self.mem/'email-commitments.json').read_text())],['done','open'])
+        self.assertEqual(state['room_work']['open'],[])
+        self.assertEqual(len(sends),1); self.assertEqual(len(self.nudges),1)
+        self.assertEqual(generations,['opening','result'])
+        self.assertEqual([method for method,_ in calls].count('files.getUploadURLExternal'),1)
 
 
 if __name__ == '__main__': unittest.main()
