@@ -6318,3 +6318,12 @@ erase contradictory provenance, plus nonfinite values and non-object roots.
 Malformed bundles produce no reports; diagnostics omit private keys/values.
 160 affected isolated checks pass. Valid scoring and live feeds unchanged.
 Independent review/full Aegis suite remain pending.
+
+
+## 8 November — capture-to-coverage acceptance fixture
+
+`codex/judges-capture-coverage-integration` adds an end-to-end synthetic fallback
+capture/private-packet/CLI-replay test. Request identity survives, relay claims
+stay unknown, and delivery alone does not admit incomplete ancestry. All 9
+capture/replay integration tests pass; production code unchanged from ef2c9c8d.
+Independent review/full Aegis validation remain pending.

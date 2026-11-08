@@ -655,3 +655,23 @@ ownership 11. Reports regenerated and whitespace checked. No private snapshot
 read, model call, real test send, live write, feed change, merge or deployment.
 Independent review/full Aegis suite remain pending; capture is still disabled
 outside explicit scratch.
+
+
+## 8 November — capture-to-coverage integration acceptance
+
+`codex/judges-capture-coverage-integration` continues from ef2c9c8d without changing
+production code. A new synthetic end-to-end test builds two request-local captures,
+each with a failed first attempt and selected fallback, through `begin_shadow`,
+`prepare_shadow` and `finish_shadow`. One selected result has observed identity;
+the other has only a relay claim. Exact request/input hashes and failed-attempt
+retention are checked on the persisted private packets before CLI replay.
+
+Replay reports both request bindings, one observed/one unknown generator and two
+unknown ancestries. With original unconfirmed delivery, neither reply is admitted.
+With explicitly invented delivery attestations, one stays held for unknown served
+identity and the other for unknown lineage. No forecast scores are manufactured.
+Aggregate/stdout checks exclude synthetic private names and text, and every output
+file is mode 0600. All 9 capture/replay integration tests pass. The production code
+is unchanged from ef2c9c8d (its earlier 160-check validation is not a new run here).
+Reports regenerated and whitespace checked. No private data, model calls, test
+sends, live writes, merge or deploy; independent full Aegis review remains pending.
