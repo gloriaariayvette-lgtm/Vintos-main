@@ -136,10 +136,12 @@ def _artifact(ws, relative, want):
     if not path.is_file() or not 0 < path.stat().st_size <= 32 * 1024 * 1024:
         raise ValueError('artifact missing, empty or above the delivery budget')
     created = request.get('created_at')
+    # Filesystem mtimes can lag the request clock. Bound that tolerance;
+    # exact request paths and recorded-byte checks still apply separately.
     if (isinstance(created, bool) or not isinstance(created, (int, float))
             or not math.isfinite(created) or created <= 0
-            or not created <= path.stat().st_mtime <= time.time() + 1):
-        raise ValueError('deliverable must have been modified after this request')
+            or not created - 2 <= path.stat().st_mtime <= time.time() + 1):
+        raise ValueError('deliverable modification time is outside this request window')
     return path
 
 

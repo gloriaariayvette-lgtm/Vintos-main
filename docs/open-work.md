@@ -6218,3 +6218,13 @@ remain pending. No model/provider behavior or existing feeds changed.
 an earlier call was reconciled, without re-alerting unchanged polls. 421 affected
 isolated checks pass. See the follow-through log. Review, installation and live
 acceptance remain pending; no deployment or live-store write occurred.
+
+
+## 8 November — review 16 artifact-clock repair
+
+`codex/wants-review-16-clock` permits a bounded two-second lower mtime tolerance,
+sets explicit fixture timestamps and adds a coarse-clock suite. 130 normal checks
+and 67 repeated checks under simulated 10 ms granularity pass. Existing path/hash
+freshness checks remain; see the follow-through log for reproduced failures and
+limits. Claude's full isolated Aegis rerun and integration review remain pending;
+Gloria retains installation and live acceptance. No deploy or live writes.

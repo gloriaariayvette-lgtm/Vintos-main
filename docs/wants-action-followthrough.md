@@ -529,3 +529,37 @@ poll/summary deduplication, revised-summary limits, retry identity and silent
 backoff. Existing capture/model routes, budgets, feeds and completion logic are
 unchanged. This is not evidence that a live notification was missed; no private
 records or live services were inspected. Full Aegis review remains independent.
+
+
+## Review 16 — filesystem timestamp granularity
+
+Claude's Aegis measurements found file mtimes as much as 4.2 ms before a request
+clock read, even when the file was written afterward. The strict lower bound
+rejected fresh results, reproducibly in completion and intermittently in
+follow-through. This branch, `codex/wants-review-16-clock`, remains based on
+cb10d8b8 and includes all subsequent review fixes without rewriting pushed tips.
+
+The artifact window now permits `created_at - 2 <= mtime <= now + 1`. The lower
+allowance is solely for filesystem clock granularity; request-directory binding,
+known recorded-byte rejection, changed-byte checks, size and link checks remain.
+This window cannot prove a file was authored after the request; the other checks
+still cannot detect unrecorded old bytes. No wider provenance claim is made.
+Positive artifact fixtures now set explicit mtimes with os.utime. Added regressions
+cover 4.2 ms lag, both window limits, invalid request clocks and rejection of known
+copied bytes even within the slack.
+
+Before the production fix, the new lag/window tests failed (two failures and one
+error), and the full two-suite coarse-clock simulation failed with 21 failures and
+seven errors across 67 checks. After the fix: **130 normal isolated checks pass**
+(follow-through 54, completion 13, controls 26, artifact guard 11, local analysis 15,
+ownership 11). The new `test_want_coarse_clock.py` additionally runs all **67
+follow-through/completion checks under simulated 10 ms mtime truncation**, passing.
+These are repeated checks under a different clock condition, not 67 new scenarios.
+The simulation changes only synthetic request artifact stat results, verifies its
+scratch paths, and asserts actual lag was exercised. Existing stores/senders stay
+repointed/stubbed. Generated reports and whitespace checked.
+
+No real inputs, model calls, sends from tests, installs, merge or deploy. Claude's
+independent full Linux rerun is still needed before integration; this local
+simulation does not replace it. The previous Linux failures are recorded rather
+than dismissed as environmental.

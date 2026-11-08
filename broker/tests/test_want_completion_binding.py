@@ -69,6 +69,7 @@ class Tests(unittest.TestCase):
         w = self.current()[0]; a = w['agent_work']
         root = A.directory(a['request_id'], self.ws); root.mkdir(parents=True,exist_ok=True)
         artifact = root/(name+'.txt'); artifact.write_text('Synthetic checked output '+name)
+        os.utime(artifact, (a['created_at'], a['created_at']))
         result = dict(schema=A.SCHEMA,request_id=a['request_id'],goal_sha256=a['goal_sha256'],status='completed',
                       summary='Synthetic '+name,acceptance='Fixture check passed.',artifacts=[dict(
                           path=str(artifact.relative_to(self.ws)),sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())])

@@ -57,6 +57,7 @@ class Tests(unittest.TestCase):
         w = self.current()[0]; a = w['agent_work']
         folder = A.directory(a['request_id'], self.ws); folder.mkdir(parents=True, exist_ok=True)
         artifact = folder / 'score.txt'; artifact.write_text('Synthetic score and checked bars; no real music.')
+        os.utime(artifact, (a['created_at'], a['created_at']))
         rec=dict(schema=A.SCHEMA, request_id=a['request_id'], goal_sha256=A.fingerprint(w['want']), status='completed',
                  summary='Synthetic score prepared.', acceptance='Synthetic fixture checks passed; musical quality not claimed.',
                  artifacts=[dict(path=str(artifact.relative_to(self.ws)), sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())])
@@ -161,6 +162,40 @@ class Tests(unittest.TestCase):
         self.write('current-wants.json',[self.want]); A.request(self.want,'purchase',ws=self.ws)
         self.intake(); self.assertEqual(self.posts[0][1],'muse')
         self.assertIn('not permission to spend',self.posts[0][0])
+
+    def test_coarse_clock_lag_admits_new_bound_result(self):
+        self.intake(); result,artifact=self.result()
+        created=self.current()[0]['agent_work']['created_at']
+        os.utime(artifact,(created-0.0042,created-0.0042))
+        self.assertLess(artifact.stat().st_mtime,created)
+        self.assertEqual(self.receive(),1)
+        self.finish(); self.assertEqual(len(self.endings),1)
+
+    def test_clock_tolerance_is_bounded_and_request_time_must_be_valid(self):
+        self.intake(); result,artifact=self.result(); w=self.current()[0]
+        created=2000000000.5; w['agent_work']['created_at']=created
+        relative=result['artifacts'][0]['path']
+        with patch.object(A.time,'time',return_value=created+10):
+            for offset,accepted in ((-1.9,True),(-2.1,False),(10.9,True),(11.1,False)):
+                with self.subTest(offset=offset):
+                    os.utime(artifact,(created+offset,created+offset))
+                    if accepted: self.assertEqual(A._artifact(self.ws,relative,w),artifact)
+                    else:
+                        with self.assertRaises(ValueError): A._artifact(self.ws,relative,w)
+            for invalid in (None,True,0,float('nan'),float('inf')):
+                with self.subTest(created=invalid):
+                    w['agent_work']['created_at']=invalid
+                    with self.assertRaises(ValueError): A._artifact(self.ws,relative,w)
+
+    def test_clock_tolerance_does_not_admit_known_copied_bytes(self):
+        self.intake(); result,artifact=self.result()
+        created=self.current()[0]['agent_work']['created_at']
+        os.utime(artifact,(created-0.0042,created-0.0042))
+        (self.mem/'art').mkdir()
+        self.write('art/gallery.json',[{'sha256':result['artifacts'][0]['sha256']}])
+        with self.assertRaisesRegex(ValueError,'already recorded'): A.verify(self.current()[0],self.ws)
+        self.assertEqual(self.receive(),0)
+        self.finish(); self.assertFalse(self.endings)
 
     def test_result_rejects_old_or_foreign_shelf_artifacts(self):
         self.intake(); rec, artifact = self.result()
@@ -406,6 +441,7 @@ class Tests(unittest.TestCase):
         w = self.current()[0]; root = A.directory(w['agent_work']['request_id'], self.ws)
         record = json.loads((root/'result.json').read_text())
         artifact = root/'revised-score.txt'; artifact.write_text('Synthetic revised score, a different checked artifact.')
+        created = w['agent_work']['created_at']; os.utime(artifact, (created, created))
         record['artifacts'] = [dict(path=str(artifact.relative_to(self.ws)), sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())]
         record['acceptance'] = 'Revised synthetic acceptance check.'
         (root/'result.json').write_text(json.dumps(record))
@@ -497,6 +533,7 @@ class Tests(unittest.TestCase):
         with patch.object(D,'STATE',str(self.mem/'room.json')), patch.object(D,'_guarded',lambda s:[]), patch.object(P,'results_channel',lambda:'fixture-results'):
             D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now,put=put,notify=self.notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
             rec,artifact=self.result(); second=artifact.parent/'second.txt';second.write_text('Synthetic second output')
+            created=self.current()[0]['agent_work']['created_at']; os.utime(second,(created,created))
             rec['artifacts'].append(dict(path=str(second.relative_to(self.ws)),sha256=hashlib.sha256(second.read_bytes()).hexdigest()))
             (artifact.parent/'result.json').write_text(json.dumps(rec)); self.receive()
             D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now+2,put=put,notify=self.notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
@@ -691,6 +728,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(W.load(w,work,self.ws)['events'][-1]['who'],'vintos')
         rec['acceptance']='Revised fixture evidence'
         artifact.write_text('Synthetic revised score with additional checked output.')
+        os.utime(artifact,(a['created_at'],a['created_at']))
         rec['artifacts'][0]['sha256']=hashlib.sha256(artifact.read_bytes()).hexdigest()
         (A.directory(a['request_id'],self.ws)/'result.json').write_text(json.dumps(rec))
         self.receive(ts=str(self.now+4))
