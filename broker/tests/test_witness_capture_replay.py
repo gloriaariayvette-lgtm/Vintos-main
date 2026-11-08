@@ -75,6 +75,30 @@ class Tests(unittest.TestCase):
         self.assertEqual(R.snapshot_nodes([("capture", [p])], p["lineage"]), nodes)
         with self.assertRaises(ValueError): R.snapshot_nodes([], p["lineage"] * 2)
 
+    def test_duplicate_lineage_flags_cannot_alias_numeric_values(self):
+        # JSON false/0 and true/1 are distinct producer attestations, even though
+        # Python dictionary equality aliases them. Neither packet may win by order.
+        for flag, number in ((False, 0), (True, 1)):
+            p = packet()
+            p["lineage"][0]["complete"] = flag
+            bad = copy.deepcopy(p)
+            bad["lineage"][0]["complete"] = number
+            for packets in ([p, bad], [bad, p]):
+                with self.subTest(flag=flag, first=packets[0]["lineage"][0]["complete"]):
+                    with self.assertRaises(ValueError):
+                        R.snapshot_nodes([("capture", packets)], [])
+            with self.subTest(flag=flag, supplied_lineage=True):
+                with self.assertRaises(ValueError):
+                    R.snapshot_nodes([("capture", [p])], bad["lineage"])
+
+    def test_duplicate_lineage_object_key_order_is_irrelevant(self):
+        p = packet()
+        shuffled = copy.deepcopy(p)
+        shuffled["lineage"] = [dict(reversed(list(n.items()))) for n in p["lineage"]]
+        shuffled["reply_node"] = dict(reversed(list(p["reply_node"].items())))
+        self.assertEqual(R.snapshot_nodes([("capture", [p, shuffled])], []),
+                         R.snapshot_nodes([("capture", [p])], []))
+
     def test_bad_packet_shapes_are_refused(self):
         for change in ({"schema": "unsupported"}, {"lineage": {}}, {"reply_node": None},
                        {"reply_node": {"kind": "ordinary_source", "id": "fake"}}, {"turn_id": "different"}):

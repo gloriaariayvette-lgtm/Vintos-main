@@ -6281,3 +6281,12 @@ boolean-containing duplicate embeddings in offline scoring and paired controls.
 Every matching copy must be valid; equal valid numeric copies remain accepted.
 152 affected isolated checks pass. Independent review/full Aegis suite remain
 pending. Prior review tips and every live feed are unchanged.
+
+
+## 8 November — dependency-copy identity
+
+`codex/judges-lineage-copy-identity` rejects conflicting JSON attestations that
+Python equality previously treated as identical, including boolean versus numeric
+completeness flags. Exact repeated copies remain accepted regardless of object
+key ordering. 184 affected isolated checks pass. Independent review/full Aegis
+validation remain pending; no live stores or feeds changed.

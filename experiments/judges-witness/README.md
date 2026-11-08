@@ -567,3 +567,15 @@ change this decision. Matching context copies receive the same check. Invalid
 target copies hold the forecast; invalid context copies make paired baselines
 unavailable while preserving the independently valid head score. Equal valid
 integer/float copies remain usable. This repairs offline scoring only.
+
+
+### Dependency copies retain JSON identity
+
+Repeated capture dependency nodes must have the same complete JSON attestation,
+compared with sorted object keys. A boolean and a number are distinct, including
+nested fields; a later copy cannot replace `complete: true` with `complete: 1`,
+or vice versa. Numeric spelling changes such as 1 versus 1.0 also conflict under
+this exact-copy contract. Object key ordering is irrelevant; array order remains
+part of the attestation. Conflicts abort the supplied snapshot, preserving the
+existing policy of never choosing a winning dependency claim. Valid identical
+copies keep the first node. No live merger or eligibility rule is changed.

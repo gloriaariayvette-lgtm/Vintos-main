@@ -571,3 +571,24 @@ regression methods produced four failures before the repair and pass afterward.
 hooks 18, ownership 11. Reports regenerated and whitespace checked. Evidence is
 synthetic, not a claim about live data. No model calls, private snapshots, live
 writes, feed changes, merge or deployment. Independent Aegis review remains pending.
+
+
+## 8 November — exact dependency-copy attestations
+
+`codex/judges-lineage-copy-identity` continues from 7f138cea with prior review
+tips untouched. The request/attempt retention trace found no new field loss.
+A separate synthetic regression showed dependency snapshot merging used Python
+dictionary equality: boolean completeness flags and numeric 0/1 compared equal,
+then the later copy replaced the first. The new fixture failed before repair.
+
+Repeated dependency nodes now compare complete JSON attestations with sorted
+keys and preserve the first identical copy. Conflicting typed flags abort in
+both packet orders and when competing with separately supplied lineage. Object
+key ordering stays harmless. This is the existing strict conflict policy, not
+a new live evidence gate. Exact JSON comparison also distinguishes 1 from 1.0.
+
+184 isolated checks pass: witness 90, capture 27, replay adapter 8, hooks 18,
+merge retention 30, ownership 11. Reports regenerated and whitespace checked.
+Only synthetic evidence was used; no claim of a live-data occurrence. Full
+Aegis validation remains with the reviewer. No private input read, model call,
+real test send, live write, feed change, merge or deployment.

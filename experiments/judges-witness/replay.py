@@ -50,8 +50,15 @@ def snapshot_nodes(sources, lineage):
         if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
             raise ValueError("invalid lineage identity")
         key = node["id"]
-        if key in nodes and (not repeated or nodes[key] != node):
-            raise ValueError("duplicate or conflicting lineage identity")
+        if key in nodes:
+            # Dictionary equality aliases true/1 and false/0, although the
+            # lineage contract requires explicit booleans. Compare the complete
+            # JSON attestations without allowing the last copy to pick a type.
+            if (not repeated or
+                    json.dumps(nodes[key], sort_keys=True, separators=(",", ":"), allow_nan=False) !=
+                    json.dumps(node, sort_keys=True, separators=(",", ":"), allow_nan=False)):
+                raise ValueError("duplicate or conflicting lineage identity")
+            return
         nodes[key] = node
 
     if not isinstance(lineage, list):
