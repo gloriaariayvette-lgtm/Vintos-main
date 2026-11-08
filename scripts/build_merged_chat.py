@@ -39,7 +39,11 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          "admitted", "offered", "withheld", "tactical",
          # what she sent and what she herself said: without these a photo's description reads as her words
          # to every reader of the merged file (Chat's subconscious review, 16 October)
-         "input_kind", "original_text")
+         "input_kind", "original_text", "witness_receipt", "context_receipt_id",
+         "character_influenced", "test_mode", "generated_output_witness_eligible",
+         "witness_final_text", "witness_final_sha256", "witness_origin_source", "derived_from", "parents", "ancestors",
+         "evidence_standing", "dream_only", "imported", "transplanted", "timestamp_estimated",
+         "forgotten", "deleted")
 # Where a per-turn time can legitimately live, in order of preference.
 TIME_KEYS = ("timestamp", "ts", "time", "at", "created")
 
@@ -84,6 +88,8 @@ def pts(s):
 def entry(e, role, content, ts, source, estimated=False):
     """One merged record: the carried protections, then the merged view."""
     out = {k: e[k] for k in CARRY if isinstance(e, dict) and k in e}
+    if isinstance(e, dict) and "source" in e:
+        out.setdefault("witness_origin_source", e["source"])
     out.update({"role": role, "content": content, "timestamp": ts, "source": source})
     if estimated:
         out["timestamp_estimated"] = True
