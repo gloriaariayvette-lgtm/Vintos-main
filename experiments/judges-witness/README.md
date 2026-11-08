@@ -627,3 +627,20 @@ generator metadata and still be excluded. Coverage never substitutes for the
 strict admission result, clears a hold, infers a missing fact or feeds a live
 consumer. The report carries statuses/counts only, never the identities or hashes
 being assessed. Existing private-artifact and aggregate-review rules still apply.
+
+
+### Snapshot JSON is checked before evidence admission
+
+The CLI rejects repeated object keys at any nesting level, including duplicates
+with equal values. Otherwise the default JSON parser would silently keep the last
+value and could erase a provenance denial or input-kind declaration before the
+strict census sees it. Object keys are checked after JSON decoding. Reusing a key
+in different objects remains valid.
+
+NaN, Infinity, negative Infinity and numeric literals that overflow to infinity
+are also rejected, as is a top-level value other than an object. These are bundle
+errors: no output directory or report is created, and the input is unchanged.
+Duplicate-key diagnostics deliberately omit the key and values. Valid JSON with
+malformed evidence records still follows the existing held/counting contracts;
+this does not repair records, alter live-store readers or change scoring for
+valid evidence. All earlier private snapshot and aggregate-publication rules apply.

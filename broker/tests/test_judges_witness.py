@@ -987,6 +987,45 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             self.assertNotEqual(manifest["outputs"]["aggregate.json"]["sha256"],
                                 hashlib.sha256(target.read_bytes()).hexdigest())
 
+    def test_snapshot_json_requires_finite_unambiguous_objects(self):
+        for token in ("NaN", "Infinity", "-Infinity", "1e999", "-1e999"):
+            with self.subTest(token=token), self.assertRaisesRegex(ValueError, "nonfinite JSON constant"):
+                R.decode_snapshot('{"metadata":' + token + '}')
+        for value in ("[]", "null", "0", '"synthetic"'):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "snapshot must be a JSON object"):
+                R.decode_snapshot(value)
+        # Duplicate names are rejected even when their values agree.
+        with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+            R.decode_snapshot('{"nested":{"flag":false,"flag":false}}')
+        good = {"sources": [{"kind": "canonical"}, {"kind": "ledger"}], "text": "NaN", "number": 1.5}
+        self.assertEqual(R.decode_snapshot(json.dumps(good).encode("utf-8")), good)
+
+    def test_cli_rejects_ambiguous_snapshot_fields_without_reports(self):
+        bundles = [
+            '{"input_kind":"retained_snapshot","input_kind":"synthetic","sources":[]}',
+            '{"input_kind":"synthetic","sources":[{"kind":"canonical","rows":[{"role":"assistant",'
+            '"generation_provenance":{"may_witness":false,"may_witness":true}}]}]}',
+            '{"input_kind":"synthetic","sources":[{"kind":"canonical","rows":[{"role":"assistant",'
+            '"generation_provenance":{"may_witness":true,"may_witness":false}}]}]}',
+            '{"input_kind":"synthetic","sources":[],"metadata":{"fixture-private-key":1,"fixture-private-key":2}}',
+        ]
+        with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
+            root = Path(td).resolve()
+            for index, bundle in enumerate(bundles):
+                source = root / ("input-%d.json" % index)
+                source.write_text(bundle)
+                output = root / ("output-%d" % index)
+                result = subprocess.run([sys.executable, str(R.__file__), "--scratch", str(root),
+                    "--input", str(source), "--output", str(output), "--cutoff", "1970-01-01T00:16:40Z"],
+                    env=dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1"),
+                    capture_output=True, text=True)
+                with self.subTest(index=index):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("duplicate JSON object key", result.stderr)
+                    self.assertNotIn("fixture-private-key", result.stderr + result.stdout)
+                    self.assertFalse(output.exists())
+                    self.assertEqual(source.read_text(), bundle)
+
     def test_cli_aborts_before_outputs_when_scoring_files_change(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
             root = Path(td).resolve()

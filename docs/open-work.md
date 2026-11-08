@@ -6309,3 +6309,12 @@ earlier delivery/admission hold. Counts are per supplied assistant copy, not
 unique eligible turns; conflicting receipts remain unselected. 158 affected
 isolated checks pass. No private snapshot run or admission/feed change. Review
 and the full isolated Aegis suite remain pending.
+
+
+## 8 November — strict snapshot parsing
+
+`codex/judges-strict-snapshot-json` refuses duplicate object keys before they can
+erase contradictory provenance, plus nonfinite values and non-object roots.
+Malformed bundles produce no reports; diagnostics omit private keys/values.
+160 affected isolated checks pass. Valid scoring and live feeds unchanged.
+Independent review/full Aegis suite remain pending.

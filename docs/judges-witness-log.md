@@ -634,3 +634,24 @@ ownership 11. Reports regenerated and whitespace checked. No private evidence
 was read and no actual-coverage result is claimed. Full isolated Aegis review
 remains pending. No model calls, test sends, live writes, feed changes, merge or
 deployment. Production capture enablement remains a separate decision.
+
+
+## 8 November — reject ambiguous snapshot JSON
+
+`codex/judges-strict-snapshot-json` continues from b89743f4, leaving earlier review
+tips fixed. Source-to-replay inspection found the standard parser could discard
+contradictory evidence before admission: duplicate keys silently kept the last
+value. Four synthetic CLI bundles, including opposite provenance-denial orders,
+were accepted before the repair and now abort before reports are created.
+
+The loader rejects duplicate keys at any depth (even equal values), nonfinite
+constants/overflowing floats and non-object roots. Error text does not echo keys
+or values. Valid input bytes and valid-record scoring remain unchanged. Two new
+test methods cover CLI refusal/no output/input preservation/error privacy and
+finite/unambiguous object contracts. No live-data occurrence is claimed.
+
+160 isolated checks pass: witness 96, capture 27, replay adapter 8, hooks 18,
+ownership 11. Reports regenerated and whitespace checked. No private snapshot
+read, model call, real test send, live write, feed change, merge or deployment.
+Independent review/full Aegis suite remain pending; capture is still disabled
+outside explicit scratch.

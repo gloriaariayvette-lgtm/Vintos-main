@@ -631,6 +631,33 @@ def run_manifest(source_bytes, code, options, outputs):
     return dict(body, run_sha256=digest(json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False)))
 
 
+def decode_snapshot(raw):
+    """Reject contradictory JSON before a parser can discard an evidence field."""
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                # Keys may themselves contain private data. Never echo one.
+                raise ValueError("duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite JSON constant")
+
+    def finite_float(token):
+        value = float(token)
+        if not math.isfinite(value):
+            raise ValueError("nonfinite JSON constant")
+        return value
+
+    value = json.loads(raw, object_pairs_hook=object_pairs, parse_constant=nonfinite,
+                       parse_float=finite_float)
+    if not isinstance(value, dict):
+        raise ValueError("snapshot must be a JSON object")
+    return value
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--scratch", required=True)
@@ -649,7 +676,7 @@ def main():
     install_guard(root, output)
     code_hashes = scoring_hashes()
     source_bytes = source.read_bytes()
-    bundle = json.loads(source_bytes)
+    bundle = decode_snapshot(source_bytes)
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
