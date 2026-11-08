@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Move the Forge's copies of Lab work and capability briefs out of his Atelier. Kept, not deleted.
-(16 October 2026 for Lab work; 22 October for capability briefs: "forge shouldn't be taking up atelier slots".)
+"""Move the Forge's copies out of his Atelier. Kept, not deleted.
+(16 October 2026 for Lab work; 22 October for capability briefs: "forge shouldn't be taking up atelier slots";
+8 November for every Forge copy, her own Forge projects included: "Forge shouldn't be there".)
 
 Gloria: "I'd like to move them out of the Atelier, yes." Of the Atelier's 95 projects, 84 were Forge copies (sealed,
 gestating), most of them Lab dossiers and capability checks; his own work was 11 projects. The Forge no longer copies
@@ -47,20 +48,21 @@ def _unit(action):
 def main(argv, config=CONFIG, forge_dir=FORGE_DIR, unit=_unit):
     apply = "--apply" in argv
     installed = forge_dir / "forge_loop_atelier.py"
-    if "def forge_paperwork" not in installed.read_text():
-        print("not yet: the installed Forge (%s) still copies Lab work into the Atelier; deploy first "
+    if "def in_atelier" not in installed.read_text():
+        print("not yet: the installed Forge (%s) still copies its projects into the Atelier; deploy first "
               "(sudo bash ~/.vintos/deploy/forge-install.sh if the deploy said the Forge needs sudo)" % installed)
         return 2
     root = Path(json.loads(config.read_text())["atelier_root"]).resolve()
     lab, other, his = plan(root, forge_dir)
-    archive = root.parent / "atelier-archive" / ("forge-lab-copies-" + datetime.now().strftime("%Y%m%d"))
-    print("Lab work and capability briefs to move:  %d  -> %s" % (len(lab), archive))
-    print("other Forge copies:   %d  (her own Forge projects; they stay)" % len(other))
-    print("his own projects:     %d  (they stay)" % len(his))
+    archive = root.parent / "atelier-archive" / ("forge-copies-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+    move = lab + other   # 8 November: every Forge copy leaves; her Forge page reads the Forge's own database
+    print("Forge copies to move:  %d (Lab work and briefs %d, her own Forge projects %d)  -> %s"
+          % (len(move), len(lab), len(other), archive))
+    print("his own projects:      %d  (they stay)" % len(his))
     if not apply:
         print("\nnothing changed. Run again with --apply to move them.")
         return 0
-    if not lab:
+    if not move:
         print("nothing to move."); return 0
     st = root.stat()
     unit("stop")
@@ -69,7 +71,7 @@ def main(argv, config=CONFIG, forge_dir=FORGE_DIR, unit=_unit):
         for p in (archive.parent, archive):
             os.chown(p, st.st_uid, st.st_gid)
         moved = []
-        for d in lab:
+        for d in move:
             shutil.move(str(d), str(archive / d.name))      # a rename on one disk: owner and modes kept
             moved.append(d.name)
         (archive / "MOVED.json").write_text(json.dumps({"at": datetime.now().isoformat(timespec="seconds"),

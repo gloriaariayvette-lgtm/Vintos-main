@@ -66,3 +66,253 @@ results for that earlier revision, not results for this fix commit. Locally,
 the affected isolated suites passed: witness 33/33, provenance 11/11, merged
 chat 30/30 and persistence sprint 21/21 (**95 checks**). No private inputs,
 model calls, live writes, merge or deployment. Re-review remains with Claude.
+
+
+## 8 November 2026 — offline approval and capture primitives
+
+Claude's note 4 approves c6591481 for the offline slice, reporting 591/591 and
+594/594 test-merge suites. Integration belongs to Claude; this checkout has not
+merged or deployed. The next increment is on `codex/judges-capture-hooks`, based
+on c6591481.
+
+The reviewer checked key presence only and reports that newly retained ancestry
+and exclusion keys are absent in live stores today. Once producers emit them,
+existing latent-feed/self-head evidence readers will exclude corresponding
+ineligible rows. That is the intended protection effect of preserving metadata;
+it is not a claim that those future exclusions have no downstream effect.
+
+Implemented the two carry-forward low findings: exact final text must agree with
+stored content (ledger-only suffix allowed), and reply-shaped ordinary-source
+nodes are held. Added a pure request-local capture object, observed identity
+metadata in response parsers, and an optional noninterfering router observer.
+Finalization keeps transport separate; context/reply ancestry and attempt
+coverage remain incomplete. No sink or server hook enabled yet.
+
+Focused OS-isolated checks: capture 8/8, witness 35/35, router regressions 15/15,
+entry owners 11/11 (**69 checks**). All fixtures/senders synthetic. Next: attach
+the request-local object and exact finalization to the handler after its final
+guard, test the complete path against stubs, and keep both server spellings in
+parity. No paid calls, real messages or live writes.
+
+## 8 November 2026 — avatar capture hook, private scratch only
+
+Rebased the capture increment onto Claude's integrated deploy tip `1b28c3d4`
+as requested in note 5. The primitives commit is now `78e2800c`. The only rebase
+conflict was generated ownership documentation, resolved by regeneration.
+
+Attached one request-local capture to all three avatar router calls. Selection
+follows retry decisions; finalization follows the final reply guard and binds
+the exact returned text. The optional sink is disabled by default, requires a
+matching private scratch workspace, rejects live/repository/symlink roots and
+creates owner-only packets. Supplied provenance and test mode are retained.
+Observer and sink errors do not alter the reply. Transport remains distinct
+from delivery, and incomplete context/attempt history is still explicit.
+
+The integrated tree uses a server symlink; editing its bin target preserves
+both spellings. Tests execute actual capture-related handler segments with a
+stubbed provider, including postprocessing and final-guard text changes. This
+is not a full HTTP application test, real capture, or evidence of completeness
+on other surfaces. Existing feeds and stores remain unchanged.
+
+Validation: capture hooks 7/7, capture primitives 8/8, strict witness 35/35,
+router regressions 15/15, canonical avatar 6/6, avatar lifecycle 29/29 and
+entry ownership 11/11: **111 checks passed**. Generated reports and whitespace
+checks are current. All are
+OS-isolated synthetic checks. Full Aegis suite and independent review remain
+Claude Code's step. Context dependencies, source-store integration and remaining
+surfaces are still pending; no production activation, merge or deployment.
+
+## 8 November 2026 — scratch capture to offline census
+
+Kept capture-hook review tip `01078956` fixed. Continued on the separate stacked
+branch `codex/judges-capture-replay`. The offline replay now accepts explicitly
+supplied capture packets and merges their context/reply nodes without overwriting
+conflicting attestations. Existing canonical/merged/ledger adapters and strict
+admission are unchanged. Current packets remain held: a framework handoff is
+not delivery, and incomplete ancestry is not clean evidence.
+
+Synthetic private-sink-to-CLI replay, restart equality, source immutability,
+provenance exclusions and conflicting-node checks pass. Capture replay **6/6**
+and existing witness **35/35**, OS-isolated: **41 checks passed**. No model calls
+or real snapshots. Full Aegis suite remains with Claude Code. No live reader,
+serving edit, merge or deployment in this increment.
+
+Source tracing confirms that on-message forecasts already carry the turn ID,
+surface, arrival time, completion time and checkpoint ID. Their completion can
+lag the reply, so the strict join must continue rejecting late forecasts. The
+canonical avatar writer runs before the handler's last reply guard: a future
+source-store integration cannot blindly attach a later final-text receipt to
+earlier stored content. Exact binding and a separate delivery receipt remain
+required. These are source findings, not measurements of private records.
+
+## 8 November 2026 — ambiguous attempt selection remains unknown
+
+Source review and a pure synthetic reproduction exposed an attribution ambiguity:
+two distinct observed attempts with identical raw text were resolved to the last
+one. The handler currently supplies text, not a selected attempt ID, so that
+choice was unsupported. Capture now requires a unique raw-text match; otherwise
+the generation receipt stays unknown. Same-model duplicate attempts are also
+ambiguous. No reply, routing, legacy eligibility or feed changes.
+
+This is a conservative stopgap until explicit per-invocation identity is passed
+by the handler; it does not claim complete fallback coverage. The prior hook tip
+stays fixed for review; this follow-up is on `codex/judges-capture-replay`.
+Validation: capture 9/9, hook integration 7/7, offline capture replay 6/6 and
+ownership 11/11: **33 OS-isolated checks passed**. Reports regenerated; whitespace
+clean. No real data, provider calls or live changes.
+
+## 8 November 2026 — reviewer note 6 repairs
+
+Claude's independent suite found the shared result-contract regression in
+01078956: reviewer-reported totals were 592/593 on deploy and 595/596 on live.
+The shared constructor had gained observation fields outside its declared keys.
+Restored `bin/gen_result.py` exactly to integrated base `1b28c3d4`. Observation
+metadata now belongs only to the router adapter, preserving the shim wire shape.
+Direct provider metadata and unverified relay claims are distinct; relay claims
+never become served identity. Private packets retain those claims separately.
+
+The observer receives a deep copy, with cyclic stage references preserved, so
+mutation cannot change the caller's reply or status. The sink writes and syncs
+a private temporary file, then atomically publishes by linking to the final name.
+This is the no-overwrite equivalent of temporary-plus-rename: a preexisting name
+is refused rather than replaced. Caught failures unlink the temporary file.
+An abrupt kill can leave a hidden temporary file, not a published JSON packet.
+
+Regression checks include exact shared parser keys, actual direct/relay router
+paths, observer mutation of a cyclic stage, partial write/full-disk failure,
+sync failure, publish failure and preexisting final-file preservation. No live
+calls or stores. Re-review and the full Aegis suite remain Claude's step.
+Final local validation: shared contract **52/52**, capture **10/10**, hook/sink
+**9/9**, offline adapter **6/6**, witness **35/35**, router **15/15**, ownership
+**11/11**: **138 OS-isolated checks passed**. Generated reports and whitespace
+checks are current. No merge or deployment.
+
+## 8 November 2026 — approved capture base; explicit source origins
+
+Claude note 7 approves f51b1d3d, reporting full isolated suites 594/594 against
+deploy and 597/597 against live, integrated as `6e452ae6`. Started
+`codex/judges-context-receipts` from that integrated tip; no merge/deploy by Codex.
+
+Ordinary external leaves now require an explicit allowlisted origin and exact
+source-version digest. Added a pure constructor for known counterpart input,
+sensor observations and operator configuration. Bare or unsupported origins
+remain unknown, including an unmarked generated reply. Generated material must
+use its dependency graph; no legacy backfill or live eligibility changes.
+Producer hooks and complete context/effect ancestry remain unfinished.
+
+Synthetic Mac scratch benchmark of the full finish_shadow path including fsync:
+100 measured calls after 5 warmups, 0.510 ms median, 0.564 ms p95, 0.637 ms max;
+105 synthetic packets, private temporary directory removed afterward. This is
+one local filesystem sample, not Aegis latency or permission to enable a harness.
+
+The prescribed SSH route failed authentication. No alternate route was used and
+no private inputs were read. Real-snapshot census and Aegis latency measurement
+remain blocked pending authorized access or Claude's scratch execution. No real
+data numbers are claimed. Required blocker notification was delivered.
+Focused validation: strict witness 37/37, capture replay 6/6, existing provenance
+11/11 and ownership 11/11: **65 isolated checks passed**. Reports regenerated;
+whitespace clean. Full Aegis review remains pending for this increment.
+
+## 8 November 2026 — explicit invocation selection and observed dependencies
+
+Continued on `codex/judges-request-dependencies`, stacked on 239c3467; the prior
+review tip is untouched. Approved integrated base remains 6e452ae6. No review
+wait: further increments use new branches while independent review proceeds.
+
+The avatar handler now carries the exact invocation token through primary,
+repeat and replacement paths. The observer identifies the returned-root attempt
+by identity, including self-referential stage lists. Handler selection additionally
+checks the raw digest. Equal text across attempts no longer guesses identity;
+missing/foreign/invalidated tokens remain unknown. Failed replacements retain
+the original selected token; discarded repeats clear it. Request ID and exact
+handler-argument fingerprint survive the generation receipt, normalization and
+merge. The shared result schema and router return tuple remain unchanged.
+
+Private scratch packets now include ordered input fingerprints, invocation/result
+nodes, retry dependencies, the existing context-local offer receipt (never
+mistaken for admission), a direct tactical-provenance effect edge, observed
+attempt metadata even without selection, and the raw-to-final digest change.
+No request endpoint/auth material, prompt text or offer-error prose is added.
+Existing final reply content remains only in the private packet. Unknown input
+origin stays unknown, including user-role history. The finalized aggregate DAG
+is explicitly incomplete; it is not a clean pre-generation context attestation.
+Full provider-internal retries, upstream organ/value-map ancestry, admission and
+client acknowledgement remain open. No feeds, routing choices or models change.
+
+Correction to the previous entry: the authentication failure was for the wrong
+login, not a demonstrated lack of access. The already-authorized Mac agent route
+passed a constant-output access check; no private records were read or copied.
+After reading coordination note 9, left the copied-record census and Aegis timing
+measurement to Claude's reviewer, without duplicating that work or running more
+remote commands. This is ownership of concurrent work, not a blocker.
+
+Validation: capture 18/18; actual handler segments and sink 12/12; offline adapter
+6/6; witness 38/38; shared result contract 52/52; provenance 11/11; router 15/15;
+ownership 11/11: **163 OS-isolated checks passed**. Handler tests execute selected
+actual AST segments with stubbed routing, not a full HTTP service or model call.
+Generated reports are current and whitespace is clean. Claude owns the full
+isolated Aegis suites and integration; Gloria deploys. No merge or deployment.
+
+## 8 November 2026 — explicit counterpart fragments on a new producer branch
+
+Continued on `codex/judges-producer-origins` from 113cfc69, leaving the invocation
+review tip untouched. The scratch avatar hook now binds the explicitly supplied
+original-text field to an exact span of the actual current-message input. It
+records the source digest and exact message version/slot/part/span. A missing
+origin marker stays unknown; there is no fallback to composed message text.
+
+Repeated/ambiguous spans, changed versions, shifted slots, history matches and
+nontext parts do not acquire external origin. Retry instructions remain unknown.
+Only the explicit fragment gets the external leaf: the assembled prompt/context
+retains incomplete ancestry. Nothing is enabled, sent, merged or deployed, and
+no live store or private record is accessed. Claude's copied-record census and
+Aegis timing task remain his concurrent work, not duplicated here.
+
+Validation: capture 24/24; actual handler/sink 14/14; capture replay 6/6; witness
+38/38; provenance 11/11; ownership 11/11: **104 isolated checks passed**. Cases
+include Unicode spans, structured text beside an image, missing and duplicated
+originals, stale bindings, retries, and observation failure leaving the reply
+unchanged. Reports regenerated; whitespace clean. This validates synthetic
+contracts, not real-turn eligibility or a full serving HTTP request.
+
+## 8 November 2026 — parentless generated ancestry repaired
+
+Claude note 10 confirmed the source-origin increment integrated at 239c3467 and
+identified a remaining clean-base-case error: a parentless value-map/context
+node could still terminate the graph as clean. On the new stacked branch
+`codex/judges-ancestry-leaves`, all parentless non-external node kinds now remain
+unknown. Only an allowlisted ordinary-source node with its exact source hash can
+terminate a clean ancestry chain. An external sibling cannot hide the missing
+parents, in either traversal order. Synthetic clean controls now explicitly
+include their external source; the memoized deep-DAG and indirect-influence
+controls still pass with complete fixtures.
+
+No historical data, served model, delivery or ancestry is fabricated. This only
+changes the new shadow reader, not the existing feeds/eligibility rules. Sealed
+experiments are untouched. The dedicated production enablement proposal is
+`docs/judges-capture-enable-proposal.md`; it explicitly forbids setting the
+scratch workspace variables on a serving service. No enablement is performed.
+Claude's real-copy census/timing results are attributed to his note, not rerun.
+
+Validation: witness 40/40, replay adapter 6/6, capture 24/24, handler/sink 14/14,
+existing provenance 11/11 and ownership 11/11: **106 isolated checks passed**.
+Generated reports and whitespace are clean. Full Aegis suite/review remain
+Claude's step; no live writes, enablement, merge or deployment.
+
+
+## 8 November 2026 — paired forecast-context controls
+
+Continued on `codex/judges-innovation-controls-v2` from f34f4c12, preserving
+previous review tips. Added causal last-reply and normalized recent-mean controls
+using only explicitly attested forecast-context references. Exact versions,
+encoder, eligible same-surface replies and strict order are required. No inferred
+history or selected substitute baseline. Missing controls keep the head score
+and get their own coverage reasons. Paired errors separate evaluation blocks and
+checkpoint groups; they assert neither authenticity nor a pass verdict.
+
+Eight synthetic regression cases cover causal ordering, identity/version,
+encoder/surface conflicts, missing inputs, zero means, normalization, uncited
+newer history and separate paired coverage. No live producer contract or real-data
+accuracy claim is introduced. Independent Aegis validation remains Claude's step.
+
+Validation: witness 48/48, replay adapter 6/6 and ownership 11/11: **65 isolated checks passed**. Whitespace clean. No private data read, live writes, model calls, enablement, merge or deploy.

@@ -1,3 +1,14 @@
+## 8 November — shadow witness ancestry and enablement boundary
+
+On `codex/judges-ancestry-leaves`, parentless generated nodes remain unknown;
+clean synthetic ancestry now ends in an explicit external source. No existing
+feed or live eligibility is changed. [Review log](judges-witness-log.md) records
+106 isolated checks. [Production enablement proposal](judges-capture-enable-proposal.md)
+is separate and disabled; do not repoint the serving workspace to use a scratch
+capture flag. Reviewer-provided private census remains zero strict-eligible
+turns. Paired innovation controls, complete producer ancestry, production sink
+implementation and full Aegis review remain open.
+
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 
 - **F-c3b63fc7a2, "Lab running, and no review for 16 hours" — fixed in source, waiting for a deploy.** The Lab was
@@ -6024,8 +6035,30 @@ Merged deploy snapshot `0913106c` without overwriting its concurrent work. Full 
 
 `codex/judges-witness-slices` starts slices 1 and 2 with strict generation/effect
 receipts, an explicit snapshot census and causal on-message innovation joins.
-Synthetic-only; no live feed changes or production capture yet. See
+The approved foundation is integrated in deploy commit `1b28c3d4`. The next
+increment, `codex/judges-capture-hooks`, attaches request-local capture to the
+avatar handler and an explicit private scratch sink, disabled by default.
+Synthetic-only; no live feed changes or production capture yet. Complete
+context ancestry, other surfaces and source-store integration remain open. See
+`codex/judges-capture-replay` for the stacked offline packet adapter; it reports
+current packets as held and does not enable production capture.
+The capture stack is now approved and integrated at `6e452ae6` (Claude reports
+594/594 and 597/597 full suites). `codex/judges-context-receipts` continues with
+explicit external-source origins. `codex/judges-request-dependencies` adds
+handler request/attempt identity and partial producer dependency capture.
+`codex/judges-producer-origins` binds explicit counterpart fragments to exact
+input versions without upgrading the assembled context. Full upstream ancestry
+remains open. The earlier authentication blocker was a wrong
+login inference: the existing Mac route works. Per coordination note 9, Claude
+owns the copied-record census and Aegis timing run; Codex is not duplicating it. See
 [implementation log](judges-witness-log.md) for the scope and outstanding
 provider/context receipt hooks. Claude Code owns independent review, the full
 isolated Aegis suite and test merge. The ten-minute coordination heartbeat stays
 active after batches; Gloria handles deployment.
+
+
+Judges slice 2 now has offline paired last-reply/recent-mean controls on
+`codex/judges-innovation-controls-v2`. Producer-attested forecast-context receipts
+are required; serving capture of that contract and real paired coverage remain
+open. Missing controls do not discard head observations. See the experiment
+README for causal joins and descriptive-only interpretation. No feed is changed.

@@ -24,21 +24,22 @@ for pid, body in rows.items():
 db.commit(); db.close()
 (root / "projects" / "0123456789ab").mkdir()
 config = TMP / "config.json"; config.write_text(json.dumps({"atelier_root": str(root)}))
-old_forge = TMP / "old-forge"; old_forge.mkdir(); (old_forge / "forge_loop_atelier.py").write_text("class AtelierProjection: pass\n")
+old_forge = TMP / "old-forge"; old_forge.mkdir()
+(old_forge / "forge_loop_atelier.py").write_text("def forge_paperwork(p): return False\nclass AtelierProjection: pass\n")
 UNIT = []
 check("the paths are scratch", str(root).startswith(str(TMP)))
-check("it refuses until the installed Forge stops copying Lab work",
+check("it refuses until the installed Forge stops copying every project (8 Nov)",
       M.main(["--apply"], config=config, forge_dir=old_forge, unit=UNIT.append) == 2 and len(list((root / "projects").iterdir())) == 5)
 new_forge = Path(REPO) / "scripts"
 check("a dry run moves nothing", M.main([], config=config, forge_dir=new_forge, unit=UNIT.append) == 0
       and len(list((root / "projects").iterdir())) == 5 and not UNIT)
 M.main(["--apply"], config=config, forge_dir=new_forge, unit=UNIT.append)
 left = sorted(d.name for d in (root / "projects").iterdir())
-archived = list((TMP / "atelier-archive").glob("forge-lab-copies-*"))
-check("both Lab copies and the capability brief leave the Atelier; her own Forge project and his own work stay",
-      left == ["0123456789ab", "forge-" + "c" * 32], left)
+archived = list((TMP / "atelier-archive").glob("forge-copies-*"))
+check("every Forge copy leaves the Atelier, her own Forge project too (8 Nov); his own work stays",
+      left == ["0123456789ab"], left)
 check("they are kept in the archive, with a list of what moved", archived and
-      sorted(json.loads((archived[0] / "MOVED.json").read_text())["moved"]) == ["forge-" + "a" * 32, "forge-" + "b" * 32, "forge-" + "d" * 32]
+      sorted(json.loads((archived[0] / "MOVED.json").read_text())["moved"]) == ["forge-" + c * 32 for c in "abcd"]
       and (archived[0] / ("forge-" + "a" * 32) / "artifacts").is_dir())
 check("the Forge loop is stopped while it moves, then started", UNIT == ["stop", "start"], UNIT)
 print("\n%d/%d" % (sum(R), len(R)))

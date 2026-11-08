@@ -20,16 +20,56 @@ from witness_receipts import admission, digest, envelope_status, instant, row_re
 def adapt(rows, kind):
     if not isinstance(rows, list):
         raise ValueError("snapshot must contain a list of records")
-    if kind not in ("canonical", "merged", "ledger"):
+    if kind not in ("canonical", "merged", "ledger", "capture"):
         raise ValueError("unsupported source adapter")
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("record must be an object")
+        if kind == "capture" and row.get("schema") != "witness-capture-v1":
+            raise ValueError("unsupported capture packet schema")
         out = dict(row)
+        out["_witness_adapter_kind"] = kind
         if kind == "ledger":
             # This census concerns finalized assistant acts, never her input text.
             out.update(role="assistant", content=row.get("vintos"))
         yield out
+
+
+def snapshot_nodes(sources, lineage):
+    """Join explicit ancestry and packet nodes without silently overwriting either.
+
+    Reading a capture does not attest delivery, complete its ancestry, or make
+    its reply an ordinary source. Identical node copies are harmless;
+    conflicting attestations abort the snapshot rather than selecting a winner.
+    """
+    nodes = {}
+
+    def add(node, repeated=False):
+        if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
+            raise ValueError("invalid lineage identity")
+        key = node["id"]
+        if key in nodes and (not repeated or nodes[key] != node):
+            raise ValueError("duplicate or conflicting lineage identity")
+        nodes[key] = node
+
+    if not isinstance(lineage, list):
+        raise ValueError("lineage must be a list")
+    for node in lineage:
+        add(node)
+    for kind, rows in sources:
+        if kind != "capture":
+            continue
+        for packet in adapt(rows, kind):
+            parents = packet.get("lineage")
+            reply = packet.get("reply_node")
+            if (not isinstance(parents, list) or not isinstance(reply, dict)
+                    or reply.get("kind") != "reply" or not packet.get("turn_id")
+                    or reply.get("turn_id") != packet["turn_id"]):
+                raise ValueError("capture requires its explicit reply node and lineage")
+            for node in parents:
+                add(node, repeated=True)
+            add(reply, repeated=True)
+    return nodes
 
 
 def census(sources, nodes, cutoff):
@@ -92,6 +132,65 @@ def cosine_error(a, b):
     return 1 - max(-1, min(1, sum((x / na) * (y / nb) for x, y in zip(a, b))))
 
 
+def context_controls(forecast, target, actual, targets, embeddings, encoder):
+    """Controls from an explicit forecast-time context receipt, never guessed history.
+
+    The receipt attests the complete assistant-reply subset of this forecast's
+    context (up to six). This reader checks identities/versions and causal order;
+    it cannot manufacture an upstream producer attestation from a timestamp.
+    """
+    unavailable = lambda reason: {"status": "unavailable", "reason": reason}
+    context = forecast.get("self", {}).get("context")
+    if not isinstance(context, dict):
+        return unavailable("missing_context_receipt")
+    try:
+        if context.get("schema") != "forecast-reply-context-v1" or context.get("complete") is not True:
+            return unavailable("incomplete_context_receipt")
+        if context.get("scope") != "forecast_context_assistant_replies":
+            return unavailable("wrong_context_scope")
+        block = context.get("evaluation_block")
+        if not isinstance(block, str) or not block.strip() or len(block) > 128:
+            return unavailable("missing_evaluation_block")
+        as_of = instant(context["as_of"])
+        if as_of != instant(forecast["self"]["context_last_ts"]) or as_of >= instant(forecast["arrived_at"]):
+            return unavailable("noncausal_context_receipt")
+        refs = context["reply_refs"]
+        if not isinstance(refs, list) or not 1 <= len(refs) <= 6:
+            return unavailable("missing_or_oversized_context")
+        seen, vectors, last_at = set(), [], -1.0
+        for ref in refs:
+            key = ref["turn_id"]
+            if not isinstance(key, str) or key in seen or key == target["turn_id"]:
+                return unavailable("duplicate_or_target_context")
+            seen.add(key)
+            previous = targets.get(key)
+            if previous is None:
+                return unavailable("context_reply_not_admitted")
+            r = row_receipt(previous)
+            if r["surface"] != row_receipt(target)["surface"]:
+                return unavailable("context_surface_mismatch")
+            if ref.get("response_sha256") != r["response_sha256"]:
+                return unavailable("context_version_mismatch")
+            at = r["finalized_at"]
+            if not last_at < at <= as_of:
+                return unavailable("ambiguous_or_noncausal_context_order")
+            last_at = at
+            matches = [e for e in embeddings[key] if e.get("encoder_id") == encoder
+                       and e.get("response_sha256") == r["response_sha256"]]
+            if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
+                return unavailable("missing_or_conflicting_context_embedding")
+            vector = matches[0]["emb"]
+            cosine_error(vector, actual)  # same dimension, finite and nonzero
+            norm = math.hypot(*vector)
+            vectors.append([x / norm for x in vector])
+        mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
+        return {"status": "available", "evaluation_block": block, "context_n": len(vectors),
+                "last_reply_error": cosine_error(vectors[-1], actual),
+                "recent_mean_error": cosine_error(mean, actual)}
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return unavailable("invalid_context_evidence")
+
+
 def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20):
     """Match a pre-finalization on-message forecast to one finalized output.
 
@@ -146,7 +245,8 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             candidates[(row["turn_id"], group)].append({
                 "turn_id": row["turn_id"], "response_sha256": r["response_sha256"],
                 "group": group, "forecast_at": made, "finalized_at": r["finalized_at"],
-                "error": error})
+                "error": error,
+                "controls": context_controls(f, row, matches[0]["emb"], targets, cache, encoder)})
         except (KeyError, TypeError, ValueError, OverflowError):
             held["missing_or_invalid_forecast_evidence"] += 1
     scored = []
@@ -174,7 +274,27 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
         aggregate.append({"checkpoint_group": len(aggregate) + 1, "n": len(rows),
                           "mean_cosine_error": statistics.mean(r["error"] for r in rows),
                           "percentiles_available": sum(r["innovation_percentile"] is not None for r in rows)})
-    return {"groups": aggregate, "held": dict(held), "baselines": "not supplied",
+    paired, control_held = defaultdict(list), Counter()
+    for row in scored:
+        controls = row["controls"]
+        if controls["status"] != "available":
+            control_held[controls["reason"]] += 1
+            continue
+        paired[(tuple(row["group"]), controls["evaluation_block"])].append(row)
+        controls["last_reply_improvement"] = controls["last_reply_error"] - row["error"]
+        controls["recent_mean_improvement"] = controls["recent_mean_error"] - row["error"]
+    comparisons = []
+    group_numbers = {group: i + 1 for i, group in enumerate(histories)}
+    for (group, block), rows in paired.items():
+        # Pair all three scores on exactly the same targets; never mix blocks.
+        comparisons.append({"comparison_group": len(comparisons) + 1,
+            "checkpoint_group": group_numbers[group], "n": len(rows),
+            "paired_head_mean_error": statistics.mean(r["error"] for r in rows),
+            **{key: statistics.mean(r["controls"][key] for r in rows) for key in (
+                "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
+    return {"groups": aggregate, "held": dict(held),
+            "baselines": {"paired_groups": comparisons, "unavailable": dict(control_held),
+                          "meaning": "positive improvement favours head; descriptive paired errors, not a pass verdict"},
             "meaning": "prediction innovation, not authenticity or a pass verdict"}, scored
 
 
@@ -240,13 +360,9 @@ def main():
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
-    nodes = {}
-    for node in bundle.get("lineage", []):
-        if node["id"] in nodes:
-            raise ValueError("duplicate lineage identity")
-        nodes[node["id"]] = node
-    summary, admitted = census([(s["kind"], s["rows"]) for s in bundle.get("sources", [])],
-                               nodes, instant(args.cutoff))
+    sources = [(s["kind"], s["rows"]) for s in bundle.get("sources", [])]
+    nodes = snapshot_nodes(sources, bundle.get("lineage", []))
+    summary, admitted = census(sources, nodes, instant(args.cutoff))
     scores, details = innovation(admitted, bundle.get("forecasts", []),
                                  bundle.get("embeddings", []), bundle.get("checkpoints", {}))
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),

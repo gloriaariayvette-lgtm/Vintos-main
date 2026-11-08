@@ -11,10 +11,25 @@ SCHEMA = "behaviour-witness-v1"
 INFLUENCING = frozenset(("character_score", "behaviour_receipt", "judge_effect",
                          "tactical", "emotion_nudge"))
 KINDS = INFLUENCING | frozenset(("context", "value_map", "ordinary_source", "reply"))
+# Only external input or operator configuration may terminate ancestry. Generated
+# material must retain its dependency graph, even when it has no influence marker.
+SOURCE_ORIGINS = frozenset(("counterpart_verbatim", "sensor_observation", "operator_configuration"))
 
 
 def digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def source_node(node_id, origin, at, content):
+    """A producer-attested external leaf, bound to the exact version it read.
+
+    This does not authenticate a producer or infer origin from content. Callers
+    must know the source; generated and legacy unknown material cannot use it.
+    """
+    if not isinstance(origin, str) or origin not in SOURCE_ORIGINS or not isinstance(content, str):
+        raise ValueError("external source origin and exact text required")
+    return {"id": _name(node_id), "kind": "ordinary_source", "origin": origin,
+            "source_sha256": digest(content), "at": instant(at), "complete": True, "parents": []}
 
 
 def instant(value):
@@ -78,6 +93,8 @@ def normalize_receipt(value):
                          "served_model": _name(model) if model else None,
                          "served_revision": _name(revision) if revision else None,
                          "identity_evidence": evidence})
+            if "request_id" in a or "input_sha256" in a:
+                kept[-1].update(request_id=_name(a["request_id"]), input_sha256=_hash(a["input_sha256"]))
         selected = _name(value["generation"]["selected_attempt_id"])
         if [a["attempt_id"] for a in kept if a["outcome"] == "selected"] != [selected]:
             raise ValueError("ambiguous selected attempt")
@@ -127,6 +144,9 @@ def lineage_status(root, nodes, before):
             return "unknown"
         if any(not isinstance(p, str) or not p for p in parents):
             return "unknown"
+        if not parents and kind != "ordinary_source":
+            # Empty generated ancestry is missing evidence, not a clean base case.
+            return "unknown"
         own = "influenced" if kind in INFLUENCING else "clean"
         if kind == "reply":
             context_id = n.get("context_receipt_id")
@@ -138,10 +158,18 @@ def lineage_status(root, nodes, before):
             own = n["influence"]
             if any(n.get(k) for k in ("character_influenced", "tactical")):
                 own = "influenced"
-        elif kind == "ordinary_source" and any(k in n for k in (
-                "context_receipt_id", "generation_provenance", "output_provenance", "influence")):
+        elif kind == "ordinary_source" and (n.get("role") == "assistant" or any(k in n for k in (
+                "context_receipt_id", "generation_provenance", "output_provenance", "influence",
+                "turn_id", "reply_text", "response_sha256", "witness_receipt"))):
             # Generated outputs must use the reply contract, not an ordinary leaf.
             return "unknown"
+        if kind == "ordinary_source":
+            if not isinstance(n.get("origin"), str) or n["origin"] not in SOURCE_ORIGINS or parents:
+                return "unknown"
+            try:
+                _hash(n.get("source_sha256"))
+            except (TypeError, ValueError):
+                return "unknown"
         visiting.add(key)
         states = [visit(p, at) for p in parents]
         visiting.remove(key)
@@ -168,6 +196,10 @@ def final_response(row):
     if "witness_final_text" in row or "witness_final_sha256" in row:
         text = row.get("witness_final_text")
         if not isinstance(text, str) or digest(text) != row.get("witness_final_sha256"):
+            return None
+        stored = row.get("content")
+        ledger = row.get("_witness_adapter_kind") == "ledger" or row.get("source") == "ledger"
+        if not isinstance(stored, str) or (stored != text and not (ledger and stored.startswith(text))):
             return None
         return text
     return row.get("content")

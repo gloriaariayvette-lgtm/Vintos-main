@@ -41,6 +41,13 @@ def forge_paperwork(project):
     return lab_work(project) or project.get('kind') == 'capability_brief' or bool((project.get('origin') or {}).get('proposal'))
 
 
+def in_atelier(project):
+    """No Forge project is copied into his Atelier any more. Gloria, 8 November: "Forge shouldn't be there" - after the
+    Lab copies and capability briefs left, 25 of the Atelier's 39 projects were still Forge copies (sealed, gestating,
+    16 of them empty). Every Forge project stays on her Forge page, which reads the Forge's own database."""
+    return False
+
+
 class AtelierProjection:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -53,8 +60,8 @@ class AtelierProjection:
             with controller.db() as db:
                 for row in db.execute('SELECT body FROM projects ORDER BY rowid'):
                     project = json.loads(row[0])
-                    if forge_paperwork(project):
-                        continue          # never copied into the Atelier (Lab work 2026-10-16, capability briefs 22 October)
+                    if not in_atelier(project):
+                        continue          # never copied into the Atelier (Lab 16 Oct, briefs 22 Oct, all Forge work 8 Nov)
                     controller._expiry(db, project)
                     version = hashlib.sha256(json.dumps(project, sort_keys=True).encode()).hexdigest()
                     identity = self.root/'projects'/('forge-'+project['id'])/'.forge-owner.json'

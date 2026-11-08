@@ -31,7 +31,8 @@ def fixture(turn="fixture-turn", start=100, final=110):
                "turn_id": turn, "output_provenance": "ordinary_generation", "may_witness": True},
            "witness_receipt": receipt}
     nodes = {"context-1": {"id": "context-1", "kind": "context", "at": 90,
-                           "complete": True, "parents": []}}
+                           "complete": True, "parents": ["external-0"]},
+             "external-0": W.source_node("external-0", "counterpart_verbatim", 0, "Synthetic input.")}
     forecast = {"turn_id": turn, "surface": "fixture-chat", "mode": "on_message", "ts": start + 1,
                 "arrived_at": start - 1, "self": {"emb": [1., 0.], "mode": "on_message",
                     "source": "fixture-self", "checkpoint_id": "fixture-checkpoint", "context_last_ts": 80}}
@@ -104,9 +105,16 @@ class WitnessTests(unittest.TestCase):
         self.row["witness_final_text"] = self.row["content"]
         self.row["witness_final_sha256"] = W.digest(self.row["content"])
         self.row["content"] += " [synthetic device annotation]"
+        self.assertEqual(self.admit(), "missing_final_response")
+        self.row["source"] = "ledger"
         self.assertEqual(self.admit(), "eligible")
         self.assertEqual(len(self.score()[1]), 1)
         self.row["witness_final_sha256"] = W.digest("a different synthetic final")
+        self.assertEqual(self.admit(), "missing_final_response")
+
+    def test_exact_final_text_cannot_substitute_unrelated_store_text(self):
+        self.row.update(source="ledger", witness_final_text="a different synthetic reply",
+                        witness_final_sha256=W.digest("a different synthetic reply"))
         self.assertEqual(self.admit(), "missing_final_response")
 
     def test_duplicate_hold_retains_copy_reason(self):
@@ -126,6 +134,19 @@ class WitnessTests(unittest.TestCase):
         normalized = EP.normalize(p)
         self.assertEqual(normalized["witness_receipt"], W.normalize_receipt(p["witness_receipt"]))
         self.assertNotIn("untrusted_payload", normalized["witness_receipt"])
+
+    def test_request_binding_survives_provenance_and_merge(self):
+        import build_merged_chat as merge
+        attempt = self.row["witness_receipt"]["generation"]["attempts"][-1]
+        attempt.update(request_id="fixture-request", input_sha256=W.digest("synthetic handler request"))
+        p = dict(self.row["generation_provenance"], witness_receipt=self.row["witness_receipt"])
+        normalized = EP.normalize(p)
+        row = dict(self.row, generation_provenance=normalized)
+        projected = merge.entry(row, "assistant", row["content"], "2026-01-01T00:00:00Z", "canonical")
+        for receipt in (projected["witness_receipt"], projected["generation_provenance"]["witness_receipt"]):
+            selected = receipt["generation"]["attempts"][-1]
+            self.assertEqual(selected["request_id"], "fixture-request")
+            self.assertEqual(selected["input_sha256"], W.digest("synthetic handler request"))
 
     def test_missing_receipt_module_is_explicit_unknown(self):
         p = dict(self.row["generation_provenance"], witness_receipt=self.row["witness_receipt"])
@@ -168,8 +189,51 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
     def test_effect_through_value_map(self):
         self.nodes["context-1"]["parents"] = ["map"]
         self.nodes["map"] = {"id": "map", "kind": "value_map", "at": 70, "complete": True, "parents": ["effect"]}
-        self.nodes["effect"] = {"id": "effect", "kind": "behaviour_receipt", "at": 60, "complete": True, "parents": []}
+        self.nodes["effect"] = {"id": "effect", "kind": "behaviour_receipt", "at": 60, "complete": True, "parents": ["external-0"]}
         self.assertEqual(self.admit(), "influenced_lineage")
+
+    def test_parentless_generated_nodes_are_unknown(self):
+        for kind in sorted(W.KINDS - {"ordinary_source"}):
+            with self.subTest(kind=kind):
+                nodes = copy.deepcopy(self.nodes)
+                nodes["context-1"]["parents"] = ["empty"]
+                nodes["empty"] = {"id": "empty", "kind": kind, "at": 80, "complete": True, "parents": []}
+                self.assertEqual(W.lineage_status("context-1", nodes, 100), "unknown")
+        self.nodes["context-1"]["parents"] = []
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_external_sibling_cannot_launder_parentless_value_map(self):
+        self.nodes["map"] = {"id": "map", "kind": "value_map", "at": 80, "complete": True, "parents": []}
+        for parents in (["external-0", "map"], ["map", "external-0"]):
+            self.nodes["context-1"]["parents"] = parents
+            self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["map"]["parents"] = ["external-0"]
+        self.assertEqual(self.admit(), "eligible")
+
+    def test_external_source_requires_origin_and_exact_version(self):
+        self.nodes["context-1"]["parents"] = ["external"]
+        for origin in sorted(W.SOURCE_ORIGINS):
+            self.nodes["external"] = W.source_node("external", origin, 80, "synthetic input")
+            self.assertEqual(self.admit(), "eligible")
+        clean = copy.deepcopy(self.nodes["external"])
+        for field in ("origin", "source_sha256"):
+            self.nodes["external"] = dict(clean)
+            del self.nodes["external"][field]
+            self.assertEqual(self.admit(), "unknown_lineage")
+        for origin in ("reply", "value_map", "journal", "unknown", ""):
+            self.nodes["external"] = dict(clean, origin=origin)
+            self.assertEqual(self.admit(), "unknown_lineage")
+            with self.assertRaises(ValueError): W.source_node("external", origin, 80, "synthetic input")
+        self.nodes["external"] = dict(clean, source_sha256="bad")
+        self.assertEqual(self.admit(), "unknown_lineage")
+        self.nodes["external"] = dict(clean, parents=["missing-generated-parent"])
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_unmarked_reply_cannot_become_an_external_leaf(self):
+        self.nodes["context-1"]["parents"] = ["unmarked"]
+        self.nodes["unmarked"] = {"id": "unmarked", "kind": "ordinary_source", "at": 80,
+                                  "parents": [], "complete": True}
+        self.assertEqual(self.admit(), "unknown_lineage")
 
     def test_unknown_lineage_never_clean(self):
         for mutation in ({"parents": ["missing"]}, {"parents": ["context-1"]},
@@ -181,9 +245,16 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.nodes["context-1"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
 
+    def test_reply_shaped_ordinary_leaf_is_unknown(self):
+        self.nodes["context-1"]["parents"] = ["pretend-source"]
+        for shape in ({"role": "assistant"}, {"turn_id": "prior-reply"}, {"reply_text": "synthetic"}):
+            self.nodes["pretend-source"] = dict(W.source_node(
+                "pretend-source", "counterpart_verbatim", 80, "synthetic input"), **shape)
+            self.assertEqual(self.admit(), "unknown_lineage")
+
     def test_reply_node_propagates_direct_and_indirect_influence(self):
         self.nodes.update({
-            "old-context": {"id": "old-context", "at": 60, "kind": "context", "parents": [], "complete": True},
+            "old-context": {"id": "old-context", "at": 60, "kind": "context", "parents": ["external-0"], "complete": True},
             "old-reply": {"id": "old-reply", "at": 70, "kind": "reply", "parents": ["old-context"],
                           "context_receipt_id": "old-context", "turn_id": "old-turn", "influence": "influenced", "complete": True}})
         self.nodes["context-1"]["parents"] = ["old-reply"]
@@ -193,7 +264,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual(self.admit(), "influenced_lineage")
         del self.nodes["old-reply"]["character_influenced"]
         self.nodes["old-context"]["parents"] = ["effect"]
-        self.nodes["effect"] = {"id": "effect", "at": 50, "kind": "judge_effect", "parents": [], "complete": True}
+        self.nodes["effect"] = {"id": "effect", "at": 50, "kind": "judge_effect", "parents": ["external-0"], "complete": True}
         self.assertEqual(self.admit(), "influenced_lineage")
         self.nodes["old-reply"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
@@ -209,6 +280,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             key = str(i)
             nodes[key] = {"id": key, "at": i, "kind": "context", "complete": True,
                           "parents": [str(i - 1)] * 2 if i else []}
+        nodes["0"] = W.source_node("0", "sensor_observation", 0, "Synthetic observation.")
         self.assertEqual(W.lineage_status("59", nodes, 100), "clean")
         self.assertLess(nodes.calls, 200)
         nodes["59"]["parents"] = ["58", "earlier-parent"]
@@ -282,6 +354,104 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual([r["prior_n"] for r in rows], [0, 1, 1])
         self.assertEqual(rows[1]["innovation_percentile"], 50)
         self.assertEqual(rows[2]["innovation_percentile"], 50)
+
+    def controls_fixture(self):
+        first, _, _, e1, _ = fixture("earlier-1", 100, 110)
+        second, _, _, e2, _ = fixture("earlier-2", 120, 130)
+        target, _, forecast, e3, ck = fixture("target", 300, 310)
+        e1["emb"], e2["emb"], e3["emb"] = [1., 0.], [0., 1.], [1., 0.]
+        forecast["self"]["context_last_ts"] = 200
+        forecast["self"]["context"] = {
+            "schema": "forecast-reply-context-v1", "complete": True,
+            "scope": "forecast_context_assistant_replies", "as_of": 200,
+            "evaluation_block": "synthetic-block-a", "reply_refs": [
+                {"turn_id": r["turn_id"], "response_sha256": W.digest(r["content"])} for r in (first, second)]}
+        return [first, second, target], [forecast], [e1, e2, e3], ck
+
+    def control_score(self, data):
+        return R.innovation(*data)
+
+    def test_paired_controls_use_exact_forecast_context(self):
+        report, rows = self.control_score(self.controls_fixture())
+        self.assertEqual(len(rows), 1)
+        controls = rows[0]["controls"]
+        self.assertEqual(controls["context_n"], 2)
+        self.assertEqual(controls["last_reply_error"], 1.)
+        self.assertAlmostEqual(controls["recent_mean_error"], 1 - 2 ** -.5)
+        self.assertEqual(controls["last_reply_improvement"], 1.)
+        self.assertEqual(report["baselines"]["paired_groups"][0]["n"], 1)
+        self.assertEqual(report["baselines"]["unavailable"], {})
+
+    def test_missing_context_does_not_invent_baselines_or_drop_head(self):
+        report, rows = self.score()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(report["baselines"]["paired_groups"], [])
+        self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
+
+    def test_controls_require_complete_causal_bound_context(self):
+        for mutation, reason in (({"complete": False}, "incomplete_context_receipt"),
+                                 ({"as_of": 299}, "noncausal_context_receipt"),
+                                 ({"evaluation_block": ""}, "missing_evaluation_block"),
+                                 ({"scope": "all_history"}, "wrong_context_scope"),
+                                 ({"reply_refs": []}, "missing_or_oversized_context")):
+            data = self.controls_fixture()
+            data[1][0]["self"]["context"].update(mutation)
+            report, rows = self.control_score(data)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(report["baselines"]["unavailable"], {reason: 1})
+
+    def test_controls_reject_target_duplicate_tied_and_reversed_context(self):
+        for kind in ("target", "duplicate", "tie", "reversed", "future"):
+            data = self.controls_fixture(); context = data[1][0]["self"]["context"]
+            if kind == "target": context["reply_refs"][0]["turn_id"] = "target"
+            if kind == "duplicate": context["reply_refs"][1] = copy.deepcopy(context["reply_refs"][0])
+            if kind == "tie": data[0][1]["witness_receipt"]["finalized_at"] = 110
+            if kind == "reversed": context["reply_refs"].reverse()
+            if kind == "future": data[0][1]["witness_receipt"]["finalized_at"] = 300
+            report, rows = self.control_score(data)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable", kind)
+            self.assertEqual(report["baselines"]["paired_groups"], [])
+
+    def test_control_versions_encoder_surface_and_conflicts_are_checked(self):
+        for kind in ("hash", "encoder", "surface", "conflict", "missing", "not_admitted"):
+            data = self.controls_fixture()
+            if kind == "hash": data[1][0]["self"]["context"]["reply_refs"][0]["response_sha256"] = W.digest("other")
+            if kind == "encoder": data[2][0]["encoder_id"] = "different"
+            if kind == "surface": data[0][0]["witness_receipt"]["surface"] = "other"
+            if kind == "conflict": data[2].append(dict(data[2][0], emb=[0., 1.]))
+            if kind == "missing": data[2].pop(0)
+            if kind == "not_admitted": data[0].pop(0)
+            _, rows = self.control_score(data)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable", kind)
+
+    def test_controls_do_not_use_uncited_more_recent_reply(self):
+        data = self.controls_fixture()
+        extra, _, _, emb, _ = fixture("uncited", 150, 160)
+        emb["emb"] = [1., 0.]
+        data[0].append(extra); data[2].append(emb)
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["last_reply_error"], 1.)
+
+    def test_recent_mean_normalizes_inputs_and_refuses_zero_mean(self):
+        data = self.controls_fixture(); data[2][0]["emb"] = [100., 0.]
+        _, rows = self.control_score(data)
+        self.assertAlmostEqual(rows[0]["controls"]["recent_mean_error"], 1 - 2 ** -.5)
+        data[2][1]["emb"] = [-1., 0.]
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["status"], "unavailable")
+
+    def test_paired_coverage_and_evaluation_blocks_are_not_pooled(self):
+        data = self.controls_fixture()
+        second, _, forecast, emb, _ = fixture("target-b", 400, 410)
+        forecast["self"]["context_last_ts"] = 200
+        forecast["self"]["context"] = copy.deepcopy(data[1][0]["self"]["context"])
+        forecast["self"]["context"]["evaluation_block"] = "synthetic-block-b"
+        third, _, f3, e3, _ = fixture("target-c", 500, 510)  # no context receipt
+        data[0].extend([second, third]); data[1].extend([forecast, f3]); data[2].extend([emb, e3])
+        report, rows = self.control_score(data)
+        self.assertEqual(report["groups"][0]["n"], 3)
+        self.assertEqual([g["n"] for g in report["baselines"]["paired_groups"]], [1, 1])
+        self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
 
     def test_scratch_rejects_live_parent_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
