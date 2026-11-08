@@ -2714,6 +2714,7 @@ def main():
                     continue
                 if action == "local_analysis":
                     from local_analysis import retain_result
+                    from want_agent import specific as _agent_specific
                     if not retain_result(want, success, os.path.join(MEMORY, "current-wants.json")):
                         log("  → Analysis receipt not bound to the current step; not advanced")
                         continue

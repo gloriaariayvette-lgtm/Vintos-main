@@ -143,6 +143,40 @@ def _artifact(ws, relative, want):
     return path
 
 
+def known_artifact_hashes(ws, want):
+    """Read recorded output hashes only; copying known bytes is not new work."""
+    known=set(); remaining=[300000]
+    def scan(value):
+        remaining[0]-=1
+        if remaining[0]<0: raise ValueError('artifact history exceeds verification budget')
+        if isinstance(value,dict):
+            digest=value.get('sha256')
+            if isinstance(digest,str) and re.fullmatch(r'[0-9a-fA-F]{64}',digest): known.add(digest.lower())
+            for child in value.values():
+                if isinstance(child,(dict,list)): scan(child)
+        elif isinstance(value,list):
+            for child in value: scan(child)
+    def metadata(path, limit=16*1024*1024):
+        if not os.path.lexists(path): return []
+        if path.resolve()!=path.absolute() or not path.is_file() or path.stat().st_size>limit:
+            raise ValueError('artifact history is linked or exceeds verification budget')
+        return read(path,[])
+    for relative in ('art/gallery.json','art/video/video-gallery.json','art/video/video-queue.json',
+                     'art/music/music.json','fulfilled-wants.json'):
+        scan(metadata(ws/'memory'/relative))
+    request=want['agent_work']['request_id']
+    for row in metadata(ws/'memory/current-wants.json'):
+        if row.get('id')==want['id'] and (row.get('agent_work') or {}).get('request_id')==request:
+            scan((row.get('agent_work') or {}).get('result_revisions',[]))
+        else: scan(row)
+    root=ws/'memory/want-artifacts/requests'
+    paths=list(root.glob('WA-*/result.json'))
+    if len(paths)>10000: raise ValueError('artifact manifest history exceeds verification budget')
+    for path in paths:
+        if path.parent.name!=request: scan(metadata(path,32000))
+    return known
+
+
 def verify(want, ws=None):
     """A trusted agent's attestation plus actual hashed files, not a prose 'done'."""
     ws = Path(ws or workspace())
@@ -162,10 +196,13 @@ def verify(want, ws=None):
     if not isinstance(artifacts, list) or not 1 <= len(artifacts) <= 8:
         raise ValueError('completed work must include one to eight deliverables')
     paths = []
+    known = known_artifact_hashes(ws, want)
     for entry in artifacts:
         path = _artifact(ws, entry['path'], want)
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry.get('sha256'):
             raise ValueError('artifact changed after the agent reported completion')
+        if entry.get('sha256') in known:
+            raise ValueError('artifact bytes already recorded on a shelf or earlier deliverable')
         paths.append(path)
     if len(set(paths)) != len(paths) or sum(p.stat().st_size for p in paths) > 64 * 1024 * 1024:
         raise ValueError('duplicate artifacts or total delivery budget exceeded')
@@ -443,11 +480,32 @@ def main():
     p = sub.add_parser('binding'); p.add_argument('request_id'); p.add_argument('--thread', required=True)
     p = sub.add_parser('continue-context'); p.add_argument('request_id')
     p.add_argument('--summary-file', required=True); p.add_argument('--through-event', required=True)
+    p = sub.add_parser('reconcile'); p.add_argument('request_id'); p.add_argument('--call', required=True)
+    p.add_argument('--outcome', choices=('observed','failed'), required=True)
+    p.add_argument('--evidence-file', required=True); p.add_argument('--response-file')
+    p.add_argument('--confirm-stopped', action='store_true', required=True)
     args = parser.parse_args(); ws = workspace()
     w = next((w for w in read(ws / 'memory/current-wants.json', [])
               if (w.get('agent_work') or {}).get('request_id') == args.request_id), None)
     if w is None: parser.error('no current want with this exact request')
     if not specific(w): parser.error('request lacks a bound journal/email source')
+    if args.command == 'reconcile':
+        import want_working_thread as working
+        work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), respect_pause=False)
+        if work is None: parser.error('no current want-room binding')
+        root = directory(args.request_id, ws)
+        def private_text(filename, limit):
+            source=Path(filename).absolute()
+            if (source.resolve()!=source or not source.is_relative_to(root)
+                    or not source.is_file() or source.stat().st_size>limit):
+                parser.error('reconciliation input must be a bounded private file in the request directory')
+            return source.read_text()
+        evidence=private_text(args.evidence_file,48000)
+        response=private_text(args.response_file,60000) if args.response_file else None
+        try: working.reconcile(w,work,ws,args.call,args.outcome,evidence,response)
+        except ValueError as exc: parser.error(str(exc))
+        print(json.dumps({'reconciled':True,'outcome':args.outcome}))
+        return
     if args.command == 'continue-context':
         import want_working_thread as working
         work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), respect_pause=False)

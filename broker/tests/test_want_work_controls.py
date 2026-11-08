@@ -240,4 +240,55 @@ class Tests(unittest.TestCase):
         self.assertEqual(observed,[packet]);self.assertEqual(len(reserves),2)
         self.assertTrue(payloads[0]['return_receipt']);self.assertNotIn('return_receipt',payloads[1])
 
+    def interrupted(self):
+        with self.assertRaises(B.WorkBlocked):
+            self.gen(writer=lambda *a: (_ for _ in ()).throw(RuntimeError('synthetic interrupted call')))
+        data=W.load(self.want,self.work,self.ws)
+        return next(iter(data['generations'].values()))['request_id']
+
+    def test_reconcile_observed_finishes_locally_and_keeps_budget(self):
+        call=self.interrupted(); before=copy.deepcopy(self.ledger())
+        response=json.dumps({'message':'Recovered synthetic response.','accept':False})
+        with self.assertRaises(ValueError): W.reconcile(self.want,self.work,self.ws,call,'observed','Fixture evidence',response)
+        (self.ws/'memory/want-work.stop').touch()
+        W.reconcile(self.want,self.work,self.ws,call,'observed','Fixture evidence',response)
+        W.reconcile(self.want,self.work,self.ws,call,'observed','Fixture evidence',response)
+        with self.assertRaises(ValueError): W.reconcile(self.want,self.work,self.ws,call,'failed','Different evidence')
+        (self.ws/'memory/want-work.stop').unlink()
+        answer=self.gen(writer=lambda *a:self.fail('recovered response called provider'))
+        self.assertEqual(answer['message'],'Recovered synthetic response.')
+        self.assertEqual(self.ledger(),before)
+        rec=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))
+        self.assertEqual(rec['reconciliation']['prior']['state'],'uncertain')
+        self.assertIsNone(rec['capture']['witness_receipt']['generation']['attempts'][0]['served_model'])
+
+    def test_reconcile_failed_preserves_history_and_consumed_attempts(self):
+        call=self.interrupted(); (self.ws/'memory/want-work.stop').touch()
+        W.reconcile(self.want,self.work,self.ws,call,'failed','Operator verified no response and stopped worker.')
+        (self.ws/'memory/want-work.stop').unlink(); self.gen()
+        self.assertEqual(len(self.ledger()),2)
+        rec=next(iter(W.load(self.want,self.work,self.ws)['generations'].values()))
+        self.assertEqual(rec['reconciliation_history'][0]['call_id'],call)
+        (self.ws/'memory/want-work.stop').touch()
+        with self.assertRaises(ValueError): W.reconcile(self.want,self.work,self.ws,rec['request_id'],'failed','Cannot reopen completed call.')
+
+    def test_reconcile_cli_uses_private_files_and_prints_no_response(self):
+        call=self.interrupted(); (self.ws/'memory/want-work.stop').touch()
+        (self.ws/'memory/current-wants.json').write_text(json.dumps([self.want]))
+        path=self.ws/'memory/dot-channel';path.mkdir()
+        (path/'state.json').write_text(json.dumps({'room_work':{'open':[self.work]}}))
+        root=A.directory(self.want['agent_work']['request_id'],self.ws)
+        (root/'.evidence.txt').write_text('Synthetic operator evidence.')
+        response=json.dumps({'message':'Private synthetic recovered output.','accept':False})
+        (root/'.response.txt').write_text(response)
+        import io
+        from contextlib import redirect_stdout
+        args=['want_agent.py','reconcile',self.want['agent_work']['request_id'],'--call',call,
+              '--outcome','observed','--confirm-stopped','--evidence-file',str(root/'.evidence.txt'),
+              '--response-file',str(root/'.response.txt')]
+        output=io.StringIO()
+        with patch.object(sys,'argv',args),redirect_stdout(output): A.main()
+        self.assertEqual(json.loads(output.getvalue()),{'reconciled':True,'outcome':'observed'})
+        self.assertNotIn('Private',output.getvalue())
+
 if __name__=='__main__':unittest.main()

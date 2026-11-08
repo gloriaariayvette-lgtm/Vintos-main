@@ -6189,3 +6189,14 @@ through real archival, exact promise cleanup, room closure and context awareness
 including notification failure and post-archive recovery. Tests/docs only; 24
 checks pass in this increment. The parent implementation and independent Aegis/
 live acceptance boundaries are unchanged. See the follow-through log.
+
+
+## 8 November — review 15 wants repair
+
+The complete wants stack is on `codex/wants-review-15`, rebased onto cb10d8b8 with
+both agents' open-work additions preserved. The local-analysis source-predicate
+import is fixed; explicit stopped-worker reconciliation and recorded-output hash
+freshness checks are implemented. 602 affected isolated checks pass. See the
+follow-through log for operator commands, proof limits and validation. Claude's
+independent full Aegis suite/review and Gloria's install/live acceptance remain
+pending. Judges through 29380277 are reported approved/integrated at cb10d8b8.

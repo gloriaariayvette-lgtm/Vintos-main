@@ -102,3 +102,11 @@ then use `want_agent.py continue-context REQUEST_ID --summary-file ABSOLUTE_FILE
 record, changes only the subsequent prompt view and makes no provider call. It
 does not reset limits or authorize replay of an uncertain/response-observed call.
 This instruction update is not installed by writing this repository file.
+
+
+Interrupted want calls now have an operator-only `want_agent.py reconcile`
+command, documented in `docs/wants-action-followthrough.md`. Do not clear a call
+or remove its stop yourself: the operator must verify that the worker stopped
+and supply retained evidence. Recovery never resets call budgets. Deliverables
+also reject hashes already recorded on shelves or earlier outputs; copying a
+file into the request folder is not new work.

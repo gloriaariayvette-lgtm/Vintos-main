@@ -185,6 +185,23 @@ class Tests(unittest.TestCase):
         os.utime(artifact, (A.time.time()+86400, A.time.time()+86400))
         self.assertEqual(self.receive(), 0)
 
+    def test_fresh_copy_of_recorded_shelf_bytes_is_not_a_new_result(self):
+        self.intake(); result,path=self.result()
+        (self.mem/'art').mkdir()
+        self.write('art/gallery.json',[{'manifest':{'sha256':result['artifacts'][0]['sha256']}}])
+        with self.assertRaisesRegex(ValueError,'already recorded'): A.verify(self.current()[0],self.ws)
+        self.receive(); self.finish(); self.assertFalse(self.endings)
+
+    def test_earlier_request_outputs_and_revisions_cannot_be_relabelled(self):
+        self.intake(); result,path=self.result()
+        other=A.directory('WA-'+'f'*24,self.ws); other.mkdir(parents=True)
+        (other/'result.json').write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError,'already recorded'): A.verify(self.current()[0],self.ws)
+        (other/'result.json').unlink()
+        rows=self.current();rows[0]['agent_work']['result_revisions']=[{'result':result}]
+        self.write('current-wants.json',rows)
+        with self.assertRaisesRegex(ValueError,'already recorded'): A.verify(rows[0],self.ws)
+
     def test_result_needs_real_unchanged_files(self):
         self.intake(); _, artifact=self.result(); artifact.write_text('changed')
         self.assertEqual(self.receive(),0); self.finish(); self.assertFalse(self.notifications)
@@ -673,6 +690,8 @@ class Tests(unittest.TestCase):
         w=self.current()[0];work=W.binding(w,self.state)
         self.assertEqual(W.load(w,work,self.ws)['events'][-1]['who'],'vintos')
         rec['acceptance']='Revised fixture evidence'
+        artifact.write_text('Synthetic revised score with additional checked output.')
+        rec['artifacts'][0]['sha256']=hashlib.sha256(artifact.read_bytes()).hexdigest()
         (A.directory(a['request_id'],self.ws)/'result.json').write_text(json.dumps(rec))
         self.receive(ts=str(self.now+4))
         def review(w,result):

@@ -426,3 +426,55 @@ establish local plumbing, not output quality or live provider/agent availability
 Full isolated Aegis validation, instruction installation, deployment and acceptance
 of an actual want remain with the reviewer and owner. No new production code,
 service change, real send, model call or private data was used.
+
+
+## Review 15 repair and rebase
+
+`codex/wants-review-15` rebases the complete wants stack, including final completion
+binding and full synthetic acceptance, onto approved deploy base cb10d8b8. The
+open-work conflict was resolved as a union. All prior pushed review tips remain
+unchanged. The extracted local-analysis branch now imports its own source
+predicate, so it does not depend on an import performed elsewhere in the router
+loop. Its 15 isolated tests pass, including the reviewer-reported failure.
+
+Interrupted calls have an explicit operator recovery command:
+
+```sh
+python3 scripts/want_agent.py reconcile "$REQUEST_ID" --call "$CALL_ID" \
+  --outcome observed --confirm-stopped \
+  --evidence-file "$REQUEST_DIRECTORY/.reconciliation-evidence.txt" \
+  --response-file "$REQUEST_DIRECTORY/.recovered-response.txt"
+```
+
+For a confirmed failed call, use `--outcome failed` and omit `--response-file`.
+The operator must first stop the lane, ensure the worker is no longer running,
+and leave `memory/want-work.stop` present. The stop file alone does not cancel an
+in-flight request; `--confirm-stopped` is the operator's explicit attestation.
+`CALL_ID` is the retained generation request_id, not a model name or task ID.
+Inputs must be bounded nonlinked files inside the private request directory.
+Only running/uncertain calls without an observed response are eligible. Conflicting
+reconciliations are refused; the same action is idempotent. Prior state/evidence
+is retained, including after a subsequent retry. Observed recovery finishes
+locally and records unknown served identity rather than treating supplied text
+as independently observed provider metadata. Failed recovery permits a later
+attempt after the operator removes the stop, within the same consumed budgets.
+The command sends nothing, calls no model, changes no policy and prints no
+response or evidence. Agents must not use it to clear uncertainty themselves.
+
+Result verification also checks recorded sha256 values in the existing artifact
+ledgers, fulfilled wants, other current requests, prior revisions and other
+request manifests. Freshly copying known bytes into a request directory cannot
+pass. Metadata reads are bounded and linked/oversized history is refused.
+Same-version retries remain valid. This only checks recorded identities: it does
+not prove originality, scientific correctness or detect unrecorded old files or
+modified copies. A revision fixture that previously changed only acceptance
+prose now supplies changed synthetic output, as the stricter requirement demands.
+
+Validation: **602 checks across 12 isolated suites** pass: local analysis 15,
+working controls 20, follow-through 51, completion integration 13, room 320,
+artifact guard 11, thread doors 22, ownership 11, artifact delivery 39, endings 50,
+moves-on 26 and policy decisions 24. Recovery fixtures verify unchanged consumed
+limits, preserved history, local-only observed completion, refusal to reopen a
+completed call and private CLI output. Freshness fixtures cover shelf copies,
+earlier request output and prior revisions. No private inputs, model calls,
+real sends, installs, merge or deploy. Independent full Aegis review remains open.

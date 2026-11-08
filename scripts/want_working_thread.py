@@ -169,6 +169,41 @@ def continue_context(want, work, ws, summary, through_event):
     return _mutate(want, work, ws, retain)
 
 
+def reconcile(want, work, ws, call_id, outcome, evidence, response=None):
+    """Explicit stopped-worker reconciliation; never calls a provider or refunds caps."""
+    from want_agent import fingerprint
+    if not os.path.lexists(Path(ws) / 'memory/want-work.stop'):
+        raise ValueError('stop the want lane and confirm its worker has stopped before reconciliation')
+    if outcome not in ('observed','failed') or not isinstance(evidence,str) or not evidence.strip() or len(evidence)>48000:
+        raise ValueError('bounded nonempty reconciliation evidence required')
+    if outcome == 'observed' and (not isinstance(response,str) or not response.strip() or len(response)>60000):
+        raise ValueError('observed reconciliation requires the exact bounded response text')
+    if outcome == 'failed' and response is not None:
+        raise ValueError('a failed call cannot have an observed response')
+    record = dict(call_id=call_id,outcome=outcome,evidence=evidence,
+                  response_sha256=fingerprint(response) if response is not None else None)
+    def change(data):
+        matches=[item for item in data['generations'].values() if item.get('request_id')==call_id]
+        if len(matches)!=1: raise ValueError('call ID must identify exactly one retained generation')
+        item=matches[0]
+        prior=item.get('reconciliation')
+        if prior:
+            if any(prior.get(k)!=v for k,v in record.items()):
+                raise ValueError('call already reconciled with different evidence or outcome')
+            return
+        if item.get('state') not in ('running','uncertain') or item.get('result'):
+            raise ValueError('only an unobserved interrupted call can be reconciled')
+        item['reconciliation']=dict(record,at=time.time(),prior=deepcopy(item))
+        if outcome=='observed':
+            # Operator-supplied recovery is not observed provider identity.
+            observation=dict(text=response,status='valid',identity_evidence='unknown',
+                             lane=item.get('active_lane','unknown'))
+            item.update(state='response_observed',result={'text':response,'observations':[observation]})
+        else:
+            item.update(state='retry',retry_after=0)
+    return _mutate(want,work,ws,change)
+
+
 def notify_block(want, work, ws, reason, sender):
     """The caller supplies deliver; private receipt deduplication survives restarts."""
     from want_agent import fingerprint
@@ -262,7 +297,9 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
             if old.get('state') in ('running','uncertain','response_observed','done'):
                 raise WorkBlocked('working_call_already_recorded')
             current['generations'][key] = dict(state='running',request_id=run,at=now,
-                                               attempts=old.get('attempts', []),observations=[])
+                                               attempts=old.get('attempts', []),observations=[],
+                                               reconciliation_history=old.get('reconciliation_history', [])
+                                               + ([old['reconciliation']] if old.get('reconciliation') else []))
         _mutate(want, work, ws, intent)
         def before_attempt(lane):
             reserve(ws, want['agent_work']['request_id'], run + ':' + lane, lane)
