@@ -3061,17 +3061,18 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         import promise_keeper
         destination = promise_keeper.results_channel() or channel
         request = want["agent_work"]["request_id"]
+        revision = want["agent_work"]["result_sha256"]
         text = result["summary"] + "\nChecked against the task: " + result["acceptance"]
         if _guarded(text): raise RuntimeError("result refused by send guard")
         # Transport errors propagate: an upload reservation is not a delivered file.
         progress = dict(want["agent_work"].get("publishing") or {})
         destination = progress.get("channel") or destination
         def keep():
-            if not want_agent._update(want["id"], request, {"publishing": progress}, want_agent.workspace()):
+            if not want_agent._update(want["id"], request, {"publishing": progress}, want_agent.workspace(), expected_result=revision):
                 raise RuntimeError("source want changed during result publication")
         if not progress.get("thread"):
             sent = api("chat.postMessage", {"channel": destination, "text": text,
-                        "client_msg_id": str(__import__("uuid").uuid5(__import__("uuid").NAMESPACE_URL, request + ":result"))})
+                        "client_msg_id": str(__import__("uuid").uuid5(__import__("uuid").NAMESPACE_URL, request + ":result:" + revision))})
             if not sent.get("ts") or sent.get("ok") is False: raise RuntimeError("result message not posted")
             progress.update(channel=destination, thread=sent["ts"], files={}); keep()
         for path, artifact in zip(paths, result["artifacts"]):
@@ -3106,11 +3107,15 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                 w = matches[0]; a = w['agent_work']
                 accepted = accepted_results.get(rid)
                 ok = (accepted is not None and accepted == (summary, a.get('result'))
+                      and a.get('result_sha256') == want_agent.result_digest(accepted[1])
+                      and a.get('stage_result_sha256') == a.get('result_sha256')
                       and a.get('status') == 'result_ready' and bool(url)
                       and (a.get('publication') or {}).get('url') == url
                       and working.binding(w, state) is not None)
                 return bool(ok), "reviewed bound result with retained publication"
-            return deliver("want-result:" + rid, "ntfy", summary + "\n" + url,
+            accepted = accepted_results.get(rid)
+            revision = want_agent.result_digest(accepted[1]) if accepted else "unknown"
+            return deliver("want-result:" + rid + ":" + revision, "ntfy", summary + "\n" + url,
                            title="I finished this", click=url, authority=authority)
     if complete is None:
         import want_completion
