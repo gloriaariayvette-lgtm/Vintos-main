@@ -123,7 +123,8 @@ class CoreEngineVectorTests(unittest.TestCase):
         for e in core:
             self.assertEqual(len(e["vector"]), 3)
             self.assertTrue(all(math.isfinite(x) for x in e["vector"]))
-        self.assertTrue(self.posts and all(u.startswith(CE.LM_URL) for u in self.posts))
+        # embeddings at the encoder's own address; the naming call on AEON's subconscious lane (2026-11-08)
+        self.assertTrue(self.posts and all(u.startswith(CE.LM_URL) or "127.0.0.1:8599/pool/subconscious/" in u for u in self.posts), self.posts)
 
     def test_valid_output_publishes_through_direct_write_fallback(self):
         self.sg_result = False   # store lock unavailable

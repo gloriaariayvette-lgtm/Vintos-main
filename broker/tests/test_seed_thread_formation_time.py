@@ -20,7 +20,7 @@ class _Resp:
     def __init__(self, text): self._t = text
     def json(self): return {"choices": [{"message": {"content": self._t}}]}
 def fake_post(url, json=None, timeout=None, headers=None, **k):
-    if "100.79.177.103" not in url:
+    if "100.79.177.103" not in url and "127.0.0.1:8599/pool/subconscious/" not in url:   # the judges: AEON's subconscious lane (2026-11-08)
         raise AssertionError("unexpected host " + url)
     content = json["messages"][-1]["content"]
     if "UNRESOLVED TENSION" in content:

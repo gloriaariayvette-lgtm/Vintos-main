@@ -61,7 +61,7 @@ def local_http(req, timeout=0):
 BJ._post = type_post; old_http = BJ.HTTP; BJ.HTTP = local_http
 action = planner.choose_page("search for tacos", "summary", 1, "", [], "plan", st, els, "Menu", [])
 check("Jev picks the field and local Gemma supplies text", action["action"] == "type" and action["n"] == 0 and action["text"] == "tacos" and action["enter"], action)
-check("field prose used only the local endpoint", len(typed_requests) == 1 and typed_requests[0]["model"] == "local-gemma", typed_requests)
+check("field prose used only the local model (AEON, through the flag)", len(typed_requests) == 1 and typed_requests[0]["model"] == "aeon-gemma-4-12b", typed_requests)
 
 private_calls = len(calls)
 action = planner.choose_page("pay", "summary", 1, "", [], "plan", *page("https://restaurant.example/checkout"), "Card number", [])
