@@ -11001,6 +11001,24 @@ Your current self-model (excerpt):
                 original_text=msg.original_text, input_message=messages[-1], input_slot=len(messages) - 2)
         except Exception:
             print("[witness] scratch capture unavailable", flush=True)
+        def _prepare_witness(system, history, parameters, reason):
+            # Partial installs and older observation modules must never affect routing.
+            if _witness_capture is None:
+                return None, {}
+            try:
+                import inspect
+                if "observer" not in inspect.signature(_mr.route_reply).parameters:
+                    return None, {}
+                request, options = _witness_module.prepare_shadow(
+                    _witness_capture, system, history, parameters, reason, time.time)
+                if (not isinstance(options, dict) or set(options) - {"observer"}
+                        or ("observer" in options and not callable(options["observer"]))):
+                    raise ValueError("invalid observation options")
+                return request, options
+            except Exception:
+                print("[witness] request capture unavailable", flush=True)
+                return None, {}
+
         _witness_selected = None
         # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
         # repository's history, and its shared budget cut one reply off at "[SCENE:".
@@ -11011,9 +11029,7 @@ Your current self-model (excerpt):
                 _cap_j.dump(messages, open('/tmp/avatar-last-prompt.json', 'w'))
             except Exception:
                 pass
-            _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
-                _witness_capture, messages[0]["content"], messages[1:], params, _reason, time.time)
-                if _witness_module is not None else (None, {}))
+            _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], messages[1:], params, _reason)
             reply, _claude_reasoning, _model_used = await _mr.route_reply(
                 "avatar", messages[0]["content"], messages[1:], params,
                 f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
@@ -11028,9 +11044,7 @@ Your current self-model (excerpt):
                 _again = list(messages[1:]) + [{"role": "user", "content":
                     "[You have just sent that exact message. It does not answer what she said this time. Answer "
                     "THIS message, in your own words, and do not repeat your previous reply.]"}]
-                _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
-                    _witness_capture, messages[0]["content"], _again, params, _reason, time.time)
-                    if _witness_module is not None else (None, {}))
+                _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], _again, params, _reason)
                 _r2, _cr2, _mu2 = await _mr.route_reply(
                     "avatar", messages[0]["content"], _again, params,
                     f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
@@ -11075,9 +11089,7 @@ Your current self-model (excerpt):
                         _declined_by = {"argon": "Argon", "sol": "Sol", "gemini": "Argon"}.get(
                             str(_model_used).split(":")[0].split("(")[0].lower(), "Claude")
                         _mr.arm_grok_turns(1)
-                        _witness_request, _witness_kwargs = (_witness_module.prepare_shadow(
-                            _witness_capture, messages[0]["content"], messages[1:], params, _reason, time.time)
-                            if _witness_module is not None else (None, {}))
+                        _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], messages[1:], params, _reason)
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
@@ -11506,6 +11518,11 @@ Your current self-model (excerpt):
         # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
         from stratagem_turn import guard_reply as _sg_guard
+        if _witness_capture is not None:
+            try:
+                _witness_capture.before_final_guard(reply, time.time())
+            except Exception:
+                print("[witness] pre-guard capture unavailable", flush=True)
         reply = _sg_guard(reply, _turn)
         if _witness_capture is not None:
             try:

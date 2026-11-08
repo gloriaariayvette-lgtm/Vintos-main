@@ -1,13 +1,26 @@
-## 8 November — shadow witness ancestry and enablement boundary
+## 8 November — shadow witness implementation and remaining acceptance
 
-On `codex/judges-ancestry-leaves`, parentless generated nodes remain unknown;
-clean synthetic ancestry now ends in an explicit external source. No existing
-feed or live eligibility is changed. [Review log](judges-witness-log.md) records
-106 isolated checks. [Production enablement proposal](judges-capture-enable-proposal.md)
-is separate and disabled; do not repoint the serving workspace to use a scratch
-capture flag. Reviewer-provided private census remains zero strict-eligible
-turns. Paired innovation controls, complete producer ancestry, production sink
-implementation and full Aegis review remain open.
+Review increments now include request/attempt and finalization dependency capture,
+strict ancestry/census, bounded behaviour summaries, paired innovation controls,
+and explicit feedback joins. `codex/judges-feedback-evidence` tightens the latter:
+missing event IDs cannot erase timeline collisions, and a predecessor needs its
+own direct sequence witness. [Review log](judges-witness-log.md) records each
+increment's isolated validation; the latest focused run passed 92 checks.
+
+Full Aegis validation and independent review of the post-788439c9 stack remain
+with Claude. The reviewer-provided private census is still zero strict-eligible
+turns; no new retained-data result is claimed. Complete upstream ancestry,
+trustworthy delivery/sequence producers and a separate bounded production sink
+remain open. [Enablement proposal](judges-capture-enable-proposal.md) is disabled
+and requires Gloria's explicit decision; never repoint the serving workspace to
+use the scratch flag. No live feed, historical eligibility or model is changed.
+
+Review 13's capture compatibility fixes are on `codex/judges-capture-compatibility`:
+older capture/router modules degrade to no observation without changing replies;
+known incomplete effects remain counted as influenced-incomplete and excluded.
+The focused synthetic suite passed 139 checks. The separate wants stack remains
+unapproved pending source-bound admission, artifact freshness, explicit continuation,
+call limits/kill switch, subscription-only default and crash-repeat repairs.
 
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 
@@ -6062,3 +6075,26 @@ Judges slice 2 now has offline paired last-reply/recent-mean controls on
 are required; serving capture of that contract and real paired coverage remain
 open. Missing controls do not discard head observations. See the experiment
 README for causal joins and descriptive-only interpretation. No feed is changed.
+
+
+The next stacked judges slice, `codex/judges-behaviour-windows`, adds an optional
+explicit-window/surface shadow behaviour receipt with private source manifests
+and separate served-model/revision groups. It remains scratch-only and descriptive.
+Retained-data measurements, full Aegis suite/review, complete producer ancestry
+and any separately approved feed integration remain open. No historical witness
+eligibility is backfilled and no existing feed changes.
+
+
+`codex/judges-feedback-joins` adds explicit positive feedback joins to the shadow
+reader (note 2): exact adjacent chat reply plus literal laughter marker, and exact
+practice output plus 4–5-star rating. Missing/low/ambiguous evidence stays unknown.
+Production authentication/sequence receipts and verified retained-source adapters
+remain open. The existing weak laughter channel is unchanged. See experiment
+README for schema, limitations and private outputs; no feed or training change.
+
+
+`codex/judges-causal-innovation` repairs the shadow scorer's reference clock and
+same-time forecast identity checks, and separates target served-model revisions.
+Reference outcomes must predate the forecast, not merely its eventual reply.
+Retained-data measurements and full Aegis validation still belong to Claude;
+existing live self-head audits and feeds are untouched.
