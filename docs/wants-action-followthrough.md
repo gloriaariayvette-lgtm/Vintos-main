@@ -367,3 +367,34 @@ The working-thread assertion now checks a versioned delivery event. Validation:
 artifact delivery 39, artifact guard 11, thread doors 22, ownership 11). All
 provider/network calls were stubbed. Full Aegis validation and review remain
 pending with Claude; nothing has been merged, deployed or installed.
+
+
+## Bind the final ending to the delivered result
+
+`codex/wants-completion-binding`, stacked on efe9bec5, checks the exact source want,
+request and canonical result version inside `want_completion.complete`'s existing
+current-wants lock. It applies to the dedicated `agent-work` fulfillment caller.
+The current result must still have its matching publication stage and successful
+delivery. Missing/ambiguous identity, a late revision, missing version evidence or
+changed manifest returns a refusal before archive, relief or plan reopening.
+Other ending callers retain their existing behavior.
+
+The new ten-test suite invokes the actual fulfillment/archive function with a
+throwaway HOME and workspace, stubbed emotion/worker/plan side effects, and a
+redirected worker log. Six initial fixtures failed on the parent. The positive
+case archives the exact version through the existing path. A concurrent writer
+cannot enter between comparison and archival; it proceeds afterward without its
+unrelated update being overwritten. No test reached a live store or service.
+
+Validation: 523 checks across nine isolated suites: completion binding 10,
+follow-through 49, room 320, artifact guard 11, thread doors 22, ownership 11,
+existing endings 50, moves-on 26, policy decisions 24. The moves-on suite first
+hit an existing nested-f-string quote syntax error on the default Python 3.9;
+the installed Python 3.12 lacked requests. A one-line quoting-only compatibility
+fix in `bin/wants-ambitions-log.py` lets the existing suite pass on Python 3.9
+without installation or output changes. Both failed attempts are recorded here;
+all final listed checks pass. Generated metadata was refreshed.
+
+This is local synthetic acceptance only. Claude owns the independent full Aegis
+suite/review. Production services, feeds, installed instructions and live wants
+remain untouched; no merge or deploy is authorized by these checks.
