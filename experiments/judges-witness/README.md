@@ -170,11 +170,13 @@ last `guard_reply`. A packet records
 delivery. Context and reply nodes are explicitly incomplete. Attempt-history
 coverage remains incomplete until every route/provider attempt is observed.
 
-`bin/gen_result.py` preserves observed response model metadata separately from
-the compatibility `model` field, which existing callers may fill from config.
-Configured names never become observed identity. The router's optional observer
-receives stage results without changing its return tuple or fallback behaviour;
-observer errors do not interrupt the reply. Raw result text is used only for
+The shared `bin/gen_result.py` constructor and parsers keep their existing wire
+contract. Only the router's direct-response adapter adds observed identity,
+separate from its compatibility `model` field. Relay labels are retained as
+claims, never as verified served identity; missing identity stays unknown.
+The router's optional observer receives a deep copy of stage results, including
+cyclic stage lists, without changing its return tuple or fallback behaviour;
+observer errors or mutations do not alter the reply. Raw result text is used only for
 transient selection hashes; capture copies no provider reason/tool text.
 Selection by raw text is accepted only when exactly one observed attempt
 matches. Identical text from multiple attempts remains unknown, even when their
@@ -183,7 +185,11 @@ model labels agree; explicit selected-attempt identity is still future work.
 Capture is disabled by default. The optional sink requires
 `JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to name the same existing, resolved,
 owner-private scratch directory. Live-store paths, symlinks, repository paths and
-their ancestors are refused. Each packet is a new mode-0600 file; there is no
+their ancestors are refused. Each packet is a new mode-0600 file. It is written
+and synced under a temporary name, then published atomically using a hard link
+that refuses existing names; temporary files are removed on success or caught
+failure. An abrupt process kill can leave a hidden temporary file, which is
+never a published capture packet. There is no
 live-store writer or background reader. Packets contain the exact final text and
 are private artifacts, never Git inputs. Test-mode and supplied generation
 provenance are retained; absence remains unknown. Sink failures leave the reply

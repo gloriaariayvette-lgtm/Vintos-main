@@ -14,8 +14,10 @@ from witness_receipts import digest, lineage_status
 
 
 def result(text="synthetic raw reply", actual="observed-fixture"):
-    return G.from_openai({"model": actual, "choices": [{"message": {"content": text},
+    r = G.from_openai({"model": actual, "choices": [{"message": {"content": text},
                          "finish_reason": "stop"}]}, "fixture")
+    r.update(observed_model=actual, identity_evidence="response_metadata" if actual else "unknown")
+    return r
 
 
 class Tests(unittest.TestCase):
@@ -30,11 +32,22 @@ class Tests(unittest.TestCase):
         missing["model"] = "configured-fallback"
         self.assertIsNone(missing["observed_model"])
 
-    def test_response_metadata_from_both_parser_shapes(self):
+    def test_shared_parsers_keep_exact_wire_contract(self):
         r = G.from_anthropic({"model": "observed-fixture", "content": [{"type": "text", "text": "synthetic"}],
                               "stop_reason": "end_turn"})
-        self.assertEqual(r["identity_evidence"], "response_metadata")
-        self.assertEqual(r["observed_model"], "observed-fixture")
+        self.assertEqual(set(r), set(G.KEYS))
+        self.assertEqual(set(G.from_openai({"model": "fixture", "choices": []}, "fixture")), set(G.KEYS))
+        self.assertEqual(set(G.make_result("fixture")), set(G.KEYS))
+
+    def test_relay_claim_is_retained_without_observed_identity(self):
+        r = G.make_result("fixture", text="synthetic", status="valid", model="claimed-fixture")
+        r.update(claimed_model="claimed-fixture", identity_evidence="claimed")
+        c = Capture("turn-1", "fixture-chat", 100)
+        c.observe(r); c.select("synthetic")
+        p = c.finalize("final", 110)
+        self.assertIsNone(p["witness_receipt"]["generation"]["attempts"][0]["served_model"])
+        self.assertEqual(p["identity_claims"], [{"attempt_id": "attempt-1", "claimed_model": "claimed-fixture",
+                                                "evidence": "relay_claim"}])
 
     def test_fallback_stages_and_self_reference(self):
         failed = G.make_result("fixture", status="unavailable", reason="private synthetic reason")
@@ -102,6 +115,7 @@ class Tests(unittest.TestCase):
         async def fake(*args):
             calls.append(args)
             r = result(); r["route"] = "fixture-route"
+            r["stages"] = [r]
             return r
         ns = {"route_reply_result": fake, "GR": G}
         exec(compile(ast.Module(body=[fn], type_ignores=[]), "isolated-router-wrapper", "exec"), ns)
@@ -112,7 +126,12 @@ class Tests(unittest.TestCase):
         self.assertEqual(asyncio.run(ns["route_reply"](*args, observer=capture.observe)), baseline)
         def broken(_): raise ValueError("synthetic observer fault")
         self.assertEqual(asyncio.run(ns["route_reply"](*args, observer=broken)), baseline)
-        self.assertEqual(len(calls), 3)
+        def mutating(r):
+            r["stages"][0]["text"] = "mutated text"
+            r["status"] = "error"
+            r["route"] = "mutated route"
+        self.assertEqual(asyncio.run(ns["route_reply"](*args, observer=mutating)), baseline)
+        self.assertEqual(len(calls), 4)
         capture.select(baseline[0])
         self.assertEqual(capture.finalize(baseline[0], 110)["witness_receipt"]["status"], "recorded")
 

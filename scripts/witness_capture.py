@@ -52,6 +52,7 @@ class Capture:
                 "served_model": actual,
                 "served_revision": stage.get("observed_revision") if actual else None,
                 "identity_evidence": evidence if actual else "unknown",
+                "_claimed_model": stage.get("claimed_model") if evidence == "claimed" else None,
                 "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None})
 
     def select(self, raw_reply):
@@ -84,6 +85,9 @@ class Capture:
                          "surface": self.surface, "witness_receipt": r,
                          "witness_final_text": final_text, "witness_final_sha256": digest(final_text),
                          "transport": transport, "attempt_history_complete": False,
+                         "identity_claims": [{"attempt_id": a["attempt_id"], "claimed_model": a["_claimed_model"],
+                                              "evidence": "relay_claim"} for a in self._attempts
+                                             if isinstance(a["_claimed_model"], str) and a["_claimed_model"]],
                          "lineage": [{"id": self.context_id, "kind": "context", "at": self.started_at,
                                       "complete": False, "parents": []}],
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
@@ -136,18 +140,28 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
     if p.get("output_provenance") == "stratagem_influenced":
         packet["reply_node"]["influence"] = "influenced"
         packet["reply_node"]["tactical"] = True
-    # No replace/append: one new file, private permissions, directory descriptor
-    # pinned while writing. A preexisting name or symlink can never be followed.
+    # Write an invisible temporary name, then atomically publish a complete file.
+    # link (rather than replacing rename) also refuses an existing final name.
     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = None
     try:
         info = os.fstat(directory)
         if info.st_mode & 0o077 or info.st_uid != os.getuid():
             raise ValueError("scratch permissions changed")
         name = "capture-" + uuid.uuid4().hex + ".json"
-        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        candidate = "." + name + ".tmp"
+        fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        temporary = candidate
         with os.fdopen(fd, "w") as f:
             json.dump(packet, f, allow_nan=False)
             f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
     finally:
-        os.close(directory)
+        try:
+            if temporary is not None:
+                os.unlink(temporary, dir_fd=directory)
+        finally:
+            os.close(directory)
     return True

@@ -160,3 +160,29 @@ stays fixed for review; this follow-up is on `codex/judges-capture-replay`.
 Validation: capture 9/9, hook integration 7/7, offline capture replay 6/6 and
 ownership 11/11: **33 OS-isolated checks passed**. Reports regenerated; whitespace
 clean. No real data, provider calls or live changes.
+
+## 8 November 2026 — reviewer note 6 repairs
+
+Claude's independent suite found the shared result-contract regression in
+01078956: reviewer-reported totals were 592/593 on deploy and 595/596 on live.
+The shared constructor had gained observation fields outside its declared keys.
+Restored `bin/gen_result.py` exactly to integrated base `1b28c3d4`. Observation
+metadata now belongs only to the router adapter, preserving the shim wire shape.
+Direct provider metadata and unverified relay claims are distinct; relay claims
+never become served identity. Private packets retain those claims separately.
+
+The observer receives a deep copy, with cyclic stage references preserved, so
+mutation cannot change the caller's reply or status. The sink writes and syncs
+a private temporary file, then atomically publishes by linking to the final name.
+This is the no-overwrite equivalent of temporary-plus-rename: a preexisting name
+is refused rather than replaced. Caught failures unlink the temporary file.
+An abrupt kill can leave a hidden temporary file, not a published JSON packet.
+
+Regression checks include exact shared parser keys, actual direct/relay router
+paths, observer mutation of a cyclic stage, partial write/full-disk failure,
+sync failure, publish failure and preexisting final-file preservation. No live
+calls or stores. Re-review and the full Aegis suite remain Claude's step.
+Final local validation: shared contract **52/52**, capture **10/10**, hook/sink
+**9/9**, offline adapter **6/6**, witness **35/35**, router **15/15**, ownership
+**11/11**: **138 OS-isolated checks passed**. Generated reports and whitespace
+checks are current. No merge or deployment.

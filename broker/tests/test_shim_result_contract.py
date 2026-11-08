@@ -202,6 +202,8 @@ async def anth_then_grok(url, hdrs, body):
     return XAI_OK(body, hdrs)
 r = asyncio.run(_router(anth_then_grok))
 check("router result has the same contract keys (+ route/reasoning/stages)", set(GR.KEYS) <= set(r) and "route" in r and "stages" in r, sorted(r))
+check("direct router response has separately attested identity", r.get("observed_model") == r["model"]
+      and r.get("identity_evidence") == "response_metadata")
 check("router: provider/model/request_id/usage are the provider's real values", r["provider"] == "anthropic" and r["model"] == "claude-opus-4-8"
       and r["request_id"] == "msg_r" and r["usage"]["total_tokens"] == 70, r)
 check("router: stop_reason=max_tokens -> truncated", r["status"] == "truncated" and r["finish_reason"] == "length", r["status"])
@@ -215,6 +217,8 @@ async def refuse_then_grok(url, hdrs, body):
 r = asyncio.run(_router(refuse_then_grok))
 check("router: refusal stage held, grok answers with its own model/usage", r["stages"][0]["status"] == "held" and r["provider"] == "xai"
       and r["model"] == "grok-4" and r["usage"]["total_tokens"] == 10 and r["route"] == "grok(refusal)", r)
+check("relay label stays a claim, not observed identity", r.get("claimed_model") == r["model"]
+      and r.get("identity_evidence") == "claimed" and not r.get("observed_model"))
 r = asyncio.run(_router(lambda u, h, b: XAI_OK(b, h), surface="chat"))
 check("router: grok(surface) result carries provider=xai", r["provider"] == "xai" and r["route"] == "grok(surface)", r)
 

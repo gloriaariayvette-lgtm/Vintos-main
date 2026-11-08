@@ -36,16 +36,14 @@ def normalise_finish(reason):
 
 
 def make_result(provider, model="", request_id="", status="error", usage=None, text="",
-                finish_reason="", reason="", tool_calls=None, observed_model=None):
+                finish_reason="", reason="", tool_calls=None):
     if status not in STATUSES:
         raise ValueError("bad status %r" % (status,))
     if usage is not None:
         usage = normalise_usage(usage)
     return {"provider": provider, "model": model or "", "request_id": request_id or "", "status": status,
             "usage": usage, "text": text or "", "finish_reason": finish_reason or "",
-            "reason": reason or "", "tool_calls": tool_calls or None,
-            "observed_model": observed_model if isinstance(observed_model, str) and observed_model else None,
-            "identity_evidence": "response_metadata" if isinstance(observed_model, str) and observed_model else "unknown"}
+            "reason": reason or "", "tool_calls": tool_calls or None}
 
 
 def normalise_usage(u):
@@ -85,7 +83,7 @@ def from_anthropic(d, provider="anthropic"):
              for b in d.get("content", []) if b.get("type") == "tool_use"] or None
     fr = normalise_finish(d.get("stop_reason"))
     st = status_from(text, d.get("stop_reason"), calls)
-    return make_result(provider, model=d.get("model", ""), observed_model=d.get("model"), request_id=d.get("id", ""), status=st,
+    return make_result(provider, model=d.get("model", ""), request_id=d.get("id", ""), status=st,
                        usage=d.get("usage"), text=text, finish_reason=fr, tool_calls=calls,
                        reason="" if st in ("valid", "truncated") else ("refusal" if st == "held" else "empty completion"))
 
@@ -96,7 +94,7 @@ def from_openai(d, provider):
     if d.get("error") or not d.get("choices"):
         e = d.get("error")
         msg = e.get("message") if isinstance(e, dict) else (e or "no choices in reply")
-        return make_result(provider, model=d.get("model", ""), observed_model=d.get("model"), request_id=d.get("id", ""), status="error",
+        return make_result(provider, model=d.get("model", ""), request_id=d.get("id", ""), status="error",
                            usage=d.get("usage"), reason=str(msg)[:200])
     ch = d["choices"][0] or {}
     msg = ch.get("message") or {}
@@ -106,7 +104,7 @@ def from_openai(d, provider):
     calls = msg.get("tool_calls") or None
     fr = normalise_finish(ch.get("finish_reason"))
     st = status_from(text, ch.get("finish_reason"), calls)
-    return make_result(provider, model=d.get("model", ""), observed_model=d.get("model"), request_id=d.get("id", ""), status=st,
+    return make_result(provider, model=d.get("model", ""), request_id=d.get("id", ""), status=st,
                        usage=d.get("usage"), text=text, finish_reason=fr, tool_calls=calls,
                        reason="" if st in ("valid", "truncated") else ("refusal" if st == "held" else "empty completion"))
 

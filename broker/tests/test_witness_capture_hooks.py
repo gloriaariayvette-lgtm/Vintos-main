@@ -125,6 +125,7 @@ class Tests(unittest.TestCase):
             r = G.from_openai({"model": "fixture-observed", "choices": [{"message": {"content": "synthetic raw"},
                                       "finish_reason": "stop"}]}, "fixture")
             r["route"] = "fixture-route"
+            r.update(observed_model="fixture-observed", identity_evidence="response_metadata")
             return r
         router_tree = ast.parse((ROOT / "bin/model_router.py").read_text())
         wrapper = next(n for n in router_tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "route_reply")
@@ -161,6 +162,27 @@ class Tests(unittest.TestCase):
         failed = self.exercise(sink_failure=True)
         self.assertEqual(disabled, failed)
         self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_failed_write_sync_or_publication_leaves_no_packet(self):
+        def partial(obj, file, **kwargs):
+            file.write('{"partial":')
+            raise OSError("synthetic full disk")
+        for target, fault in ((W.json, "dump"), (W.os, "fsync"), (W.os, "link")):
+            with self.subTest(fault=fault):
+                c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
+                error = partial if fault == "dump" else OSError("synthetic failure")
+                with patch.object(target, fault, side_effect=error):
+                    with self.assertRaises(OSError): W.finish_shadow(c, "synthetic final", 110)
+                self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_atomic_publication_never_overwrites_existing_packet(self):
+        existing = self.root / "capture-fixed.json"
+        existing.write_text("existing synthetic packet")
+        with patch.object(W.uuid, "uuid4", return_value=types.SimpleNamespace(hex="fixed")):
+            c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
+            with self.assertRaises(FileExistsError): W.finish_shadow(c, "synthetic final", 110)
+        self.assertEqual(existing.read_text(), "existing synthetic packet")
+        self.assertEqual(list(self.root.iterdir()), [existing])
 
 
 if __name__ == "__main__":
