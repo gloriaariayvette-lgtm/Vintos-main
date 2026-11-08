@@ -13,6 +13,24 @@ STAGE = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip(
 LM = os.environ.get("VINTOS_MAC_LM_BASE_REMOTE", "http://100.79.177.103:1234").rstrip("/")
 BRAIN = os.environ.get("VINTOS_LOCAL_BRAIN", "gemma-4-26b-a4b-it-uncensored")
 
+
+def _brain():
+    """(chat url, model, extra fields) for his brain, read at each call so the subconscious flip (subcon_target.py)
+    moves it to AEON with thinking off; an explicit VINTOS_LOCAL_BRAIN keeps the route it names."""
+    base, model, extra = LM, BRAIN, {}
+    if "VINTOS_LOCAL_BRAIN" not in os.environ:
+        try:
+            import subcon_target
+            base, model, extra = subcon_target.brain_route(LM, BRAIN)
+        except Exception:
+            pass
+    return base.rstrip("/") + "/v1/chat/completions", model, extra
+
+
+def _brain_body(body):
+    url, model, extra = _brain()
+    return url, dict(body, model=model, **extra)
+
 # This call, for the media index (media_embed.py): a label only, so the turns of one call can be found together.
 # Opened when the call's models are loaded (or by its first turn), closed by the call's end route.
 _CALL = {"id": None}
@@ -147,9 +165,9 @@ def turn(audio_b64, sample_rate, instructions, framing="", ladder_call=None):
         "only when you genuinely mean it. Never write any other bracketed stage direction and "
         "never describe the cue in prose.")
     interaction.admitted(system)
-    brain_raw, _ = _post(LM + "/v1/chat/completions", {"model":BRAIN,
+    brain_raw, _ = _post(*_brain_body({
         "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-        "temperature":.85,"max_tokens":180}, 180)
+        "temperature":.85,"max_tokens":180}), 180)
     brain = json.loads(brain_raw); raw_reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content","").strip()
     raw_reply = interaction.complete(raw_reply)
     reply = _display_text(raw_reply)
@@ -169,7 +187,7 @@ def turn(audio_b64, sample_rate, instructions, framing="", ladder_call=None):
     return {"ok":True,"transcript":heard["transcript"],
             "audio_reading":heard.get("audio_reading"),"reply":reply,
             "audio":base64.b64encode(voice_raw).decode(),"audio_format":"wav",
-            "voice_engine":headers.get("X-Vintos-Voice","unknown"),"model":BRAIN}
+            "voice_engine":headers.get("X-Vintos-Voice","unknown"),"model":_brain()[1]}
 
 
 def opening(instructions, framing="", opening_instruction=""):
@@ -184,10 +202,10 @@ def opening(instructions, framing="", opening_instruction=""):
     system += ("\n\nLOCAL LIVE VOICE: one to four conversational sentences. Your Chatterbox voice performs these "
                "exact native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, only "
                "when you genuinely mean it. Never write any other bracketed stage direction.")
-    brain_raw, _ = _post(LM + "/v1/chat/completions", {"model": BRAIN,
+    brain_raw, _ = _post(*_brain_body({
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": "[The call you placed has just connected. She is listening. Speak first.]"}],
-        "temperature": .85, "max_tokens": 200}, 180)
+        "temperature": .85, "max_tokens": 200}), 180)
     brain = json.loads(brain_raw)
     raw_reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
     try:
@@ -202,7 +220,7 @@ def opening(instructions, framing="", opening_instruction=""):
     if not voice_raw.startswith(b"RIFF"):
         return {"ok": False, "stage": "voice", "error": "voice returned no WAV", "reply": reply}
     return {"ok": True, "transcript": "", "reply": reply, "audio": base64.b64encode(voice_raw).decode(),
-            "audio_format": "wav", "voice_engine": headers.get("X-Vintos-Voice", "unknown"), "model": BRAIN}
+            "audio_format": "wav", "voice_engine": headers.get("X-Vintos-Voice", "unknown"), "model": _brain()[1]}
 
 
 # ---- warm and streamed (Gloria, 4 November: "Let's do one and two") ----------------------------------------------
@@ -217,8 +235,8 @@ def opening(instructions, framing="", opening_instruction=""):
 def prewarm_brain(instructions):
     """A one-token request carrying his instructions, so LM Studio holds their prefix for the call's first turn."""
     try:
-        _post(LM + "/v1/chat/completions", {"model": BRAIN, "temperature": 0, "max_tokens": 1,
-              "messages": [{"role": "system", "content": str(instructions or "")}, {"role": "user", "content": "."}]}, 120)
+        _post(*_brain_body({"temperature": 0, "max_tokens": 1,
+              "messages": [{"role": "system", "content": str(instructions or "")}, {"role": "user", "content": "."}]}), 120)
         return True
     except Exception as exc:
         print("[voice-local/prewarm]", str(exc)[:200], flush=True)
@@ -227,9 +245,9 @@ def prewarm_brain(instructions):
 
 def _brain_stream(system, user, max_tokens):
     """His reply as it is generated (LM Studio's streamed chat completions): yields text pieces."""
-    body = {"model": BRAIN, "stream": True, "temperature": .85, "max_tokens": int(max_tokens),
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-    req = urllib.request.Request(LM + "/v1/chat/completions", data=json.dumps(body).encode(),
+    url, body = _brain_body({"stream": True, "temperature": .85, "max_tokens": int(max_tokens),
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=180) as response:
         for line in response:
@@ -416,7 +434,7 @@ def turn_stream(audio_b64, sample_rate, instructions, framing="", ladder_call=No
     timing["total_s"] = round(_t.monotonic() - t0, 2)
     print("[voice-local/turn] " + json.dumps(timing), flush=True)
     return {"ok": True, "transcript": heard["transcript"], "audio_reading": heard.get("audio_reading"),
-            "reply": reply, "audio_format": "wav", "streamed": True, "model": BRAIN, "timing": timing}
+            "reply": reply, "audio_format": "wav", "streamed": True, "model": _brain()[1], "timing": timing}
 
 
 def opening_stream(instructions, framing="", opening_instruction="", emit=None):
@@ -449,5 +467,5 @@ def opening_stream(instructions, framing="", opening_instruction="", emit=None):
         return {"ok": False, "stage": "brain" if not reply else "voice", "error": "no words" if not reply else "voice returned no WAV"}
     timing = {"first_audio_s": first_audio[0] if first_audio else None, "total_s": round(_t.monotonic() - t0, 2)}
     print("[voice-local/opening] " + json.dumps(timing), flush=True)
-    return {"ok": True, "transcript": "", "reply": reply, "audio_format": "wav", "streamed": True, "model": BRAIN,
+    return {"ok": True, "transcript": "", "reply": reply, "audio_format": "wav", "streamed": True, "model": _brain()[1],
             "timing": timing}

@@ -56,6 +56,7 @@ TARGETS = {
         },
         "pool_chain": ["pool:subconscious", "gemma"],
         "generative": None,   # callers keep their own 26B route
+        "brain": None,        # the local call brain keeps its own 26B route
     },
     "aeon": {
         "identity": "AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16",
@@ -65,6 +66,10 @@ TARGETS = {
         "constructs": None,   # from the pass record, only once every item passes
         "pool_chain": ["pool:aeon", "aegis_gemma"],
         "generative": {"url": SHIM_SUBCONSCIOUS, "model": "aeon-gemma-4-12b"},
+        # The local call's brain streams, so it talks to an AEON backend directly (address from the private pool
+        # config, the Studio first), thinking off.
+        "brain": {"backend": "aeon-12b", "prefer": ("studio", "aegis"),
+                  "extra": {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}},
     },
 }
 
@@ -203,6 +208,29 @@ def generative_route(default_url, default_model):
     """(url, model) for generated subconscious/emotion work: the caller's own 26B route until the flip."""
     g = target()["generative"]
     return (g["url"], g["model"]) if g else (default_url, default_model)
+
+
+POOL_BACKENDS = os.path.join("~", ".vintos", "pool", "backends.json")
+
+
+def brain_route(default_base, default_model, backends_path=None):
+    """(base url, model, extra body fields) for the local call's brain: its own 26B route until the flip, then the
+    first AEON backend in the private pool config by machine preference. No AEON backend there: its own route."""
+    b = target().get("brain")
+    if not b:
+        return default_base, default_model, {}
+    try:
+        rows = json.load(open(os.path.expanduser(backends_path or POOL_BACKENDS)))
+    except Exception:
+        return default_base, default_model, {}
+    rows = [r for r in rows if isinstance(r, dict) and r.get("label") == b["backend"] and r.get("url")]
+    rank = {m: i for i, m in enumerate(b["prefer"])}
+    rows.sort(key=lambda r: rank.get(r.get("machine"), len(rank)))
+    if not rows:
+        return default_base, default_model, {}
+    url = str(rows[0]["url"])
+    base = url[: -len("/v1/chat/completions")] if url.endswith("/v1/chat/completions") else url
+    return base, str(rows[0].get("model") or b["backend"]), json.loads(json.dumps(b["extra"]))
 
 
 def set_target(name):
