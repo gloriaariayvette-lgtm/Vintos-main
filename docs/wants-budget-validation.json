@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-08",
+  "kind": "isolated_synthetic_contract_and_regression_tests",
+  "runner": "scripts/run_isolated_test.py",
+  "host": "macOS",
+  "suite_count": 14,
+  "checks_passed": 614,
+  "checks_failed": 0,
+  "additional_suite_without_reported_count": "test_slack_cost: passed",
+  "full_aegis_suite": "pending Claude Code review",
+  "live_task_executed": false,
+  "suites": [
+    {
+      "suite": "test_want_work_controls",
+      "passed": 17,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_agent_followthrough",
+      "passed": 39,
+      "failed": 0
+    },
+    {
+      "suite": "test_dot_channel",
+      "passed": 320,
+      "failed": 0
+    },
+    {
+      "suite": "test_claude_sub",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "suite": "test_claude_cache",
+      "passed": 24,
+      "failed": 0
+    },
+    {
+      "suite": "test_review_repairs",
+      "passed": 50,
+      "failed": 0
+    },
+    {
+      "suite": "test_env_key",
+      "passed": 40,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_thread_doors",
+      "passed": 22,
+      "failed": 0
+    },
+    {
+      "suite": "test_journal_action_followthrough",
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "suite": "test_want_artifact_guard",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "suite": "test_entry_owners",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "suite": "test_device_gate_and_budget",
+      "passed": 55,
+      "failed": 0
+    },
+    {
+      "suite": "test_openai_cache_key",
+      "passed": 6,
+      "failed": 0
+    }
+  ]
+}

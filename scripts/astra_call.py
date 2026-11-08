@@ -52,7 +52,7 @@ def _openai_usage(src, model, d):
         pass
 
 
-def _direct_call(system, messages, max_tokens=1800, timeout=180):
+def _direct_call(system, messages, max_tokens=1800, timeout=180, return_receipt=False):
     """One synchronous turn. Raises on anything that is not an answer, so the caller
     records the seconds and reports the failure rather than inventing a result."""
     key = _key()
@@ -79,10 +79,14 @@ def _direct_call(system, messages, max_tokens=1800, timeout=180):
                        for c in it.get("content", []) if c.get("type") == "output_text")
     if not text.strip():
         raise RuntimeError("Astra answered with nothing")
+    if return_receipt:
+        actual = d.get("model") if isinstance(d.get("model"), str) and d["model"].strip() else None
+        return {"text":text,"status":"valid","requested_model":MODEL,"observed_model":actual,
+                "identity_evidence":"response_metadata" if actual else "unknown", "lane":"openai"}
     return text
 
 
-def call(system, messages, max_tokens=1800, timeout=180):
+def call(system, messages, max_tokens=1800, timeout=180, observer=None):
     """Enforce a wall-clock deadline around the trusted provider worker.
 
     Killing a timed-out client does not guarantee remote billing cancellation.
@@ -97,8 +101,10 @@ def call(system, messages, max_tokens=1800, timeout=180):
     receipt = uuid.uuid4().hex
     allowed,why=reserve_paid("astra_call.py","openai",model=MODEL,reservation_id=receipt)
     if not allowed:raise RuntimeError(why)
+    payload = {"system":system,"messages":messages,"max_tokens":max_tokens,"timeout":timeout}
+    if observer is not None: payload["return_receipt"] = True
     result=subprocess.run([sys.executable,os.path.abspath(__file__),"--request"],
-        input=json.dumps({"system":system,"messages":messages,"max_tokens":max_tokens,"timeout":timeout}),
+        input=json.dumps(payload),
         capture_output=True,text=True,timeout=timeout)
     if result.returncode:
         err=result.stderr.strip()[:200] or "Astra worker failed"
@@ -112,12 +118,21 @@ def call(system, messages, max_tokens=1800, timeout=180):
                 release_paid("astra_call.py","openai",model=MODEL,why=err[:100],reservation_id=receipt)
             except Exception: pass
         raise RuntimeError(err)
+    if observer is not None:
+        packet = json.loads(result.stdout)
+        if not isinstance(packet, dict) or not isinstance(packet.get("text"), str):
+            raise RuntimeError("provider worker receipt missing")
+        # A durable observer may refuse to continue after a persistence failure.
+        observer(packet)
+        return packet["text"]
     return result.stdout.strip()
 
 
 if __name__ == "__main__":
     if "--request" in sys.argv:
-        try: print(_direct_call(**json.load(sys.stdin)))
+        try:
+            output = _direct_call(**json.load(sys.stdin))
+            print(json.dumps(output) if isinstance(output, dict) else output)
         except Exception as exc:
             import urllib.error
             failure = {"error": type(exc).__name__, "message": str(exc)[:160]}

@@ -83,3 +83,22 @@ the existing delegated limits; credentials still need the owner; purchases go
 through Muse's existing BUY approval path. This exemption grants no spending,
 credential, deployment or destructive-action permission. Return the exact
 WANT RESULT contract once the deliverables exist; a plan or setup is not completion.
+
+
+### Bound-want cost and continuation controls (review candidate)
+
+The bound-want exemption from the general room switch does not exempt
+`memory/want-work.stop`, per-request/daily call caps, task pauses or purchase
+approvals. Do not remove the dedicated stop file, raise budgets, clear uncertain
+call records or rewrite the working thread to get around a hold. Those are owner
+controls. The context and pending task remain retained during a hold.
+
+For an explicit context-limit hold, a permitted continuation is a concise factual
+summary of the existing working conversation through an exact retained event key.
+Keep the literal goal, decisions, unresolved obligations and evidence limits. Put
+the supplied summary in that request directory as `.continuation-summary.txt`,
+then use `want_agent.py continue-context REQUEST_ID --summary-file ABSOLUTE_FILE
+--through-event EVENT_KEY` (one shell command). The command retains the original
+record, changes only the subsequent prompt view and makes no provider call. It
+does not reset limits or authorize replay of an uncertain/response-observed call.
+This instruction update is not installed by writing this repository file.

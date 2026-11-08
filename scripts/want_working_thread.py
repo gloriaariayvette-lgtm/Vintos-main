@@ -89,6 +89,9 @@ def _mutate(want, work, ws, change, identity=None):
                     json.dump(data, f, ensure_ascii=False, allow_nan=False)
                     f.write('\n'); f.flush(); os.fsync(f.fileno())
                 os.replace(temporary, path)
+                directory = os.open(path.parent, os.O_RDONLY)
+                try: os.fsync(directory)
+                finally: os.close(directory)
             finally:
                 if temporary.exists(): temporary.unlink()
         return deepcopy(data)
@@ -133,8 +136,53 @@ def prompt(want, work, ws, identity=None):
     data = load(want, work, ws, identity)
     if data['identity_context'] is None:
         raise ValueError('working identity context is not captured yet')
-    return data['identity_context'], json.dumps({k: data[k] for k in (
-        'want_id', 'request_id', 'work_id', 'goal', 'source_refs', 'prior_steps', 'events')}, ensure_ascii=False)
+    context = {k:data[k] for k in ('want_id','request_id','work_id','goal','source_refs','prior_steps','events')}
+    continuation = data.get('continuation')
+    if continuation:
+        from want_agent import fingerprint
+        count = continuation['covered_count']
+        prefix = data['events'][:count]
+        if (len(prefix) != count or fingerprint(json.dumps(prefix, sort_keys=True)) != continuation['covered_sha256']):
+            raise ValueError('continuation no longer matches retained history')
+        context['events'] = data['events'][count:]
+        context['continuation'] = deepcopy(continuation)
+    return data['identity_context'], json.dumps(context, ensure_ascii=False)
+
+
+def continue_context(want, work, ws, summary, through_event):
+    """Explicit supplied summary; preserve all original events and earlier summaries."""
+    from want_agent import fingerprint
+    if not isinstance(summary,str) or not summary.strip() or len(summary) > 12000:
+        raise ValueError('continuation summary must be nonempty and at most 12000 characters')
+    def retain(data):
+        indexes = [i for i,e in enumerate(data['events']) if e['key'] == through_event]
+        if len(indexes) != 1: raise ValueError('exact retained event boundary required')
+        count = indexes[0] + 1
+        if count < (data.get('continuation') or {}).get('covered_count',0):
+            raise ValueError('continuation cannot move backwards')
+        prefix = data['events'][:count]
+        value = dict(summary=summary,through_event=through_event,covered_count=count,
+                     covered_sha256=fingerprint(json.dumps(prefix,sort_keys=True)))
+        if data.get('continuation') == value: return
+        if data.get('continuation'): data.setdefault('prior_continuations',[]).append(data['continuation'])
+        data['continuation'] = value
+    return _mutate(want, work, ws, retain)
+
+
+def notify_block(want, work, ws, reason, sender):
+    """The caller supplies deliver; private receipt deduplication survives restarts."""
+    from want_agent import fingerprint
+    if reason == 'provider_retry_backoff': return
+    data = load(want, work, ws)
+    revision = (data.get('continuation') or {}).get('covered_sha256','initial')
+    key = reason + ':' + revision
+    if (data.get('block_notices',{}).get(key) or {}).get('state') in ('sent','acknowledged'): return
+    message = ('Request ' + want['agent_work']['request_id'] + ' (want ' + want['id'] + ') needs attention: ' + reason + '. Context is retained. '
+               'Use want_agent.py continue-context with this request ID, a private summary file and an exact '
+               'through-event boundary for context limits; review policy/stop state for call limits. '
+               'An uncertain call must be reconciled before any new attempt.')
+    receipt = sender('want-work-block:' + fingerprint(want['agent_work']['request_id'] + key), message)
+    _mutate(want, work, ws, lambda d:d.setdefault('block_notices',{}).__setitem__(key,deepcopy(receipt)))
 
 
 MODEL = 'claude-sonnet-5-5'
@@ -156,67 +204,138 @@ is executed from this JSON. Do not include a WANT RESULT marker or a WORK DONE d
 '''
 
 
-def ask(system, user):
-    """One explicitly selected route; identity comes only from transport evidence."""
-    import claude_cache
-    observed = []
-    text = claude_cache.ask(MODEL, system, user, 1800, caller='slack:want-work', observer=observed.append)
-    return {'text': text, 'observations': observed}
+def ask(system, user, *, before_attempt=None, observed=None):
+    """Subscription first, then the existing accounted fallback; no alternate API."""
+    import claude_sub
+    import astra_call
+    observations = []
+    def note(value):
+        observations.append(deepcopy(value))
+        if observed is not None: observed(value)
+    if before_attempt is not None: before_attempt('subscription')
+    try:
+        if os.environ.get('VINTOS_SUBSCRIPTION', '1') == '0':
+            raise RuntimeError('subscription unavailable')
+        text = claude_sub.ask(MODEL, system, user, caller='want-work', timeout=300)
+        if not isinstance(text, str) or not text.strip(): raise RuntimeError('empty subscription response')
+    except Exception:
+        note({'text':'','status':'failed','requested_model':MODEL,
+              'identity_evidence':'unknown','lane':'subscription'})
+    else:
+        # Subscription text has no observed served-model metadata.
+        note({'text':text,'status':'valid','requested_model':MODEL,
+              'identity_evidence':'unknown','lane':'subscription'})
+        return {'text':text,'observations':observations}
+    if before_attempt is not None: before_attempt('openai')
+    try:
+        text = astra_call.call(system, [{'role':'user','content':user}], max_tokens=1800,
+                               timeout=180, observer=note)
+    except Exception:
+        if not any(o.get('status') == 'valid' for o in observations):
+            note({'text':'','status':'failed','requested_model':astra_call.MODEL,
+                  'identity_evidence':'unknown','lane':'openai'})
+        raise
+    return {'text':text,'observations':observations}
 
 
 def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=None):
-    """Cache decisions by event, keeping all context and request-local capture private."""
+    """Persist call intent and response before parsing; never replay uncertain calls."""
     from want_agent import fingerprint
     from witness_capture import Capture
+    from want_work_budget import WorkBlocked, ensure_running, policy, reserve
+    ensure_running(ws)
     key = phase + ':' + fingerprint(trigger)
-    now = time.time()
-    run = str(uuid.uuid4())
-    def reserve(data):
-        old = data['generations'].get(key) or {}
-        if old.get('state') == 'done': return
-        if old.get('retry_after', 0) > now:
-            raise RuntimeError('working request retained for retry')
-        data['generations'][key] = dict(state='running', request_id=run, at=now, retry_after=now+900,
-                                       attempts=old.get('attempts', []))
-    data = _mutate(want, work, ws, reserve, identity)
-    record = data['generations'][key]
-    if record['state'] == 'done': return deepcopy(record['decision'])
-    capture = Capture(run, 'want_work', now)
-    try:
+    data = load(want, work, ws, identity)
+    record = data['generations'].get(key) or {}
+    if record.get('state') == 'done': return deepcopy(record['decision'])
+    if record.get('state') in ('running', 'uncertain'):
+        raise WorkBlocked('interrupted_call_needs_review')
+    if record.get('retry_after', 0) > time.time(): raise WorkBlocked('provider_retry_backoff')
+    if record.get('state') != 'response_observed':
         system, history = prompt(want, work, ws, identity)
-        # Refuse a silent reset. All earlier turns remain on disk for continuation.
-        user = json.dumps({'phase': phase, 'working_context': json.loads(history), 'instruction': instruction}, ensure_ascii=False)
-        if len(system) + len(user) > 250000:
-            raise ValueError('working context exceeds this call budget; retained intact')
-        result = writer(system + '\n\n' + RULES, user)
-        if not isinstance(result, dict): raise ValueError('writer must return text and observations')
-        raw = result['text']
+        user = json.dumps({'phase':phase, 'working_context':json.loads(history), 'instruction':instruction}, ensure_ascii=False)
+        if len(system) + len(RULES) + len(user) > policy(ws)['context_chars']:
+            raise WorkBlocked('context_needs_continuation')
+        now = time.time(); run = str(uuid.uuid4())
+        def intent(current):
+            old = current['generations'].get(key) or {}
+            if old.get('state') in ('running','uncertain','response_observed','done'):
+                raise WorkBlocked('working_call_already_recorded')
+            current['generations'][key] = dict(state='running',request_id=run,at=now,
+                                               attempts=old.get('attempts', []),observations=[])
+        _mutate(want, work, ws, intent)
+        def before_attempt(lane):
+            reserve(ws, want['agent_work']['request_id'], run + ':' + lane, lane)
+            _mutate(want, work, ws, lambda d:d['generations'][key].update(active_lane=lane))
+        def observed(value):
+            def save(current):
+                item = current['generations'][key]
+                if item['request_id'] != run: raise WorkBlocked('working_request_superseded')
+                item['observations'].append(deepcopy(value))
+                if value.get('status') in ('valid','truncated') and isinstance(value.get('text'),str) and value['text'].strip():
+                    item.update(state='response_observed', result={'text':value['text'],
+                                'observations':deepcopy(item['observations'])})
+            _mutate(want, work, ws, save)
+        try:
+            if writer is ask:
+                result = writer(system + '\n\n' + RULES, user, before_attempt=before_attempt, observed=observed)
+            else:
+                before_attempt('provided_writer')
+                result = writer(system + '\n\n' + RULES, user)
+            if not isinstance(result, dict) or not isinstance(result.get('text'),str):
+                raise ValueError('writer must return text and observations')
+            def save_result(current):
+                item = current['generations'][key]
+                if item['request_id'] != run: raise WorkBlocked('working_request_superseded')
+                item.update(state='response_observed', result=deepcopy(result))
+            data = _mutate(want, work, ws, save_result)
+        except Exception as exc:
+            def failed(current):
+                item = current['generations'][key]
+                if item['request_id'] != run or item.get('state') == 'response_observed': return
+                known_failed = (bool(item['observations']) and item['observations'][-1].get('status') == 'failed'
+                                and item['observations'][-1].get('lane') == item.get('active_lane'))
+                item['attempts'].append({'request_id':run,'error_type':type(exc).__name__,'at':time.time()})
+                item.update(state='retry' if known_failed or isinstance(exc, WorkBlocked) else 'uncertain',
+                            retry_after=time.time()+600 if known_failed else 0)
+            failure = _mutate(want, work, ws, failed)['generations'][key]
+            if failure.get('state') == 'uncertain':
+                raise WorkBlocked('interrupted_call_needs_review') from exc
+            if failure.get('state') == 'retry' and not isinstance(exc, WorkBlocked):
+                raise WorkBlocked('provider_failed') from exc
+            raise
+        record = data['generations'][key]
+    run = record['request_id']
+    result = record['result']; raw = result['text']
+    # Recovery after a response was observed is local only, including invalid JSON.
+    try:
+        capture = Capture(run, 'want_work', record['at'])
         for observation in result.get('observations', []): capture.observe(observation)
         capture.select(raw)
         decision = json.loads(raw)
-        if (not isinstance(decision, dict) or not isinstance(decision.get('message'), str)
-                or not decision['message'].strip() or len(decision['message']) > 12000
-                or type(decision.get('accept')) is not bool or (phase != 'result' and decision['accept'])):
-            raise ValueError('invalid working decision')
-        if 'WANT RESULT' in decision['message'] or 'WORK DONE' in decision['message']:
-            raise ValueError('working prose cannot execute a completion directive')
-        packet = capture.finalize(decision['message'], time.time())
-        def done(current):
-            item = current['generations'][key]
-            if item['request_id'] != run: raise RuntimeError('working request superseded')
-            item.update(state='done', decision=decision, capture=packet)
-            current['events'].append(dict(key='generation:'+run, who='vintos', text=decision['message'],
-                                         at=time.time(), details={'phase':phase,'request_id':run}))
-        _mutate(want, work, ws, done)
-        return decision
     except Exception as exc:
-        def failed(current):
-            item = current['generations'][key]
-            if item.get('request_id') != run: return
-            item['attempts'].append({'request_id':run, 'error_type':type(exc).__name__, 'at':now})
-            item.update(state='retry', retry_after=time.time()+600)
-        _mutate(want, work, ws, failed)
-        raise
+        raise WorkBlocked('response_needs_review') from exc
+    if (not isinstance(decision, dict) or not isinstance(decision.get('message'), str)
+            or not decision['message'].strip() or len(decision['message']) > 12000
+            or type(decision.get('accept')) is not bool or (phase != 'result' and decision['accept'])):
+        raise WorkBlocked('response_needs_review')
+    if 'WANT RESULT' in decision['message'] or 'WORK DONE' in decision['message']:
+        raise WorkBlocked('response_needs_review')
+    packet = capture.finalize(decision['message'], time.time())
+    lanes = [o.get('lane') for o in result.get('observations', [])
+             if o.get('status') in ('valid','truncated') and o.get('text') == raw
+             and o.get('lane') in ('subscription','openai')]
+    packet['selected_lane'] = lanes[0] if len(lanes) == 1 else 'unknown'
+    def done(current):
+        item = current['generations'][key]
+        if item['request_id'] != run: raise WorkBlocked('working_request_superseded')
+        item.update(state='done',decision=decision,capture=packet)
+        event_key = 'generation:'+run
+        if not any(e['key'] == event_key for e in current['events']):
+            current['events'].append(dict(key=event_key,who='vintos',text=decision['message'],
+                at=time.time(),details={'phase':phase,'request_id':run}))
+    _mutate(want, work, ws, done)
+    return decision
 
 
 def unanswered(want, work, ws):

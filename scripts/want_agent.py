@@ -386,11 +386,25 @@ def main():
     p = sub.add_parser('result'); p.add_argument('request_id'); p.add_argument('--summary', required=True)
     p.add_argument('--acceptance', required=True); p.add_argument('--artifact', action='append', required=True)
     p = sub.add_parser('binding'); p.add_argument('request_id'); p.add_argument('--thread', required=True)
+    p = sub.add_parser('continue-context'); p.add_argument('request_id')
+    p.add_argument('--summary-file', required=True); p.add_argument('--through-event', required=True)
     args = parser.parse_args(); ws = workspace()
     w = next((w for w in read(ws / 'memory/current-wants.json', [])
               if (w.get('agent_work') or {}).get('request_id') == args.request_id), None)
     if w is None: parser.error('no current want with this exact request')
     if not specific(w): parser.error('request lacks a bound journal/email source')
+    if args.command == 'continue-context':
+        import want_working_thread as working
+        work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), respect_pause=False)
+        if work is None: parser.error('no current want-room binding')
+        root = directory(args.request_id, ws)
+        source = Path(args.summary_file).absolute()
+        if (source.resolve() != source or not source.is_relative_to(root)
+                or not source.is_file() or source.stat().st_size > 48000):
+            parser.error('summary must be a bounded file in this private request directory')
+        data = working.continue_context(w, work, ws, source.read_text(), args.through_event)
+        print(json.dumps({'continued':True,'covered_events':data['continuation']['covered_count']}))
+        return
     if args.command == 'binding':
         import want_working_thread as working
         work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), args.thread)

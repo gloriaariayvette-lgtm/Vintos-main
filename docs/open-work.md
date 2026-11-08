@@ -6131,3 +6131,19 @@ The stack is still **not ready to integrate**: explicit context continuation and
 owner notification, configurable call caps, kill switch, subscription-only default
 and crash-repeat protection remain open, followed by Claude's full Aegis review.
 See the repair batch in `docs/wants-action-followthrough.md`. No deployment.
+
+
+## 8 November — wants reviews 13/14 implemented, pending independent review
+
+On `codex/wants-budget-continuation`, from eab31339: shared per-request/global
+provider-attempt limits, dedicated stop switch, subscription-to-approved-fallback
+routing with existing accounting, durable intent/response recovery, explicit
+context continuation and deduplicated blocker receipts are implemented. Existing
+feeds and other provider routes are unchanged. 614 counted isolated checks plus
+the Slack-cost regression suite pass. `docs/wants-budget-validation.json` records
+this tip's validation; older matrices describe their own tips.
+
+The review-13 source/freshness/test-anchor fixes remain in the parent stack. Full
+Aegis validation, Claude's approval, external agent instruction installation and
+Gloria's deployment/live acceptance remain open. No claim that a real want has
+been executed or that this branch may merge automatically.

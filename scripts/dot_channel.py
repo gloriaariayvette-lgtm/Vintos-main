@@ -3026,28 +3026,37 @@ def agent_owner_requests(r, state, now, api, channel):
     return kept_lines
 
 
-def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=None, complete=None, writer=None, identity=None):
+def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=None, complete=None, writer=None, identity=None, block_notify=None):
     """The existing room transport carries exact want requests and verified results."""
     import want_agent
     import want_working_thread as working
     identity = identity or his_context
     writer = writer or working.ask
+    from want_work_budget import WorkBlocked, ensure_running
+    if block_notify is None:
+        from deliver import deliver as block_deliver
+        block_notify = lambda key, message: block_deliver(key, "ntfy", message,
+            title="Want needs attention", authority=lambda:(True, "bound want continuation or cost control"))
     calls_left = [2]
-    def limited_writer(system, user):
-        if calls_left[0] <= 0:
-            raise RuntimeError("working calls used for this pass; retained")
-        calls_left[0] -= 1
-        return writer(system, user)
     def decision(w, work, phase, trigger, instruction):
-        return working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
-                                writer=limited_writer, identity=identity)
+        if calls_left[0] <= 0:
+            raise RuntimeError("working decisions used for this pass; retained")
+        calls_left[0] -= 1
+        try:
+            return working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
+                                    writer=writer, identity=identity)
+        except WorkBlocked as exc:
+            working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify)
+            raise
     def post(text, agent, client_id):
+        ensure_running(want_agent.workspace())
         bad = _guarded(text)
         if bad: raise RuntimeError("want handoff refused by send guard")
         addressed = ("@Muse " if agent == "muse" else "<@%s> " % dot) + text
         return api("chat.postMessage", {"channel": channel, "text": addressed, "client_msg_id": client_id})
 
     def publish(want, result, paths):
+        ensure_running(want_agent.workspace())
         import promise_keeper
         destination = promise_keeper.results_channel() or channel
         request = want["agent_work"]["request_id"]
@@ -3093,6 +3102,10 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     save = lambda current: _save(STATE, current)
     import want_working_thread as working
     working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state, want_agent.workspace())
+    try:
+        ensure_running(want_agent.workspace())
+    except WorkBlocked:
+        return ['bound want lane stopped; incoming context retained']
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         work = working.binding(w, state)
         if not work: continue
@@ -3108,6 +3121,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                             lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
     want_agent.receive(rows)
     def send_reply(w, work, text, trigger):
+        ensure_running(want_agent.workspace())
         if _guarded(text): raise RuntimeError("working reply refused by send guard")
         a = w['agent_work']
         addressed = ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
@@ -3139,7 +3153,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         trigger = json.dumps([e['key'] for e in events])
         chosen = decision(w, work, 'continue', trigger,
                           {'next':'Answer these agent messages and carry the same want forward.',
-                           'events':events, 'result_error':a.get('result_error')})
+                           'event_keys':[e['key'] for e in events], 'result_error':a.get('result_error')})
         send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
         lines.append('bound want answered with its retained working context')
         break
