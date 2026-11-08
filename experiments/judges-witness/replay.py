@@ -14,7 +14,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from witness_receipts import admission, digest, envelope_status, instant, row_receipt
+from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response
 
 
 def adapt(rows, kind):
@@ -34,7 +34,7 @@ def adapt(rows, kind):
 
 def census(sources, nodes, cutoff):
     groups, reasons, envelopes = defaultdict(list), Counter(), Counter()
-    source_counts = {}
+    source_counts, identity_joins, duplicate_reasons = {}, 0, Counter()
     for kind, rows in sources:
         adapted = list(adapt(rows, kind))
         source_counts[kind] = source_counts.get(kind, 0) + len(adapted)
@@ -42,11 +42,15 @@ def census(sources, nodes, cutoff):
             if row.get("role") != "assistant":
                 reasons["not_reply"] += 1
                 continue
-            envelopes[envelope_status(row)] += 1
-            key = row.get("turn_id")
-            if not isinstance(key, str) or not key:
-                reasons["missing_stable_id"] += 1
+            key, identity_status = joined_identity(row)
+            if key is None:
+                envelopes[envelope_status(row)] += 1
+                reasons[identity_status] += 1
                 continue
+            if not row.get("turn_id"):
+                identity_joins += 1
+            row = dict(row, turn_id=key)
+            envelopes[envelope_status(row)] += 1
             groups[key].append(row)
     admitted = []
     for copies in groups.values():
@@ -54,20 +58,23 @@ def census(sources, nodes, cutoff):
         states = [admission(r, nodes, cutoff) for r in copies]
         if any(s != "eligible" for s in states):
             reasons["duplicate_held" if len(copies) > 1 else states[0]] += 1
+            if len(copies) > 1:
+                duplicate_reasons.update(s for s in states if s != "eligible")
             continue
         first = copies[0]
-        if any(r.get("content") != first.get("content") or row_receipt(r) != row_receipt(first)
+        if any(final_response(r) != final_response(first) or row_receipt(r) != row_receipt(first)
                for r in copies[1:]):
             reasons["conflicting_duplicate"] += 1
             continue
         admitted.append(first)
     admitted.sort(key=lambda r: (row_receipt(r)["finalized_at"], r["turn_id"]))
-    lengths = [len(r["content"].split()) for r in admitted]
+    lengths = [len(final_response(r).split()) for r in admitted]
     summary = {"source_rows": source_counts, "envelope_rows": dict(envelopes),
                "unique_identified_replies": len(groups), "eligible_replies": len(admitted),
-               "held": dict(reasons), "behaviour": {
+               "held": dict(reasons), "duplicate_held_copy_reasons": dict(duplicate_reasons),
+               "envelope_id_joins": identity_joins, "behaviour": {
                    "mean_words": statistics.mean(lengths) if lengths else None,
-                   "question_fraction": sum("?" in r["content"] for r in admitted) / len(admitted)
+                   "question_fraction": sum("?" in final_response(r) for r in admitted) / len(admitted)
                    if admitted else None},
                "meaning": "descriptive behaviour only; no authenticity or emotion verdict"}
     return summary, admitted
@@ -129,7 +136,7 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
                 held["noncausal_forecast"] += 1
                 continue
             matches = [e for e in cache[row["turn_id"]]
-                       if e.get("response_sha256") == digest(row["content"])
+                       if e.get("response_sha256") == digest(final_response(row))
                        and e.get("encoder_id") == encoder]
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 held["missing_or_conflicting_embedding"] += 1

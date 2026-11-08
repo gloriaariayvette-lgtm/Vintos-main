@@ -22,12 +22,34 @@ future or unrecognized ancestry is unknown. This is an evidence contract, not a
 claim that a producer can automatically know every input: no producer may mark
 `complete: true` until all contributing context inputs have receipts.
 
+The ancestry root must be a `context` node. Reply-to-next-context hops use a
+`reply` node with `turn_id`, `context_receipt_id` also listed in `parents`, and
+explicit `influence` (`clean`, `influenced`, `unknown`). A clean assertion cannot
+clear influencing parents or explicit tactical/character-influenced flags. A
+generated-output node cannot use `ordinary_source` to bypass this contract.
+Traversal memoizes node standing and checks every edge's clock independently;
+shared ancestry does not cause exponential replay.
+
 `replay.py` accepts only explicitly supplied snapshots of canonical chat, merged
 chat or the interaction ledger. It never searches backups or reinstates erased
 history. It counts both provenance envelope fields, requires explicit witness
 eligibility, and keeps unknown/denied duplicates out. Repeated copies of one
 eligible finalized reply count once. Duplicate copies must all qualify: this is
 deliberately conservative when a retained older copy lacks the new fields.
+
+Existing `evidence_view.standing()` must be eligible too; unresolved or denied
+record ancestry cannot be rescued by a clean new context receipt. Tactical
+sources and dream/import/transplant/estimated-time/forgotten/deleted flags are
+excluded. The merged projection retains original source and ancestry metadata.
+Missing top-level IDs may join agreeing explicit envelope IDs, never guessed
+IDs; conflicting or absent identities remain held. Duplicate hold diagnostics
+retain the underlying reasons, counted per denied copy.
+
+For stores that append device marks, optional `witness_final_text` and
+`witness_final_sha256` preserve the exact producer-attested final response.
+Both must agree with each other and the generation receipt. They are carried
+through the projection and used for scoring; no heuristic stripping or final
+payload backfill occurs. Producers still need to capture these at finalization.
 
 The behaviour receipt is currently descriptive: admitted reply count, word
 length and question fraction. It assigns no authenticity, emotion or relational
@@ -71,7 +93,7 @@ One private JSON bundle contains:
 - `lineage`: nodes with unique `id`, `kind`, epoch/offset-aware `at`, `complete`,
   and `parents`. Ordinary kinds are `context`, `ordinary_source`, `value_map`;
   influencing kinds are `character_score`, `behaviour_receipt`, `judge_effect`,
-  `tactical`, `emotion_nudge`.
+  `tactical`, `emotion_nudge`. Reply nodes have the additional fields above.
 - `forecasts`: the existing on-message log shape (`ts`, `arrived_at`, `mode`,
   `turn_id`, `surface`, `self.emb`, `self.mode`, `self.source`,
   `self.checkpoint_id`, `self.context_last_ts`).

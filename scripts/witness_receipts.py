@@ -10,7 +10,7 @@ from datetime import datetime
 SCHEMA = "behaviour-witness-v1"
 INFLUENCING = frozenset(("character_score", "behaviour_receipt", "judge_effect",
                          "tactical", "emotion_nudge"))
-KINDS = INFLUENCING | frozenset(("context", "value_map", "ordinary_source"))
+KINDS = INFLUENCING | frozenset(("context", "value_map", "ordinary_source", "reply"))
 
 
 def digest(text):
@@ -101,12 +101,14 @@ def receipt(turn_id, surface, started_at, finalized_at, final_response,
 
 
 def lineage_status(root, nodes, before):
-    """Resolve every ancestor; missing, cyclic, future or incomplete paths are unknown."""
-    if not isinstance(nodes, dict):
+    """Memoized DAG traversal. Check each edge's clock even for cached ancestors."""
+    if not isinstance(nodes, dict) or not isinstance(nodes.get(root), dict):
         return "unknown"
-    def visit(key, stack, latest):
-        if key in stack or len(stack) >= 128:
-            return "unknown"
+    if nodes[root].get("kind") != "context":
+        return "unknown"
+    memo, visiting = {}, set()
+
+    def visit(key, latest):
         n = nodes.get(key)
         if not isinstance(n, dict) or n.get("id") != key or n.get("complete") is not True:
             return "unknown"
@@ -114,18 +116,61 @@ def lineage_status(root, nodes, before):
             at = instant(n.get("at"))
         except (ValueError, TypeError, OverflowError):
             return "unknown"
+        # This is edge-specific: a shared ancestor can precede one parent but
+        # follow another. Do not cache an edge failure as the node's standing.
+        if at > latest or key in visiting or len(visiting) >= 128:
+            return "unknown"
+        if key in memo:
+            return memo[key]
         kind, parents = n.get("kind"), n.get("parents")
-        if at > latest or kind not in KINDS or not isinstance(parents, list):
+        if kind not in KINDS or not isinstance(parents, list):
             return "unknown"
         if any(not isinstance(p, str) or not p for p in parents):
             return "unknown"
-        states = [visit(p, stack | {key}, at) for p in parents]
-        if kind in INFLUENCING or "influenced" in states:
-            return "influenced"
-        if "unknown" in states:
+        own = "influenced" if kind in INFLUENCING else "clean"
+        if kind == "reply":
+            context_id = n.get("context_receipt_id")
+            context = nodes.get(context_id) if isinstance(context_id, str) else None
+            if (context_id not in parents or not isinstance(context, dict)
+                    or context.get("kind") != "context" or not n.get("turn_id")
+                    or n.get("influence") not in ("clean", "influenced", "unknown")):
+                return "unknown"
+            own = n["influence"]
+            if any(n.get(k) for k in ("character_influenced", "tactical")):
+                own = "influenced"
+        elif kind == "ordinary_source" and any(k in n for k in (
+                "context_receipt_id", "generation_provenance", "output_provenance", "influence")):
+            # Generated outputs must use the reply contract, not an ordinary leaf.
             return "unknown"
-        return "clean"
-    return visit(root, set(), before)
+        visiting.add(key)
+        states = [visit(p, at) for p in parents]
+        visiting.remove(key)
+        result = ("influenced" if own == "influenced" or "influenced" in states else
+                  "unknown" if own == "unknown" or "unknown" in states else "clean")
+        memo[key] = result
+        return result
+    return visit(root, before)
+
+
+def joined_identity(row):
+    """Join only agreeing explicit envelope/top-level IDs; never generate an ID."""
+    ids = [row.get("turn_id")]
+    ids += [row[k].get("turn_id") for k in ("generation_provenance", "provenance")
+            if isinstance(row.get(k), dict)]
+    ids = [value for value in ids if value is not None and value != ""]
+    if any(not isinstance(value, str) or not value.strip() for value in ids) or len(set(ids)) > 1:
+        return None, "conflicting_identity"
+    return (ids[0], "identified") if ids else (None, "missing_stable_id")
+
+
+def final_response(row):
+    """Exact producer-attested final text; never heuristically strip store marks."""
+    if "witness_final_text" in row or "witness_final_sha256" in row:
+        text = row.get("witness_final_text")
+        if not isinstance(text, str) or digest(text) != row.get("witness_final_sha256"):
+            return None
+        return text
+    return row.get("content")
 
 
 def envelope_status(row):
@@ -146,14 +191,26 @@ def envelope_status(row):
 def admission(row, nodes, cutoff):
     if not isinstance(row, dict) or row.get("role") != "assistant":
         return "not_reply"
-    if any(row.get(k) for k in ("test_mode", "tactical", "withheld", "character_influenced")):
+    if any(row.get(k) for k in ("test_mode", "tactical", "withheld", "character_influenced",
+                                 "dream_only", "imported", "transplanted", "timestamp_estimated",
+                                 "forgotten", "deleted")):
         return "excluded_act"
     if any(row.get(k) is False for k in (
             "admitted", "eligible", "may_witness", "generated_output_witness_eligible")):
         return "excluded_act"
+    from evidence_view import standing, ELIGIBLE
+    from evidence_provenance import is_tactical
+    if is_tactical(row.get("source")) or is_tactical(row.get("witness_origin_source")):
+        return "tactical_source"
+    turn_id, identity_status = joined_identity(row)
+    if turn_id is None:
+        return identity_status
+    row = dict(row, turn_id=turn_id)
     status = envelope_status(row)
     if status != "explicit_witness":
         return status
+    if standing(row) != ELIGIBLE:
+        return "ineligible_evidence_standing"
     candidates = [row["witness_receipt"]] if "witness_receipt" in row else []
     candidates += [row[k]["witness_receipt"] for k in ("generation_provenance", "provenance")
                    if isinstance(row.get(k), dict) and "witness_receipt" in row[k]]
@@ -167,9 +224,10 @@ def admission(row, nodes, cutoff):
         return "unknown_receipt"
     if r["turn_id"] != row.get("turn_id") or r["surface"] != row.get("surface"):
         return "conflicting_identity"
-    if not isinstance(row.get("content"), str) or not row["content"].strip():
+    text = final_response(row)
+    if not isinstance(text, str) or not text.strip():
         return "missing_final_response"
-    if r["response_sha256"] != digest(row["content"]):
+    if r["response_sha256"] != digest(text):
         return "response_changed"
     if r["delivery"] != "delivered":
         return "unconfirmed_delivery"

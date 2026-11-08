@@ -90,8 +90,12 @@ def normalize(envelope=None):
             } if commitment else {},
             "envelope_state": str(envelope.get("envelope_state", "present"))[:40]}
     if "witness_receipt" in envelope:
-        from witness_receipts import normalize_receipt
-        result["witness_receipt"] = normalize_receipt(envelope["witness_receipt"])
+        try:
+            from witness_receipts import normalize_receipt
+        except ImportError:
+            result["witness_receipt"] = {"schema": "behaviour-witness-v1", "status": "unknown"}
+        else:
+            result["witness_receipt"] = normalize_receipt(envelope["witness_receipt"])
     return result
 
 

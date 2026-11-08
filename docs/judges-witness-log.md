@@ -43,3 +43,26 @@ Re-ran the two affected OS-isolated suites: witness **23/23**, merged chat
 **27/27**. Synthetic-only; no provider hooks or real-data run added. Earlier
 provenance/ownership results remain as recorded above; the full Aegis suite is
 still Claude Code's review step.
+
+## 8 November 2026 — independent review fixes
+
+Addressed review note 3 against the first batch, preserving the intervening
+causal/denial fixes. New witness admission now also requires existing evidence
+standing and honors tactical origins plus all named exclusion flags. Added
+dependency fallback to explicit unknown and included the pure receipt module in
+future persistence-sprint bundles. Existing sealed bundles/artifacts were not
+changed or re-evaluated.
+
+Context ancestry now memoizes shared nodes, validates each edge's time, requires
+a context root, and includes reply nodes that propagate direct and inherited
+influence. Added agreeing envelope-ID joins, per-copy duplicate hold reasons,
+and separately attested final text/digest support for device-annotated stores.
+The projection carries these optional fields and original ancestry/exclusions;
+production finalization capture remains pending.
+
+Claude reports independent test merges for the earlier 4432b711 revision:
+591/591 against deploy and 594/594 against live. These are reviewer-reported
+results for that earlier revision, not results for this fix commit. Locally,
+the affected isolated suites passed: witness 33/33, provenance 11/11, merged
+chat 30/30 and persistence sprint 21/21 (**95 checks**). No private inputs,
+model calls, live writes, merge or deployment. Re-review remains with Claude.

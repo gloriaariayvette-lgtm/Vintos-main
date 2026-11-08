@@ -8,7 +8,7 @@ import shutil
 SCRIPTS = (
     'latent_stream_model.py', 'latent_stream_linear.py', 'latent_stream_replay.py',
     'latent_feed.py', 'jepa_self_head.py', 'jepa_predictor.py',
-    'evidence_view.py', 'evidence_provenance.py', 'her_words.py',
+    'evidence_view.py', 'evidence_provenance.py', 'witness_receipts.py', 'her_words.py',
 )
 
 

@@ -76,6 +76,44 @@ class WitnessTests(unittest.TestCase):
         self.row["generated_output_witness_eligible"] = False
         self.assertEqual(self.admit(), "excluded_act")
 
+    def test_existing_evidence_standing_is_a_floor(self):
+        for extra in ({"derived_from": ["missing-parent"]},
+                      {"derived_from": [{"provenance": {"may_witness": False,
+                          "output_provenance": "stratagem_influenced"}}]},
+                      {"evidence_standing": "HELD"}, {"evidence_standing": "ineligible"}):
+            with self.subTest(extra=extra):
+                self.assertEqual(self.admit(dict(self.row, **extra)), "ineligible_evidence_standing")
+
+    def test_exclusion_flags_and_tactical_origins(self):
+        for flag in ("dream_only", "imported", "transplanted", "timestamp_estimated", "forgotten", "deleted"):
+            with self.subTest(flag=flag):
+                self.assertEqual(self.admit(dict(self.row, **{flag: True})), "excluded_act")
+        for key in ("source", "witness_origin_source"):
+            with self.subTest(key=key):
+                self.assertEqual(self.admit(dict(self.row, **{key: "ghost_branch"})), "tactical_source")
+
+    def test_join_only_agreeing_envelope_ids(self):
+        del self.row["turn_id"]
+        summary, rows = R.census([("canonical", [self.row])], self.nodes, 1000)
+        self.assertEqual(summary["envelope_id_joins"], 1)
+        self.assertEqual(rows[0]["turn_id"], "fixture-turn")
+        self.row["provenance"] = dict(self.row["generation_provenance"], turn_id="different")
+        self.assertEqual(R.census([("canonical", [self.row])], self.nodes, 1000)[1], [])
+
+    def test_exact_final_text_is_separate_from_device_marks(self):
+        self.row["witness_final_text"] = self.row["content"]
+        self.row["witness_final_sha256"] = W.digest(self.row["content"])
+        self.row["content"] += " [synthetic device annotation]"
+        self.assertEqual(self.admit(), "eligible")
+        self.assertEqual(len(self.score()[1]), 1)
+        self.row["witness_final_sha256"] = W.digest("a different synthetic final")
+        self.assertEqual(self.admit(), "missing_final_response")
+
+    def test_duplicate_hold_retains_copy_reason(self):
+        denied = dict(self.row, deleted=True)
+        summary, _ = R.census([("canonical", [self.row, denied])], self.nodes, 1000)
+        self.assertEqual(summary["duplicate_held_copy_reasons"], {"excluded_act": 1})
+
     def test_legacy_stays_unknown_only_for_new_reader(self):
         del self.row["generation_provenance"]
         self.assertEqual(self.admit(), "unknown_provenance")
@@ -88,6 +126,31 @@ class WitnessTests(unittest.TestCase):
         normalized = EP.normalize(p)
         self.assertEqual(normalized["witness_receipt"], W.normalize_receipt(p["witness_receipt"]))
         self.assertNotIn("untrusted_payload", normalized["witness_receipt"])
+
+    def test_missing_receipt_module_is_explicit_unknown(self):
+        p = dict(self.row["generation_provenance"], witness_receipt=self.row["witness_receipt"])
+        with patch.dict(sys.modules, {"witness_receipts": None}):
+            normalized = EP.normalize(p)
+        self.assertEqual(normalized["witness_receipt"]["status"], "unknown")
+        self.assertTrue(normalized["may_witness"])
+
+    def test_future_bundles_include_receipt_dependency(self):
+        spec = importlib.util.spec_from_file_location("witness_bundle_test", ROOT / "experiments/persistence-sprint/bundle.py")
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix="witness-bundle-") as td:
+            scratch = Path(td).resolve()
+            self.assertNotIn(".vintos", scratch.parts)
+            module.package_code(scratch / "code", ROOT)
+            self.assertTrue((scratch / "code/scripts/witness_receipts.py").is_file())
+            code = '''import sys
+sys.path.insert(0,sys.argv[1])
+import evidence_view as ev
+assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ordinary_generation","witness_receipt":{"schema":"behaviour-witness-v1","status":"unknown"}}}) == ev.ELIGIBLE
+'''
+            result = subprocess.run([sys.executable, "-I", "-c", code, str(scratch / "code/scripts")],
+                                    capture_output=True, text=True,
+                                    env=dict(os.environ, SPARK_WORKSPACE=str(scratch), PYTHONDONTWRITEBYTECODE="1"))
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_malformed_receipts_fail_closed(self):
         for value in (None, [], {}, {"schema": W.SCHEMA, "generation": []}):
@@ -113,6 +176,44 @@ class WitnessTests(unittest.TestCase):
                          {"complete": False}, {"at": 101}, {"kind": "unrecognized"}):
             self.nodes["context-1"] = dict(fixture()[1]["context-1"], **mutation)
             self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_lineage_root_must_be_context(self):
+        self.nodes["context-1"]["kind"] = "ordinary_source"
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_reply_node_propagates_direct_and_indirect_influence(self):
+        self.nodes.update({
+            "old-context": {"id": "old-context", "at": 60, "kind": "context", "parents": [], "complete": True},
+            "old-reply": {"id": "old-reply", "at": 70, "kind": "reply", "parents": ["old-context"],
+                          "context_receipt_id": "old-context", "turn_id": "old-turn", "influence": "influenced", "complete": True}})
+        self.nodes["context-1"]["parents"] = ["old-reply"]
+        self.assertEqual(self.admit(), "influenced_lineage")
+        self.nodes["old-reply"]["influence"] = "clean"
+        self.nodes["old-reply"]["character_influenced"] = True
+        self.assertEqual(self.admit(), "influenced_lineage")
+        del self.nodes["old-reply"]["character_influenced"]
+        self.nodes["old-context"]["parents"] = ["effect"]
+        self.nodes["effect"] = {"id": "effect", "at": 50, "kind": "judge_effect", "parents": [], "complete": True}
+        self.assertEqual(self.admit(), "influenced_lineage")
+        self.nodes["old-reply"]["kind"] = "ordinary_source"
+        self.assertEqual(self.admit(), "unknown_lineage")
+
+    def test_shared_ancestry_is_memoized_and_edge_clocks_checked(self):
+        class Counted(dict):
+            calls = 0
+            def get(self, *args):
+                self.calls += 1
+                return super().get(*args)
+        nodes = Counted()
+        for i in range(60):
+            key = str(i)
+            nodes[key] = {"id": key, "at": i, "kind": "context", "complete": True,
+                          "parents": [str(i - 1)] * 2 if i else []}
+        self.assertEqual(W.lineage_status("59", nodes, 100), "clean")
+        self.assertLess(nodes.calls, 200)
+        nodes["59"]["parents"] = ["58", "earlier-parent"]
+        nodes["earlier-parent"] = {"id": "earlier-parent", "at": 10, "kind": "context", "complete": True, "parents": ["57"]}
+        self.assertEqual(W.lineage_status("59", nodes, 100), "unknown")
 
     def test_cutoff_and_naive_clock(self):
         self.assertEqual(W.admission(self.row, self.nodes, 110), "outside_cutoff")
