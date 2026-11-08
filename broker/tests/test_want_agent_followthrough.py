@@ -436,13 +436,44 @@ class Tests(unittest.TestCase):
         self.assertEqual(posts[1]['thread_ts'],a['thread'])
         self.assertIn('Synthetic dependency installed',calls[1][1]); self.assertIn(self.want['want'],calls[1][1])
 
+    def test_room_context_limit_notifies_once_without_calls_or_posts(self):
+        import dot_channel as D
+        import want_working_thread as W
+        from want_work_budget import WorkBlocked
+        self.intake();w=self.current()[0];work=W.binding(w,self.state)
+        W.load(w,work,self.ws,'Synthetic oversized identity. '*3000)
+        row=dict(who='dot',thread=w['agent_work']['thread'],ts=str(self.now+1),text='Synthetic next report')
+        notices=[]
+        def forbidden(*a,**kw):raise AssertionError('provider or room send must not run')
+        with patch.object(D,'STATE',str(self.mem/'test-room-state.json')):
+            for _ in range(2):
+                with self.assertRaises(WorkBlocked):
+                    D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
+                        rows=[row],writer=forbidden,identity='Fixture',notify=lambda *a:None,complete=lambda *a:None,
+                        block_notify=lambda key,msg:notices.append(key) or {'state':'sent'})
+        self.assertEqual(len(notices),1)
+        self.assertIn('Synthetic next report',str(W.load(w,work,self.ws)['events']))
+
+    def test_dedicated_stop_retains_agent_input_without_room_or_owner_sends(self):
+        import dot_channel as D
+        import want_working_thread as W
+        self.intake();w=self.current()[0];work=W.binding(w,self.state)
+        (self.mem/'want-work.stop').touch()
+        row=dict(who='dot',thread=w['agent_work']['thread'],ts=str(self.now+1),text='Synthetic incoming report')
+        def forbidden(*a,**kw):raise AssertionError('stopped lane invoked a side effect')
+        lines=D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
+            rows=[row],writer=forbidden,identity='Fixture',notify=forbidden,complete=forbidden,block_notify=forbidden)
+        self.assertIn('stopped',lines[0])
+        self.assertIn('Synthetic incoming report',str(W.load(w,work,self.ws)['events']))
+
     def test_pinned_adapter_observations_are_request_local(self):
         import want_working_thread as W
-        import claude_cache as C
+        import claude_sub as C
+        import astra_call as fallback
         seen=[]
-        def ask(model,system,user,limit,**kw):
-            seen.append(model);kw['observer']({'text':'fixture','identity_evidence':'unknown'});return 'fixture'
-        with patch.object(C,'ask',ask):
+        def ask(model,system,user,**kw):
+            seen.append(model);return 'fixture'
+        with patch.object(C,'ask',ask), patch.object(fallback,'call',side_effect=AssertionError('unexpected fallback')):
             one=W.ask('fixture','one');two=W.ask('fixture','two')
         self.assertEqual(seen,[W.MODEL,W.MODEL]);self.assertEqual(len(one['observations']),1)
         self.assertIsNot(one['observations'],two['observations'])

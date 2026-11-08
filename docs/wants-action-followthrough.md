@@ -38,11 +38,12 @@ and concrete unavailable actions reach dot through the room's existing transport
 A purchase request addresses Muse; other setup work addresses dot. A signed
 reviewer reply may finish work only when the room authenticates its owner account.
 Unknown signatures, unrelated agents, wrong threads and changed goals cannot
-complete it. No new model endpoint or model selection is introduced.
+complete it. The dedicated working route is described in the review 14 section below.
 
 The request carries source references, previous realized step results, the
 literal task and its acceptance requirements. The room retains its existing
-capacity, global pause and conversation rules. One new want is handed over per
+capacity and conversation rules. Only the source-bound lane is exempt from the
+global room pause; its dedicated stop switch and task-specific pauses still apply. One new want is handed over per
 pass; threads remain watched beyond the ordinary recent-thread window. Existing
 work with an exactly matching goal is reused. Agent work may be explicitly paused
 or dropped, but a prose `WORK DONE` cannot replace its deliverable receipt.
@@ -140,14 +141,11 @@ for served identity. Other model routes are unchanged. The capture's lineage and
 delivery remain unknown for judge eligibility; this is not a clean witness.
 
 Working decisions are cached by event. Polls without new messages/results make no
-model call. At most two calls are attempted per room pass, with 1800 output tokens
-per call; failed work retains its context with a ten-minute retry backoff. An
-interrupted in-flight call has a fifteen-minute lease. There can still be a repeat
-provider charge after a response/local-persistence crash: no exactly-once claim.
-This path uses the existing paid API route and ledger after deployment; its cost
-scales with the retained input and actual working events. No paid call was made
-for implementation or tests. Context beyond the 250000-character call budget
-remains on disk and requires an explicit continuation decision, never a reset.
+model call. The reviewed cost-control implementation below supersedes the earlier
+per-pass-only bound and expiring call lease. A response-observed event is parsed
+locally after restart; an interrupted call is held for reconciliation, not resent.
+Context is retained in full, with explicit summary continuations instead of silent
+truncation. No paid call was made for implementation or tests.
 
 The room switch no longer stops this bound-want lane. Ordinary messages still
 obey it. The exemption requires the current want's exact goal hash, an open RW
@@ -217,3 +215,90 @@ room-derived, absent/malformed/stale sources and existing queued work; positive
 fixtures cover bound journal and email tasks. Result fixtures reject old timestamps,
 foreign fresh shelves, future timestamps and private working-thread records.
 All transports/models were stubs. Full Aegis validation remains Claude's step.
+
+
+## Reviews 13 and 14: bounded attempts, authorized fallback and continuation
+
+Implemented on `codex/wants-budget-continuation`, stacked on eab31339. This is a
+review candidate; Claude's full isolated Aegis suite and Gloria's deployment are
+still required. No live want or provider has been exercised.
+
+### Working route and cost accounting
+
+The dedicated lane calls `claude_sub.ask` directly for `claude-sonnet-5-5`, then
+uses the existing `astra_call.call` (`gpt-6-astra`) only if that subscription call
+fails or is unavailable, as Gloria chose in review 14. It never enters the paid
+Anthropic API route. The same system/context strings reach the fallback; identity,
+goal, source receipts and retained conversation do not restart on a lane switch.
+Other callers' routes are unchanged.
+
+The existing OpenAI reservation/release accounting and worker deadline are reused.
+Its optional private observer packet takes served identity only from response
+metadata. Subscription text does not expose served identity, so it stays unknown.
+The generation capture separately records the actual selected lane. The normal
+string-returning provider API remains compatible for existing callers. A malformed
+working decision is retained for review, not automatically retried through another
+paid call. The fallback spends credits; this is not a free path.
+
+`memory/want-work-policy.json` can set these conservative defaults:
+
+```json
+{"per_want_calls": 8, "daily_calls": 16, "context_chars": 60000}
+```
+
+The per-want limit covers the entire request lifetime. The daily limit is global
+to this lane on the America/Chicago calendar. Both count **each provider attempt**
+(subscription and fallback separately), including failed/uncertain attempts. Zero
+call limits stop new calls. Configurable upper bounds are 1000 calls and 250000
+context characters; changing a limit is an owner/operator decision, never a model
+action. The room's existing two-decisions-per-pass limit also remains; a decision
+can consume two provider attempts. Only the fallback has an explicit 1800 output
+token parameter; the subscription adapter does not expose that parameter.
+
+Reservations are locked, private and fsynced in
+`memory/want-work-control/calls.json`; malformed state is refused, never reset.
+An intent is persisted before each call. The working thread records responses
+before parsing/finishing. After a crash, recorded responses finish locally, while
+an intent with no recorded response stays held for manual reconciliation; elapsed
+time cannot license a repeat. Even a persistence failure at the observer boundary
+cannot cause an automatic repeat. This deliberately trades availability for
+protecting against uncertain repeat spending. It does not cancel a remote call
+already underway or promise exactly-once remote billing/Slack delivery.
+
+### Stop and explicit context continuation
+
+The existence of `memory/want-work.stop` stops new lane calls, posts, uploads and
+owner-request handling. Incoming authenticated agent messages are still retained.
+Removing it permits work again within the same caps; it does not reset counters
+or authorize an uncertain call. Ordinary room traffic retains its existing rules.
+
+Context/cap/uncertain-response holds notify through the existing `deliver` door,
+with a stable receipt and a persisted notice key. Failed notifications retry;
+unchanged successful notices do not poll the owner. Provider retry-backoff polls
+are quiet. Completed deliverables continue through the existing result notification.
+
+For an over-budget thread, an authorized operator/agent supplies a bounded summary
+file inside that request's private directory, preferably named
+`.continuation-summary.txt`, and an exact retained event key:
+
+```sh
+python3 scripts/want_agent.py continue-context "$REQUEST_ID" \
+  --summary-file "$SPARK_WORKSPACE/memory/want-artifacts/requests/$REQUEST_ID/.continuation-summary.txt" \
+  --through-event "$EVENT_KEY"
+```
+
+The command makes no model call and sends nothing. It retains all original events
+and earlier summaries, binds the summary to a hash of the covered prefix, and
+uses the summary plus subsequent events in future prompts. Exact goal/source and
+identity remain. It does not erase unanswered work, reset caps, release a task
+pause or retry any response-observed/uncertain call. If identity/instruction alone
+exceeds the limit, summarizing events cannot cure it; the owner must review the
+explicit context budget. There is no automatic lossy reset.
+
+Validation: 614 counted checks across 13 affected isolated suites, plus the
+Slack-cost regression suite (which reports pass without a numeric total). The
+new 17-test control suite covers atomic limits, both lanes, exact observed
+identity, crash/observer failures, concurrent identical events, continuation CLI,
+retained history and notification deduplication. The existing want suite now has
+39 tests, including stop-switch message retention and actual room-boundary alerts.
+See `wants-budget-validation.json`. Full independent Aegis review remains pending.
