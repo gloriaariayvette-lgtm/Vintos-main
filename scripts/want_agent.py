@@ -154,7 +154,7 @@ def opening(want, a, wid):
                json.dumps(want.get('step_history', [])[-4:], ensure_ascii=False)[:1800], a['request_id'], a['request_id']))
 
 
-def intake(state, post, save_state, now, *, ws=None):
+def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None):
     """One new handoff per room pass, respecting room capacity and source identity."""
     import room_work
     ws = Path(ws or workspace()); lines = []
@@ -200,14 +200,22 @@ def intake(state, post, save_state, now, *, ws=None):
                         want_id=w['id'], want_request_id=rid)
             board['open'].append(work)
             save_state(state)  # recover this same work after a crash before the transport reply
+        import want_working_thread as working
+        if room_work.paused(work, now): continue
+        working.load(w, work, ws, identity)
         if a.get('thread'):
             continue
         body = opening(w, a, work['id'])
+        if prepare is not None:
+            body = prepare(w, work, body) + '\n\n' + body
+        body = '[want:%s] %s\n%s' % (w['id'], work['id'], body)
         sent = post(body, a['agent'], str(uuid.uuid5(uuid.NAMESPACE_URL, rid)))
         if not isinstance(sent, dict) or not sent.get('ts') or sent.get('ok') is False:
             lines.append('want agent request not acknowledged; retained for retry'); break
         thread = str(sent['ts'])
         _update(w['id'], rid, {'thread': thread, 'status': 'in_work', 'work_id': work['id']}, ws)
+        a.update(thread=thread, status='in_work', work_id=work['id'])
+        working.append(w, work, ws, 'opening', 'vintos', body, at=now, details={'thread': thread})
         room_work.posted(state, work['id'] + '\n' + body, thread, thread, now, to=[a['agent']], by='want')
         state['threads'] = list(dict.fromkeys(list(state.get('threads') or []) + [thread]))[-60:]
         save_state(state)
@@ -243,7 +251,7 @@ def receive(rows, *, ws=None):
     return changed
 
 
-def finish(state, publish, notify, complete, save_state, now, *, ws=None):
+def finish(state, publish, notify, complete, save_state, now, *, ws=None, review=None):
     """Publish verified files, then ntfy through deliver, then the existing ending door.
 
     Every stage is retained on its want; a failed upload/notification is retried
@@ -267,6 +275,10 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None):
             result, paths = verify(w, ws)
             if result != a.get('result'):
                 raise ValueError('result manifest changed after its authenticated arrival')
+            if review is not None:
+                message = review(w, result)
+                if message is None: continue
+                result = dict(result, summary=message)
             publication = a.get('publication')
             if not publication:
                 publication = publish(w, result, paths)
@@ -279,8 +291,13 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None):
             if not delivery or delivery.get('state') not in ('sent', 'acknowledged'):
                 raise ValueError('ntfy delivery unconfirmed; result retained for retry')
             # Persist result before the existing ending door archives the full want.
-            if not _update(w['id'], rid, {'delivery': delivery, 'status': 'result_ready', 'completed_at': now}, ws):
+            if not _update(w['id'], rid, {'delivery': delivery, 'status': 'result_ready', 'completed_at': now, 'completion_message': result['summary']}, ws):
                 continue
+            import want_working_thread as working
+            item = working.binding(w, state)
+            if item:
+                working.append(w, item, ws, 'delivered', 'delivery', result['summary'], at=now,
+                               details={'publication': publication, 'delivery': delivery, 'acceptance': result['acceptance']})
             outcome = complete(w, result['summary'] + '\nDeliverables: ' + publication['url'])
             if not outcome or outcome.get('result') != 'fulfilled':
                 raise ValueError('ending door has not confirmed fulfillment')
@@ -332,10 +349,17 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('result'); p.add_argument('request_id'); p.add_argument('--summary', required=True)
     p.add_argument('--acceptance', required=True); p.add_argument('--artifact', action='append', required=True)
+    p = sub.add_parser('binding'); p.add_argument('request_id'); p.add_argument('--thread', required=True)
     args = parser.parse_args(); ws = workspace()
     w = next((w for w in read(ws / 'memory/current-wants.json', [])
               if (w.get('agent_work') or {}).get('request_id') == args.request_id), None)
     if w is None: parser.error('no current want with this exact request')
+    if args.command == 'binding':
+        import want_working_thread as working
+        work = working.binding(w, read(ws / 'memory/dot-channel/state.json', {}), args.thread)
+        if work is None: parser.error('no matching active want-room-thread binding')
+        print(json.dumps({'bound': True, 'want_id': w['id'], 'work_id': work['id'], 'request_id': args.request_id}))
+        return
     root = directory(args.request_id, ws); root.mkdir(parents=True, exist_ok=True, mode=0o700)
     result = dict(schema=SCHEMA, request_id=args.request_id, goal_sha256=fingerprint(w['want']), status='completed',
                   summary=args.summary[:2000], acceptance=args.acceptance[:4000], artifacts=[])

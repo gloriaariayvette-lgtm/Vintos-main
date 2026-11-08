@@ -43,6 +43,13 @@ class Tests(unittest.TestCase):
         self.posts.append((text, agent, identity)); return {'ok':True,'ts':str(self.now)}
     def intake(self): return A.intake(self.state, self.post, self.save, self.now, ws=self.ws)
 
+    def writer(self, system, user):
+        phase=json.loads(user)['phase']
+        raw=json.dumps({'message':'Synthetic score prepared.' if phase=='result' else 'Continue the exact synthetic task.',
+                        'accept':phase=='result'})
+        return {'text':raw,'observations':[{'text':raw,'status':'valid','requested_model':'fixture-requested',
+                    'observed_model':'fixture-observed','identity_evidence':'response_metadata'}]}
+
     def result(self):
         w = self.current()[0]; a = w['agent_work']
         folder = A.directory(a['request_id'], self.ws); folder.mkdir(parents=True, exist_ok=True)
@@ -194,11 +201,11 @@ class Tests(unittest.TestCase):
             self.assertIn('files.completeUploadExternal',[x[0] for x in calls])
             return self.notify(*args)
         with patch.object(D,'STATE',str(self.mem/'room.json')), patch.object(D,'_guarded',lambda s:[]), patch.object(P,'results_channel',lambda:'fixture-results'):
-            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now,put=put,notify=notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now,put=put,notify=notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
             self.assertEqual(len(calls),1)
             self.result(); a=self.current()[0]['agent_work']
             rows=[dict(who='dot',text='WANT RESULT '+a['request_id'],thread=a['thread'],ts=str(self.now+1))]
-            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=rows,put=put,notify=notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=rows,put=put,notify=notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
         self.assertEqual(len(self.notifications),1); self.assertEqual(len(self.endings),1)
         # The completed receipt belongs in agent correspondence, not in the
         # generic identity block used for first-contact external emails.
@@ -232,14 +239,14 @@ class Tests(unittest.TestCase):
             if url.endswith('second.txt') and fail[0]:return 500
             return 200
         with patch.object(D,'STATE',str(self.mem/'room.json')), patch.object(D,'_guarded',lambda s:[]), patch.object(P,'results_channel',lambda:'fixture-results'):
-            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now,put=put,notify=self.notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now,put=put,notify=self.notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
             rec,artifact=self.result(); second=artifact.parent/'second.txt';second.write_text('Synthetic second output')
             rec['artifacts'].append(dict(path=str(second.relative_to(self.ws)),sha256=hashlib.sha256(second.read_bytes()).hexdigest()))
             (artifact.parent/'result.json').write_text(json.dumps(rec)); self.receive()
-            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now+2,put=put,notify=self.notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now+2,put=put,notify=self.notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
             self.assertFalse(self.notifications);self.assertFalse(self.endings)
             fail[0]=False
-            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now+3,put=put,notify=self.notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-room','fixture-dot',self.state,self.now+3,put=put,notify=self.notify,complete=self.complete,writer=self.writer,identity=lambda:'Synthetic identity')
         self.assertEqual(uploads,['score.txt','second.txt','second.txt'])
         self.assertEqual(len(posts),2); self.assertEqual(len(self.notifications),1)
 
@@ -282,6 +289,168 @@ class Tests(unittest.TestCase):
         self.intake(); wid=self.current()[0]['agent_work']['work_id']
         text,_,closed=room_work.apply(self.state,'WORK DONE '+wid+': made score.txt',self.now+10)
         self.assertIsNone(closed); self.assertIn('WANT RESULT',text)
+
+    def test_working_context_restart_and_complete_history(self):
+        import want_working_thread as W
+        A.intake(self.state,self.post,self.save,self.now,ws=self.ws,identity=lambda:'Original synthetic identity')
+        w=self.current()[0]; work=W.binding(w,self.state)
+        for i in range(35):
+            W.ingest([dict(who='dot',thread=w['agent_work']['thread'],ts=str(self.now+i+1),text='Synthetic reply '+str(i))],self.current(),self.state,self.ws)
+        restored=json.loads((self.mem/'test-room-state.json').read_text())
+        system,user=W.prompt(self.current()[0],W.binding(self.current()[0],restored),self.ws,lambda:'Different identity')
+        self.assertEqual(system,'Original synthetic identity')
+        self.assertIn('Synthetic reply 0',user); self.assertIn('Synthetic reply 34',user)
+        self.assertIn(self.want['want'],user)
+        W.ingest([dict(who='dot',thread=w['agent_work']['thread'],ts=str(self.now+1),text='Synthetic reply 0')],self.current(),restored,self.ws)
+        self.assertEqual(len(W.load(w,work,self.ws)['events']),36)
+
+    def test_binding_ignores_tags_and_requires_stored_identity(self):
+        import want_working_thread as W
+        self.intake(); w=self.current()[0]
+        valid=dict(who='dot',thread=w['agent_work']['thread'],ts='1',text='arbitrary text')
+        self.assertEqual(W.bound_rows([valid],self.current(),self.state),[valid])
+        for change in ({'thread':'wrong'},{'who':'gloria'},{'who':'agent','name':'Muse'}, {'thread':None}):
+            self.assertFalse(W.bound_rows([dict(valid,**change)],self.current(),self.state))
+        self.state['room_work']['open'][0]['want_id']='other'
+        self.assertFalse(W.bound_rows([valid],self.current(),self.state))
+
+    def test_corrupt_or_changed_context_never_resets(self):
+        import want_working_thread as W
+        self.intake(); w=self.current()[0]; work=W.binding(w,self.state)
+        path=A.directory(w['agent_work']['request_id'],self.ws)/'working-thread.json'
+        path.write_text('{broken')
+        with self.assertRaises(ValueError): W.load(w,work,self.ws)
+        self.assertEqual(path.read_text(),'{broken')
+
+    def test_working_generation_is_cached_and_identity_observed(self):
+        import want_working_thread as W
+        self.intake(); w=self.current()[0]; work=W.binding(w,self.state); calls=[]
+        def writer(s,u): calls.append((s,u)); return self.writer(s,u)
+        first=W.generate(w,work,self.ws,'opening','fixture-trigger','Plan it',writer,identity='Synthetic identity')
+        second=W.generate(w,work,self.ws,'opening','fixture-trigger','Plan it',writer)
+        self.assertEqual(first,second); self.assertEqual(len(calls),1)
+        data=W.load(w,work,self.ws); rec=next(iter(data['generations'].values()))
+        generation=rec['capture']['witness_receipt']['generation']
+        self.assertEqual(generation['attempts'][0]['served_model'],'fixture-observed')
+        self.assertEqual(rec['capture']['witness_receipt']['delivery'],'unknown')
+
+    def test_unknown_served_model_is_not_requested_model(self):
+        import want_working_thread as W
+        self.intake(); w=self.current()[0]; work=W.binding(w,self.state)
+        def writer(s,u):
+            result=self.writer(s,u); result['observations'][0].update(identity_evidence='unknown',observed_model='claimed')
+            return result
+        W.generate(w,work,self.ws,'opening','unknown','Plan',writer,identity='Fixture')
+        rec=next(iter(W.load(w,work,self.ws)['generations'].values()))
+        self.assertIsNone(rec['capture']['witness_receipt']['generation']['attempts'][0]['served_model'])
+
+    def test_failed_generation_keeps_context_and_has_retry_backoff(self):
+        import want_working_thread as W
+        self.intake(); w=self.current()[0]; work=W.binding(w,self.state); calls=[]
+        def fail(s,u): calls.append(1); raise RuntimeError('fixture provider failure')
+        for _ in range(2):
+            with self.assertRaises(RuntimeError): W.generate(w,work,self.ws,'opening','retry','Plan',fail,identity='Fixture')
+        self.assertEqual(len(calls),1)
+        data=W.load(w,work,self.ws)
+        self.assertEqual(data['identity_context'],'Fixture'); self.assertTrue(data['events'])
+
+    def test_adapter_follows_up_with_same_thread_and_retained_context(self):
+        import dot_channel as D
+        posts=[]; calls=[]
+        def api(method,args):
+            self.assertEqual(method,'chat.postMessage'); posts.append(args)
+            return {'ok':True,'ts':str(self.now+len(posts))}
+        def writer(s,u): calls.append((s,u)); return self.writer(s,u)
+        with patch.object(D,'STATE',str(self.mem/'room.json')),patch.object(D,'_guarded',lambda s:[]):
+            kw=dict(writer=writer,identity=lambda:'Fixture identity',notify=self.notify,complete=self.complete)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now,**kw)
+            a=self.current()[0]['agent_work']
+            r=dict(who='dot',thread=a['thread'],ts=str(self.now+2),text='Synthetic dependency installed; what next?')
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+3,rows=[r],**kw)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+4,rows=[r],**kw)
+        self.assertEqual(len(calls),2); self.assertEqual(len(posts),2)
+        self.assertEqual(posts[1]['thread_ts'],a['thread'])
+        self.assertIn('Synthetic dependency installed',calls[1][1]); self.assertIn(self.want['want'],calls[1][1])
+
+    def test_pinned_adapter_observations_are_request_local(self):
+        import want_working_thread as W
+        import claude_cache as C
+        seen=[]
+        def ask(model,system,user,limit,**kw):
+            seen.append(model);kw['observer']({'text':'fixture','identity_evidence':'unknown'});return 'fixture'
+        with patch.object(C,'ask',ask):
+            one=W.ask('fixture','one');two=W.ask('fixture','two')
+        self.assertEqual(seen,[W.MODEL,W.MODEL]);self.assertEqual(len(one['observations']),1)
+        self.assertIsNot(one['observations'],two['observations'])
+
+    def test_result_review_requests_correction_then_delivers_revision(self):
+        import dot_channel as D
+        import want_working_thread as W
+        self.intake();rec,artifact=self.result();a=self.current()[0]['agent_work'];posts=[];calls=[]
+        def writer(s,u):
+            calls.append(json.loads(u));accept=calls[-1]['instruction']['acceptance']=='Revised fixture evidence'
+            raw=json.dumps({'message':'Checked revised deliverable.' if accept else 'Supply the missing fixture check.', 'accept':accept})
+            return {'text':raw,'observations':[]}
+        def api(method,args):
+            self.assertEqual(method,'chat.postMessage');posts.append(args);return {'ok':True,'ts':str(self.now+len(posts)+1)}
+        with patch.object(D,'STATE',str(self.mem/'room.json')),patch.object(D,'_guarded',lambda s:[]), \
+             patch.object(D,'_upload',lambda *a: self.fail('rejected result cannot upload')):
+            kw=dict(writer=writer,identity=lambda:'Fixture',notify=self.notify,complete=self.complete)
+            row=dict(who='dot',thread=a['thread'],ts=str(self.now+1),text='WANT RESULT '+a['request_id'])
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=[row],**kw)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+3,**kw)
+        self.assertEqual(len(calls),1);self.assertEqual(len(posts),1);self.assertFalse(self.notifications)
+        w=self.current()[0];work=W.binding(w,self.state)
+        self.assertEqual(W.load(w,work,self.ws)['events'][-1]['who'],'vintos')
+        rec['acceptance']='Revised fixture evidence'
+        (A.directory(a['request_id'],self.ws)/'result.json').write_text(json.dumps(rec))
+        self.receive(ts=str(self.now+4))
+        def review(w,result):
+            return W.generate(w,work,self.ws,'result','revision',result,writer)['message']
+        A.finish(self.state,self.publish,self.notify,self.complete,self.save,self.now+5,ws=self.ws,review=review)
+        self.assertEqual(len(self.notifications),1);self.assertEqual(len(self.endings),1)
+        done=json.loads((self.mem/'fulfilled-wants.json').read_text())[0]
+        self.assertEqual(done['agent_work']['completion_message'],'Checked revised deliverable.')
+        self.assertTrue(any(e['key']=='delivered' for e in W.load(done,work,self.ws)['events']))
+
+    def test_thread_is_private_and_conflicting_event_is_not_overwritten(self):
+        import want_working_thread as W
+        self.intake();w=self.current()[0];work=W.binding(w,self.state)
+        path=A.directory(w['agent_work']['request_id'],self.ws)/'working-thread.json'
+        self.assertEqual(path.stat().st_mode & 0o777,0o600)
+        W.append(w,work,self.ws,'fixture-event','dot','original')
+        with self.assertRaises(ValueError): W.append(w,work,self.ws,'fixture-event','dot','changed')
+        self.assertEqual(W.load(w,work,self.ws)['events'][-1]['text'],'original')
+
+    def test_bound_purchase_uses_existing_owner_approval(self):
+        import dot_channel as D
+        import gloria_asks as G
+        seen=[];posts=[]
+        row=dict(who='agent',name='Muse',agent_authenticated=True,thread='fixture-thread',ts='1',
+                 text='BUY: synthetic account | 5 | fixture shop | https://example.invalid/item')
+        with patch.object(G,'ask',lambda *a,**k:(seen.append((a,k)) or ('fixture','Owner decision requested'))), \
+             patch.object(D,'_settled_why',lambda *a:None):
+            D.agent_owner_requests(row,{},self.now,lambda m,a:posts.append((m,a)),'fixture-channel')
+        self.assertEqual(len(seen),1);self.assertEqual(seen[0][1]['kind'],'buy')
+        self.assertEqual(seen[0][1]['thread'],'fixture-thread');self.assertEqual(len(posts),1)
+
+    def test_owner_request_retries_from_saved_thread_without_new_messages(self):
+        import dot_channel as D
+        self.intake();a=self.current()[0]['agent_work'];attempts=[];posts=[]
+        row=dict(who='agent',name='Muse',agent_authenticated=True,thread=a['thread'],ts=str(self.now+1),
+                 text='BUY: synthetic account | 5 | fixture shop')
+        def owner(*args):
+            attempts.append(1)
+            return ['could not put Muse find to Gloria'] if len(attempts)==1 else ['owner asked']
+        def api(method,args): posts.append(args);return {'ok':True,'ts':str(self.now+2)}
+        with patch.object(D,'STATE',str(self.mem/'room.json')),patch.object(D,'_guarded',lambda s:[]), \
+             patch.object(D,'agent_owner_requests',owner):
+            kw=dict(writer=self.writer,identity=lambda:'Fixture',notify=self.notify,complete=self.complete)
+            with self.assertRaises(RuntimeError):
+                D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=[row],**kw)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+3,**kw)
+            D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+4,**kw)
+        self.assertEqual(len(attempts),2);self.assertEqual(len(posts),1)
 
 
 if __name__=='__main__':unittest.main()

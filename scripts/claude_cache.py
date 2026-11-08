@@ -117,9 +117,17 @@ def note(caller, model, usage, path=None):
 LAST = {}
 
 
-def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None, effort=None):
+def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None, effort=None, observer=None):
     """Claude's text. Raises on no key or an API error, as the callers it replaces did. The Study's and the Forge's
     callers are answered on Gloria's subscription first (claude_sub.py), and pay only when it cannot answer."""
+    def observed(text, evidence="unknown", actual=None, status="valid"):
+        if observer is not None:
+            # Observation must never change the transport result or trigger fallback.
+            try:
+                observer({"text": text, "status": status, "requested_model": model,
+                          "observed_model": actual, "identity_evidence": evidence})
+            except Exception:
+                pass
     if post is None and key is None:
         try:
             import claude_sub
@@ -129,8 +137,10 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
             try:
                 text = claude_sub.ask(model, system, user, caller=caller, timeout=max(timeout, 600), effort=effort)
                 LAST.clear(); LAST.update(stop="end_turn", out=0, subscription=True)
+                observed(text)
                 return text
             except Exception:
+                observed("", status="failed")
                 pass                       # logged in subscription-usage.jsonl; this one call goes to the API
     key = key or _key()
     if not key:
@@ -147,7 +157,11 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
     # why the answer ended (end_turn, max_tokens, refusal), and what it cost in output, for callers that parse it
     # (2026-10-06: a Study fix stopped on "Fable did not answer with JSON" with nothing to say why)
     LAST.clear(); LAST.update(stop=d.get("stop_reason") or "", out=int((d.get("usage") or {}).get("output_tokens") or 0))
-    return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    actual = d.get("model") if isinstance(d.get("model"), str) and d["model"].strip() else None
+    observed(text, "response_metadata" if actual else "unknown", actual,
+             "truncated" if d.get("stop_reason") == "max_tokens" else "valid")
+    return text
 
 
 def cost(row):

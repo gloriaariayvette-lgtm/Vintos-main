@@ -120,6 +120,23 @@ check("every Fable round of one fix starts with the same rules, ask and file lis
       and "WHAT YOU READ SO FAR" in ASKED[1].pieces[1], [a.pieces[0][:60] for a in ASKED])
 check("... and the context a repair is given keeps that same start", context.pieces[0] == ASKED[0].pieces[0])
 
+# Request-local identity: requested names never stand in for response evidence.
+observed = []
+D_ask('fixture-requested','s','u',10,post=post,key='k-test',observer=observed.append)
+check('missing response model remains unknown', observed[-1]['identity_evidence']=='unknown'
+      and observed[-1]['observed_model'] is None)
+class ObservedReply:
+    def json(self): return {'model':'fixture-served','stop_reason':'end_turn',
+                           'content':[{'type':'text','text':'fixture result'}]}
+def observed_post(*a,**k): return ObservedReply()
+D_ask('fixture-requested','s','u',10,post=observed_post,key='k-test',observer=observed.append)
+check('actual response model is retained independently of requested model',
+      observed[-1]['requested_model']=='fixture-requested' and observed[-1]['observed_model']=='fixture-served'
+      and observed[-1]['identity_evidence']=='response_metadata')
+def broken_observer(*a): raise ValueError('fixture observation failure')
+check('observation failure does not repeat or replace the result',
+      D_ask('fixture-requested','s','u',10,post=observed_post,key='k-test',observer=broken_observer)=='fixture result')
+
 check("the deploy installs claude_cache.py", " claude_cache.py " in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
