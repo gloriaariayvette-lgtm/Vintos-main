@@ -1,9 +1,11 @@
 # Witness slices 1 and 2: offline foundation
 
-Status: review branch, synthetic contracts only. No live capture hooks, scheduler,
-model calls, training, feed substitution or deployment. Existing legacy evidence
-consumers and all feeds retain their behaviour. This reader is a separate, strict
-consumer; its exclusions do not silence an act or remove it from a live store.
+Status: offline replay plus disabled request-local capture hooks. The reviewed
+capture base and later submitted repairs are distinguished in the current review
+map below. Synthetic contracts do not establish live eligibility or head accuracy.
+No scheduler, model calls, training, feed substitution or deployment is performed
+by this replay. This reader is a separate strict consumer; its exclusions do not
+silence an act or remove it from a live store.
 
 ## What is implemented
 
@@ -32,7 +34,7 @@ every edge's clock independently;
 shared ancestry does not cause exponential replay.
 
 `replay.py` accepts only explicitly supplied snapshots of canonical chat, merged
-chat or the interaction ledger. It never searches backups or reinstates erased
+chat, the interaction ledger or private capture packets. It never searches backups or reinstates erased
 history. It counts both provenance envelope fields, requires explicit witness
 eligibility, and keeps unknown/denied duplicates out. Repeated copies of one
 eligible finalized reply count once. Duplicate copies must all qualify: this is
@@ -94,9 +96,11 @@ the same outputs in a new directory. This is not an always-on runtime.
 One private JSON bundle contains:
 
 - `input_kind`: `synthetic` or `retained_snapshot` (never mix their reports).
-- `sources`: objects with `kind` (`canonical`, `merged`, `ledger`) and `rows`.
-  Canonical/merged rows have `role`, `content`, `turn_id`, `surface`, provenance
-  and `witness_receipt`. Ledger adapters read `vintos` as the assistant content.
+- `sources`: objects with `kind` (`canonical`, `merged`, `ledger`, `capture`) and
+  `rows`. Canonical/merged rows have `role`, `content`, `turn_id`, `surface`,
+  provenance and `witness_receipt`. Ledger adapters read `vintos` as the assistant
+  content. Capture packets require `witness-capture-v1`, their explicit `lineage`
+  and `reply_node`; reading them never upgrades delivery or incomplete ancestry.
 - `lineage`: nodes with unique `id`, `kind`, epoch/offset-aware `at`, `complete`,
   and `parents`. Ordinary kinds are `context`, `ordinary_source`, `value_map`;
   influencing kinds are `character_score`, `behaviour_receipt`, `judge_effect`,
@@ -131,30 +135,49 @@ directory. This protects this trusted tool against accidental writes; it is not
 a sandbox for hostile Python or native extensions. Tests additionally run under
 the repository's OS-isolated runner.
 
-`aggregate.json` contains descriptive counts/errors; `private-innovation.json`
-contains private turn IDs/digests and must never enter Git. Neither file is
-automatically published. Public evidence requires an explicit privacy review;
-even aggregate day-by-day activity can be sensitive. No raw text is emitted.
+`aggregate.json` contains descriptive counts/errors. `private-innovation.json`,
+`private-feedback.json`, optional `private-behaviour.json` and `private-run.json`
+contain private evidence bindings and must never enter Git. None is automatically
+published. Public evidence requires an explicit privacy review; even aggregate
+day-by-day activity can be sensitive. No raw text is emitted in these reports.
 
-## Next review increment: what is not done
+## Current review map (8 November)
 
-1. Trace each actual chat provider/fallback and final-delivery path. Capture
-   served identity from observed response/runtime receipts; leave it unknown
-   when unavailable. Bind only the final response, including postprocessing.
-2. Add complete context/effect receipts at assembly time, including indirect
-   value-map inputs. Persistent context influence must not be cleared merely
-   because the immediate nudge ended. Persist these through canonical/ledger
-   writers, not just the merged view.
-3. Independently verify checkpoint/encoder manifests and adapters against
-   private retained source shapes, without copying private records into Git.
-   No real-data accuracy claim has been made by this slice.
-4. Add explicitly witnessed reaction receipts: her `haha` (or longer) tied to
-   the immediately preceding reply ID, and 4–5-star practice ratings tied to
-   that practice. A single `ha`, 1–3 stars, absence or delayed return remains
-   unknown, not a negative label. Retain old inferred laughter separately.
-5. Build paired last-reply/recent-mean comparisons from the same causal context;
-   keep checkpoint groups and evaluation blocks separate. Existing head audit
-   qualifications are not replaced by this descriptive reader.
+This map supersedes the original next-increment list. It separates implemented
+contracts from producer coverage and production acceptance; it does not authorize
+any enablement. The append-only [implementation log](../../docs/judges-witness-log.md)
+retains review history, measurements and exact earlier tips.
+
+| Part | Implemented and exercised with synthetic fixtures | Still unproved or unfinished |
+|---|---|---|
+| Strict census | Explicit provenance, both envelope fields, duplicate denials, exact response/version and complete causal ancestry requirements; four source adapters | No historical backfill. Private-copy census reported in note 10 has zero strict-eligible turns; this is not a head-accuracy result. |
+| Request and attempt capture | Request-local invocation binding, observed served identity where supplied, explicit selected attempt, repeat/fallback selection and final-return digest | Provider-attempt coverage remains incomplete; configured/relay names cannot fill missing observed identity. |
+| Dependency receipts | Known counterpart origins, request inputs, observed router results, finalization boundaries, reply-to-context and indirect-effect contracts | Assembled context/value-map ancestry is not fully attested; no producer may declare completeness just to admit a turn. |
+| Delivery | Framework handoff recorded separately | A trustworthy client-delivery acknowledgement producer is not implemented. Return/handoff is not delivery. |
+| Shadow behaviour | Explicit window/surfaces, descriptive counts, model/revision groups and private member manifest | No character verdict, golden-day reference, learned identity model or live consumer. |
+| On-message innovation | Exact reply/checkpoint/encoder joins, causal earlier-outcome percentiles, paired last-reply/recent-mean controls from attested forecast context | Requires private retained manifests, embeddings and forecast-context receipts. No superiority or accuracy claim follows from synthetic contracts. |
+| Witnessed feedback | Exact-origin/adjacency checks, literal laughter and high practice ratings as positives; missing or lower ratings stay unknown | Requires producer-attested events and complete local sequence evidence. Existing weak inference/feed is unchanged. |
+| Reproducibility | Private input/code/options/output receipt, deterministic restart fixtures and scratch-only outputs | Not source authentication, complete dependency locking or loaded-runtime attestation. |
+
+Capture hooks and packet replay exist; production capture enablement does not.
+The current sink requires `JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to match
+an isolated private directory. **Do not set these on production.** The separate
+[disabled enablement proposal](../../docs/judges-capture-enable-proposal.md)
+describes the future dedicated destination, retention bounds and acceptance.
+Capture alone cannot supply missing ancestry or delivery evidence.
+
+Latest submitted code tip for this map: `0ab38cdf`, including the preceding
+manifest, embedding-copy and dependency-copy repairs. Its 184 affected local
+isolated checks passed; the latest independent note read is #17, which approves
+wants through `de2cd7b4`, not these later judges repairs. Their independent review
+and full isolated Aegis suite remain pending. Integration, installation and live
+acceptance are separate facts; no production state is inferred from a branch.
+
+Remaining work within slices 1 and 2 is complete producer coverage and independently
+verified private evidence, not another classifier. The current offline pieces can
+be reviewed without weakening holds or enabling a live feed. Keep later character
+references and judge replacement outside this slice. The [open-work log](../../docs/open-work.md)
+remains the repository task ledger.
 
 Golden days are not needed for these slices. Later they are familiarity
 references, not good/bad identity labels. Candidate high-engagement dates require
@@ -165,7 +188,7 @@ test merge, and handles reviewed integration. Gloria handles deployment. The
 ten-minute coordination heartbeat remains active between batches.
 
 
-## Capture increment in progress
+## Implemented capture contract (disabled outside scratch)
 
 `scripts/witness_capture.py` keeps capture state request-local. The avatar handler
 observes results at all three router call sites, explicitly selects a raw reply

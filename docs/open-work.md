@@ -6290,3 +6290,13 @@ Python equality previously treated as identical, including boolean versus numeri
 completeness flags. Exact repeated copies remain accepted regardless of object
 key ordering. 184 affected isolated checks pass. Independent review/full Aegis
 validation remain pending; no live stores or feeds changed.
+
+
+## 8 November — current slices 1 and 2 review map
+
+The replay README now distinguishes implemented capture/replay/feedback/control
+contracts from incomplete producer ancestry, delivery, private validation and
+separately approved enablement. This supersedes its stale next-increment list;
+it does not authorize a new producer claim or production change. Latest code
+validation remains 184 local isolated checks at 0ab38cdf. Later judges review
+and full Aegis validation remain pending; note 17 approved the separate wants work.

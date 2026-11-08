@@ -592,3 +592,22 @@ merge retention 30, ownership 11. Reports regenerated and whitespace checked.
 Only synthetic evidence was used; no claim of a live-data occurrence. Full
 Aegis validation remains with the reviewer. No private input read, model call,
 real test send, live write, feed change, merge or deployment.
+
+
+## 8 November — current slice review map
+
+`codex/judges-current-review-map` continues from 0ab38cdf without modifying the
+submitted code. The replay guide's opening and next-increment list were stale:
+they said capture hooks were absent and listed already implemented paired controls
+and witnessed-feedback contracts as future work. Updated those sections, listed
+all four source adapters and private outputs, and added a component-by-component
+map separating implemented contracts from producer coverage and live acceptance.
+
+The actual remaining gaps are explicit: complete assembled-context/indirect
+ancestry, provider-attempt coverage, trustworthy delivery acknowledgement,
+independently verified retained evidence, and separately approved production
+shadow enablement. None can be replaced by passing synthetic tests. Note 17's
+wants integration does not approve later judges repairs. No new tests were run
+for this documentation-only change; the map attributes 184 passing local checks
+to the prior code tip rather than claiming a fresh run. Relative links and
+whitespace checked. No production commands, configuration or code changed.
