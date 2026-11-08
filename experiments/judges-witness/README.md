@@ -531,3 +531,27 @@ is keyed by node and remaining depth, while each edge's clock and active-cycle
 check still run before cache reuse. Over-deep ancestry remains unknown in either
 parent order; within-bound shared graphs retain their result without exponential
 re-walking. This is a strict shadow-consumer repair, not a new live gating rule.
+
+
+### Private replay run receipt
+
+The CLI writes `private-run.json` last, with mode 0600 in the explicit scratch
+output directory. It binds the exact input bytes, input kind, parsed cutoff,
+optional behaviour window/surfaces, innovation history minimum, four named local
+scoring files, Python implementation/version, and every report's exact bytes.
+The run fingerprint is SHA256 of the remaining manifest serialized with sorted
+keys, compact separators and no nonfinite numbers. Repeating the same replay
+under those recorded conditions yields the same receipt; private input/output
+paths and wall-clock run time are deliberately absent.
+
+Before accepting a copied result, recompute its output hashes and sizes, compare
+the input hash with the retained bundle, and compare the named code hashes with
+the review checkout. The CLI checks code hashes before and after scoring; a
+change aborts before creating outputs. A missing, partial or mismatching receipt
+is not a verified completed run. Partial output directories are never reused.
+
+Keep this receipt private, even though it contains hashes rather than message
+text. It is not a signature, proof of source authenticity, complete dependency
+lock, or attestation of the interpreter's loaded runtime. It does not repair
+missing lineage or prove that a snapshot is complete. All existing strict holds,
+scoring, live feeds and capture enablement remain unchanged.

@@ -2,6 +2,7 @@
 """Synthetic-only witness contracts. No sender, model or live store imported."""
 import copy
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -879,6 +880,64 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             self.assertEqual((root / "first/private-behaviour.json").stat().st_mode & 0o777, 0o600)
             self.assertEqual((root / "first/private-feedback.json").read_bytes(), (root / "restart/private-feedback.json").read_bytes())
             self.assertEqual((root / "first/private-feedback.json").stat().st_mode & 0o777, 0o600)
+
+            manifest_path = root / "first/private-run.json"
+            self.assertEqual(manifest_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(manifest_path.read_bytes(), (root / "restart/private-run.json").read_bytes())
+            manifest = json.loads(manifest_path.read_bytes())
+            self.assertEqual(manifest["input_sha256"], hashlib.sha256(before).hexdigest())
+            self.assertEqual(manifest["input_bytes"], len(before))
+            self.assertEqual(manifest["options"], {"input_kind": "synthetic", "cutoff": 1000.0,
+                "behaviour_start": 100.0, "behaviour_surfaces": ["fixture-chat"], "minimum_innovation_history": 20})
+            self.assertEqual(manifest["scoring_files"], {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                for name in R.SCORING_FILES})
+            self.assertEqual(set(manifest["outputs"]), {"aggregate.json", "private-innovation.json",
+                "private-feedback.json", "private-behaviour.json"})
+            for name, record in manifest["outputs"].items():
+                payload = (root / "first" / name).read_bytes()
+                self.assertEqual(record, {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)})
+            fingerprint = manifest.pop("run_sha256")
+            canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+            self.assertEqual(fingerprint, hashlib.sha256(canonical).hexdigest())
+            # Altering a result cannot retain a matching output receipt.
+            target = root / "first/aggregate.json"
+            target.write_bytes(target.read_bytes() + b" ")
+            self.assertNotEqual(manifest["outputs"]["aggregate.json"]["sha256"],
+                                hashlib.sha256(target.read_bytes()).hexdigest())
+
+    def test_cli_aborts_before_outputs_when_scoring_files_change(self):
+        with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
+            root = Path(td).resolve()
+            source = root / "fixture.json"
+            source.write_text(json.dumps({"input_kind": "synthetic", "sources": []}))
+            code = """import importlib.util, sys
+s=importlib.util.spec_from_file_location('replay',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+values=iter([{'fixture.py':'before'},{'fixture.py':'after'}])
+m.scoring_hashes=lambda: next(values)
+sys.argv=sys.argv[1:]
+try: m.main()
+except ValueError as e:
+    assert str(e)=='scoring source changed during replay'
+else: raise AssertionError('changed code accepted')
+"""
+            result = subprocess.run([sys.executable, "-c", code, str(R.__file__), "--scratch", str(root),
+                "--input", str(source), "--output", str(root / "output"), "--cutoff", "1970-01-01T00:16:40Z"],
+                env=dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1"),
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "output").exists())
+
+    def test_run_identity_binds_each_replay_component(self):
+        args = [b'{"input_kind":"synthetic"}', {"fixture.py": "a" * 64},
+                {"cutoff": 100, "behaviour_surfaces": ["fixture-chat"]},
+                {"aggregate.json": {"sha256": "b" * 64, "bytes": 30}}]
+        original = R.run_manifest(*args)
+        for index, replacement in enumerate((b'{"input_kind":"retained_snapshot"}',
+                {"fixture.py": "c" * 64}, {"cutoff": 101, "behaviour_surfaces": ["fixture-chat"]},
+                {"aggregate.json": {"sha256": "d" * 64, "bytes": 30}})):
+            changed = copy.deepcopy(args)
+            changed[index] = replacement
+            self.assertNotEqual(original["run_sha256"], R.run_manifest(*changed)["run_sha256"])
 
     def test_guard_denies_subprocess_rename_and_external_write(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:

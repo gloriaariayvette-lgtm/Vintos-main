@@ -535,3 +535,21 @@ case. The previous 60-level diamond performance bound and causal-edge fixtures
 still pass. Reports regenerated and whitespace verified. Synthetic evidence only;
 no retained-data read, model call, live write, feed change, merge or deployment.
 Full Aegis review remains with Claude; no duplicate remote work was started.
+
+
+## 8 November — private reproducibility receipt
+
+`codex/judges-run-manifest` continues from fa4dad54 while its review tip remains
+fixed. Offline replay now writes a private run receipt binding exact supplied
+input bytes, four named scoring files, parsed options, Python version and exact
+output bytes. The receipt is written last; code changes detected across scoring
+abort before output creation. No scoring, admission or live path changes.
+
+**150 isolated checks pass:** witness 88, capture 27, replay adapter 6, hooks 18,
+ownership 11. Tests verify independent hashes/sizes against actual CLI artifacts,
+restart determinism and permissions, changed-input/code/settings/output identity,
+result tampering, and abort-before-write on a simulated scoring source change.
+Reports regenerated and whitespace checked. Synthetic fixtures only. The receipt
+stays private and proves neither source authenticity nor complete dependencies.
+Full isolated Aegis review remains with the independent reviewer. No retained
+input reads, model calls, real test sends, live writes, merge or deployment.

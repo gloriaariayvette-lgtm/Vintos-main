@@ -6263,3 +6263,12 @@ The combined judges changes remain pending independent review/full Aegis suite.
 when a shared ancestor has a cached result from a shorter path. Over-deep evidence
 stays unknown regardless of parent order. 148 affected isolated checks pass;
 independent review/full Aegis validation remain pending. Existing feeds unchanged.
+
+
+## 8 November — private replay run receipt
+
+`codex/judges-run-manifest` adds scratch-only input/code/options/output hashes to
+the offline replay. 150 affected isolated checks pass. Scoring and witness holds
+are unchanged; no upstream provenance is inferred. The receipt is private and
+not a source-authenticity attestation. Independent review/full Aegis validation
+remain pending; previous pushed review tips stay fixed.

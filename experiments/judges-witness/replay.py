@@ -5,6 +5,7 @@ Only explicitly supplied scratch snapshots are read. No backup discovery, live
 stores, fitting, feed writes, emotion verdicts, or identity verdicts.
 """
 import argparse
+import hashlib
 from collections import Counter, defaultdict
 import json
 import math
@@ -379,7 +380,10 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
         return unavailable("invalid_context_evidence")
 
 
-def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20):
+MINIMUM_INNOVATION_HISTORY = 20
+
+
+def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MINIMUM_INNOVATION_HISTORY):
     """Match a pre-finalization on-message forecast to one finalized output.
 
     Checkpoint identities/encoder/training times must come from an independently
@@ -555,6 +559,25 @@ def install_guard(root, output):
     sys.addaudithook(hook)
 
 
+# The local scoring implementation, not provider dependencies or live stores.
+SCORING_FILES = ("experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+                 "scripts/evidence_provenance.py", "scripts/evidence_view.py")
+
+
+def scoring_hashes():
+    repo = Path(__file__).resolve().parents[2]
+    return {name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in SCORING_FILES}
+
+
+def run_manifest(source_bytes, code, options, outputs):
+    """Private reproducibility receipt; fingerprints do not authenticate a source."""
+    body = {"schema": "judges-replay-run-v1", "input_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "input_bytes": len(source_bytes), "scoring_files": code, "options": options,
+            "outputs": outputs, "python_version": list(sys.version_info[:3]),
+            "python_implementation": sys.implementation.name}
+    return dict(body, run_sha256=digest(json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False)))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--scratch", required=True)
@@ -571,8 +594,9 @@ def main():
     if output.exists() or output in source.parents:
         raise ValueError("output must be new and cannot contain input")
     install_guard(root, output)
-    with source.open() as f:
-        bundle = json.load(f)
+    code_hashes = scoring_hashes()
+    source_bytes = source.read_bytes()
+    bundle = json.loads(source_bytes)
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
@@ -589,16 +613,29 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    if scoring_hashes() != code_hashes:
+        raise ValueError("scoring source changed during replay")
     output.mkdir(mode=0o700)
     outputs = [("aggregate.json", report), ("private-innovation.json", details),
                ("private-feedback.json", private_feedback)]
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
+    output_hashes = {}
     for name, value in outputs:
-        with (output / name).open("x") as f:
+        payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        with (output / name).open("xb") as f:
             os.chmod(f.name, 0o600)
-            json.dump(value, f, indent=2, allow_nan=False)
-            f.write("\n")
+            f.write(payload)
+        output_hashes[name] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+    manifest = run_manifest(source_bytes, code_hashes,
+        {"input_kind": bundle["input_kind"], "cutoff": instant(args.cutoff),
+         "behaviour_start": instant(args.behaviour_start) if args.behaviour_start else None,
+         "behaviour_surfaces": sorted(set(args.behaviour_surface)), "minimum_innovation_history": MINIMUM_INNOVATION_HISTORY}, output_hashes)
+    # Written last. Missing, partial or mismatching receipts cannot establish a complete run.
+    with (output / "private-run.json").open("x") as f:
+        os.chmod(f.name, 0o600)
+        json.dump(manifest, f, indent=2, allow_nan=False)
+        f.write("\n")
     print(json.dumps({"eligible_replies": len(admitted), "forecast_groups": len(scores["groups"])}))
 
 
