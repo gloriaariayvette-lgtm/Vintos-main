@@ -6158,3 +6158,14 @@ transports; 464 checks across seven isolated suites pass. Review details are in
 `docs/wants-action-followthrough.md`. This stack remains pending Claude's full
 isolated Aegis review, agent-rule installation and Gloria's deployment/live
 acceptance; no existing review tip was altered.
+
+
+## 8 November — result revisions retain their own delivery evidence
+
+`codex/wants-result-revisions` preserves previous result/stage receipts and binds
+new publication, delivery and working-thread completion events to the exact result
+manifest. Stale progress writes cannot overwrite a newer version. Duplicate
+arrivals preserve progress; unversioned publication is retained for reconciliation.
+469 isolated checks across seven suites pass; see the follow-through log for the
+remote/local atomicity limit. Claude's full Aegis review and Gloria's production
+acceptance remain open. No private records or live services were changed.

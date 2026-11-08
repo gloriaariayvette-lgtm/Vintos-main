@@ -97,13 +97,15 @@ def request(want, reason='', *, ws=None):
     return found[0] if found else None
 
 
-def _update(wid, rid, changes, ws):
+def _update(wid, rid, changes, ws, *, expected_result=None):
     from store_guard import locked_update
     accepted = []
     def mutate(rows):
         for row in rows:
             a = row.get('agent_work') or {}
             if row.get('id') == wid and a.get('request_id') == rid and a.get('goal_sha256') == fingerprint(row.get('want', '')):
+                if expected_result is not None and a.get('result_sha256') != expected_result:
+                    return None
                 a.update(changes); accepted.append(True); return rows
         return None
     locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.update')
@@ -264,6 +266,47 @@ def threads(ws=None):
             if isinstance(w.get('agent_work'), dict) and w['agent_work'].get('thread')]
 
 
+def result_digest(result):
+    return fingerprint(json.dumps(result, sort_keys=True, separators=(',', ':'), allow_nan=False))
+
+
+_RESULT_FIELDS = ('result', 'result_sha256', 'result_source', 'result_ts', 'result_error',
+                  'stage_result_sha256', 'publishing', 'publication', 'delivery',
+                  'completed_at', 'completion_message')
+
+
+def _receive_result(want, result, arrival, ws):
+    """Replace a result atomically; its previous stage receipts remain historical."""
+    from copy import deepcopy
+    from store_guard import locked_update
+    accepted = []
+    expected = want['agent_work']
+    def mutate(rows):
+        for w in rows:
+            a = w.get('agent_work') or {}
+            if (w.get('id') != want['id'] or not specific(w) or w.get('fulfilled') or w.get('dismissed')
+                    or a.get('request_id') != expected['request_id'] or a.get('thread') != arrival.get('thread')
+                    or a.get('goal_sha256') != fingerprint(w.get('want', ''))
+                    or a.get('goal_sha256') != result.get('goal_sha256')):
+                continue
+            old = a.get('result')
+            if any(a.get(key) for key in ('publishing', 'publication', 'delivery')) and (
+                    old is None or a.get('stage_result_sha256') != result_digest(old)):
+                raise ValueError('existing publication has no matching result version; reconcile before resuming')
+            if old != result:
+
+                if old is not None:
+                    a.setdefault('result_revisions', []).append(
+                        deepcopy({key:a[key] for key in _RESULT_FIELDS if key in a}))
+                for key in _RESULT_FIELDS: a.pop(key, None)
+            a.update(status='result_ready', result=result, result_sha256=result_digest(result),
+                     result_source=arrival.get('who'), result_ts=arrival.get('ts'))
+            accepted.append(True); return rows
+        return None
+    locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.receive')
+    return bool(accepted)
+
+
 def receive(rows, *, ws=None):
     """Only the configured room's dot or signed reviewer, in the bound request thread."""
     ws = Path(ws or workspace()); changed = 0
@@ -280,8 +323,7 @@ def receive(rows, *, ws=None):
                     continue
                 try:
                     result, _ = verify(w, ws)
-                    changed += _update(w['id'], m[1], {'status': 'result_ready', 'result': result,
-                                                      'result_source': r.get('who'), 'result_ts': r.get('ts')}, ws)
+                    changed += _receive_result(w, result, r, ws)
                 except (OSError, ValueError, KeyError, TypeError) as exc:
                     _update(w['id'], m[1], {'result_error': str(exc)[:240]}, ws)
     return changed
@@ -311,16 +353,24 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
             result, paths = verify(w, ws)
             if result != a.get('result'):
                 raise ValueError('result manifest changed after its authenticated arrival')
+            revision = result_digest(result)
+            if a.get('result_sha256') != revision:
+                raise ValueError('result version is not bound to its authenticated arrival')
+            if any(a.get(key) for key in ('publishing', 'publication', 'delivery')) and a.get('stage_result_sha256') != revision:
+                raise ValueError('publication stages belong to a different or unknown result version')
             if review is not None:
                 message = review(w, result)
                 if message is None: continue
                 result = dict(result, summary=message)
+            if not _update(w['id'], rid, {'stage_result_sha256': revision}, ws, expected_result=revision):
+                continue
+            a['stage_result_sha256'] = revision
             publication = a.get('publication')
             if not publication:
                 publication = publish(w, result, paths)
                 if not publication or not publication.get('url'):
                     raise ValueError('deliverables were not published')
-                if not _update(w['id'], rid, {'publication': publication}, ws):
+                if not _update(w['id'], rid, {'publication': publication}, ws, expected_result=revision):
                     continue
                 a['publication'] = publication
             # Keep the first successful receipt stable across local ending retries.
@@ -332,12 +382,12 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
             if not delivery or delivery.get('state') not in ('sent', 'acknowledged'):
                 raise ValueError('ntfy delivery unconfirmed; result retained for retry')
             # Persist result before the existing ending door archives the full want.
-            if not _update(w['id'], rid, {'delivery': delivery, 'status': 'result_ready', 'completed_at': now, 'completion_message': result['summary']}, ws):
+            if not _update(w['id'], rid, {'delivery': delivery, 'status': 'result_ready', 'completed_at': now, 'completion_message': result['summary']}, ws, expected_result=revision):
                 continue
             import want_working_thread as working
             item = working.binding(w, state)
             if item:
-                working.append(w, item, ws, 'delivered', 'delivery', result['summary'], at=now,
+                working.append(w, item, ws, 'delivered:' + revision, 'delivery', result['summary'], at=now,
                                details={'publication': publication, 'delivery': delivery, 'acceptance': result['acceptance']})
             outcome = complete(w, result['summary'] + '\nDeliverables: ' + publication['url'])
             if not outcome or outcome.get('result') != 'fulfilled':

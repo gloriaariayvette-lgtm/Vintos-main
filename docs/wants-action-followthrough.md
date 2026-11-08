@@ -333,3 +333,37 @@ working controls 17, artifact delivery 39, artifact guard 11, thread doors 22,
 ownership 11). Full Aegis suite and independent review remain Claude's work.
 No real want, provider, upload or notification was exercised by these tests;
 external agent rules and production integration remain uninstalled.
+
+
+## Exact result versions through publication and completion
+
+`codex/wants-result-revisions`, stacked on c9545a6f, addresses two reproduced
+revision errors: a changed result reused the previous uploaded files after a
+failed notification, and a changed result reused the previous successful send
+receipt while its local ending was pending.
+
+Authenticated result admission now records a canonical manifest digest. A revised
+result atomically retains the preceding manifest and publication/delivery stages
+in private `result_revisions`, then begins its own stages. Request identity,
+working conversation and spending caps do not reset. Duplicate arrivals of the
+same result retain progress. Upload message IDs, notification receipt IDs and
+working-thread delivery events include the result digest, so one version cannot
+stand in for another. A newly revised deliverable may therefore produce its own
+notification; retries of the same version still do not resend it.
+
+Progress writes compare the expected result digest under the existing store
+lock, refusing stale writes after a new result arrives. The delivery callback
+also checks this version. Existing publication records without a matching version
+are retained for reconciliation; they are never silently labelled as the current
+result or erased by a new arrival. This is not a production migration, and no
+live records were read or rewritten. The remote transport can still complete a
+request before a local write fails; these guards do not promise exactly-once
+remote uploads or atomicity across the remote service and the local ending door.
+
+Five added fixtures cover both reproduced errors, retained partial upload history
+and stale writers, duplicate arrivals, and unknown-version publication retention.
+The working-thread assertion now checks a versioned delivery event. Validation:
+469 checks in seven isolated suites (follow-through 49, room 320, controls 17,
+artifact delivery 39, artifact guard 11, thread doors 22, ownership 11). All
+provider/network calls were stubbed. Full Aegis validation and review remain
+pending with Claude; nothing has been merged, deployed or installed.

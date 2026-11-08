@@ -385,6 +385,84 @@ class Tests(unittest.TestCase):
         self.assertNotIn('files.getUploadURLExternal', calls)
         self.assertFalse(L.load_receipts())
 
+    def revise_result(self):
+        w = self.current()[0]; root = A.directory(w['agent_work']['request_id'], self.ws)
+        record = json.loads((root/'result.json').read_text())
+        artifact = root/'revised-score.txt'; artifact.write_text('Synthetic revised score, a different checked artifact.')
+        record['artifacts'] = [dict(path=str(artifact.relative_to(self.ws)), sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())]
+        record['acceptance'] = 'Revised synthetic acceptance check.'
+        (root/'result.json').write_text(json.dumps(record))
+        self.receive(ts=str(self.now+5))
+        return record
+
+    def test_revision_after_failed_notification_uploads_new_result(self):
+        run, calls, sends, L = self.delivery_harness(http_status=503)
+        run(); previous = copy.deepcopy(self.current()[0]['agent_work'])
+        revised = self.revise_result()
+        with patch.object(L, 'POST', lambda *args:sends.append(args) or 200): run()
+        self.assertEqual(calls.count('files.getUploadURLExternal'), 2)
+        self.assertEqual(len(self.endings), 1)
+        done = json.loads((self.mem/'fulfilled-wants.json').read_text())[0]['agent_work']
+        self.assertEqual(done['result'], revised)
+        self.assertEqual(done['result_revisions'][0]['publication'], previous['publication'])
+
+    def test_revision_after_sent_notification_does_not_reuse_old_receipt(self):
+        run, calls, sends, L = self.delivery_harness()
+        run(complete=lambda *args:None)
+        first = copy.deepcopy(self.current()[0]['agent_work'])
+        self.revise_result(); run()
+        self.assertEqual(len(sends), 2)
+        self.assertEqual(calls.count('files.getUploadURLExternal'), 2)
+        self.assertEqual(len(self.endings), 1)
+        receipts = L.load_receipts()
+        self.assertEqual(len(receipts), 2)
+        self.assertTrue(all(r['state'] == 'sent' for r in receipts.values()))
+        done = json.loads((self.mem/'fulfilled-wants.json').read_text())[0]['agent_work']
+        self.assertEqual(done['result_revisions'][0]['delivery'], first['delivery'])
+
+    def test_revision_retains_partial_upload_and_rejects_stale_progress_write(self):
+        self.intake(); self.result(); self.receive()
+        prior = self.current()[0]['agent_work']
+        progress = {'thread':'fixture-partial', 'files':{'fixture-file':{'ok':True}}}
+        def interrupted(w, result, paths):
+            A._update(w['id'], prior['request_id'], {'publishing':progress}, self.ws,
+                      expected_result=prior['result_sha256'])
+            raise RuntimeError('synthetic interrupted upload')
+        self.finish(publish=interrupted)
+        revised = self.revise_result(); current = self.current()[0]['agent_work']
+        self.assertNotIn('publishing', current)
+        self.assertEqual(current['result_revisions'][0]['publishing'], progress)
+        self.assertFalse(A._update(self.want['id'], prior['request_id'], {'publication':{'url':'stale'}}, self.ws,
+                                   expected_result=prior['result_sha256']))
+        self.assertNotIn('publication', self.current()[0]['agent_work'])
+        self.finish(); self.assertEqual(len(self.endings), 1)
+
+    def test_duplicate_arrival_retains_exact_revision_progress(self):
+        self.intake(); self.result(); self.receive()
+        self.finish(notify=lambda *args:{'state':'failed'})
+        before = self.current()[0]['agent_work']
+        self.receive(ts=str(self.now+8))
+        after = self.current()[0]['agent_work']
+        self.assertEqual(after['publication'], before['publication'])
+        self.assertEqual(after['stage_result_sha256'], before['stage_result_sha256'])
+        self.assertNotIn('result_revisions', after)
+        self.finish(); self.assertEqual(len(self.published), 1)
+
+    def test_unversioned_publication_is_not_relabelled_as_current(self):
+        self.intake(); self.result(); self.receive()
+        rows = self.current(); a = rows[0]['agent_work']
+        a['publication'] = {'url':'https://example.invalid/unknown-version'}
+        a.pop('stage_result_sha256', None)
+        self.write('current-wants.json', rows)
+        self.receive(); self.finish()
+        self.assertFalse(self.notifications); self.assertFalse(self.endings)
+        current = self.current()[0]['agent_work']
+        self.assertNotIn('stage_result_sha256', current)
+        self.assertEqual(current['publication'], a['publication'])
+        self.revise_result()
+        self.assertEqual(self.current()[0]['agent_work']['result'], a['result'])
+        self.assertEqual(self.current()[0]['agent_work']['publication'], a['publication'])
+
     def test_real_partial_upload_retries_only_unconfirmed_file(self):
         import dot_channel as D
         import promise_keeper as P
@@ -603,7 +681,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(self.notifications),1);self.assertEqual(len(self.endings),1)
         done=json.loads((self.mem/'fulfilled-wants.json').read_text())[0]
         self.assertEqual(done['agent_work']['completion_message'],'Checked revised deliverable.')
-        self.assertTrue(any(e['key']=='delivered' for e in W.load(done,work,self.ws)['events']))
+        self.assertTrue(any(e['key'].startswith('delivered:') for e in W.load(done,work,self.ws)['events']))
 
     def test_thread_is_private_and_conflicting_event_is_not_overwritten(self):
         import want_working_thread as W
