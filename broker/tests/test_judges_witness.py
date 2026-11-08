@@ -453,6 +453,87 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertEqual([g["n"] for g in report["baselines"]["paired_groups"]], [1, 1])
         self.assertEqual(report["baselines"]["unavailable"], {"missing_context_receipt": 1})
 
+    def behaviour(self, rows=None, start=100, cutoff=200, surfaces=None):
+        return R.behaviour_receipt(rows if rows is not None else [self.row], start, cutoff,
+                                   surfaces if surfaces is not None else ['fixture-chat'])
+
+    def test_behaviour_positive_control_and_private_manifest(self):
+        report, private = self.behaviour()
+        self.assertEqual(report['status'],'descriptive')
+        self.assertEqual(report['groups'],[dict(group=1,n=1,mean_words=3,median_words=3,question_mark_fraction=1)])
+        member=private['groups'][0]['members'][0]
+        self.assertEqual(member['turn_id'],self.row['turn_id'])
+        self.assertEqual(member['response_sha256'],W.digest(self.row['content']))
+        self.assertEqual(member['context_receipt_id'],'context-1')
+        for forbidden in ('fixture-turn','fixture-chat','fixture-b','context-1',self.row['content']):
+            self.assertNotIn(forbidden,json.dumps(report))
+        self.assertNotIn(self.row['content'],json.dumps(private))
+        self.assertIn('completeness',report['coverage'])
+
+    def test_behaviour_cross_midnight_window_is_inclusive_exclusive(self):
+        start=W.instant('2026-11-08T00:00:00-06:00');end=W.instant('2026-11-09T00:00:00-06:00')
+        rows=[fixture('boundary-'+str(i),at-1,at)[0] for i,at in enumerate((start-1,start,end-1,end))]
+        report,private=self.behaviour(rows,start,end)
+        self.assertEqual(report['eligible_observations'],2)
+        self.assertEqual(report['not_in_summary'],{'outside_window':2})
+        self.assertEqual([m['turn_id'] for m in private['groups'][0]['members']],['boundary-1','boundary-2'])
+        with self.assertRaises(ValueError):self.behaviour(start=end,cutoff=start)
+        with self.assertRaises(ValueError):self.behaviour(start='2026-11-08T00:00:00')
+
+    def test_behaviour_does_not_pool_surfaces_models_or_revisions(self):
+        rows=[fixture('group-'+str(i))[0] for i in range(4)]
+        rows[1]['witness_receipt']['surface']='fixture-other'
+        rows[2]['witness_receipt']['generation']['attempts'][1]['served_model']='fixture-other-model'
+        rows[3]['witness_receipt']['generation']['attempts'][1]['served_revision']='fixture-revision'
+        report,private=self.behaviour(rows,surfaces=['fixture-chat','fixture-other'])
+        self.assertEqual([g['n'] for g in report['groups']],[1,1,1,1])
+        self.assertEqual(len(private['groups']),4)
+        report,_=self.behaviour(rows)
+        self.assertEqual(report['eligible_observations'],3)
+        self.assertEqual(report['not_in_summary'],{'outside_surface_scope':1})
+        with self.assertRaises(ValueError):self.behaviour(surfaces=[])
+
+    def test_behaviour_empty_window_is_unknown_not_zero_traits(self):
+        report,private=self.behaviour([])
+        self.assertEqual(report['status'],'no_eligible_observations')
+        self.assertEqual(report['groups'],[])
+        self.assertEqual(private['groups'],[])
+        self.assertNotIn('mean_words',report)
+        self.assertNotIn('question_mark_fraction',report)
+
+    def test_behaviour_rebuild_order_and_source_removal(self):
+        second=fixture('second',120,130)[0]
+        first=self.behaviour([self.row,second])
+        self.assertEqual(first,self.behaviour([second,self.row]))
+        self.assertNotEqual(first[1]['receipt_id'],self.behaviour([self.row])[1]['receipt_id'])
+        self.assertNotEqual(first[1]['receipt_id'],self.behaviour([self.row,second],start=99)[1]['receipt_id'])
+        census,admitted=R.census([('canonical',[self.row]),('merged',[self.row])],self.nodes,1000)
+        self.assertEqual(self.behaviour(admitted)[0]['eligible_observations'],1)
+        _,empty=R.census([],self.nodes,1000)
+        self.assertEqual(self.behaviour(empty)[0]['status'],'no_eligible_observations')
+
+    def test_behaviour_refuses_double_count_bad_content_and_unknown_generator(self):
+        with self.assertRaises(ValueError):self.behaviour([self.row,self.row])
+        wrong=copy.deepcopy(self.row);wrong['content']='Different synthetic text'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+        wrong=copy.deepcopy(self.row)
+        wrong['witness_receipt']['generation']['attempts'][1]['identity_evidence']='unknown'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+        wrong=copy.deepcopy(self.row);wrong['turn_id']='wrong-turn'
+        with self.assertRaises(ValueError):self.behaviour([wrong])
+
+    def test_behaviour_requested_identity_cannot_change_group(self):
+        first=self.behaviour()[0]
+        self.row['witness_receipt']['generation']['attempts'][1]['requested_model']='other-requested'
+        self.assertEqual(first,self.behaviour()[0])
+
+    def test_behaviour_influenced_descendants_do_not_enter_summary(self):
+        self.nodes['effect']=dict(id='effect',kind='behaviour_receipt',at=50,complete=True,parents=['external-0'])
+        self.nodes['context-1']['parents'].append('effect')
+        report,admitted=R.census([('canonical',[self.row])],self.nodes,1000)
+        self.assertEqual(report['eligible_replies'],0)
+        self.assertEqual(self.behaviour(admitted)[0]['eligible_observations'],0)
+
     def test_scratch_rejects_live_parent_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
             root = Path(td).resolve()
@@ -479,12 +560,15 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             env = dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1")
             for name in ("first", "restart"):
                 result = subprocess.run([sys.executable, str(R.__file__), "--scratch", str(root),
-                    "--input", str(source), "--output", str(root / name), "--cutoff", "1970-01-01T00:16:40Z"],
+                    "--input", str(source), "--output", str(root / name), "--cutoff", "1970-01-01T00:16:40Z",
+                    "--behaviour-start", "1970-01-01T00:01:40Z", "--behaviour-surface", "fixture-chat"],
                     env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(before, source.read_bytes())
             self.assertEqual((root / "first/aggregate.json").read_bytes(), (root / "restart/aggregate.json").read_bytes())
             self.assertEqual((root / "first/aggregate.json").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((root / "first/private-behaviour.json").read_bytes(), (root / "restart/private-behaviour.json").read_bytes())
+            self.assertEqual((root / "first/private-behaviour.json").stat().st_mode & 0o777, 0o600)
 
     def test_guard_denies_subprocess_rename_and_external_write(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:

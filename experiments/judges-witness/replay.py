@@ -120,6 +120,71 @@ def census(sources, nodes, cutoff):
     return summary, admitted
 
 
+
+def behaviour_receipt(admitted, start, cutoff, surfaces, snapshot_sha256=None):
+    """Bounded descriptive receipt; private member manifest, no learned verdict.
+
+    The caller supplies census-admitted unique replies. Surface scope is explicit;
+    neither empty inputs nor missing days prove there was no behaviour outside
+    the supplied snapshot. Model/revision groups never share a reference mean.
+    """
+    start, cutoff = instant(start), instant(cutoff)
+    if start >= cutoff:
+        raise ValueError("behaviour window must have positive duration")
+    if (not isinstance(surfaces, (list, tuple)) or not surfaces
+            or any(not isinstance(x, str) or not x.strip() for x in surfaces)):
+        raise ValueError("behaviour requires explicit nonempty surface scope")
+    surfaces = sorted(set(surfaces))
+    seen, groups, held = set(), defaultdict(list), Counter()
+    for row in admitted:
+        r = row_receipt(row)
+        if r.get("status") != "recorded" or r["turn_id"] != row.get("turn_id"):
+            raise ValueError("behaviour requires admitted receipt identities")
+        if r["turn_id"] in seen:
+            raise ValueError("behaviour requires unique admitted replies")
+        seen.add(r["turn_id"])
+        if not start <= r["finalized_at"] < cutoff:
+            held["outside_window"] += 1
+            continue
+        if r["surface"] not in surfaces:
+            held["outside_surface_scope"] += 1
+            continue
+        selected = [a for a in r["generation"]["attempts"] if a["outcome"] == "selected"]
+        if (len(selected) != 1 or not selected[0].get("served_model")
+                or selected[0].get("identity_evidence") not in ("response_metadata", "runtime_receipt")):
+            raise ValueError("behaviour requires observed served identity")
+        text = final_response(row)
+        if not isinstance(text, str) or digest(text) != r["response_sha256"]:
+            raise ValueError("behaviour requires exact finalized content")
+        a = selected[0]
+        key = (r["surface"], a["served_model"], a.get("served_revision") or "")
+        member = {"turn_id":r["turn_id"], "response_sha256":r["response_sha256"],
+                  "context_receipt_id":r["context_receipt_id"], "finalized_at":r["finalized_at"],
+                  "generation_receipt_sha256":digest(json.dumps(r, sort_keys=True, separators=(",", ":"))),
+                  "word_count":len(text.split()), "has_question_mark":"?" in text}
+        groups[key].append(member)
+    public, private = [], []
+    for key in sorted(groups):
+        members = sorted(groups[key], key=lambda r:(r["finalized_at"],r["turn_id"]))
+        lengths = [r["word_count"] for r in members]
+        ordinal = len(public) + 1
+        public.append({"group":ordinal, "n":len(members),
+                       "mean_words":statistics.mean(lengths), "median_words":statistics.median(lengths),
+                       "question_mark_fraction":sum(r["has_question_mark"] for r in members)/len(members)})
+        private.append({"group":ordinal,"surface":key[0],"served_model":key[1],
+                        "served_revision":key[2] or None,"members":members})
+    # The private digest includes exact membership/versions/window and scope, not
+    # generation wall time or input ordering. Removing a source rebuilds it.
+    receipt = {"schema":"judges-behaviour-receipt-v1", "window":{"start":start,"cutoff":cutoff},
+               "surface_scope":surfaces, "groups":private, "statistics":public}
+    receipt["source_bundle_sha256"] = snapshot_sha256
+    receipt["receipt_id"] = "behaviour:" + digest(json.dumps(receipt, sort_keys=True, separators=(",", ":")))
+    summary = {"schema":"judges-behaviour-summary-v1", "status":"descriptive" if public else "no_eligible_observations",
+               "eligible_observations":sum(g["n"] for g in public), "groups":public, "not_in_summary":dict(held),
+               "coverage":"explicit snapshot only; stream completeness and missing-day activity unknown",
+               "meaning":"word lengths and literal question marks, not authenticity, emotion or relationship quality"}
+    return summary, receipt
+
 def cosine_error(a, b):
     if not isinstance(a, list) or not isinstance(b, list) or not a or len(a) != len(b):
         raise ValueError("incompatible embeddings")
@@ -349,7 +414,11 @@ def main():
     p.add_argument("--input", required=True, help="explicit synthetic or admitted snapshot bundle JSON")
     p.add_argument("--output", required=True, help="new private output directory")
     p.add_argument("--cutoff", required=True, help="exclusive timestamp with explicit timezone")
+    p.add_argument("--behaviour-start", help="inclusive window start with timezone; requires --behaviour-surface")
+    p.add_argument("--behaviour-surface", action="append", default=[], help="explicit surface to summarize; repeatable")
     args = p.parse_args()
+    if bool(args.behaviour_start) != bool(args.behaviour_surface):
+        p.error("behaviour start and surface scope must be supplied together")
     root = scratch_root(args.scratch)
     source, output = inside(root, args.input), inside(root, args.output)
     if output.exists() or output in source.parents:
@@ -365,10 +434,18 @@ def main():
     summary, admitted = census(sources, nodes, instant(args.cutoff))
     scores, details = innovation(admitted, bundle.get("forecasts", []),
                                  bundle.get("embeddings", []), bundle.get("checkpoints", {}))
+    behaviour = {"status":"not_configured", "meaning":"explicit window and surface scope required"}
+    private_behaviour = None
+    if args.behaviour_start:
+        behaviour, private_behaviour = behaviour_receipt(admitted, args.behaviour_start, args.cutoff, args.behaviour_surface,
+            digest(json.dumps(bundle, sort_keys=True, separators=(",", ":"))))
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
-              "census": summary, "innovation": scores}
+              "census": summary, "innovation": scores, "behaviour_receipt":behaviour}
     output.mkdir(mode=0o700)
-    for name, value in (("aggregate.json", report), ("private-innovation.json", details)):
+    outputs = [("aggregate.json", report), ("private-innovation.json", details)]
+    if private_behaviour is not None:
+        outputs.append(("private-behaviour.json", private_behaviour))
+    for name, value in outputs:
         with (output / name).open("x") as f:
             os.chmod(f.name, 0o600)
             json.dump(value, f, indent=2, allow_nan=False)

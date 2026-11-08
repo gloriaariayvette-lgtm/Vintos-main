@@ -316,3 +316,22 @@ newer history and separate paired coverage. No live producer contract or real-da
 accuracy claim is introduced. Independent Aegis validation remains Claude's step.
 
 Validation: witness 48/48, replay adapter 6/6 and ownership 11/11: **65 isolated checks passed**. Whitespace clean. No private data read, live writes, model calls, enablement, merge or deploy.
+
+
+## 8 November 2026 — bounded shadow behaviour receipts
+
+Continued from 788439c9 on `codex/judges-behaviour-windows`, preserving prior
+review tips. The strict census now feeds an optional explicit-window/surface
+summary, separated by observed served model and revision. Private manifests bind
+every measurement to the exact final response and generation receipt/context;
+the CLI also binds the retained input bundle. Aggregates contain ordinal group
+counts, word-length summaries and literal question-mark fractions only. Missing
+observations remain unknown; snapshot coverage is not stream completeness.
+
+Rebuilds are deterministic and source removal changes membership rather than
+leaving stale state. Synthetic cases cover positive observations, empty windows,
+midnight boundaries, unknown/mismatched identity, duplicate rejection, cross-model
+separation and transitive exclusion when a behaviour receipt later influences a
+reply. No live feeds, source capture, LLM calls, fitting or real-data claims.
+
+Validation: witness 56/56, replay adapter 6/6 and ownership 11/11: **73 isolated checks passed**. CLI rebuilds reproduce both aggregate and private manifest bytes with 0600 output permissions. Full Aegis suite and retained-data results remain Claude's independent step.

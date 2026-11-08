@@ -6062,3 +6062,11 @@ Judges slice 2 now has offline paired last-reply/recent-mean controls on
 are required; serving capture of that contract and real paired coverage remain
 open. Missing controls do not discard head observations. See the experiment
 README for causal joins and descriptive-only interpretation. No feed is changed.
+
+
+The next stacked judges slice, `codex/judges-behaviour-windows`, adds an optional
+explicit-window/surface shadow behaviour receipt with private source manifests
+and separate served-model/revision groups. It remains scratch-only and descriptive.
+Retained-data measurements, full Aegis suite/review, complete producer ancestry
+and any separately approved feed integration remain open. No historical witness
+eligibility is backfilled and no existing feed changes.

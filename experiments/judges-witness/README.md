@@ -78,7 +78,8 @@ Innovation percentiles use only strictly earlier finalized outcomes from this
 same replay and matching group. Same-time outcomes cannot calibrate each other.
 The default minimum is 20 earlier outcomes; until then the percentile is null.
 A percentile is relative prediction error, not calibrated confidence in identity.
-No comparator superiority is claimed: baseline vectors are not yet supplied.
+Comparator superiority is not presumed. The optional paired controls below require
+an explicitly attested forecast-context receipt; missing controls remain unknown.
 
 Rebuilds use the full explicitly supplied snapshot. There is no incremental
 checkpoint to become stale when an input is removed; identical inputs reproduce
@@ -343,3 +344,50 @@ strictly earlier outcomes within their checkpoint group, across blocks.
 No live producer emits this context receipt yet. A supplied receipt is a producer
 attestation, not independent proof of prompt contents. Synthetic contract tests
 are not a real-data baseline win, and this adds no feed or eligibility backfill.
+
+
+### Bounded shadow behaviour receipt
+
+The optional summary consumes only the existing strict census's unique admitted
+replies. Specify both an inclusive `--behaviour-start` and one or more
+`--behaviour-surface` arguments; the existing exclusive `--cutoff` ends the window.
+For example, append these arguments to the scratch command above, using an actual
+surface name from the retained receipt schema:
+
+```sh
+--behaviour-start '2026-11-02T00:00:00-06:00' --behaviour-surface chat
+```
+
+`chat` is an example configuration, not an inferred alias for every surface.
+Omitting the window/scope leaves this instrument `not_configured`. No store or
+surface is discovered automatically. Selecting a surface is analysis scope, not
+permission to bypass witness admission. Means are never pooled across surfaces,
+observed served models or served revisions. A requested model is not a group
+identity. Missing revision stays explicitly unknown rather than guessed.
+
+`aggregate.json.behaviour_receipt` contains ordinal groups, observation counts,
+mean/median whitespace-delimited word counts and literal question-mark fractions.
+Empty windows have no trait values: no eligible observations is not zero curiosity
+or engagement. These counts describe this snapshot only. They do not establish
+stream completeness, activity on absent days, character, emotions or relationship
+quality. No daily breakdown, text, identity, hash or date is emitted in this new
+aggregate object. Group numbers are local to one report, not persistent identities.
+The original census-wide descriptive fields remain available for compatibility.
+
+`private-behaviour.json` is mode 0600 and contains the window, explicit scope,
+group identities and exact member turn IDs, response digests, generation-receipt
+digests, context references and per-member measurements. It contains no raw text
+or vectors, but is still private. Its versioned receipt ID hashes this manifest;
+the CLI also binds the canonicalized source bundle digest. Preserve that private
+bundle to audit admission/ancestry; the output is not an independently sufficient
+proof. Reordering admitted rows is deterministic. Removing a member or changing
+a contributing receipt/window changes the receipt identity. Rebuilding after
+source removal cannot retain a stale incremental reference.
+
+There is no writer into his context or value map. If a later reviewed consumer
+reads this summary, it must record a `behaviour_receipt` effect dependency: a
+new name or a weekly schedule cannot make its descendants independent evidence.
+Current transitive influence checks already exclude such descendants. This
+increment is a scratch instrument, not a deployed character judge. Claude owns
+retained-data measurement and full isolated Aegis review; synthetic fixture
+results do not demonstrate real-world accuracy.
