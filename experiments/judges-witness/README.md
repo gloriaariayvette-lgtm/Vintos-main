@@ -507,3 +507,15 @@ record, while forecast holds are per forecast. They must not be summed as a coun
 of distinct replies. Valid records retain the existing causal scoring, checkpoint,
 source and served-model grouping. This handles malformed supplied snapshots only;
 it neither repairs missing upstream provenance nor expands witness eligibility.
+
+
+### Strict lineage identity and clock shapes
+
+A reply dependency's turn_id must satisfy the same nonempty, bounded string
+contract as a generation receipt. Truthy booleans, numbers, containers and
+oversized strings are not identities. Malformed node kinds and root identifiers
+return unknown rather than crashing graph traversal. The traversal boundary uses
+the shared explicit timestamp parser: booleans, nonfinite values, negative times
+and timezone-naive strings are unknown. Valid offset-aware boundary strings are
+handled consistently with epoch timestamps. These checks tighten shadow evidence
+admission only; they do not rewrite legacy records or alter any live feed.

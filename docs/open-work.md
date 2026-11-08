@@ -6107,3 +6107,11 @@ and rejects wrong-shaped containers without guessing identities or dropping
 identifiable conflicting copies. 144 affected isolated checks pass. This offline
 reader change requires independent review/full Aegis validation; no live feeds,
 producers or historical admission are changed. See the judges witness log.
+
+
+## 8 November — strict lineage shapes
+
+`codex/judges-lineage-shapes` requires valid receipt-shaped reply identities and
+explicit finite clock boundaries, and handles malformed node kinds as unknown.
+147 affected isolated checks pass; independent review/full Aegis validation remain
+pending. No witness backfill, live eligibility change or feed modification.

@@ -474,3 +474,23 @@ live write, feed change, merge or deploy. The held identity count is per embeddi
 row, not per unique reply; README documents that denominator. Independent full
 Aegis validation remains with Claude. Review 16's separate wants timestamp fix
 was already pushed as de2cd7b4 and remains awaiting that independent rerun.
+
+
+## 8 November — strict lineage shapes
+
+On `codex/judges-lineage-shapes` from 219c2de9, three synthetic regressions exposed
+seven assertion failures and eight errors before the repair (subcases). A reply
+node with a truthy non-string or oversized turn ID could pass as clean ancestry;
+an unhashable node kind/root could crash traversal; and a nonfinite traversal
+boundary could silently defeat its clock comparison. The graph reader now checks
+root and reply identities with the receipt identifier contract, checks kind type
+before set membership, and parses the boundary with the shared timestamp parser.
+Malformed evidence stays unknown. Valid source/reply ancestry, indirect influence
+propagation and per-edge causal checks remain unchanged.
+
+**147 isolated checks pass:** witness 85, capture 27, replay adapter 6, handler
+hooks 18, ownership 11. Tests include valid positive controls and invalid boolean,
+container, oversized and clock cases. Generated reports and whitespace checked.
+No private snapshot read, model call, live write, feed change, merge or deploy.
+Independent full Aegis validation remains with Claude. The earlier wants fix is
+left at de2cd7b4 in its own checkout for his Linux rerun; no duplicate remote work.
