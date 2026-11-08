@@ -1,13 +1,19 @@
-## 8 November — shadow witness ancestry and enablement boundary
+## 8 November — shadow witness implementation and remaining acceptance
 
-On `codex/judges-ancestry-leaves`, parentless generated nodes remain unknown;
-clean synthetic ancestry now ends in an explicit external source. No existing
-feed or live eligibility is changed. [Review log](judges-witness-log.md) records
-106 isolated checks. [Production enablement proposal](judges-capture-enable-proposal.md)
-is separate and disabled; do not repoint the serving workspace to use a scratch
-capture flag. Reviewer-provided private census remains zero strict-eligible
-turns. Paired innovation controls, complete producer ancestry, production sink
-implementation and full Aegis review remain open.
+Review increments now include request/attempt and finalization dependency capture,
+strict ancestry/census, bounded behaviour summaries, paired innovation controls,
+and explicit feedback joins. `codex/judges-feedback-evidence` tightens the latter:
+missing event IDs cannot erase timeline collisions, and a predecessor needs its
+own direct sequence witness. [Review log](judges-witness-log.md) records each
+increment's isolated validation; the latest focused run passed 92 checks.
+
+Full Aegis validation and independent review of the post-239c3467 stack remain
+with Claude. The reviewer-provided private census is still zero strict-eligible
+turns; no new retained-data result is claimed. Complete upstream ancestry,
+trustworthy delivery/sequence producers and a separate bounded production sink
+remain open. [Enablement proposal](judges-capture-enable-proposal.md) is disabled
+and requires Gloria's explicit decision; never repoint the serving workspace to
+use the scratch flag. No live feed, historical eligibility or model is changed.
 
 ## 3 November — what was left in #fault-fix, gone through at Gloria's request
 

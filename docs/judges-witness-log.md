@@ -397,3 +397,28 @@ ownership 11/11: **129 isolated checks passed**. A prior adapter assertion about
 the fixed node count was updated to assert exact deduplicated node identities
 after the added boundary node. Generated reports and whitespace checks are clean.
 Full Aegis validation and review remain Claude's independent step.
+
+
+## 8 November 2026 — feedback sequence evidence repair
+
+Continued from e59f9d4d on `codex/judges-feedback-evidence`. Three synthetic
+regressions reproduced gaps in the new offline feedback reader: unidentified
+events vanished before position collision checks; predecessor timeline denials
+were ignored; and an un-witnessed predecessor could borrow the target reply's
+eligibility. The reader now keeps every valid claimed stream/position occupied,
+including missing/malformed event IDs, and requires direct witnessed sequence
+evidence for both sides of a chat join. This is a tightening of the new offline
+contract, not a change to existing humor labels or live feeds.
+
+Private observations also retain the exact predecessor-event digest alongside
+the feedback-event digest. No raw feedback is copied. Unknown rows in unrelated
+streams/positions do not suppress a valid local join. No historical witness
+backfill is provided; producers must attest facts they actually observed.
+
+Validation: witness 75/75, replay adapter 6/6 and ownership 11/11: **92 isolated
+checks passed**. Three new cases failed before the repair; five additions cover
+missing IDs at either position, predecessor denials/missing witnesses, unrelated
+positions, and version-bound private receipts. Existing literal-marker, low-rating
+unknown, restart, permissions and scratch-only checks still pass. Reports were
+regenerated and whitespace checked. No retained data, sends, models, merge or
+deploy; independent Aegis validation remains with Claude.

@@ -409,12 +409,16 @@ Each event needs `schema: witness-feedback-v1` and a stable `event_id`. Feedback
 must explicitly carry `witnessed: true`; inferred, deleted, forgotten, estimated,
 imported or transplanted evidence is held. Identical event copies count once;
 conflicting copies are all held, with their timeline positions still occupied.
+Even a record with a missing or malformed event ID occupies any valid claimed
+stream/position; it cannot disappear and make a neighbour look unambiguous.
 
 For chat, provide both timeline events:
 
 - An `assistant_reply`: `turn_id`, `content_sha256`, `surface`, exact `at` equal
   to its finalization time, `stream_id`, integer `position`, and
-  `sequence_complete: true`.
+  `sequence_complete: true` and `witnessed: true`. This timeline attestation must
+  itself have no inferred/deleted/forgotten/estimated/imported/transplanted marker;
+  an eligible target reply cannot repair missing or denied sequence evidence.
 - The immediately following `counterpart_message`: the same surface/stream,
   `position` exactly one larger, `previous_event_id` naming the reply event,
   `sequence_complete: true`, `origin: authenticated_owner_message`, `witnessed:
@@ -424,6 +428,8 @@ The target must be independently strict-eligible in the census. The predecessor
 is resolved from all supplied timeline positions, never the eligible subset.
 Intervening excluded replies, gaps, collisions, changed versions/surfaces, missing
 sequence evidence and equal/reversed clocks cannot create a positive join.
+Private chat observations bind both the feedback event digest and the exact
+predecessor event digest; practice ratings have no predecessor digest.
 An isolated token `haha` or longer repeated `ha` (case-insensitive, optional final
 `h`) is the positive marker. A single `ha`, `lol`, an emoji or no such token stays
 unknown under this particular rule. This is literal marker detection, not a

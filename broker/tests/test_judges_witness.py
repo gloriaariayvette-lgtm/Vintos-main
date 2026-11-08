@@ -576,7 +576,7 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
 
     def reaction_events(self, text='haha'):
         before=dict(schema='witness-feedback-v1',event_id='fixture-before',kind='assistant_reply',
-                    stream_id='fixture-stream',position=1,sequence_complete=True,at=110,
+                    stream_id='fixture-stream',position=1,sequence_complete=True,witnessed=True,at=110,
                     turn_id=self.row['turn_id'],surface='fixture-chat',content_sha256=W.digest(self.row['content']))
         after=dict(schema='witness-feedback-v1',event_id='fixture-reaction',kind='counterpart_message',
                    origin='authenticated_owner_message',witnessed=True,stream_id='fixture-stream',position=2,
@@ -632,6 +632,51 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                 (1,{'at':'2026-11-08T12:00:00'}),(1,{'witnessed':False}),(1,{'deleted':True})):
             events=self.reaction_events();events[index].update(change)
             self.assertEqual(self.feedback(events)[1],[],change)
+
+    def test_feedback_receipt_binds_exact_predecessor_attestation(self):
+        events = self.reaction_events()
+        _, first = self.feedback(events)
+        self.assertEqual(first[0]["predecessor_sha256"], W.digest(json.dumps(
+            events[0], sort_keys=True, separators=(",", ":"))))
+        events[0]["producer_revision"] = "fixture-revision"
+        _, second = self.feedback(events)
+        self.assertNotEqual(first[0]["predecessor_sha256"], second[0]["predecessor_sha256"])
+        self.assertEqual(first[0]["feedback_sha256"], second[0]["feedback_sha256"])
+        row, rating = self.practice_rating()
+        self.assertIsNone(self.feedback([rating], [row])[1][0]["predecessor_sha256"])
+
+    def test_feedback_missing_identity_still_occupies_claimed_position(self):
+        for position in (1, 2):
+            for identity in (None, "", [], 7):
+                events = self.reaction_events()
+                unidentified = dict(events[position-1], event_id=identity)
+                report, private = self.feedback(events + [unidentified])
+                self.assertEqual(private, [], (position, identity))
+                self.assertEqual(report["positive_targets"], 0)
+                self.assertEqual(report["held"]["missing_event_identity"], 1)
+
+    def test_feedback_predecessor_denials_cannot_be_laundered_by_eligible_target(self):
+        for flag in ("inferred", "deleted", "forgotten", "timestamp_estimated", "imported", "transplanted"):
+            events = self.reaction_events()
+            events[0][flag] = True
+            self.assertEqual(self.feedback(events)[1], [], flag)
+        events = self.reaction_events()
+        events[0]["witnessed"] = False
+        self.assertEqual(self.feedback(events)[1], [])
+
+    def test_feedback_predecessor_requires_direct_sequence_witness(self):
+        events = self.reaction_events()
+        events[0].pop("witnessed", None)
+        self.assertEqual(self.feedback(events)[1], [])
+
+    def test_feedback_unidentified_other_positions_do_not_poison_valid_join(self):
+        events = self.reaction_events()
+        for stream, position in (("different-stream", 1), ("fixture-stream", 20)):
+            unrelated = dict(events[0], event_id=None, stream_id=stream, position=position)
+            report, private = self.feedback(events + [unrelated])
+            self.assertEqual(report["positive_targets"], 1)
+            self.assertEqual(len(private), 1)
+            self.assertEqual(report["held"]["missing_event_identity"], 1)
 
     def test_feedback_duplicates_and_conflicts_never_select_favourable_copy(self):
         events=self.reaction_events()

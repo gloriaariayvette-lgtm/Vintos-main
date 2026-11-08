@@ -213,20 +213,27 @@ def feedback_receipts(admitted, events, cutoff):
     # Include every claimed position, even excluded/conflicting/unknown events.
     # They cannot disappear and create apparently immediate neighbours.
     positions = defaultdict(set)
-    for rows in copies.values():
-        for e in rows:
-            if (isinstance(e.get("stream_id"), str) and e["stream_id"]
-                    and type(e.get("position")) is int and e["position"] >= 0):
-                positions[(e["stream_id"],e["position"])].add(e["event_id"])
+    for e in events:
+        if (isinstance(e, dict) and isinstance(e.get("stream_id"), str) and e["stream_id"]
+                and type(e.get("position")) is int and e["position"] >= 0):
+            key = e.get("event_id")
+            # An unidentified event still occupies its claimed position. None
+            # cannot equal a valid event ID and cannot resolve to a predecessor.
+            positions[(e["stream_id"],e["position"])].add(
+                key if isinstance(key, str) and key else None)
+
+    def direct_witness(event):
+        return event.get("witnessed") is True and not any(event.get(k) for k in
+            ("inferred", "deleted", "forgotten", "timestamp_estimated", "imported", "transplanted"))
     observations = []
     for key, event in sorted(unique.items()):
         kind = event.get("kind")
+        predecessor_sha256 = None
         if kind == "assistant_reply": continue
         try:
             if event.get("schema") != "witness-feedback-v1":
                 held["unsupported_feedback_schema"] += 1; continue
-            if (event.get("witnessed") is not True or any(event.get(k) for k in
-                    ("inferred", "deleted", "forgotten", "timestamp_estimated", "imported", "transplanted"))):
+            if not direct_witness(event):
                 held["feedback_not_direct_witness"] += 1; continue
             at = instant(event["at"])
             if at >= cutoff:
@@ -250,6 +257,9 @@ def feedback_receipts(admitted, events, cutoff):
                 if (previous.get("schema") != "witness-feedback-v1" or previous.get("sequence_complete") is not True
                         or event.get("previous_event_id") != previous["event_id"]):
                     held["unknown_adjacency"] += 1; continue
+                if not direct_witness(previous):
+                    held["predecessor_not_direct_witness"] += 1; continue
+                predecessor_sha256 = digest(json.dumps(previous,sort_keys=True,separators=(",", ":")))
                 target = targets.get(previous.get("turn_id"))
                 if target is None:
                     held["target_not_eligible"] += 1; continue
@@ -283,6 +293,7 @@ def feedback_receipts(admitted, events, cutoff):
                 held["feedback_not_after_target"] += 1; continue
             observations.append({"feedback_event_id":key,"kind":kind,"at":at,
                 "feedback_sha256":digest(json.dumps(event,sort_keys=True,separators=(",", ":"))),
+                "predecessor_sha256":predecessor_sha256,
                 "target_turn_id":r["turn_id"],"target_sha256":r["response_sha256"],
                 "label":"positive" if positive else "unknown","reason":reason,"stars":value})
         except (KeyError, TypeError, ValueError, OverflowError):
