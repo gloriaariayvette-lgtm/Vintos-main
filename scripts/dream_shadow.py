@@ -20,7 +20,8 @@ Every entry names the model that answered, the GGUF sha256 and the adapter (none
 live dream by a live_dream_id derived from its dream-log entry.
 
 CLI:
-  dream_shadow.py run [--max N]      process the captured dreams, then write the daily report
+  dream_shadow.py run [--max N]      process the captured dreams, then the whole-day arm (dream_wholeday.py),
+                                     then write the daily report
   dream_shadow.py report [--day D]   rewrite the report only (no model calls)
   dream_shadow.py capture-live --key K   (dream-trigger.sh) attach the logged live dream to its captured prompt
   dream_shadow.py status
@@ -710,6 +711,12 @@ def write_report(day=None):
                        "judge effects separate only partly: compare aeon_on_live with aeon_on_shadow for the writer effect.",
                        "The scene image reaches the live writer only; AEON has no projector.",
                        "Agreement is not accuracy; nothing here rates his feelings. The decision is Gloria's."]}
+    try:   # the whole-day arm and the judge calibration, numbers only (dream_wholeday.py)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import dream_wholeday
+        rep["wholeday"] = dream_wholeday.report_section(day)
+    except Exception as e:
+        rep["wholeday"] = {"error": ("%s" % e)[:200]}
     os.makedirs(REPORTS, exist_ok=True)
     path = os.path.join(REPORTS, "dream-shadow-report-%s.json" % (day or "empty"))
     _atomic_json(path, rep)
@@ -732,7 +739,18 @@ def main(argv):
         ok = capture_live(opt("--key", ""), os.environ.get("DREAM", ""))
         return 0 if ok else 3
     if cmd == "run":
-        print(json.dumps(run(max_items=opt("--max")), indent=1))
+        out = run(max_items=opt("--max"))
+        # The whole-day arm (option 2, 2026-11-08) runs after this one, under the same llm-lock, the same off switch
+        # and the same lane; its failure never fails this run. Then the report is rewritten to include it.
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import dream_wholeday
+            out["wholeday"] = dream_wholeday.run_nightly()
+            if out.get("ran"):
+                write_report()
+        except Exception as e:
+            out["wholeday"] = {"ran": False, "reason": ("error: %s" % e)[:200]}
+        print(json.dumps(out, indent=1))
         return 0
     if cmd == "report":
         r = write_report(opt("--day"))
