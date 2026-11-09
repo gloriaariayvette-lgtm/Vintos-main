@@ -7147,3 +7147,21 @@ unknowns remain unknown and raw identity is excluded from aggregate outputs.
 cached-vector derivation, runtime, multi-file completeness or revision labels.
 Real identity observation and reviewed control data remain with the private run.
 No inference, download, live write, merge or deployment.
+
+
+## 9 November — reviewed control pools and deterministic matching
+
+`codex/judges-character-reviewed-controls` follows dd811da0. Schema v3 adds a
+local reviewed control pool, context-only greedy matching without replacement,
+primary-first target order, and explicit review bindings for pooled and paired
+controls. Foreign candidates must be non-subject and surface-matched; his own
+other-surface text is a separate comparison, never an authenticity negative.
+Missing reviews remain excluded. All input assistant text is barred as a control,
+including unattributed rows; mode, language, length and context gates still apply.
+Public reports contain only aggregate coverage; private-controls.json retains all
+selected pairs, including those lacking scorable reference folds. Review/source
+claims remain supplied, not independently authenticated. No real controls were
+collected here; private data collection and rerun remain with the reviewer.
+53 isolated checks pass (prototype 42, owners 11), using synthetic non-intimate
+fixtures. Generated reports refreshed unchanged. No encoder/model calls, network
+collection, live writes, merge or deployment. Prior review branch tips stay fixed.

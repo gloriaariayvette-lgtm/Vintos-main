@@ -31,7 +31,8 @@ missing. There is no substitute text embedder or silent fallback.
   are log character/word counts, mean word length, question/exclamation/comma rates,
   uppercase-letter fraction, first-person word rate and newline rate. These are
   descriptive and partly language/genre sensitive, not identity features.
-- **Foreign/other-surface comparisons:** explicitly paired control rows must have
+- **Foreign/other-surface comparisons:** reviewed paired controls or a reviewed
+  candidate pool must have
   the same supplied language, half to twice the reply length, and context-vector
   cosine at least 0.7. These fixed screening rules are proxies, not certified topic
   matching. Other-surface text is not automatically foreign/non-him. Report paired
@@ -114,7 +115,9 @@ One JSON object, with only these sources explicitly assembled by the reviewer:
 | `feedback` | Optional exact-linked records: `reply_id`, `reply_sha256`, `link: "exact_reply"`, `witnessed: true`, `timestamp`, `kind: "laugh"` with string `value`, or `kind: "rating"` with numeric `value`. Unlinked reactions are excluded. |
 | `evaluation_annotations` | Optional list of exact-linked `reply_id`, `reply_sha256`, `link: "exact_reply"`, `annotator: "owner"` or `"reviewer"`, and `category` in `benign_novelty`, `refusal`, `opposite_stance`, `humor`, `surface_shift`. Duplicate annotations collapse. Unlinked/not-admitted examples are counted as unavailable. No rationale or free text is emitted. |
 | `mode_observations` | Optional list with exact `reply_id`, `reply_sha256`, `link: "exact_reply"`, `timestamp` at/before the reply and before cutoff, `mode` in `opening_everyday`, `intimate`, `unknown`, `source` in `router_decision`, `intimate_state`, `conversation_transition`, and a 64-lowercase-hex `evidence_sha256` of the retained observation. Conflicting modes become unknown. Source content remains private. This binds supplied evidence; it does not authenticate the exporter or infer a label. |
-| `controls` | Optional list; each entry requires explicit matching `mode`, `kind: "foreign"` or `"other_surface"`, `matched_reply_id`, `content`, `context`, `language`, `encoder_id`, `input_sha256`, `context_sha256`, unit `vector` and `context_vector`. Supply provenance-reviewed controls; do not invent foreign status from a model/surface label. |
+| `controls` | Optional paired list; provenance fields below are required; each entry requires explicit matching `mode`, `kind: "foreign"` or `"other_surface"`, `matched_reply_id`, `content`, `context`, `language`, `encoder_id`, `input_sha256`, `context_sha256`, unit `vector` and `context_vector`. Supply provenance-reviewed controls; do not invent foreign status from a model/surface label. |
+
+| `control_pool` | Alternative to nonempty `controls`: up to 4,096 reviewed candidate records with the same cache/provenance fields, without `matched_reply_id`. Selection uses context only. |
 
 Limits: 64 MiB input, 10,000 history/cache/feedback/annotation/mode-observation records, 4,096 admitted unique
 replies and control records, vectors at most 8,192 dimensions. No real data belongs
@@ -142,9 +145,59 @@ Outputs are mode 0600 in a 0700 directory:
   dates plus message/reply counts. No text, private IDs, model labels, or vectors.
 - `private-evaluation.json`: held-out reply IDs, percentiles and reference-day
   membership, for verifying splits locally. Do not publish it.
+- `private-controls.json`: every selected pair, including unscorable and sensitivity-only
+  pairs; target/candidate IDs, content/review hashes and context cosine. Local only.
 - `private-run.json`: input/code fingerprints, cutoff, exact declared encoder
   contract and optional observed artifact hash/byte count, for reproducibility.
   Raw revision/encoder IDs, hashes and paths are not printed in public summaries.
+
+## Preparing reviewed controls locally
+
+Schema v3 enforces the review requirement for both explicit pairs and pools.
+Legacy paired controls without review evidence are excluded, not silently treated
+as foreign. The selector does not collect text, generate examples, encode anything,
+contact another service or examine live stores. The private reviewer supplies
+existing authorized records and cached vectors; unavailable controls stay unknown.
+
+Each candidate adds `candidate_id` (nonempty, at most 256 characters), `timestamp`
+(the source text's offset-aware creation time, strictly before cutoff), `surface`,
+`author`, and `review` to the fields in the table. Known surfaces use the same
+fixed vocabulary as replies. `foreign` requires `author: "non_subject"` and the
+same surface as the target. `other_surface` requires `author: "subject"` and a
+*different* known surface. This second comparison measures his surface change;
+it is not a negative authenticity label. Both need the same explicit known mode.
+Do not derive authorship or mode from the serving provider, words, or filenames.
+
+The `review` object requires `reviewed: true`, `reviewer: "owner"` or `"reviewer"`,
+`link: "exact_control"`, `evidence_sha256` (64 lowercase hex identifying the locally
+retained source evidence), and `binding_sha256`. Compute the last using
+`control_review_binding(candidate)` after reviewing the source: it hashes the
+canonical JSON of `candidate_id`, `content`, `context`, `timestamp`, `kind`,
+`author`, `mode`, `surface`, and `language`. Changes to those fields invalidate the
+review. The review source and any intimate text stay local; never paste them into
+a cloud prompt. This is a supplied reviewer claim with an exact binding, **not**
+an authenticated author/source assertion. A hash alone cannot verify the claim.
+Cache contract and prefix/context hashes are checked separately.
+
+Pool selection is deterministic greedy matching: primary-attributed targets first,
+then sensitivity-only targets, with target ID order inside each group. For each
+kind, choose the remaining candidate with greatest context cosine (at least 0.7),
+tie-breaking by candidate ID. Language must agree and character length ratio must
+be 0.5–2. Response embeddings, familiarity/style scores, family, feedback and
+reference-day membership do not choose the match. No candidate text is reused;
+there is at most one pair per target/kind. This is not optimal maximum matching;
+order can leave otherwise matchable targets uncovered. Explicit pairs have the
+same review/matching/reuse requirements, but are supplied by the reviewer.
+
+All input assistant text, including unattributed/unscored rows, is excluded from
+the control pool. Exact candidate copies collapse; conflicting candidate identity
+or text provenance fails. Missing/stale reviews and unmatched candidates appear in
+coverage. `control_selection.by_mode_surface` reports admitted, matched and
+unmatched counts for each control kind. These are selection counts, not scored
+observations: the primary/sensitivity metric counts show what was actually scored.
+The views overlap and must not be added. Candidate IDs/hashes and full pair mapping
+are restricted to private artifacts. Existing own-reply reference scores do not
+change merely because a control is absent.
 
 ## Pinning a known encoder artifact without loading it
 

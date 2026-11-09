@@ -229,6 +229,77 @@ def scores(row,reference):
     return score_statistics(row,reference_statistics(reference))
 
 
+def control_review_binding(item):
+    """Bind a supplied review to text, source classification and matching metadata."""
+    fields=('candidate_id','content','context','timestamp','kind','author','mode','surface','language')
+    return digest(json.dumps({k:item.get(k) for k in fields},sort_keys=True,allow_nan=False))
+
+
+def control_reviewed(item,cutoff):
+    review=item.get('review',{})
+    try:at=instant(item.get('timestamp'))
+    except (ValueError,TypeError):return False
+    return (isinstance(review,dict) and review.get('reviewed') is True
+        and review.get('reviewer') in ANNOTATORS and review.get('link')=='exact_control'
+        and review.get('binding_sha256')==control_review_binding(item)
+        and isinstance(review.get('evidence_sha256'),str)
+        and re.fullmatch(r'[0-9a-f]{64}',review['evidence_sha256']) is not None
+        and isinstance(item.get('candidate_id'),str) and 0<len(item['candidate_id'])<=256
+        and item.get('author')==('non_subject' if item.get('kind')=='foreign' else 'subject')
+        and item.get('mode') in MODES[:2] and surface_label(item.get('surface'))!='unknown'
+        and at<cutoff)
+
+
+def control_cache(item,encoder,dimension):
+    text=item.get('content');context=item.get('context')
+    if (not isinstance(text,str) or not 0<len(text)<=65536 or not isinstance(context,str)
+            or not 0<len(context)<=65536):raise ValueError('invalid control text or context')
+    v=unit(item['vector'],dimension);c=unit(item['context_vector'],len(v))
+    if (item['encoder_id']!=encoder['id'] or item['input_sha256']!=digest(text[:encoder['prefix_chars']])
+            or item['context_sha256']!=digest(context)):raise ValueError('control encoder/input mismatch')
+    return v,c
+
+
+def control_match(item,row,context):
+    return (row['mode']!='unknown' and item.get('mode')==row['mode']
+        and row['surface']!='unknown'
+        and (item['surface']==row['surface'] if item['kind']=='foreign' else item['surface']!=row['surface'])
+        and bool(row['language']) and item.get('language')==row['language']
+        and .5<=len(item['content'])/max(1,len(row['text']))<=2
+        and float(context@row['context_vector'])>=.7)
+
+
+def select_control_pool(pool,rows,encoder,dimension,own_hashes,cutoff):
+    """Greedy context-only matching; every source text is used at most once."""
+    counts=Counter();versions={};texts={};valid=[]
+    for item in pool:
+        if not isinstance(item,dict):raise ValueError('invalid control candidate')
+        key=item.get('candidate_id');raw=json.dumps(item,sort_keys=True,allow_nan=False)
+        if isinstance(key,str) and key in versions:
+            if versions[key]!=raw:raise ValueError('conflicting control candidate identity')
+            counts['duplicate_candidate']+=1;continue
+        if isinstance(key,str):versions[key]=raw
+        if item.get('kind') not in ('foreign','other_surface') or not control_reviewed(item,cutoff):
+            counts['unreviewed_or_invalid_provenance']+=1;continue
+        _,context=control_cache(item,encoder,dimension)
+        sha=digest(item['content'])
+        if sha in own_hashes:counts['reuses_input_reply']+=1;continue
+        if sha in texts:
+            if texts[sha]!=control_review_binding(item):raise ValueError('conflicting control text provenance')
+            counts['duplicate_text']+=1;continue
+        texts[sha]=control_review_binding(item);valid.append((item,context,sha))
+    selected=[];used=set()
+    for row in sorted(rows,key=lambda r:(not r['primary'],r['id'])):
+        for kind in ('foreign','other_surface'):
+            eligible=[(float(c@row['context_vector']),item['candidate_id'],item,sha)
+                for item,c,sha in valid if sha not in used and item['kind']==kind and control_match(item,row,c)]
+            if not eligible:continue
+            _,_,item,sha=min(eligible,key=lambda x:(-x[0],x[1]))
+            selected.append(dict(item,matched_reply_id=row['id']));used.add(sha)
+    return selected,{'input_candidates':len(pool),'reviewed_candidates':len(valid),'excluded':dict(counts),
+        'unused_reviewed_candidates':len(valid)-len(used),'matching':'primary_first_context_greedy_without_replacement'}
+
+
 def prepare(bundle,cutoff):
     if bundle.get('input_kind') not in ('synthetic','retained_snapshot'):raise ValueError('explicit input kind required')
     encoder=bundle['encoder']
@@ -246,7 +317,7 @@ def prepare(bundle,cutoff):
     cfg['window30_enabled']=True
     if cfg.get('window_seconds',10)!=10:raise ValueError('primary attribution must use ten seconds')
     attribution_report,details=attribution(rows,ledger,cfg,cutoff)
-    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('evaluation_annotations',10000),('mode_observations',10000)):
+    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('control_pool',4096),('evaluation_annotations',10000),('mode_observations',10000)):
         if not isinstance(bundle.get(key,[]),list) or len(bundle.get(key,[]))>limit:raise ValueError('unbounded prototype input')
     caches={};dimension=None
     for cache in bundle['embeddings']:
@@ -338,10 +409,21 @@ def prepare(bundle,cutoff):
         if key in annotation_links:annotation_counts['duplicate']+=1;continue
         annotation_links.add(key);annotation_counts['linked']+=1
         row.setdefault('evaluation_annotations',set()).add((event['annotator'],event['category']))
-    controls=[];control_versions={}
-    for item in bundle.get('controls',[]):
+    supplied=bundle.get('controls',[]);pool=bundle.get('control_pool',[])
+    if supplied and pool:raise ValueError('supply paired controls or a control pool, not both')
+    own_hashes={digest(final_response(r)) for r in rows if r.get('role')=='assistant'}
+    selection={'input_candidates':len(supplied),'matching':'explicit_pairs'}
+    if pool:supplied,selection=select_control_pool(pool,unique,encoder,dimension,own_hashes,cutoff)
+    controls=[];control_versions={};candidate_versions={};used_control_text=set();used_pairs=set()
+    for item in supplied:
         row=by_id.get(item.get('matched_reply_id'))
         if row is None or item.get('kind') not in ('foreign','other_surface'):continue
+        candidate_id=item.get('candidate_id')
+        candidate_version=json.dumps({k:v for k,v in item.items() if k!='matched_reply_id'},sort_keys=True,allow_nan=False)
+        if isinstance(candidate_id,str):
+            if candidate_id in candidate_versions and candidate_versions[candidate_id]!=candidate_version:
+                raise ValueError('conflicting control candidate identity')
+            candidate_versions[candidate_id]=candidate_version
         text=item['content']
         if not isinstance(text,str) or not 0<len(text)<=65536:raise ValueError('invalid control text')
         key=(item['matched_reply_id'],item['kind'],digest(text));version=json.dumps(item,sort_keys=True,allow_nan=False)
@@ -349,22 +431,33 @@ def prepare(bundle,cutoff):
             if control_versions[key]!=version:raise ValueError('conflicting control copies')
             continue
         control_versions[key]=version
-        v=unit(item['vector'],dimension);c=unit(item['context_vector'],dimension)
-        if (item['encoder_id']!=encoder['id'] or item['input_sha256']!=digest(text[:encoder['prefix_chars']])
-                or item['context_sha256']!=digest(item['context'])):raise ValueError('control encoder/input mismatch')
-        if digest(text) in seen:excluded['control_reuses_reply_text']+=1;continue
+        v,c=control_cache(item,encoder,dimension)
+        if digest(text) in own_hashes:excluded['control_reuses_reply_text']+=1;continue
         if item.get('mode','unknown') not in MODES:raise ValueError('invalid control mode')
         if row['mode']=='unknown' or item.get('mode','unknown')!=row['mode']:
             excluded['control_mode_unknown_or_mismatched']+=1;continue
         if (not row['language'] or item.get('language')!=row['language']
                 or not .5<=max(1,len(text))/max(1,len(row['text']))<=2
                 or float(c@row['context_vector'])<.7):excluded['control_not_matched']+=1;continue
-        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':item['mode']})
+        if not control_reviewed(item,cutoff):excluded['control_provenance_unreviewed']+=1;continue
+        if not control_match(item,row,c):excluded['control_surface_not_matched']+=1;continue
+        pair=(row['id'],item['kind'])
+        if digest(text) in used_control_text or pair in used_pairs:
+            excluded['control_reused_text_or_pair']+=1;continue
+        used_control_text.add(digest(text));used_pairs.add(pair)
+        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':item['mode'],
+            'candidate_id':item['candidate_id'],'sha':digest(text),'review_binding':control_review_binding(item),
+            'context_cosine':float(c@row['context_vector'])})
+    selection['by_mode_surface']=[{'mode':mode,'surface':surface,'kind':kind,
+        'admitted_replies':sum(r['mode']==mode and r['surface']==surface for r in unique),
+        'matched_replies':sum(c['kind']==kind and by_id[c['id']]['mode']==mode and by_id[c['id']]['surface']==surface for c in controls)}
+        for mode in MODES[:2] for surface in SURFACES[:-1] for kind in ('foreign','other_surface')]
+    for cell in selection['by_mode_surface']:cell['unmatched_replies']=cell['admitted_replies']-cell['matched_replies']
     return unique,controls,candidates,positive,{'excluded':dict(excluded),'attribution':attribution_report,
         'feedback':dict(feedback_counts),'positive_reply_links':len(positive),
         'admission_bases':dict(Counter(r['basis'] for r in unique)),
         'admitted_primary_replies':sum(r['primary'] for r in unique),'admitted_window30_replies':len(unique),
-        'matched_controls':len(controls),'mode_observations':mode_counts,
+        'matched_controls':len(controls),'control_selection':selection,'mode_observations':mode_counts,
         'engagement_surfaces':{surface:sum((next(iter(labels)) if len(labels)==1 else 'unknown')==surface for labels in user_surfaces.values()) for surface in SURFACES},
         'evaluation_annotations':dict(annotation_counts),
         'candidate_days':[{'date':d,'user_messages':engagement[d],
@@ -421,7 +514,9 @@ def evaluate(rows,controls,candidates,positive):
                         if s[k] is not None and cs[k] is not None:
                             metrics[control['kind']+'_'+k+'_paired_win'].append((day,float(s[k]>cs[k])+.5*(s[k]==cs[k])))
             private.append({'turn_id':r['id'],'day':day,'family':r['family'],'mode':mode,'surface':surface,'percentiles':pct,
-                            'reference_days':reference_days,'reference_turns':len(ref)})
+                            'reference_days':reference_days,'reference_turns':len(ref),
+                            'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine')}
+                                for c in by_reply_controls[r['id']]]})
             fold.append((r,s));status['scored']+=1
         if len(fold)>=2:
             vectors=[r['vector'] for r,s in fold];raw=[s['semantic'] for r,s in fold]
@@ -449,13 +544,15 @@ def evaluate(rows,controls,candidates,positive):
             'evaluation_groups':evaluation_groups(rows,scored)},private
 
 
-def run(bundle,cutoff):
+def run(bundle,cutoff,private_control_matches=None):
     rows,controls,days,positive,coverage=prepare(bundle,cutoff)
+    if private_control_matches is not None:
+        private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine')} for c in controls)
     primary,details=evaluate([r for r in rows if r['primary']],controls,days,positive)
     sensitivity,_=evaluate(rows,controls,days,positive)
     for view,selected in ((primary,[r for r in rows if r['primary']]),(sensitivity,rows)):
         view['per_mode']={mode:evaluate([r for r in selected if r.get('mode','unknown')==mode],controls,days,positive)[0] for mode in MODES}
-    return {'schema':'character-reference-prototype-v2','input_kind':bundle['input_kind'],
+    return {'schema':'character-reference-prototype-v3','input_kind':bundle['input_kind'],
         'reference_status':'candidate_days_not_owner_confirmed','strict_admission_effect':'none','live_effect':'none',
         'encoder_evidence':'supplied_frozen_cache_contract_not_runtime_attestation',
         'encoder_pin':public_encoder_pin(encoder_pin(bundle['encoder'])),
@@ -530,6 +627,8 @@ def render_summary(report):
             if not isinstance(day,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',day):raise ValueError('invalid summary date')
             lines.append('| '+' | '.join((day,count(entry['replies']),*(count(entry['families'][f]) for f in FAMILIES)))+' |')
         lines+=['', '### Mode-specific familiarity and comparisons', '',
+                'Controls require an exact bound supplied provenance review; reviewer claims are not independently authenticated.',
+                'Foreign controls match surface; other-surface controls are his own text elsewhere, not non-him negatives.',
                 'References and controls must match mode; reference replies also match surface. Unknown mode is unscored.',
                 'Pooled family differences are confounded with mode and are omitted here.', '',
                 '| Mode | Admitted / scored | Facet | Mean | 95% interval | Days | Observations |',
@@ -579,12 +678,13 @@ def main():
     with source.open('rb') as f:raw=f.read(64*1024*1024+1)
     if len(raw)>64*1024*1024:raise ValueError('snapshot exceeds prototype limit')
     bundle=decode_snapshot(raw)
-    report,details=run(bundle,args.cutoff)
+    control_matches=[]
+    report,details=run(bundle,args.cutoff,control_matches)
     artifact=inside(root,args.encoder_artifact) if args.encoder_artifact else None
     pin=encoder_pin(bundle['encoder'],observe_encoder_artifact(artifact) if artifact is not None else None)
     report['encoder_pin']=public_encoder_pin(pin)
     out.mkdir(mode=0o700)
-    for name,data in (('aggregate.json',report),('private-evaluation.json',details),
+    for name,data in (('aggregate.json',report),('private-evaluation.json',details),('private-controls.json',control_matches),
                       ('private-run.json',{'input_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':instant(args.cutoff),'encoder_pin':pin,
                         'code_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
                             ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py')}})):

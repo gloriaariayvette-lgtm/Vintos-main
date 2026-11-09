@@ -20,6 +20,12 @@ spec=importlib.util.spec_from_file_location('character_prototype',ROOT/'experime
 P=importlib.util.module_from_spec(spec);spec.loader.exec_module(P)
 
 
+def review_control(item):
+    item['review']=dict(reviewed=True,reviewer='reviewer',link='exact_control',
+        binding_sha256=P.control_review_binding(item),evidence_sha256=P.digest('synthetic reviewed source'))
+    return item
+
+
 def fixture():
     encoder=dict(family='nomic',id='synthetic-frozen',revision='synthetic-revision',pooling='mean',normalization='l2',prefix_chars=400,frozen=True)
     bundle=dict(input_kind='synthetic',timezone='America/Chicago',encoder=encoder,rows=[],embeddings=[],controls=[],feedback=[],mode_observations=[],
@@ -38,7 +44,8 @@ def fixture():
             bundle['historical_attribution']['compute_ledger'].append(dict(at=ts-1,organ='router:fixture',model=model,provider='synthetic',stage='complete',**{'class':'foreground'}))
             bundle['embeddings'].append(dict(reply_sha256=P.digest(text),input_sha256=P.digest(text),context_sha256=P.digest(row['context']),encoder_id=encoder['id'],vector=v,context_vector=[1.,0.]))
             foreign=f'An unrelated synthetic sample {d} for the alternative case {j} appears.'
-            bundle['controls'].append(dict(kind='foreign',mode='opening_everyday',matched_reply_id=tid,content=foreign,context=row['context'],language='en',encoder_id=encoder['id'],input_sha256=P.digest(foreign),context_sha256=P.digest(row['context']),vector=[-1.,0.],context_vector=[1.,0.]))
+            bundle['controls'].append(dict(candidate_id='candidate-'+tid,timestamp=ts,surface='avatar',author='non_subject',kind='foreign',mode='opening_everyday',matched_reply_id=tid,content=foreign,context=row['context'],language='en',encoder_id=encoder['id'],input_sha256=P.digest(foreign),context_sha256=P.digest(row['context']),vector=[-1.,0.],context_vector=[1.,0.]))
+            review_control(bundle['controls'][-1])
             bundle['feedback'].append(dict(reply_id=tid,reply_sha256=P.digest(text),link='exact_reply',witnessed=True,kind='laugh',value='hahaha',timestamp=ts+10))
     return bundle
 
@@ -433,6 +440,112 @@ class Tests(unittest.TestCase):
         report,_=P.run(self.bundle,self.cutoff)
         self.assertEqual(report['coverage']['excluded']['control_mode_unknown_or_mismatched'],2)
         self.assertEqual(report['primary_10s']['metrics']['foreign_semantic_paired_win']['observations'],30)
+
+    def pool(self):
+        self.bundle['control_pool']=self.bundle.pop('controls')
+        for item in self.bundle['control_pool']:item.pop('matched_reply_id')
+        return self.bundle['control_pool']
+
+    def test_pool_selection_is_deterministic_without_replacement_and_outcome_free(self):
+        pool=self.pool()
+        first=P.prepare(self.bundle,self.cutoff)
+        keys=lambda result:[(c['id'],c['candidate_id']) for c in result[1]]
+        self.assertEqual(len(first[1]),32)
+        self.assertEqual(len({c['sha'] for c in first[1]}),32)
+        pool.reverse()
+        for item in pool:item['vector']=[1.,0.]
+        second=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(keys(first),keys(second))
+        self.assertTrue(all(c['vector'][0]==1 for c in second[1]))
+        # Supplied vectors are evaluated only after the context-only assignment.
+        self.assertEqual(first[4]['control_selection']['unused_reviewed_candidates'],0)
+
+    def test_pool_missing_review_or_changed_metadata_is_unknown_not_foreign(self):
+        pool=self.pool()
+        pool[0].pop('review');pool[1]['mode']='intimate';pool[2]['author']='subject'
+        pool[3]['timestamp']=None;pool[4]['review']['evidence_sha256']='bad'
+        pool[5]['timestamp']='2021-01-01T00:00:00Z';review_control(pool[5])
+        _,controls,_,_,coverage=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(len(controls),26)
+        self.assertEqual(coverage['control_selection']['excluded']['unreviewed_or_invalid_provenance'],6)
+        for item in pool:item.pop('review',None)
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertNotIn('foreign_semantic_paired_win',report['primary_10s']['metrics'])
+
+    def test_pool_matches_mode_surface_language_context_and_length(self):
+        pool=self.pool()
+        for item in pool:item['context_vector']=[-1.,0.]
+        pool[0]['context_vector']=[1.,0.];pool[0]['mode']='intimate';review_control(pool[0])
+        pool[1]['context_vector']=[1.,0.];pool[1]['surface']='reelroom';review_control(pool[1])
+        pool[2]['context_vector']=[1.,0.];pool[2]['language']='fr';review_control(pool[2])
+        pool[3]['context_vector']=[1.,0.];pool[3]['content']='short'
+        pool[3]['input_sha256']=P.digest('short');review_control(pool[3])
+        self.assertEqual(P.prepare(self.bundle,self.cutoff)[1],[])
+        pool[1]['kind']='other_surface';pool[1]['author']='subject';review_control(pool[1])
+        controls=P.prepare(self.bundle,self.cutoff)[1]
+        self.assertEqual(len(controls),1);self.assertEqual(controls[0]['kind'],'other_surface')
+        pool[1]['surface']='avatar';review_control(pool[1])
+        self.assertEqual(P.prepare(self.bundle,self.cutoff)[1],[])
+
+    def test_pool_excludes_even_unattributed_input_text_and_refuses_conflicts(self):
+        pool=self.pool()
+        self.bundle['rows'].append(dict(role='assistant',turn_id='unattributed',
+            timestamp='2020-01-20T00:00:00Z',content=pool[0]['content'],surface='avatar'))
+        result=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(result[4]['control_selection']['excluded']['reuses_input_reply'],1)
+        pool.append(copy.deepcopy(pool[1]))
+        self.assertEqual(P.prepare(self.bundle,self.cutoff)[4]['control_selection']['excluded']['duplicate_candidate'],1)
+        pool[-1]['context_vector']=[-1.,0.]
+        with self.assertRaisesRegex(ValueError,'conflicting control candidate'):P.prepare(self.bundle,self.cutoff)
+
+    def test_pool_prefers_context_and_preserves_primary_matches_with_sensitivity_rows(self):
+        pool=self.pool();pool[:]=pool[:1]
+        # A closer context wins independently of the response vector.
+        alternative=copy.deepcopy(pool[0]);alternative['candidate_id']='z-closer'
+        alternative['content']+=' Alternative.';alternative['input_sha256']=P.digest(alternative['content'])
+        review_control(alternative);pool[0]['context_vector']=[.8,.6];pool.append(alternative)
+        self.bundle['historical_attribution']['compute_ledger'][0]['at']-=20
+        _,controls,_,_,_=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(controls[0]['candidate_id'],'z-closer')
+        self.assertNotIn('reply-0-0',[c['id'] for c in controls])
+        # Every selection remains available privately, even with no scorable folds.
+        self.bundle['rows']=[r for r in self.bundle['rows'] if r['role']=='assistant']
+        matches=[];report,_=P.run(self.bundle,self.cutoff,matches)
+        self.assertEqual(len(matches),2)
+        self.assertEqual(report['primary_10s']['status'],{'insufficient_reference_days':31})
+
+    def test_pool_rejects_cache_mismatch_and_mixed_input_paths(self):
+        pool=self.pool();pool[0]['context_sha256']='bad'
+        with self.assertRaisesRegex(ValueError,'encoder/input'):P.prepare(self.bundle,self.cutoff)
+        pool[0]['context_sha256']=P.digest(pool[0]['context'])
+        self.bundle['controls']=[dict(pool[0],matched_reply_id='reply-0-0')]
+        with self.assertRaisesRegex(ValueError,'not both'):P.prepare(self.bundle,self.cutoff)
+
+    def test_paired_controls_also_require_review_and_cannot_reuse_text(self):
+        self.bundle['controls'][0].pop('review')
+        self.bundle['controls'][1]=dict(self.bundle['controls'][2],matched_reply_id='reply-0-1')
+        _,controls,_,_,coverage=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(len(controls),30)
+        self.assertEqual(coverage['excluded']['control_provenance_unreviewed'],1)
+        self.assertEqual(coverage['excluded']['control_reused_text_or_pair'],1)
+
+    def test_pool_cli_exports_counts_only_and_keeps_match_bindings_private(self):
+        pool=self.pool();source=self.root/'input.json';source.write_text(json.dumps(self.bundle));out=self.root/'pool-result'
+        result=subprocess.run([sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+            '--scratch',str(self.root),'--input',str(source),'--output',str(out),'--cutoff',self.cutoff],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        public=(out/'aggregate.json').read_text()+(out/'summary.md').read_text()
+        self.assertNotIn(pool[0]['candidate_id'],public)
+        self.assertNotIn(pool[0]['review']['binding_sha256'],public)
+        self.assertNotIn(pool[0]['content'],public)
+        private=json.loads((out/'private-evaluation.json').read_text())
+        matches=[c for r in private for c in r['control_matches']]
+        self.assertEqual(len(matches),32)
+        self.assertEqual(len(json.loads((out/'private-controls.json').read_text())),32)
+        report=json.loads((out/'aggregate.json').read_text())
+        cells=report['coverage']['control_selection']['by_mode_surface']
+        cell=next(c for c in cells if c['mode']=='opening_everyday' and c['surface']=='avatar' and c['kind']=='foreign')
+        self.assertEqual((cell['admitted_replies'],cell['matched_replies'],cell['unmatched_replies']),(32,32,0))
 
     def test_encoder_pin_keeps_unknown_declared_observed_and_verified_distinct(self):
         encoder=self.bundle['encoder']
