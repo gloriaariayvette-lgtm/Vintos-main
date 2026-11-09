@@ -6489,3 +6489,13 @@ counts. 196 affected isolated checks pass. This does not certify producer origin
 served identity, full source/effect history or delivery, and cannot change witness
 eligibility. Earlier producer branches remain fixed. Full Aegis validation and
 private snapshot census remain with the reviewer; production stays untouched.
+
+
+## 8 November — producer identity coverage counts
+
+`codex/judges-producer-identity-coverage` separates response-reported, unknown,
+missing and malformed served-identity metadata in the optional offline call
+report. 200 affected isolated checks pass. Configured names cannot fill observed
+identity. This does not verify serving weights, complete lineage or change
+eligibility. Independent Aegis review/private census and remaining source/effect
+history/delivery work remain separate; production is untouched.

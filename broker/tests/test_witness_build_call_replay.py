@@ -111,6 +111,42 @@ class Tests(unittest.TestCase):
         next(c for c in calls if c['stage']=='draft_a')['ended_at']=synthesis['started_at']+1
         self.assertEqual(self.report(calls=calls)[0]['dependency_states'],{'consistent':1,'inconsistent_call':1})
 
+    def test_response_reported_identity_counts_never_publish_names(self):
+        summary,_=self.report()
+        self.assertEqual(summary['call_identity_coverage'],{'response_reported':3})
+        for call in self.calls:
+            self.assertNotIn(call['served_model'],json.dumps(summary))
+            self.assertNotIn(call['configured_model'],json.dumps(summary))
+
+    def test_configured_identity_does_not_fill_unknown_or_missing(self):
+        calls=copy.deepcopy(self.calls)
+        calls[0].update(identity_evidence='unknown',served_model=None,configured_model='synthetic-requested')
+        calls[1].pop('identity_evidence');calls[1].pop('served_model')
+        summary,_=self.report(calls=calls)
+        self.assertEqual(summary['call_identity_coverage'],{'unknown':1,'missing':1,'response_reported':1})
+        self.assertEqual(summary['selection_states'],{'consistent':1})
+
+    def test_partial_claimed_and_contradictory_identity_is_malformed(self):
+        changes=[{'identity_evidence':'claimed'}, {'served_model':''}, {'served_model':True},
+                 {'served_model':'x'*257}, {'identity_evidence':'unknown'}, {'response_sha256':None}]
+        for change in changes:
+            calls=copy.deepcopy(self.calls);calls[0].update(change)
+            self.assertEqual(self.report(calls=calls)[0]['call_identity_coverage'],{'malformed':1,'response_reported':2})
+        for field in ('served_model','identity_evidence'):
+            calls=copy.deepcopy(self.calls);calls[0].pop(field)
+            self.assertEqual(self.report(calls=calls)[0]['call_identity_coverage'],{'malformed':1,'response_reported':2})
+
+    def test_failed_call_identity_and_cutoff_do_not_claim_served_result(self):
+        calls=copy.deepcopy(self.calls)
+        calls[0].update(outcome='failed',returned_sha256=None)
+        self.assertEqual(self.report(calls=calls)[0]['call_identity_coverage'],{'malformed':1,'response_reported':2})
+        calls[0].update(identity_evidence='unknown',served_model=None)
+        self.assertEqual(self.report(calls=calls)[0]['call_identity_coverage'],{'unknown':1,'response_reported':2})
+        cutoff=min(c['ended_at'] for c in self.calls)
+        summary,_=R.value_map_build_links(self.builds,self.calls,cutoff)
+        self.assertEqual(summary['call_identity_coverage'],{})
+        self.assertEqual(summary['calls_before_cutoff'],0)
+
     def test_cli_opt_in_preserves_census_and_private_output_manifest(self):
         reports=[]
         for enabled in (False,True):

@@ -966,3 +966,19 @@ states stay in `private-value-map-links.json` (0600), hashed in the existing run
 manifest. With no calls key the previous reports/output set remain unchanged.
 Neither producer records nor this report are admitted as chat turns; lineage and
 census/innovation/behaviour decisions are untouched.
+
+
+### Producer identity coverage is separate from linkage
+
+The optional build/call report also counts identity coverage over unique completed
+call receipts strictly before the cutoff. response_reported requires a returned
+outcome, explicit response_metadata identity evidence, a nonblank bounded served
+name and a well-formed response hash. It describes what the server reported, not
+independently verified weights or authenticated origin.
+
+Explicit unknown plus a null served name remains unknown. Both identity fields
+absent is missing; partial, contradictory, claimed, malformed or failed-outcome
+identity claims are malformed. Configured names never fill any gap. The aggregate
+contains category counts only, never served/configured names. Link consistency
+and identity coverage are independent: one cannot rescue the other or complete
+ancestry. Existing witness admission and live feeds remain unchanged.

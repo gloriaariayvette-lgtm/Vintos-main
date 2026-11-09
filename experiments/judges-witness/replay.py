@@ -193,6 +193,26 @@ def value_map_build_links(builds, calls, cutoff):
                 and clock(call["ended_at"]) < cutoff)
         return "consistent" if good else "inconsistent_call"
 
+    # Count the explicit response identity separately from link consistency.
+    # Configuration, text hashes and shared build IDs never supply identity.
+    identities = Counter()
+    for call in by_call.values():
+        if clock(call["ended_at"]) >= cutoff:
+            continue
+        if "served_model" not in call and "identity_evidence" not in call:
+            state = "missing"
+        elif "served_model" not in call or "identity_evidence" not in call:
+            state = "malformed"
+        elif call["identity_evidence"] == "unknown" and call["served_model"] is None:
+            state = "unknown"
+        elif (call["outcome"] == "returned" and call["identity_evidence"] == "response_metadata"
+              and isinstance(call["served_model"], str) and call["served_model"].strip()
+              and len(call["served_model"]) <= 256 and hashed(call.get("response_sha256"))):
+            state = "response_reported"
+        else:
+            state = "malformed"
+        identities[state] += 1
+
     selections, dependencies, details = Counter(), Counter(), []
     for key, build in sorted(by_build.items()):
         if clock(build["ended_at"]) >= cutoff:
@@ -211,6 +231,7 @@ def value_map_build_links(builds, calls, cutoff):
     return ({"scope": "explicit_build_call_consistency_only", "admission_effect": "none",
              "builds_before_cutoff": len(details),
              "calls_before_cutoff": sum(clock(c["ended_at"]) < cutoff for c in by_call.values()),
+             "call_identity_coverage": dict(sorted(identities.items())),
              "selection_states": dict(sorted(selections.items())), "dependency_states": dict(sorted(dependencies.items()))}, details)
 
 

@@ -1071,3 +1071,25 @@ Installed Python 3.12 is used for actual builder fixtures; no installs or model
 calls. Reports regenerated; whitespace checked. No private-input run, real test
 send, live write, merge or deploy. Independent Aegis full suite/private census
 remain with the reviewer; producer history and trusted delivery remain open.
+
+
+## 8 November — explicit producer identity coverage in replay
+
+`codex/judges-producer-identity-coverage` continues from 5f10dc3a with earlier tips
+fixed. The optional build/call diagnostic now counts response_reported, unknown,
+missing and malformed identity evidence separately from link consistency. Only
+returned outcomes with explicit response metadata, a bounded nonblank served
+name and a response digest count as response-reported. Configured names never
+fill gaps; failed-result identity claims stay malformed. Aggregate output contains
+no model names. This is reported metadata, not verified weights or source origin.
+
+200 affected isolated checks pass: build/call replay 15, write/read 11, builds 11,
+calls 9, context 10, auxiliary inputs 9, view receipts 9, capture/replay 9, witness
+106 and ownership 11. Added cases cover unknown/missing configuration-only
+identity, partial/claimed/contradictory fields, blank/oversized/nonstring names,
+missing response hashes, failed outcomes and the exclusive cutoff. Actual
+producer fixtures remain synthetic and use installed Python 3.12; no installs.
+Reports regenerated; whitespace checked. No private input, model/paid call, real
+test send, live write, merge or deploy. Full Aegis review/private census remain
+with the reviewer. Linkage, ancestry and admission do not gain eligibility from
+these coverage counts.
