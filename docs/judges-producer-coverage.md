@@ -243,3 +243,19 @@ forecast and context-clock string. Unknown source clocks remain unknown; this is
 exchange timing, not finalization or authenticated origin. The old forecast/input
 receipt shapes remain unchanged. Replay consumption and production enablement are
 separate; no historical conversion or live-data measurement is included.
+
+## Implementation follow-up: private self artifacts
+
+On-message forecasts now retain a same-byte checkpoint metadata/hash observation
+and already computed recent-own feature vectors in the optional private sink.
+Anchored self ranking audits retain existing encoded self-text inputs, including
+all bounded source references for prefix collisions. No extra encoder invocation,
+new schedule or change to forecast/audit output. Other-head instrumentation is not
+added. See the replay README's private artifact contract.
+
+Coverage remains explicit: selected recent-own vectors and audit-encoded inputs,
+not every finalized target. The current ranking adapter drops turn IDs; those stay
+null. Training completion and encoder-weight identity are unobserved; file dates
+and configured labels do not fill them. Replay promotion/final-version joins and
+prefix-versus-full-target comparability remain open. Production enablement and full
+Aegis validation remain separate review steps.

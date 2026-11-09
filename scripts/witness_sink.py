@@ -16,7 +16,7 @@ MAX_FILES = 4096
 MAX_PACKET = 1024 * 1024
 RETENTION = 7 * 86400
 RESERVE = 8192  # Lock, status and one atomic status replacement.
-PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-clock-')
+PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
 
 

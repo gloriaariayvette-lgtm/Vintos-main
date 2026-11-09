@@ -6596,3 +6596,18 @@ are unchanged. The reviewer owns the corrected private census rerun and full Aeg
 suite. No historical training admission is decided here; descriptive per-model
 checks can use labelled tiers. Dedicated sink review/enablement and checkpoint /
 target-embedding retention remain separate, with retention next per note 25.
+
+## 9 November — private self artifacts retained, identity joins still open
+
+`codex/judges-self-artifact-retention` adds optional same-byte checkpoint metadata
+and existing self feature/audit-vector retention. 241 affected isolated checks pass;
+no weights, new model calls or changed scores/feeds. Private retention is bounded
+by the existing disabled sink. Full Aegis validation/review remain with the reviewer.
+
+Still open: retain source IDs before the ranking adapter drops them; bind each
+normalized/excerpt vector to its exact finalized reply without timestamp guessing;
+establish explicit encoder-weight identity and training-completion evidence; make
+any replay adapter respect those limits and prefix-versus-full-target semantics.
+No historical fields are fabricated and no strict scoring holds are relaxed.
+Historical attribution census rerun and production capture enablement remain
+separate reviewer/owner steps.

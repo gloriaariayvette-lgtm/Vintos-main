@@ -1055,4 +1055,23 @@ def publish_self_forecast(scope, row):
                         "context_clock": scope["context_clock"], "boundary": "forecast_log_close",
                         "durability": "unconfirmed", "source_identity": "unverified"}
         _publish_private(root, clock_packet, "self-forecast-clock-")
+    if matched and scope.get("artifacts") is not None:
+        artifact_packet = {"schema": "self-forecast-artifacts-v1", "forecast_row_sha256": packet["forecast_row_sha256"],
+                           "forecast_at": made, "arrived_at": arrived, "boundary": "forecast_log_close",
+                           "durability": "unconfirmed", "artifacts": scope["artifacts"]}
+        _publish_private(root, artifact_packet, "self-forecast-artifacts-")
     return published
+
+
+def self_artifact_capture_enabled():
+    scope = _self_forecast_scope.get()
+    return scope is not None and _private_root(scope["root"]) is not None
+
+
+def observe_self_artifacts(exchanges, bank, model, forecast):
+    scope = _self_forecast_scope.get()
+    if scope is None or scope.get("observations") != 1 or scope.get("inputs") is None:
+        return
+    from witness_self_artifacts import forecast_artifacts
+    artifacts = forecast_artifacts(exchanges, bank, model, forecast)
+    _self_forecast_scope.set(dict(scope, artifacts=artifacts))

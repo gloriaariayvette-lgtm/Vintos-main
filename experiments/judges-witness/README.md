@@ -1282,3 +1282,50 @@ sensitivity checks. This increment makes **no training admission decision** and
 changes no existing strict holds, behaviour/innovation scores or live feed. The
 reviewer and Gloria still decide any historical character-training contract; that
 contract must also handle provenance, final-version conflicts and duplicate turns.
+
+### Private self-readout artifact retention
+
+The optional sink now accepts `self-forecast-artifacts-v1` and
+`self-audit-embedding-v1` packets. This is retention of existing computation, not
+an additional evaluation, encoder invocation, training job or scoring admission.
+The sink is still off unless explicitly configured/enabled. Its existing private
+permissions, retention, caps and disable behavior apply to both packet prefixes.
+
+At a scoped on-message forecast, a bounded checkpoint snapshot is parsed from the
+same bytes whose hash is retained. The existing returned checkpoint ID must match
+that snapshot or no artifact packet is bound to the saved forecast. Publication
+follows the existing exact-row/input binding after forecast-log close. An oversized
+snapshot falls back to ordinary loading without retention. No weights are copied.
+The packet keeps a metadata digest, byte count, source/mode and **reported** fitting,
+calibration and encoder-label fields. Reported dates are not a training-completion
+receipt; file mtime is never substituted. `trained_at` and `encoder_id` remain null,
+with training-completion and encoder-weight identity explicitly unobserved.
+
+The same packet retains the last-six own-reply feature vectors already computed by
+the readout, including their exact input hash, normalized full-reply hash, observed
+source ID when present and first-400-codepoint transform. These may cover earlier
+forecast targets as later conversation arrives; they do not cover every target or
+prove a final reply version. Missing IDs remain missing. The prediction row itself
+is unchanged. No additional encoder call is made.
+
+The existing anchored **self** ranking audits also retain their already computed
+vectors for matching self-text inputs. The wrapper returns the encoder's exact
+result and propagates its original errors; retention failures are swallowed. Each
+packet declares `ledger_vintos_strip_first_400_codepoints`, includes all bounded
+matching source-row/full-text hashes, and never chooses a target from a prefix
+collision. It records `target_selection: unasserted`: these inputs include candidates
+and controls, not only realized targets. The current `realized_ledger` adapter drops
+turn IDs, so its missing IDs remain null rather than being inferred from timestamps.
+The other head uses the original encoder directly and is not instrumented here.
+Duplicate inputs are retained once per audit invocation; later invocations can
+produce duplicates, subject to the sink's existing cap/expiry. No new schedule.
+
+These private packets deliberately are **not** automatically promoted into replay's
+`checkpoints` or `embeddings` fields. That would erase the difference between a
+normalized/truncated audit input and an exact final reply, and would invent missing
+training/encoder provenance. Next integration must bind original reply versions and
+explicit encoder identity, reconcile prefix versus full-target metrics, and retain
+unknowns. The legacy scoring/reporting path is unchanged, including its existing
+mtime-based cutoff; that cutoff is not copied into the new provenance observation.
+No historical accuracy or complete retention claim is made. All packets/vectors and
+source IDs stay private; only synthetic fixtures and aggregate checks belong in Git.

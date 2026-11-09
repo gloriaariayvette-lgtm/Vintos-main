@@ -1369,3 +1369,33 @@ with the reviewer. Historical model-switch stratification is recommended with ti
 and matching methods labelled; character-training admission is not changed. The
 separate sink remains disabled and in review; checkpoint/target retention is next.
 No live write, model/paid call, real test send, merge or deployment.
+
+## 9 November — private self artifact retention
+
+`codex/judges-self-artifact-retention` continues above the submitted historical
+attribution tip. The guarded on-message path retains checkpoint metadata from the
+same bounded bytes it parses and the already computed last-six own-reply feature
+vectors, bound to the exact saved forecast. A mid-forecast checkpoint replacement
+cannot bind the wrong snapshot. Existing anchored self ranking audits retain their
+already computed self-text vectors and all bounded source references for prefix
+collisions. The encoder return object and existing scores are unchanged; no new
+model call, schedule or other-head hook. Both private packet types use the existing
+optional sink, off by default. No weights are copied.
+
+Reported training/calibration dates and encoder labels are kept as reported;
+training completion and encoder-weight identity remain unknown. Current audit rows
+have lost turn IDs and use 400-character excerpts. These artifacts are therefore
+retained without being silently promoted into strict replay evidence or full-reply
+vectors. Final-version joins, explicit encoder provenance and target-transform
+comparability remain open. This is not an accuracy result or complete-retention
+claim. The historical private census remains with the reviewer.
+
+241 affected isolated checks pass: artifacts 16, self input receipts 15, source
+clocks 12, forecast clocks 9, sink 19, capture 27, hooks 21, capture/replay 9,
+self on-message 32, self source 39, readout 5, ranking 26, ownership 11. The first
+regression run exposed an optional-hook absence outside a try boundary; fixed and
+the failure case/new artifact suite rerun successfully. A nested sandbox launch
+was initially refused; the authorized outer runner then executed the isolated
+suite normally. Required reports regenerated; whitespace clean. Full Aegis suite
+and independent review remain with the reviewer. No live writes, real test sends,
+model/paid calls, merge, deployment or capture enablement.
