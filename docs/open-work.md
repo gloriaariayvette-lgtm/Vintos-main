@@ -7428,3 +7428,39 @@ merge or deployment. Full suite/private character4 investigation stays with Clau
 The latent-feed full-suite-interaction hypothesis is still unconfirmed: the earlier
 50-run pass did not identify a root cause. Exact pushed tip is in the coordination
 reply. Heartbeat ACTIVE; no completion/routine notification.
+
+
+## 2026-11-09 11:34 CST — witnessed humor and textual taste (#45)
+
+Added experiments/nonllm-judges/witnessed_facets.py on
+codex/judges-witnessed-humor-taste above 85ec09076ea4628fe069405dded620b65d9b3f08.
+Humor accepts only owner haha-plus reactions exactly joined to the adjacent exchange
+or exact joke ID/hash-bound 4–5 star practice ratings. Unknown/lower/unrated outcomes
+never become negative labels. Duplicate observations cannot multiply positive acts;
+conflicting reaction adjacency refuses. Original-act lineage and cached-feature
+provenance checks are reused, including indirect influence exclusion.
+
+References share mode, surface and item kind. Both reference acts and observed
+positive feedback must predate the entire target local day. Two or three positive
+days produce similarity only, with no empirical calibration and an abstain status;
+four days permit the reused held-out rank. Coverage exposes total supplied positive
+acts/days and actual available references per scope. A synthetic three-positive case
+shows the sparse limit; no real positive records were read or copied. Similarity
+never promotes itself to an anchor and never claims probability of success.
+
+Taste source verified in code: scripts/landings.py record (line 185) via
+bin/server_domains/landings.py POST /api/landings. Only exact-bound landed ratings
+anchor this variant. It accepts textual messages/jokes/journals; image/song/video
+caption features remain unsupported. The private Landings store is never read,
+imported or wired into his context. No suitable aesthetic-save source was verified;
+call transcript saves and generated taste profiles are not substituted. This is
+familiarity to owner-positive examples, not a measurement of his own taste.
+
+126 isolated checks pass: new facets 20, reused voice/drift 23, character-reference
+72, ownership 11. Logs: /tmp/judges-humor-taste-tests.log,
+/tmp/judges-facet-voice-tests.log, /tmp/judges-facet-character-tests.log and
+/tmp/judges-facet-owners.log. Required reports regenerated unchanged; diff clean.
+Source/owner/adjacency/cache claims remain explicitly unauthenticated by the offline
+prototype. No private reader, new model/encoder/provider call, live write, model swap,
+GPU, merge or deployment. Full review/suite/private evaluation remains with Claude.
+Exact pushed tip is in the coordination reply; heartbeat ACTIVE.

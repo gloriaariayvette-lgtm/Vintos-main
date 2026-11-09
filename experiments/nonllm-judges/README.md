@@ -5,7 +5,8 @@ suggestions**, **voice familiarity with abstention**, and **sustained drift with
 explicitly reviewed reference epochs**. They have explicit numerical targets and can be tested without
 reading private messages, running an encoder, or evaluating the system's identity.
 They do not replace any current judge, author a thread, consume a thread, score a
-person, nudge emotion, or change a feed. No runtime module imports this directory.
+person, nudge emotion, or change a feed. No runtime module imports this directory. The witnessed-humor/taste extension below
+adds positive-outcome familiarity facets on top of these components.
 
 The original inventory responds to note #42; the voice/drift extension responds to
 note #44. The inventory source baseline is review tip
@@ -277,3 +278,138 @@ updates, duplicate/stale/unbound/automatic adoption refusal, indirect influence,
 feature binding, sparse/unknown coverage, invalid vectors and aggregate privacy.
 Run via `python3 scripts/run_isolated_test.py broker/tests/test_nonllm_voice_drift.py`.
 These fixtures demonstrate mechanics, not real voice accuracy or a false-alarm rate.
+
+## Witnessed humor and taste facets (note #45)
+
+`witnessed_facets.py` adds an in-memory positive-outcome facet. It reuses the
+voice/character cached-feature and distance functions above. There are no file
+loaders, private store imports, provider calls, new embeddings or runtime effects.
+The caller supplies synthetic fixtures here; any later private application belongs
+to the separately authorized reviewer. No output is wired into wants or prompts.
+
+### Sources and what counts as an outcome
+
+The humor facet accepts exactly two outcome sources:
+
+- `adjacent_exchange`: an owner reaction containing a standalone `haha` or a longer
+  `hahaha` run, case insensitive. Its normalized receipt must bind the exact target
+  ID/content hash and reaction ID/content hash in the same exchange, with reaction
+  index exactly target index + 1. Time proximity, an unjoined laugh, an agent's
+  laughter, or a reused reaction assigned to a different target cannot substitute.
+  This follows the positive marker in
+  [character-reference feedback handling](../character-reference/prototype.py),
+  adding the explicit adjacency contract. The marker is observed reception evidence,
+  not proof of causality, intent, quality or that laughter was sincere.
+- `humor_practice`: an explicit owner 4–5 star rating bound to an exact joke ID and
+  full content hash. The source is
+  [rate_humor in bin/server.py](../../bin/server.py) (line 5884), which stores
+  `gloria_ratings` with `joke_id`, `gloria_rating` and `timestamp` in the humor profile.
+  [humor_practice.py](../../bin/humor_practice.py), `_rating_for` (line 482), consumes
+  this source. Its production legacy prefix fallback is **not** accepted here.
+  Stored joke text may be truncated to 150 characters; a private normalizer would
+  need the exact bound draft to establish the complete content hash. Missing IDs,
+  naive timestamps without an explicit reviewed timezone, or truncated-only records
+  remain unavailable. Self-ratings and generated craft judgments are not anchors.
+
+The taste variant has an actual explicit rating source in the repository:
+[Landings `record`](../../scripts/landings.py) (line 185), served by
+[POST /api/landings](../../bin/server_domains/landings.py) (line 40). It records
+`surface`, `ref`, `rating`, the owner's explanation and frozen context. Its ratings
+are `landed`, `partly`, `missed`; only exact-bound **`landed`** counts as a witnessed
+positive here. A normalizer must bind the rated piece to its original act and full
+text, rather than infer a match from a title or nearest timestamp. The private
+Landings store is deliberately outside his workspace and barred from his context
+builders. **This prototype never opens it or adds a reader.** It accepts normalized
+synthetic records in memory; any future adapter would require separate authorization
+and must preserve that store's privacy boundary. No owner's rating or words are fed
+back to him by this change.
+
+This first taste variant covers **textual messages, jokes and journal entries**.
+Images, songs and videos remain explicitly unsupported: a text caption embedding is
+not a representation of the artwork. The repository's taste profile/reflection
+outputs are generated interpretations, not owner outcome anchors. The call-save API
+saves a transcript to memory; it does not establish aesthetic liking. No appropriate
+explicit aesthetic-save source was verified in this bounded source inspection, so
+no save signal is invented. This measures familiarity to her witnessed-positive
+examples; it does not claim to measure his own taste or authorize want formation.
+
+Every other outcome is **unknown, never negative**: silence, absence of a rating,
+`ha`, non-laughter text, fewer than four stars, `partly`, `missed`, or an unsupported
+source. There is no failure-label training, negative centroid, auto-anchor promotion
+from similarity, or success-rate denominator over unrated works. Later lower ratings
+also do not erase a historically witnessed positive; current preference change and
+explicit revocation would need a separate contract. Positive counts describe supplied
+observations, not exhaustive store coverage or a live inventory.
+
+### Exact normalized input
+
+Call `analyze(events, nodes, features, encoder, items, attempt_ids, anchors, cutoff,
+facet='humor', zone='UTC')`. Use the original-act, full-lineage and exact cached-feature
+contracts above. `items` is a bounded list of `{node_id, kind}`; `attempt_ids` explicitly
+names the attempts to inspect. The prototype never guesses that a message was an
+attempt at humor. Item kinds are message, joke, journal, image, song, video; unsupported
+kinds are counted as such. Humor accepts message/joke; taste accepts the three text
+kinds. Known mode, surface and item kind must all match the positive reference.
+
+An anchor has exactly these fields:
+
+- `evidence_id`, `node_id`, `content_sha256`, `source_record_sha256`;
+- `actor: owner`, `witnessed: true`, explicit offset-aware `observed_at`;
+- `source`, `value`, and `link`.
+
+Adjacent-exchange links contain `kind: adjacent_exchange`, `exchange_id`, `target_id`,
+`target_sha256`, `reaction_id`, `reaction_sha256`, `target_index`, `reaction_index`.
+`value` is the bounded reaction text. Exact-item links contain `kind: exact_item`,
+`item_id`, `item_sha256`, `item_kind`; value is the star rating or the Landings enum.
+The source record hash binds the claimed observation, but the prototype does not
+independently authenticate that record, owner identity, adjacency or encoder cache.
+The private adapter must supply that evidence; synthetic receipt claims alone are
+not production proof. Repeated identical observations are deduplicated, conflicting
+observation IDs or reaction joins refuse, and several anchors on one act still yield
+one positive reference act. All observations must occur after the original act and
+before cutoff. The explicit actor must be the owner; text saying she liked something
+is not a substitute for her outcome.
+
+### Score and sparse coverage
+
+For each attempt, reference acts **and their positive outcomes** must predate the
+attempt's local calendar day. The entire target day is held out. This conservative
+past-only leave-one-day-out rule prevents a later laugh/rating from leaking backward
+into a target score. Reference scope is mode + surface + item kind; it never pools
+intimate with everyday, voice with chat, or practice jokes with ordinary messages.
+Mode provenance remains available through the reused preparation contract. Family
+rules are historical assumptions, not independent evidence; there is no family
+comparison or reference-adoption action here.
+
+With fewer than two distinct eligible positive act days, similarity is absent and
+status is `insufficient_positive_days`. With two or three days, the prototype reports
+only semantic/style/joint **positive familiarity**, each one minus the distance
+defined above, and keeps the empirical score absent with `band_location: abstain`.
+Four or more days permit the same day-equal held-out empirical rank and inclusive
+[0.2,0.8] abstain band as the voice prototype. Reference days contribute equally to
+centroid/style construction; each act occurs once regardless of duplicate anchors.
+A score is familiarity to a small observed-positive set, not P(funny), P(liked), a
+character verdict, a correctness judgment or a demonstrated calibrated probability.
+
+Coverage reports total supplied positive acts and days, positive observation days,
+known source counts, unknown/excluded observation counts, and actual available
+reference acts/days for each requested scope. Thus three total positives may provide
+zero references in a given mode/surface, and three acts on one day provide only one
+reference day. The synthetic three-positive fixture explicitly has no empirical
+calibration. Claude's reported current three positives are not copied into fixtures
+or treated as a measured result of this code. No private data was read.
+
+Return values are `(aggregate_report, private_receipts)`. Aggregate output includes
+only fixed scope labels, counts and mean familiarity. Dates, turn/source IDs, content
+hashes, reference membership, raw text and vectors remain out of it. The private
+receipts retain exact reference acts, the eligible evidence observation, mode/surface,
+reference version, target day and score status. A target's own later positive outcome
+may be shown descriptively at cutoff but never influences its calculated score.
+
+`broker/tests/test_witnessed_humor_taste.py` uses synthetic text and vectors for
+adjacency, owner/role, ratings, temporal leakage, duplicate/conflicting evidence,
+mode/surface/item splits, sparse coverage, no-negative semantics, unknown features,
+indirect influence, textual taste and unsupported media, and aggregate privacy.
+Run with `python3 scripts/run_isolated_test.py broker/tests/test_witnessed_humor_taste.py`.
+No model is served and no fallback occurs; runtime model attribution is not inferred
+from an encoder name. Actual production call savings remain zero.
