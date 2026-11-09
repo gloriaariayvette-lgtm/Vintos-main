@@ -1150,3 +1150,41 @@ These are consistency diagnostics, not authenticated source identity, complete
 capture, reply finalization, witness admission or a scoring-protocol change. The
 raw-source hash cannot be independently reconstructed from these sidecars alone.
 The separate producer remains scratch-only; this option does not enable it.
+
+### Private review formatter
+
+`report.py` turns one completed replay's aggregate into a bounded Markdown review.
+It does not collect, encode, score or rerun the census. It reads only `aggregate.json`
+and `private-run.json` from the explicit run directory; it does not read the input
+bundle, message stores, private per-turn outputs, vectors or checkpoints.
+
+With `SPARK_WORKSPACE` already set to the same private scratch root used for replay:
+
+```sh
+python3 experiments/judges-witness/report.py \
+  --scratch "$SPARK_WORKSPACE" \
+  --run "$SPARK_WORKSPACE/replay-output" \
+  --output "$SPARK_WORKSPACE/review-output"
+```
+
+The output must be a new sibling/separate directory, never inside or above the run.
+The existing offline guard prohibits subprocesses, network and writes outside that
+new directory. `review.md` and `private-render.json` are 0600 in a 0700 directory.
+The latter binds the aggregate, supplied replay manifest, renderer and review bytes.
+The formatter verifies aggregate hash/size and the supplied manifest fingerprint,
+not the original input, reviewed scoring checkout or other outputs. This limited
+check is stated in the report; it is not independent verification of the run.
+
+Only fixed prose and validated numerical fields are rendered. Arbitrary source
+labels, reasons, identities, dates, text and added fields are not copied. Synthetic
+and retained-snapshot input kinds remain distinct. Per-copy evidence coverage is
+separate from unique admitted replies; unconfigured, empty and unscorable outcomes
+are distinct. Behaviour groups and checkpoint/block comparisons remain separate.
+Full-reply and observed-excerpt controls never combine. A comparison reports the
+three errors on its paired targets without a confidence interval or pass claim.
+A zero-eligible run is explicitly insufficient, not zero error or proof of absence.
+
+This is report scaffolding, tested on synthetic runs. It can format the reviewer's
+counts-only snapshot result without changing that result or enabling any live feed.
+No real-data report is bundled. Keep generated reports private until aggregate
+publication has been reviewed; the formatter does not publish anything.

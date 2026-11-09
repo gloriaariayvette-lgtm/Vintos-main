@@ -6560,3 +6560,12 @@ sidecars against exact forecast rows and emits aggregate consistency diagnostics
 source identity, complete ancestry and delivery remain unresolved where missing.
 The approved private census is ready with the reviewer and is not duplicated or
 blocked by this newer work. Full Aegis suite/review remain there; no live changes.
+
+## 8 November — shadow review report scaffolding
+
+`codex/judges-shadow-review-report` adds a private offline formatter for measured
+replay aggregates, requested in coordination note 22. 165 affected isolated checks
+pass. It does not rerun the census, infer missing observations or make a pass claim.
+The reviewer is running the real snapshot census; its measured coverage is still
+pending for the actual shadow report. Full Aegis validation/review remain there.
+No feed or production change; generated reports stay private until reviewed.

@@ -1269,3 +1269,29 @@ Required reports regenerated. No production or scoring change, paid/model call,
 real test send, private census rerun, merge or deploy. The reviewer owns the ready
 private census on approved 4a8fc11e and the full Aegis suite; this work does not
 hold up that run. Earlier submitted branch tips remain fixed.
+
+## 8 November — shadow review report scaffolding
+
+`codex/judges-shadow-review-report` follows coordination note 22 while the reviewer
+runs the private census. New offline `experiments/judges-witness/report.py` formats
+one explicit replay aggregate with its supplied run receipt. It checks aggregate
+bytes/hash/size and the manifest fingerprint, clearly distinguishing that from
+verification of the original input, scoring checkout or other outputs. It reads
+no per-turn data and never reruns the census. Both output files are private and
+written only to a new separate scratch directory; no network or subprocesses.
+
+The numerical projection omits arbitrary labels, strings, dates and identifiers.
+It distinguishes per-copy coverage from unique eligible replies, unconfigured
+scope from an empty scope, and missing forecasts from zero innovation. Behaviour
+and checkpoint/block groups stay separate; paired full-reply and excerpt controls
+remain distinct, without pooled scores, intervals or a pass verdict. Zero eligible
+observations produce an explicit insufficient outcome. Real results are pending
+with the reviewer, not reconstructed or fabricated here.
+
+165 affected isolated checks pass: formatter 15, witness 106, baseline coverage 13,
+excerpt controls 20 and ownership 11. Actual synthetic replay-to-formatter tests
+cover empty and populated runs, privacy projection, inconsistent counts, invalid
+numbers, manifest/output tampering, scratch/symlink/no-overwrite rules and private
+permissions. Reports regenerated. No model/paid call, actual test send, live write,
+merge or deployment. Previous submitted tips remain fixed; full Aegis suite and
+private census remain with the reviewer.
