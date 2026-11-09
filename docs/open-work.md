@@ -7535,3 +7535,41 @@ regenerated unchanged; diff clean. Full Aegis suite, test merge and private-copy
 remain with the reviewer. No private data, new model/provider call, GPU, model swap,
 live write, merge or deployment. Exact branch/path/pushed tip in coordination reply.
 Heartbeat ACTIVE; no completion/routine notification.
+
+
+## 2026-11-09 12:44 CST — private cache producer (#49)
+
+Note #49 resolves the producer-location question: character caches were made in
+the reviewer's private run, not by any live cache. Added the separately invoked
+experiments/character-reference/encode_cache.py on codex/judges-private-cache-producer
+above b998be9d. No shared HTTP/self-head/present-moment cache or reply path changed.
+
+Explicit GGUF is copied exclusively to a new 0700 scratch output directory, fsynced,
+made 0400, hashed there and stamped with actual copy-completion time. Only the copy
+is loaded by the installed in-process local embedding runtime. Full hash checks
+around load and after encoding, plus file identity/change-time checks around every
+call, refuse mutated/replaced/restored-but-touched copies. CPU offload disabled; no
+download or subprocess fallback. Exact full reply/context strings, no prefix or token
+truncation; flat finite nonzero vectors normalized to L2. Pooling is caller-explicit.
+Runtime package version/settings and exact per-input encoding clocks are private.
+Native backend version stays unknown; Python audit is not a native-code OS sandbox.
+
+Produces fresh character-input.json, cache.json, directly consumable
+encoder-cache-metadata-v1 cache-metadata.json and counts-only counts.json (0600).
+New encoder ID binds artifact/runtime/settings. All source rows/provenance/merge
+fields retained, original inputs/cache untouched. Existing outputs/copies, symlinks,
+repository/live paths, old numerical evidence and nonempty control caches refused.
+Errors and native output cannot expose private paths through ordinary CLI output.
+
+Migration: no metadata backfill or vector relabelling. Real copy time may follow
+historical reply times; builder/numerical freeze-before-act gates stay intact.
+Fresh historical encoding therefore remains unscored under that prospective gate.
+README explicitly separates that limitation from a retrospective-policy decision.
+
+135 isolated synthetic checks pass: producer 19, builder 15, character 72, runner 18,
+ownership 11. Logs /tmp/judges-cache-{producer,builder,character,runner,owners}-tests.log.
+Required reports regenerated unchanged; diff clean. Stub encoders/tiny synthetic file
+bytes only; no actual model, real GGUF, package install, private record, GPU, provider
+call, live write, merge or deployment. Real runtime compatibility/private execution
+belongs to the reviewer. Exact pushed commit/path/branch in coordination reply.
+Heartbeat ACTIVE; no resumed/completion notification.

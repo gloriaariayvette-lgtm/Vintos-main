@@ -632,3 +632,11 @@ need not sum to the reply count. Private output retains input/code fingerprints 
 original serving evidence; the importer itself records no served model/fallback
 because it makes no such call. Neither missing evidence nor unjoined attempts are
 negative outcomes. Synthetic validation is not evidence of historical coverage.
+
+The repository-owned producer `../character-reference/encode_cache.py` now writes
+`encoder-cache-metadata-v1` directly, with exact full strings, a copied GGUF hash,
+copy-time freeze, runtime/settings and per-input clocks. Use its freshly generated
+`character-input.json` alongside `cache-metadata.json`; do not attach fresh metadata
+to old vectors. See the character-reference README for private execution and migration.
+This does not remove the builder's freeze-before-reply gate: fresh encoding of older
+replies reports `missing_invalid_or_late_freeze`, without historical backfill.
