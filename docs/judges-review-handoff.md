@@ -447,3 +447,36 @@ file permissions/code binding and exact unchanged nonempty census/innovation.
 An initial test used the wrong existing run-manifest filename; corrected to
 `private-run.json`. Generated reports refreshed. No runtime producer changes,
 private records, model calls, live writes, enabling, merge or deployment.
+
+
+## 9 November — compare retained partial runtime settings
+
+`codex/judges-runtime-comparison` descends from 5283d12b. Existing artifact replay
+now adds `runtime_consistency` beside the unchanged call-argument/parameter/vector
+axes. It compares the optional stored-runtime snapshots already retained in
+forecast and audit encoding receipts, within the existing exact content/checkpoint
+groups. The review renderer validates and projects fixed counts only. No new
+capture, model load, encoder call or runtime producer behavior is added.
+
+States distinguish changed during a call, different partial snapshots across
+calls, incomplete evidence, a single call and matching partial snapshots. Observed
+differences survive missing peers. Matching requires every reference to have an
+observed equal before/after pair and at least two distinct invocation markers.
+Copies of one invocation do not establish repeatability; different checkpoints
+remain separate. Legacy receipts/reports stay incomplete/unavailable. Unbound
+sources do not enter these content-group counts.
+
+The fingerprints remain partial: selected stored fields and loaded versions are
+observed; tokenizer content, executable code, deeper runtime state, fitting and
+source authenticity are not established. Equal outputs/arguments/parameters do
+not hide a runtime difference, and equal partial snapshots do not establish full
+encoder identity. No census, content admission, forecast selection or innovation
+score changes. Real-host cost and the remaining evidence/integration work stay open.
+
+187 isolated checks pass: runtime comparison 12, artifact joins 30, review report
+22, encoder costs 14 and census/innovation 109. Tests cover differing snapshots
+with identical vectors/arguments/parameters, missing peers, changed boundaries,
+legacy/unavailable data, duplicate and invocation semantics, cross-representation
+comparison, checkpoint partitioning, public-field validation and actual scratch
+CLI parity for census/innovation. Generated reports refreshed without changes.
+No private input, live writes, model calls, enabling, merge or deployment.

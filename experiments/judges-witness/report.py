@@ -142,6 +142,16 @@ def artifact_coverage(section, eligible):
             if not isinstance(values, dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != groups: invalid()
             timing += [f'- Encoding consistency {axis} {label}: {count(values.get(label, 0))} groups.' for label in labels]
         timing += ['', 'Each axis counts exact content groups independently, before representation-conflict classification. Differences remain visible with incomplete peers; matching requires every reference and at least two distinct call markers. Raw outputs are compared only through validated call receipts, never by converting legacy vectors. Matching is partial evidence, not encoder identity, forecast-target selection or scoring permission.', '']
+    if 'runtime_consistency' in section:
+        from witness_artifact_join import validate_runtime_consistency, RUNTIME_CONSISTENCY_STATES
+        runtime=section['runtime_consistency']
+        expected_groups=section.get('encoding_consistency',{}).get('groups')
+        validate_runtime_consistency(runtime,full+excerpt+conflicts+mixed+unobserved,expected_groups)
+        timing += [f'- Stored runtime content groups: {runtime["groups"]}; references: {runtime["references"]}.']
+        timing += [f'- Stored runtime {state}: {runtime["states"][state]} groups.' for state in RUNTIME_CONSISTENCY_STATES]
+        timing += ['', 'Runtime snapshots cover selected stored fields and loaded package versions only. Missing observations remain incomplete, while observed differences survive missing peers. Matching requires every reference observed and two distinct call markers; it does not establish tokenizer content, code identity, deeper runtime state, fitting lineage or source authenticity. This comparison does not change scoring or eligibility.', '']
+    else:
+        timing += ['Stored runtime comparison is unavailable in this legacy report.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',

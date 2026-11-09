@@ -6974,3 +6974,11 @@ packets now yield fixed consistency/timing counts in replay and its review repor
 178 isolated checks pass; nonempty census and innovation are unchanged. Complete
 lineage, real-host costs, delivery evidence and host integration remain open.
 No runtime producer change, historical date inference, eligibility change or deploy.
+
+
+## 9 November — retained runtime settings are now compared
+
+`codex/judges-runtime-comparison`, on 5283d12b, adds validated partial-runtime
+consistency counts to artifact replay/review. 187 isolated checks pass. Legacy or
+missing observations stay unknown; full encoder identity and host integration
+remain open. No new capture, runtime producer change, eligibility change or deploy.

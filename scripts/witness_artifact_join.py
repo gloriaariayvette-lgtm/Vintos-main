@@ -186,6 +186,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
             'encoding_consistency': encoding_consistency(encodings),
+            'runtime_consistency': runtime_consistency(encodings),
             'encoder_call_cost': encoder_call_cost(list(unique.values())),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
@@ -288,6 +289,49 @@ def encoding_consistency(groups):
             counts[axis][state] += 1
     return {'groups': len(groups), 'references': references,
             **{axis: dict(sorted(values.items())) for axis, values in counts.items()}}
+
+
+RUNTIME_CONSISTENCY_STATES = ('changed_during_call', 'different_partial_snapshots',
+                              'incomplete', 'single_call', 'matching_partial_snapshots')
+
+
+def runtime_consistency(groups):
+    """Compare validated partial stored-field observations in exact content groups."""
+    states = dict.fromkeys(RUNTIME_CONSISTENCY_STATES,0)
+    references = 0
+    for observations in groups.values():
+        references += len(observations)
+        calls = [o for o in observations if o is not None]
+        runtimes = [o['runtime'] for o in calls if o.get('runtime') is not None]
+        snapshots = {fingerprint(o[k]) for o in runtimes for k in ('before','after')
+                     if o[k]['state']=='observed'}
+        if any(o['state']=='observed_changed' for o in runtimes): state='changed_during_call'
+        elif len(snapshots)>1: state='different_partial_snapshots'
+        elif len(runtimes)!=len(observations) or any(o['state']!='observed_equal' for o in runtimes):
+            state='incomplete'
+        elif len({o['invocation'] for o in calls})<2: state='single_call'
+        else: state='matching_partial_snapshots'
+        states[state]+=1
+    return {'scope':'content_bound_partial_runtime_observations_only', 'groups':len(groups),
+            'references':references, 'states':states, 'encoder_identity':'unverified','scoring_effect':'none'}
+
+
+def validate_runtime_consistency(value, references, groups=None):
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid runtime consistency count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','groups','references','states','encoder_identity','scoring_effect'}
+            or value['scope']!='content_bound_partial_runtime_observations_only'
+            or value['encoder_identity']!='unverified' or value['scoring_effect']!='none'):
+        raise ValueError('invalid runtime consistency contract')
+    n,r = count(value['groups']),count(value['references'])
+    states=value['states']
+    if not isinstance(states,dict) or set(states)!=set(RUNTIME_CONSISTENCY_STATES):
+        raise ValueError('invalid runtime consistency states')
+    if (sum(count(v) for v in states.values())!=n or r!=count(references) or n>r
+            or bool(n)!=bool(r) or (groups is not None and n!=count(groups))
+            or n+states['matching_partial_snapshots']+states['different_partial_snapshots']>r):
+        raise ValueError('inconsistent runtime consistency totals')
 
 
 def encoder_call_cost(packets):

@@ -2130,3 +2130,14 @@ legacy/missing evidence is never upgraded. Census and innovation stay unchanged.
 scores. Initial fixture filename corrected to the existing private-run.json.
 Generated reports refreshed. No private data, runtime producer change, model call,
 live write, enabling, merge or deployment. Full evidence and host integration open.
+
+
+## 9 November — partial runtime comparison reaches the review
+
+Retained forecast/audit runtime snapshots now have their own content-group count
+in replay and the public review. Observed changes survive incomplete peers;
+matching needs every reference and two distinct calls. Legacy data is unavailable,
+not reconstructed. Census and innovation remain exactly unchanged in CLI tests.
+187 isolated checks pass: comparison 12, joins 30, report 22, costs 14, census and
+innovation 109. Generated reports refreshed without changes. No private input, new
+capture, runtime producer change, model call, live write, enabling, merge or deploy.
