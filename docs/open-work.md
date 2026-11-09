@@ -1,3 +1,20 @@
+## 9 November — the fault loop: what was left unanswered from 3 to 8 November
+
+- **F-e53e4db887 (Study fix did not land: the Forge install needed sudo, 3 November) — resolved.** `01ae74d0` made the
+  Forge installed by root's own path unit (`vintos-forge-install.path`), so the deploy needs no sudo. It is deployed;
+  the path unit is active, and the 9 November deploy log has no sudo refusal.
+- **Expected schedule changes, each matching a deployed commit or an approved change:** F-746c370dbe and F-b897cf2d62
+  (the Forge installer's .path/.service, `01ae74d0`, installed 4 November 10:55); F-10c8f44128
+  (`vintos-kitchen-presence.service`, `4aafd6ef`); F-c19b8033cd (`vintos-house-boards.service`, `f64c5c55`);
+  F-81be541fdc (the user crontab gained the fault-pilot logger, marked in the crontab as approved by Gloria on 7
+  November).
+- **F-738fbbabab (`~/.ssh/authorized_keys` changed, 3 November 08:50) — for Gloria to confirm.** The file now ends with
+  a key restricted to the Mac Studio's tailnet address and labelled as the Studio's bridge. That fits the Studio set-up
+  that week, but nothing in the repository records adding it.
+- **Since the 3 November fixes were deployed:** no provider surge after 2 November (the known-run windows), no
+  unfamiliar-SSH alarm after 5 November (Gloria added her phone to `known_ssh_addresses`), no Lab-silence alarm after
+  3 November.
+
 ## 8 November — shadow witness implementation and remaining acceptance
 
 Review increments now include request/attempt and finalization dependency capture,
@@ -1769,8 +1786,10 @@ heard only the four parts that call `note()`, once a day. The playbook is `docs/
   fault however often it happens; each new one posted once to `#fault-fix` (C0CB2HREFNC), at most five a sweep,
   credentials taken out. `test_fault_sweep.py` (21 checks).
 - **#fault-fix** (C0CB2HREFNC): private Slack channel Dot made on 19 October, with Gloria and his bot. Vintos's code reads only #vintos-dot and #vintos-and-dot, so his bot being a member does not mean he reads it. (The earlier #fault-loop, C0CB2F5143A, is unused.)
-- **The thread (from 25 October, on Aegis):** its own CronCreate job e2a8a075 (renewed 31 October, 03:18
-  Central, replacing 75fffe48; renew by 5 November). The Mac thread below went silent on 23 October.
+- **The thread (from 25 October, on Aegis):** its own CronCreate job 77ebcd1e (re-created 9 November, 12:07
+  Central; renew by 14 November). Its last job, e2a8a075, was gone by 9 November and nothing woke the thread after 3
+  November 06:04. The thread itself survived, so the job was most likely lost when the Claude app on Aegis restarted.
+  Gloria noticed the silence; another Claude session woke the thread. The Mac thread below went silent on 23 October.
 - **The thread (from 22 October, on the Mac):** "Fault Loop - week of 19 october" (session_01VWevFz9ZKebb81ZdQDZLXV),
   woken by its own CronCreate job 29f401f5 at 22:50, 00:50, 02:50 and 04:50 Central while the Claude app is open. It
   renews its own schedule each Saturday night (`docs/fault-loop.md`), so no new thread is started — untested until
