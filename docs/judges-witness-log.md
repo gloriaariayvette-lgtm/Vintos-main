@@ -742,3 +742,25 @@ ownership 11. Reports regenerated and whitespace checked. Tests use synthetic
 records in both input orders. No private-data accuracy claim, model call, real
 test send, live-store write, merge or deploy. Independent Aegis review remains
 pending.
+
+
+## 8 November — exact feedback copy identity
+
+`codex/judges-feedback-copy-types` continues from d39f7a47. Synthetic regressions
+showed Python dictionary equality hiding boolean/integer witness and sequence
+conflicts, and integer/float rating conflicts. With the valid copy first, the
+reader could emit positive feedback; reversed copies could instead be held for a
+different reason. Three new methods cover both orders and key-order invariance.
+
+Duplicate feedback IDs now require identical canonical JSON attestations before
+any copy is selected. Type conflicts hold the event, including predecessor
+conflicts; occupied sequence positions remain retained. Identical copies with
+reordered object keys still join. Non-JSON/nonfinite direct-call records are held
+without selecting a usable copy. Existing literal marker and rating policies,
+unknown labels and all live readers remain unchanged.
+
+126 affected isolated checks pass: witness 106, capture/replay 9, ownership 11.
+Reports regenerated and whitespace checked. This is synthetic contract evidence,
+not a live-data finding or a new accuracy measurement. No private input read,
+model call, real test send, live write, merge or deployment. Independent full
+Aegis review remains pending.

@@ -691,3 +691,13 @@ identity to join this group remain separately counted; other groups are unaffect
 counted per group that otherwise had a scorable candidate. Raw invalid-record
 counts remain separate, so these counters are not additive populations. No
 historical scores or private snapshots were recomputed for this synthetic repair.
+
+
+### Feedback duplicate identity
+
+Repeated feedback event IDs must carry identical JSON attestations, ignoring
+object-key order but preserving value types. A numeric `1` cannot stand in for
+an explicit `true` witness or sequence flag; an integer rating and a floating
+copy cannot let input order decide which is selected. Conflicted predecessors
+remain unavailable while their sequence positions stay occupied. Identical
+copies still count once. This applies only to the offline feedback reader.

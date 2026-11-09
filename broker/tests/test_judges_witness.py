@@ -980,6 +980,32 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         conflict=dict(events[0],turn_id='other')
         self.assertEqual(self.feedback(events+[conflict])[1],[])
 
+    def test_feedback_duplicate_types_cannot_hide_malformed_witness_or_sequence(self):
+        for index, field, value in ((0, "witnessed", 1), (1, "witnessed", 1),
+                                    (0, "sequence_complete", 1), (1, "sequence_complete", 1),
+                                    (0, "position", True), (1, "position", 2.0)):
+            events = self.reaction_events()
+            malformed = dict(events[index], **{field: value})
+            for copies in (events + [malformed], [malformed] + events):
+                with self.subTest(index=index, field=field, malformed_first=copies[0] is malformed):
+                    report, private = self.feedback(copies)
+                    self.assertEqual(private, [])
+                    self.assertEqual(report["positive_targets"], 0)
+                    self.assertEqual(report["held"]["conflicting_event_identity"], 1)
+
+    def test_feedback_duplicate_rating_types_never_choose_valid_copy(self):
+        row, event = self.practice_rating(4)
+        malformed = dict(event, stars=4.0)
+        for copies in ([event, malformed], [malformed, event]):
+            report, private = self.feedback(copies, [row])
+            self.assertEqual(private, [])
+            self.assertEqual(report["held"]["conflicting_event_identity"], 1)
+
+    def test_feedback_identical_json_copies_ignore_object_key_order(self):
+        events = self.reaction_events()
+        reordered = [dict(reversed(list(e.items()))) for e in events]
+        self.assertEqual(self.feedback(events + reordered), self.feedback(events))
+
     def practice_rating(self, stars=4):
         row=copy.deepcopy(self.row);row['witness_receipt']['surface']='humor_practice';row['surface']='humor_practice'
         event=dict(schema='witness-feedback-v1',event_id='fixture-rating',kind='practice_rating',

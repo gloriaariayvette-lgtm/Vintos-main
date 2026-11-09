@@ -6356,3 +6356,12 @@ now survives into the selection decision; no later forecast silently replaces
 an unscorable first one. New fixtures verify both input orders and independent
 groups. 171 affected isolated checks pass. Independent review/full isolated
 Aegis validation remain pending.
+
+
+## 8 November — feedback copy identity
+
+`codex/judges-feedback-copy-types` prevents malformed duplicate witness flags,
+sequence claims and rating types from hiding behind Python numeric equality.
+Canonical JSON agreement is required before selecting a duplicate event; both
+input orders are covered. 126 affected isolated checks pass. Live feeds are
+unchanged; independent full Aegis review remains pending.

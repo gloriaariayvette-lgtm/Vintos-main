@@ -256,7 +256,15 @@ def feedback_receipts(admitted, events, cutoff):
         copies[event["event_id"]].append(event)
     unique = {}
     for key, rows in copies.items():
-        if any(r != rows[0] for r in rows):
+        try:
+            # Numeric equality aliases explicit booleans and integer ratings.
+            # Select only identical JSON attestations, independent of input order.
+            versions = {json.dumps(r, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                        for r in rows}
+        except (TypeError, ValueError, OverflowError):
+            held["invalid_feedback_evidence"] += 1
+            continue
+        if len(versions) != 1:
             held["conflicting_event_identity"] += 1
         else: unique[key] = rows[0]
     # Include every claimed position, even excluded/conflicting/unknown events.
