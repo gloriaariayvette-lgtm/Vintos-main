@@ -2197,3 +2197,13 @@ identity, including capture off. The other head and default loader are unchanged
 inputs 15, handoffs 26, clocks 9, owners 11). Existing replacement expectation now
 requires a retained matching artifact. Synthetic numerical warnings persist with
 all assertions passing. Host costs and integration remain open; no deployment.
+
+
+## 9 November — self-audit checkpoint replacement regression
+
+Before the fix, synthetic replacement paired old bytes with a new cutoff (failure)
+and deletion after hashing raised a late FileNotFoundError. Self audits now use
+one descriptor's bytes/time and reject observable changes during the read.
+80 isolated checks pass: audit races 6, artifacts 20, availability 12, readout 5,
+ranking 26, owners 11. Capture-off behavior is included; mtime remains an estimate,
+not an attested fitting date. No live data, real encoding, enabling or deployment.

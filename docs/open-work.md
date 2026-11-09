@@ -7018,3 +7018,12 @@ self forecasts now identify the bytes parsed, rather than a later read of a repl
 path. Active with capture off; stable output and encode counts unchanged. 106
 isolated checks pass. Real-host memory/latency, full ancestry/delivery evidence and
 integration remain open. No model change, enablement, merge or deployment.
+
+
+## 9 November — self-audit checkpoint cutoff binding
+
+`codex/judges-audit-checkpoint-clock`, on e9e3221a, binds self-audit checkpoint bytes
+and its existing filesystem cutoff to one open file; observable mutation refuses
+the audit. Active with capture off; the timestamp is still not fitting provenance.
+80 isolated checks pass. Host integration and source/encoder/delivery evidence
+remain open. No enabling, merge or deployment.

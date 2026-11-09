@@ -325,6 +325,22 @@ def presence_forecast(enc, exs=None, model_dir=None):
             'evaluation':report,'source':SCHEMA}
 
 
+def _self_audit_checkpoint(path):
+    """Read bytes and the existing filesystem cutoff from one stable open file."""
+    import stat
+    with path.open('rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError('self audit checkpoint is not a regular file')
+        raw = stream.read()
+        after = os.fstat(stream.fileno())
+    fields = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+    if (any(getattr(before,key)!=getattr(after,key) for key in fields)
+            or len(raw)!=after.st_size):
+        raise ValueError('self audit checkpoint changed during read')
+    return raw, before.st_mtime
+
+
 def audit(enc, memory=None):
     """Keep each replacement's prospective evidence separate from the shared checkpoint.
     Neither model selection nor historical replay rows count as live outcomes here.
@@ -344,7 +360,10 @@ def audit(enc, memory=None):
                 checkpoint_clock = begin_checkpoint_read()
             except Exception:
                 pass
-        checkpoint_raw=path.read_bytes()
+        if mode in ('self_ahead','self_on_message'):
+            checkpoint_raw, checkpoint_mtime = _self_audit_checkpoint(path)
+        else:
+            checkpoint_raw=path.read_bytes()
         ck=hashlib.sha256(checkpoint_raw).hexdigest();head='gloria' if mode=='gloria' else 'self'; adapted=[]
         for row in history:
             triple=row.get(head) or {}
@@ -372,7 +391,8 @@ def audit(enc, memory=None):
                     audit_enc = audit_encoder(enc, ledger, manifest)
             except Exception:
                 pass
-        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=path.stat().st_mtime)
+        cutoff = checkpoint_mtime if head == 'self' else path.stat().st_mtime
+        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=cutoff)
         report[mode]={'checkpoint':ck,'ranking':ra._summary(measured,head)}
     ra._atomic(str(mem/'jepa-readout-audit.json'),report)
     return report

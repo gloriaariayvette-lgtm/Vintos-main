@@ -2362,3 +2362,30 @@ imports, retention limits, malformed inputs and unchanged other-head loading.
 The existing replacement test was updated from artifact suppression to exact
 loaded binding; the artifact mismatch guard itself remains unchanged. Existing
 synthetic matrix-operation warnings in readout tests persist; all assertions pass.
+
+
+## 9 November — self-audit checkpoint bytes and filesystem cutoff stay together
+
+`codex/judges-audit-checkpoint-clock`, on e9e3221a, fixes a related audit race:
+audit hashed checkpoint bytes and later obtained its scoring cutoff from the path.
+A replacement could pair the old hash with the new file's modification time;
+deletion caused a late exception. Both were reproduced before the fix.
+
+Self audits now read bytes and modification time through one open file descriptor.
+The read is rejected before scoring/report publication if observed device, inode,
+size, modification or change time differs across it, or the byte count disagrees.
+Nonregular observations are rejected. Replacement or deletion after the snapshot
+cannot change its cutoff. These checks detect observable mutation; they do not
+certify atomic publication or defend against all concurrent filesystem changes.
+The existing modification-time cutoff remains a filesystem estimate, not an
+attested fitting-completion time or evidence for strict training eligibility.
+
+Active with capture OFF as well as on; stable-file results and encoder-call counts
+remain unchanged. The other head retains its existing path. No new model call,
+checkpoint format, model selection, feed, admission, enablement, merge or deploy.
+80 isolated checks pass: new audit races 6, artifacts 20, checkpoint availability
+12, existing readout 5, ranking 26 and entry owners 11. Synthetic tests cover
+replacement, deletion, capture off/on, observed metadata mutations, short reads,
+nonregular observations, and the unchanged other-head path. Existing synthetic
+numerical warnings occur with passing assertions. Real-host integration, source
+ancestry and delivery evidence remain open.
