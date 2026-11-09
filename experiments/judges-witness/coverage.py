@@ -74,6 +74,45 @@ def source_coverage(rows, cutoff, tz):
                 meaning='source copies, not independent turns; explicit surface evidence is diagnostic only; no inferred surface or model attribution')
 
 
+# Fixed public source-fixture metadata; equality cannot authenticate a test run.
+HISTORICAL_FIXTURE = {'class':'foreground','stage':'grok','provider':'xai','model':'grok-4',
+                      'usage':{'prompt_tokens':7,'completion_tokens':3,'total_tokens':10}}
+
+
+def historical_fixture_coverage(records, cutoff, tz):
+    """Partition unique supplied records; no inferred origin or attribution changes."""
+    counts = dict.fromkeys(('other_callers','matching_metadata','other_complete_metadata',
+                            'incomplete_metadata','clock_unavailable','excluded_at_or_after_cutoff'),0)
+    for record in records:
+        if record.get('organ') != 'router:chat':
+            counts['other_callers'] += 1
+            continue
+        try: at = _clock(record.get('at'),tz)
+        except ValueError:
+            counts['clock_unavailable'] += 1
+            continue
+        if at >= cutoff:
+            counts['excluded_at_or_after_cutoff'] += 1
+            continue
+        fields = ('class','stage','provider','model')
+        usage = record.get('usage')
+        complete = (all(isinstance(record.get(k),str) and record[k].strip() and len(record[k])<=256 for k in fields)
+                    and isinstance(usage,dict) and set(HISTORICAL_FIXTURE['usage'])<=set(usage)
+                    and all(type(usage[k]) is int and usage[k]>=0 for k in HISTORICAL_FIXTURE['usage']))
+        if not complete:
+            counts['incomplete_metadata'] += 1
+        elif all(record[k]==HISTORICAL_FIXTURE[k] for k in (*fields,'usage')):
+            counts['matching_metadata'] += 1
+        else:
+            counts['other_complete_metadata'] += 1
+    return {'scope':'fixed_source_fixture_metadata_only',
+            'profile':'router_result_contract_20260910',
+            'fixture_source_commit':'d335de720b1501bc8f04ea2aa93ffb5b971d11df',
+            'unique_records_supplied':len(records),'counts':counts,
+            'origin':'unconfirmed','attribution_effect':'none','training_effect':'none',
+            'meaning':'metadata equality is a source-review lead, not a unique test-run identity; no record is relabelled or excluded'}
+
+
 def diagnose(rows, ledger, config, cutoff):
     if not isinstance(rows, list) or len(rows) > MAX_ROWS or not isinstance(ledger, list) or len(ledger) > MAX_CALLS:
         raise ValueError('coverage input exceeds bounds')
@@ -179,6 +218,7 @@ def diagnose(rows, ledger, config, cutoff):
                   effect='diagnosis_only_no_attribution_or_training_changes',
                   meaning='wider windows are opportunities for inspection, not recovered attribution; silence is not proof of a logging outage')
     public['source_coverage'] = source_coverage(rows, cutoff, tz)
+    public['historical_fixture_coverage'] = historical_fixture_coverage(list(calls.values()),cutoff,tz)
     private = dict(callers=callers, surfaces=[dict(source_kind=k, surface=s, surface_state=v, mapped=m, join_state=j, copies=n)
                    for (k,s,v,m,j),n in sorted(surfaces.items(), key=lambda v: str(v[0]))],
                    date_meaning='first and last supplied retained records, not logging start or complete coverage')

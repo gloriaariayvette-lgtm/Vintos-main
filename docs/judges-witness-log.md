@@ -1992,3 +1992,21 @@ review report 22, self artifacts 20, synthetic benchmark 6. Report validation an
 fixtures cover malformed counts/durations, privacy and nonmutation. Host cost and
 full integration remain reviewer work. No enabling, live inputs/writes, model or
 paid calls, merge or deployment.
+
+
+## 9 November — fixed historical fixture counts
+
+`codex/judges-historical-fixture-counts` follows 3260aa77. The existing offline
+coverage report gains a fixed source-fixture metadata comparison, partitioned by
+exact caller, complete/missing metadata, clock availability and cutoff. Identical
+rows deduplicate; distinct matching records are not collapsed into one imagined
+test run. Output contains only fixed labels/counts and the public source revision.
+Origin stays unconfirmed and baseline attribution remains unchanged.
+
+55 isolated synthetic checks pass (coverage 29, attribution 26); five additional
+source assertions verify the archived fixture and accounting call without running
+historical code. Tests cover strict token types, extra fields, all tuple changes,
+clock ambiguity, cutoff, duplicate rows, nonmutation, private-label exclusion and
+the actual CLI's permissions/hashes. No real-data census or execution evidence was
+read. Reviewer owns that check using the already-copied evidence. No live writes,
+new model calls, enablement, merge or deployment; heartbeat continues.

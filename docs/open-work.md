@@ -6889,3 +6889,14 @@ not a measured real-encoder result or permission to enable capture. Durations ar
 wall time and retained-call coverage only. Host cost/runtime compatibility, full
 identity/lineage, historical source evidence and delivery/ancestry remain open.
 No additional model loads, encodes, live writes, merge or deployment.
+
+
+## 9 November — historical fixture comparison executable
+
+`codex/judges-historical-fixture-counts`, stacked on 3260aa77, makes the previously
+documented historical test-origin lead reproducible inside the existing offline
+coverage CLI. 55 isolated checks pass, plus five read-only archived-source checks.
+No private evidence has been newly collected or measured. Reviewer should inspect
+fixed aggregate counts on the existing admitted copy; origin remains unconfirmed
+without execution provenance. No automatic relabelling, exclusion, model
+attribution, training decision, live writes, merge or deployment occurs.

@@ -209,3 +209,21 @@ packets after operator enablement; missing receipt coverage is never a zero-cost
 result. These timings exclude serialization/publication and do not replace the
 separate durable-spool reply-path latency test. Full integrated host validation,
 real-runtime compatibility and enablement/deployment boundaries remain unchanged.
+
+
+## Historical fixture count increment
+
+`codex/judges-historical-fixture-counts` descends from 3260aa77. It turns the
+previously documented test-origin candidate into a fixed aggregate section in the
+existing offline coverage CLI. The exact source fixture tuple is compared only
+on clocked matching-caller records before the existing cutoff; missing metadata,
+other values, unknown clocks and later records stay separate. All baseline
+attribution/window fields remain unchanged. Equality never labels a record as a
+test or changes training admission. No private identifiers or model labels are
+emitted by this new aggregate.
+
+55 affected isolated checks pass, plus five read-only source assertions. The
+reviewer can rerun the documented coverage command on the existing admitted copy
+with a new private output directory and report only `historical_fixture_coverage`.
+No recollection is requested. Retained execution evidence is still needed to
+establish origin; none was inspected by this worker. No merge or deployment.

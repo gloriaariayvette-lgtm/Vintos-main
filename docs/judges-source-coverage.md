@@ -150,3 +150,47 @@ Validation here was read-only: nine assertions over historical source syntax and
 paths passed, including the explicit chat invocation and the before/after isolation
 checks. Historical modules were not executed, and no model/private inputs were
 loaded. There was no private-data measurement or host-suite rerun in this follow-up.
+
+
+### Reproducible metadata comparison
+
+`codex/judges-historical-fixture-counts` adds `historical_fixture_coverage` to the
+existing `coverage.py` aggregate. Run the same documented command against the
+already-admitted private bundle in a fresh output directory. No new collection,
+source remapping or private record disclosure is required. The run manifest hashes
+the diagnostic code, input and outputs as before.
+
+The fixed profile `router_result_contract_20260910` is taken from source commit
+`d335de720b1501bc8f04ea2aa93ffb5b971d11df`: the explicit chat result-contract
+invocation, its foreground stage, provider/model tuple and three-field normalized
+usage object. The source definition is static; no runtime config or learned
+pattern selects it. Its metadata values are public synthetic fixture values.
+
+The aggregate partitions unique supplied ledger records into six fixed counts:
+other callers; matching metadata; other structurally complete metadata; incomplete
+metadata; unavailable clocks; and at/after-cutoff records. Exact caller identity
+is required. Other callers count across the whole supplied bundle; the remaining
+five states cover only the fixture's exact caller. Only clocked records strictly
+before the existing cutoff can enter either metadata-comparison category. The
+configured explicit timezone is reused; ambiguous naive local times stay unknown.
+Exact duplicate rows count once, while distinct rows with the same pattern remain
+separate. These are record counts, not unique test executions or independent turns.
+
+A match requires all four class/stage/provider/model strings plus the exact usage
+object. Boolean, float, negative or missing token counts are malformed, not matches.
+Extra usage fields or different complete values are comparisons that do not match.
+Latency, source date, neighboring records and provider IDs never substitute for
+this rule. Arbitrary labels, IDs, actual times and provider/model names are absent
+from this new aggregate. Existing private caller summaries remain private.
+
+The result always says origin is unconfirmed and attribution/training effects are
+none. Equality is a lead for source review; a real request may share these counts.
+No matching records weakens this specific fixture candidate but proves no general
+origin. Execution provenance is still needed before classifying any retained row.
+The main attribution and window-sensitivity data structures are unchanged.
+
+Validation: 55 isolated synthetic checks (coverage 29, attribution 26), including
+the actual CLI, output permissions and run hashes. Five additional read-only
+assertions checked the archived fixture/caller source without executing historical
+modules. No private counts or host execution evidence were available in this batch;
+review retains that work on the existing private copy.

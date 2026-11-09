@@ -172,18 +172,104 @@ class Tests(unittest.TestCase):
         group=report['source_coverage']['groups'][0]
         self.assertEqual((group['adapter'],group['projection_source']),('unknown','other'))
 
+    def historical_call(self, **changes):
+        record=dict(at=80,organ='router:chat',**copy.deepcopy(C.HISTORICAL_FIXTURE))
+        record.update(changes)
+        return record
+
+    def fixture_counts(self,calls):
+        report,_=self.run_probe(calls=calls)
+        result=report['historical_fixture_coverage']
+        self.assertEqual(result['unique_records_supplied'],sum(result['counts'].values()))
+        self.assertEqual(result['origin'],'unconfirmed')
+        self.assertEqual(result['training_effect'],'none')
+        self.assertEqual(result['attribution_effect'],'none')
+        return result['counts']
+
+    def test_fixture_metadata_comparison_has_no_attribution_or_origin_effect(self):
+        call=self.historical_call()
+        before=copy.deepcopy(call)
+        report,_=self.run_probe(calls=[call])
+        baseline,_=C.attribution([self.row],[call],self.config,200)
+        self.assertEqual(report['baseline'],baseline)
+        self.assertEqual(self.fixture_counts([call])['matching_metadata'],1)
+        self.assertEqual(call,before)
+
+    def test_fixture_matching_requires_every_exact_field_and_usage_object(self):
+        original=self.historical_call()
+        variants=[]
+        for key in ('class','stage','provider','model'):
+            variants.append(dict(original,**{key:'other-synthetic'}))
+        variants += [dict(original,usage=dict(original['usage'],total_tokens=11)),
+                     dict(original,usage=dict(original['usage'],extra=0))]
+        counts=self.fixture_counts(variants)
+        self.assertEqual(counts['matching_metadata'],0)
+        self.assertEqual(counts['other_complete_metadata'],6)
+
+    def test_fixture_missing_invalid_usage_is_not_a_match(self):
+        original=self.historical_call()
+        variants=[dict(original,usage=value) for value in (None,{},[],dict(original['usage'],prompt_tokens=True),
+                  dict(original['usage'],prompt_tokens=7.0),dict(original['usage'],prompt_tokens=-1))]
+        variants += [dict(original,**{key:None}) for key in ('class','stage','provider','model')]
+        counts=self.fixture_counts(variants)
+        self.assertEqual(counts['incomplete_metadata'],10)
+        self.assertEqual(counts['matching_metadata'],0)
+
+    def test_fixture_cutoff_and_unknown_clock_are_separate_partitions(self):
+        original=self.historical_call()
+        counts=self.fixture_counts([dict(original,at=x) for x in (199,200,201,'unknown',None)])
+        self.assertEqual(counts['matching_metadata'],1)
+        self.assertEqual(counts['excluded_at_or_after_cutoff'],2)
+        self.assertEqual(counts['clock_unavailable'],2)
+
+    def test_fixture_records_deduplicate_exactly_without_merging_distinct_calls(self):
+        original=self.historical_call()
+        counts=self.fixture_counts([original,dict(original),dict(original,at=81)])
+        self.assertEqual(counts['matching_metadata'],2)
+        self.assertEqual(sum(counts.values()),2)
+
+    def test_fixture_does_not_use_latency_ids_or_other_callers_as_origin(self):
+        original=self.historical_call()
+        counts=self.fixture_counts([dict(original,latency_ms=100000,provider_request_id='private-sentinel'),
+                     dict(original,organ='router:avatar'),dict(original,organ='private-caller')])
+        self.assertEqual(counts['matching_metadata'],1)
+        self.assertEqual(counts['other_callers'],2)
+        self.assertNotIn('private-sentinel',json.dumps(counts))
+
+    def test_fixture_timezone_requires_explicit_unambiguous_clock(self):
+        original=self.historical_call()
+        self.config['naive_timezone']='America/Chicago'
+        report,_=C.diagnose([], [dict(original,at='2026-11-01T01:30:00'),
+                               dict(original,at='2026-11-01T01:30:00-05:00')],self.config,'2026-11-02T00:00:00Z')
+        counts=report['historical_fixture_coverage']['counts']
+        self.assertEqual(counts['clock_unavailable'],1);self.assertEqual(counts['matching_metadata'],1)
+
+    def test_fixture_public_output_is_fixed_aggregate_and_order_independent(self):
+        original=self.historical_call()
+        calls=[original,dict(original,model='private-model',usage=dict(original['usage'],private_key=1))]
+        first=self.run_probe(calls=calls)[0]['historical_fixture_coverage']
+        second=self.run_probe(calls=list(reversed(calls)))[0]['historical_fixture_coverage']
+        self.assertEqual(first,second)
+        rendered=json.dumps(first)
+        for value in ('private-model','private_key',original['model'],original['provider']):self.assertNotIn(value,rendered)
+        self.assertEqual(set(first),{'scope','profile','fixture_source_commit','unique_records_supplied','counts','origin',
+                                     'attribution_effect','training_effect','meaning'})
+
     def test_cli_private_manifest_and_scratch_guards(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory).resolve(); self.assertNotIn('.vintos',root.parts)
             source=root/'bundle.json'; output=root/'out'
             source.write_text(json.dumps(dict(input_kind='synthetic',sources=[dict(kind='canonical',rows=[self.row])],
-                               historical_attribution=dict(self.config,compute_ledger=[self.call]))))
+                               historical_attribution=dict(self.config,compute_ledger=[self.call,self.historical_call()]))))
             env=dict(os.environ,SPARK_WORKSPACE=str(root),PYTHONDONTWRITEBYTECODE='1')
             cmd=[sys.executable,str(ROOT/'experiments/judges-witness/coverage.py'),'--scratch',str(root),
                  '--input',str(source),'--output',str(output),'--cutoff','1970-01-01T00:03:20Z']
             result=subprocess.run(cmd,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(output.stat().st_mode & 0o777,0o700)
+            aggregate=json.loads((output/'aggregate.json').read_text())
+            self.assertEqual(aggregate['historical_fixture_coverage']['counts']['other_callers'],1)
+            self.assertEqual(aggregate['historical_fixture_coverage']['counts']['matching_metadata'],1)
             manifest=json.loads((output/'private-run.json').read_text())
             for name in ('aggregate.json','private-coverage.json','private-run.json'):
                 self.assertEqual((output/name).stat().st_mode & 0o777,0o600)

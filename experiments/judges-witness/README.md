@@ -1904,3 +1904,20 @@ audit, join, report and synthetic benchmark suites also pass. No real encoder wa
 loaded for this change. Real host cost remains unmeasured until the operator enables
 capture and ordinary background work retains these observations; no user-generated
 test conversation or paid call is needed to collect them.
+
+
+### Historical fixture metadata diagnostic
+
+`coverage.py` now emits `historical_fixture_coverage` alongside its existing
+aggregate fields. The fixed public source profile compares the exact historical
+chat-result fixture's caller, class, stage, provider/model tuple and usage object.
+It partitions unique supplied ledger rows into fixed counts, retaining cutoff and
+unknown-clock exclusions. It does not identify test executions, remap sources,
+backfill models or alter attribution/training admission. Existing baseline and
+window diagnostics are unchanged. See [the source evidence and comparison contract](../../docs/judges-source-coverage.md#reproducible-metadata-comparison).
+
+Use the existing copied bundle and coverage command with a fresh private output
+directory. Report only the fixed aggregate section; keep private caller records,
+IDs and timestamps private. A matching pattern requires independent execution
+provenance before it can establish origin. The new contract has 55 passing
+isolated coverage/attribution checks; no live source was read or model called.
