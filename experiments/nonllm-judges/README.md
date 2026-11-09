@@ -664,3 +664,78 @@ unknown when absent. The private report retains the receipt, while public counts
 contain no publisher/repository/file/hash/IDs. Pin-file and policy hashes stay private.
 Original lineage, indirect-influence exclusions, mode provenance, unknown serving
 identity/fallback, calibration and facet-anchor rules are unchanged.
+
+## Prospective humor bindings and daily capture coverage
+
+New interaction-ledger rows can carry `joke_id`, `joke_text_sha256` and
+`joke_binding` (`humor-reply-binding-v1`). The ledger calls the bounded
+`joke_fermentation.reply_binding` helper with its exact stored reply, existing
+turn ID and memory directory. It adds metadata only when the complete reply
+matches one unambiguous retained draft. It reads at most 1 MiB / 30 drafts and
+never writes the draft store or copies its text. Missing IDs, conflicting draft
+identities, prefixes, rewrites, callback offers and decorated replies remain
+unbound. This records content identity, **not proof of intention or influence**.
+It does not attest delivery, a positive reaction or clean original-act lineage.
+
+The existing route is practice drafts → app presentation/rating → rated material
+in fermentation → optional prompt callback. The rating/seed paths truncate text,
+and generation can rewrite the offer. There is no guaranteed verbatim delivery
+of every draft. Nothing in this change feeds additional drafts into chat, alters
+ratings, or makes absence of a match a negative judgment. Old ledger rows are
+never backfilled. The merger carries existing bindings to ledger-derived rows;
+for a canonical overlap it requires exact turn ID, surface, full reply and binding
+agreement across all ledger copies. It never uses the old proximity/prefix dedup
+heuristic to create a joke binding. The evidence builder retains these fields and
+rejects conflicting supplied hashes/bindings; historical explicit-ID/full-text
+contracts remain supported without inventing new receipts.
+
+`capture_report.py` reads an explicitly supplied private packet directory and
+prints counts-only JSON to stdout. It does not write files, call a provider,
+load an encoder, discover stores, alter capture configuration or run a service.
+For example, with `SCRATCH` naming the approved private capture root:
+
+```sh
+python3 experiments/nonllm-judges/capture_report.py \
+  --scratch "$SCRATCH" --packets "$SCRATCH/packets" \
+  --cutoff 2026-11-10T00:00:00Z --timezone America/Chicago
+```
+
+It requires owner-private directories/files, rejects symlinks, repository roots,
+`.vintos`/`.openclaw` roots and oversized/ambiguous inputs, and accepts only the sink's
+`capture-<32 hex>.json` files. Other entries are counted as ignored. Limits are
+10,000 directory entries, 1 MiB per capture packet and 64 MiB total packet bytes.
+Dates come from recorded finalization times, never file mtime. Duplicate packets
+count as files but identical copies count once in reply denominators; conflicting
+copies deny admission. Unsupported/malformed packets fail with a fixed error,
+without disclosing their paths, text, keys, IDs or model labels.
+
+Daily fields distinguish packets, unique replies, the selected provider-reported
+served model, complete context/final lineage and strict original-act bindings.
+The three shares use all unique replies that day as denominator. Runtime-attested
+identity can satisfy the existing strict identity gate, but does not inflate the
+**provider-reported** share. Requested/configured identities stay unknown.
+Delivery, provenance, indirect influence and final-byte gates use existing witness
+contracts. A handler-return packet alone does not attest delivery or completeness.
+
+Packet-only output reports `not_assessed_missing_prepared_projection`, unknown
+encoder qualification and zero scored replies. It must not be interpreted as
+measured judge failure or proof that no supplemental evidence exists elsewhere.
+Capture packets do not contain the required frozen vectors, references, mode
+receipts and witnessed positive anchors. Supplying the optional
+`--prepared-input "$SCRATCH/prepared/input.json"` uses an existing
+`build_evidence.py` output; `--landings` may supply the existing separate Landings
+projection. All inputs must be inside the same private root. The report reruns
+only the pure offline numerical evaluation. A projection cannot promote a packet
+that failed admission, change its final text, surface or timestamp, or invent its
+original-act binding. Freeze receipts are revalidated by the existing policy;
+copy_time, published_artifact, legacy_unknown and unknown remain separate.
+
+Primary and 30-second attribution views are separate and overlapping, never added.
+Voice/humor/taste counts are actual scored replies under existing reference and
+abstention rules. Drift counts are replies in assessed daily windows, not counts
+of claimed shifts. Recurrence/grouping have no retained-data adapter here and are
+explicitly **not evaluated**, rather than inferred ready from packet volume.
+Public output contains dates, counts, shares and fixed labels only; no score,
+model name, text, ID, hash, vector, path or notification destination. Supplied
+source claims are not independently authenticated. Review and real private runs
+remain with the reviewer; deployment and capture enablement remain with the owner.

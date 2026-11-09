@@ -76,6 +76,17 @@ class Tests(unittest.TestCase):
         text=(self.root/'out/counts.json').read_text()
         for word in ('reply-','joke-','synthetic-served','sha256','vector','I wonder',str(self.root)):self.assertNotIn(word,text)
 
+    def test_prospective_joke_binding_survives_and_conflict_refuses(self):
+        row=self.row;sha=W.digest(row['content'])
+        binding=dict(schema='humor-reply-binding-v1',turn_id=row['turn_id'],joke_id=row['joke_id'],
+            joke_text_sha256=sha,response_sha256=sha,source='exact_full_reply_draft')
+        row.update(joke_text_sha256=sha,joke_binding=binding)
+        out,s=self.build();self.assertEqual(s['humor_attempts'],32)
+        self.assertEqual(out['rows'],self.b['rows'])
+        row['joke_binding']['response_sha256']='a'*64
+        _,s=self.build();self.assertEqual(s['humor_attempts'],31)
+        self.assertEqual(s['per_field_reason_counts']['humor_attempt']['conflicting_joke_binding'],1)
+
     def test_missing_evidence_is_unknown(self):
         for r in self.b['rows']:
             for k in ('generation_provenance','witness_receipt','reply_node','joke_id'):r.pop(k,None)
