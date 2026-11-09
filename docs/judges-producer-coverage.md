@@ -94,3 +94,22 @@ own generation input assembly), cached/in-memory source history and trusted clie
 acknowledgements remain unfinished. Neither generated material nor its stored
 parents becomes complete or clean merely because its hash is known. Version and
 resource digests remain private scratch metadata, never public measurement rows.
+
+
+## Implementation follow-up: main-chat value-map source binding
+
+`codex/judges-value-map-read-binding` covers the value-map read outside
+`inner_context` in the main-chat handler. Its already-read decoded document is
+hashed at the read boundary; the existing newest-entry/strip/1500-codepoint
+selection is checked explicitly. The handler binds that observation to its
+existing `Your value map` block before routing. Per-invocation matching then
+records exact presence, absence or ambiguity, including retries and later prompt
+changes. The original source is not reopened and its text is not persisted in
+the receipt. An earlier entry changing remains visible in the document hash even
+when the selected newest entry is identical.
+
+This identifies the stored version and deterministic selection, not the map's
+upstream generating prompt, model or causal effects. The map node and stored
+parent remain incomplete. Other surfaces' value-map reads are not covered by
+this main-chat increment. Optional observer failures preserve both the existing
+block and any otherwise working capture; production enablement remains separate.

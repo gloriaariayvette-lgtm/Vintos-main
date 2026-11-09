@@ -10486,10 +10486,19 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                     discovery_ctx = "Your latest YouTube discovery:\n" + "\n---\n".join([d[:300] for d in _recent])
         except: pass
         value_map_ctx = ""
+        _value_map_observation = None
         try:
             with open(os.path.join(MEMORY, "value-map.md")) as f:
                 # the newest entry only, capped: the live map holds every entry made today (2026-10-13)
-                value_map_ctx = __import__('re').split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + f.read())[-1].strip()[:1500]
+                _value_map_decoded = f.read()
+                value_map_ctx = __import__('re').split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + _value_map_decoded)[-1].strip()[:1500]
+            try:
+                if os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+                    from witness_capture import value_map_read as _observe_value_map
+                    _value_map_observation = _observe_value_map(_value_map_decoded, value_map_ctx, time.time())
+            except Exception:
+                pass
+            del _value_map_decoded
         except: pass
         ledger_ctx = ""
         try:
@@ -11001,6 +11010,11 @@ Your current self-model (excerpt):
                 original_text=msg.original_text, input_message=messages[-1], input_slot=len(messages) - 2)
         except Exception:
             print("[witness] scratch capture unavailable", flush=True)
+        try:
+            if _witness_capture is not None and _value_map_observation is not None:
+                _witness_capture.bind_value_map(_value_map_observation, _value_map_block)
+        except Exception:
+            pass
         def _prepare_witness(system, history, parameters, reason):
             # Partial installs and older observation modules must never affect routing.
             if _witness_capture is None:
