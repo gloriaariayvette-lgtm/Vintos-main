@@ -6643,3 +6643,15 @@ date is inferred and no old artifact gains one. This supplies the prospective
 availability observation portion of checkpoint provenance. Encoder-weight identity,
 training-data provenance and a reviewed scoring adapter remain open. Full host suite,
 private census and capture enablement remain separate review/owner steps.
+
+## 9 November — attribution coverage diagnosis ready for private run
+
+`codex/judges-attribution-coverage` fixes the stale store-owner report and adds
+`experiments/judges-witness/coverage.py`. 179 affected isolated checks pass.
+The configured host route rejected authentication; no private diagnostic has run.
+Reviewer can use the existing copied records plus full admitted ledger and original
+cutoff to report first-retained dates by caller, surface gaps and wider-window
+ambiguity. Current attribution/admission thresholds are unchanged. Source-only
+logging gaps are identified, not yet quantified against records. Off-path sink
+publication before enablement remains open after the reviewer's occupied-capacity
+latency finding. Encoder identity work remains open behind this coverage priority.

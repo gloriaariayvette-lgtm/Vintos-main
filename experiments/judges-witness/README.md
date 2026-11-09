@@ -1442,3 +1442,58 @@ provenance or permission to score. Overall artifact/embedding observation time a
 encoder identity remain unverified. Existing historical mtime-based audits and
 strict scoring inputs are unchanged. The availability bound is retained for a
 future reviewed prospective adapter, rather than being renamed a training date.
+
+### Retained attribution coverage diagnosis (private, offline)
+
+`coverage.py` diagnoses missing historical attribution without changing the
+10-second rule in `witness_attribution.py`. Supply the same explicit snapshot
+bundle (`input_kind`, `sources`, `historical_attribution` including its
+`compute_ledger`, exact surface/caller mapping and explicit naive timezone).
+For first-retained dates across **all callers**, include the full admitted copied
+ledger, not just a router-filtered subset. No source discovery, new capture,
+model calls or writes to the copied input occur. Input is bounded to 128 MiB,
+250,000 ledger records and 10,000 adapted source rows; larger inputs fail rather
+than silently sampling. These limits are not a statement of historical coverage.
+
+Using absolute paths in an existing private scratch workspace outside the repo:
+
+```sh
+SPARK_WORKSPACE="$PRIVATE_SCRATCH" python3 experiments/judges-witness/coverage.py \
+  --scratch "$PRIVATE_SCRATCH" --input "$PRIVATE_SCRATCH/bundle.json" \
+  --output "$PRIVATE_SCRATCH/coverage-new" --cutoff "$CENSUS_CUTOFF"
+```
+
+Use the original census's exclusive, offset-bearing cutoff, not today's date.
+The output directory must be new. `private-coverage.json` gives first/last retained
+UTC timestamps per caller, unknown-clock counts, largest observed inter-call gap,
+foreground counts, and per-source surface/mapping/join-state counts. These are
+**private activity metadata**, not for Git. A long observed gap may simply be
+inactivity; the first retained date is not proof of when logging was installed.
+Background calls are inventoried, but cannot become foreground reply evidence.
+Missing/empty/invalid surfaces remain distinct; no default is invented.
+
+`aggregate.json` contains the unchanged original attribution report, counts of
+unmatched replies before/within/after the mapped retained foreground span, and
+fixed 10/30/60/120-second diagnostic windows. Only originally `no_matching_call`
+rows enter the sensitivity counts. A sole candidate must have usable metadata;
+all nearby replies compete for it, including already matched, exact-ID and
+ambiguous rows. Same-ID/same-final copies may share; unknown IDs or changed
+versions cannot. A wider-window opportunity is **not recovered attribution**.
+Exact-ID failures, unmapped surfaces and bad clocks are never repaired by widening.
+Neither model labels nor per-reply IDs/text enter these outputs. Only the private
+coverage file contains caller/surface names and clock ranges. All files are 0600
+inside a 0700 directory; `private-run.json` binds the input, implementation and
+output hashes. The aggregate file alone can be considered for public review;
+inspect it before publication, and never publish the private manifest or coverage.
+
+Source findings motivating this probe, not measured explanations of a historical
+snapshot: `route_reply()` returns its `route` label, which the avatar handler
+stores in `served_by`; this is not necessarily the provider's exact model name.
+Two toggle success paths in `route_reply_result()` return before `_ledger()`.
+The ledger timestamp is completion recording, while the avatar history timestamp
+is written later after guards and reply processing. A time-window miss is therefore
+not proof that the model was unrecorded. The merge retains surface only when its
+source supplied one; the interaction writer defaults absent environment surface
+to an empty string. None of these facts identifies the affected historical rows
+without the private diagnostic. No route, feed, logging policy or admission rule
+is modified by this probe.

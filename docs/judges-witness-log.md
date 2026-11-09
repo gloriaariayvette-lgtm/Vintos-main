@@ -1479,3 +1479,27 @@ metadata-versus-parameter stages, exact-row/hash/clock consistency, cutoff and r
 denominators. Reports regenerated; whitespace clean. Full Aegis validation/private
 census remain with the reviewer. No real-data reads, model/paid calls, actual test
 sends, live writes, enablement, merge or deployment.
+
+## 9 November — historical attribution coverage diagnostic
+
+Review note 26 reports integration of the dedicated sink and historical tiers.
+Regenerated the stale store-owner inventory for the sink status file. Added a
+separate offline coverage probe: unchanged tight-window attribution, private
+per-caller retained date ranges and source/surface counts, and fixed wider-window
+ambiguity/reuse diagnostics. No widened attribution, training promotion, source
+capture or provider calls. Exact dates and surface names remain private; public
+output uses counts. The command and limitations are in the experiment README.
+
+The configured host route rejected authentication, so no retained input was read
+and no real-data diagnostic result is claimed. The reviewer can run the probe on
+the existing admitted snapshot; use its full copied ledger to measure all callers.
+Source tracing found unlogged successful toggle branches and confirms route labels
+are not necessarily model names; historical attribution impact remains unmeasured.
+
+179 affected isolated checks pass: coverage 13, attribution 17, strict witness 106,
+store guard 32, ownership 11. The coverage CLI initially failed because its file
+handle wrapper triggered the existing descriptor-write guard; changed it to the
+same guarded path-write pattern with a private umask and re-ran successfully.
+No live store, sink enablement, deployment or merge. The reviewer's occupied-sink
+measurements supersede the empty-directory estimate: roughly 11 ms/write, p95
+13 ms, max 16 ms, up to 24 ms at capacity. Off-path publication remains open.
