@@ -516,3 +516,50 @@ Public output contains only counts in `control_selection.exchange_modes` and
 authenticated by this experiment. Family-derived conversation labels permit a
 conditional within-mode control comparison; they do not make the family comparison
 identifiable or independently validate mode.
+
+
+## Prospective somatic interval receipts
+
+The existing narrator call can now append a final `SOMATIC_INTERVALS: [[first,last],...]`
+line referencing the `[tN]` ordinals in that call's input. Narration instructions,
+provider selection, temperature, output-token cap, schedule, input truncation,
+thread feed and dedup cursor retain their existing behavior. The same call supplies
+the optional metadata: no second classifier, retry, encoder or provider call is added.
+The ordinal prefixes and metadata instruction add input tokens; there is no claim
+that real provider output will satisfy this format until ordinary use supplies it.
+Legacy narration still seeds normally. Missing or malformed bounds do not cause a
+new call, suppress a valid narration, or manufacture an interval.
+
+`intimacy_evidence` is added to the existing `somatic-narrated.json` record and to
+`seed_thread(..., extra=...)`, so the existing thread/held-thread path retains it.
+The snapshot remains a last-run cursor, not a permanent interval archive; thread
+retention follows existing admission/retention behavior. No new store or timer.
+The snapshot is written with mode 0600. Metadata schema is
+`somatic-intimacy-intervals-v1`: status, observed time, input/response hashes,
+requested model, provider-reported served model (unknown if absent), unknown fallback,
+zero padding, interval bounds and source turn references. It contains no narration
+or message text. IDs and hashes are still private and must not be published.
+
+Only ordered, non-overlapping selections with explicit per-turn timestamps,
+unique turn IDs, one known surface, at most two hours per interval, eight intervals
+and 256 selected turns total are accepted. Each interval retains start/end,
+input ordinals and each selected turn's ID, timestamp, source, role and text hash.
+File-mtime fallback, legacy paired records without separate turn IDs, mixed surfaces,
+duplicate IDs, future times, excessive spans and invalid indices yield
+`invalid_bounds` with no partial intervals. `missing_bounds` is distinct from
+`no_session`; NONE never labels an entire day as everyday. These receipts record
+an existing narrator judgment over its truncated input, not independently validated
+intimacy ground truth or a prospective prediction before the conversation happened.
+
+A private importer can project a bounded interval into a reviewed `somatic_marks`
+entry without reading narration: copy `mode: intimate`, `start`, `end`, `surface`,
+the receipt's `observed_at`, `session_id: null`, and `join: exact_turns`. Set
+`source_field` to `somatic-narrated.json:intimacy_evidence` or
+`somatic_thread:intimacy_evidence`; hash the retained source record into
+`source_record_sha256`. Project each interval turn to exactly `turn_id`,
+`text_sha256`, `timestamp` under `turns`. The source reviewer then computes the
+existing `somatic_review_binding(mark)` (now also binding `turns`). Only an admitted
+reply matching that exact ID, text hash, timestamp and surface receives the mode.
+Nearby replies are not swept into the interval. This source cannot be widened to a
+surface/window join or relabelled everyday. Existing historical marks retain their
+old review hashes. Router receipts and independent observations still take priority.
