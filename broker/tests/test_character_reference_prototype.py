@@ -498,6 +498,30 @@ class Tests(unittest.TestCase):
         pool[-1]['context_vector']=[-1.,0.]
         with self.assertRaisesRegex(ValueError,'conflicting control candidate'):P.prepare(self.bundle,self.cutoff)
 
+    def test_cli_parse_failure_does_not_echo_private_input_values(self):
+        sentinel='synthetic-private-timestamp-marker'
+        self.bundle['rows'][0]['timestamp']=sentinel
+        source=self.root/'input.json';source.write_text(json.dumps(self.bundle));out=self.root/'bad-input-output'
+        result=subprocess.run([sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+            '--scratch',str(self.root),'--input',str(source),'--output',str(out),'--cutoff',self.cutoff],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotIn(sentinel,result.stdout+result.stderr)
+        self.assertNotIn(str(self.root),result.stdout+result.stderr)
+        self.assertNotIn('Traceback',result.stderr)
+        self.assertEqual(json.loads(result.stderr),{'written':False,'error':'prototype_failed','error_type':'ValueError'})
+        self.assertFalse(out.exists())
+
+    def test_cli_missing_source_does_not_echo_private_path(self):
+        source=self.root/'synthetic-private-source-marker.json';out=self.root/'missing-input-output'
+        result=subprocess.run([sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+            '--scratch',str(self.root),'--input',str(source),'--output',str(out),'--cutoff',self.cutoff],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotIn(source.name,result.stdout+result.stderr)
+        self.assertNotIn(str(self.root),result.stdout+result.stderr)
+        self.assertNotIn('Traceback',result.stderr)
+        self.assertEqual(json.loads(result.stderr)['written'],False)
+        self.assertFalse(out.exists())
+
     def test_reader_summary_labels_synthetic_and_preserves_zero_and_unknown(self):
         report,_=P.run(self.bundle,self.cutoff)
         page=P.render_reader_summary(report)

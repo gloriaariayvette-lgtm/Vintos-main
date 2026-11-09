@@ -134,6 +134,13 @@ SPARK_WORKSPACE=/private/scratch python3 experiments/character-reference/prototy
 Use the actual reviewer's scratch path and intended exclusive cutoff. Paths must
 stay inside that scratch, without symlinks. Output must be new. The inherited offline
 guard forbids network/subprocesses and confines writes to the output directory.
+Runtime failures exit nonzero with a fixed JSON error label and an allowlisted
+exception class. They do not print exception messages, tracebacks, malformed field
+values or source paths. Imported analysis functions still raise exceptions for
+local debugging; do not export those raw exceptions. A failed write can leave a
+partial private output directory; `written: false` is not a successful run and
+that directory must not be treated as a complete report. Argument-parser usage
+errors remain standard CLI usage messages; do not put secrets in CLI arguments.
 Outputs are mode 0600 in a 0700 directory:
 
 - `reader-summary.md`: a short plain-language page generated only from aggregate

@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-reader-summary**, based on
-**a50959ad**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-private-errors**, based on
+**ce4c6e00**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -962,3 +962,20 @@ zero versus unknown, unsafe metadata exclusion and malformed numeric rejection.
 48 isolated prototype checks pass; ownership result is in the dated handoff.
 The final real-data summary remains pending Claude's mode-by-surface aggregates
 from note #35. No private data collection, live changes, model calls or deployment.
+
+
+## 9 November — prevent private input values from leaking through CLI failures
+
+`codex/judges-character-private-errors` follows ce4c6e00. A focused privacy review
+reproduced two leaks with synthetic markers: an invalid timestamp appeared in a
+parser traceback and a missing source filename/path appeared in stderr. The CLI
+now exits nonzero with a fixed JSON failure label and allowlisted exception class,
+without exception text or traceback. Imported functions keep normal exceptions for
+private local debugging. Failed writes may leave partial private artifacts and are
+not successful reports; this is documented. Standard argument usage errors remain
+unchanged, so secrets do not belong in CLI arguments.
+50 isolated prototype checks pass after both new regressions failed on the old
+entrypoint; ownership results are recorded in the dated handoff. No real private
+records were accessed. Real coverage is still pending the independent rerun.
+Notification delivery remains rate-limited until the recorded 11:43:46 CST retry
+window; no early retry, new destination, live writes, merge or deployment.

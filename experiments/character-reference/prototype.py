@@ -767,4 +767,15 @@ def main():
     print(json.dumps({'written':True,'scored':report['primary_10s']['status'].get('scored',0)}))
 
 
-if __name__=='__main__':main()
+def cli():
+    try:main()
+    except Exception as exc:
+        name=type(exc).__name__
+        allowed={'ValueError','TypeError','KeyError','OSError','PermissionError','FileNotFoundError','RuntimeError'}
+        print(json.dumps({'written':False,'error':'prototype_failed',
+            'error_type':name if name in allowed else 'Exception'}),file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__=='__main__':sys.exit(cli())
