@@ -579,6 +579,12 @@ def main():
         entry.update(mode_receipt_from_env(os.environ, entry["turn_id"], entry["surface"], vintos_said))
     except Exception:
         pass
+    # Bind only this newly written reply; old rows and callback offers stay unbound.
+    try:
+        from joke_fermentation import reply_binding
+        entry.update(reply_binding(entry["vintos"], entry["turn_id"], MEMORY))
+    except Exception:
+        pass
     # Pull temporal context fields
     try:
         tc = open(os.path.join(MEMORY, "temporal-context.txt")).read()

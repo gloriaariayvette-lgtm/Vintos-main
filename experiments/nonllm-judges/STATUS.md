@@ -50,3 +50,14 @@ as live consumers or replace existing judges. Serving integration remains a sepa
 review/approval decision. This status describes source capability, not verified live
 configuration. All loops, feeds and model chains remain unchanged by this work;
 current provider-call savings are zero because no serving call has been replaced.
+
+Prospective coverage tooling from review note #54 is now source-ready:
+`capture_report.py` prints daily private-capture coverage as public counts, with
+an optional prepared projection for actual offline scoring counts. Capture alone
+still lacks delivery/full ancestry and encoder evidence; zero reported scores in
+packet-only mode mean **not assessed from these inputs**. Recurrence/grouping
+remain outside the retained adapter. New ledger rows bind only full replies that
+exactly equal one unambiguous retained humor draft; rewritten/truncated callbacks
+remain unjoined. Existing bindings survive exact canonical/ledger overlap. There
+is no historical backfill, extra generation, rating inference or new live feed.
+See the numerical README for the command, bounds and coverage denominators.

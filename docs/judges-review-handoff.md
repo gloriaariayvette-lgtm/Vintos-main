@@ -1446,3 +1446,86 @@ No real provider/model call, private input read, GPU, live change, merge or depl
 Branch codex/judges-review-fixes above 3fb175ce; exact tip/path in coordination reply.
 Heartbeat ACTIVE; independent full suite/test merge and private runs remain with
 Claude Code. Owner deploy/capture decisions in #53 were not executed by this agent.
+
+
+## 2026-11-09 14:09 CST — note #54 prospective joins and coverage
+
+Branch codex/judges-prospective-coverage, above review tip 457c85fc. Exact pushed
+commit/path are recorded in the designated coordination reply. New ledger entries
+call joke_fermentation.reply_binding for an exact full-reply match to one
+unambiguous retained draft, adding only ID/hash metadata. Both deployed ledger
+spellings remain identical. No prefix/rewrite/offer attribution, extra generation,
+draft writes, delivery attestation or historical backfill. The app/rated-callback
+route is not guaranteed to deliver the whole draft: missing joins remain unknown.
+Canonical overlaps retain existing bindings only on exact turn/surface/text/hash
+agreement across all ledger copies. Other merge/provenance fields are preserved;
+the numerical evidence builder rejects supplied conflicting joke hashes/bindings.
+
+New experiments/nonllm-judges/capture_report.py reads owner-private explicit packet
+files and prints only dates/counts/shares/fixed labels. Includes daily packets,
+unique reply denominators, selected provider-reported identity, complete lineage,
+strict original-act bindings, and separate freeze sources. Packet-only mode is
+explicitly not assessed for numerical scoring; it does not invent delivery,
+complete context, vectors or references. Optional existing prepared-input/Landings
+projections run the pure existing offline evaluation, restricted to exact matching
+packet-admitted acts, with separate primary/window30 views. Recurrence/grouping
+remain not evaluated (no retained adapter); drift counts replies in assessed daily
+windows, not shift verdicts. Refuses unsafe roots, symlinks, nonprivate files,
+malformed/oversized inputs and mismatched projections. No network/subprocess/file
+writes in the report; no encoder load. README and STATUS describe limits/usage.
+
+100 targeted isolated checks pass: humor binding 6, capture report 18, numerical
+builder 16, merged chat 31, humor/taste 12, humor ownership 4, entry owners 11,
+ledger dates 2. Logs /tmp/judges-prospective-test_*.log and
+/tmp/judges-humor-builder-tests.log. Required reports regenerated unchanged;
+diff check clean. All fixtures synthetic and senders blocked/stubbed. No actual
+model/provider call, private records, GPU, live write, merge or deployment.
+
+Original latent/idle-spool and remaining flake attribution is still unresolved;
+#54 accepts the clock analysis as candidate mechanisms and the reviewer will
+retain numeric deltas on the next failure. No claim that those roots are fixed.
+Independent full suite, private capture run and test merge remain with the reviewer;
+Gloria deploys/enables. Heartbeat ACTIVE. No new unresolved issue or routine alert.
+
+Final merge compatibility check: a nonstring legacy turn ID bypasses the new binding lookup without failing the existing merge. Added a regression; humor binding suite is now 7 checks, total 101 targeted checks.
+
+
+## 2026-11-09 14:29 CST — note #55 private encoder runtime compatibility
+
+Branch codex/judges-encoder-runtime above 26fff99f; exact pushed tip/path is in
+the designated coordination reply. The producer opts into opening only the literal
+/dev/null character device for runtime import. Shared guard defaults stay unchanged;
+aliases, other external writes, network and subprocesses remain denied. Runtime
+context, batch and microbatch sizes now match and are recorded in private settings.
+
+Copy completion and encoding clocks use one bracketed wall anchor plus monotonic
+elapsed time. Private manifest/entries retain the anchor, bracket width and elapsed
+values. Invalid monotonic readings refuse; no wall timestamp clamping, historical
+backfill, published-pin change or cross-process clock attestation. README documents
+the run-local epoch estimates and unchanged copy-time/published freeze policies.
+CLOCK.md inventories named latent, Lab, artifact, capture and spool gates under a
+backward step, with scoped design recommendations. No live gate/host changes here.
+The reviewer-reported host steps support candidate mechanisms; the old tracebacks
+still do not prove which clock bound failed. Host correction is with the owner via
+Claude; no duplicate alert or diagnostic run.
+
+194 targeted isolated checks pass: producer 40, witness census/guard 109,
+numerical builder 16, private runner 18, entry owners 11. Logs:
+/tmp/judges-runtime-producer-final.log, /tmp/judges-runtime-witness-final.log,
+/tmp/judges-runtime-test_numerical_evidence_builder.log,
+/tmp/judges-runtime-test_nonllm_private_run.log,
+/tmp/judges-runtime-test_entry_owners.log. The first new default-null denial check
+expected PermissionError but the existing outside-scratch refusal is ValueError;
+the regression now asserts that exact existing refusal. Production behavior was
+not loosened to satisfy it. Reports regenerated unchanged; git diff check clean.
+
+Real native compatibility remains for Claude's authorized private run; these tests
+used only synthetic bytes and a stub runtime. His diagnostic 183-entry/123-freeze
+counts are reviewer-reported, not reproduced here. Capture plus joke IDs are not
+sufficient by themselves: raw capture still lacks complete ancestry/known delivery;
+numerical evaluation additionally needs suitable modes, references and outcome
+anchors. No scoreability claim from structural metadata alone.
+
+No provider/model call, real artifact load, GPU, private data read, live change,
+merge or deployment. Independent full suite/test merge and real private run stay
+with Claude. Heartbeat ACTIVE. No completion/routine ntfy.

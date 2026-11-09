@@ -63,3 +63,32 @@ def admit_block(text,turn_id):
                 x["offer_count"]=x.get("offer_count",0)+1;x["offered_at"]=time.time()
         return rows
     locked_update(F,mutate,default=[])
+
+
+def reply_binding(text, turn_id, memory):
+    """Content identity only; an offer, prefix or rewrite cannot identify a draft.
+
+    Called only for a new finalized ledger entry. No backfill or delivery claim.
+    """
+    if not isinstance(text, str) or not text or not isinstance(turn_id, str) or not turn_id:
+        return {}
+    try:
+        with open(os.path.join(memory, "humor-drafts.json"), "rb") as f:
+            raw = f.read(1048577)
+        if len(raw) > 1048576: return {}
+        rows = json.loads(raw).get("drafts")
+        if not isinstance(rows, list) or len(rows) > 30: return {}
+        matching = [r for r in rows if isinstance(r, dict) and r.get("joke") == text]
+        ids = {r.get("joke_id") for r in matching}
+        if len(ids) != 1: return {}
+        key = next(iter(ids))
+        if not isinstance(key, str) or not 0 < len(key) <= 512: return {}
+        # A reused identity with different bytes is ambiguous even if one copy matches.
+        if any(r.get("joke") != text for r in rows if isinstance(r, dict) and r.get("joke_id") == key): return {}
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return {"joke_id": key, "joke_text_sha256": digest,
+                "joke_binding": {"schema": "humor-reply-binding-v1", "turn_id": turn_id,
+                    "joke_id": key, "joke_text_sha256": digest, "response_sha256": digest,
+                    "source": "exact_full_reply_draft"}}
+    except Exception:
+        return {}

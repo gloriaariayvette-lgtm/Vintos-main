@@ -120,6 +120,13 @@ def build(bundle,lineage,cache,humor,cutoff):
         key=ids[0] if ids and all(i==ids[0] for i in ids) else None
         draft=drafts.get(key) if P.identifier(key) else None
         why='recorded' if draft and isinstance(draft.get('joke'),str) and draft['joke']==row['text'] else 'missing_or_unbound_joke_id'
+        if why=='recorded':
+            for raw in copies:
+                binding=raw.get('joke_binding')
+                if ('joke_text_sha256' in raw and raw['joke_text_sha256']!=row['sha'] or
+                        binding is not None and binding!=dict(schema='humor-reply-binding-v1',turn_id=row['id'],
+                            joke_id=key,joke_text_sha256=row['sha'],response_sha256=row['sha'],source='exact_full_reply_draft')):
+                    why='conflicting_joke_binding';break
         reasons['humor_attempt'][why]+=1
         evidence['items'].append(dict(node_id=row['id'],kind='joke' if why=='recorded' else 'message'))
         if why=='recorded':evidence['humor_attempt_ids'].append(row['id']);used.add(key)
