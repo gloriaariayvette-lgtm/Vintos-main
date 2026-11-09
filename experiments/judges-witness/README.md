@@ -1781,3 +1781,13 @@ forecast scoring or feeds. Matching snapshots are still partial evidence, not fu
 encoder identity, tokenizer/execution-code identity, checkpoint training lineage,
 observation-time authentication or forecast-target association. Private copied-data
 measurements and the full isolated host suite remain reviewer work.
+
+
+### Innovation input boundary
+
+Direct innovation() callers must supply a list of admitted records with unique,
+nonempty string turn IDs. Repeated IDs are rejected, including identical copies;
+use the census to adjudicate source copies first. The percentile history minimum
+is a positive integer (booleans and floating-point values are not counts). Invalid
+container/identity/minimum contracts raise ValueError before scoring. This does not
+replace census eligibility checks or change scores for valid census outputs.

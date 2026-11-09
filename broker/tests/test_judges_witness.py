@@ -555,6 +555,32 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                 with self.assertRaises(ValueError):
                     R.innovation([self.row],forecasts,embeddings,checkpoints)
 
+    def test_innovation_rejects_duplicate_admitted_targets_in_either_order(self):
+        changed = copy.deepcopy(self.row)
+        changed['content'] = 'Synthetic conflicting final version'
+        changed['witness_receipt']['response_sha256'] = W.digest(changed['content'])
+        for rows in ([self.row,copy.deepcopy(self.row)], [self.row,changed], [changed,self.row]):
+            with self.subTest(identical=rows[0] == rows[1]):
+                with self.assertRaisesRegex(ValueError, 'unique admitted'):
+                    R.innovation(rows,[self.f],[self.e],self.ck)
+
+    def test_innovation_rejects_invalid_admitted_container_or_identity(self):
+        for admitted in (None, {}, (), 'synthetic invalid container',
+                         [None], [[]], [{}], [dict(self.row,turn_id=[])],
+                         [dict(self.row,turn_id=True)], [dict(self.row,turn_id='')]):
+            with self.subTest(admitted=type(admitted).__name__):
+                with self.assertRaises(ValueError):
+                    R.innovation(admitted,[],[],{})
+
+    def test_innovation_history_minimum_requires_positive_integer(self):
+        for minimum in (True, False, 0, -1, 1.5, float('nan'), float('inf'), None, '20', []):
+            with self.subTest(minimum=type(minimum).__name__):
+                with self.assertRaisesRegex(ValueError, 'positive integer'):
+                    R.innovation([],[],[],{},minimum_history=minimum)
+        report, rows = R.innovation([],[],[],{},minimum_history=1)
+        self.assertEqual(rows,[])
+        self.assertEqual(report['groups'],[])
+
     def test_forecast_matches_final_once(self):
         summary, rows = self.score(forecasts=[self.f, copy.deepcopy(self.f)])
         self.assertEqual(len(rows), 1)

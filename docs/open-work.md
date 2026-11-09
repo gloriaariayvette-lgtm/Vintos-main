@@ -6786,3 +6786,13 @@ offline diagnostic with fixed aggregate labels, not a scoring/admission upgrade.
 Full host suite and copied-data coverage remain with review. Complete encoder
 identity and fitting lineage remain unresolved; prior sink throughput and producer
 coverage checks remain pending. No enablement, merge or deployment.
+
+
+## 9 November — innovation input validation ready for review
+
+`codex/judges-innovation-input-contract` rejects ambiguous admitted target lists and
+non-integer history minima before offline scoring; 155 isolated checks pass.
+The census already supplies unique admitted replies, so this closes a standalone
+function boundary without changing valid report results. Full Aegis suite remains
+with review. Earlier private coverage, sink cost and encoder-lineage work remains
+open; no enabling, merge or deployment.

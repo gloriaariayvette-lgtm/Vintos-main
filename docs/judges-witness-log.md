@@ -1807,3 +1807,22 @@ public privacy and count denominators. The first run exposed aliased before/afte
 snapshots in the synthetic fixture; independent fixture copies fixed the test, with
 validation unchanged. Generated reports refreshed. Full Aegis suite and real copied
 evidence remain with review; no live writes, sends, enabling, merge or deployment.
+
+
+## 9 November — innovation input contract
+
+`codex/judges-innovation-input-contract` fixes a reproducible offline boundary gap:
+innovation() built a target dictionary without checking uniqueness, so the last
+admitted copy silently won. It now requires a list of identified records and
+rejects repeated turn IDs, even identical copies. Census remains responsible for
+admission/deduplication. The history minimum must be a positive integer; booleans,
+floats, NaN/infinity and other malformed values are refused before scoring.
+
+Three new regression cases reproduced the gaps before repair (14 failing and nine
+erroring subcases). After repair, 155 isolated checks pass: strict witness 109,
+review report 16 and artifact joins 30. Both conflict orders, identical copies,
+invalid shapes/IDs and malformed minima are covered; existing valid scores and
+causal percentile/control tests pass unchanged. This is a defensive function-input
+fix, not evidence that census-produced historical reports had duplicate targets.
+Generated reports refreshed. No producers, feeds, model calls, live data, sends,
+enabling, merge or deployment changed; full host suite remains reviewer work.
