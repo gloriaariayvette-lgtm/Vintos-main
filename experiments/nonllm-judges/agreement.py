@@ -242,7 +242,7 @@ def main(argv=None):
         if event == 'open' and isinstance(values[2], int) and values[2] & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND): raise PermissionError('write')
         if event in ('os.mkdir', 'os.remove', 'os.rename', 'os.rmdir', 'os.chmod', 'os.link', 'os.symlink', 'os.fork', 'os.forkpty'): raise PermissionError('mutation')
     sys.addaudithook(guard)
-    result = report(G.read(root, args.input), G.read(root, args.landings) if args.landings else None,
+    result = report(G.read(root, args.input, max_bytes=64 * 1024 * 1024), G.read(root, args.landings) if args.landings else None,
                     G.read(root, args.verdicts), args.cutoff)
     print(json.dumps(result, sort_keys=True, allow_nan=False))
 

@@ -196,6 +196,17 @@ class Tests(unittest.TestCase):
         result=subprocess.run(args,capture_output=True,text=True,timeout=30,env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1'))
         self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(json.loads(result.stdout)['schema'],'judge-agreement-counts-v1')
         self.assertEqual(before,{p.name:p.read_bytes() for p in self.root.iterdir()})
+    def test_large_evidence_bundle_has_its_own_bound(self):
+        args=self.cli();path=self.root/'input.json'
+        # Whitespace is valid JSON and does not alter any fixture semantics.
+        path.write_text(path.read_text()+' '* (8*1024*1024))
+        result=subprocess.run(args,capture_output=True,text=True,timeout=30)
+        self.assertEqual(result.returncode,0,result.stderr)
+        with self.assertRaises(ValueError):A.G.read(self.root,path)
+        with path.open('ab') as stream:stream.truncate(64*1024*1024+1)
+        result=subprocess.run(args,capture_output=True,text=True,timeout=30)
+        self.assertNotEqual(result.returncode,0);self.assertEqual(result.stderr.strip(),'judge_agreement_refused')
+
     def test_cli_private_permissions_symlinks_and_sanitized_errors(self):
         args=self.cli();file=self.root/'verdicts.json';file.chmod(0o644)
         result=subprocess.run(args,capture_output=True,text=True,timeout=30)

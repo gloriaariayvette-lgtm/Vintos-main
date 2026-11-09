@@ -171,3 +171,5 @@ labels, but have no comparable agreement denominator.
 | 29 `social_score` | `memory/moltbook-replies.txt` | Chosen engagement log, not a complete candidate-score history. |
 | 30 `social_members` | `memory/moltbook-members.json` | Encounter/member summaries; counts not social judgment. |
 | 31 `social_post_check` | `memory/moltbook-post-log.md` | Post/action log, not complete rejected-and-accepted verdict history. |
+
+The evidence bundle has a separate 64 MiB read limit, matching run_private; verdict and Landings projections retain the 4 MiB limit. Private ownership, parent permissions, regular-file, symlink, duplicate-key and finite-value checks apply at either bound.
