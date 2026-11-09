@@ -94,6 +94,126 @@ def value_map_write_observations(nodes, builds, cutoff):
              "reads": len(details), "states": dict(sorted(states.items()))}, details)
 
 
+def value_map_build_links(builds, calls, cutoff):
+    """Check explicit supplied IDs and hashes only; never grant clean ancestry."""
+    def clock(value):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid producer clock") from None
+
+    cutoff = clock(cutoff)
+    # Reuse write-receipt validation, including conflicting duplicate identities.
+    value_map_write_observations({}, builds, cutoff)
+
+    def index(records, field):
+        if not isinstance(records, list):
+            raise ValueError("producer records must be a list")
+        result, versions = {}, {}
+        for rec in records:
+            if not isinstance(rec, dict) or not isinstance(rec.get(field), str) or not 0 < len(rec[field]) <= 256:
+                raise ValueError("invalid producer identity")
+            try:
+                encoded = json.dumps(rec, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            except (TypeError, ValueError):
+                raise ValueError("invalid producer record") from None
+            key = rec[field]
+            if key in versions and versions[key] != encoded:
+                raise ValueError("conflicting producer identity")
+            versions[key], result[key] = encoded, rec
+        return result
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    stages = ("draft_a", "draft_b", "synthesis")
+    def reference(ref):
+        if (not isinstance(ref, dict) or set(ref) != {"stage", "state", "request_id", "returned_sha256"}
+                or ref.get("stage") not in stages or not hashed(ref.get("returned_sha256"))
+                or ref.get("state") not in ("bound", "unavailable")
+                or (ref["state"] == "unavailable" and ref.get("request_id") is not None)
+                or (ref["state"] == "bound" and (not isinstance(ref.get("request_id"), str) or not 0 < len(ref["request_id"]) <= 256))):
+            raise ValueError("invalid producer reference")
+
+    by_build, by_call = index(builds, "build_id"), index(calls, "request_id")
+    for call in by_call.values():
+        start, end = clock(call.get("started_at")), clock(call.get("ended_at"))
+        if (call.get("schema") != "value-map-call-v1" or start > end
+                or call.get("scope") != "one_http_invocation" or not hashed(call.get("input_sha256"))
+                or call.get("upstream_complete") is not False or call.get("internal_attempts_complete") is not False
+                or call.get("outcome") not in ("returned", "rejected", "failed")
+                or (call["outcome"] == "returned" and not hashed(call.get("returned_sha256")))
+                or (call["outcome"] != "returned" and call.get("returned_sha256") is not None)):
+            raise ValueError("invalid completed producer call")
+        if "build_id" in call:
+            deps = call.get("dependencies")
+            if (not isinstance(call["build_id"], str) or not call["build_id"] or call.get("stage") not in stages
+                    or not isinstance(deps, list) or len(deps) > 2):
+                raise ValueError("invalid producer call binding")
+            for dep in deps: reference(dep)
+            if sorted(d["stage"] for d in deps) != (["draft_a", "draft_b"] if call["stage"] == "synthesis" else []):
+                raise ValueError("invalid producer dependency stages")
+    for build in by_build.values():
+        reference(build.get("selection"))
+        records, entries = build.get("calls"), build.get("stage_entries")
+        if (type(build.get("calls_truncated")) is not bool or not isinstance(records, list) or len(records) > 8
+                or not isinstance(entries, dict) or any(k not in stages or type(v) is not int or v < 1 for k,v in entries.items())):
+            raise ValueError("invalid producer build observations")
+        ids = set()
+        for rec in records:
+            if (not isinstance(rec, dict) or not isinstance(rec.get("request_id"), str) or not rec["request_id"]
+                    or rec["request_id"] in ids or rec.get("stage") not in stages
+                    or type(rec.get("packet_published")) is not bool
+                    or rec.get("outcome") not in ("returned", "rejected", "failed", "unobserved")):
+                raise ValueError("invalid producer call observation")
+            ids.add(rec["request_id"])
+
+    stage_calls = defaultdict(list)
+    for call in by_call.values():
+        if "build_id" in call:
+            stage_calls[(call["build_id"], call["stage"])].append(call)
+
+    def check(build, ref, latest):
+        if ref["state"] != "bound":
+            return "unavailable"
+        call = by_call.get(ref["request_id"])
+        if call is None:
+            return "missing_call"
+        records = [r for r in build["calls"] if r["stage"] == ref["stage"]]
+        # Also inspect supplied calls omitted by the build's call summary. Never
+        # let an incomplete summary select one of several same-stage attempts.
+        supplied = stage_calls[(build["build_id"], ref["stage"])]
+        good = (not build["calls_truncated"] and build["stage_entries"].get(ref["stage"]) == 1
+                and len(records) == 1 and len(supplied) == 1
+                and records[0]["request_id"] == ref["request_id"]
+                and records[0]["packet_published"] is True and records[0]["outcome"] == "returned"
+                and call.get("build_id") == build["build_id"] and call.get("stage") == ref["stage"]
+                and call["outcome"] == "returned" and call["returned_sha256"] == ref["returned_sha256"]
+                and clock(build["started_at"]) <= clock(call["started_at"]) <= clock(call["ended_at"]) <= latest
+                and clock(call["ended_at"]) < cutoff)
+        return "consistent" if good else "inconsistent_call"
+
+    selections, dependencies, details = Counter(), Counter(), []
+    for key, build in sorted(by_build.items()):
+        if clock(build["ended_at"]) >= cutoff:
+            continue
+        ref = build["selection"]
+        state = check(build, ref, clock(build["ended_at"]))
+        selections[state] += 1
+        detail = {"build_id": key, "selected_request_id": ref["request_id"], "selection_state": state, "dependencies": []}
+        if state == "consistent":
+            call = by_call[ref["request_id"]]
+            for dep in call.get("dependencies", []):
+                status = check(build, dep, clock(call["started_at"]))
+                dependencies[status] += 1
+                detail["dependencies"].append({"stage": dep["stage"], "request_id": dep["request_id"], "state": status})
+        details.append(detail)
+    return ({"scope": "explicit_build_call_consistency_only", "admission_effect": "none",
+             "builds_before_cutoff": len(details),
+             "calls_before_cutoff": sum(clock(c["ended_at"]) < cutoff for c in by_call.values()),
+             "selection_states": dict(sorted(selections.items())), "dependency_states": dict(sorted(dependencies.items()))}, details)
+
+
 def adapt(rows, kind):
     if not isinstance(rows, list):
         raise ValueError("snapshot must contain a list of records")
@@ -800,6 +920,12 @@ def main():
     if "value_map_builds" in bundle:
         report["value_map_write_observations"], private_map_writes = value_map_write_observations(
             nodes, bundle["value_map_builds"], args.cutoff)
+    private_build_links = None
+    if "value_map_calls" in bundle:
+        if "value_map_builds" not in bundle:
+            raise ValueError("value_map_calls requires an explicit value_map_builds list")
+        report["value_map_build_links"], private_build_links = value_map_build_links(
+            bundle["value_map_builds"], bundle["value_map_calls"], args.cutoff)
     if scoring_hashes() != code_hashes:
         raise ValueError("scoring source changed during replay")
     output.mkdir(mode=0o700)
@@ -809,6 +935,8 @@ def main():
         outputs.append(("private-behaviour.json", private_behaviour))
     if private_map_writes is not None:
         outputs.append(("private-value-map-writes.json", private_map_writes))
+    if private_build_links is not None:
+        outputs.append(("private-value-map-links.json", private_build_links))
     output_hashes = {}
     for name, value in outputs:
         payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")

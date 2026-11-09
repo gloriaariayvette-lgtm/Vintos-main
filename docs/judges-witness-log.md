@@ -1042,3 +1042,32 @@ influence counts. Full builder suites use installed Python 3.12 and existing
 read-only dependencies; no installation or runner edit. Reports regenerated;
 whitespace checked. No private-data run, model/paid call, real test send, live
 write, merge or deploy. Full Aegis review/private census remain with the reviewer.
+
+
+## 8 November — offline explicit build/call consistency
+
+`codex/judges-build-call-replay` continues from 0c734ea3 without changing submitted
+producer branches. The optional replay input now checks a build's exact selected
+request and a selected synthesis call's two draft dependencies against supplied
+call receipts. IDs, stages, hashes, publication/outcome observations, stage counts
+and causal clocks must agree; no text similarity, nearest/latest choice or
+substitution. Missing, unavailable and inconsistent evidence remain distinct.
+
+Conflicting duplicate identities or malformed required records fail generically
+before filtering. Unique completed builds before the exclusive cutoff contribute
+aggregate counts; exact dependency IDs stay private under the run manifest.
+Selection consistency and draft-dependency consistency are separate measures.
+This is internal receipt consistency, not producer authenticity, certified served
+identity, complete source ancestry or delivery. Census/behaviour/innovation and
+production remain unchanged.
+
+196 affected isolated checks pass: build/call replay 11, write/read 11, builds 11,
+calls 9, context 10, auxiliary inputs 9, view receipts 9, capture/replay 9, witness
+106 and ownership 11. The new suite drives actual synthetic producers into replay
+and checks missing IDs despite equal text, omitted duplicate stages, wrong hashes
+or clocks, missing/future drafts, surviving-draft selection, conflicting copies,
+cutoff, private output permissions/manifests and unchanged census/report fields.
+Installed Python 3.12 is used for actual builder fixtures; no installs or model
+calls. Reports regenerated; whitespace checked. No private-input run, real test
+send, live write, merge or deploy. Independent Aegis full suite/private census
+remain with the reviewer; producer history and trusted delivery remain open.

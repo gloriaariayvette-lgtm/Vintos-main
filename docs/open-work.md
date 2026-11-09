@@ -6479,3 +6479,13 @@ canonical view hash, retaining explicit standing/permission/influence counts.
 unchanged. Returned-view identity is not raw-file identity or complete ancestry;
 source/effect history, cached material and trusted delivery remain open. Production
 capture stays disabled. Independent Aegis suite/private census stay with reviewer.
+
+
+## 8 November — build/call receipt consistency in replay
+
+`codex/judges-build-call-replay` adds optional explicit-ID consistency checking for
+selected calls and synthesis draft dependencies, with private details and aggregate
+counts. 196 affected isolated checks pass. This does not certify producer origin,
+served identity, full source/effect history or delivery, and cannot change witness
+eligibility. Earlier producer branches remain fixed. Full Aegis validation and
+private snapshot census remain with the reviewer; production stays untouched.

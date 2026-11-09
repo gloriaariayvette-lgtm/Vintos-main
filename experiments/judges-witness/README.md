@@ -940,3 +940,29 @@ a truncated flag, preserving earlier observations and the reader's exact result.
 Empty views and empty fallbacks have distinct paths; an empty view does not prove
 the source was empty or readable. Context scope now says instrumented reads and
 views during assembly. Full source/effect ancestry remains unknown.
+
+
+### Optional build/call consistency report
+
+Supply an explicit `value_map_calls` list alongside `value_map_builds` to check
+the build's selected request and any selected synthesis call's named draft
+dependencies. Nothing is discovered on disk. Matching uses the exact request ID,
+build ID, stage, returned hash and causal clocks; identical output text cannot
+substitute for a missing request. Build-local stage counts, publication/outcome
+observations and supplied extra same-stage calls must agree. The checker retains
+unavailable, missing_call, inconsistent_call and consistent as distinct states.
+Synthesis selection and its draft dependencies are counted separately: a directly
+consistent synthesis call with a missing draft does not become complete ancestry.
+
+Exact duplicate packets are deduplicated; conflicting identities and malformed
+required records abort generically before temporal filtering. Completed builds
+at/after the exclusive cutoff are not counted. Required call/build metadata is
+validated, but optional context/read payloads and served identity are not certified
+by this consistency checker. An internal match proves neither trustworthy producer
+attestation, successful storage, provenance completeness nor chat delivery.
+
+`aggregate.json` gains counts under value_map_build_links. Exact IDs and dependency
+states stay in `private-value-map-links.json` (0600), hashed in the existing run
+manifest. With no calls key the previous reports/output set remain unchanged.
+Neither producer records nor this report are admitted as chat turns; lineage and
+census/innovation/behaviour decisions are untouched.

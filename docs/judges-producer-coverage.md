@@ -190,3 +190,13 @@ ancestry remain unobserved; empty views do not prove empty/readable stores.
 Known returned influence markers remain visible as counts, not causal proof
 that every returned row reached or affected the generated map. No eligibility
 or production enablement changes.
+
+
+## Implementation follow-up: offline producer linkage checks
+
+Replay can now compare explicitly supplied build/call receipts by their declared
+IDs, stages, hashes, publication/outcome records and causal clocks. Synthesis
+selection and draft links are counted separately; missing records remain missing
+without alternate text/time matches. This is a diagnostic of supplied receipts,
+not complete ancestry, served-model verification or admission. No producer or
+live path changed in this increment.
