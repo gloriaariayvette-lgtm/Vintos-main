@@ -1,19 +1,21 @@
 # Board 2: pressure strip + mic (Gloria, 8 November).
 #   Mic module      VCC 3V3, GND, SIGNAL GPIO34 (analog in)
-#   Pressure strip  tail 1 GPIO33 (driven HIGH to power it), tail 2 GPIO32 (INPUT_PULLDOWN)
+#   Pressure strip  tail 1 GPIO33 (driven HIGH to power it), tail 2 GPIO32 (ADC with pull-down; calibrated body-weight thresholds)
 # The mic gives a loudness number only. The board never records or sends sound, only how loud it is.
 # Everything here only counts when her phone is within 1 m of the board (IRK, as the kitchen board; the key is
 # gloria_phone_irk in the ESPHome add-on's secrets.yaml). Away from her: the board reports nothing.
 esphome:
   name: house-press-mic
   friendly_name: House pressure + mic board
+  includes:
+    - mic_meter.h
+    - mic_statistics.h
+    - pressure_gate.h
   on_boot:
-    - priority: 800
-      then:
-        - output.turn_on: strip_power   # GPIO33 HIGH powers the strip
-    - priority: -100
-      then:
-      - lambda: 'gpio_pulldown_en(GPIO_NUM_32); gpio_pullup_dis(GPIO_NUM_32);'   # the strip's pull-down, kept while read as a level
+    priority: 600             # GPIO output setup runs at 800 and initially turns the pin off.
+    then:
+      - output.turn_on: strip_power   # GPIO33 HIGH powers the strip
+      - lambda: 'house_mic::begin();'
 
 esp32:
   board: esp32dev
@@ -36,6 +38,7 @@ ota:
   - platform: esphome
 
 logger:
+  baud_rate: 0  # Keep physical UART quiet; encrypted API logs remain available.
 
 mqtt:
   broker: 192.168.1.91
@@ -52,15 +55,28 @@ globals:
     initial_value: '0'
 
 number:
-  - platform: template     # the pressure level (0-100) above which someone is sitting; set from real readings
-    id: pressure_threshold
-    name: "Pressure threshold"
+  - platform: template
+    id: pressure_on_threshold
+    name: "Pressure occupied threshold"
+    entity_category: config
     optimistic: true
-    min_value: 1
+    min_value: 0
     max_value: 100
-    step: 1
-    initial_value: 50
+    step: 0.5
+    initial_value: 95
     restore_value: true
+    unit_of_measurement: "%"
+  - platform: template
+    id: pressure_off_threshold
+    name: "Pressure release threshold"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 0.5
+    initial_value: 90
+    restore_value: true
+    unit_of_measurement: "%"
   - platform: template
     id: rssi_at_1m
     name: "Gloria phone signal at 1 m"
@@ -78,20 +94,21 @@ output:
     id: strip_power
 
 sensor:
-  # The strip read as a level, not on/off: at rest these strips still pass enough current to read as pressed
-  # on a plain digital pin (8 November: the sofa read pressed with no one on it). 0 = nothing, 100 = hard press.
-  - platform: adc
-    pin: GPIO32
+  - platform: template
     id: pressure_level
     name: "Pressure level"
-    attenuation: 12db
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+    accuracy_decimals: 2
     update_interval: 250ms
+    lambda: |-
+      return house_mic::pressure_level();
     filters:
-      - lambda: return x / 3.3f * 100.0f;
-      - sliding_window_moving_average:
-          window_size: 4
+      - median:
+          window_size: 3
           send_every: 1
-      - delta: 2.0
+          send_first_at: 1
+
   - platform: ble_rssi
     irk: !secret gloria_phone_irk
     id: gloria_phone_rssi
@@ -113,29 +130,24 @@ sensor:
               root["rssi@1m"] = id(rssi_at_1m).state;
               root["distance"] = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
 
-  # Loudness: the swing of the mic signal over ~40 ms, 0-100. Not sound, just how loud.
+  # Continuous ADC sampling; only DC-independent RMS amplitude is published.
   - platform: template
     id: loudness
     name: "Loudness"
     update_interval: 1s
-    lambda: |-
-      int lo = 4095, hi = 0;
-      for (int i = 0; i < 400; i++) {
-        int v = analogRead(34);
-        if (v < lo) lo = v;
-        if (v > hi) hi = v;
-        delayMicroseconds(100);
-      }
-      return (hi - lo) * 100.0f / 4095.0f;
+    accuracy_decimals: 1
+    lambda: 'return house_mic::level();'
     on_value:
       then:
         - if:
             condition:
-              binary_sensor.is_on: gloria_near
+              and:
+                - binary_sensor.is_on: gloria_near
+                - lambda: return std::isfinite(x);
             then:
               - mqtt.publish:
                   topic: vintos/board/house-press-mic/loudness
-                  payload: !lambda 'return str_sprintf("%.0f", x);'
+                  payload: !lambda 'return str_sprintf("%.1f", x);'
 
 binary_sensor:
   - platform: template
@@ -147,19 +159,21 @@ binary_sensor:
         - mqtt.publish:
             topic: vintos/board/house-press-mic/near
             payload: !lambda 'return x ? "on" : "off";'
-        - if:
-            condition:
-              lambda: 'return x && id(pressed).state;'
-            then:
-              - mqtt.publish: {topic: vintos/board/house-press-mic/event, payload: press_start}
 
   - platform: template
     id: pressed
     name: "Pressure"
-    lambda: 'return id(pressure_level).state > id(pressure_threshold).state;'
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 300ms
+    lambda: |-
+      static house_pressure::Gate gate(1000, 1500);
+      float level = id(pressure_level).state;
+      if (!std::isfinite(house_mic::pressure_level())) level = NAN;
+      int state = gate.update(level, id(pressure_on_threshold).state,
+                              id(pressure_off_threshold).state, millis());
+      if (state < 0) {
+        id(pressed).invalidate_state();
+        return {};
+      }
+      return state != 0;
     on_press:
       then:
         - if:

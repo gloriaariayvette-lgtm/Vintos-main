@@ -25,7 +25,7 @@ static void play_task(void *) {
   cfg.buf_size = 1024;
   cfg.freq_hz = 16000;
   cfg.offset = 0;
-  cfg.clk_src = DAC_DIGI_CLK_SRC_DEFAULT;
+  cfg.clk_src = DAC_DIGI_CLK_SRC_APLL;  // 16 kHz is below the default PLL_D2 clock's minimum.
   cfg.chan_mode = DAC_CHANNEL_MODE_SIMUL;
 
   esp_http_client_config_t hc = {};
