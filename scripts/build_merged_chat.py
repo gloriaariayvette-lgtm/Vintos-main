@@ -151,7 +151,7 @@ def build():
         if not found:
             continue
         merged_entry=entry(e, e.get("role", "user"), str(content), ts, "canonical")
-        if e.get('role')=='assistant' and e.get('turn_id') in ledger_by_turn:
+        if e.get('role')=='assistant' and isinstance(e.get('turn_id'),str) and e['turn_id'] in ledger_by_turn:
             bindings=[_humor_binding(row,str(content),e['turn_id']) if row.get('surface')==e.get('surface') else None
                       for row in ledger_by_turn[e['turn_id']]]
             if bindings and all(b is not None and b==bindings[0] for b in bindings):

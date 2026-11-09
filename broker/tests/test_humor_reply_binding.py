@@ -63,6 +63,12 @@ class Tests(unittest.TestCase):
         with patch.object(M,'load_json',return_value=[row,dict(row,joke_id='conflict')]),patch.object(M,'load_jsonl',return_value=[canonical]):
             self.assertNotIn('joke_id',M.build()[0])
 
+    def test_nonstring_legacy_turn_id_does_not_break_merge(self):
+        canonical=dict(role='assistant',content=self.text,turn_id=['legacy'],surface='chat',ts=1577836800)
+        with patch.object(M,'load_json',return_value=[]),patch.object(M,'load_jsonl',return_value=[canonical]):
+            merged=M.build();self.assertEqual(merged[0]['content'],self.text)
+            self.assertNotIn('joke_binding',merged[0])
+
     def test_new_ledger_entry_hook_and_merge_retention(self):
         self.binding();entry=dict(vintos=self.text,turn_id='fixture-turn',other_field='retained')
         source=(ROOT/'scripts/interaction-ledger.py').read_text();tree=ast.parse(source)

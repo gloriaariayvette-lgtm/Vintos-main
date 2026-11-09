@@ -2908,3 +2908,5 @@ Original latent/idle-spool and remaining flake attribution is still unresolved;
 retain numeric deltas on the next failure. No claim that those roots are fixed.
 Independent full suite, private capture run and test merge remain with the reviewer;
 Gloria deploys/enables. Heartbeat ACTIVE. No new unresolved issue or routine alert.
+
+Final merge compatibility check: a nonstring legacy turn ID bypasses the new binding lookup without failing the existing merge. Added a regression; humor binding suite is now 7 checks, total 101 targeted checks.
