@@ -81,13 +81,16 @@ def surface_label(value):
 
 SOMATIC_FIELDS=('mode','source_field','source_record_sha256','start','end','observed_at',
                 'surface','session_id','join')
-SOMATIC_SOURCES=('somatic-narrated.json:narration','somatic_thread:thread')
+SOMATIC_SOURCES=('somatic-narrated.json:narration','somatic_thread:thread',
+                 'somatic-narrated.json:intimacy_evidence','somatic_thread:intimacy_evidence')
 MODE_LABEL_SOURCES=('prospective_receipt',)+MODE_SOURCES+('somatic_narration','gloria_family_rule','conflicting','unknown')
 SOMATIC_WINDOW_LIMIT=7200.0
 
 
 def somatic_review_binding(mark):
-    return digest(json.dumps({k:mark.get(k) for k in SOMATIC_FIELDS},sort_keys=True,allow_nan=False,separators=(',',':')))
+    bound={k:mark.get(k) for k in SOMATIC_FIELDS}
+    if 'turns' in mark:bound['turns']=mark['turns']
+    return digest(json.dumps(bound,sort_keys=True,allow_nan=False,separators=(',',':')))
 
 
 def bind_modes(rows,observations,cutoff,somatic_marks=(),family_fallback=False,raw_rows=()):
@@ -142,14 +145,33 @@ def bind_modes(rows,observations,cutoff,somatic_marks=(),family_fallback=False,r
         start,end,observed=(instant(mark[k]) for k in ('start','end','observed_at'))
         if not start<=end<=observed<cutoff or end-start>SOMATIC_WINDOW_LIMIT:
             counts['somatic_outside_or_overlong_marks']+=1;continue
-        if (mark.get('surface') not in SURFACES[:-1] or mark.get('join') not in ('session_window','surface_window')
+        if (mark.get('surface') not in SURFACES[:-1] or mark.get('join') not in ('session_window','surface_window','exact_turns')
                 or mark['join']=='session_window' and (not isinstance(mark.get('session_id'),str) or not 1<=len(mark['session_id'])<=160)
-                or mark['join']=='surface_window' and mark.get('session_id') is not None):
+                or mark['join'] in ('surface_window','exact_turns') and mark.get('session_id') is not None):
             raise ValueError('invalid somatic join scope')
+        if mark['source_field'].endswith(':intimacy_evidence') and (mark['join']!='exact_turns' or mark['mode']!='intimate'):
+            raise ValueError('prospective somatic evidence requires exact intimate turn bindings')
+        exact={}
+        if mark['join']=='exact_turns':
+            refs=mark.get('turns')
+            if not isinstance(refs,list) or not 1<=len(refs)<=10000:raise ValueError('invalid somatic turn bindings')
+            for ref in refs:
+                if (not isinstance(ref,dict) or set(ref)!={'turn_id','text_sha256','timestamp'}
+                        or not isinstance(ref['turn_id'],str) or not 1<=len(ref['turn_id'])<=256
+                        or ref['turn_id'] in exact or not isinstance(ref['text_sha256'],str)
+                        or not re.fullmatch('[0-9a-f]{64}',ref['text_sha256'])
+                        or not start<=instant(ref['timestamp'])<=end):
+                    raise ValueError('invalid somatic turn bindings')
+                exact[ref['turn_id']]=ref
+        elif 'turns' in mark:raise ValueError('somatic turn bindings require exact join')
         matched=0
         for row in rows:
             if (start<=row['at']<=end and row['surface']==mark['surface']
-                    and (mark['join']=='surface_window' or row.get('session_id')==mark['session_id'])):
+                    and (mark['join']=='surface_window'
+                         or mark['join']=='session_window' and row.get('session_id')==mark['session_id']
+                         or mark['join']=='exact_turns' and row['id'] in exact
+                         and exact[row['id']]['text_sha256']==row['sha']
+                         and instant(exact[row['id']]['timestamp'])==row['at'])):
                 somatic[row['id']].append(mark);matched+=1
         counts['somatic_linked_marks' if matched else 'somatic_unmatched_marks']+=1
     for row in rows:

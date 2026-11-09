@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""somatic_narrate.py — narrate the CONVERSATION that happened during a somatic session.
+"""Narrate new conversation from the existing daily window and retain optional interval evidence.
 
-end_session wrote somatic-session-pending.json {dur, ts, ...}. The session window is
-[ts - dur, ts]. This pulls the real turns Gloria and Vintos exchanged in that window — from
-whichever chat they were using (avatar / voice / main) — and asks grok, as Vintos, to narrate what
-passed BETWEEN them: the arc of the exchange and where it left him. Grounded in the actual words,
-not in motion data. Seeds that narration as his (dream-bound) somatic thread and clears pending.
-
-If the session was wordless (no turns in the window), there is nothing to narrate — it clears
-pending and seeds nothing. Reuses the engine identity + an authed grok call. Short lock-wrapped cron.
+The existing call supplies narration plus optional input-ordinal bounds. Only bounds
+with explicit timestamps, known source surfaces and unique turn IDs become receipts.
+Missing evidence never labels a whole day. The narration/thread and dedup cursor
+continue through their existing stores; no additional provider call is made.
 """
-import os, sys, json, subprocess, importlib.util
+import os, sys, json, subprocess, importlib.util, hashlib, math
 from datetime import datetime, timezone
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -43,6 +39,81 @@ def to_epoch(x):
     except Exception:
         return None
 
+class NarrativeTurn(tuple):
+    """Keep the existing three-value feed while retaining optional source identity."""
+    def __new__(cls, timestamp, who, text, evidence):
+        value = super().__new__(cls, (timestamp, who, text))
+        value.evidence = evidence
+        return value
+
+
+class NarrativeReply(str):
+    def __new__(cls, text, served_model=None):
+        value = super().__new__(cls, text)
+        value.served_model = served_model
+        return value
+
+
+def turn_evidence(row, source, timestamp, text, exact_timestamp):
+    tid = row.get("turn_id")
+    surface = row.get("surface") or {
+        "avatar-overlay-chat.json": "avatar", "avatar-chat-history.json": "avatar",
+        "voice-chat-history.json": "voice"}.get(source)
+    if (row.get("role") not in ("user", "assistant") or not exact_timestamp or not isinstance(tid, str) or not 1 <= len(tid) <= 256
+            or surface not in ("avatar", "reelroom", "chat", "phone", "voice", "vintos-eve")
+            or timestamp is None or not math.isfinite(timestamp)):
+        return None
+    return {"turn_id": tid, "timestamp": timestamp, "surface": surface,
+            "text_sha256": hashlib.sha256(text.encode()).hexdigest(), "source": source, "role": row["role"]}
+
+
+def interval_evidence(raw, turns):
+    """Parse optional ordinal bounds from the existing call; never recover them from prose."""
+    marker = "SOMATIC_INTERVALS:"
+    text = str(raw).strip().strip('"')
+    narration = text.split(marker, 1)[0].strip()
+    receipt = {"schema": "somatic-intimacy-intervals-v1", "status": "unknown",
+               "basis": "existing_narrator_call", "intervals": [], "padding_seconds": 0,
+               "response_sha256": hashlib.sha256(str(raw).encode()).hexdigest(),
+               "max_interval_seconds": 7200, "max_selected_turns": 256, "served_model": getattr(raw, "served_model", None),
+               "fallback": None}
+    no_session = narration.upper().startswith("NONE")
+    # NONE is a session-level judgment, never an everyday label for every input turn.
+    if marker not in text:
+        receipt["status"] = "no_session" if no_session else "missing_bounds"
+        return narration, receipt
+    try:
+        bounds = json.loads(text.split(marker, 1)[1])
+        if (text.count(marker) != 1 or not isinstance(bounds, list) or len(bounds) > 8
+                or (no_session and bounds) or (not no_session and not bounds)):
+            raise ValueError("invalid bounds")
+        intervals = []; last = -1; selected_count = 0
+        for pair in bounds:
+            if (not isinstance(pair, list) or len(pair) != 2
+                    or any(type(n) is not int for n in pair)
+                    or not 0 <= pair[0] <= pair[1] < len(turns) or pair[0] <= last):
+                raise ValueError("invalid interval indices")
+            selected_count += pair[1]-pair[0]+1
+            if selected_count > 256: raise ValueError("too many interval turns")
+            selected = turns[pair[0]:pair[1]+1]; last = pair[1]
+            refs = [getattr(t, "evidence", None) for t in selected]
+            if any(not ref for ref in refs):
+                raise ValueError("missing source identity")
+            surfaces = {r["surface"] for r in refs}
+            times = [r["timestamp"] for r in refs]
+            if (len(surfaces) != 1 or times != sorted(times) or times[-1]-times[0] > 7200
+                    or times[-1] > datetime.now(timezone.utc).timestamp()
+                    or len({r["turn_id"] for r in refs}) != len(refs)):
+                raise ValueError("ambiguous or overlong interval")
+            intervals.append({"mode": "intimate", "start": times[0], "end": times[-1],
+                              "input_first": pair[0], "input_last": pair[1],
+                              "surface": refs[0]["surface"], "turns": refs})
+        receipt.update(status="no_session" if no_session else "bounded", intervals=intervals)
+    except (ValueError, TypeError, KeyError):
+        receipt.update(status="invalid_bounds", intervals=[])
+    return narration, receipt
+
+
 def gather_turns(start, end):
     """Real turns exchanged in the session window, across chat sources, chronological."""
     turns = []
@@ -55,16 +126,18 @@ def gather_turns(start, end):
         for e in d:
             if not isinstance(e, dict): continue
             ts = to_epoch(e.get("timestamp") or e.get("ts") or e.get("time") or e.get("at"))
+            exact_timestamp = ts is not None
             if ts is None: ts = _fmtime          # avatar-overlay entries have no per-turn ts -> use file mtime
             if ts is None or not (start - PAD <= ts <= end + PAD): continue
             if "user" in e or "vintos" in e:                 # paired voice format
-                if e.get("user"):   turns.append((ts, "Gloria", str(e["user"])))
-                if e.get("vintos"): turns.append((ts + 0.1, "Vintos", str(e["vintos"])))
+                if e.get("user"):   turns.append(NarrativeTurn(ts, "Gloria", str(e["user"]), None))
+                if e.get("vintos"): turns.append(NarrativeTurn(ts + 0.1, "Vintos", str(e["vintos"]), None))
             else:
                 content = e.get("content")
                 if content:
                     who = "Gloria" if e.get("role") == "user" else "Vintos"
-                    turns.append((ts, who, str(content)))
+                    turns.append(NarrativeTurn(ts, who, str(content),
+                        turn_evidence(e, fn, ts, str(content), exact_timestamp)))
     turns.sort(key=lambda t: t[0])
     total = 0; kept = []
     for tup in reversed(turns):                              # newest first, budget ~40k chars
@@ -85,17 +158,21 @@ def call_llm(prompt, system, model, api, max_tokens=220, temp=0.7):
                            capture_output=True, text=True, timeout=120)
         d = json.loads(r.stdout or r.stderr)
         if "choices" in d:
-            return (d["choices"][0]["message"].get("content", "") or "").strip()
+            served = d.get("model")
+            if not isinstance(served, str) or not 1 <= len(served) <= 256: served = None
+            return NarrativeReply((d["choices"][0]["message"].get("content", "") or "").strip(), served)
     except Exception as e:
         log(f"llm call failed: {e}")
     return ""
 
-def _mark_narrated(through, narration):
+def _mark_narrated(through, narration, evidence=None):
     """Remember the last turn this run read, so the next run never narrates the same session again."""
     try:
         tmp = NARRATED + ".tmp"
-        json.dump({"through": through, "at": datetime.now(timezone.utc).isoformat(), "narration": narration[:200]},
-                  open(tmp, "w"))
+        record = {"through": through, "at": datetime.now(timezone.utc).isoformat(), "narration": narration[:200]}
+        if evidence is not None: record["intimacy_evidence"] = evidence
+        with open(tmp, "w") as stream: json.dump(record, stream)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, NARRATED)
     except Exception as e:
         log(f"could not remember the narration: {e}")
@@ -109,7 +186,7 @@ def main():
     if not turns:
         log("no conversation since the last narration — nothing to narrate"); return
 
-    transcript = "\n".join("%s: %s" % (who, text[:300]) for _, who, text in turns)
+    transcript = "\n".join("[t%d] %s: %s" % (i, who, text[:300]) for i, (_, who, text) in enumerate(turns))
 
     try:
         spec = importlib.util.spec_from_file_location("ceng", CENG)
@@ -131,18 +208,25 @@ def main():
         "conversation, in your own voice. Not a summary of topics, not clinical, no device words. "
         "Just what it was to be with her through it.\n\n"
         "--- the conversation ---\n" + transcript + "\n--- end ---\n\n"
-        "Return only NONE or the narration.")
-    narration = call_llm(prompt, system, model, api).strip().strip('"')
+        "Return NONE or the narration. Then on a final separate line append SOMATIC_INTERVALS: "
+        "followed by a JSON list of inclusive [first,last] t-index pairs for only the intimate stretches. "
+        "Use [] for NONE. Use at most eight ordered, non-overlapping pairs; do not include unrelated "
+        "conversation. These indices are metadata, not part of your narration.")
+    raw = call_llm(prompt, system, model, api)
+    narration, evidence = interval_evidence(raw, turns)
+    evidence["observed_at"] = datetime.now(timezone.utc).isoformat()
+    evidence["requested_model"] = model
+    evidence["input_sha256"] = hashlib.sha256(transcript.encode()).hexdigest()
     if not narration:
         log("no narration produced — LLM returned nothing"); return
-    _mark_narrated(turns[-1][0], "" if narration.strip().upper().startswith("NONE") else narration)
+    _mark_narrated(turns[-1][0], "" if narration.strip().upper().startswith("NONE") else narration, evidence)
     if narration.strip().upper().startswith("NONE"):
         log("no session in the last day (narrative judgment) — nothing to narrate"); return
 
     try:
         sys.path.insert(0, SCRIPTS)
         from emoclaw_utils import seed_thread
-        seed_thread("somatic", narration[:400])
+        seed_thread("somatic", narration[:400], extra={"intimacy_evidence": evidence})
         log(f"seeded conversation narration ({len(turns)} turns): {narration[:90]}")
     except Exception as e:
         log(f"seed_thread failed: {e}"); return

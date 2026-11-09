@@ -1112,3 +1112,23 @@ are unchanged. 69 isolated prototype checks pass; ownership validation and exact
 review commit are recorded in the coordination reply. No new private data run,
 model call, live write, merge or deployment. Prospective somatic metadata is next;
 full suites and private character rerun remain with the reviewer. Heartbeat ACTIVE.
+
+
+## 2026-11-09 — Prospective somatic intervals from the existing narrator call
+
+Coordination #39–40: optional ordinal bounds are returned by the existing narrator
+call, mapped to explicit timestamps/turn IDs/text hashes and retained as metadata
+in the existing narration snapshot and thread extra fields. Legacy narration and
+NONE handling, schedule, dedup, model selection and call count remain intact.
+Missing/invalid evidence never labels a daily window. Strict per-turn matching in
+the offline prototype consumes reviewed projections without reading narration text;
+nearby turns are excluded. Provider-reported served model is retained when present,
+otherwise unknown; fallback remains unknown. Metadata is private, fixtures synthetic.
+
+Targeted validation: 72 prototype, 11 interval receipt, 6 existing thread-source,
+6 existing scheduling checks; ownership results and exact review tip are in the
+coordination reply. No actual provider call, private record read, live write, merge
+or deployment. Real format compliance/coverage remains unmeasured; Claude owns full
+suite and private runs. Same-exchange control modes are on the preceding review tip.
+Per-surface within-mode results remain pending sufficient ordinary-use coverage;
+no request for test messages. Heartbeat ACTIVE; no completion/routine ntfy.
