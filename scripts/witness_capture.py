@@ -15,6 +15,7 @@ import uuid
 from witness_receipts import digest, instant, receipt, source_node
 _UNSPECIFIED = object()
 _value_map_stage = ContextVar("value_map_generation_stage", default=None)
+_value_map_context = ContextVar("value_map_context_reads", default=None)
 
 
 def _fingerprint(value):
@@ -543,6 +544,76 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
     return _publish_private(root, packet, "capture-")
 
 
+def begin_value_map_context(build):
+    """Observe only instrumented direct reads during one existing assembly."""
+    if build is None:
+        return _value_map_context.set(None)
+    if build["closed"]:
+        raise ValueError("closed value-map build")
+    build["context_entries"] = build.get("context_entries", 0) + 1
+    build.pop("assembled_context", None)
+    return _value_map_context.set((build, instant(time.time()), (), 0, False))
+
+
+def observe_value_map_read(resource, decoded):
+    current = _value_map_context.get()
+    if current is None:
+        return
+    build, started, reads, chars, truncated = current
+    if len(reads) >= 64:
+        _value_map_context.set((build, started, reads, chars, True))
+        return
+    try:
+        if not isinstance(decoded, str) or len(decoded) + chars > 4194304:
+            _value_map_context.set((build, started, reads, chars, True))
+            return
+        record = {"resource_sha256": _resource_digest(resource), "decoded_sha256": digest(decoded),
+                  "at": instant(time.time()), "complete": False, "origin": "stored_unknown_ancestry"}
+        _value_map_context.set((build, started, reads + (record,), chars + len(decoded), truncated))
+    except Exception:
+        _value_map_context.set((build, started, reads, chars, True))
+
+
+def finish_value_map_context(token, build, rendered):
+    if token is None:
+        return
+    current = _value_map_context.get()
+    _value_map_context.reset(token)
+    if current is None or build is None:
+        return
+    observed_build, started, reads, chars, truncated = current
+    if observed_build is not build or build["closed"]:
+        raise ValueError("invalid context assembly owner")
+    if build.get("context_entries") != 1 or not isinstance(rendered, str) or not 0 < len(rendered) <= 60000:
+        return
+    ended = instant(time.time())
+    if not build["started_at"] <= started <= ended or any(not started <= r["at"] <= ended for r in reads):
+        return
+    metadata = {"schema": "value-map-context-v1", "started_at": started, "ended_at": ended,
+                "rendered_sha256": digest(rendered), "rendered_chars": len(rendered),
+                "scope": "direct_reads_during_assembly", "contribution": "not_established",
+                "upstream_complete": False, "reads": list(reads), "truncated": truncated}
+    # Only this bounded string lives until the build returns; packets contain hashes.
+    build["assembled_context"] = (rendered, metadata)
+
+
+def _value_map_context_binding(build, payload, at):
+    assembly = build.get("assembled_context")
+    if build.get("context_entries") != 1 or assembly is None:
+        return {"state": "unavailable"}
+    rendered, metadata = assembly
+    if metadata["ended_at"] > at:
+        return {"state": "unavailable"}
+    text = payload["messages"][1]["content"]
+    start = text.find(rendered)
+    state = "not_found" if start < 0 else "ambiguous" if text.find(rendered, start + 1) >= 0 else "matched"
+    result = {"state": state, "assembly": deepcopy(metadata)}
+    if state == "matched":
+        result.update(slot=1, input_sha256=_fingerprint(payload["messages"][1]),
+                      span={"start": start, "end": start + len(rendered), "unit": "unicode_codepoints"})
+    return result
+
+
 def begin_value_map_call(payload):
     """Observe one existing HTTP invocation; this is not a chat witness or a build."""
     location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
@@ -574,6 +645,7 @@ def begin_value_map_call(payload):
         build, stage, parents = active
         if not build["closed"] and build["root"] == root and len(build["calls"]) < 8:
             observation["packet"].update(build_id=build["build_id"], stage=stage,
+                                         assembled_context=_value_map_context_binding(build, payload, observation["packet"]["started_at"]),
                                          dependencies=[_map_dependency(build, k, v, observation["packet"]["started_at"])
                                                        for k, v in parents.items()])
             build["calls"].append(observation)

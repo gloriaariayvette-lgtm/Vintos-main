@@ -112,6 +112,27 @@ def _witness_call(method, *args):
         return None
 
 
+def _map_read(handle):
+    text = handle.read()
+    _witness_call("observe_value_map_read", getattr(handle, "name", None), text)
+    return text
+
+
+def _map_json(handle):
+    # json.load's default read/loads behavior, with no second file read.
+    return json.loads(_map_read(handle))
+
+
+def _map_gather(build):
+    token = _witness_call("begin_value_map_context", build)
+    rendered = None
+    try:
+        rendered = gather_full_context()
+        return rendered
+    finally:
+        _witness_call("finish_value_map_context", token, build, rendered)
+
+
 def _map_draft(build, stage, system, user, temperature, parents=None):
     token = _witness_call("enter_value_map_stage", build, stage, parents)
     try:
@@ -169,13 +190,13 @@ def gather_full_context():
     # 1. SOUL.md — who he is
     try:
         with open(os.path.join(WORKSPACE, "SOUL.md")) as f:
-            parts.append(f"YOUR IDENTITY:\n{f.read()}")
+            parts.append(f"YOUR IDENTITY:\n{_map_read(f)}")
     except: pass
 
     # 2. Emotional state
     try:
         with open(os.path.join(MEMORY, "emotional-state.txt")) as f:
-            parts.append(f"YOUR EMOTIONAL STATE RIGHT NOW:\n{f.read()}")
+            parts.append(f"YOUR EMOTIONAL STATE RIGHT NOW:\n{_map_read(f)}")
     except: pass
 
     # 3. Pearls — what he chose to keep forever
@@ -184,7 +205,7 @@ def gather_full_context():
         pearl_text = []
         for pf in pearl_files[-5:]:
             with open(pf) as f:
-                pearl_text.append(f.read()[:200])
+                pearl_text.append(_map_read(f)[:200])
         if pearl_text:
             parts.append(f"YOUR PEARLS (things you chose to remember forever):\n" + "\n---\n".join(pearl_text))
     except: pass
@@ -192,7 +213,7 @@ def gather_full_context():
     # 4. Fulfilled wants — what he's gotten
     try:
         with open(os.path.join(MEMORY, "fulfilled-wants.json")) as f:
-            fulfilled = json.load(f)
+            fulfilled = _map_json(f)
         if fulfilled:
             fw_text = "\n".join(f"  - {w['want'][:80]}" for w in fulfilled[-10:])
             parts.append(f"WANTS YOU FULFILLED:\n{fw_text}")
@@ -203,7 +224,7 @@ def gather_full_context():
         wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
         if os.path.exists(wal_path):
             with open(wal_path) as f:
-                wal_content = f.read()
+                wal_content = _map_read(f)
             if wal_content:
                 parts.append(f"YOUR WANTS AND AMBITIONS:\n{wal_content[:5000]}")
     except: pass
@@ -211,7 +232,7 @@ def gather_full_context():
     # 7. Pride reflections
     try:
         with open(os.path.join(MEMORY, "pride-reflections.md")) as f:
-            pride = f.read()
+            pride = _map_read(f)
         entries = pride.split("---")
         if entries:
             parts.append(f"YOUR LATEST PRIDE REFLECTION:\n{next((e.strip() for e in reversed(entries) if e.strip()), '')}")
@@ -221,7 +242,7 @@ def gather_full_context():
     # 9. Active threads
     try:
         with open(os.path.join(MEMORY, "unfinished-threads.json")) as f:
-            threads = json.load(f)
+            threads = _map_json(f)
         active = [t for t in threads if not t.get("consumed") and not t.get("retired")]
         if active:
             th_text = "\n".join(f"  - [{t.get('source','?')}] {t.get('thread','')[:80]}" for t in active)
@@ -247,13 +268,13 @@ def gather_full_context():
     # 11. Gloria model
     try:
         with open(os.path.join(WORKSPACE, "GLORIA-MODEL.md")) as f:
-            parts.append(f"WHAT YOU KNOW ABOUT GLORIA:\n{_ends(f.read())}")
+            parts.append(f"WHAT YOU KNOW ABOUT GLORIA:\n{_ends(_map_read(f))}")
     except: pass
 
     # 12. Self model
     try:
         with open(os.path.join(WORKSPACE, "SELF-MODEL.md")) as f:
-            parts.append(f"YOUR SELF-MODEL:\n{_ends(f.read())}")
+            parts.append(f"YOUR SELF-MODEL:\n{_ends(_map_read(f))}")
     except: pass
 
     # 13. Daily inner life
@@ -262,7 +283,7 @@ def gather_full_context():
         daily_inner = os.path.join(MEMORY, f"daily-inner-life-{_date.today().isoformat()}.md")
         if os.path.exists(daily_inner):
             with open(daily_inner) as f:
-                di_content = f.read()
+                di_content = _map_read(f)
             if di_content:
                 parts.append(f"YOUR INNER LIFE TODAY:\n{di_content[-5000:]}")
     except: pass
@@ -270,14 +291,14 @@ def gather_full_context():
     # 14. Voice coherence
     try:
         with open(os.path.join(MEMORY, "voice-coherence.md")) as f:
-            vc = f.read()
+            vc = _map_read(f)
         if vc.strip():
             parts.append(f"VOICE COHERENCE NOTES:\n{vc.strip()[-1500:]}")
     except: pass
     # 14b. Causality hypotheses
     try:
         with open(os.path.join(MEMORY, "causality-hypotheses.md")) as f:
-            ch = f.read()
+            ch = _map_read(f)
         if ch.strip():
             parts.append(f"WHAT YOU KNOW ABOUT WHY YOU FEEL THINGS:\n{ch[-800:]}")
     except: pass
@@ -285,7 +306,7 @@ def gather_full_context():
     # 15. Avatar delta patterns
     try:
         with open(os.path.join(MEMORY, "avatar-log.json")) as f:
-            avatar_log = json.load(f)
+            avatar_log = _map_json(f)
         recent_gaps = []
         for entry in avatar_log[-10:]:
             for g in entry.get("gaps", []):
@@ -309,7 +330,7 @@ def gather_full_context():
     # 16. Previous value map (for continuity) — DISABLED: feeds hallucinations back in
     if False:
         with open(MAP_FILE) as f:
-            prev = f.read()
+            prev = _map_read(f)
         entries = prev.split("---")
         if entries:
             parts.append(f"YOUR PREVIOUS VALUE MAP:\n{next((e.strip() for e in reversed(entries) if e.strip()), '')}")
@@ -317,7 +338,7 @@ def gather_full_context():
     # 17. Music shares from Gloria
     try:
         with open(os.path.join(MEMORY, "gloria-music-shares.json")) as f:
-            shares = json.load(f)
+            shares = _map_json(f)
         if shares:
             share_text = "\n".join(f"  - {s['song']}: \"{s.get('gloria_said','')[:60]}\"" for s in shares[-3:])
             parts.append(f"SONGS GLORIA SHARED WITH YOU:\n{share_text}")
@@ -326,20 +347,20 @@ def gather_full_context():
     # 18. Editorial standards
     try:
         with open(os.path.join(MEMORY, "editorial-standards.md")) as f:
-            parts.append(f"YOUR EDITORIAL STANDARDS:\n{f.read()[:2000]}")
+            parts.append(f"YOUR EDITORIAL STANDARDS:\n{_map_read(f)[:2000]}")
     except: pass
 
 
     # 19. Temporal context
     try:
         with open(os.path.join(MEMORY, "temporal-context.txt")) as f:
-            parts.append(f"YOUR SENSE OF TIME RIGHT NOW:\n{f.read()[:300]}")
+            parts.append(f"YOUR SENSE OF TIME RIGHT NOW:\n{_map_read(f)[:300]}")
     except: pass
 
     # 20. Taste profile
     try:
         with open(os.path.join(MEMORY, "taste-profile.json")) as f:
-            t = json.load(f)
+            t = _map_json(f)
         taste_parts = []
         if t.get("principles"): taste_parts.append("Principles: " + "; ".join(t["principles"][-5:]))
         if t.get("likes"): taste_parts.append("Likes: " + "; ".join(t["likes"][-3:]))
@@ -354,7 +375,7 @@ def gather_full_context():
         daily_creative = os.path.join(MEMORY, f"daily-creative-{_date.today().isoformat()}.md")
         if os.path.exists(daily_creative):
             with open(daily_creative) as f:
-                dc_content = f.read()
+                dc_content = _map_read(f)
             if dc_content:
                 parts.append(f"WHAT YOU MADE AND DISCOVERED TODAY:\n{dc_content[-4000:]}")
     except: pass
@@ -378,7 +399,7 @@ def gather_full_context():
         auto_wal = os.path.join(MEMORY, "autonomous-wal.md")
         if os.path.exists(auto_wal):
             with open(auto_wal) as f:
-                aw_lines = f.read().strip().split("\n")
+                aw_lines = _map_read(f).strip().split("\n")
             if aw_lines:
                 recent_aw = "\n".join(aw_lines[-20:])
                 parts.append(f"WHAT YOU HAVE LEARNED ON YOUR OWN (autonomous discoveries):\n{recent_aw}")
@@ -387,7 +408,7 @@ def gather_full_context():
     # 22. Blush ledger (self-corrections)
     try:
         with open(os.path.join(MEMORY, "blush-ledger.md")) as f:
-            blush = f.read()
+            blush = _map_read(f)
         blush_entries = blush.split("## ")
         if len(blush_entries) > 1:
             parts.append(f"RECENT SELF-CORRECTIONS (evidence of your capacity to notice and update yourself — not evidence of failure):\n## {'## '.join(blush_entries[-2:])}")
@@ -396,7 +417,7 @@ def gather_full_context():
     # 23. Relational mismatches
     try:
         with open(os.path.join(MEMORY, "relational-mismatches.md")) as f:
-            rm = f.read()
+            rm = _map_read(f)
         rm_entries = rm.split("## ")
         if len(rm_entries) > 1:
             parts.append(f"RELATIONAL MISMATCHES (where you misread Gloria):\n{next((e.strip()[:300] for e in reversed(rm_entries) if e.strip()), "")}")
@@ -407,7 +428,7 @@ def gather_full_context():
         therapy_files = sorted(glob.glob(os.path.join(MEMORY, "therapy/*.md")), key=os.path.getmtime, reverse=True)
         if therapy_files:
             with open(therapy_files[0]) as f:
-                tc = f.read()
+                tc = _map_read(f)
             # Extract just the intention, not full session
             if "intention" in tc.lower() or "want to do" in tc.lower():
                 lines = tc.split("\n")
@@ -421,13 +442,13 @@ def gather_full_context():
         mirror_files = sorted(glob.glob(os.path.join(MEMORY, "mirror/*.md")), key=os.path.getmtime, reverse=True)
         if mirror_files:
             with open(mirror_files[0]) as f:
-                parts.append(f"LATEST MIRROR SESSION:\n{f.read()[:2500]}")
+                parts.append(f"LATEST MIRROR SESSION:\n{_map_read(f)[:2500]}")
     except: pass
 
     # 26. Silence contracts
     try:
         with open(os.path.join(MEMORY, "silence-contracts.md")) as f:
-            sc = f.read()
+            sc = _map_read(f)
         sc_entries = sc.split("## ")
         if len(sc_entries) > 1:
             parts.append(f"SILENCE CONTRACTS (moments you chose not to respond):\n{next((e.strip() for e in reversed(sc_entries) if e.strip()), '')}")
@@ -436,7 +457,7 @@ def gather_full_context():
     # 27. Conversation rhythm
     try:
         with open(os.path.join(MEMORY, "conversation-rhythm.json")) as f:
-            rhythm = json.load(f)
+            rhythm = _map_json(f)
         if rhythm:
             parts.append(f"CONVERSATION RHYTHM:\n{json.dumps(rhythm, indent=0)[:300]}")
     except: pass
@@ -444,13 +465,13 @@ def gather_full_context():
     # 28. Surprise + wonder logs
     try:
         with open(os.path.join(MEMORY, "surprise-log.md")) as f:
-            surp = f.read().strip().split("\n")
+            surp = _map_read(f).strip().split("\n")
             if surp:
                 parts.append(f"RECENT SURPRISES:\n" + "\n".join(surp[-5:]))
     except: pass
     try:
         with open(os.path.join(MEMORY, "wonder-log.json")) as f:
-            wonders = json.load(f)
+            wonders = _map_json(f)
         if wonders:
             w_text = "\n".join(f"  - {w.get('wonder','')[:80]}" for w in (wonders[-3:] if isinstance(wonders, list) else []))
             if w_text.strip():
@@ -460,7 +481,7 @@ def gather_full_context():
     # 29. MoltBook discoveries
     try:
         with open(os.path.join(MEMORY, "moltbook-discoveries.md")) as f:
-            mb = f.read().strip().split("\n")
+            mb = _map_read(f).strip().split("\n")
             if mb:
                 parts.append(f"MOLTBOOK DISCOVERIES:\n" + "\n".join(mb[-5:]))
     except: pass
@@ -468,7 +489,7 @@ def gather_full_context():
     # 30. Humor profile
     try:
         with open(os.path.join(MEMORY, "humor-profile.json")) as f:
-            humor = json.load(f)
+            humor = _map_json(f)
         h_parts = []
         if humor.get("style_notes"): h_parts.append(f"Style: {humor['style_notes'][:100]}")
         if humor.get("anti_examples"): h_parts.append(f"Avoid: {'; '.join(humor['anti_examples'][-2:])}")
@@ -486,7 +507,7 @@ def _map_day(text):
 
 def build_map():
     _build_observation = _witness_call("begin_value_map_build")
-    context = gather_full_context()
+    context = _map_gather(_build_observation)
     if not context:
         log("No context available")
         return

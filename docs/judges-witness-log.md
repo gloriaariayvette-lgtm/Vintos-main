@@ -957,3 +957,31 @@ Actual builder and existing map suites used installed Python 3.12 and existing
 read-only dependencies where needed; no installs or runner changes. Independent
 Aegis full-suite review and private census remain with the reviewer. No private
 input run, model/paid call, real test send, live write, merge or deploy.
+
+
+## 8 November — direct read observations during value-map assembly
+
+`codex/judges-value-map-context-reads` continues from f19bf795 while earlier review
+tips remain fixed. Existing direct text/JSON reads in context assembly now yield
+bounded optional metadata without reopening sources. The actual assembled context
+is compared to each call's user slot independently, with exact spans/hashes only
+for unique matches. Context-local scopes reset after exceptions and mask disabled
+nested work. Failed/missing observers preserve assembly and generation.
+
+Read coverage is deliberately distinct from contribution: parsed/discarded data
+and sources beyond the final context cap may have been read. No clean ancestry
+or eligibility is inferred. Evidence-view internals, failed opens, directory
+selection, cached material, separate system/temporal reads and source/effect
+history remain open. Limits are 64 reads, 4,194,304 hashed codepoints and the
+existing 60,000-codepoint assembled context. No text/raw paths enter packets.
+
+305 affected isolated checks pass: context assembly 10, write/read diagnostics 11,
+builds 11, calls 9, read binding 7, capture 27, hooks 21, capture/replay 9, fragments
+11, renderer reads 12, witness 106, value-map day 17, choices 18, partials 25 and
+ownership 11. New fixtures execute actual assembly and builder functions with
+fully repointed stores/stubbed senders, and cover prefix/duplicate matches,
+truncation, malformed JSON, clocks, bounds, scope isolation and immutable packets.
+Existing unclosed-read ResourceWarnings in the system-context read are unchanged.
+Installed Python 3.12/existing read-only dependencies were used for full builder
+suites; nothing was installed. No private-data run, model/paid call, real test
+send, live write, merge or deploy. Full Aegis review remains with the reviewer.

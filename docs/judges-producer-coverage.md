@@ -157,3 +157,14 @@ This closes an observational comparison gap, not cross-process origin proof:
 path reuse, copied bytes and unobserved writes remain possible. No read node gets
 a writer parent and no turn becomes eligible from this comparison. Full source
 ancestry, effect dependencies and delivery remain open. No private rerun here.
+
+
+## Implementation follow-up: direct assembly reads
+
+The value-map gather function observes its existing direct file reads and binds
+the bounded assembled context to each actual request's user slot. It does not
+reopen files or change assembly, model calls or outputs. Every read remains
+stored_unknown_ancestry; read-set coverage does not establish contribution after
+filtering/truncation. Failed opens, directory selection, evidence-view internals,
+separate system/temporal reads, cached material and source/effect history remain
+outside this increment. Production capture and eligibility are unchanged.

@@ -861,3 +861,32 @@ existing reports and output files remain unchanged. This diagnostic never edits
 lineage, asserts origin, changes witness admission, or proves complete coverage.
 A single match is still only a matching observation. Full producer ancestry and
 trusted client delivery remain separate work; production capture stays disabled.
+
+
+### Direct reads during value-map context assembly
+
+The existing gather function now passes its direct file reads through observation
+helpers. Each file is still read once, JSON uses the same default read/loads
+operation, and selection, formatting, truncation and error handling are unchanged.
+An opt-in build-local scope retains at most 64 observations and hashes at most
+4,194,304 decoded codepoints; overflow is explicit. Records contain locator and
+decoded-content hashes, completion time and unknown ancestry, never paths/text.
+Only the bounded assembled context (up to the existing 60,000-codepoint cap) is
+held transiently until the build returns.
+
+Each actual call compares that assembly with its user slot: matched with exact
+span/input hash, ambiguous, not_found or unavailable. Matching is per request;
+synthesis does not inherit draft context. Packets copy metadata so later build
+mutation cannot rewrite them. Repeated assemblies, backward clocks, exceptions
+and missing/older APIs cannot supply a stale binding. Nested disabled scopes mask
+inherited attribution, and separate contexts do not mix observations.
+
+This is direct-read coverage during assembly, not a complete dependency list.
+A read may have been discarded after JSON parsing, filtering or final context
+truncation. No field-level contribution is established. Failed opens, directory
+selection, evidence-view internals, cached/import-time material, separate temporal
+and system reads, source history and effects remain outside this scope. Reads and
+assembly ancestry stay incomplete, including when no direct reads were observed.
+Early/failed builds without a completed call publish no such packet; this is not
+a complete attempt log. No input, output, feed, model call count or admission
+behavior changes; production capture remains disabled.

@@ -6448,3 +6448,13 @@ complete source ancestry or change eligibility; reliable cross-process producer
 identity and upstream input/effect graphs remain open. Production capture stays
 disabled. Full independent Aegis validation and private census remain with the
 reviewer. No private snapshot run or live changes here.
+
+
+## 8 November — value-map assembly read coverage
+
+`codex/judges-value-map-context-reads` adds opt-in bounded direct-read observations
+and request-specific binding of the existing assembled context. 305 affected
+isolated checks pass. This is not source contribution or complete ancestry:
+evidence-view internals, cached material, separate temporal/system reads and
+source/effect history remain open. Capture stays disabled; independent Aegis
+validation and the private census rerun remain with the reviewer. No live change.
