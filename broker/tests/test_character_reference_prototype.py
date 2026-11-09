@@ -841,5 +841,44 @@ class Tests(unittest.TestCase):
             self.assertNotIn(value,public)
         self.assertTrue(any(r['mode_source']=='somatic_narration' for r in private))
 
+    def test_mode_assignments_include_unscored_and_sensitivity_without_changing_results(self):
+        self.bundle['mode_observations']=[]
+        self.bundle['historical_attribution']['compute_ledger'][-1]['at']-=20
+        baseline=P.run(self.bundle,self.cutoff)
+        assignments=[]
+        actual=P.run(self.bundle,self.cutoff,private_mode_assignments=assignments)
+        self.assertEqual(actual,baseline);self.assertEqual(actual[1],[])
+        self.assertEqual(len(assignments),32)
+        self.assertEqual(sum(r['primary'] for r in assignments),31)
+        self.assertEqual(sum(r['attribution_basis']=='window30' for r in assignments),1)
+        self.assertTrue(all(r['mode']=='unknown' and r['mode_source']=='unknown' for r in assignments))
+        expected={'turn_id','response_sha256','timestamp','day','surface','family','primary',
+                  'attribution_basis','mode','mode_source','mode_evidence_sha256'}
+        self.assertTrue(all(set(r)==expected for r in assignments))
+        self.bundle['historical_attribution']['compute_ledger'].clear()
+        excluded=[];P.run(self.bundle,self.cutoff,private_mode_assignments=excluded)
+        self.assertEqual(excluded,[])
+
+    def test_cli_saves_unscored_mode_bindings_privately(self):
+        for row in self.bundle['rows']:
+            if row['role']=='user':row['content']='synthetic equal engagement'
+        # No candidate days means no evaluation row, despite known mode evidence.
+        self.bundle['rows']=[r for r in self.bundle['rows'] if r['role']=='assistant']
+        source=self.root/'input.json';source.write_text(json.dumps(self.bundle));out=self.root/'mode-result'
+        result=subprocess.run([sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+            '--scratch',str(self.root),'--input',str(source),'--output',str(out),'--cutoff',self.cutoff],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads((out/'private-evaluation.json').read_text()),[])
+        assignments=json.loads((out/'private-mode-assignments.json').read_text())
+        self.assertEqual(len(assignments),32)
+        first=assignments[0];event=self.bundle['mode_observations'][0]
+        self.assertEqual(first['turn_id'],event['reply_id'])
+        self.assertEqual(first['response_sha256'],event['reply_sha256'])
+        self.assertEqual(first['mode_evidence_sha256'],[event['evidence_sha256']])
+        self.assertEqual(first['mode_source'],'router_decision')
+        self.assertEqual((out/'private-mode-assignments.json').stat().st_mode & 0o777,0o600)
+        public=''.join((out/name).read_text() for name in ('aggregate.json','summary.md','reader-summary.md'))+result.stdout+result.stderr
+        for value in (first['turn_id'],first['response_sha256'],event['evidence_sha256']):self.assertNotIn(value,public)
+
 
 if __name__=='__main__':unittest.main()

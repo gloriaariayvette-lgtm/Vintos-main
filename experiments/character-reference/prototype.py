@@ -648,8 +648,15 @@ def evaluate(rows,controls,candidates,positive):
             'evaluation_groups':evaluation_groups(rows,scored)},private
 
 
-def run(bundle,cutoff,private_control_matches=None):
+def run(bundle,cutoff,private_control_matches=None,private_mode_assignments=None):
     rows,controls,days,positive,coverage=prepare(bundle,cutoff)
+    if private_mode_assignments is not None:
+        private_mode_assignments.extend({
+            'turn_id':r['id'],'response_sha256':r['sha'],'timestamp':r['at'],
+            'day':r['day'],'surface':r['surface'],'family':r['family'],
+            'primary':r['primary'],'attribution_basis':r['basis'],
+            'mode':r['mode'],'mode_source':r['mode_source'],
+            'mode_evidence_sha256':list(r['mode_evidence_sha256'])} for r in rows)
     if private_control_matches is not None:
         private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')} for c in controls)
     primary,details=evaluate([r for r in rows if r['primary']],controls,days,positive)
@@ -859,13 +866,14 @@ def main():
     with source.open('rb') as f:raw=f.read(64*1024*1024+1)
     if len(raw)>64*1024*1024:raise ValueError('snapshot exceeds prototype limit')
     bundle=decode_snapshot(raw)
-    control_matches=[]
-    report,details=run(bundle,args.cutoff,control_matches)
+    control_matches=[];mode_assignments=[]
+    report,details=run(bundle,args.cutoff,control_matches,mode_assignments)
     artifact=inside(root,args.encoder_artifact) if args.encoder_artifact else None
     pin=encoder_pin(bundle['encoder'],observe_encoder_artifact(artifact) if artifact is not None else None)
     report['encoder_pin']=public_encoder_pin(pin)
     out.mkdir(mode=0o700)
     for name,data in (('aggregate.json',report),('private-evaluation.json',details),('private-controls.json',control_matches),
+                      ('private-mode-assignments.json',mode_assignments),
                       ('private-run.json',{'input_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':instant(args.cutoff),'encoder_pin':pin,
                         'code_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
                             ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py','scripts/request_trace.py')}})):

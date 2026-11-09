@@ -7273,3 +7273,25 @@ import contract. Claude owns the private character3 run and full-suite review;
 Gloria owns deployment. The latent-feed flake is still a separate follow-up.
 No live writes, merge or deployment; no completion ntfy under the revised policy.
 Heartbeat remains ACTIVE.
+
+
+## 9 November — retain private mode assignments before scoring
+
+`codex/judges-private-mode-assignments` follows 94dca59e. Inspection found that
+private-evaluation.json records only scored primary replies. For an unscorable
+primary set it is empty, even when historical mode labels exist. The CLI now
+writes private-mode-assignments.json (0600) for all admitted/deduplicated replies,
+including unknown, sensitivity-only and insufficient-reference cases. It retains
+normalized mode/source/evidence hashes plus reply identity, time, surface, family
+and admission basis; no content, vectors or session IDs. The file remains private.
+Retain original input/evidence bytes for reconstruction; hashes are not independent
+authentication. The optional run collector leaves scoring and aggregate returns
+unchanged. Excluded input replies do not enter this file.
+
+Both new regressions failed before implementation; all 59 isolated prototype
+checks pass afterward, including real CLI permissions and public-output exclusion.
+Ownership check results are recorded in the coordination handoff. This changes no
+mode decisions, references, controls, thresholds or public scores. No private
+collection, encoding/model call, live write, merge or deployment. Claude owns the
+private character3 run; its aggregates have not arrived. The latent-feed failure
+trace remains requested; no speculative fix or repeated alert. Heartbeat ACTIVE.

@@ -420,3 +420,22 @@ Controls retain their separate reviewed mode/authorship contract; this fallback
 does not fabricate control modes. No golden-day change or new real-data result is
 claimed here. The reviewer runs character3 privately; the existing status page
 continues to describe character2 until actual aggregates arrive.
+
+
+## Retaining mode labels when primary evaluation is unscorable
+
+The CLI also writes `private-mode-assignments.json` (0600) for **every admitted
+reply**, including unknown modes, sensitivity-only admissions and replies lacking
+sufficient reference days. `private-evaluation.json` remains the scored primary
+result; an empty evaluation file does not mean no mode labels were assigned.
+The new file retains turn ID, full response hash, timestamp/day/surface, admitted
+family, primary flag, attribution basis, mode/source and retained evidence hashes.
+It contains no text, embeddings or session IDs. These identifiers/hashes still make
+it private: never publish the file. It does not include excluded input replies.
+
+Imported callers can pass `private_mode_assignments=[]` to `run`; this optional
+collector leaves returned aggregate measurements and scored details unchanged.
+It is populated after admission/deduplication and before evaluation, so reviewing
+labels does not require recomputing scores or re-running preparation. Retain the
+original input and evidence bytes with the input hash in private-run.json; this
+file records normalized assignments, not independently authenticated source data.
