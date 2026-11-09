@@ -1633,3 +1633,37 @@ checks plus the isolated coarse-clock wrapper pass. New regressions cover the
 backstep through delivery, receipt retention, domains, malformed anchors, old/future
 files and unchanged byte-identity gates. Fixtures are synthetic and sends stubbed.
 No live change, model/provider call, merge or deployment. Lab follow-up still pending.
+
+
+## 2026-11-09 — review #58: Lab receipt cache clocks and handoff
+
+lab_sources.receipt now serializes time.time through UTC fromtimestamp, using the
+same wall source as the identity reader. A persisted negative age is explicitly
+counted as unknown and re-read once. If still negative, the existing refresh path
+is counted and used once, without a retry loop. Successful new fetches retain only
+a bounded process/path/symbol key, exact receipt digest and monotonic lookup-start
+anchor in memory. Subsequent grounding/retrieval reuses the exact persisted row
+within one day even through a wall backstep. A changed row, process or workspace
+cannot inherit that interval. Negative/nonfinite elapsed, one-day monotonic expiry
+or forward wall expiry still refresh. Failed lookups raise and cache nothing.
+Identity verdicts, validation hashes, source chronology and scientific checks are
+unchanged; unresolved remains unresolved. No new provider or model call category,
+background task or store. Clock counters are process-local counts only.
+
+Targeted isolated validation totals 227 checks: spool 28, sink 26, deferred 26;
+artifact followthrough/completion 71 plus coarse-clock wrapper 1; Lab identity 23,
+alias identity 11, source receipts 30; owners 11. Logs are /tmp/judges-s58-spool.log,
+/tmp/judges-s58-artifact.log, /tmp/judges-s58-lab.log,
+/tmp/judges-s58-test_{lab_alias_identity,lab_sources,witness_sink,witness_deferred_capture}.log
+and /tmp/judges-s58-owners.log. All fixtures are synthetic; sends/providers are
+stubbed and suites run via run_isolated_test. Reports regenerated unchanged; diff
+check clean. Artifact fixture corrections were scratch gallery setup and a future
+mtime beyond coarse rounding; production tolerance assertions stayed unchanged.
+
+Three separate review commits above 6363f5a1: f562c900 spool survival, 707898ba
+artifact ordering, and this Lab commit, on codex/judges-clock-followups. All #58
+implementation work is complete for independent review. Claude retains full-suite,
+test-merge and host stress validation; Gloria retains host-clock correction and
+deployment. Historical flake root cause remains candidate until corresponding
+numeric host evidence proves it. No live changes, actual provider/model calls,
+GPU, full-suite duplication, merge or deployment. Heartbeat remains ACTIVE.

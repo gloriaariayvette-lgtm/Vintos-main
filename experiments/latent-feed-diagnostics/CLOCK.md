@@ -85,3 +85,24 @@ after repeated arrival/completion. CLI manifests retain the initial observation.
 Unknown ordering does not bypass exact request paths, hashes, known-output rejection
 or any other delivery gate. Legacy or changed-domain anchors cannot authorize this
 path. The lower wall bound remains unchanged, including its backstep limitation.
+
+
+## Review #58: identity cache and recovery exception boundary
+
+Source receipt serialization and identity cache reading now both use time.time.
+A persisted negative cache age is unknown: re-read that wall clock exactly once,
+then use/count the existing refresh if still unknown. Process-local counters expose
+unknown_age, wall_rechecked, wall_recheck_resolved and unknown_age_refresh without
+source contents. New successful fetches retain a bounded exact-digest interval
+anchor scoped to process, path and symbol. That interval prevents repeat lookups
+during same-process grounding/retrieval after a wall backstep; the persisted receipt
+must still match byte-for-byte. The one-day cap uses monotonic elapsed and permits
+early forward-wall expiry. Unknown/reversed intervals, changed rows/processes and
+expired receipts cannot reuse it. Failures cache nothing; identity validation and
+research chronology are untouched. No persisted age is reclassified as fresh just
+because its wall age is negative, and no model call is added.
+
+recover_spool now catches configuration/clock acquisition exceptions within its
+existing recovery boundary, counts spool_replay_unconfirmed, and keeps the writer
+alive for volatile work and subsequent recovery. Durable ingress remains intact.
+The separate persisted spool-retention wall-clock gates remain unchanged.
