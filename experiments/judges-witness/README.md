@@ -1125,3 +1125,28 @@ A future explicit consumer must check the exact row binding, contradictions,
 source-clock semantics and all existing prospective/identity requirements. Capture
 remains disabled in production; all new writes use the existing private scratch
 validation and mode-0600 publication sink. No source is reopened or model called.
+
+### Optional source-clock consistency audit
+
+Supply `self_forecast_clocks` as an explicit list of unchanged
+`self-forecast-clock-v1` sidecars alongside `forecasts`. The optional aggregate
+`forecast_clock_observations` checks exact canonical full-row hashes, on-message
+mode, forecast/arrival instants and the rendered context-clock hash. Explicit
+rendered instants are also compared to the observed epoch. A bound but unparseable
+rendered clock stays labelled unparsed; the reader does not infer its timezone.
+There is no discovery, proximity matching, historical backfill or replacement of
+any scoring clock. Census, innovation and baseline selection remain unchanged.
+
+All supplied sidecars are shape/clock validated before cutoff filtering. Identical
+copies count once; conflicting records for one row abort with a generic error.
+Receipts at or after the exclusive forecast cutoff are counted separately. Counts
+of forecasts without receipts cover all supplied unique forecast rows, including
+rows outside the cutoff; they are not production-wide coverage. A missing row is
+unavailable even if another prediction has identical contents except one field.
+The aggregate contains only fixed state labels and counts, and is bound by the
+existing private run manifest. No additional private detail output is created.
+
+These are consistency diagnostics, not authenticated source identity, complete
+capture, reply finalization, witness admission or a scoring-protocol change. The
+raw-source hash cannot be independently reconstructed from these sidecars alone.
+The separate producer remains scratch-only; this option does not enable it.

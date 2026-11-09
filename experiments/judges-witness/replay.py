@@ -19,6 +19,106 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
+def forecast_clock_observations(forecasts, receipts, cutoff):
+    """Audit supplied clock sidecars without replacing any scoring clock.
+
+    A matching digest establishes supplied-record consistency, not source
+    authentication, reply finalization, complete capture or witness eligibility.
+    """
+    def fail():
+        raise ValueError("invalid forecast clock observation")
+
+    def encoded(value):
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            fail()
+
+    def clock(value):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            fail()
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    cutoff = clock(cutoff)
+    if not isinstance(forecasts, list) or not isinstance(receipts, list):
+        fail()
+    by_row, versions = {}, {}
+    for row in forecasts:
+        if not isinstance(row, dict):
+            fail()
+        by_row[digest(encoded(row))] = row
+    # Validate every supplied receipt before cutoff filtering. Identical copies
+    # count once; disagreeing observations for one immutable row abort the audit.
+    for receipt in receipts:
+        if (not isinstance(receipt, dict) or set(receipt) != {
+                "schema", "forecast_row_sha256", "forecast_at", "arrived_at",
+                "context_clock", "boundary", "durability", "source_identity"}
+                or receipt["schema"] != "self-forecast-clock-v1"
+                or receipt["boundary"] != "forecast_log_close"
+                or receipt["durability"] != "unconfirmed"
+                or receipt["source_identity"] != "unverified"
+                or not hashed(receipt["forecast_row_sha256"])):
+            fail()
+        value = receipt["context_clock"]
+        if (not isinstance(value, dict) or set(value) != {
+                "schema", "epoch", "raw_kind", "raw_clock_sha256", "rendered_clock_sha256", "meaning"}
+                or value["schema"] != "self-exchange-clock-v1"
+                or value["raw_kind"] not in ("numeric_epoch", "offset_iso")
+                or value["meaning"] != "source_exchange_time_not_reply_finalization"
+                or type(value["epoch"]) not in (int, float)
+                or not hashed(value["raw_clock_sha256"])
+                or not hashed(value["rendered_clock_sha256"])):
+            fail()
+        if not clock(value["epoch"]) < clock(receipt["arrived_at"]) <= clock(receipt["forecast_at"]):
+            fail()
+        key, version = receipt["forecast_row_sha256"], encoded(receipt)
+        if key in versions and versions[key] != version:
+            raise ValueError("conflicting forecast clock observations")
+        versions[key] = version
+    states = Counter()
+    for key, version in versions.items():
+        receipt = json.loads(version)
+        row = by_row.get(key)
+        if clock(receipt["forecast_at"]) >= cutoff:
+            state = "outside_cutoff"
+        elif row is None:
+            state = "forecast_row_unavailable"
+        else:
+            head = row.get("self")
+            if (row.get("mode") != "on_message" or not isinstance(head, dict)
+                    or head.get("mode") != "on_message"):
+                state = "forecast_mode_mismatch"
+            else:
+                try:
+                    same = (instant(row.get("ts")) == clock(receipt["forecast_at"])
+                            and instant(row.get("arrived_at")) == clock(receipt["arrived_at"]))
+                except (TypeError, ValueError, OverflowError):
+                    same = False
+                rendered = head.get("context_last_ts")
+                if not same:
+                    state = "forecast_clock_mismatch"
+                elif (not isinstance(rendered, str) or len(rendered) > 128
+                      or digest(rendered) != receipt["context_clock"]["rendered_clock_sha256"]):
+                    state = "rendered_clock_mismatch"
+                else:
+                    try:
+                        explicit = instant(rendered)
+                    except (TypeError, ValueError, OverflowError):
+                        state = "matching_record_unparsed_rendered_clock"
+                    else:
+                        state = ("matching_record_explicit_clock" if explicit == receipt["context_clock"]["epoch"]
+                                 else "explicit_clock_disagrees")
+        states[state] += 1
+    return {"scope": "supplied_clock_consistency_only", "admission_effect": "none", "scoring_effect": "none",
+            "unique_forecasts_supplied": len(by_row), "unique_receipts_supplied": len(versions),
+            "forecasts_without_receipt": len(set(by_row) - set(versions)),
+            "states": dict(sorted(states.items()))}
+
+
 def value_map_write_observations(nodes, builds, cutoff):
     """Compare supplied write observations, never infer origin or add ancestry.
 
@@ -1195,6 +1295,9 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    if "self_forecast_clocks" in bundle:
+        report["forecast_clock_observations"] = forecast_clock_observations(
+            bundle.get("forecasts", []), bundle["self_forecast_clocks"], args.cutoff)
     private_self_inputs = None
     if "self_input_controls" in bundle:
         report["self_input_baselines"], private_self_inputs = self_input_baselines(

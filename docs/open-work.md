@@ -6551,3 +6551,12 @@ private sidecar to the unchanged forecast. 271 affected isolated checks pass.
 Replay consumption still requires a separately validated exact-row/clock join;
 there is no implicit timezone inference, backfill or eligibility change. Production
 capture stays off. Full Aegis review/private census remain with the reviewer.
+
+## 8 November — offline clock-sidecar audit
+
+`codex/judges-clock-receipt-audit` validates explicitly supplied source-clock
+sidecars against exact forecast rows and emits aggregate consistency diagnostics.
+206 affected isolated checks pass. No scoring clock is replaced; unparsed times,
+source identity, complete ancestry and delivery remain unresolved where missing.
+The approved private census is ready with the reviewer and is not duplicated or
+blocked by this newer work. Full Aegis suite/review remain there; no live changes.

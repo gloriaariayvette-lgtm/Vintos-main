@@ -1248,3 +1248,24 @@ The existing synthetic fitting suite passes with its numeric warnings; no real-d
 accuracy claim. Required reports regenerated; whitespace checks pass. No private
 snapshot run, paid/model call, real test send, live write, merge or deploy. Full
 Aegis suite/private census remain with the reviewer; earlier tips remain fixed.
+
+## 8 November — offline source-clock consistency audit
+
+`codex/judges-clock-receipt-audit` consumes explicitly supplied source-clock
+sidecars in the offline replay. It checks exact forecast-row identity, mode,
+forecast/arrival clocks, rendered-clock binding and explicit-clock agreement.
+Matching unparsed rendered clocks remain unparsed; no host timezone is borrowed.
+Malformed/conflicting observations abort before cutoff filtering; identical copies
+count once. Missing forecast rows, mismatches and outside-cutoff receipts retain
+separate fixed-label counts. Counts cover supplied evidence, not production traffic.
+
+206 affected isolated checks pass: new clock replay 11, source clocks 12, forecast
+inputs 15, clock diagnostics 9, witness 106, excerpt controls 20, coverage 13,
+capture/replay 9 and ownership 11. The new suite uses actual synthetic producer
+packets and the CLI, checks private output modes/manifest binding, and proves all
+previous reports unchanged with the optional diagnostic enabled. Senders remain
+stubbed and stores private scratch; no actual-data measurements are claimed.
+Required reports regenerated. No production or scoring change, paid/model call,
+real test send, private census rerun, merge or deploy. The reviewer owns the ready
+private census on approved 4a8fc11e and the full Aegis suite; this work does not
+hold up that run. Earlier submitted branch tips remain fixed.
