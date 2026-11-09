@@ -2649,3 +2649,39 @@ Source/owner/adjacency/cache claims remain explicitly unauthenticated by the off
 prototype. No private reader, new model/encoder/provider call, live write, model swap,
 GPU, merge or deployment. Full review/suite/private evaluation remains with Claude.
 Exact pushed tip is in the coordination reply; heartbeat ACTIVE.
+
+
+## 2026-11-09 11:46 CST — private numerical CLI (#46)
+
+Added experiments/nonllm-judges/run_private.py on codex/judges-private-run-cli
+above b88537ce273896290d2ebf4fdedaac98d02d5145. Accepts the character-reference
+projection and an optional exact positive-only Landings projection, both read-only.
+Reuses attribution/mode/cache preparation; keeps primary and window30 views separate.
+Runs voice/drift and humor/taste facets. Foreign-control work stays independent.
+No real store reader, discovery, model/encoder call, reference writeback or live use.
+
+Supplemental numerical_evidence carries complete lineage, original-act bindings,
+encoder freeze time and explicit facet attempt/anchor declarations. Older projections
+without these still produce coverage/unscored output; the adapter never fabricates
+clean ancestry, positive outcomes or a historical encoder pin. Missing prerequisites
+can legitimately produce zero scores. This is documented, not hidden or backfilled.
+Landings must be an already authorized projection; no Landings store is opened.
+
+Caller selects private JSON and public summary filenames in one new scratch output
+directory. Repository/live paths, symlinks, existing outputs and nonprivate scratch
+are refused. Existing audit guard confines writes and forbids network/subprocesses.
+Inputs are immutable, output directory 0700/files 0600, failures sanitized. Private
+report retains numerical receipts, supplied model/provenance fields and input/code
+fingerprints; no recorded label is promoted to known serving evidence. Public output
+is counts-only with per-mode/surface coverage and flagged date ranges, no numeric
+scores, means, model names, IDs, hashes, text or vectors. Unknown positive counts
+are null when outcomes cannot be assessed.
+
+144 isolated checks pass: CLI end-to-end 18, facets 20, voice/drift 23, character
+reference 72, ownership 11. Logs: /tmp/judges-private-cli-tests.log and
+/tmp/judges-cli-{facet,voice,character}-tests.log, /tmp/judges-cli-owners.log. Tests
+include actual synthetic drift dates, missing lineage/freeze, indirect influence,
+view separation, input immutability, path/privacy refusals and receipt retention.
+Required reports regenerated unchanged; diff clean. No private data, GPU, paid call,
+model swap, merge or deployment. Full review/private Aegis run belongs to Claude.
+Exact pushed tip is in the coordination reply. Heartbeat ACTIVE.

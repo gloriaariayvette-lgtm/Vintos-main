@@ -413,3 +413,132 @@ indirect influence, textual taste and unsupported media, and aggregate privacy.
 Run with `python3 scripts/run_isolated_test.py broker/tests/test_witnessed_humor_taste.py`.
 No model is served and no fallback occurs; runtime model attribution is not inferred
 from an encoder name. Actual production call savings remain zero.
+
+## Single private-run CLI (note #46)
+
+`run_private.py` accepts the **same character-reference importer projection**, with
+optional supplemental numerical evidence, and an optional separate, read-only
+Landings projection. It runs voice/drift and both witnessed-positive facets and
+writes two JSON files. It has no live-store reader, backup discovery, network access,
+subprocess invocation, encoder/model call, deployment or reference writeback.
+
+A reviewer can run it against explicitly retained copies in an existing mode-0700
+private scratch directory outside every repository and outside live workspace paths:
+
+```sh
+TASK_SCRATCH=/path/to/private-scratch
+SPARK_WORKSPACE="$TASK_SCRATCH" python3 experiments/nonllm-judges/run_private.py \
+  --scratch "$TASK_SCRATCH" \
+  --input "$TASK_SCRATCH/character-input.json" \
+  --landings "$TASK_SCRATCH/landings-projection.json" \
+  --cutoff 2020-02-01T00:00:00Z \
+  --output "$TASK_SCRATCH/numerical-run/private.json" \
+  --summary "$TASK_SCRATCH/numerical-run/counts.json"
+```
+
+The cutoff above is a synthetic example; the reviewer supplies the intended cutoff.
+`--landings` may be omitted. `--view` is `both` by default; `primary_10s` or `window30`
+selects one diagnostic attribution view. Output filenames are caller-selected but
+must share a **new** directory strictly inside the private scratch root. Existing
+output directories/files, symlink traversal, different parents, scratch inside any
+`.git` repository, outputs inside the implementation repo, and live workspace paths
+are refused. All validation/scoring/JSON serialization precedes directory creation.
+The new directory is 0700; each exclusively created file is made 0600 before payload
+writing. Inputs are opened read-only and never rewritten. The existing replay audit
+guard confines writes to that new directory and refuses network/subprocess actions.
+Stdout says only whether two reports were written; errors are sanitized to a fixed
+code and exception class, without paths, IDs, raw records or tracebacks.
+
+### Projection compatibility and missing evidence
+
+The character projection's attribution, exact response/cache bindings, deduplication,
+mode priority, family-rule limitations and candidate-day selection are reused through
+its existing `prepare` function. Primary and window30 are evaluated separately.
+Foreign-control pools are not evaluated here: that review is independent work.
+Legacy `feedback` is counted but **not promoted** to a new facet anchor: `exact_reply`
+alone does not establish the newly required owner/adjacent-exchange or exact-item
+source contract. Supply explicit humor/taste attempt IDs; the CLI does not infer
+that every historical reply was a joke or a taste experiment.
+
+The older projection does **not** necessarily contain complete causal lineage,
+original-act source bindings or an encoder freeze timestamp. Those gaps are not
+permission to fabricate them. A compatible older input still produces coverage and
+unscored counts. This can legitimately yield zero numerical scores even when the
+character evaluator has historically attributed replies. It is a data-availability
+result, not a new failure or a request for Gloria to generate test messages.
+
+Optional top-level `numerical_evidence` has `schema: numerical-evidence-v1` and these
+fields (unknown fields are refused):
+
+| Field | Contract |
+|---|---|
+| `nodes` | The bounded complete-ancestry nodes used by the recurrence/voice prototypes: id, kind, at, parents, complete. Missing ancestry stays unknown; generated/judge/tactical/nudge influence remains excluded transitively. |
+| `bindings` | Exact `{node_id, origin_id, content_sha256, source}` for original acts. IDs match the character reply IDs. Missing/unbound records are counted; no clean ancestry or original identity is invented. |
+| `encoder_frozen_at` | Explicit freeze time for the exact encoder declared by the character projection. Its `encoder.artifact_sha256` must also be supplied. Neither is inferred from a name, current filesystem bytes or current time. These remain supplied claims, not independent verification. |
+| `items` | Optional `{node_id, kind}` records for the facet contract. Ordinary admitted character replies default to message items; humor attempts still require explicit IDs. |
+| `anchors` | Exact normalized humor anchors from the preceding section. Landings anchors must arrive through the separate projection, never through this field. |
+| `humor_attempt_ids`, `taste_attempt_ids` | Explicit bounded unique lists. Default is empty. IDs outside a selected attribution view are counted separately. |
+| `reference_ids` | Optional explicit reference list. Default is admitted IDs on the character evaluator's candidate days. Unavailable references are reported, not silently converted into clean acts. |
+
+No adoption transitions are accepted by this CLI version: it measures the selected
+reference and sustained drift without applying external review decisions. The
+separate voice API can simulate explicitly reviewed transitions as described above.
+
+Modes map `opening_everyday` to `everyday`; prospective receipt and somatic source
+labels map to the numerical vocabulary while the original mode source and complete
+evidence-hash list remain in the private report. The numerical binding is a hash
+of that normalized mode statement, not a new independent observation. Unsupported
+surfaces, unknown modes, unavailable features and incomplete/influenced lineage are
+reported unscored. No full-message truncation or prefix join is performed to force
+eligibility. Numerical limits remain 512 admitted character replies/nodes/features,
+2,048 vector dimensions and 10,000 full-text characters per feature. Larger inputs
+must be explicitly scoped by the reviewer, not silently truncated by the CLI.
+
+The optional Landings file has exactly:
+
+```json
+{"schema":"landings-projection-v1","anchors":[]}
+```
+
+Each supplied anchor follows the exact-item receipt contract above, with `source:
+landings`, `actor: owner`, `witnessed: true`, `value: landed`. The item ID/hash must
+bind an independently admitted original text act in the main projection. This CLI
+**does not read or import the private Landings store** or turn raw rating records into
+anchors; the reviewer supplies an already authorized projection. `partly`/`missed`
+are outside this positive-only projection contract and are refused at the boundary,
+not transformed into negative examples. Items outside the main projection remain
+unlinked; media and unknown scopes stay unsupported. Adding journal text requires
+proper source attribution and a supported surface projection; this runner does not
+invent a surface mapping to admit historical records.
+
+### Private report and counts-only summary
+
+The private JSON contains attribution details, original mode/source receipts,
+voice/drift numerical results, exact private references, facet receipts, unavailable
+reference IDs, encoder declarations and a private input/code/version manifest.
+Supplied generation/provenance fields, served-model labels and fallback fields are
+retained without upgrading a recorded label into verified serving evidence. Missing
+or unknown actual serving/fallback remains missing or unknown. The runner itself
+serves no model. No input/output paths are printed. Do not publish the private file.
+
+The public summary is constructed independently from fixed labels and counts:
+
+- input/admitted reply and day counts, missing metadata and lineage/feature reasons;
+- primary/window30 coverage and voice scored, abstain and unscored counts per
+  mode/surface (unscored rows count as abstentions);
+- humor/taste attempt, positive-act/day and sparse/unscored/abstain counts;
+- flagged drift dates grouped into consecutive `start_date`/`end_date` windows
+  inside each mode/surface; these are flag dates, not the unflagged lead-in days.
+
+It contains **no raw scores, means, model names, IDs, hashes, paths, text, vectors or
+reference membership**. Positive counts are null with `outcomes_unassessed: true`
+when prerequisite metadata prevents assessment; unknown is not reported as a measured
+zero. Dates in flagged windows are the explicit exception to otherwise aggregate
+coverage. No public output is a character verdict or claim of calibrated success.
+
+Synthetic end-to-end tests in `broker/tests/test_nonllm_private_run.py` exercise
+all four components, real sustained-drift date output, primary/window30 separation,
+missing lineage/freeze evidence, indirect influence, legacy-feedback refusal,
+Landings boundaries, original-input immutability, private receipt retention,
+counts-only output, 0700/0600 modes, repository/symlink/overwrite refusal and
+sanitized failures. Run only through the repository's isolated-test harness.
