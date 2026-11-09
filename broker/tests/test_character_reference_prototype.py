@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic cached-vector evaluation with isolated paths and forbidden external sends."""
 import copy
+from collections import defaultdict
 from datetime import datetime,timezone,timedelta
 import importlib.util
 import json
@@ -38,6 +39,27 @@ def fixture():
             bundle['controls'].append(dict(kind='foreign',matched_reply_id=tid,content=foreign,context=row['context'],language='en',encoder_id=encoder['id'],input_sha256=P.digest(foreign),context_sha256=P.digest(row['context']),vector=[-1.,0.],context_vector=[1.,0.]))
             bundle['feedback'].append(dict(reply_id=tid,reply_sha256=P.digest(text),link='exact_reply',witnessed=True,kind='laugh',value='hahaha',timestamp=ts+10))
     return bundle
+
+
+def legacy_scores(row,reference):
+    groups=defaultdict(list)
+    for r in reference:groups[r['day']].append(r['vector'])
+    centers=[]
+    for values in groups.values():
+        c=np.mean(values,axis=0);norm=np.linalg.norm(c)
+        if norm>1e-12:centers.append(c/norm)
+    if not centers:return None
+    styles=np.asarray([r['style'] for r in reference]);mu=styles.mean(axis=0)
+    scale=np.maximum(styles.std(axis=0),.05)
+    all_center=np.mean([r['vector'] for r in reference],axis=0)
+    norm=np.linalg.norm(all_center)
+    recent_days=sorted(groups)[-2:]
+    recent=np.mean([r['vector'] for r in reference if r['day'] in recent_days],axis=0)
+    recent_norm=np.linalg.norm(recent)
+    return {'semantic':max(float(row['vector']@c) for c in centers),
+            'style':-float(np.sqrt(np.mean(((row['style']-mu)/scale)**2))),
+            'centroid':float(row['vector']@all_center/norm) if norm>1e-12 else None,
+            'recent_centroid':float(row['vector']@recent/recent_norm) if recent_norm>1e-12 else None}
 
 
 class Tests(unittest.TestCase):
@@ -181,6 +203,43 @@ class Tests(unittest.TestCase):
             bad=dict(b,**fields);self.assertEqual(P.context_pairs([a],[bad]),[])
         tied=P.context_pairs([a],[b,other])[0][1]['id']
         self.assertEqual(tied,min(b['id'],other['id']))
+
+    def test_fold_reuse_matches_original_rescoring_exactly(self):
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        for degenerate in (False,True):
+            if degenerate:
+                for i,r in enumerate(rows):r['vector']=np.asarray([(-1.)**i,0.])
+            optimized=P.evaluate(rows,controls,days,positive)
+            with patch.object(P,'reference_statistics',side_effect=lambda ref:list(ref)), \
+                    patch.object(P,'score_statistics',side_effect=lambda row,ref:legacy_scores(row,ref) if ref is not None else None):
+                original=P.evaluate(rows,controls,days,positive)
+            self.assertEqual(optimized,original)
+
+    def test_statistics_build_count_depends_on_days_not_reply_control_count(self):
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        build=P.reference_statistics
+        with patch.object(P,'reference_statistics',wraps=build) as spy:
+            P.evaluate(rows,controls,days,positive)
+            original_count=spy.call_count
+        self.assertEqual(original_count,92)
+        expanded=[]
+        for i in range(4):
+            for row in rows:
+                if row['day'] not in days:expanded.append(dict(row,id=row['id']+'-extra-'+str(i)))
+        with patch.object(P,'reference_statistics',wraps=build) as spy:
+            P.evaluate(rows+expanded,controls*4,days,positive)
+            self.assertEqual(spy.call_count,original_count)
+
+    def test_reference_statistics_do_not_survive_into_later_runs(self):
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        first=P.evaluate(rows,controls,days,positive)
+        for row in rows:
+            if row['day'] in days:row['vector']=-row['vector']
+        changed=P.evaluate(rows,controls,days,positive)
+        self.assertNotEqual(first,changed)
+        with patch.object(P,'reference_statistics',side_effect=lambda ref:list(ref)), \
+                patch.object(P,'score_statistics',side_effect=lambda row,ref:legacy_scores(row,ref) if ref is not None else None):
+            self.assertEqual(changed,P.evaluate(rows,controls,days,positive))
 
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))

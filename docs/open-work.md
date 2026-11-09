@@ -7077,3 +7077,14 @@ unmatched counts. 26 isolated checks pass (prototype 15, owners 11). Topic-disjo
 shared-day fixtures correctly report no comparable pairs, not model invariance.
 Private copied-history evaluation remains Claude's next step. No new model calls,
 live changes, deployment or merge; see the character-reference README.
+
+
+## 9 November — character evaluator reuses fold statistics
+
+`codex/judges-character-fold-reuse` follows c779cbf0 while Claude reviews/runs that
+fixed tip (note #31). Reference statistics are reused within each evaluation fold,
+including calibration and witnessed-positive references; controls use an exact-ID
+index. Complete output parity with the original scorer is tested. 29 isolated
+checks pass (prototype 18, owners 11); the synthetic build count remains 92 under
+multiplied evaluation/control load. No persistent cache or new encoding. Actual
+private results and host timing are still outstanding; no deployment or merge.

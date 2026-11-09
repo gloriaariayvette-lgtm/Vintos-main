@@ -120,7 +120,7 @@ Outputs are mode 0600 in a 0700 directory:
 
 ## Validation and current boundary
 
-Current follow-up: 26 isolated checks pass (prototype 15, ownership 11). The base
+Current follow-up: 29 isolated checks pass (prototype 18, ownership 11). The base
 prototype also passed the 26-check attribution suite before this scoring-only
 addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
@@ -133,6 +133,14 @@ contracts, insufficient reference days, interval determinism and scratch-only CL
 Context-comparison regressions cover shared-day/topic confounding, one-to-one
 assignment, outcome-independent matching, order stability, language/length/day
 bounds, tie-breaking, empty comparisons and aggregate privacy.
+
+Reference means/scales/centroids are built once per held-out day, calibration day
+and witnessed-positive subset, then reused for replies and controls. Reuse is
+limited to the current evaluation call; there is no persistent cache or encoding.
+Differential tests compare every aggregate and private evaluation result exactly
+against the original per-reply formula, including cancelling/degenerate vectors.
+A synthetic fixture stays at 92 statistic builds after evaluation replies and
+controls are multiplied; this is an operation-count check, not a host timing claim.
 
 The actual-history result and actual candidate dates are **not yet produced**. Claude
 can now assemble the explicit cache bundle above and run it on the private copied

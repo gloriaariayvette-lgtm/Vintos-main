@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-context-comparison**, based on
-**d9ab262c**, whose prototype is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-fold-reuse**, based on
+**c779cbf0**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 36fb8219 as 34b662e9 (deploy 649/649, live 652/652); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -817,3 +817,15 @@ vectors and reply length as observational proxies; no causal invariance claim.
 26 isolated checks pass (prototype 15, owners 11). This is offline scoring only;
 no encoding, attribution, strict admission or live behavior changes. Actual private
 history results remain outstanding with Claude; no new data request to Gloria.
+
+
+## Character-reference evaluator cost follow-up
+
+Note #31 confirms Claude is reviewing the prototype and running the private history.
+This independent follow-up reuses each held-out/calibration/positive-reference
+statistic set within the current evaluation. Control rows are indexed by exact
+reply ID. The original formulas and operation ordering are preserved; no persistent
+cache, data-contract, admission, encoding or result change. 29 isolated checks pass
+(prototype 18, owners 11), including complete aggregate/private-output differential
+parity, degenerate references, repeated-run independence and fixed build counts
+under multiplied evaluation/control load. Real-host timing remains unmeasured.

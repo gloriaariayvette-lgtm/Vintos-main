@@ -108,7 +108,7 @@ def context_family_comparisons(scored):
         'pairs':out}
 
 
-def scores(row,reference):
+def reference_statistics(reference):
     groups=defaultdict(list)
     for r in reference:groups[r['day']].append(r['vector'])
     centers=[]
@@ -123,10 +123,20 @@ def scores(row,reference):
     recent_days=sorted(groups)[-2:]
     recent=np.mean([r['vector'] for r in reference if r['day'] in recent_days],axis=0)
     recent_norm=np.linalg.norm(recent)
+    return centers,mu,scale,all_center,norm,recent,recent_norm
+
+
+def score_statistics(row,state):
+    if state is None:return None
+    centers,mu,scale,all_center,norm,recent,recent_norm=state
     return {'semantic':max(float(row['vector']@c) for c in centers),
             'style':-float(np.sqrt(np.mean(((row['style']-mu)/scale)**2))),
             'centroid':float(row['vector']@all_center/norm) if norm>1e-12 else None,
             'recent_centroid':float(row['vector']@recent/recent_norm) if recent_norm>1e-12 else None}
+
+
+def scores(row,reference):
+    return score_statistics(row,reference_statistics(reference))
 
 
 def prepare(bundle,cutoff):
@@ -256,36 +266,41 @@ def prepare(bundle,cutoff):
 
 def evaluate(rows,controls,candidates,positive):
     metrics=defaultdict(list);families=defaultdict(list);private=[];status=Counter();scored=[]
-    by_day=defaultdict(list)
+    by_day=defaultdict(list);by_reply_controls=defaultdict(list)
     for r in rows:by_day[r['day']].append(r)
+    for c in controls:by_reply_controls[c['id']].append(c)
     for day,held in sorted(by_day.items()):
         ref=[r for r in rows if r['day'] in candidates and r['day']!=day]
         if len({r['day'] for r in ref})<2:status['insufficient_reference_days']+=len(held);continue
+        reference_days=sorted({r['day'] for r in ref})
+        state=reference_statistics(ref)
+        calibration_states={d:reference_statistics([x for x in ref if x['day']!=d]) for d in reference_days}
+        humor=[x for x in ref if x['id'] in positive and any(d!=day for d in positive[x['id']])]
+        humor_state=reference_statistics(humor) if len({x['day'] for x in humor})>=2 else None
         calibration=defaultdict(list)
         for r in ref:
-            s=scores(r,[x for x in ref if x['day']!=r['day']])
+            s=score_statistics(r,calibration_states[r['day']])
             if s:
                 for k,v in s.items():
                     if v is not None:calibration[k].append(v)
         fold=[]
         for r in held:
-            s=scores(r,ref)
+            s=score_statistics(r,state)
             if s is None:status['degenerate_reference']+=1;continue
             pct={k:percentile(v,calibration[k]) if v is not None else None for k,v in s.items()}
             for k,v in pct.items():metrics[k+'_percentile'].append((day,v))
             families[r['family']].append((day,pct['semantic']))
             scored.append((r,pct))
-            humor=[x for x in ref if x['id'] in positive and any(d!=day for d in positive[x['id']])]
-            hs=scores(r,humor) if len({x['day'] for x in humor})>=2 else None
+            hs=score_statistics(r,humor_state)
             if hs:metrics['witnessed_positive_similarity'].append((day,hs['semantic']))
-            for control in (c for c in controls if c['id']==r['id']):
-                cs=scores(control,ref)
+            for control in by_reply_controls[r['id']]:
+                cs=score_statistics(control,state)
                 if cs:
                     for k in ('semantic','style','centroid','recent_centroid'):
                         if s[k] is not None and cs[k] is not None:
                             metrics[control['kind']+'_'+k+'_paired_win'].append((day,float(s[k]>cs[k])+.5*(s[k]==cs[k])))
             private.append({'turn_id':r['id'],'day':day,'family':r['family'],'percentiles':pct,
-                            'reference_days':sorted({x['day'] for x in ref}),'reference_turns':len(ref)})
+                            'reference_days':reference_days,'reference_turns':len(ref)})
             fold.append((r,s));status['scored']+=1
         if len(fold)>=2:
             vectors=[r['vector'] for r,s in fold];raw=[s['semantic'] for r,s in fold]
