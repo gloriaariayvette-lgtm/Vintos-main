@@ -898,3 +898,34 @@ root; no installation or runner change. Reports regenerated and whitespace
 checked. No private-data run, paid/model call, real test send, live write, merge
 or deployment. Full independent Aegis validation of this newer batch remains
 with the reviewer; earlier batch approval is not claimed for these new producers.
+
+
+## 8 November — explicit build stages, selection and written-entry receipts
+
+`codex/judges-value-map-build-bindings` continues from aa85ff5e on reviewed base
+16c74480; earlier submitted tips stay fixed. Existing calls receive context-local
+build/stage IDs, and synthesis names its actual two draft dependencies. The
+existing branch records its selected stage. A completed-entry receipt follows
+only successful original entry writes and close, with entry hashes and mode;
+whole-file state and durability remain unverified. No new source reads or model
+calls, and no output/feed changes. Missing receipt publication makes a dependency
+unavailable without stopping generation. Duplicate stages, clock mismatches and
+bounded overflow cannot silently pick an earlier success.
+
+The new synthetic suite executes the actual builder using stub HTTP and fully
+repointed scratch stores. It covers synthesis, either surviving draft, identical
+draft text with distinct identities, append versus entry identity, rejected
+results, write failures, missing call packets, capture off, older APIs, separate
+contexts, disabled nested scopes, duplicate/mismatched selections, limits, clocks
+and once-only publication. Existing unclosed-read ResourceWarnings appeared in
+the builder's unchanged previous-map read; no unrelated behavior was modified.
+Final affected-suite results follow after completion.
+
+284 affected isolated checks pass: build receipts 11, call receipts 9, main-chat
+read binding 7, capture 27, hooks 21, capture/replay 9, fragments 11, renderer reads
+12, witness 106, value-map day 17, value-map choices 18, partials 25 and ownership
+11. The actual builder and existing value-map suites ran with installed Python
+3.12; existing external dependencies were exposed read-only where needed. No
+installation or runner modification. Reports regenerated and whitespace checked.
+No private input read/rescore, model/paid call, real test send, live write, merge
+or deploy. Full independent Aegis validation remains pending for this newer batch.

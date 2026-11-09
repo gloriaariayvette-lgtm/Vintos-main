@@ -6424,3 +6424,16 @@ trusted delivery remain open. Production capture stays disabled; the reviewer
 owns full Aegis validation and the eventual private census rerun.
 374 affected isolated checks pass on the rebased newer batch. This is synthetic
 validation only; independent Aegis review of these producers remains pending.
+
+
+## 8 November — build selection and written-entry observation
+
+`codex/judges-value-map-build-bindings` records explicit build-local draft and
+synthesis relationships, the existing selection branch, and a successful entry
+write/close boundary. Missing evidence stays unavailable without changing feeds.
+Durability, whole-file state, interrupted attempts, complete upstream ancestry,
+and explicit writer/read resource-version joins remain unverified or unfinished.
+Independent Aegis validation and the private census rerun remain with the reviewer;
+production capture is still disabled.
+284 affected isolated checks pass for this increment, including the actual
+builder under installed Python 3.12 with synthetic inputs and stubbed HTTP.

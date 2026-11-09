@@ -112,6 +112,14 @@ def _witness_call(method, *args):
         return None
 
 
+def _map_draft(build, stage, system, user, temperature, parents=None):
+    token = _witness_call("enter_value_map_stage", build, stage, parents)
+    try:
+        return llm(system, user, temperature=temperature)
+    finally:
+        _witness_call("leave_value_map_stage", token)
+
+
 def llm(system, user, temperature=0.6):
     observation = None
     try:
@@ -477,6 +485,7 @@ def _map_day(text):
     return m.group(1) if m else ""
 
 def build_map():
+    _build_observation = _witness_call("begin_value_map_build")
     context = gather_full_context()
     if not context:
         log("No context available")
@@ -545,13 +554,15 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
     )
     _system = _grounding + "\n\n" + _soul
 
-    a1 = llm(_system, prompt, temperature=0.65)
-    b1 = llm(_system, prompt, temperature=0.75)
+    a1 = _map_draft(_build_observation, "draft_a", _system, prompt, temperature=0.65)
+    b1 = _map_draft(_build_observation, "draft_b", _system, prompt, temperature=0.75)
+    _selected_stage = None
 
     if not a1 and not b1:
         result = None
     elif not a1 or not b1:
         result = a1 or b1
+        _selected_stage = "draft_a" if a1 else "draft_b"
     else:
         _absorb_prompt = (
             f"You wrote two drafts of your value map.\n\n"
@@ -560,7 +571,9 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
             "Write your final value map now — a single voice that has genuinely held both. "
             "Begin immediately with RANK 1. No preamble."
         )
-        result = llm(_system, _absorb_prompt, temperature=0.6)
+        result = _map_draft(_build_observation, "synthesis", _system, _absorb_prompt,
+                            temperature=0.6, parents={"draft_a": a1, "draft_b": b1})
+        _selected_stage = "synthesis"
 
     # Detect reviewer mode before writing
     _bad_markers = [
@@ -596,9 +609,12 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
     except Exception:
         pass
     with open(MAP_FILE, _mode) as f:
-        f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Value Map\n\n")
+        _entry_prefix = f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Value Map\n\n"
+        f.write(_entry_prefix)
         f.write(result)
         f.write("\n\n---\n")
+    _witness_call("finish_value_map_build", _build_observation, _selected_stage, result,
+                  _entry_prefix + result + "\n\n---\n", _mode)
 
     import source_cache
     source_cache.commit("value-map",context)

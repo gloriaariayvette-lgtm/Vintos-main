@@ -129,3 +129,19 @@ selection among drafts, final entry/file-write bindings, upstream source ancestr
 and backend internal attempts remain unfinished. Completed call receipts exclude
 interrupted calls and cannot establish complete attempt coverage. The offline
 chat census does not ingest these as assistant turns. No live-data run is claimed.
+
+
+## Implementation follow-up: build selection and entry-close boundary
+
+`codex/judges-value-map-build-bindings` adds explicit build/stage identities around
+the existing calls, declared synthesis dependencies and the actual branch's final
+selection. After successful entry writes and close, private metadata records that
+entry's hash and append/replace mode. It does not assert whole-file identity,
+atomicity, durable storage or completion of archive/cache side effects.
+
+Bindings require one entered stage, one published successful call, an exact
+returned hash and causal clocks. Missing/duplicate/truncated evidence remains
+unavailable while generation continues. Unchanged-context, rejected, interrupted
+or write-failed builds have no completed-entry receipt. Cross-process writer/read
+resource-version joins and complete upstream ancestry remain unfinished; no
+private snapshot census was rerun here.

@@ -10,9 +10,11 @@ import os
 import sys
 import time
 from pathlib import Path
+from contextvars import ContextVar
 import uuid
 from witness_receipts import digest, instant, receipt, source_node
 _UNSPECIFIED = object()
+_value_map_stage = ContextVar("value_map_generation_stage", default=None)
 
 
 def _fingerprint(value):
@@ -550,12 +552,23 @@ def begin_value_map_call(payload):
     configured = payload["model"]
     if not isinstance(configured, str) or not 0 < len(configured) <= 256:
         configured = None
-    return {"root": root, "closed": False, "packet": {
+    observation = {"root": root, "closed": False, "packet": {
         "schema": "value-map-call-v1", "request_id": uuid.uuid4().hex,
         "started_at": instant(time.time()), "input_sha256": _fingerprint(payload), "inputs": inputs,
         "configured_model": configured, "scope": "one_http_invocation",
         "upstream_complete": False, "internal_attempts_complete": False,
         "build_selection": "not_recorded", "stored_output_binding": "not_recorded"}}
+    active = _value_map_stage.get()
+    if active is not None:
+        build, stage, parents = active
+        if not build["closed"] and build["root"] == root and len(build["calls"]) < 8:
+            observation["packet"].update(build_id=build["build_id"], stage=stage,
+                                         dependencies=[_map_dependency(build, k, v, observation["packet"]["started_at"])
+                                                       for k, v in parents.items()])
+            build["calls"].append(observation)
+        elif not build["closed"] and build["root"] == root and len(build["calls"]) >= 8:
+            build["calls_truncated"] = True
+    return observation
 
 
 def finish_value_map_call(observation, response, http_status, returned_text, outcome):
@@ -583,7 +596,83 @@ def finish_value_map_call(observation, response, http_status, returned_text, out
                   http_status=http_status if type(http_status) is int and 100 <= http_status <= 599 else None,
                   response_sha256=_fingerprint(response) if response is not None else None,
                   returned_sha256=digest(returned_text) if returned_text is not None else None)
-    return _publish_private(_private_root(observation["root"]), packet, "value-map-call-")
+    observation["completed_packet"] = deepcopy(packet)
+    published = _publish_private(_private_root(observation["root"]), packet, "value-map-call-")
+    observation["published"] = published is True
+    return published
+
+
+def begin_value_map_build():
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if not location:
+        return None
+    return {"root": _private_root(location), "build_id": uuid.uuid4().hex,
+            "started_at": instant(time.time()), "closed": False, "calls": [],
+            "stage_entries": {}, "calls_truncated": False}
+
+
+def enter_value_map_stage(build, stage, parents=None):
+    if build is None:
+        return _value_map_stage.set(None)
+    if build["closed"] or stage not in ("draft_a", "draft_b", "synthesis"):
+        raise ValueError("invalid build stage")
+    if parents is None:
+        parents = {}
+    if (not isinstance(parents, dict) or set(parents) != ({"draft_a", "draft_b"} if stage == "synthesis" else set())
+            or any(not isinstance(v, str) or len(v) > 4194304 for v in parents.values())):
+        raise ValueError("invalid stage dependencies")
+    build["stage_entries"][stage] = build["stage_entries"].get(stage, 0) + 1
+    return _value_map_stage.set((build, stage, {k: digest(v) for k, v in parents.items()}))
+
+
+def leave_value_map_stage(token):
+    if token is not None:
+        _value_map_stage.reset(token)
+
+
+def _map_dependency(build, stage, version, latest):
+    calls = [c for c in build["calls"] if c["packet"].get("stage") == stage]
+    matched = (not build["calls_truncated"] and build["stage_entries"].get(stage) == 1
+               and len(calls) == 1 and calls[0].get("published") is True
+               and calls[0].get("completed_packet", {}).get("outcome") == "returned"
+               and build["started_at"] <= calls[0]["completed_packet"]["started_at"]
+               and calls[0]["completed_packet"]["ended_at"] <= latest
+               and calls[0]["completed_packet"].get("returned_sha256") == version)
+    return {"stage": stage, "returned_sha256": version,
+            "state": "bound" if matched else "unavailable",
+            "request_id": calls[0]["packet"]["request_id"] if matched else None}
+
+
+def finish_value_map_build(build, selected_stage, result, entry, mode):
+    """Observe the existing close boundary; never claim transactional or durable storage."""
+    if build is None or build["closed"]:
+        return False
+    build["closed"] = True
+    if (selected_stage not in ("draft_a", "draft_b", "synthesis") or mode not in ("a", "w")
+            or not isinstance(result, str) or not result or not isinstance(entry, str)
+            or len(entry) > 4194304 or not entry.endswith(result + "\n\n---\n")):
+        raise ValueError("invalid written entry")
+    prefix = entry[:len(entry) - len(result + "\n\n---\n")]
+    import re
+    if re.fullmatch(r"\n## \d{4}-\d{2}-\d{2} \d{2}:\d{2} — Value Map\n\n", prefix) is None:
+        raise ValueError("invalid entry prefix")
+    ended = instant(time.time())
+    if ended < build["started_at"]:
+        raise ValueError("invalid build clock")
+    selection = _map_dependency(build, selected_stage, digest(result), ended)
+    calls = [{"request_id": c["packet"]["request_id"], "stage": c["packet"]["stage"],
+              "packet_published": c.get("published") is True,
+              "outcome": c.get("completed_packet", {}).get("outcome", "unobserved")}
+             for c in build["calls"]]
+    packet = {"schema": "value-map-build-v1", "build_id": build["build_id"],
+              "started_at": build["started_at"], "ended_at": ended, "calls": calls,
+              "selection": selection, "stage_entries": dict(build["stage_entries"]),
+              "calls_truncated": build["calls_truncated"],
+              "upstream_complete": False, "attempt_coverage_complete": False,
+              "write": {"scope": "entry_write_closed", "mode": "append" if mode == "a" else "replace",
+                        "entry_sha256": digest(entry), "stripped_entry_sha256": digest(entry.strip()),
+                        "entry_chars": len(entry), "durability": "unconfirmed", "whole_file": "unverified"}}
+    return _publish_private(_private_root(build["root"]), packet, "value-map-build-")
 
 
 def _publish_private(root, packet, prefix):

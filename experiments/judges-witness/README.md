@@ -805,3 +805,33 @@ parameters, number of calls, return processing and existing map writes are
 unchanged. Missing, old or failing observer/sink APIs fail open for generation.
 Receipt publication reuses the existing private atomic sink; no capture is enabled
 in production by this change. All verification uses stubbed HTTP and scratch.
+
+
+### Build-local draft selection and written entries
+
+An optional `value-map-build-v1` receipt links the existing generator's named
+`draft_a`, `draft_b` and `synthesis` stages with an explicit build identity.
+Context-local stage scopes attach call IDs as calls are made; there is no latest
+receipt lookup or time/similarity join. Synthesis records the two actual draft
+output hashes supplied by the builder and binds each to a unique, published,
+returned call in its named stage. Identical text from different stages therefore
+keeps separate call identities. Missing, duplicate, unpublished, mismatched or
+clock-incompatible calls leave that dependency/selection unavailable.
+
+The original selection branch names the selected stage. After the existing three
+entry writes and file close succeed, the build receipt records the selected
+returned hash, exact entry hash, stripped-entry hash, character count and append
+or replace mode. It does not hash or claim the whole resulting file. Storage is
+not transactional; file close is not an fsync or proof of lasting visibility.
+The receipt explicitly says durability unconfirmed and whole-file state
+unverified. A write failure, rejected build, unchanged-context early return or
+interruption produces no completed-entry receipt. This is not a complete build
+attempt journal. Existing archive and cache writes retain their behavior.
+
+Stage scopes reset on exit and nested disabled scopes mask inherited attribution.
+At most eight call objects are retained per build; overflow is marked and cannot
+bind selection. Source input ancestry, internal backend attempts and durable
+storage remain incomplete. Resource/version joining between these writer receipts
+and later reader receipts is not yet implemented; do not substitute content-only
+matching. The receipts add no model calls and do not affect existing outputs or
+feeds. Missing/old/failed observers preserve normal behavior.
