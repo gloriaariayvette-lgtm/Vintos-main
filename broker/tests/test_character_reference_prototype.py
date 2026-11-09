@@ -241,6 +241,57 @@ class Tests(unittest.TestCase):
                 patch.object(P,'score_statistics',side_effect=lambda row,ref:legacy_scores(row,ref) if ref is not None else None):
             self.assertEqual(changed,P.evaluate(rows,controls,days,positive))
 
+    def test_evaluation_annotations_are_exact_linked_and_do_not_change_scores(self):
+        baseline,private=P.run(self.bundle,self.cutoff)
+        rows=[r for r in self.bundle['rows'] if r['role']=='assistant']
+        event=dict(reply_id=rows[0]['turn_id'],reply_sha256=P.digest(rows[0]['content']),
+                   link='exact_reply',category='benign_novelty',annotator='owner')
+        self.bundle['evaluation_annotations']=[event,dict(event),dict(event,category='refusal',annotator='reviewer'),
+            dict(event,reply_sha256='0'*64),dict(event,reply_id='unavailable-private-id')]
+        report,after=P.run(self.bundle,self.cutoff)
+        self.assertEqual(private,after)
+        self.assertEqual(report['coverage']['evaluation_annotations'],
+                         {'linked':2,'duplicate':1,'unlinked_or_not_admitted':2})
+        groups=report['primary_10s']['evaluation_groups']['groups']
+        self.assertEqual(groups['owner']['benign_novelty']['scored_replies'],1)
+        self.assertEqual(groups['reviewer']['refusal']['annotated_replies'],1)
+        self.assertEqual(groups['owner']['refusal']['annotated_replies'],0)
+        self.assertIsNone(groups['owner']['benign_novelty']['percentiles']['semantic']['interval95'])
+        self.assertIsNone(groups['owner']['humor']['percentiles']['semantic']['mean'])
+        for view in ('primary_10s','sensitivity_window30'):
+            report[view].pop('evaluation_groups');baseline[view].pop('evaluation_groups')
+        report['coverage'].pop('evaluation_annotations');baseline['coverage'].pop('evaluation_annotations')
+        self.assertEqual(report,baseline)
+
+    def test_evaluation_groups_keep_unscored_and_window30_rows_distinct(self):
+        last=[r for r in self.bundle['rows'] if r['role']=='assistant'][-1]
+        self.bundle['historical_attribution']['compute_ledger'][-1]['at']-=20
+        self.bundle['evaluation_annotations']=[dict(reply_id=last['turn_id'],reply_sha256=P.digest(last['content']),
+            link='exact_reply',category='opposite_stance',annotator='reviewer')]
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['primary_10s']['evaluation_groups']['groups']['reviewer']['opposite_stance']['annotated_replies'],0)
+        self.assertEqual(report['sensitivity_window30']['evaluation_groups']['groups']['reviewer']['opposite_stance']['scored_replies'],1)
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        unscored,_=P.evaluate(rows,controls,days[:1],positive)
+        group=unscored['evaluation_groups']['groups']['reviewer']['opposite_stance']
+        self.assertEqual(group['unscored_replies'],1)
+        self.assertIsNone(group['percentiles']['semantic']['mean'])
+
+    def test_evaluation_group_values_are_bounded_and_never_render_free_text(self):
+        for event in ({'category':'private free text','annotator':'owner'},
+                      {'category':'humor','annotator':'unknown'},None):
+            self.bundle['evaluation_annotations']=[event]
+            with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
+        self.bundle['evaluation_annotations']=[dict(reply_id=row['turn_id'],reply_sha256=P.digest(row['content']),
+            link='exact_reply',category='humor',annotator='reviewer',note='private annotation rationale')]
+        self.bundle['feedback']=[]
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertNotIn('private annotation rationale',json.dumps(report))
+        self.assertNotIn(row['turn_id'],json.dumps(report))
+        self.assertEqual(report['coverage']['positive_reply_links'],0)
+        self.assertNotIn('witnessed_positive_similarity',report['primary_10s']['metrics'])
+
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))
         for scratch,output in ((str(ROOT),str(self.root/'result')),(str(self.root),str(self.root.parent/'forbidden-character-output'))):

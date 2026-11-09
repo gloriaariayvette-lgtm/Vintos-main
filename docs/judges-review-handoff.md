@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-fold-reuse**, based on
-**c779cbf0**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-evaluation-groups**, based on
+**06a18d75**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 36fb8219 as 34b662e9 (deploy 649/649, live 652/652); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -829,3 +829,15 @@ cache, data-contract, admission, encoding or result change. 29 isolated checks p
 (prototype 18, owners 11), including complete aggregate/private-output differential
 parity, degenerate references, repeated-run independence and fixed build counts
 under multiplied evaluation/control load. Real-host timing remains unmeasured.
+
+
+## Character evaluation groups for tolerated novelty and changes
+
+Optional exact-linked owner/reviewer annotations describe benign novelty, refusal,
+opposite stance, humor and surface shift. Fixed aggregate groups report scored and
+unscored counts plus four percentile summaries/intervals; absence stays unknown.
+They never influence reference selection, admission or scores, and humor tags never
+stand in for witnessed positive feedback. No acceptance gate or identity verdict.
+32 isolated checks pass (prototype 21, owners 11). Input labels are optional; the
+current private run can finish unchanged. Actual label coverage/results remain
+unknown until the reviewer supplies them; no labels are generated or inferred.

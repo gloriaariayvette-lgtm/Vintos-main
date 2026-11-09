@@ -2273,3 +2273,14 @@ index. Complete output parity with the original scorer is tested. 29 isolated
 checks pass (prototype 18, owners 11); the synthetic build count remains 92 under
 multiplied evaluation/control load. No persistent cache or new encoding. Actual
 private results and host timing are still outstanding; no deployment or merge.
+
+
+## 9 November — character evaluation groups from the accepted review
+
+`codex/judges-character-evaluation-groups` follows 06a18d75. Optional exact-reply
+annotations expose novelty/refusal/opposite-stance/humor/surface-shift percentile
+summaries, separate declared owner/reviewer sources and missing/unscored coverage.
+They do not alter selection, admission, scoring or witnessed-positive references.
+32 isolated checks pass (prototype 21, owners 11). No threshold or identity verdict.
+Actual private-history groups remain unmeasured; no new encoding, live writes,
+merge or deployment. Claude's concurrent private run is not duplicated.

@@ -23,6 +23,8 @@ from witness_receipts import digest, final_response, instant
 from replay import scratch_root, inside, install_guard, decode_snapshot
 
 FAMILIES=('claude','grok','gemma','other','unknown')
+EVALUATION_GROUPS=('benign_novelty','refusal','opposite_stance','humor','surface_shift')
+ANNOTATORS=('owner','reviewer')
 STYLE=('log_chars','log_words','mean_word_chars','question_per_word','exclaim_per_word',
        'comma_per_word','uppercase_fraction','first_person_per_word','newline_per_word')
 
@@ -135,6 +137,23 @@ def score_statistics(row,state):
             'recent_centroid':float(row['vector']@recent/recent_norm) if recent_norm>1e-12 else None}
 
 
+def evaluation_groups(rows,scored):
+    """Describe supplied evaluation annotations without using them to fit or admit."""
+    outcomes={r['id']:p for r,p in scored};groups={}
+    for source in ANNOTATORS:
+        groups[source]={}
+        for category in EVALUATION_GROUPS:
+            members=[r for r in rows if (source,category) in r.get('evaluation_annotations',set())]
+            available=[r for r in members if r['id'] in outcomes]
+            groups[source][category]={'annotated_replies':len(members),'scored_replies':len(available),
+                'unscored_replies':len(members)-len(available),
+                'percentiles':{k:summarize([(r['day'],outcomes[r['id']][k]) for r in available])
+                    for k in ('semantic','style','centroid','recent_centroid')}}
+    return {'meaning':'supplied_descriptive_groups_not_identity_or_acceptance_labels',
+        'overlap':'a_reply_may_belong_to_multiple_groups_and_annotators',
+        'groups':groups}
+
+
 def scores(row,reference):
     return score_statistics(row,reference_statistics(reference))
 
@@ -155,7 +174,7 @@ def prepare(bundle,cutoff):
     cfg['window30_enabled']=True
     if cfg.get('window_seconds',10)!=10:raise ValueError('primary attribution must use ten seconds')
     attribution_report,details=attribution(rows,ledger,cfg,cutoff)
-    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096)):
+    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('evaluation_annotations',10000)):
         if not isinstance(bundle.get(key,[]),list) or len(bundle.get(key,[]))>limit:raise ValueError('unbounded prototype input')
     caches={};dimension=None
     for cache in bundle['embeddings']:
@@ -234,6 +253,17 @@ def prepare(bundle,cutoff):
         rating=event.get('kind')=='rating' and type(event.get('value')) in (int,float) and 4<=event['value']<=5
         if laugh or rating:positive[row['id']].add(datetime.fromtimestamp(instant(event['timestamp']),zone).date().isoformat())
         else:feedback_counts['not_positive_evidence']+=1
+    annotation_counts=Counter();annotation_links=set()
+    for event in bundle.get('evaluation_annotations',[]):
+        if (not isinstance(event,dict) or event.get('category') not in EVALUATION_GROUPS
+                or event.get('annotator') not in ANNOTATORS):raise ValueError('invalid evaluation annotation')
+        row=by_id.get(event.get('reply_id'))
+        if row is None or event.get('reply_sha256')!=row['sha'] or event.get('link')!='exact_reply':
+            annotation_counts['unlinked_or_not_admitted']+=1;continue
+        key=(row['id'],event['annotator'],event['category'])
+        if key in annotation_links:annotation_counts['duplicate']+=1;continue
+        annotation_links.add(key);annotation_counts['linked']+=1
+        row.setdefault('evaluation_annotations',set()).add((event['annotator'],event['category']))
     controls=[];control_versions={}
     for item in bundle.get('controls',[]):
         row=by_id.get(item.get('matched_reply_id'))
@@ -257,7 +287,7 @@ def prepare(bundle,cutoff):
         'feedback':dict(feedback_counts),'positive_reply_links':len(positive),
         'admission_bases':dict(Counter(r['basis'] for r in unique)),
         'admitted_primary_replies':sum(r['primary'] for r in unique),'admitted_window30_replies':len(unique),
-        'matched_controls':len(controls),
+        'matched_controls':len(controls),'evaluation_annotations':dict(annotation_counts),
         'candidate_days':[{'date':d,'user_messages':engagement[d],
             'attributed_replies_10s':sum(r['day']==d and r['primary'] for r in unique),
             'attributed_replies_window30':sum(r['day']==d for r in unique)} for d in candidates],
@@ -323,7 +353,8 @@ def evaluate(rows,controls,candidates,positive):
             if overlap:differences.append({'families':[left,right],**summarize([(d,np.mean(a[d])-np.mean(b[d])) for d in overlap])})
     return {'status':dict(status),'metrics':results,
             'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences,
-            'context_matched_family_comparisons':context_family_comparisons(scored)},private
+            'context_matched_family_comparisons':context_family_comparisons(scored),
+            'evaluation_groups':evaluation_groups(rows,scored)},private
 
 
 def run(bundle,cutoff):

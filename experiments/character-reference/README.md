@@ -61,6 +61,18 @@ missing. There is no substitute text embedder or silent fallback.
   Unrecognized models remain `other`, absent ones
   `unknown`; no model is changed.
 
+Optional **evaluation groups** expose the review's benign novelty, refusal,
+opposite-stance, humor and surface-shift checks. Explicit annotations must link
+an admitted reply ID and exact full-response hash. Reports keep declared owner and
+reviewer annotations separate, with counts of scored/unscored examples and all four
+facet percentile summaries/intervals. Groups can overlap. They are retrospective
+metadata, never inputs to reference selection, calibration, admission, matching or
+scores. A humor annotation does not supply witnessed positive feedback. No labels
+are inferred from text/model, and no missing annotation becomes a negative. These
+summaries support checking whether low familiarity accompanies tolerated changes;
+there is no identity verdict, pass rate or new acceptance threshold. Annotator
+identity and category correctness are supplied claims, not authenticated evidence.
+
 Means weight evaluation days equally. Intervals use 1,000 deterministic day-bootstrap
 resamples (seed 17); fewer than two days yields no interval. These are descriptive
 intervals on supplied days, not guarantees for new settings. Control observations
@@ -93,9 +105,10 @@ One JSON object, with only these sources explicitly assembled by the reviewer:
 | `historical_attribution` | Existing attribution configuration: explicit `surface_callers`, `window_seconds: 10`, optional source/timezone mapping, and `compute_ledger` records. The runner enables the independent window30 diagnostic. |
 | `embeddings` | Each cache entry has `reply_sha256` for full final text; `input_sha256` for its encoder prefix; `context_sha256`; matching `encoder_id`; unit `vector` and `context_vector` with one shared dimension. Context and response features stay separate. |
 | `feedback` | Optional exact-linked records: `reply_id`, `reply_sha256`, `link: "exact_reply"`, `witnessed: true`, `timestamp`, `kind: "laugh"` with string `value`, or `kind: "rating"` with numeric `value`. Unlinked reactions are excluded. |
+| `evaluation_annotations` | Optional list of exact-linked `reply_id`, `reply_sha256`, `link: "exact_reply"`, `annotator: "owner"` or `"reviewer"`, and `category` in `benign_novelty`, `refusal`, `opposite_stance`, `humor`, `surface_shift`. Duplicate annotations collapse. Unlinked/not-admitted examples are counted as unavailable. No rationale or free text is emitted. |
 | `controls` | Optional `kind: "foreign"` or `"other_surface"`, `matched_reply_id`, `content`, `context`, `language`, `encoder_id`, `input_sha256`, `context_sha256`, unit `vector` and `context_vector`. Supply provenance-reviewed controls; do not invent foreign status from a model/surface label. |
 
-Limits: 64 MiB input, 10,000 history/cache/feedback records, 4,096 admitted unique
+Limits: 64 MiB input, 10,000 history/cache/feedback/annotation records, 4,096 admitted unique
 replies and control records, vectors at most 8,192 dimensions. No real data belongs
 in this public repository. Raw messages, cached vectors and row-level evaluations
 stay in the reviewer's private scratch copy.
@@ -120,7 +133,7 @@ Outputs are mode 0600 in a 0700 directory:
 
 ## Validation and current boundary
 
-Current follow-up: 29 isolated checks pass (prototype 18, ownership 11). The base
+Current follow-up: 32 isolated checks pass (prototype 21, ownership 11). The base
 prototype also passed the 26-check attribution suite before this scoring-only
 addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
@@ -132,7 +145,10 @@ primary/sensitivity separation, controls, duplicates/conflicts, encoder/input
 contracts, insufficient reference days, interval determinism and scratch-only CLI.
 Context-comparison regressions cover shared-day/topic confounding, one-to-one
 assignment, outcome-independent matching, order stability, language/length/day
-bounds, tie-breaking, empty comparisons and aggregate privacy.
+bounds, tie-breaking, empty comparisons and aggregate privacy. Evaluation-group
+tests prove complete existing-score parity, exact links, separate annotators,
+primary/window30 separation, unscored coverage, empty intervals, bounded categories,
+private-rationale exclusion and independence from witnessed-positive feedback.
 
 Reference means/scales/centroids are built once per held-out day, calibration day
 and witnessed-positive subset, then reused for replies and controls. Reuse is
