@@ -217,3 +217,17 @@ use a separate schema and are not silently attached to that contract. Subsequent
 work must validate explicit origin identities, exact transformation and compatible
 cached vectors, then bind a declared evaluation block. No replay scoring or witness
 eligibility changes in this increment; no live capture has been enabled.
+
+
+## Implementation follow-up: observed-input baseline join
+
+The optional offline `self_input_controls` bundle now joins sidecars to exact
+selected forecast hashes and cached first-400-codepoint vectors. Explicit admitted
+prior IDs/full reply versions, matching prefix hashes, encoder compatibility and
+causal finalization order are required. This first version supports normalization
+only when it left full final reply bytes unchanged. Other normalization remains
+unavailable, without text/time-nearest substitution. Supplied nonoverlapping blocks
+keep descriptive pairs separate; declarations do not certify preregistration.
+The old census and innovation output are unchanged. No actual snapshot rerun or
+production capture enablement is included; authenticated origins, complete ancestry
+and delivery still require their own evidence.

@@ -1132,3 +1132,37 @@ needed before paired controls can consume them. No census upgrade, private run,
 model/paid call, live write, merge, deployment or Gloria-head change. Full Aegis
 validation and private snapshot census remain with the reviewer. Earlier review
 tips remain fixed; aa85ff5e is an ancestor of this stack.
+
+
+## 8 November — paired controls from explicit self-input receipts
+
+`codex/judges-self-input-baselines` joins the producer sidecars to the exact
+forecasts already selected by offline innovation. Optional `self_input_controls`
+supplies sidecars, separately tagged cached excerpt vectors and declared blocks.
+The report pairs head/last-reply/recent-mean errors on identical targets without
+changing the existing census, innovation selection or full-reply control output.
+No new producer/model calls, input discovery or source reads are introduced.
+
+The join requires explicit input IDs, admitted prior replies, the same surface,
+strict finalization order, exact full reply and prefix hashes, compatible encoder
+and valid duplicate vectors. Only byte-unchanged normalization is supported;
+changed normalization remains unavailable. Full-reply vectors cannot substitute
+for truncated inputs. Actual targets reuse innovation's original full-target
+cache. Blocks must be complete at cutoff and contain arrival through finalization;
+overlapping or conflicting declarations are rejected. Missing evidence and zero
+mean geometry stay unavailable. Malformed/conflicting sidecars abort generically,
+even beyond cutoff. Supplied declarations do not prove preregistration.
+
+187 affected isolated checks pass: new paired controls 20, witness 106, producer
+inputs 15, capture/replay 9, value-map write/read 11, build/call replay 15 and
+ownership 11. Synthetic producer packets reach a real offline CLI invocation;
+private output mode/hash manifest and unchanged old reports are checked. Tests
+cover prefix mismatch, unknown IDs, altered normalization, future/reordered inputs,
+wrong cache identity, malformed duplicate vectors, duplicate/conflicting sidecars,
+block boundaries/overlap and checkpoint/block separation. The initial CLI fixture
+used an unsupported adapter name; corrected it to the existing canonical adapter.
+Required reports regenerated; whitespace checks pass. Existing builder resource
+warnings remain visible. No real-data measurements, private snapshots, live writes,
+model/paid calls, actual test sends, merge or deploy. Full Aegis suite/private census
+remain with the reviewer. Source ancestry, delivery and production enablement are
+still separate; this does not grant eligibility or claim accuracy.

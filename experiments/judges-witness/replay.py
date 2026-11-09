@@ -811,6 +811,193 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             "meaning": "prediction innovation, not authenticity or a pass verdict"}, scored
 
 
+def self_input_baselines(scored, admitted, forecasts, target_embeddings, config, cutoff):
+    """Optional descriptive controls for exact producer-observed excerpt inputs.
+
+    No admission changes or text/time-nearest joins. This first version accepts
+    only inputs whose normalized full text equals an already admitted final reply.
+    Source normalization that changed bytes requires separate evidence, not a guess.
+    """
+    cutoff = instant(cutoff)
+    invalid = lambda: ValueError("invalid self-input baseline evidence")
+    def canonical(value):
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+    def named(value):
+        return isinstance(value, str) and bool(value.strip()) and len(value) <= 256
+    if (not isinstance(config, dict) or set(config) != {"receipts", "embeddings", "blocks"}
+            or any(not isinstance(config[k], list) for k in config)):
+        raise invalid()
+    packets, versions = {}, {}
+    for packet in config["receipts"]:
+        try:
+            if (not isinstance(packet, dict) or set(packet) != {"schema", "forecast_row_sha256", "forecast_at",
+                    "arrived_at", "boundary", "durability", "observations", "state", "inputs", "complete_forecast_context"}
+                    or packet["schema"] != "self-forecast-inputs-v1" or not hashed(packet["forecast_row_sha256"])
+                    or packet["boundary"] != "forecast_log_close" or packet["durability"] != "unconfirmed"
+                    or packet["complete_forecast_context"] is not False
+                    or type(packet["observations"]) is not int or packet["observations"] < 0
+                    or packet["state"] not in ("observed", "unavailable")
+                    or instant(packet["arrived_at"]) > instant(packet["forecast_at"])):
+                raise invalid()
+            inputs = packet["inputs"]
+            if packet["state"] == "unavailable":
+                if inputs is not None: raise invalid()
+            else:
+                if (packet["observations"] != 1 or not isinstance(inputs, dict)
+                        or set(inputs) != {"scope", "as_of_exchange_at", "transform", "selection", "reply_refs",
+                                           "source_identity", "encoder_identity", "upstream_complete", "complete_forecast_context"}
+                        or inputs["scope"] != "recent_own_reply_feature_inputs"
+                        or inputs["transform"] != "normalized_exchange_his_first_400_codepoints"
+                        or inputs["selection"] != "last_six_nonempty_his_in_supplied_exchange_order"
+                        or inputs["source_identity"] != "unverified" or inputs["encoder_identity"] != "unobserved"
+                        or inputs["upstream_complete"] is not False or inputs["complete_forecast_context"] is not False
+                        or instant(inputs["as_of_exchange_at"]) >= instant(packet["arrived_at"])
+                        or not isinstance(inputs["reply_refs"], list) or not 1 <= len(inputs["reply_refs"]) <= 6):
+                    raise invalid()
+                for ref in inputs["reply_refs"]:
+                    if (not isinstance(ref, dict) or set(ref) != {"observed_turn_id", "exchange_at", "normalized_reply_sha256",
+                                                               "encoder_input_sha256", "encoder_input_chars"}
+                            or ref["observed_turn_id"] is not None and not named(ref["observed_turn_id"])
+                            or not hashed(ref["normalized_reply_sha256"]) or not hashed(ref["encoder_input_sha256"])
+                            or type(ref["encoder_input_chars"]) is not int or not 1 <= ref["encoder_input_chars"] <= 400
+                            or instant(ref["exchange_at"]) > instant(inputs["as_of_exchange_at"])):
+                        raise invalid()
+            key, version = packet["forecast_row_sha256"], canonical(packet)
+            if key in versions and versions[key] != version: raise invalid()
+            versions[key] = version
+            packets[key] = packet
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    blocks, block_versions = [], {}
+    for block in config["blocks"]:
+        try:
+            if (not isinstance(block, dict) or set(block) != {"block_id", "declared_at", "start", "end"}
+                    or not named(block["block_id"])
+                    or not instant(block["declared_at"]) < instant(block["start"]) < instant(block["end"])):
+                raise invalid()
+            key, version = block["block_id"], canonical(block)
+            if key in block_versions:
+                if block_versions[key] != version: raise invalid()
+                continue
+            block_versions[key] = version
+            blocks.append(block)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    blocks.sort(key=lambda b: instant(b["start"]))
+    if any(instant(a["end"]) > instant(b["start"]) for a, b in zip(blocks, blocks[1:])):
+        raise invalid()
+    # Retain malformed identifiable cache copies so they cannot hide behind valid ones.
+    cache = defaultdict(list)
+    for entry in config["embeddings"]:
+        if not isinstance(entry, dict) or not named(entry.get("turn_id")):
+            raise invalid()
+        cache[entry["turn_id"]].append(entry)
+    originals = {digest(canonical(f)): f for f in forecasts}
+    targets = {r["turn_id"]: r for r in admitted}
+    held, paired, details = Counter(), defaultdict(list), []
+    for score in scored:
+        key = score["forecast_sha256"]
+        result = {"forecast_sha256": key, "turn_id": score["turn_id"], "status": "unavailable"}
+        def hold(reason):
+            result["reason"] = reason
+            held[reason] += 1
+            details.append(result)
+        if instant(score["finalized_at"]) >= cutoff:
+            hold("outside_cutoff"); continue
+        f, packet = originals.get(key), packets.get(key)
+        if f is None or packet is None:
+            hold("missing_exact_forecast_receipt"); continue
+        if (instant(packet["forecast_at"]) != instant(f["ts"])
+                or instant(packet["arrived_at"]) != instant(f["arrived_at"])):
+            hold("forecast_clock_mismatch"); continue
+        if packet["state"] != "observed":
+            hold("producer_inputs_unavailable"); continue
+        inputs = packet["inputs"]
+        as_of = instant(inputs["as_of_exchange_at"])
+        if as_of != instant(f["self"]["context_last_ts"]):
+            hold("context_clock_mismatch"); continue
+        matched_blocks = [b for b in blocks if instant(b["start"]) <= instant(f["arrived_at"])
+                          and instant(score["finalized_at"]) < instant(b["end"]) <= cutoff]
+        if len(matched_blocks) != 1:
+            hold("missing_complete_declared_block"); continue
+        block = matched_blocks[0]
+        vectors, seen, last_final = [], set(), -1.
+        reason = None
+        for ref in inputs["reply_refs"]:
+            prior_id = ref["observed_turn_id"]
+            if prior_id is None or prior_id in seen or prior_id == score["turn_id"]:
+                reason = "missing_duplicate_or_target_input_identity"; break
+            seen.add(prior_id)
+            previous = targets.get(prior_id)
+            if previous is None:
+                reason = "input_reply_not_admitted"; break
+            r, text = row_receipt(previous), final_response(previous)
+            if r["surface"] != score["group"][2]:
+                reason = "input_surface_mismatch"; break
+            # A matching normalized hash is accepted only when no normalization changed the final bytes.
+            if digest(text) != ref["normalized_reply_sha256"] or digest(text) != r["response_sha256"]:
+                reason = "unverified_normalized_reply_version"; break
+            prefix = text[:400]
+            if digest(prefix) != ref["encoder_input_sha256"] or len(prefix) != ref["encoder_input_chars"]:
+                reason = "input_transform_mismatch"; break
+            if not last_final < r["finalized_at"] <= as_of:
+                reason = "noncausal_or_ambiguous_input_order"; break
+            last_final = r["finalized_at"]
+            encoder = score["group"][1]
+            matches = [e for e in cache[prior_id] if e.get("encoder_id") == encoder
+                       and e.get("response_sha256") == r["response_sha256"]
+                       and e.get("encoder_input_sha256") == ref["encoder_input_sha256"]]
+            try:
+                if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
+                    raise ValueError()
+                for entry in matches:
+                    if entry.get("transform") != "final_reply_first_400_codepoints": raise ValueError()
+                    cosine_error(entry.get("emb"), f["self"]["emb"])
+                vector = matches[0]["emb"]
+                norm = math.hypot(*vector)
+                vectors.append([x / norm for x in vector])
+            except (TypeError, ValueError, OverflowError):
+                reason = "missing_or_invalid_input_embedding"; break
+        if reason:
+            hold(reason); continue
+        # Reuse the same full-target cache supplied to innovation(), not a second
+        # vector inferred from an equal scalar error or the excerpt cache.
+        actual_entries = [e for e in target_embeddings if isinstance(e, dict)
+                          and e.get("turn_id") == score["turn_id"] and e.get("encoder_id") == score["group"][1]
+                          and e.get("response_sha256") == score["response_sha256"]]
+        try:
+            if not actual_entries or any(e.get("emb") != actual_entries[0].get("emb") for e in actual_entries):
+                raise ValueError()
+            for entry in actual_entries:
+                if cosine_error(f["self"]["emb"], entry.get("emb")) != score["error"]: raise ValueError()
+            actual = actual_entries[0]["emb"]
+        except (TypeError, ValueError, OverflowError):
+            hold("missing_or_conflicting_actual_embedding"); continue
+        try:
+            mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
+            last_error, mean_error = cosine_error(vectors[-1], actual), cosine_error(mean, actual)
+        except (TypeError, ValueError, OverflowError, IndexError):
+            hold("invalid_control_geometry"); continue
+        result.update(status="available", evaluation_block=block["block_id"], context_n=len(vectors),
+                      head_error=score["error"], last_reply_error=last_error, recent_mean_error=mean_error,
+                      last_reply_improvement=last_error-score["error"], recent_mean_improvement=mean_error-score["error"])
+        details.append(result)
+        paired[(tuple(score["group"]), block["block_id"])].append(result)
+    comparisons = []
+    group_numbers = {group: i + 1 for i, group in enumerate(dict.fromkeys(tuple(s["group"]) for s in scored))}
+    for (group, block), rows in paired.items():
+        comparisons.append({"comparison_group": len(comparisons)+1, "checkpoint_group": group_numbers[group], "n": len(rows),
+                            **{k: statistics.mean(r[k] for r in rows) for k in
+                               ("head_error", "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
+    return {"paired_groups": comparisons, "unavailable": dict(held), "admission_effect": "none",
+            "meaning": "descriptive paired excerpt-input controls; supplied block declarations, not verified preregistration or a pass verdict"}, details
+
+
 def scratch_root(value):
     raw = Path(value).absolute()
     root = raw.resolve(strict=True)
@@ -937,6 +1124,11 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    private_self_inputs = None
+    if "self_input_controls" in bundle:
+        report["self_input_baselines"], private_self_inputs = self_input_baselines(
+            details, admitted, bundle.get("forecasts", []), bundle.get("embeddings", []),
+            bundle["self_input_controls"], args.cutoff)
     private_map_writes = None
     if "value_map_builds" in bundle:
         report["value_map_write_observations"], private_map_writes = value_map_write_observations(
@@ -952,6 +1144,8 @@ def main():
     output.mkdir(mode=0o700)
     outputs = [("aggregate.json", report), ("private-innovation.json", details),
                ("private-feedback.json", private_feedback)]
+    if private_self_inputs is not None:
+        outputs.append(("private-self-input-controls.json", private_self_inputs))
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
     if private_map_writes is not None:

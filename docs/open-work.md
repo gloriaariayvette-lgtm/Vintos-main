@@ -6511,3 +6511,14 @@ The inputs are not complete context or verified finalized-reply identities.
 A verified identity/transform/cache join and declared evaluation block remain
 necessary for paired controls. Full Aegis suite/private census remain with the
 reviewer; no real-data accuracy or complete ancestry is claimed.
+
+
+## 8 November — observed-input paired baseline replay
+
+`codex/judges-self-input-baselines` adds optional exact-sidecar/excerpt-cache joins
+and separate paired controls for already scorable innovation rows. 187 affected
+isolated checks pass. Earlier reports/eligibility remain unchanged. Supported
+normalization must leave final reply bytes unchanged; other transformations and
+missing legacy identity/clock/encoder evidence remain unavailable. Block declarations
+are supplied evidence, not authenticated preregistration. Review/full Aegis suite
+and private census remain with the reviewer; no actual-data result or live change.

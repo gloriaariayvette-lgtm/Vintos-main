@@ -998,6 +998,52 @@ Replay does not yet consume this schema as `forecast-reply-context-v1`. Existing
 control calculations require full reply versions, admitted origin identities and
 compatible cached embeddings. Neither normalized text hashes nor exchange times
 establish those facts; missing IDs must never be filled by text/time proximity.
-A separate validated join, transformed-vector cache and declared evaluation block
-remain necessary. These receipts do not increase census eligibility or establish
+The optional join below requires a separately supplied transformed-vector cache
+and declared evaluation block. These receipts do not increase census eligibility or establish
 forecast accuracy. No new collector/model invocation or live enablement is included.
+
+
+### Optional controls from observed excerpt inputs
+
+The later `self_input_controls` bundle key enables a separate descriptive report;
+it does not convert sidecars into the older complete-context contract. It must be
+an object with exactly these three lists:
+
+- `receipts`: explicitly supplied `self-forecast-inputs-v1` sidecars.
+- `embeddings`: cached excerpt vectors, each with `turn_id`, `response_sha256`
+  (the full final reply), `encoder_id`, `encoder_input_sha256`,
+  `transform: "final_reply_first_400_codepoints"`, and `emb`.
+- `blocks`: nonoverlapping declarations with `block_id`, `declared_at`, `start`
+  and `end`. Timestamps must be numeric instants or offset-aware ISO strings,
+  with declaration strictly before start and start strictly before end.
+
+Use the existing replay command and explicit private snapshot; there is no new
+collector or encoder invocation. Only already selected/scorable innovation rows
+are considered. The exact forecast-row digest must match a sidecar, whose clocks
+must agree with that forecast. Each observed input ID must identify a previously
+admitted reply on the same surface. This first version requires the captured full
+normalized text hash to equal that reply's exact final version: if normalization
+changed bytes, it remains unavailable until a separately verified transform exists.
+The prefix hash and length are recomputed from the already supplied final text.
+The cached vector must match that ID, full version, exact prefix and the encoder
+in the existing checkpoint group. Every matching duplicate is validated.
+
+Finalized prior replies must be strictly ordered and no later than the observed
+context clock; no exchange timestamp is promoted to a finalization timestamp.
+The same original target-vector cache used by innovation supplies the actual
+reply. The block must contain arrival through finalization, with its end no later
+than replay's exclusive cutoff. An outcome exactly at block end is excluded.
+Malformed/conflicting sidecars and overlapping/conflicting blocks abort generically
+before filtering, including records after cutoff. Identical copies deduplicate.
+Missing evidence yields an unavailable reason without dropping the head score.
+
+`aggregate.json` gains `self_input_baselines` with anonymous per-checkpoint/block
+paired counts and mean errors/improvements, plus unavailable counts. Exact block,
+turn and forecast identities stay in the optional 0600
+`private-self-input-controls.json`, hashed by `private-run.json`. The old census,
+innovation and full-reply controls remain unchanged, including when this key is
+absent. Positive improvement favours the head; these are descriptive comparisons,
+not a pass verdict, authenticity score or proof of held-out accuracy. Declaration
+times are supplied evidence, not independently verified preregistration. Existing
+checkpoint and prospective-clock requirements still apply; no legacy missing or
+naive clock is repaired implicitly. No receipt authenticates its own producer.
