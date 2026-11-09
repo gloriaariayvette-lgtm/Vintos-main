@@ -106,10 +106,15 @@ def validate_coverage(value):
     if not isinstance(value['states'],dict) or set(value['states'])!=set(STATES):
         raise ValueError('invalid forecast handoff states')
     states={k:count(v) for k,v in value['states'].items()}
+    # These states reached a unique launch/job descriptor after resource conflicts
+    # were excluded. Each such row needs its own paired launch; orphan launches
+    # cannot support them, and one job cannot pair with several launch descriptors.
+    paired_launches=counts['launch_receipts']-counts['launch_receipts_without_job']
+    launch_backed_rows=sum(states[k] for k in ('origin_markers_missing','pending_row_mismatch','joined'))
     if (sum(states.values())!=counts['forecast_rows']
             or counts['launch_receipts']+counts['job_receipts']!=counts['unique_receipts']
             or counts['launch_receipts_without_job']>counts['launch_receipts']
             or counts['job_receipts_without_row']>counts['job_receipts']
             or sum(states[k] for k in STATES[3:])>counts['job_receipts']-counts['job_receipts_without_row']
-            or (states['joined'] and not counts['launch_receipts'])):
+            or launch_backed_rows>paired_launches or paired_launches>counts['job_receipts']):
         raise ValueError('invalid forecast handoff totals')

@@ -7000,3 +7000,12 @@ benchmark against missing runtime/code observations and adds a synthetic configu
 profile plus fresh-input repeat retention. Local configured 64 MiB first-call
 medians: 42.572 ms contiguous, 50.118 ms strided. These are not real-encoder costs.
 No runtime change; host compatibility/cost, ancestry, delivery and integration open.
+
+
+## 9 November — handoff aggregate launch counts conserved
+
+`codex/judges-handoff-count-conservation`, on 32c27b20, rejects supplied aggregate
+counts that claim more launch-backed rows than paired launches, or more paired
+launches than job receipts. Six regression assertions failed before the fix.
+Underlying joins, runtime and scoring are unchanged. Host integration and the
+remaining source/encoder/delivery evidence are still open; no enabling or deploy.

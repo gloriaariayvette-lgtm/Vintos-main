@@ -2173,3 +2173,16 @@ layouts/profiles, observation failure on first and fresh repeat calls, invalid
 profile/options before allocation, private aggregate output, no overwrite, and
 scratch/network/process boundaries. Generated reports refreshed without changes;
 diff check clean. Two additional CLI measurements used only synthetic arrays.
+
+
+## 9 November — aggregate handoff support cannot reuse a launch
+
+Reproduced six failed assertions in three synthetic regression cases: impossible
+launch support counts passed the validator and renderer. Added paired-launch and
+job conservation bounds. The producer already refused pending-resource reuse;
+this change brings its public aggregate validation into line. Valid duplicate,
+orphan and conflict cases remain accepted. No production or admission change.
+
+59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
+Generated ownership, untested and store reports refreshed without changes; diff
+check clean. Regression evidence was captured before applying the validator fix.

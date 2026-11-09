@@ -151,6 +151,44 @@ class Tests(unittest.TestCase):
         for bad in (dict(result,source_identity='verified'),dict(result,extra='private')):
             with self.assertRaises(ValueError):M.render(dict(case.report,forecast_handoffs=bad))
 
+    def test_aggregate_requires_a_distinct_paired_launch_for_each_launch_backed_row(self):
+        row=self.run_job(self.launch());base=self.audit([row])
+        for state in ('joined','origin_markers_missing','pending_row_mismatch'):
+            bad=copy.deepcopy(base)
+            bad.update(forecast_rows=2,job_receipts=2,unique_receipts=3)
+            bad['states']=dict.fromkeys(H.STATES,0);bad['states'][state]=2
+            with self.subTest(state=state):
+                with self.assertRaises(ValueError):H.validate_coverage(bad)
+        bad=copy.deepcopy(base);bad['launch_receipts_without_job']=1
+        with self.assertRaises(ValueError):H.validate_coverage(bad)
+
+    def test_review_rejects_launch_counts_that_cannot_support_reported_joins(self):
+        row=self.run_job(self.launch());bad=self.audit([row])
+        bad.update(forecast_rows=2,job_receipts=2,unique_receipts=3)
+        bad['states']['joined']=2
+        case=review.Tests('test_actual_aggregates_render_without_mutation_or_private_labels')
+        case.setUp();self.addCleanup(case.doCleanups)
+        with self.assertRaises(ValueError):M.render(dict(case.report,forecast_handoffs=bad))
+
+    def test_multiple_paired_launches_and_orphans_conserve_counts(self):
+        row=self.run_job(self.launch());packets=self.packets()
+        other=copy.deepcopy(row);other['ts']=220.
+        pair=copy.deepcopy(packets)
+        for packet in pair:
+            packet['pending']['resource_sha256']='b'*64
+            if 'forecast_row_sha256' in packet:
+                packet['forecast_row_sha256']=H.digest(H.encoded(other))
+        orphan=copy.deepcopy(next(p for p in packets if p['schema']=='self-forecast-launch-v1'))
+        orphan['pending']['resource_sha256']='c'*64
+        result=self.audit([row,other],packets+pair+[orphan])
+        self.assertEqual(result['states']['joined'],2)
+        self.assertEqual(result['launch_receipts_without_job'],1)
+        self.assertEqual(result['launch_receipts'],3)
+        # Paired launches also cannot outnumber all job receipts, even without rows.
+        result=H.coverage([],packets,1000)
+        result['launch_receipts']=2;result['unique_receipts']=3
+        with self.assertRaises(ValueError):H.validate_coverage(result)
+
     def test_launch_without_job_is_coverage_gap_not_execution_failure(self):
         self.launch();result=self.audit([])
         self.assertEqual(result['launch_receipts_without_job'],1)

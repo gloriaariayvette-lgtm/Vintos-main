@@ -2298,3 +2298,32 @@ layouts/profiles, observation failure on first and fresh repeat calls, invalid
 profile/options before allocation, private aggregate output, no overwrite, and
 scratch/network/process boundaries. Generated reports refreshed without changes;
 diff check clean. Two additional CLI measurements used only synthetic arrays.
+
+
+## 9 November — conserve launch support in aggregate handoff reports
+
+`codex/judges-handoff-count-conservation` descends from 32c27b20. The underlying
+handoff join already refuses one pending resource certifying several distinct
+forecast rows. Its aggregate validator previously accepted impossible summaries:
+several launch-backed rows with only one paired launch, orphan launches counted as
+support, or more paired launches than job receipts. The review renderer used that
+validator and could display these inconsistent supplied counts.
+
+Validation now requires the sum of joined, origin-markers-missing and
+pending-row-mismatch rows to fit within paired launches (launches minus those
+without a job), and paired launches cannot exceed all job receipts. These are
+necessary count-conservation checks, not authentication of the receipts. Missing
+markers, mismatches and conflicts keep their existing meanings. Valid aggregate
+outputs, runtime capture, joins, census, innovation and training admission are
+unchanged. No real-data result is inferred from the synthetic regression.
+
+Three regression cases produced six assertion failures before the fix, including
+rejection through the actual review renderer. They now pass; the positive case
+retains two independent paired launches plus an orphan, and existing duplicate,
+conflict, out-of-window and scratch CLI tests remain valid. No private records,
+model calls, live writes, enabling, merge or deployment. Full evidence and host
+integration requirements remain open.
+
+59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
+Generated ownership, untested and store reports refreshed without changes; diff
+check clean. Regression evidence was captured before applying the validator fix.
