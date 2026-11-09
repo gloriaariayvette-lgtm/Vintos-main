@@ -1,17 +1,26 @@
-# Board 1: steam sensor + little speaker (Gloria, 8 November).
+# Board 1, in the bathroom by the shower: steam sensor + little speaker (Gloria, 8 November).
 #   Steam sensor  VCC 3V3, GND, SIGNAL GPIO34 (analog in)
-#   Speaker amp   red 5V, black GND, white GPIO25 (tone out)
+#   Speaker amp   red 5V, black GND, white GPIO25 (the ESP32's own DAC)
+# His voice and his songs play on that amp from a URL (a WAV, 16 kHz mono), through shower_dac.h: copy it into the
+# same folder as this file. ESPHome itself no longer drives the built-in DAC for audio; shower_dac.h does.
 # Everything here only counts when her phone is within 1 m of the board (Gloria: "otherwise it could be some other
 # person"). The phone is found by its IRK, as the kitchen and bedroom boards find it; the key is gloria_phone_irk in
-# the ESPHome add-on's secrets.yaml, never in this file. Away from her: the board reports nothing and plays nothing.
+# the ESPHome add-on's secrets.yaml, never in this file. Away from her: the board reports nothing and starts nothing.
+# Keep the board, amp and speaker out of the spray; only the sensor pad goes where the steam is.
 esphome:
   name: house-steam
   friendly_name: House steam board
+  includes:
+    - shower_dac.h
 
 esp32:
   board: esp32dev
   framework:
-    type: arduino
+    type: esp-idf
+    advanced:
+      include_builtin_idf_components:   # the DAC driver and the HTTP client, for shower_dac.h
+        - esp_driver_dac
+        - esp_http_client
 
 wifi:
   ssid: !secret wifi_ssid
@@ -31,18 +40,22 @@ ota:
 logger:
 
 mqtt:
+  id: mqtt_client
   broker: 192.168.1.91
   discovery: false
   reboot_timeout: 0s
   on_message:
-    # He plays a short tune here: an RTTTL string, e.g. "hi:d=8,o=6,b=180:c,e,g". Only with her near.
+    # He plays something here: the URL of a WAV, his voice or one of his songs. Only with her near.
     - topic: vintos/board/house-steam/play
       then:
         - if:
             condition:
               binary_sensor.is_on: gloria_near
             then:
-              - rtttl.play: !lambda 'return x;'
+              - lambda: 'shower_dac::play(x);'
+    - topic: vintos/board/house-steam/stop
+      then:
+        - lambda: 'shower_dac::stop();'
 
 esp32_ble_tracker:
   scan_parameters:
@@ -52,6 +65,9 @@ globals:
   - id: near_until
     type: uint32_t
     initial_value: '0'
+  - id: was_busy
+    type: bool
+    initial_value: 'false'
 
 number:
   - platform: template     # her phone's signal at 1 m from this board; set from a real reading, no reflash needed
@@ -64,7 +80,7 @@ number:
     initial_value: -65
     restore_value: true
     unit_of_measurement: dBm
-  - platform: template     # steam reading (0-100) above which it counts as steam; set from a real shower/kettle
+  - platform: template     # steam reading (0-100) above which it counts as steam; set from a real shower
     id: steam_threshold
     name: "Steam threshold"
     optimistic: true
@@ -74,13 +90,16 @@ number:
     initial_value: 30
     restore_value: true
 
-output:
-  - platform: ledc
-    pin: GPIO25
-    id: speaker_out
-
-rtttl:
-  output: speaker_out
+interval:
+  # tells house_boards.py when the speaker is free, so the next song can go
+  - interval: 1s
+    then:
+      - lambda: |-
+          bool b = shower_dac::busy();
+          if (b != id(was_busy)) {
+            id(was_busy) = b;
+            id(mqtt_client).publish("vintos/board/house-steam/player", b ? "busy" : "idle");
+          }
 
 sensor:
   - platform: ble_rssi
@@ -151,10 +170,7 @@ binary_sensor:
                   payload: steam_start
     on_release:
       then:
-        - if:
-            condition:
-              binary_sensor.is_on: gloria_near
-            then:
-              - mqtt.publish:
-                  topic: vintos/board/house-steam/event
-                  payload: steam_end
+        - lambda: 'shower_dac::stop();'     # the shower is over: whatever he was playing stops
+        - mqtt.publish:
+            topic: vintos/board/house-steam/event
+            payload: steam_end

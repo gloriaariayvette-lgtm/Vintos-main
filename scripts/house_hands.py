@@ -79,7 +79,11 @@ def _today(kind):
     return [r for r in _rows() if str(r.get("at", "")).startswith(day) and r.get("kind") == kind]
 
 
-def _quiet():
+def _quiet(present=False):
+    """Outside 9:00-22:00. Not when she is at one of his boards (her phone within 1 m, house_boards.py, 8 November):
+    she is plainly awake and there, and the clock's quiet hours are for when she may not be."""
+    if present:
+        return False
     h = _now().hour
     return not (QUIET[0] <= h < QUIET[1])
 
@@ -124,7 +128,7 @@ def _adb_ok(home):
     return "the TV is not reachable over adb (%s%s)" % (state, hint)
 
 
-def tv(arg, home=None):
+def tv(arg, home=None, present=False):
     home = home or _home()
     a = arg.strip()
     word = a.split()[0].lower() if a else ""
@@ -145,14 +149,14 @@ def tv(arg, home=None):
         if not m:
             return False, "volume needs a number from 0 to 15"
         level = max(0, min(15, int(m.group(0))))
-        if _quiet() and level > 5:
+        if _quiet(present) and level > 5:
             return False, "not above 5 outside 9:00-22:00"
         why = _adb_ok(home)
         if why:
             return False, why
         rc, _ = home._adb("media", "volume", "--stream", "3", "--set", str(level))
         return rc == 0, "TV volume %d" % level
-    if _quiet():
+    if _quiet(present):
         return False, "not outside 9:00-22:00: the TV stays as it is"
     if word == "on":
         return bool(home.tv_on()), "TV on"
@@ -187,7 +191,7 @@ def _echo_ready(home):
     return cfg, ""
 
 
-def echo(arg, home=None):
+def echo(arg, home=None, present=False):
     home = home or _home()
     a = arg.strip()
     word, _, rest = a.partition(" ")
@@ -200,7 +204,7 @@ def echo(arg, home=None):
     rest = rest.strip()
     if not rest:
         return False, "say what"
-    if _quiet():
+    if _quiet(present):
         return False, "not outside 9:00-22:00: the Echo stays quiet"
     cfg, why = _echo_ready(home)
     if not cfg:
@@ -212,13 +216,13 @@ def echo(arg, home=None):
     return bool(ok), "Echo said: %s" % words[:160]
 
 
-def lights(arg, home=None):
+def lights(arg, home=None, present=False):
     home = home or _home()
     parts = arg.strip().split()
     if not parts:
         return False, "say a colour (or #hex) and, if you like, a room; or flicker"
     if parts[0].lower() == "flicker":
-        if _quiet():
+        if _quiet(present):
             return False, "no flicker outside 9:00-22:00"
         room = parts[1] if len(parts) > 1 else None
         return bool(home.flicker(room)), "lights flickered%s" % (" in " + room if room else "")
@@ -287,19 +291,19 @@ def _detach(cmd, env):
     subprocess.Popen(cmd, env=env, stdout=out, stderr=out, start_new_session=True)
 
 
-def do(kind, arg, home=None, run=None):
-    """One act from one line. (ok, the line to show in its place)."""
+def do(kind, arg, home=None, run=None, present=False):
+    """One act from one line. (ok, the line to show in its place). present: she is at one of his boards."""
     kind = kind.upper()
     if kind in ("TV", "ECHO", "LIGHTS") and len(_today("house")) >= PER_DAY["house"]:
         ok, said = False, "today's %d house acts are used" % PER_DAY["house"]
     else:
         try:
             if kind == "TV":
-                ok, said = tv(arg, home)
+                ok, said = tv(arg, home, present)
             elif kind == "ECHO":
-                ok, said = echo(arg, home)
+                ok, said = echo(arg, home, present)
             elif kind == "LIGHTS":
-                ok, said = lights(arg, home)
+                ok, said = lights(arg, home, present)
             elif kind == "MISCHIEF":
                 ok, said = mischief(arg, run)
             elif kind == "MAKE":

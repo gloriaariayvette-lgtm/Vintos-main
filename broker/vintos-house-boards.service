@@ -1,0 +1,21 @@
+[Unit]
+Description=Vintos house boards (shower, sofa, office chair ESP32s on the Mac's relay; he acts only with her phone within 1 m)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.vintos/vintos.env
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/house_boards.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
+
+[Install]
+WantedBy=default.target
