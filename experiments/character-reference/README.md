@@ -718,3 +718,10 @@ Legacy supplied freeze timestamps retain their old validation and remain explici
 `legacy_unknown`; they are never promoted to published evidence. A valid published
 revision still must precede each act. This exception changes only the freeze gate,
 not strict lineage, mode, outcome anchors, calibration, or independence requirements.
+
+
+Missing local runtime imports now refuse with fixed JSON error
+`encoder_runtime_unavailable`, dependency `llama-cpp-python` and an owner-approval
+installation hint. No install or subprocess fallback is attempted, and errors expose
+no private paths. A failed run may retain its private copied artifact; retry into a
+new output directory after the approved environment is ready.

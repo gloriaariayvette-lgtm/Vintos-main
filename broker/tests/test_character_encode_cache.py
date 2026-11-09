@@ -57,11 +57,12 @@ class Encoder:
         return [float(len(text)),1.,2.]
     def close(self):pass
 try:
-    m.run(sys.argv[2:],factory=Encoder)
+    if action=='missing-runtime':sys.modules['llama_cpp']=None
+    m.run(sys.argv[2:],factory=m.LocalEncoder if action=='missing-runtime' else Encoder)
     out=Path(sys.argv[sys.argv.index('--output')+1])
     (out/'stub-calls.json').write_text(json.dumps(calls))
-except Exception:
-    print(json.dumps({'written':False,'error':'cache_production_failed'}),file=sys.stderr);sys.exit(1)
+except Exception as exc:
+    print(json.dumps(m.error_payload(exc)),file=sys.stderr);sys.exit(1)
 '''
 
 
@@ -278,6 +279,16 @@ class Tests(unittest.TestCase):
     def test_native_and_exception_output_sanitized(self):
         result=self.run_cli('exception');self.assertNotEqual(result.returncode,0)
         self.assertNotIn('PRIVATE-CANARY',result.stderr+result.stdout);self.assertNotIn(str(self.root),result.stderr+result.stdout)
+
+    def test_missing_local_runtime_has_typed_private_refusal(self):
+        result=self.run_cli('missing-runtime');self.assertNotEqual(result.returncode,0)
+        error=json.loads(result.stderr)
+        self.assertEqual(error['error'],'encoder_runtime_unavailable')
+        self.assertEqual(error['dependency'],'llama-cpp-python')
+        self.assertIn('owner approval',error['hint'])
+        self.assertNotIn(str(self.root),result.stderr)
+        self.assertFalse((self.out/'cache.json').exists())
+        self.assertFalse((self.out/'stub-loaded').exists())
 
     def test_zero_vector_refused(self):self.assertNotEqual(self.run_cli('zero').returncode,0)
     def test_nonfinite_vector_refused(self):self.assertNotEqual(self.run_cli('nan').returncode,0)

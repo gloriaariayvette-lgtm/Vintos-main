@@ -386,7 +386,15 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
         raise WorkBlocked('response_needs_review')
     if 'WANT RESULT' in decision['message'] or 'WORK DONE' in decision['message']:
         raise WorkBlocked('response_needs_review')
-    packet = capture.finalize(decision['message'], time.time())
+    finalized_at = time.time()
+    try:
+        packet = capture.finalize(decision['message'], finalized_at)
+    except ValueError:
+        # A failed observation cannot prevent an already validated decision from proceeding.
+        # Preserve the real clock; do not clamp it into a fabricated eligible receipt.
+        packet = dict(schema='witness-capture-unavailable-v1', status='unavailable',
+                      reason='invalid_finalization_clock', started_at=record['at'],
+                      finalized_at=finalized_at)
     lanes = [o.get('lane') for o in result.get('observations', [])
              if o.get('status') in ('valid','truncated') and o.get('text') == raw
              and o.get('lane') in ('subscription','openai')]

@@ -42,6 +42,23 @@ class Tests(unittest.TestCase):
         return self.n.NarrativeTurn(row['timestamp'],'Gloria' if row['role']=='user' else 'Vintos',row['content'],
             self.n.turn_evidence(row,'avatar-chat-history.json',row['timestamp'],row['content'],True))
 
+    def test_narration_budget_keeps_full_text_and_interval_suffix(self):
+        # Explicit synthetic token units; no tokenizer, provider or model is called.
+        narration=' '.join(['Synthetic']*220)
+        tokens=['Synthetic ']*220+['\nSOMATIC_INTERVALS: ', '[[1,2]]']
+        payloads=[]
+        def backend(argv,**kwargs):
+            payload=json.loads(argv[argv.index('-d')+1]);payloads.append(payload)
+            text=''.join(tokens[:payload['max_tokens']])
+            return types.SimpleNamespace(stdout=json.dumps({'choices':[{'message':{'content':text}}]}),stderr='')
+        with patch.object(self.n.subprocess,'run',side_effect=backend):
+            raw=self.n.call_llm('synthetic prompt','synthetic system','synthetic model','synthetic api')
+        text,receipt=self.n.interval_evidence(raw,self.turns)
+        self.assertEqual(payloads[0]['max_tokens'],220+64)
+        self.assertEqual(text,narration)
+        self.assertEqual(receipt['status'],'bounded')
+        self.assertEqual(len(receipt['intervals']),1)
+
     def test_bounded_selection_retains_ids_hashes_and_only_selected_interval(self):
         narration,receipt=self.n.interval_evidence('Synthetic narration.\nSOMATIC_INTERVALS: [[1,2]]',self.turns)
         self.assertEqual(narration,'Synthetic narration.')

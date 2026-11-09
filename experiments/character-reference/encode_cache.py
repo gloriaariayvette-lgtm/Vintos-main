@@ -64,10 +64,24 @@ def copy_artifact(source,target):
     return digest,sig,frozen_at
 
 
+class EncoderRuntimeUnavailable(RuntimeError):
+    pass
+
+
+def error_payload(exc):
+    if isinstance(exc,EncoderRuntimeUnavailable):
+        return dict(written=False,error='encoder_runtime_unavailable',dependency='llama-cpp-python',
+                    hint='Install the approved CPU llama-cpp-python runtime in the interpreter environment used for this private run; installation requires owner approval.')
+    return dict(written=False,error='cache_production_failed')
+
+
 class LocalEncoder:
     """Only the installed in-process embedding API; never a runtime downloader."""
     def __init__(self,path,settings):
-        import llama_cpp
+        try:
+            import llama_cpp
+        except ImportError as exc:
+            raise EncoderRuntimeUnavailable() from exc
         self.version=getattr(llama_cpp,'__version__',None)
         if not P.identifier(self.version):raise ValueError('runtime version unavailable')
         pool=getattr(llama_cpp,'LLAMA_POOLING_TYPE_'+settings['pooling'].upper())
@@ -210,5 +224,5 @@ def run(argv=None,factory=LocalEncoder):
 
 if __name__=='__main__':
     try:run()
-    except Exception:
-        print(json.dumps({'written':False,'error':'cache_production_failed'}),file=sys.stderr);sys.exit(1)
+    except Exception as exc:
+        print(json.dumps(error_payload(exc)),file=sys.stderr);sys.exit(1)

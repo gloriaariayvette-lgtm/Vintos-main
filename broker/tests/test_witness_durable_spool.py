@@ -56,6 +56,34 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.fixture.status()['deferred']['counts'],{'spooled':1,'replayed':1})
         self.assertEqual(list(self.fixture.workspace.iterdir()),[])
 
+    def test_startup_recovery_precedes_first_queue_wait(self):
+        self.assertTrue(self.stage())
+        owner=self
+        class Queue:
+            def get(self,timeout):
+                owner.assertEqual(len(owner.packets()),1)
+                owner.assertEqual(owner.entries(),[])
+                return None
+            def task_done(self):pass
+        S._write_queued(Queue())
+
+    def test_busy_queue_cannot_starve_bounded_durable_recovery(self):
+        for i in range(9):self.assertTrue(self.stage({'synthetic':i}))
+        owner=self;clock=[100.0];gets=[]
+        class Queue:
+            def get(self,timeout):
+                gets.append(1)
+                if len(gets)==1:
+                    owner.assertEqual(len(owner.entries()),1)
+                    clock[0]+=.3
+                    return owner.sink,b'{"synthetic":"volatile"}', 'capture-',S.configuration()
+                owner.assertEqual(owner.entries(),[])
+                owner.assertEqual(len(owner.packets()),10)
+                return None
+            def task_done(self):pass
+            def empty(self):return False
+        with patch.object(S.time,'monotonic',side_effect=lambda:clock[0]):S._write_queued(Queue())
+
     def test_new_process_recovers_on_startup_without_a_new_capture(self):
         code="import os,sys;sys.path.insert(0,sys.argv[1]);import witness_sink as s;s.start_recovery=lambda:False;assert s.enqueue_capture(sys.argv[2],{'synthetic':'restart'});os._exit(0)"
         result=subprocess.run([sys.executable,'-c',code,str(ROOT/'scripts'),str(self.sink)],capture_output=True,text=True,timeout=3)

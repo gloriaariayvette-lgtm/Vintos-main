@@ -536,11 +536,15 @@ if hasattr(os, 'register_at_fork'):
 
 
 def _write_queued(pending):
+    next_recovery = time.monotonic()
     while True:
+        if time.monotonic() >= next_recovery:
+            # Startup and a busy volatile queue must not starve durable ingress.
+            recover_spool()
+            next_recovery = time.monotonic() + 0.25
         try: item = pending.get(timeout=0.25)
         except queue.Empty:
             _flush_deferred()
-            recover_spool()
             continue
         try:
             if item is None: return

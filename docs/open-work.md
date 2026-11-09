@@ -7630,3 +7630,56 @@ Required reports regenerated unchanged; diff clean. No private data read, encode
 or provider call, GPU, live config/write, model swap, merge or deployment. Full suite
 and private runs remain with the reviewer. Branch codex/judges-reviewed-pin-status,
 based on 84eebed5; exact path/pushed tip in coordination reply. Heartbeat ACTIVE.
+
+
+## 2026-11-09 13:26 CST — review fixes and remaining flake diagnosis (#52/#53)
+
+Raised the existing narrator response ceiling from 220 to 284 to reserve 64 tokens
+for interval metadata. One existing generation call/model chain remains; synthetic
+backend regression retains 220 narration token units plus the interval suffix.
+This is a contract fixture, not a provider-tokenizer or live narration measurement.
+Private cache producer now gives typed encoder_runtime_unavailable with a fixed
+approved-install hint on ImportError, never installation or private path disclosure.
+Note #53 reports the owner's install approval is being handled by the reviewer.
+
+Deterministic before/after failure evidence:
+- Followthrough: a writer-induced backwards clock reproduces the exact invalid
+  finalization stack. A valid parsed decision now continues with an explicit
+  unavailable capture record, real start/final clocks and no witness_receipt.
+  Persisted observations stay intact; duplicate invocation uses the decision once.
+  Strict Capture clock checks are unchanged; no timestamp clamp or invented receipt.
+- Spool: startup waited for a queue timeout, and continuous volatile work could starve
+  durable ingress indefinitely. Added bounded recovery before the first queue wait
+  and every 250 ms by monotonic scheduling even while busy. Tests exercise real
+  scratch spool publication before the first get and 9 records across the 8-record
+  recovery bound with busy queue traffic. Original recovery deadline/assertions stay.
+  This proves/fixes scheduling gaps; the retained idle-startup timeout alone does
+  not establish why its particular run exceeded two seconds.
+
+Latent original omission remains unresolved: there are no concurrent heading and
+trained-context writers in test_09's synchronous call path. A backwards clock
+reproduces the same missing-context symptom through the correct future-packet gate,
+but the old log has no rejected-gate/timestamp evidence to attribute that run.
+Added optional content-free rejection diagnostics and exact-call test assertion
+context. Default callers still get empty text/empty receipt on refusal, so no
+false latent grounding is propagated. No causality gate or assertion was weakened.
+100 repeated test_09 runs passed; deterministic backwards-clock regression preserves
+the heading, refuses future evidence, and includes context once the clock catches up.
+Reviewer input needed: retain the new reason from the next isolated failing run.
+One needs-input ntfy delivered; deduplicate this unchanged issue. Do not claim the
+original latent or idle-spool flake root cause established by these tests.
+
+209 targeted checks pass (producer 34, latent 16, intervals 12, followthrough 55,
+spool 27, capture 27, sink 26, owners 11, coarse-clock wrapper 1 with 68 nested
+followthrough/completion checks), plus 100 diagnostic integration repetitions.
+Before logs /tmp/judges-review-followthrough-before.log and
+/tmp/judges-review-spool-before.log retain deterministic failing evidence.
+After logs /tmp/judges-review-{producer,latent,somatic,followthrough,spool}-after.log,
+/tmp/judges-review-test_{witness_capture,witness_sink,want_coarse_clock}.log,
+/tmp/judges-review-owners.log and /tmp/judges-review-latent-diagnostic-stress.log.
+Reports regenerated unchanged; diff clean. Original coarse-clock and Lab flake
+causes are not declared solved; coarse-clock passed this targeted rerun.
+No real provider/model call, private input read, GPU, live change, merge or deployment.
+Branch codex/judges-review-fixes above 3fb175ce; exact tip/path in coordination reply.
+Heartbeat ACTIVE; independent full suite/test merge and private runs remain with
+Claude Code. Owner deploy/capture decisions in #53 were not executed by this agent.
