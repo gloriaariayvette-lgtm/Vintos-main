@@ -1668,3 +1668,14 @@ delivery, the final transport version, complete internal attempts or clean ances
 It never establishes a model identity that the completion metadata lacks. The
 interaction-ledger subprocess and other non-avatar generation paths are not given
 invented joins; those remaining producers require separate source tracing.
+
+
+### Producer/source coverage
+
+`coverage.py` now adds a fixed-label `source_coverage` aggregate, distinguishing
+adapter copies from projection sources and absent/empty/invalid declared surfaces.
+Same-turn surface evidence requires agreeing explicit IDs, identical stored text
+and usable pre-cutoff clocks. It does not repair rows or change attribution.
+Private caller summaries also distinguish nonempty model/provider values from
+mere key presence and count stages. See `docs/judges-source-coverage.md` for the
+source trace, limitations and command for the existing admitted private bundle.

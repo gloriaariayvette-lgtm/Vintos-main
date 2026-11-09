@@ -111,6 +111,67 @@ class Tests(unittest.TestCase):
         self.config['window_seconds']=30
         with self.assertRaises(ValueError): self.run_probe()
 
+    def missing_surface_evidence(self, rows):
+        report, _ = self.run_probe(rows=rows)
+        census = report['source_coverage']
+        self.assertEqual(census['assistant_copies'], sum(g['copies'] for g in census['groups']))
+        return [g['same_turn_evidence'] for g in census['groups'] if g['surface_state'] != 'declared']
+
+    def test_caller_metadata_counts_nonempty_values_not_field_presence(self):
+        report, private=self.run_probe(calls=[self.call,dict(self.call,at=70,model='',provider='',stage='synthetic-stage')])
+        caller=private['callers'][0]
+        self.assertEqual(caller['records'],2)
+        self.assertEqual(caller['nonempty_model_and_provider'],1)
+        self.assertEqual(caller['stages'],{'complete':1,'synthetic-stage':1})
+        self.assertNotIn('synthetic-stage',json.dumps(report))
+
+    def test_source_copies_distinguish_adapter_from_projection(self):
+        rows = [dict(self.row, surface=None, _witness_adapter_kind='ledger'),
+                dict(self.row, surface='', _witness_adapter_kind='merged', source='ledger')]
+        report, _ = self.run_probe(rows=rows)
+        self.assertEqual(report['baseline']['tiers']['unknown'], 2)
+        groups = report['source_coverage']['groups']
+        self.assertEqual({(g['adapter'],g['projection_source'],g['surface_state']) for g in groups},
+                         {('ledger','absent','absent'),('merged','ledger','empty')})
+        self.assertEqual(self.missing_surface_evidence(rows), ['no_declared_surface_same_id_and_text']*2)
+
+    def test_explicit_peer_surface_is_diagnostic_without_promotion(self):
+        rows=[dict(self.row,surface=None,_witness_adapter_kind='ledger'), dict(self.row,_witness_adapter_kind='canonical')]
+        original=C.attribution(rows,[self.call],self.config,200)[0]
+        report,_=self.run_probe(rows=rows)
+        self.assertEqual(report['baseline'],original)
+        self.assertEqual(self.missing_surface_evidence(rows),['one_declared_surface_same_id_and_text'])
+        self.assertIsNone(rows[0]['surface'])
+
+    def test_surface_peer_needs_exact_unambiguous_identity_and_text(self):
+        base=dict(self.row,surface=None)
+        self.assertEqual(self.missing_surface_evidence([dict(base,turn_id=None),self.row]),['missing_stable_id'])
+        self.assertEqual(self.missing_surface_evidence([dict(base,provenance={'turn_id':'conflict'}),self.row]),['conflicting_identity'])
+        self.assertEqual(self.missing_surface_evidence([base,dict(self.row,content=self.row['content']+' ')]),['conflicting_stored_versions'])
+        self.assertEqual(self.missing_surface_evidence([base,self.row,dict(self.row,surface='other-synthetic')]),['conflicting_declared_surfaces'])
+
+    def test_surface_peer_after_cutoff_or_unknown_clock_is_not_evidence(self):
+        base=dict(self.row,surface=None)
+        for peer in (dict(self.row,timestamp=200),dict(self.row,timestamp='unknown')):
+            self.assertEqual(self.missing_surface_evidence([base,peer]),['no_declared_surface_same_id_and_text'])
+        report,_=self.run_probe(rows=[base,dict(self.row,timestamp=200)])
+        self.assertEqual(report['source_coverage']['excluded_at_or_after_cutoff'],1)
+        self.assertEqual(self.missing_surface_evidence([dict(base,timestamp='unknown'),self.row]),['clock_unavailable'])
+
+    def test_source_mapping_does_not_masquerade_as_recorded_surface(self):
+        self.config['source_surfaces']={'ledger':'synthetic-chat'}
+        rows=[dict(self.row,surface=None,_witness_adapter_kind='ledger')]
+        self.assertEqual(self.missing_surface_evidence(rows),['no_declared_surface_same_id_and_text'])
+
+    def test_source_census_fixed_labels_only(self):
+        row=dict(self.row,_witness_adapter_kind='private-adapter-sentinel',source='private-source-sentinel',surface='private-surface-sentinel')
+        report,_=self.run_probe(rows=[row])
+        encoded=json.dumps(report)
+        for text in ('private-adapter-sentinel','private-source-sentinel','private-surface-sentinel',row['turn_id'],row['content']):
+            self.assertNotIn(text,encoded)
+        group=report['source_coverage']['groups'][0]
+        self.assertEqual((group['adapter'],group['projection_source']),('unknown','other'))
+
     def test_cli_private_manifest_and_scratch_guards(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory).resolve(); self.assertNotIn('.vintos',root.parts)

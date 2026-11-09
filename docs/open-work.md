@@ -6733,3 +6733,13 @@ strict admission. Other generation paths and interaction-ledger subprocess copie
 remain uninstrumented by this increment. Remaining note 27 work: trace stopped
 chat logging/missing surfaces and durable queue diagnostics; encoder identity also
 remains open. No enabling, merge or deployment; full host acceptance remains review.
+
+
+## 9 November — producer/source coverage ready for review
+
+`codex/judges-source-coverage` supplies a counts-only source-copy diagnostic and
+source-history trace; 78 isolated checks pass. Reviewer can run it on the existing
+admitted bundle to locate missing-surface copies and inspect bilateral stage
+coverage. This does not establish the historical origin of router-chat records,
+fill surfaces, or upgrade model attribution. Durable queue diagnostics and encoder
+identity remain open; full host suite and private counts remain with review.

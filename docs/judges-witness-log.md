@@ -1683,3 +1683,24 @@ and reran. One cache-suite invocation used an obsolete filename; corrected to th
 existing learned-cache suite, all 15 pass. Existing draft usage ResourceWarnings
 remain scratch-only and unrelated. No live writes, paid calls, enabling, merge or
 deployment. Full Aegis suite remains the reviewer's responsibility.
+
+
+## 9 November — producer/source coverage diagnostic
+
+`codex/judges-source-coverage` extends the private coverage runner with fixed-label
+source-copy/surface groups and explicit same-ID/exact-stored-text peer evidence;
+no automatic repair or eligibility/attribution change. Caller metadata counters
+now count nonempty model/provider values and private stage counts. Source history
+shows the bilateral chat route predates the reported router-chat tail; it does not
+prove why those retained router rows ended. The origin of those rows and the
+missing-surface copies remain private-snapshot questions, documented with a runnable
+command in `docs/judges-source-coverage.md`. No guessed surface or final-model
+identity is installed.
+
+78 focused isolated checks pass: coverage 21, attribution 26, merged chat 31.
+Includes bounded private CLI, fixed public labels, cutoff/clock exclusions,
+conflicting IDs/text/surfaces and unchanged original attribution. An initially
+mistyped merged-suite filename failed before execution; corrected suite passed.
+All three generated reports refreshed. No new live reads/writes, sends, model
+calls, enabling, merge or deployment. Full host suite/private census remain with
+review; next independent work remains durable queue diagnostics and encoder identity.
