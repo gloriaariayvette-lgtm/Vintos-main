@@ -1431,6 +1431,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     # ONE effective turn id (P02-01): an explicit argument wins; otherwise the id the caller already put in
     # writer_env stands. Before this the child env was overwritten with '' whenever the argument was omitted.
     turn_id = str(turn_id or (writer_env or {}).get("VINTOS_TURN_ID") or "")
+    _judge_turn_id = turn_id
     if not turn_id:
         turn_id = "POST-" + hashlib.sha256(
             (surface + "\x1f" + str(time.time_ns()) + "\x1f" + gloria_text + "\x1f" + reply).encode()
@@ -1511,6 +1512,12 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             # every writer learns the surface and turn it serves (astra-memoryrec-p1)
             _env = dict(writer_env) if writer_env else dict(os.environ)
             _env["VINTOS_SURFACE"] = str(surface); _env["VINTOS_TURN_ID"] = turn_id
+            if name == "voice_coherence":
+                _env["VINTOS_JUDGE_REPLY_BINDING"] = ""
+                try:
+                    from witness_receipts import judge_reply_binding
+                    _env["VINTOS_JUDGE_REPLY_BINDING"] = _pt_j.dumps(judge_reply_binding(_judge_turn_id, reply, reply[:500]))
+                except Exception: pass
             kw["env"] = _env
             _pt_sp.Popen([exe] + argv[1:], **kw)
             launched.append(name)   # a process started, not a writer finished: completion is the writer's own record
@@ -6347,7 +6354,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
     try:
         _vc_path = os.path.join(MEMORY, "voice-coherence.md")
         if os.path.exists(_vc_path):
-            _vc_content = open(_vc_path).read()
+            _vc_content = __import__("re").sub('(?m)^<!-- judge-reply-binding: [^\\r\\n]* -->\\r?\\n?', "", open(_vc_path).read())
             _vc_entries = [e.strip() for e in _vc_content.strip().split("## ") if e.strip()]
             if _vc_entries:
                 _vc_injection += f"[WHAT YOU NOTICED ABOUT YOUR LAST RESPONSE — your own voice check]\n{_vc_entries[-1][:400]}"
@@ -6525,7 +6532,11 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
                 with open(_hf, "w") as _f:
                     _json.dump(_hp, _f, indent=2)
             except: pass
-    history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat()})
+    _judge_reply_id = ""
+    try: _judge_reply_id = _sg_memory.turn.turn_id
+    except Exception: pass
+    history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat(),
+                    **({"turn_id": _judge_reply_id} if _judge_reply_id else {})})
     try:
         from emotional_operators import step as _eo_s, causal_step as _eo_cs
         _eo_s(msg.message, reply)
@@ -6569,13 +6580,18 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         import threading as _dc_thread
         _dc_reply_snap = __import__("re").sub(r"\[(GESTURE|COLOR|HOLD):[^\]]+\]", "", reply).strip()
         _dc_msg_snap = msg.message
+        _dc_binding_snap = {}
+        try:
+            from witness_receipts import judge_reply_binding
+            _dc_binding_snap = judge_reply_binding(_judge_reply_id, reply, _dc_reply_snap[:400])
+        except Exception: pass
         def _run_deviation():
             import time as _dct; _dct.sleep(8)
             try:
                 import sys as _dc_sys, json as _dc_json, socket as _dc_sock, os as _dc_os
                 _dc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
                 from deviation_check import check as _deviation_check
-                _dc_result = _deviation_check(_dc_reply_snap, gloria_msg=_dc_msg_snap)
+                _dc_result = _deviation_check(_dc_reply_snap, gloria_msg=_dc_msg_snap, reply_binding=_dc_binding_snap)
                 result = _dc_result.get("result","neutral")
                 dev = _dc_result.get("deviation", 0)
                 aln = _dc_result.get("alignment", 0)
@@ -11414,9 +11430,16 @@ Your current self-model (excerpt):
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am
                     try:
                         from humor_detector import scan_turn as _hd_scan_turn
+                        _humor_judge_binding = {}
+                        try:
+                            from witness_receipts import judge_reply_binding
+                            _humor_judge_binding = judge_reply_binding(_turn.turn_id if _turn is not None else "",
+                                                                      reply + _turn_marks, reply[:600])
+                        except Exception: pass
                         _hd_scan_turn(gloria_text=(_counterpart_text or ''),
                                       reply_text=((locals().get('reply') or '')
-                                                  if (not _prov_envelope or _prov_envelope.get("may_witness")) else ''))
+                                                  if (not _prov_envelope or _prov_envelope.get("may_witness")) else ''),
+                                      reply_binding=_humor_judge_binding)
                     except Exception: pass
                     _av_moment = _av_sgm(_counterpart_text, context_tone=_surface + "-chat") if _counterpart_text else None
                     if _av_moment: _av_am(_av_moment)
@@ -14375,7 +14398,7 @@ def gather_vintos_context() -> str:
         # Voice coherence — most recent entry
         if os.path.exists(_vc_path):
             with open(_vc_path) as _vcf:
-                _vc = _vcf.read()
+                _vc = __import__("re").sub('(?m)^<!-- judge-reply-binding: [^\\r\\n]* -->\\r?\\n?', "", _vcf.read())
             _vc_entries = [e.strip() for e in _vc.strip().split("## ") if e.strip()]
             if _vc_entries:
                 _latest_vc = _vc_entries[-1][:400]

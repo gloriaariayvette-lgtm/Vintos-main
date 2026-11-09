@@ -95,7 +95,7 @@ python3 experiments/nonllm-judges/agreement.py \
 
 Use the same actual cutoff in the verdict projection and CLI. Scratch must be
 outside a repository/live workspace, owned and 0700, files 0600, no symlinks.
-Inputs are bounded at 4 MiB each and 4096 projected verdicts; the existing numerical
+Evidence inputs are bounded at 64 MiB; verdict/Landings inputs at 4 MiB, with 4096 projected verdicts; the existing numerical
 admission bound remains 512 replies. Omit `--landings` when unavailable. The
 process blocks writes, networking and subprocesses after loading its local modules;
 malformed inputs produce only `judge_agreement_refused`. No source text, IDs,
@@ -138,7 +138,7 @@ labels, but have no comparable agreement denominator.
 
 | Entry / projection label | Retained output or effect store | Why comparison is limited |
 |---|---|---|
-| A `voice_coherence` | `memory/voice-coherence.md` | Selected flags, excerpt and minute stamp; no native exact binding. |
+| A `voice_coherence` | `memory/voice-coherence.md` | Selected flags and excerpt; legacy minute stamps lack bindings, prospective records add exact reply metadata. |
 | B `deviation_check` | `memory/voice-coherence.md`; effects also `resolution-state.json`, `pending-nudges.json`, `core-vectors.json`, `held-ledger.json` under memory | Mixed scores and selective effects; effect stores are not complete verdict histories. |
 | 1 `thread_triage` | `memory/thread-triage.md`, `memory/unfinished-threads.json` | Thread actions, not reply labels; recurrence component not a triage verdict. |
 | 2 `thread_weaver` | `memory/unfinished-threads.json` | Mutable grouped threads; no retained grouping adapter. |
@@ -156,7 +156,7 @@ labels, but have no comparable agreement denominator.
 | 14 `conversation_review` | `memory/conversation-insights.json` | Conversation/day review, not an exact reply verdict. |
 | 15 `emotion_read` | No durable verdict store identified in this writer; applied nudges printed to stdout | Effects are not outcome labels. |
 | 16 `emotional_reflection` | `memory/emotional-reflections.md`, `memory/reflection-history.json` | Bias/reflection summaries, different unit and construct. |
-| 17 `presence_audit` | `memory/presence-audit.json`, `memory/presence-audit-history.jsonl` | Explicit current flag usable; historical exemption absent. |
+| 17 `presence_audit` | `memory/presence-audit.json`, `memory/presence-audit-history.jsonl` | Explicit current flag usable; prospective history retains flag/exemption/binding, legacy history abstains. |
 | 18 `owner_prediction` | `memory/gloria-prediction.json`, `memory/gloria-prediction-history.json` | Forecast/next-turn outcome, not his reply quality. |
 | 19 `withheld` | `memory/withheld.json`, `memory/withheld-history.json` | Inferred intention cannot be certified by topic coverage. |
 | 20 `causality` | `memory/causality-hypotheses.json`, `memory/causality-retired.jsonl` | Hypothesis evidence, not a per-reply causal truth label. |
@@ -173,3 +173,45 @@ labels, but have no comparable agreement denominator.
 | 31 `social_post_check` | `memory/moltbook-post-log.md` | Post/action log, not complete rejected-and-accepted verdict history. |
 
 The evidence bundle has a separate 64 MiB read limit, matching run_private; verdict and Landings projections retain the 4 MiB limit. Private ownership, parent permissions, regular-file, symlink, duplicate-key and finite-value checks apply at either bound.
+
+
+## Prospective exact joins (note #64)
+
+The four writers now add `judge-reply-binding-v1` metadata to their existing
+selected records when a known original turn ID and complete reply are available.
+Fields are `turn_id`, `content_sha256` over the entire stored reply,
+`judged_sha256` over the actual clipped input, and an offset-aware `recorded_at`.
+The two Markdown writers append one `<!-- judge-reply-binding: JSON -->` line;
+presence and humor use `reply_binding`. No second copy of reply text is stored.
+Existing metadata/source claims are not independently authenticated by this tag.
+
+Voice coherence gets a per-child binding from the existing post-turn identity and
+full reply while its argument/prompt stays clipped at 500 characters. Generated
+POST fallback IDs are not used to invent joins. Deviation snapshots the actual
+request ID and complete stored reply before launching its existing thread; its
+cleaned/clipped 400-character rubric input is separately hashed. Its existing
+canonical row now retains that already allocated turn ID. Avatar humor binds to
+the stored reply including its device marks, while retaining the same 600-character
+rubric input. Legacy unregistered doors without exact identities remain unbound;
+no loop is removed, no extra judge call is made. Presence takes the exact ID/full
+content from the existing merged row and retains its 900-character rubric input.
+Its history archive now preserves the binding, flag and exemption together.
+History records that already rolled off cannot be backfilled from proximity.
+
+Bindings are optional and fail-open: missing identity, malformed metadata, hash
+mismatch or helper failure leaves the ordinary judgment/effects intact without a
+join. Verdicts with unsupported shapes stay unsupported. No serving model or
+fallback is inferred. The Markdown metadata is stripped before existing prompt
+feed truncation (both server readers, pride mirror and all value-map twins), so
+identifiers cannot displace the original notes in those contexts. Stored verdicts
+and all prior loops/feeds remain available; value_lineage reads only their headings.
+
+A projection can now supply just `judge`, `store`, and the native `record` for a
+new bound verdict. The reader uses the exact ID/full hash to locate the already
+admitted numerical row; mode/surface/finalized time come from that exact row, not
+from an excerpt or neighboring timestamp. The native offset-aware observation
+must follow that act and precede the cutoff; explicit unknown clock order still
+refuses. A conflicting manually supplied binding refuses. New history with both
+an explicit flag and a valid native binding can compare; old history abstains.
+Duplicate current/history snapshots remain subject to the existing ambiguity
+checks: use one canonical source rather than manufacturing extra votes.

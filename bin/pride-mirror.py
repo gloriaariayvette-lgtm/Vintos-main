@@ -145,7 +145,8 @@ def gather_week():
     # Voice coherence log (any mismatches AND matches)
     try:
         with open(os.path.join(MEMORY, "voice-coherence.md")) as f:
-            material.append(f"VOICE COHERENCE:\n{f.read()[-300:]}")
+            vc = __import__("re").sub('(?m)^<!-- judge-reply-binding: [^\\r\\n]* -->\\r?\\n?', "", f.read())
+            material.append(f"VOICE COHERENCE:\n{vc[-300:]}")
     except: pass
 
     # YouTube discoveries

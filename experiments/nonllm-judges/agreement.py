@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare retained judgments with offline numerical receipts; counts only."""
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
@@ -75,7 +76,7 @@ def band(judge, record, store):
     """Read native retained fields. Absence and parse failure never mean pass."""
     if judge in ('voice_coherence', 'deviation_check'):
         if not isinstance(record, str): return None
-        lines = record.strip().splitlines()
+        lines = [line for line in record.strip().splitlines() if not line.startswith('<!-- judge-reply-binding: ')]
         if not lines: return None
         if judge == 'voice_coherence':
             found = re.fullmatch(r'## \d{4}-\d\d-\d\d \d\d:\d\d — Score ([1-5])', lines[0])
@@ -93,13 +94,37 @@ def band(judge, record, store):
     if judge == 'presence_audit':
         if not isinstance(record.get('id'), str) or not number(record.get('composite')): return None
         # History drops both flag and requested-work exemption: it cannot recover the decision.
-        if store.endswith('history.jsonl'): return 'abstain'
+        if store.endswith('history.jsonl') and not (type(record.get('flag')) is bool and native_binding(record)): return 'abstain'
         if record.get('exempt') == 'requested_work': return 'abstain'
         return ('flag' if record['flag'] else 'pass') if type(record.get('flag')) is bool else None
     if judge == 'humor_detector':
         if record.get('source') != 'vintos' or not number(record.get('signal')) or record['signal'] < .5: return None
         return 'pass'
     return None
+
+
+def native_binding(record):
+    """Read the prospective writer's exact identity, never infer it from an excerpt."""
+    try:
+        if isinstance(record,dict): binding = record.get('reply_binding')
+        elif isinstance(record,str):
+            matches = re.findall(r'^<!-- judge-reply-binding: (.+) -->$',record,re.MULTILINE)
+            if len(matches)!=1: return None
+            def unique(pairs):
+                out={}
+                for k,v in pairs:
+                    if k in out: raise ValueError('duplicate native field')
+                    out[k]=v
+                return out
+            binding=json.loads(matches[0],object_pairs_hook=unique)
+        else: return None
+        if (not isinstance(binding,dict) or set(binding)!={'schema','turn_id','content_sha256','judged_sha256','recorded_at'}
+                or binding['schema']!='judge-reply-binding-v1' or not isinstance(binding['turn_id'],str)
+                or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',binding['turn_id']) is None
+                or not R.P.hashed(binding['content_sha256']) or not R.P.hashed(binding['judged_sha256'])): return None
+        G.instant(binding['recorded_at'])
+        return binding
+    except (ValueError,KeyError,TypeError): return None
 
 
 def project_records(projection, rows, cutoff):
@@ -127,7 +152,21 @@ def project_records(projection, rows, cutoff):
         seen[key] = signature
         result = band(judge, record, entry['store'])
         if result is None: c['invalid_or_unsupported_verdict'] += 1; continue
-        binding = entry.get('binding')
+        binding = entry.get('binding'); native = native_binding(record)
+        recorded_at = entry.get('recorded_at'); clock_order = entry.get('clock_order')
+        if native is not None:
+            target = indexes.get(native['turn_id'])
+            if target is None or target['sha'] != native['content_sha256']:
+                c['native_reply_not_admitted_or_hash_mismatch'] += 1; continue
+            exact = dict(kind='recorded_full_reply',turn_id=target['id'],content_sha256=target['sha'],surface=target['surface'],
+                         mode={'opening_everyday':'everyday','intimate':'intimate'}.get(target.get('mode'),'unknown'),
+                         finalized_at=datetime.fromtimestamp(target['at'],timezone.utc).isoformat())
+            if binding is not None and binding != exact:
+                c['conflicting_native_binding'] += 1; continue
+            binding = exact
+            recorded_at = native['recorded_at']
+            # Known order is checked below against the exact retained act time.
+            clock_order = 'known' if entry.get('clock_order') != 'unknown_order' else 'unknown_order'
         if not isinstance(binding, dict) or binding.get('kind') != 'recorded_full_reply':
             c['missing_exact_binding'] += 1; continue
         row = indexes.get(binding.get('turn_id'))
@@ -136,8 +175,8 @@ def project_records(projection, rows, cutoff):
         try:
             valid = (binding['content_sha256'] == row['sha'] and binding['surface'] == row['surface']
                      and binding['mode'] == mode and G.instant(binding['finalized_at']).timestamp() == row['at']
-                     and row['at'] <= G.instant(entry['recorded_at']).timestamp() < cutoff
-                     and entry.get('clock_order') == 'known')
+                     and row['at'] <= G.instant(recorded_at).timestamp() < cutoff
+                     and clock_order == 'known')
         except (KeyError, TypeError, ValueError): valid = False
         if not valid: c['binding_or_time_mismatch'] += 1; continue
         # These are recorded metadata claims, never inferred from configured defaults.

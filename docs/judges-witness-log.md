@@ -3314,3 +3314,51 @@ replay, count privacy, private file modes, symlink refusal, unchanged inputs and
 no overwrite. Generated reports refreshed without changes; diff clean.
 Independent review/full suite/test merge remain Claude's. Real Landings access
 and cron application from #62 remain unapplied and for Gloria's separate decision.
+
+
+## 2026-11-09 17:39 CST — #64 four review follow-ups; heartbeat ACTIVE
+
+Scratch remains on codex/judges-review-followups, based on d47255dd. Three
+separate commits precede this receipt-binding change: 6d175156 clarifies latest
+rating semantics in the Landings ask; a72fd71b permits 64 MiB evidence inputs
+while other agreement inputs retain 4 MiB; a659d281 gives staged spool entries
+a process/domain monotonic age. Legacy/foreign future-wall entries retain their
+bytes with eight counted unknown-order retries and a held diagnostic; a later
+known wall order may release them. Publication rechecks age without rebasing
+stored timestamps. No tolerance widened or private source read.
+
+Prospective selected verdicts from voice_coherence, deviation_check,
+presence_audit and humor_detector now carry an existing exact turn ID, whole
+reply SHA-256, actual judged-input SHA-256 and offset-aware record time. Their
+existing clips remain 500/400/900/600 characters respectively. No new judge
+calls, text copies, synthesized legacy IDs, changed thresholds or extra records.
+Missing/malformed metadata fails open for ordinary verdict behavior. Presence
+history retains flag, exemption and binding. Chat-memory rows retain the real
+coordinator turn ID; delayed deviation work captures identity before threading.
+Avatar humor binds the stored reply including turn marks. Unknown doors remain
+unbound. Existing merge retention and serving/provenance fields remain intact.
+
+The offline agreement reader joins native bindings only to exact admitted
+ID/full-hash matches, respects cutoffs and explicit unknown-order claims, and
+rejects conflicting supplied bindings. Old unsupported records are not repaired
+by proximity or excerpts. Metadata is removed before all six existing voice-note
+prompt reads/truncations, preserving their previous text and budgets. This is a
+prospective source change, not proof of live coverage or independent producer
+authentication. Actual served-model/fallback unknowns remain unknown.
+
+199 distinct targeted isolated checks pass: durable spool 32, agreement 22,
+new reply bindings 12, sink 26, humor taste 12, humor ferment 4, audit integrity 4,
+merged chat 31, WAL ledger 16, pride mirror 5, Gloria page 14, value-map context 10,
+owners 11. Agreement's repeat run is counted once. The spool test includes 50
+injected backward-step recoveries. All fixtures are synthetic and senders stubbed.
+Local Python 3.9 cannot parse an existing unrelated value-map f-string; those
+10 context tests pass with installed Python 3.12. The binding suite uses 3.9 with
+its installed numerical dependencies and parses only changed filter assignments
+for that assertion; 3.12 lacks numpy. No package installation or production syntax
+change was needed. Logs are /tmp/judges-s64-*.log; failed interpreter attempts are
+retained alongside the final passing logs. Reports regenerated without changes;
+owner parity and diff checks pass.
+
+No live writes, real model/paid calls, GPU, merges, deploys, cron changes or real
+Landings access. No new unresolved blocker or ntfy. Claude owns independent
+review/full isolated suite/test merge; Gloria deploys. Heartbeat remains ACTIVE.
