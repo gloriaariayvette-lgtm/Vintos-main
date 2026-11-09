@@ -1009,6 +1009,17 @@ def launch_on_message(her, surface="", turn_id="", now=None):
         return None
 
 
+def _forecast_witness(name, *args):
+    """Optional scratch observer; its failure cannot change the forecast/feed."""
+    if name != "end_self_forecast" and not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        return None
+    try:
+        import witness_capture
+        return getattr(witness_capture, name)(*args)
+    except Exception:
+        return None
+
+
 def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None, now=None):
     """The background job: one on-message forecast from one pending row, appended to jepa-self-forecasts.jsonl.
     Serialized by a lock so two of her messages never load two encoders at once."""
@@ -1037,7 +1048,11 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
         if load_model(model_path) is None and not os.path.exists(os.path.join(MEMORY, "jepa-readouts", "self_on_message.npz")):
             log("no self checkpoint; no on-message forecast"); return None
         enc = enc or _jp().encoder()
-        fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
+        token = _forecast_witness("begin_self_forecast")
+        try:
+            fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
+        finally:
+            observed_inputs = _forecast_witness("end_self_forecast", token) if token is not None else None
         if fc is None:
             return None
         made = time.time() if given_now is None else given_now
@@ -1050,6 +1065,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
             row["context_emb"] = fc["context_emb"]
         with open(out_path, "a") as f:
             f.write(json.dumps(row) + "\n")
+        _forecast_witness("publish_self_forecast", observed_inputs, row)
         log("on-message forecast written (%.1fs after her message)" % (made - arrived))
         return row
     finally:

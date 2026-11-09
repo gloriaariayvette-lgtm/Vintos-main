@@ -200,3 +200,20 @@ selection and draft links are counted separately; missing records remain missing
 without alternate text/time matches. This is a diagnostic of supplied receipts,
 not complete ancestry, served-model verification or admission. No producer or
 live path changed in this increment.
+
+
+## Implementation follow-up: on-message self-forecast inputs
+
+The anchored self readout now has an optional scoped observation of its actual
+recent-own input list; the existing job publishes a private sidecar only after
+its forecast-log close. Separate normalized-reply and truncated encoder-input
+hashes preserve the actual 400-codepoint transform. Missing IDs stay missing.
+Observation/prediction mismatch, duplicate observations and legacy paths remain
+unavailable. Captured exchange clocks are not promoted to reply-finalization
+clocks, and source identity/encoder identity/complete ancestry remain unknown.
+
+The old offline control receipt expects full reply versions. These new observations
+use a separate schema and are not silently attached to that contract. Subsequent
+work must validate explicit origin identities, exact transformation and compatible
+cached vectors, then bind a declared evaluation block. No replay scoring or witness
+eligibility changes in this increment; no live capture has been enabled.

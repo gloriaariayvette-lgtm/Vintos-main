@@ -1093,3 +1093,42 @@ Reports regenerated; whitespace checked. No private input, model/paid call, real
 test send, live write, merge or deploy. Full Aegis review/private census remain
 with the reviewer. Linkage, ancestry and admission do not gain eligibility from
 these coverage counts.
+
+
+## 8 November — exact self-forecast input observations
+
+`codex/judges-self-forecast-input-receipts` adds an opt-in private sidecar at the
+existing on-message forecast log-close boundary. The anchored self readout records
+its actual last-six nonempty normalized reply inputs, including separate full
+normalized-text and first-400-codepoint encoder-input hashes. Existing exchange
+IDs/clocks are explicitly observed/unverified, not finalized-reply origin proof.
+The recent-own feature subset is not the entire forecast context; encoder identity,
+source ancestry and complete context remain unobserved/incomplete.
+
+The scoped observation must match the exact rounded prediction/metadata ultimately
+saved by the job. A changed/fallback prediction cannot inherit another result's
+input receipt. The sidecar binds the entire saved row by canonical hash; the
+existing row, log, result, encoder calls and feeds stay unchanged. It records
+successful close, not durable storage. Missing legacy observations, duplicate
+observations, invalid/oversized inputs and failed binding remain unavailable.
+No observer work runs without the existing scratch flag; validated private roots
+and the existing 0600 publication sink apply. Observer failures are swallowed.
+
+265 affected isolated checks pass: new input receipts 15, self on-message 32,
+self source 39, anchored readout 5, capture 27, capture hooks 21, capture/replay 9,
+witness 106 and ownership 11. Actual job/readout boundaries use synthetic inputs,
+stubbed encoder/model functions and scratch paths. The existing readout suite's
+synthetic fitting checks pass with numeric matrix warnings; these are contract
+checks, not real-data accuracy evidence. Required reports regenerated; whitespace
+checks pass. Initial new-fixture failures were an omitted hash helper and an
+incorrect assumption that the existing arrival cutoff excludes every earlier
+matching message; corrected fixtures assert the actual unchanged cutoff rule.
+
+The offline controls currently require full finalized-reply version identities.
+These producer receipts deliberately do not claim that contract: normalized
+truncated inputs cannot silently substitute for full reply embeddings. A separate
+verified identity/transform/cache join and predeclared evaluation block are still
+needed before paired controls can consume them. No census upgrade, private run,
+model/paid call, live write, merge, deployment or Gloria-head change. Full Aegis
+validation and private snapshot census remain with the reviewer. Earlier review
+tips remain fixed; aa85ff5e is an ancestor of this stack.

@@ -16,6 +16,7 @@ from witness_receipts import digest, instant, receipt, source_node
 _UNSPECIFIED = object()
 _value_map_stage = ContextVar("value_map_generation_stage", default=None)
 _value_map_context = ContextVar("value_map_context_reads", default=None)
+_self_forecast_scope = ContextVar("self_forecast_inputs", default=None)
 
 
 def _fingerprint(value):
@@ -886,3 +887,98 @@ def _publish_private(root, packet, prefix):
         finally:
             os.close(directory)
     return True
+
+
+def begin_self_forecast():
+    """Scope one existing self forecast; no encoder/model/store work here."""
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if not location:
+        return None
+    root = _private_root(location)
+    return _self_forecast_scope.set({"root": str(root), "observations": 0, "inputs": None})
+
+
+def observe_self_forecast(exchanges, own, as_of, forecast):
+    """Record the actual readout's recent-own inputs, not its complete context.
+
+    Exchange text has already been normalized/merged by the existing reader.
+    Its IDs and clocks are observations, not finalized-reply origin evidence.
+    """
+    scope = _self_forecast_scope.get()
+    if scope is None:
+        return
+    count = scope["observations"] + 1
+    _self_forecast_scope.set(dict(scope, observations=count, inputs=None))
+    if count != 1 or not isinstance(exchanges, list) or not isinstance(own, list):
+        return
+    selected = []
+    for exchange in reversed(exchanges):
+        if not isinstance(exchange, dict):
+            return
+        if exchange.get("his"):
+            selected.append(exchange)
+        if len(selected) == 6:
+            break
+    selected.reverse()
+    if not selected or any(not isinstance(x["his"], str) or len(x["his"]) > 65536 for x in selected):
+        return
+    if own != [x["his"][:400] for x in selected]:
+        return
+    # Numeric exchange clocks are kept as such; never relabel them finalization.
+    observed_at = instant(as_of)
+    refs = []
+    for x, text in zip(selected, own):
+        at = instant(x["at"])
+        if at > observed_at:
+            return
+        key = x.get("turn_id")
+        key = key if isinstance(key, str) and key.strip() and len(key) <= 256 else None
+        refs.append({"observed_turn_id": key, "exchange_at": at,
+                     "normalized_reply_sha256": digest(x["his"]),
+                     "encoder_input_sha256": digest(text), "encoder_input_chars": len(text)})
+    inputs = {"scope": "recent_own_reply_feature_inputs", "as_of_exchange_at": observed_at,
+              "transform": "normalized_exchange_his_first_400_codepoints",
+              "selection": "last_six_nonempty_his_in_supplied_exchange_order", "reply_refs": refs,
+              "source_identity": "unverified", "encoder_identity": "unobserved",
+              "upstream_complete": False, "complete_forecast_context": False}
+    payload = {"her_key": forecast["her_key"], "self": {k: forecast[k] for k in
+               ("source", "checkpoint_id", "context_last_ts", "confidence", "qualification", "coherence")}}
+    payload["self"].update(mode="on_message", emb=[round(float(x), 4) for x in forecast["emb"]])
+    if forecast.get("context_emb") is not None:
+        payload["context_emb"] = forecast["context_emb"]
+    _self_forecast_scope.set(dict(scope, observations=count, inputs=inputs,
+                                 payload_sha256=_fingerprint(payload)))
+
+
+def end_self_forecast(token):
+    if token is None:
+        return None
+    scope = _self_forecast_scope.get()
+    _self_forecast_scope.reset(token)
+    return scope
+
+
+def publish_self_forecast(scope, row):
+    """Sidecar after the existing forecast-log close; leaves its row unchanged."""
+    if scope is None:
+        return None
+    root = _private_root(scope["root"])
+    if row.get("mode") != "on_message" or row.get("self", {}).get("mode") != "on_message":
+        return None
+    made, arrived = instant(row["ts"]), instant(row["arrived_at"])
+    if made < arrived:
+        return None
+    payload = {"her_key": row["her_key"], "self": row["self"]}
+    if "context_emb" in row:
+        payload["context_emb"] = row["context_emb"]
+    matched = (scope["observations"] == 1 and scope["inputs"] is not None
+               and scope.get("payload_sha256") == _fingerprint(payload)
+               and scope["inputs"]["as_of_exchange_at"] < arrived)
+    # Exact row hash includes the already rounded prediction and all metadata.
+    # No vectors, messages or private identifiers are copied into this hash field.
+    packet = {"schema": "self-forecast-inputs-v1", "forecast_row_sha256": _fingerprint(row),
+              "forecast_at": made, "arrived_at": arrived, "boundary": "forecast_log_close",
+              "durability": "unconfirmed", "observations": scope["observations"],
+              "state": "observed" if matched else "unavailable",
+              "inputs": scope["inputs"] if matched else None, "complete_forecast_context": False}
+    return _publish_private(root, packet, "self-forecast-inputs-")

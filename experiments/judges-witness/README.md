@@ -982,3 +982,22 @@ identity claims are malformed. Configured names never fill any gap. The aggregat
 contains category counts only, never served/configured names. Link consistency
 and identity coverage are independent: one cannot rescue the other or complete
 ancestry. Existing witness admission and live feeds remain unchanged.
+
+
+### Self-forecast input sidecars (producer evidence only)
+
+With the existing validated private scratch capture opt-in, an on-message job may
+write `self-forecast-inputs-*.json` alongside the other private receipts. Schema
+`self-forecast-inputs-v1` binds the complete saved forecast row by canonical JSON
+SHA-256, after its existing log close. The optional input subset records up to six
+actual normalized reply inputs and their first-400-codepoint encoder versions.
+It contains hashes, observed identifiers/clocks and explicit incompleteness,
+never reply text or vectors. Close does not establish durable storage.
+
+Replay does not yet consume this schema as `forecast-reply-context-v1`. Existing
+control calculations require full reply versions, admitted origin identities and
+compatible cached embeddings. Neither normalized text hashes nor exchange times
+establish those facts; missing IDs must never be filled by text/time proximity.
+A separate validated join, transformed-vector cache and declared evaluation block
+remain necessary. These receipts do not increase census eligibility or establish
+forecast accuracy. No new collector/model invocation or live enablement is included.

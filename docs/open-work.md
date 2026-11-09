@@ -6499,3 +6499,15 @@ report. 200 affected isolated checks pass. Configured names cannot fill observed
 identity. This does not verify serving weights, complete lineage or change
 eligibility. Independent Aegis review/private census and remaining source/effect
 history/delivery work remain separate; production is untouched.
+
+
+## 8 November — self-forecast producer observations
+
+`codex/judges-self-forecast-input-receipts` records the anchored self readout's
+actual normalized/truncated recent-own feature inputs in optional private
+sidecars, bound to the exact saved on-message forecast. 265 affected isolated
+checks pass; existing log/feed and production enablement stay unchanged.
+The inputs are not complete context or verified finalized-reply identities.
+A verified identity/transform/cache join and declared evaluation block remain
+necessary for paired controls. Full Aegis suite/private census remain with the
+reviewer; no real-data accuracy or complete ancestry is claimed.
