@@ -7368,3 +7368,118 @@ are unchanged. 69 isolated prototype checks pass; ownership validation and exact
 review commit are recorded in the coordination reply. No new private data run,
 model call, live write, merge or deployment. Prospective somatic metadata is next;
 full suites and private character rerun remain with the reviewer. Heartbeat ACTIVE.
+
+
+## 2026-11-09 — Prospective somatic intervals from the existing narrator call
+
+Coordination #39–40: optional ordinal bounds are returned by the existing narrator
+call, mapped to explicit timestamps/turn IDs/text hashes and retained as metadata
+in the existing narration snapshot and thread extra fields. Legacy narration and
+NONE handling, schedule, dedup, model selection and call count remain intact.
+Missing/invalid evidence never labels a daily window. Strict per-turn matching in
+the offline prototype consumes reviewed projections without reading narration text;
+nearby turns are excluded. Provider-reported served model is retained when present,
+otherwise unknown; fallback remains unknown. Metadata is private, fixtures synthetic.
+
+Targeted validation: 72 prototype, 11 interval receipt, 6 existing thread-source,
+6 existing scheduling checks; ownership results and exact review tip are in the
+coordination reply. No actual provider call, private record read, live write, merge
+or deployment. Real format compliance/coverage remains unmeasured; Claude owns full
+suite and private runs. Same-exchange control modes are on the preceding review tip.
+Per-surface within-mode results remain pending sufficient ordinary-use coverage;
+no request for test messages. Heartbeat ACTIVE; no completion/routine ntfy.
+
+
+## 2026-11-09 — Numerical judge candidates and randomized latent-feed diagnostics
+
+Coordination #42–43: assessed all 31 subconscious entries plus deviation and voice
+coherence, with input/scorer/failure-mode/proposed synthetic test for each in
+experiments/nonllm-judges/README.md. Implemented two offline components: unique
+original-act/day recurrence for reviewed topics, and complete-link candidate groups
+from supplied frozen cached vectors. Complete indirect lineage, exact hashes,
+mode/surface/source/day scope, input bounds and explicit unknown/exclusion behavior
+are preserved. No automatic yearning, scar, resolution, duplicate-removal or identity
+verdict. No runtime wiring, existing feed change or additional model call.
+
+17 isolated prototype checks and 11 ownership checks pass. Synthetic aggregate CLI
+verified. Generated reports refreshed unchanged and diff clean. The stress driver
+in experiments/latent-feed-diagnostics/stress.py ran the unchanged latent-feed suite
+50 times in fresh workers with recorded randomized orders, five time zones and four
+available locales: 750/750 checks pass in 29.422 seconds inside the local isolation
+boundary. Log: /tmp/judges-latent-stress.log. This does not reproduce or fix the
+historical flake. The original traceback is unavailable; the reviewer will retain
+future failures. No assertion was weakened and no speculative production fix made.
+
+Full isolated suite/private character4 provenance review stays with Claude; runtime
+format compliance and per-surface results still need ordinary-use evidence. No
+private records, live writes, GPU/model/encoder/provider calls, merge or deployment.
+Exact pushed tip is in the coordination reply. Heartbeat ACTIVE.
+
+
+## 2026-11-09 11:14 CST — offline voice familiarity and sustained drift (#44)
+
+Added experiments/nonllm-judges/voice_drift.py on codex/judges-voice-drift-prototypes
+above 71193c5702e3cd85de5262b0bb07eed2863d1c43. Reuses character-reference metric
+functions with exact cached text/vector/encoder bindings and complete original-act
+lineage admission. Known mode and surface are separate; target day and all future
+days are excluded from its reference. Calibration leaves each reference day out,
+weights days equally, and emits an empirical familiarity percentile with an inclusive
+0.2–0.8 abstain band. It is not an identity probability or a quality verdict. Sparse
+or degenerate coverage stays unscored. A rounding repair keeps identical features
+tied despite floating-point arithmetic.
+
+Drift needs four consecutive calendar days beyond the held-out baseline maximum
+plus an explicit distance margin. A single outlier cannot flag sustained change.
+Persistence alone does not update the reference. An exact, externally owner-reviewed
+adoption receipt can simulate replacing the scoped reference for later days only;
+stale, unbound, nonpersistent, family-derived or adjacent-rule adoption evidence
+cannot promote itself. Private version/membership receipts retain the transition;
+public output is aggregate only. No writes or runtime integration. README states
+the experimental thresholds, unverified source/adoption claims, lack of real-world
+calibration and how changes can be adopted without a self-scoring feedback loop.
+
+123 isolated checks pass: new voice/drift 23, existing character-reference 72,
+existing numerical candidates 17, ownership 11. Logs: /tmp/judges-voice-drift-tests.log,
+/tmp/judges-voice-character-tests.log, /tmp/judges-voice-candidate-tests.log and
+/tmp/judges-voice-owners.log. Generated reports refreshed unchanged; diff clean.
+No private records, model/encoder/provider calls, live writes, model changes, GPU,
+merge or deployment. Full suite/private character4 investigation stays with Claude.
+The latent-feed full-suite-interaction hypothesis is still unconfirmed: the earlier
+50-run pass did not identify a root cause. Exact pushed tip is in the coordination
+reply. Heartbeat ACTIVE; no completion/routine notification.
+
+
+## 2026-11-09 11:34 CST — witnessed humor and textual taste (#45)
+
+Added experiments/nonllm-judges/witnessed_facets.py on
+codex/judges-witnessed-humor-taste above 85ec09076ea4628fe069405dded620b65d9b3f08.
+Humor accepts only owner haha-plus reactions exactly joined to the adjacent exchange
+or exact joke ID/hash-bound 4–5 star practice ratings. Unknown/lower/unrated outcomes
+never become negative labels. Duplicate observations cannot multiply positive acts;
+conflicting reaction adjacency refuses. Original-act lineage and cached-feature
+provenance checks are reused, including indirect influence exclusion.
+
+References share mode, surface and item kind. Both reference acts and observed
+positive feedback must predate the entire target local day. Two or three positive
+days produce similarity only, with no empirical calibration and an abstain status;
+four days permit the reused held-out rank. Coverage exposes total supplied positive
+acts/days and actual available references per scope. A synthetic three-positive case
+shows the sparse limit; no real positive records were read or copied. Similarity
+never promotes itself to an anchor and never claims probability of success.
+
+Taste source verified in code: scripts/landings.py record (line 185) via
+bin/server_domains/landings.py POST /api/landings. Only exact-bound landed ratings
+anchor this variant. It accepts textual messages/jokes/journals; image/song/video
+caption features remain unsupported. The private Landings store is never read,
+imported or wired into his context. No suitable aesthetic-save source was verified;
+call transcript saves and generated taste profiles are not substituted. This is
+familiarity to owner-positive examples, not a measurement of his own taste.
+
+126 isolated checks pass: new facets 20, reused voice/drift 23, character-reference
+72, ownership 11. Logs: /tmp/judges-humor-taste-tests.log,
+/tmp/judges-facet-voice-tests.log, /tmp/judges-facet-character-tests.log and
+/tmp/judges-facet-owners.log. Required reports regenerated unchanged; diff clean.
+Source/owner/adjacency/cache claims remain explicitly unauthenticated by the offline
+prototype. No private reader, new model/encoder/provider call, live write, model swap,
+GPU, merge or deployment. Full review/suite/private evaluation remains with Claude.
+Exact pushed tip is in the coordination reply; heartbeat ACTIVE.
