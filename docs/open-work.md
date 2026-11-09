@@ -7099,3 +7099,25 @@ They do not alter selection, admission, scoring or witnessed-positive references
 32 isolated checks pass (prototype 21, owners 11). No threshold or identity verdict.
 Actual private-history groups remain unmeasured; no new encoding, live writes,
 merge or deployment. Claude's concurrent private run is not duplicated.
+
+
+## 9 November — readable aggregate character results
+
+`codex/judges-character-summary` follows 40b4f416. The private scratch CLI adds
+0600 `summary.md` with aggregate coverage, candidate dates/counts, measurement
+intervals, family comparisons and optional groups. Unknown stays unknown and
+synthetic inputs cannot be presented as real-history findings by the renderer.
+36 isolated checks pass (prototype 25, owners 11). Private fields are omitted;
+no scoring, model or live changes. Claude's actual copied-history run remains
+outstanding; this adds a reviewable artifact for its results without duplicating it.
+
+
+## Note #32 — private exploratory results and family-balance follow-up
+
+Claude reports primary insufficient (38 replies on one day); window30 has 123
+replies across 36 days, zero reviewed controls and unverified encoder revision.
+Surface-complete engagement counts, reviewed controls and encoder pinning remain
+open. Added reference-family composition by candidate day and actual held-out
+fold, with primary/sensitivity separation and zero-coverage handling, to expose
+rather than silently correct imbalance. Synthetic tests pass; real composition
+counts will come from the next private run. No identity conclusion or frozen dates.

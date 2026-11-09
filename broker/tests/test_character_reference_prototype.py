@@ -292,6 +292,59 @@ class Tests(unittest.TestCase):
         self.assertEqual(report['coverage']['positive_reply_links'],0)
         self.assertNotIn('witnessed_positive_similarity',report['primary_10s']['metrics'])
 
+    def test_summary_renders_aggregate_views_and_never_private_metadata(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        report['private_rows']='PRIVATE TEXT AND TOKEN'
+        text=P.render_summary(report)
+        self.assertIn('synthetic fixtures; not findings about real history',text)
+        self.assertIn('| Primary 10 s / exact ID | 32 | 32 |',text)
+        self.assertIn('Window30 sensitivity',text)
+        self.assertIn('No linked evaluation annotations',text)
+        for secret in ('PRIVATE TEXT AND TOKEN','reply-0-0','synthetic shared topic','synthetic-frozen'):
+            self.assertNotIn(secret,text)
+        self.assertEqual(text,P.render_summary(report))
+        report['input_kind']='retained_snapshot'
+        self.assertIn('supplied copied history',P.render_summary(report))
+        report['coverage']['candidate_days'][0]['date']='private injected text'
+        with self.assertRaises(ValueError):P.render_summary(report)
+
+    def test_summary_reports_empty_and_insufficient_results_as_unknown(self):
+        self.bundle['historical_attribution']['compute_ledger']=[]
+        report,_=P.run(self.bundle,self.cutoff)
+        text=P.render_summary(report)
+        self.assertIn('| Primary 10 s / exact ID | 0 | 0 |',text)
+        self.assertIn('| semantic_percentile | unknown | unknown | 0 | 0 |',text)
+        self.assertIn('must not be added together',text)
+        self.assertIn('No acceptance threshold or identity decision',text)
+
+    def test_reference_family_composition_counts_actual_held_out_folds(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        composition=report['primary_10s']['reference_family_composition']
+        for day in composition['candidate_days']:
+            self.assertEqual(day['replies'],2)
+            self.assertEqual(day['families'],dict(zip(P.FAMILIES,(1,1,0,0,0))))
+        candidates={r['day'] for r in composition['candidate_days']}
+        for fold in composition['evaluation_folds']:
+            days=3 if fold['day'] in candidates else 4
+            self.assertEqual(fold['reference_days'],days)
+            self.assertEqual(fold['reference_replies'],days*2)
+            self.assertEqual(sum(fold['families'].values()),days*2)
+        self.assertIn('Candidate reference composition',P.render_summary(report))
+
+    def test_reference_family_counts_are_view_specific_and_never_impute_missing(self):
+        self.bundle['historical_attribution']['compute_ledger'][0]['at']-=20
+        report,_=P.run(self.bundle,self.cutoff)
+        primary=report['primary_10s']['reference_family_composition']['candidate_days'][0]
+        sensitivity=report['sensitivity_window30']['reference_family_composition']['candidate_days'][0]
+        self.assertEqual(primary['replies'],1);self.assertEqual(sensitivity['replies'],2)
+        self.assertEqual(primary['families'][P.FAMILIES[0]],0)
+        self.bundle['historical_attribution']['compute_ledger']=[]
+        report,_=P.run(self.bundle,self.cutoff)
+        empty=report['primary_10s']['reference_family_composition']
+        self.assertEqual(len(empty['candidate_days']),4)
+        self.assertTrue(all(r['replies']==0 for r in empty['candidate_days']))
+        self.assertEqual(empty['evaluation_folds'],[])
+
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))
         for scratch,output in ((str(ROOT),str(self.root/'result')),(str(self.root),str(self.root.parent/'forbidden-character-output'))):
@@ -309,6 +362,7 @@ class Tests(unittest.TestCase):
         for p in out.iterdir():self.assertEqual(p.stat().st_mode & 0o777,0o600)
         report=json.loads((out/'aggregate.json').read_text());self.assertEqual(report['input_kind'],'synthetic')
         self.assertNotIn('reply-0-0',json.dumps(report))
+        self.assertEqual((out/'summary.md').read_text(),P.render_summary(report))
         again=subprocess.run(cmd,capture_output=True,text=True);self.assertNotEqual(again.returncode,0)
 
 

@@ -299,8 +299,15 @@ def evaluate(rows,controls,candidates,positive):
     by_day=defaultdict(list);by_reply_controls=defaultdict(list)
     for r in rows:by_day[r['day']].append(r)
     for c in controls:by_reply_controls[c['id']].append(c)
+    composition={'candidate_days':[], 'evaluation_folds':[]}
+    def family_counts(selected):return {f:sum(r['family']==f for r in selected) for f in FAMILIES}
+    for candidate in candidates:
+        selected=by_day.get(candidate,[])
+        composition['candidate_days'].append({'day':candidate,'replies':len(selected),'families':family_counts(selected)})
     for day,held in sorted(by_day.items()):
         ref=[r for r in rows if r['day'] in candidates and r['day']!=day]
+        composition['evaluation_folds'].append({'day':day,'reference_days':len({r['day'] for r in ref}),
+            'reference_replies':len(ref),'families':family_counts(ref)})
         if len({r['day'] for r in ref})<2:status['insufficient_reference_days']+=len(held);continue
         reference_days=sorted({r['day'] for r in ref})
         state=reference_statistics(ref)
@@ -351,7 +358,7 @@ def evaluate(rows,controls,candidates,positive):
                 if v is not None:b[d].append(v)
             overlap=sorted(set(a)&set(b))
             if overlap:differences.append({'families':[left,right],**summarize([(d,np.mean(a[d])-np.mean(b[d])) for d in overlap])})
-    return {'status':dict(status),'metrics':results,
+    return {'status':dict(status),'metrics':results,'reference_family_composition':composition,
             'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences,
             'context_matched_family_comparisons':context_family_comparisons(scored),
             'evaluation_groups':evaluation_groups(rows,scored)},private
@@ -372,6 +379,91 @@ def run(bundle,cutoff):
             'candidate_selection_is_observational','supplied_controls_and_encoder_contract_are_unverified']},details
 
 
+def render_summary(report):
+    """Render aggregate measurements only; never include row-level inputs or IDs."""
+    def count(value):
+        if type(value) is not int or value<0:raise ValueError('invalid summary count')
+        return str(value)
+    def number(value):
+        if value is None:return 'unknown'
+        if type(value) not in (int,float) or not math.isfinite(value):raise ValueError('invalid summary number')
+        return f'{value:.4f}'
+    def measurement(value):
+        if not value:return ('unknown','unknown','0','0')
+        interval=value['interval95']
+        ci='unknown' if interval is None else f'[{number(interval[0])}, {number(interval[1])}]'
+        return number(value['mean']),ci,count(value['days']),count(value['observations'])
+    kind=report['input_kind']
+    if kind not in ('synthetic','retained_snapshot'):raise ValueError('invalid summary input kind')
+    lines=['# Character-reference results', '',
+        'Input: '+('synthetic fixtures; not findings about real history.' if kind=='synthetic' else
+                  'supplied copied history; source and encoder declarations are not independently authenticated.'),
+        '', 'Measures familiarity relative to a provisional reference, not authenticity or truth.',
+        'No live effect or strict-admission change. Candidate dates are not owner-confirmed.',
+        'Percentiles and paired wins are on a 0–1 scale. Other similarities/deltas retain their named units.',
+        'Means weight days equally; intervals are descriptive day-bootstrap intervals, not independence guarantees.',
+        'Unknown means absent or insufficient evidence, never a failure or proof of invariance.', '',
+        '## Coverage', '', '| View | Admitted replies | Scored replies |', '| --- | ---: | ---: |']
+    coverage=report['coverage']
+    for label,key,field in (('Primary 10 s / exact ID','primary_10s','admitted_primary_replies'),
+                           ('Window30 sensitivity','sensitivity_window30','admitted_window30_replies')):
+        lines.append(f"| {label} | {count(coverage[field])} | {count(report[key]['status'].get('scored',0))} |")
+    lines+=['', 'The two views overlap and must not be added together.', '', '## Proposed reference dates', '',
+            '| Local date | Owner messages | Primary replies | Window30 replies |', '| --- | ---: | ---: | ---: |']
+    for day in coverage['candidate_days']:
+        date=day['date']
+        if not isinstance(date,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date):raise ValueError('invalid summary date')
+        lines.append(f"| {date} | {count(day['user_messages'])} | {count(day['attributed_replies_10s'])} | {count(day['attributed_replies_window30'])} |")
+    if not coverage['candidate_days']:lines+=['', 'No candidate dates from the supplied engagement counts.']
+    facets=('semantic_percentile','style_percentile','centroid_percentile','recent_centroid_percentile',
+            'foreign_semantic_paired_win','other_surface_semantic_paired_win','witnessed_positive_similarity',
+            'shuffled_own_semantic_marginal_auc','context_alignment_shuffle_delta')
+    for title,key in (('Primary results','primary_10s'),('Window30 sensitivity','sensitivity_window30')):
+        view=report[key]
+        lines+=['', '## '+title, '', '| Measurement | Mean | 95% interval | Days | Observations |',
+                '| --- | ---: | --- | ---: | ---: |']
+        for facet in facets:lines.append('| '+' | '.join((facet,*measurement(view['metrics'].get(facet))))+' |')
+        lines+=['', '### Candidate reference composition', '',
+                'Counts before each evaluation day is held out; exact per-fold counts are in aggregate.json.',
+                'Unequal family composition can affect familiarity. These counts do not correct it or establish model invariance.', '',
+                '| Date | Replies | '+' | '.join(FAMILIES)+' |', '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+        for entry in view['reference_family_composition']['candidate_days']:
+            day=entry['day']
+            if not isinstance(day,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',day):raise ValueError('invalid summary date')
+            lines.append('| '+' | '.join((day,count(entry['replies']),*(count(entry['families'][f]) for f in FAMILIES)))+' |')
+        lines+=['', '### Model-family familiarity', '', '| Family | Mean | 95% interval | Days | Replies |',
+                '| --- | ---: | --- | ---: | ---: |']
+        for f in FAMILIES:lines.append('| '+' | '.join((f,*measurement(view['model_families'][f])))+' |')
+        lines+=['', '### Context-matched family comparisons', '',
+                'Same day/language, length ratio 0.5–2, context cosine at least 0.7; descriptive association, not a causal effect.',
+                '', '| Families (left minus right) | Pairs | Unmatched left / right | Facet | Mean difference | 95% interval | Days | Observations |',
+                '| --- | ---: | --- | --- | ---: | --- | ---: | ---: |']
+        for pair in view['context_matched_family_comparisons']['pairs']:
+            names=pair['families']
+            if len(names)!=2 or any(f not in FAMILIES[:3] for f in names):raise ValueError('invalid summary family')
+            prefix=(names[0]+' / '+names[1],count(pair['matched_pairs']),count(pair['left_unmatched'])+' / '+count(pair['right_unmatched']))
+            for facet in ('semantic','style','centroid','recent_centroid'):
+                lines.append('| '+' | '.join((*prefix,facet,*measurement(pair['percentile_differences'][facet])))+' |')
+        lines+=['', '### Optional evaluation groups', '',
+                'Declared annotations; overlapping groups do not define identity or supply witnessed positive feedback.', '',
+                '| Annotator | Group | Annotated / scored / unscored | Facet | Mean percentile | 95% interval | Days | Observations |',
+                '| --- | --- | --- | --- | ---: | --- | ---: | ---: |']
+        found=False
+        for source in ANNOTATORS:
+            for category in EVALUATION_GROUPS:
+                group=view['evaluation_groups']['groups'][source][category]
+                if not group['annotated_replies']:continue
+                found=True
+                counts=' / '.join(count(group[k]) for k in ('annotated_replies','scored_replies','unscored_replies'))
+                for facet in ('semantic','style','centroid','recent_centroid'):
+                    lines.append('| '+' | '.join((source,category,counts,facet,*measurement(group['percentiles'][facet])))+' |')
+        if not found:lines+=['', 'No linked evaluation annotations in this view; group behavior is unknown.']
+    lines+=['', 'Own-reply shuffling preserves marginal familiarity (expected AUC 0.5); context alignment is a separate check.',
+            'Other-surface text is not automatically foreign. Positive ratings/laughs do not label unobserved replies as failures.',
+            'No acceptance threshold or identity decision is produced.', '']
+    return '\n'.join(lines)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for arg in ('scratch','input','output','cutoff'):p.add_argument('--'+arg,required=True)
@@ -389,6 +481,8 @@ def main():
                             ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py')}})):
         with (out/name).open('x') as f:json.dump(data,f,sort_keys=True,allow_nan=False)
         (out/name).chmod(0o600)
+    with (out/'summary.md').open('x') as f:f.write(render_summary(report))
+    (out/'summary.md').chmod(0o600)
     print(json.dumps({'written':True,'scored':report['primary_10s']['status'].get('scored',0)}))
 
 

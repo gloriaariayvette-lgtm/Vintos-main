@@ -58,6 +58,10 @@ missing. There is no substitute text embedder or silent fallback.
   recognized families enter this view; pooled `other`/`unknown` stay in the ordinary
   strata. Supplied context similarity is a topic proxy, and reply length is an
   outcome of generation: these are descriptive associations, not causal effects.
+  Reference-family composition is reported per candidate day and per actual
+  held-out fold, separately for primary and sensitivity views, including zero
+  coverage. This exposes imbalance without automatically balancing or changing
+  the reference. Unequal composition may explain apparent family differences.
   Unrecognized models remain `other`, absent ones
   `unknown`; no model is changed.
 
@@ -125,6 +129,11 @@ stay inside that scratch, without symlinks. Output must be new. The inherited of
 guard forbids network/subprocesses and confines writes to the output directory.
 Outputs are mode 0600 in a 0700 directory:
 
+- `summary.md`: readable aggregate tables for coverage, candidate dates, primary
+  and sensitivity facets, family comparisons and supplied evaluation groups.
+  Missing measurements are explicitly unknown; overlapping views are never added.
+  Synthetic input is prominently labelled as a fixture, not a real-history finding.
+  Only fixed labels, finite numbers and validated date strings are rendered.
 - `aggregate.json`: fixed facets, strata, uncertainty, exclusions, and candidate
   dates plus message/reply counts. No text, private IDs, model labels, or vectors.
 - `private-evaluation.json`: held-out reply IDs, percentiles and reference-day
@@ -133,7 +142,7 @@ Outputs are mode 0600 in a 0700 directory:
 
 ## Validation and current boundary
 
-Current follow-up: 32 isolated checks pass (prototype 21, ownership 11). The base
+Current follow-up: 36 isolated checks pass (prototype 25, ownership 11). The base
 prototype also passed the 26-check attribution suite before this scoring-only
 addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
@@ -149,6 +158,10 @@ bounds, tie-breaking, empty comparisons and aggregate privacy. Evaluation-group
 tests prove complete existing-score parity, exact links, separate annotators,
 primary/window30 separation, unscored coverage, empty intervals, bounded categories,
 private-rationale exclusion and independence from witnessed-positive feedback.
+Summary tests cover actual 0600 CLI output, deterministic rendering, unknown
+measurements, source-type labels, rejected malformed dates and private-field exclusion.
+Reference-composition regressions check held-out-day exclusion, family-count
+conservation, primary/sensitivity differences and zero coverage without imputation.
 
 Reference means/scales/centroids are built once per held-out day, calibration day
 and witnessed-positive subset, then reused for replies and controls. Reuse is
@@ -158,8 +171,12 @@ against the original per-reply formula, including cancelling/degenerate vectors.
 A synthetic fixture stays at 92 statistic builds after evaluation replies and
 controls are multiplied; this is an operation-count check, not a host timing claim.
 
-The actual-history result and actual candidate dates are **not yet produced**. Claude
-can now assemble the explicit cache bundle above and run it on the private copied
-history. Missing cached embeddings/controls must be reported as coverage gaps; no
+Claude reports a first private copied-history run in note #32: the primary set
+was unscored (38 replies on one day); the 30-second view scored 123 replies across
+36 days, but had no provenance-reviewed controls and an unverified encoder
+revision. These are reviewer-reported exploratory results, not independently
+reproduced here or validation of identity. Engagement surface completeness,
+reviewed controls, reference-family balance and exact encoder identity remain open.
+The bundle contract above supports the next private run. Missing cached embeddings/controls must be reported as coverage gaps; no
 encoder is silently loaded here. Gloria can then confirm/veto the actual proposed
 dates. No approval is needed to continue other authorized prototype implementation.

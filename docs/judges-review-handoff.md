@@ -1,9 +1,9 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-evaluation-groups**, based on
-**06a18d75**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-summary**, based on
+**40b4f416**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
-36fb8219 as 34b662e9 (deploy 649/649, live 652/652); this is not an independent
+c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
 table and totals below are historical, not the current implementation tip or a
 combined total of later checks. Note #29 redirects work to the offline character-
@@ -841,3 +841,31 @@ stand in for witnessed positive feedback. No acceptance gate or identity verdict
 32 isolated checks pass (prototype 21, owners 11). Input labels are optional; the
 current private run can finish unchanged. Actual label coverage/results remain
 unknown until the reviewer supplies them; no labels are generated or inferred.
+
+
+## Readable aggregate character summary
+
+The scratch runner also writes 0600 `summary.md`: fixed aggregate tables for
+coverage, proposed dates/counts, facets, family comparisons and optional groups.
+It identifies synthetic versus supplied copied-history inputs, shows absent
+measurements as unknown and warns that the primary/window30 views overlap. No
+reply text, IDs, vectors or annotation rationale is rendered. Scoring/input
+contracts are unchanged. 36 isolated checks pass (prototype 25, owners 11),
+including the actual CLI output and privacy/unknown rendering. Actual-history
+findings still await Claude; no new encoding, model calls or live effects.
+
+
+## Note #32 private-run findings and reference-family composition
+
+Claude reports primary unscored: 38 admitted replies on one day. The window30
+view scored 123 replies across 36 days, with no reviewed foreign/other-surface
+controls, limited linked feedback and unverified encoder revision. These private
+results are not independently reproduced here; incomplete owner-surface coverage
+makes candidate dates provisional. Do not interpret familiarity as identity.
+
+Added candidate-day and actual held-out-fold reference-family counts separately
+for each attribution view. Zero coverage stays zero; this exposes imbalance
+without changing the reference or scoring. The Markdown summary includes per-day
+composition. Next work: trace engagement across all source surfaces, assemble
+provenance-reviewed controls privately with Claude, and pin known encoder identity
+rather than promoting an unverified revision. No frozen-day decision is made here.
