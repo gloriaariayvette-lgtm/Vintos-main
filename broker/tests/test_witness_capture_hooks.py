@@ -53,6 +53,19 @@ class Tests(unittest.TestCase):
         self.assertTrue(packet["test_mode"])
         self.assertFalse(packet["lineage"][0]["complete"])
 
+    def test_live_hook_backstep_publishes_private_unknown_clock_packet(self):
+        with patch.object(W.time,'monotonic',side_effect=[10.,11.,12.]):
+            c=W.begin_shadow('synthetic-backstep','avatar',100)
+            c.observe(G.make_result('fixture',status='valid',text='synthetic raw'))
+            c.select('synthetic raw');c.before_final_guard('synthetic final',101)
+            self.assertTrue(W.finish_shadow(c,'synthetic final',98,test_mode=True))
+        packet=json.loads(next(self.root.glob('capture-*.json')).read_text())
+        self.assertEqual(packet['reply_node']['at'],98)
+        self.assertEqual(packet['capture_clock']['samples'][-1]['elapsed_seconds'],2)
+        self.assertEqual(packet['witness_receipt']['status'],'unknown')
+        self.assertEqual(packet['witness_receipt']['finalized_at'],98)
+        self.assertEqual(packet['content'],'synthetic final')
+
     def test_scratch_rejects_live_roots_and_symlinks(self):
         live = self.root / ".vintos" / "workspace"; live.mkdir(parents=True, mode=0o700)
         alias = self.root / "alias"; alias.symlink_to(live)

@@ -739,3 +739,43 @@ Public output contains dates, counts, shares and fixed labels only; no score,
 model name, text, ID, hash, vector, path or notification destination. Supplied
 source claims are not independently authenticated. Review and real private runs
 remain with the reviewer; deployment and capture enablement remain with the owner.
+
+### Per-scope sufficiency planning
+
+`capture_report.py` now includes `sufficiency`, separately for primary and window30
+attribution. All supported mode/surface pairs appear, including empty ones. Humor
+and taste additionally separate item kinds; a joke cannot supply a journal's
+reference. Only exact packet-admitted, feature-qualified acts enter the counts.
+A prepared projection is required to assess references; packet-only availability
+and ETAs remain unknown. Output contains fixed labels, counts, rates and estimated
+days, never private IDs, content, model labels, scores, hashes or features.
+
+The current voice rule needs four distinct prior reference days, with nondegenerate
+leave-one-day-out calibration. Drift uses that same reference and a later target
+day; detecting a sustained shift additionally requires four consecutive observed
+shift days. No ETA can predict that a shift will happen. Humor/taste similarity
+needs exact positive anchors on acts spanning two prior days, and empirical ranking
+needs four. Both the original act and its positive observation must precede the
+target day. Voice reference IDs come from the existing explicit designation or
+existing candidate-day selection, never from treating every captured reply as a
+reference. Recurrence/grouping retain their missing-adapter status and no ETA;
+reviewed topic assignments/explicit grouping thresholds are still necessary.
+
+Rates cover **seven complete local calendar dates**, including zeros, excluding the
+partial current date. The estimator names its analysis timezone (the prepared
+projection's timezone when supplied). Raw capture rate is displayed per surface,
+but forecasts use qualifying reference-day and target-day rates per scope. Positive
+rates additionally require the exact outcome to have arrived in that same window.
+Multiple acts/anchors on one date cannot create additional reference days.
+
+For an unmet count floor, the conditional estimate is
+`ceil(missing_reference_days / observed_reference_days_per_day)` plus
+`ceil(1 / observed_target_days_per_day)` for a target on a later date. This assumes
+future acts retain the same qualified rate, references continue to be designated,
+exact positive joins continue, features are nondegenerate, and the target does not
+itself become part of the reference. No positive rate means an unknown ETA, not
+infinity or an extrapolation from raw traffic. Known degenerate references also
+have no ETA. A zero ETA means the existing evaluator has actually produced a score
+in that scope; count sufficiency alone never asserts readiness or a positive outcome.
+These are conditional planning estimates, not promises of future evidence quality
+or instructions to generate conversations for tests.

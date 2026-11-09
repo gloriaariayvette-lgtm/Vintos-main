@@ -4,7 +4,8 @@ Review note #55 reports an approximately 2.8-second backward wall-clock step eve
 30–45 seconds on the review host. That observation is reviewer-supplied, not a host
 measurement performed here. The retained historical tracebacks lack the gate's
 numeric operands, so this is a supported candidate mechanism, not retrospective
-proof of which bound failed. No live gate or host configuration changes in this tip.
+proof of which bound failed. This table records the original gate analysis; the
+scoped #56 implementation below changes two source paths, with no host change.
 
 | Named source gate | Can a roughly 3-second backward step break it? | Smallest robust design change |
 | --- | --- | --- |
@@ -24,9 +25,47 @@ fixed rejection reason. For artifact gates include `mtime - created` and
 paths, identifiers or notification destinations belong in committed logs.
 
 Monotonic values are not epoch timestamps and must not be compared across arbitrary
-boots or hosts. A domain marker and uncertainty policy need a separate reviewed
-receipt change for persisted/live gates. The host clock correction remains the
+boots or hosts. Persisted/live gates need domain-bound interval receipts; the two scoped
+changes below implement these conservatively, with other gates still unchanged. The host clock correction remains the
 owner's decision; these recommendations do not request additional model calls or
 weaken evidence admission. Fixing the private producer does not make raw capture
 complete: delivery, complete ancestry, references/modes and outcome anchors remain
 independent requirements for the numerical judges.
+
+
+## Note #56 implementation, pending independent review and deployment
+
+`latent_feed.refresh()` now stamps new ordinarily timed packets with their
+monotonic generation point, wall generation bound, exact cutoff and clock domain.
+On Linux the domain binds the boot ID and time-namespace inode; elsewhere it is
+limited to the creating process. These private runtime identifiers are never
+written into public fixtures or reports. `evidence()` requires a matching domain
+and unchanged generation/cutoff binding before using monotonic freshness. It still
+refuses negative elapsed time, expired age, future evidence beyond the producer's
+wall bound, changed checkpoints and removed/changed source evidence. A forward
+wall age can expire a packet earlier, so suspend or forward correction cannot
+extend its TTL. A backward wall step alone cannot make an observed earlier packet
+future. No tolerance widened. Old packets and explicit `now=` replay calls retain
+their existing wall checks; no receipt backfill or content regeneration occurs.
+New receipts from a different boot/domain stay unavailable rather than falling back
+to a permissive wall comparison. The existing refresh CLI uses the new path.
+
+`begin_shadow()` now opts its request-local `Capture` into measured monotonic
+lifecycle ordering. Requests, observed results and final boundaries retain actual
+wall readings plus elapsed samples (bounded to 128); fork/domain loss or invalid
+monotonic order still refuses. A backward wall event no longer discards the whole
+capture. The private packet retains the event and observed model metadata, marks
+wall order unknown, and emits an unknown witness receipt. Even if the final wall
+time later recovers, the intermediate reversal remains unknown. This fixes packet
+retention, **not** cross-process chronology or strict judge scoreability. No raw
+clock is clamped, rewritten or mapped into a fabricated epoch. The coverage report
+can count the packet's retained raw final time while still denying admission.
+
+Direct/reconstructed `Capture(...)` calls without a contemporaneously observed
+interval keep strict wall checks. In particular, `want_working_thread` reconstructs
+capture after the action: it cannot honestly recover earlier monotonic intervals,
+so its existing unavailable-capture fallback remains. Value-map nested build clocks,
+Lab identity reuse, artifact-mtime admission and durable-spool retention gates are
+not changed by this commit. Host correction and their future receipt work remain
+separate. Tests use synthetic inputs and injected backward clocks, never services
+or private observations. Neither change makes missing ancestry or delivery known.

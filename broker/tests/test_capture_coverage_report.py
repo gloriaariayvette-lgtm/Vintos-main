@@ -145,6 +145,92 @@ class Tests(unittest.TestCase):
         r=C.report([p],CUTOFF,zone='America/Chicago')
         self.assertEqual(r['days'][0]['date'],'2020-01-01')
 
+    def cell(self, result, judge='voice', mode='everyday', surface='avatar', kind=None):
+        return next(c for c in result['sufficiency']['views']['primary_10s']
+                    if (c['judge'],c['mode'],c['surface'],c['item_kind']) == (judge,mode,surface,kind))
+
+    def test_clock_unknown_capture_is_counted_but_never_qualified(self):
+        for packet in self.packets:
+            old=packet['witness_receipt']
+            packet['witness_receipt']=dict(schema=old['schema'],status='unknown',
+                finalized_at=old['finalized_at'],started_at=old['finalized_at']+3,clock_status='wall_order_unknown')
+        r=self.report(bundle=self.bundle)
+        self.assertEqual(self.total(r,'packets'),32)
+        self.assertEqual(self.total(r,'original_act_bindings'),0)
+        self.assertEqual(self.cell(r)['available']['admitted_acts'],0)
+
+    def test_sufficiency_missing_projection_is_unknown_not_ready(self):
+        c=self.cell(self.report())
+        self.assertIsNone(c['available']['reference_days'])
+        self.assertIsNone(c['estimates'][0]['estimated_days_until_scoreable'])
+        self.assertIsNone(c['estimates'][0]['count_floor_met'])
+        self.assertIn('missing_prepared_projection',c['blockers'])
+
+    def test_sufficiency_matches_observed_voice_and_keeps_scopes_separate(self):
+        r=self.report(bundle=self.bundle);c=self.cell(r)
+        self.assertEqual(c['requirements']['reference_days'],4)
+        self.assertTrue(c['estimates'][0]['observed_scoreable'])
+        self.assertEqual(c['estimates'][0]['estimated_days_until_scoreable'],0)
+        empty=self.cell(r,surface='journal')
+        self.assertEqual(empty['available']['reference_days'],0)
+        self.assertIsNone(empty['estimates'][0]['estimated_days_until_scoreable'])
+        self.assertEqual(self.cell(r,'drift')['requirements']['sustained_shift_consecutive_days'],4)
+        self.assertIsNone(r['sufficiency']['sustained_shift_eta'])
+
+    def test_sufficiency_no_adapter_or_outcomes_never_invents_eta(self):
+        r=self.report(bundle=self.bundle)
+        for judge in ('recurrence','grouping'):
+            self.assertEqual(self.cell(r,judge)['blockers'],['no_retained_adapter'])
+        for judge in ('humor','taste'):
+            c=self.cell(r,judge,kind='message')
+            self.assertEqual(c['available']['positive_anchors'],0)
+            self.assertEqual([e['required_reference_days'] for e in c['estimates']],[2,4])
+            self.assertTrue(all(e['estimated_days_until_scoreable'] is None for e in c['estimates']))
+
+    def test_sufficiency_counts_exact_positive_days_by_kind(self):
+        base,landings=F.F.fixture();b=copy.deepcopy(self.bundle)
+        b['numerical_evidence']['anchors']=base['numerical_evidence']['anchors']
+        b['numerical_evidence']['taste_attempt_ids']=base['numerical_evidence']['taste_attempt_ids']
+        b['numerical_evidence']['items']=[dict(node_id=r['turn_id'],kind='message') for r in b['rows'] if r['role']=='assistant']
+        r=self.report(bundle=b,landings=landings)
+        self.assertEqual(self.cell(r,'taste',kind='message')['available']['reference_days'],4)
+        self.assertEqual(self.cell(r,'taste',kind='journal')['available']['positive_anchors'],0)
+        self.assertTrue(self.cell(r,'humor',kind='message')['estimates'][0]['observed_scoreable'])
+        for p in self.packets:p['witness_receipt']['delivery']='unknown'
+        denied=self.report(bundle=b,landings=landings)
+        self.assertEqual(self.cell(denied,'taste',kind='message')['available']['positive_anchors'],0)
+
+    def test_sufficiency_rate_excludes_current_day_and_includes_zero_days(self):
+        cutoff='2020-01-03T18:00:00Z'
+        self.bundle['numerical_evidence']['reference_ids']=[p['turn_id'] for p in self.packets]
+        r=C.report(self.packets,cutoff,zone='UTC',bundle=self.bundle)
+        c=self.cell(r);window=r['sufficiency']['rate_window']
+        self.assertEqual(window['calendar_days'],7)
+        self.assertEqual(window['end_date_exclusive'],'2020-01-03')
+        self.assertEqual(c['available']['reference_days'],2)
+        self.assertAlmostEqual(c['recent']['reference_days_per_day'],2/7)
+        self.assertEqual(c['estimates'][0]['missing_reference_days'],2)
+        self.assertEqual(c['estimates'][0]['estimated_days_until_scoreable'],11)
+        self.packets.append(copy.deepcopy(self.packets[0]))
+        twice=C.report(self.packets,cutoff,zone='UTC',bundle=self.bundle)
+        self.assertEqual(self.cell(twice)['recent'],c['recent'])
+
+    def test_sufficiency_known_degenerate_reference_has_no_eta(self):
+        with patch.object(C.R.V,'calibrate',return_value=None):
+            c=self.cell(self.report(bundle=self.bundle))
+        self.assertTrue(c['estimates'][0]['count_floor_met'])
+        self.assertFalse(c['estimates'][0]['observed_scoreable'])
+        self.assertEqual(c['estimates'][0]['reason'],'degenerate_reference')
+        self.assertIsNone(c['estimates'][0]['estimated_days_until_scoreable'])
+
+    def test_sufficiency_zero_recent_rate_does_not_extrapolate_raw_capture(self):
+        b=copy.deepcopy(self.bundle)
+        b['numerical_evidence']['reference_ids']=[self.packets[0]['turn_id']]
+        c=self.cell(self.report(bundle=b))
+        self.assertEqual(c['available']['reference_days'],1)
+        self.assertEqual(c['recent']['reference_days_per_day'],0)
+        self.assertIsNone(c['estimates'][0]['estimated_days_until_scoreable'])
+
     def test_cli_read_only_counts_no_private_content(self):
         result=self.cli();self.assertEqual(result.returncode,0,result.stderr)
         public=json.loads(result.stdout)

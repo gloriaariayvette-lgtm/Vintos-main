@@ -1529,3 +1529,69 @@ anchors. No scoreability claim from structural metadata alone.
 No provider/model call, real artifact load, GPU, private data read, live change,
 merge or deployment. Independent full suite/test merge and real private run stay
 with Claude. Heartbeat ACTIVE. No completion/routine ntfy.
+
+
+## 2026-11-09 14:52 CST — #56 sufficiency estimator
+
+Added counts-only sufficiency planning to capture_report, with separate primary
+and window30 views, every supported mode/surface, and separate humor/taste item
+kinds. Existing packet admission, feature/freeze qualification, reference selection
+and positive-anchor normalization determine available counts. Requirements expose
+four past reference days for voice/drift, two positive days for facet similarity,
+four for empirical ranking, and four observed consecutive shift days for sustained
+drift (no forecast of whether a shift happens). Recurrence/grouping stay without
+an ETA until their retained adapters and required inputs exist.
+
+Rates use seven complete local dates including empty dates; forecasts use scoped
+qualifying reference/target day rates, not raw capture traffic. Missing projection,
+zero rates and known degenerate references yield unknown ETA. Zero days means an
+actual score was observed, not merely enough counts. Future estimates explicitly
+assume continued qualification, reference designation, exact outcome joins and a
+later non-reference target; no user conversation/test-data request. Raw clock-unknown
+packets remain countable but contribute no admitted references or targets.
+
+26 isolated coverage/estimator checks pass, including duplicate noninflation,
+unknown-clock packets, scope/kind separation, actual scoring, empty/no-adapter
+states, exact positive days, partial-date exclusion, zero-rate and degeneracy
+refusals. Log /tmp/judges-s56-estimator-final.log. Ownership suite 11/11;
+required reports regenerated unchanged. No private inputs or model calls.
+Branch codex/judges-sufficiency-clocks above 7d45dff4; monotonic gate changes
+are being tested separately and will be their own commit. Heartbeat ACTIVE.
+
+
+## 2026-11-09 14:53 CST — #56 scoped monotonic interval fixes
+
+Separate commit from estimator 6fac6288. New ordinary latent refreshes retain a
+monotonic point bound to boot/time namespace (or the creating process fallback),
+generation wall bound and exact cutoff. Consumers require domain/binding agreement,
+keep TTL expiry (including conservative forward-wall expiry), and reject future
+source cutoff/checkpoint/source changes. Backward wall steps alone no longer make
+a same-domain prior packet future. Legacy packets and explicit replay clocks keep
+wall checks; no backfill, new model call, feed replacement or relaxed tolerance.
+
+begin_shadow opts request-local Capture into bounded same-process monotonic event
+ordering. Backward wall observations are retained in a private packet with raw
+clocks and elapsed samples, observed served metadata, unknown wall order and an
+unknown witness receipt. Even a recovered final wall clock cannot erase an earlier
+reversal. This fixes observation retention, not UTC chronology or scoreability.
+Malformed/reversed monotonic order still refuses. Reconstructed want-work capture
+has no observed historical intervals and retains its unavailable-capture fallback.
+Nested value-map clocks, Lab reuse, artifact-mtime and spool retention remain
+unchanged; host correction stays with Gloria. CLOCK.md explains these limits.
+
+196 affected isolated checks pass: latent 21, capture 31, hooks 22, capture replay 9,
+deferred capture 26, durable spool 27, sink 26, rendered fragments 11, renderer reads
+12, owners 11. With the estimator's 26 checks, 222 distinct targeted checks pass.
+Logs /tmp/judges-clock-final-test_*.log, /tmp/judges-clock-test_witness_capture.log,
+/tmp/judges-s56-final-test_witness_capture_hooks.log,
+/tmp/judges-s56-test_witness_{rendered_fragments,renderer_reads}.log,
+/tmp/judges-s56-test_entry_owners.log and /tmp/judges-s56-estimator-final.log.
+New integrated regression proved raw clock-unknown packets remain countable and
+unqualified. Its initial rate timestamp lookup used the normalized unknown receipt;
+the estimator now uses the retained raw finalization date only for counting.
+Required reports unchanged; diff check clean. All tests synthetic and isolated.
+
+No live changes, provider/model calls, real artifacts, GPU, full-suite duplication,
+merge or deployment. Both commits are for Claude's independent review and full
+isolated suite/test merge; real runtime acceptance remains his private run.
+Heartbeat ACTIVE; no new unresolved blocker or completion notification.

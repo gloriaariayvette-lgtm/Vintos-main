@@ -3,9 +3,10 @@
 import argparse
 from collections import Counter, defaultdict
 import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,6 +28,117 @@ W = sys.modules['witness_receipts']
 JUDGES = ('recurrence', 'grouping', 'voice', 'drift', 'humor', 'taste')
 MAX_FILES = 10000
 MAX_BYTES = 64 * 1024 * 1024
+
+
+def sufficiency(bundle, landings, cutoff, zone, packets, private=None):
+    """Count floors and conditional forecasts; never promote a count to evidence."""
+    zone = bundle["timezone"] if bundle is not None else zone
+    day = datetime.fromtimestamp(cutoff, ZoneInfo(zone)).date()
+    start = (day - timedelta(days=7)).isoformat(); end = day.isoformat()
+    recent = lambda d: start <= d < end
+    # Seven complete local dates include empty dates; a partial current day is excluded.
+    raw = Counter()
+    for row in packets.values():
+        d = datetime.fromtimestamp(W.instant(row['witness_receipt']['finalized_at']), ZoneInfo(zone)).date().isoformat()
+        if recent(d) and row.get('surface') in R.P.SURFACES: raw[row['surface']] += 1
+    views = {}
+    data = R.adapt(bundle, cutoff) if bundle is not None else None
+    for view in ('primary_10s', 'window30'):
+        accepted = []; refs = set(); supplied = {}; items = {}; attempts = {}; positives = {}
+        if data is not None:
+            prepared, candidates, _, supplied, events, nodes, features, encoder, item_rows, _ = data
+            ids = {r['id'] for r in prepared if view == 'window30' or r['primary']}
+            if encoder is not None:
+                accepted, _ = R.V.prepare([e for e in events if e['node_id'] in ids], nodes,
+                    [f for f in features if f['node_id'] in ids], encoder, cutoff, zone)
+            refs = set(supplied.get('reference_ids', [r['id'] for r in prepared if r['day'] in candidates]))
+            items = {i['node_id']: i['kind'] for i in item_rows}
+            for facet in ('humor', 'taste'):
+                anchors = supplied.get('anchors', []) if facet == 'humor' else (landings or {}).get('anchors', [])
+                positives[facet], _, _, _ = R.F.outcome_anchors(anchors, {r['id']: r for r in accepted}, items, facet, cutoff, zone)
+                attempts[facet] = set(supplied.get(facet + '_attempt_ids', []))
+        detail = private['views'][view] if private else None
+        cells = []
+        for mode in sorted(R.P.MODES):
+            for surface in sorted(R.P.SURFACES):
+                group = [r for r in accepted if (r['mode'], r['surface']) == (mode, surface)]
+                for judge in JUDGES:
+                    kinds = sorted({'message','joke'} if judge == 'humor' else R.F.TEXT_KINDS) if judge in ('humor','taste') else [None]
+                    for kind in kinds:
+                        target = [r for r in group if kind is None or items.get(r['id']) == kind]
+                        if kind is not None: target = [r for r in target if r['id'] in attempts.get(judge, set())]
+                        reference = [r for r in group if r['id'] in refs and r['day'] < end]
+                        anchors_count = 0
+                        if kind is not None:
+                            # Both the act day and witnessed outcome day must precede a future target day.
+                            reference = [r for r in group if items.get(r['id']) == kind and r['day'] < end
+                                and any(a['day'] < end for a in positives[judge].get(r['id'], []))]
+                            anchors_count = sum(sum(a['day'] < end for a in positives[judge][r['id']]) for r in reference)
+                        n_days = len({r['day'] for r in reference})
+                        recent_refs = [r for r in reference if recent(r['day'])]
+                        # Positive arrival requires the outcome to have arrived in the rate window as well.
+                        if kind is not None:
+                            recent_refs = [r for r in recent_refs if any(recent(a['day']) for a in positives[judge][r['id']])]
+                        ref_rate = len({r['day'] for r in recent_refs}) / 7
+                        target_rate = len({r['day'] for r in target if recent(r['day'])}) / 7
+                        base = dict(judge=judge, mode=mode, surface=surface, item_kind=kind,
+                            available=dict(admitted_acts=len(group), reference_acts=len(reference), reference_days=n_days,
+                                           positive_anchors=anchors_count, target_attempts=len(target)),
+                            recent=dict(raw_surface_capture_replies_per_day=raw[surface]/7,
+                                qualified_acts_per_day=sum(recent(r['day']) for r in group)/7,
+                                reference_days_per_day=ref_rate, target_days_per_day=target_rate),
+                            requirements={}, estimates=[], blockers=[])
+                        if judge in ('recurrence','grouping'):
+                            base['requirements'] = dict(reference_days=0, positive_anchors=0,
+                                additional='reviewed_topic_assignments' if judge == 'recurrence' else 'explicit_cosine_threshold_and_frozen_features')
+                            base['available'].update(reference_acts=None, reference_days=None, positive_anchors=None)
+                            base['blockers'] = ['no_retained_adapter']
+                            if bundle is None: base['available'] = {k:None for k in base['available']}
+                            cells.append(base); continue
+                        required = 2 if kind is not None else 4
+                        base['requirements'] = dict(reference_days=required, minimum_reference_acts=required,
+                            minimum_positive_anchors=required if kind is not None else 0,
+                            target_after_reference_day=True, nondegenerate_features=True)
+                        if judge == 'drift':
+                            base['requirements']['sustained_shift_consecutive_days'] = 4
+                            base['requirements']['shift_outcome_forecastable'] = False
+                        horizons = [('similarity',2),('empirical_rank',4)] if kind is not None else [('assessment',4)]
+                        if bundle is None: base['blockers'].append('missing_prepared_projection')
+                        elif not group: base['blockers'].append('no_admitted_features_in_scope')
+                        if not reference: base['blockers'].append('no_qualified_references')
+                        for horizon, need in horizons:
+                            ready = False
+                            if detail is not None:
+                                rows = detail['facet_receipts'][judge] if kind else detail['voice_drift_receipts'][judge]
+                                ready = any(r['scope'] == ([mode,surface,kind] if kind else [mode,surface]) and
+                                    (kind is None or r['status'] in (('empirical_rank',) if horizon == 'empirical_rank' else ('similarity_only','empirical_rank')))
+                                    for r in rows)
+                            missing = max(0,need-n_days); estimate = None; reason = 'zero_recent_qualifying_rate'
+                            if ready: estimate=0; reason='scoreability_already_observed'
+                            elif bundle is None: reason='missing_prepared_projection'
+                            elif n_days >= need and (R.V.calibrate(reference,need) is None if need>=4
+                                    else not R.V.day_balanced(reference)):
+                                reason='degenerate_reference'
+                            elif target_rate > 0 and (missing == 0 or ref_rate > 0):
+                                # A target needs its own later local day. These are conditional arrival estimates.
+                                estimate = math.ceil(missing/ref_rate) + math.ceil(1/target_rate) if missing else math.ceil(1/target_rate)
+                                reason='conditional_on_same_qualified_arrival_rate'
+                            base['estimates'].append(dict(level=horizon, required_reference_days=need,
+                                minimum_reference_acts=need, minimum_positive_anchors=need if kind else 0,
+                                missing_reference_days=missing, count_floor_met=missing==0,
+                                observed_scoreable=ready, estimated_days_until_scoreable=estimate, reason=reason))
+                        if bundle is None:
+                            base['available'] = {k:None for k in base['available']}
+                            for estimate in base['estimates']:
+                                estimate['missing_reference_days'] = None; estimate['count_floor_met'] = None
+                        cells.append(base)
+        views[view] = cells
+    return dict(schema='judge-sufficiency-counts-v1', timezone=zone, rate_window=dict(start_date=start,
+        end_date_exclusive=end, calendar_days=7, partial_current_day_excluded=True), views=views,
+        estimate_kind='conditional_not_a_promise',
+        assumptions=['same_scope_qualified_capture_rate_continues','future_reference_designation_and_exact_positive_joins_continue',
+                     'future_features_are_nondegenerate','next_target_on_later_day_not_in_reference'],
+        sustained_shift_eta=None, unknown_scopes_not_promoted=True)
 
 
 def report(packets, cutoff, zone='America/Chicago', bundle=None, landings=None):
@@ -72,7 +184,7 @@ def report(packets, cutoff, zone='America/Chicago', bundle=None, landings=None):
             eligible[key] = raw; cell['original_act_bindings'] += 1
         if receipt.get('status') == 'recorded': exact[key] = receipt['response_sha256']
     scoring = 'not_assessed_missing_prepared_projection'
-    qualified = {}
+    qualified = {}; supplied = None; private = None
     if bundle is not None:
         # Supplemental evidence may supply caches and outcomes, never repair a denied packet.
         supplied = copy.deepcopy(bundle)
@@ -123,7 +235,9 @@ def report(packets, cutoff, zone='America/Chicago', bundle=None, landings=None):
                 packets_outside_cutoff=outside, scoring=scoring,
                 recurrence_and_grouping='not_evaluated_no_retained_adapter',
                 drift_count_unit='replies_in_assessed_daily_windows_not_shift_verdicts',
-                source_claims_independently_verified=False, model_calls=0)
+                source_claims_independently_verified=False, model_calls=0,
+                sufficiency=sufficiency(supplied, landings, cutoff, zone,
+                    {k:v[0] for k,v in groups.items()}, private))
 
 
 def private_path(root, value, directory=False):
