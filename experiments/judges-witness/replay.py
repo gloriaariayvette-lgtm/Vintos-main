@@ -19,6 +19,81 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
+def value_map_write_observations(nodes, builds, cutoff):
+    """Compare supplied write observations, never infer origin or add ancestry.
+
+    Locator plus full entry content is necessary for this comparison, but does
+    not identify a writer. Copies, missing writers and reused paths remain
+    possible. Keep every causal match; never prefer the nearest or latest one.
+    This does not validate model-call provenance or affect witness admission.
+    """
+    cutoff = instant(cutoff)
+    if not isinstance(builds, list):
+        raise ValueError("value-map builds must be a list")
+    versions, index = {}, defaultdict(list)
+    legacy = 0
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    for build in builds:
+        if not isinstance(build, dict) or not isinstance(build.get("build_id"), str) or not build["build_id"]:
+            raise ValueError("invalid value-map build identity")
+        try:
+            version = json.dumps(build, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            raise ValueError("invalid value-map build record") from None
+        key = build["build_id"]
+        if key in versions:
+            if versions[key] != version:
+                raise ValueError("conflicting value-map build identity")
+            continue
+        versions[key] = version
+        write = build.get("write")
+        schema = build.get("schema")
+        try:
+            start, end = instant(build.get("started_at")), instant(build.get("ended_at"))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid value-map build clock") from None
+        if (schema not in ("value-map-build-v1", "value-map-build-v2") or start > end
+                or build.get("upstream_complete") is not False
+                or build.get("attempt_coverage_complete") is not False
+                or not isinstance(write, dict) or write.get("scope") != "entry_write_closed"
+                or write.get("mode") not in ("append", "replace")
+                or write.get("durability") != "unconfirmed" or write.get("whole_file") != "unverified"
+                or not hashed(write.get("entry_sha256")) or not hashed(write.get("stripped_entry_sha256"))
+                or type(write.get("entry_chars")) is not int or not 0 < write["entry_chars"] <= 4194304
+                or (schema == "value-map-build-v2" and not hashed(write.get("resource_sha256")))):
+            raise ValueError("invalid value-map write observation")
+        if schema == "value-map-build-v1":
+            legacy += 1
+        elif end < cutoff:
+            index[(write["resource_sha256"], write["stripped_entry_sha256"])].append((end, key))
+    states, details = Counter(), []
+    for key, node in sorted(nodes.items()):
+        if node.get("observation") != "value_map_read":
+            continue
+        candidates = []
+        try:
+            at = instant(node.get("at"))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid value-map read clock") from None
+        if at >= cutoff:
+            state = "outside_cutoff"
+        elif not all(hashed(node.get(field)) for field in ("resource_sha256", "stripped_entry_sha256")):
+            state = "read_identity_unavailable"
+        else:
+            candidates = sorted(build_id for ended, build_id in
+                index[(node["resource_sha256"], node["stripped_entry_sha256"])] if ended <= at)
+            state = ("no_matching_write" if not candidates else
+                     "one_matching_write" if len(candidates) == 1 else "multiple_matching_writes")
+        states[state] += 1
+        details.append({"read_node_id": key, "state": state, "candidate_build_ids": candidates})
+    return ({"scope": "matching_write_observations_not_origin", "admission_effect": "none",
+             "unique_builds": len(versions), "builds_without_resource_identity": legacy,
+             "reads": len(details), "states": dict(sorted(states.items()))}, details)
+
+
 def adapt(rows, kind):
     if not isinstance(rows, list):
         raise ValueError("snapshot must contain a list of records")
@@ -721,6 +796,10 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    private_map_writes = None
+    if "value_map_builds" in bundle:
+        report["value_map_write_observations"], private_map_writes = value_map_write_observations(
+            nodes, bundle["value_map_builds"], args.cutoff)
     if scoring_hashes() != code_hashes:
         raise ValueError("scoring source changed during replay")
     output.mkdir(mode=0o700)
@@ -728,6 +807,8 @@ def main():
                ("private-feedback.json", private_feedback)]
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
+    if private_map_writes is not None:
+        outputs.append(("private-value-map-writes.json", private_map_writes))
     output_hashes = {}
     for name, value in outputs:
         payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")

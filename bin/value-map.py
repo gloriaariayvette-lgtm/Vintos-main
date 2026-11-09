@@ -614,7 +614,7 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
         f.write(result)
         f.write("\n\n---\n")
     _witness_call("finish_value_map_build", _build_observation, _selected_stage, result,
-                  _entry_prefix + result + "\n\n---\n", _mode)
+                  _entry_prefix + result + "\n\n---\n", _mode, MAP_FILE)
 
     import source_cache
     source_cache.commit("value-map",context)

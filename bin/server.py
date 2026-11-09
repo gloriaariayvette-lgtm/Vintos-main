@@ -10495,7 +10495,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             try:
                 if os.environ.get("JUDGES_CAPTURE_SCRATCH"):
                     from witness_capture import value_map_read as _observe_value_map
-                    _value_map_observation = _observe_value_map(_value_map_decoded, value_map_ctx, time.time())
+                    _value_map_observation = _observe_value_map(_value_map_decoded, value_map_ctx, time.time(), os.path.join(MEMORY, "value-map.md"))
             except Exception:
                 pass
             del _value_map_decoded

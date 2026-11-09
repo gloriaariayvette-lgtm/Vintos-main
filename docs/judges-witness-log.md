@@ -929,3 +929,31 @@ read binding 7, capture 27, hooks 21, capture/replay 9, fragments 11, renderer r
 installation or runner modification. Reports regenerated and whitespace checked.
 No private input read/rescore, model/paid call, real test send, live write, merge
 or deploy. Full independent Aegis validation remains pending for this newer batch.
+
+
+## 8 November — offline value-map write/read observations
+
+`codex/judges-value-map-write-observations` continues from a159af39 on reviewed
+base 16c74480, keeping submitted tips unchanged. V2 writer/read metadata adds
+opaque locator and full stripped-entry hashes. Optional explicit replay bundles
+compare these and retain every causal matching write, never a latest/nearest
+producer. No new source read, model call or feed change. Legacy metadata remains
+unknown, and the observer wrappers preserve normal behavior on failure.
+
+This is diagnostic coverage only. Same path/content cannot prove which writer
+produced a read, especially across copies, hosts or reused paths. No lineage,
+origin, admission or completeness upgrade occurs. Aggregate counts are separated
+from private candidate IDs, and the private output is hashed into the run manifest.
+Conflicting duplicate IDs and malformed records fail closed; no implicit disk
+lookup or live-store read is introduced.
+
+295 affected isolated checks pass: write/read diagnostic 11, builds 11, calls 9,
+read binding 7, capture 27, hooks 21, capture/replay 9, rendered fragments 11,
+renderer reads 12, witness 106, value-map day 17, choices 18, partials 25 and
+ownership 11. Fixtures cover full-entry collisions, different locators, retained
+multiple matches, future/cutoff exclusion, legacy gaps, conflicting records,
+private output permissions/manifests and unchanged census/report behavior.
+Actual builder and existing map suites used installed Python 3.12 and existing
+read-only dependencies where needed; no installs or runner changes. Independent
+Aegis full-suite review and private census remain with the reviewer. No private
+input run, model/paid call, real test send, live write, merge or deploy.

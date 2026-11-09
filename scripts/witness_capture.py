@@ -21,7 +21,12 @@ def _fingerprint(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
-def value_map_read(decoded, selected, at):
+def _resource_digest(resource):
+    # Locator identity only: no stat, reopen, symlink resolution or origin claim.
+    return digest(os.fsdecode(os.path.abspath(os.fspath(resource))))
+
+
+def value_map_read(decoded, selected, at, resource=None):
     """Observe the existing newest-entry transform without reopening the source."""
     if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
         return None
@@ -29,11 +34,15 @@ def value_map_read(decoded, selected, at):
     if not isinstance(decoded, str) or len(decoded) > 4194304 or not isinstance(selected, str) or not selected:
         return None
     import re
-    expected = re.split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + decoded)[-1].strip()[:1500]
-    if selected != expected:
+    entry = re.split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + decoded)[-1].strip()
+    if selected != entry[:1500]:
         return None
-    return {"schema": "value-map-read-v1", "at": instant(at), "decoded_sha256": digest(decoded),
+    observation = {"schema": "value-map-read-v1", "at": instant(at), "decoded_sha256": digest(decoded),
             "selected_sha256": digest(selected), "transform": "newest_entry_strip_first_1500_codepoints"}
+    if resource is not None:
+        observation.update(schema="value-map-read-v2", resource_sha256=_resource_digest(resource),
+                           stripped_entry_sha256=digest(entry))
+    return observation
 
 
 def _guarded_reads(value):
@@ -116,16 +125,17 @@ class Capture:
         """Bind the exact current-handler read to its offered block; ancestry stays unknown."""
         if self._closed or self._requests or any(n.get("observation") == "value_map_read" for n in self._nodes):
             raise ValueError("invalid value-map binding lifecycle")
+        extra = {"resource_sha256", "stripped_entry_sha256"} if isinstance(observation, dict) and observation.get("schema") == "value-map-read-v2" else set()
         if (not isinstance(observation, dict)
-                or set(observation) != {"schema", "at", "decoded_sha256", "selected_sha256", "transform"}
-                or observation.get("schema") != "value-map-read-v1"
+                or set(observation) != {"schema", "at", "decoded_sha256", "selected_sha256", "transform"} | extra
+                or observation.get("schema") not in ("value-map-read-v1", "value-map-read-v2")
                 or observation.get("transform") != "newest_entry_strip_first_1500_codepoints"):
             return False
         prefix = "Your value map:\n"
         if (not isinstance(fragment, str) or not fragment.startswith(prefix)
                 or not 0 < len(fragment) - len(prefix) <= 1500):
             return False
-        for field in ("decoded_sha256", "selected_sha256"):
+        for field in {"decoded_sha256", "selected_sha256"} | extra:
             h = observation.get(field)
             if not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
                 return False
@@ -136,7 +146,8 @@ class Capture:
         read_key = key + ":read"
         self._nodes.append({"id": read_key, "kind": "context", "at": at, "complete": False,
                             "parents": [], "origin": "stored_unknown_ancestry", "observation": "value_map_read",
-                            "decoded_sha256": observation["decoded_sha256"], "clock_basis": "read_completed"})
+                            "decoded_sha256": observation["decoded_sha256"], "clock_basis": "read_completed",
+                            **{field: observation[field] for field in extra}})
         self._nodes.append({"id": key, "kind": "value_map", "at": at, "complete": False,
                             "parents": [read_key], "origin": "generated_unknown_ancestry", "organ": "value_map",
                             "rendered_sha256": digest(fragment), "selected_sha256": observation["selected_sha256"],
@@ -643,7 +654,7 @@ def _map_dependency(build, stage, version, latest):
             "request_id": calls[0]["packet"]["request_id"] if matched else None}
 
 
-def finish_value_map_build(build, selected_stage, result, entry, mode):
+def finish_value_map_build(build, selected_stage, result, entry, mode, resource=None):
     """Observe the existing close boundary; never claim transactional or durable storage."""
     if build is None or build["closed"]:
         return False
@@ -672,6 +683,9 @@ def finish_value_map_build(build, selected_stage, result, entry, mode):
               "write": {"scope": "entry_write_closed", "mode": "append" if mode == "a" else "replace",
                         "entry_sha256": digest(entry), "stripped_entry_sha256": digest(entry.strip()),
                         "entry_chars": len(entry), "durability": "unconfirmed", "whole_file": "unverified"}}
+    if resource is not None:
+        packet["schema"] = "value-map-build-v2"
+        packet["write"]["resource_sha256"] = _resource_digest(resource)
     return _publish_private(_private_root(build["root"]), packet, "value-map-build-")
 
 

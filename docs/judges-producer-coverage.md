@@ -145,3 +145,15 @@ unavailable while generation continues. Unchanged-context, rejected, interrupted
 or write-failed builds have no completed-entry receipt. Cross-process writer/read
 resource-version joins and complete upstream ancestry remain unfinished; no
 private snapshot census was rerun here.
+
+
+## Implementation follow-up: diagnostic write/read comparison
+
+V2 writer/read observations share hashed lexical resource locators and full
+stripped-entry hashes. The optional offline bundle diagnostic retains all causal
+matches and separates aggregate coverage from private candidate IDs. Legacy
+missing identities remain unavailable; malformed/conflicting writes abort.
+This closes an observational comparison gap, not cross-process origin proof:
+path reuse, copied bytes and unobserved writes remain possible. No read node gets
+a writer parent and no turn becomes eligible from this comparison. Full source
+ancestry, effect dependencies and delivery remain open. No private rerun here.

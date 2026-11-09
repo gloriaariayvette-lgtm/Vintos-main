@@ -831,7 +831,33 @@ attempt journal. Existing archive and cache writes retain their behavior.
 Stage scopes reset on exit and nested disabled scopes mask inherited attribution.
 At most eight call objects are retained per build; overflow is marked and cannot
 bind selection. Source input ancestry, internal backend attempts and durable
-storage remain incomplete. Resource/version joining between these writer receipts
-and later reader receipts is not yet implemented; do not substitute content-only
-matching. The receipts add no model calls and do not affect existing outputs or
+storage remain incomplete. The optional diagnostic below compares write/read observations; it does not
+establish a producer identity or complete a source graph. The receipts add no model calls and do not affect existing outputs or
 feeds. Missing/old/failed observers preserve normal behavior.
+
+
+### Optional write/read observation diagnostic
+
+The actual writer and main-chat reader now optionally emit v2 metadata with a
+hash of the lexical absolute resource locator and the complete stripped entry.
+The reader still records the entire decoded-file version separately. Neither
+observer reopens the file, resolves symlinks or records a raw path. A path digest
+is not a host/file identity; copied content, reused paths and unobserved writes
+remain possible. Legacy v1 calls remain supported without inventing this metadata.
+
+Supply an explicit `value_map_builds` list in the existing private replay input
+bundle to request this diagnostic. No directory discovery or extra CLI path is
+used. Only v2 writes with the same resource and full entry hashes, closed no later
+than the read and before the exclusive replay cutoff, are candidates. Every
+matching build is retained; no latest/nearest winner is chosen. Legacy missing
+identities stay unavailable. Identical duplicate records are deduplicated;
+conflicting identities or malformed supplied write records abort with generic
+errors. This validates write observations, not their selected model-call graph.
+
+`aggregate.json` gains only diagnostic counts. Candidate build IDs and read-node
+IDs go into `private-value-map-writes.json` (0600), covered by the existing run
+manifest alongside the input and scoring-code hashes. With the bundle key absent,
+existing reports and output files remain unchanged. This diagnostic never edits
+lineage, asserts origin, changes witness admission, or proves complete coverage.
+A single match is still only a matching observation. Full producer ancestry and
+trusted client delivery remain separate work; production capture stays disabled.

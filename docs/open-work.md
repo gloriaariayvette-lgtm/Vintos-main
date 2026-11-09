@@ -6437,3 +6437,14 @@ Independent Aegis validation and the private census rerun remain with the review
 production capture is still disabled.
 284 affected isolated checks pass for this increment, including the actual
 builder under installed Python 3.12 with synthetic inputs and stubbed HTTP.
+
+
+## 8 November — write/read matching remains diagnostic
+
+`codex/judges-value-map-write-observations` adds v2 locator/full-entry hashes and
+an explicit-input offline diagnostic retaining every causal matching write.
+295 affected isolated checks pass. This does not establish writer identity,
+complete source ancestry or change eligibility; reliable cross-process producer
+identity and upstream input/effect graphs remain open. Production capture stays
+disabled. Full independent Aegis validation and private census remain with the
+reviewer. No private snapshot run or live changes here.
