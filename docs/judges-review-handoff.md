@@ -360,3 +360,45 @@ loaded versions, unsupported/oversized/cyclic values, forbidden dynamic reads,
 legacy/malformed receipts, exceptions, capture off and exact call/result parity.
 Generated reports refreshed. No private records, real encoder, model calls,
 live writes, enabling, merge or deployment. Full host integration remains open.
+
+
+## 9 November — local self-fitting completion receipts
+
+`codex/judges-fit-completion` descends from 4353b824. The anchored readout's two
+self modes now optionally observe their existing fitting boundaries: ordered
+rows, numeric feature/target arrays and index assignments are fingerprinted per
+train/validation/calibration/test block before fitting; completed parameters and
+metadata are fingerprinted before the unchanged checkpoint save. After save
+returns, a bounded readback must match both fingerprints before an immutable
+private `self-fit-completion-v1` receipt is published. The receipt includes exact
+checkpoint-byte identity, byte count and wall-clock boundary observations. It
+contains no row text, raw turn IDs, paths, vectors, weights or raw settings. The existing
+private sink whitelist/retention rules cover the new packet type.
+
+Capture off performs no observation imports/reads/writes. With capture enabled,
+this adds bounded background hashing and checkpoint readback: at most 4096 rows,
+8 MiB serialized row text, 16 feature arrays plus targets, 64 MiB total numeric
+input bytes, and a 64 MiB compressed/decompressed checkpoint bound. Runtime cost
+on real records is unmeasured. No encoder invocation, training invocation or
+checkpoint schema is added; selection, fitting, calibration, reports, save format
+and existing consumers remain unchanged. The other head bypasses these hooks.
+No existing training run was started; tests use synthetic arrays and stub encoders.
+
+This is a local observation, not source authentication, proof of cache/encoder
+origin, a complete dependency graph, atomic checkpoint publication, disk durability
+or evidence about an old checkpoint. Exact output readback can be observed even
+if a separate writer later replaces the file. Clock reversal makes the receipt
+unavailable. Observer failures are passive and save failures still propagate.
+Historical training dates remain unknown. The separate offline completion-receipt
+reader/join remains to be added; current scoring/admission does not consume or
+promote these receipts. Full source/encoder lineage and host integration stay open.
+
+124 isolated checks pass: fitting receipts 14, existing readout acceptance 5,
+self artifacts 20, sink 26, runtime 16, entry owners 11 and store guard 32. Actual
+fitter tests confirm identical reports/parameters/encoder call counts with capture
+off/on, each observer failure is passive, and a failed save cannot publish a
+completion. Other tests cover exact metadata/shape/dtype/value binding, separate
+test-block changes, partition conflicts, private output, object arrays, symlinks,
+size bounds, clocks, dedicated-sink permissions and hot disable. Existing synthetic
+numeric code emits matrix-operation warnings; all asserted checks pass. Generated
+reports refreshed. No private data, real model, live write, enabling, merge or deploy.

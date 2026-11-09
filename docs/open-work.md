@@ -6954,3 +6954,13 @@ isolated checks. This supplies partial configuration evidence; tokenizer content
 code, fitting lineage, atomic identity and real-host observation cost remain open.
 Capture off is unchanged. Capture on adds background observation overhead that
 existing encode/parameter timing fields do not include. No enablement or deployment.
+
+
+## 9 November — observe existing self fitting and exact saved output
+
+`codex/judges-fit-completion`, on 4353b824, adds optional private input-partition and
+save-completion receipts to the anchored self fitter. 124 isolated checks pass.
+No runtime training was started; capture off and the other head remain unchanged.
+The offline receipt reader/join is the next independent piece; complete source and
+encoder lineage, historical fitting dates, real-data cost and host integration
+remain open. Receipts do not change scoring or admission. No enablement/deployment.

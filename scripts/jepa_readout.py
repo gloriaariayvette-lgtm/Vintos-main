@@ -137,11 +137,24 @@ def correlation(x,y):
     return float(np.corrcoef(_ranks(x),_ranks(y))[0,1])
 
 
+def _self_fit_witness(mode, name, *args):
+    """Observe self fitting only when explicitly enabled; never affect the fitter."""
+    if mode not in ('self_ahead', 'self_on_message') or not (
+            os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+        return None
+    try:
+        import witness_self_artifacts
+        return getattr(witness_self_artifacts, name)(*args)
+    except Exception:
+        return None
+
+
 def train_mode(rows, cache, mode, out, old=None, steps=200):
     a=arrays(rows,cache); y=np.asarray([cache.get(r['target']) for r in rows])
     sp=np.asarray([split(r['day']) for r in rows]); ids=[np.flatnonzero(sp==k) for k in range(4)]
     if any(len(i)<3 for i in ids):raise ValueError('each chronological block needs >=3 targets: '+str([len(i) for i in ids]))
     tr,va,ca,te=ids; candidates=[]
+    fit_observation = _self_fit_witness(mode, 'begin_fit', mode, rows, a, y, ids)
     from latent_stream_linear import fit_text
     for dz in (16,32):
         _,_,vt=np.linalg.svd(y[tr]-y[tr].mean(0),full_matrices=False); p=vt[:min(dz,len(tr)-1)].T
@@ -191,7 +204,9 @@ def train_mode(rows, cache, mode, out, old=None, steps=200):
                 'recent_mean':metrics(at[1][ix],y[te][ix])[0]}
     meta={'schema':SCHEMA,'mode':mode,'boundaries':BOUNDARIES,'selected':name,'report':report,
           'trained_through':rows[tr[-1]]['day'],'calibrated_through':rows[ca[-1]]['day']}
+    fit_observation = _self_fit_witness(mode, 'prepare_fit', fit_observation, meta, m)
     np.savez_compressed(Path(out)/(mode+'.npz'),meta=json.dumps(meta),**m)
+    _self_fit_witness(mode, 'publish_fit', fit_observation, Path(out)/(mode+'.npz'))
     return report
 
 

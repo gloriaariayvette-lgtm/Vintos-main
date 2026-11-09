@@ -26,7 +26,7 @@ SPOOL_BYTES = 8 * 1024 * 1024
 SPOOL_FILES = 64
 SPOOL_NAME = '.capture-spool'
 SPOOL_PACKET = re.compile(r'[0-9a-f]{32}\.packet\Z')
-PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-launch-', 'self-forecast-handoff-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
+PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-launch-', 'self-forecast-handoff-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-', 'self-fit-completion-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
 
 

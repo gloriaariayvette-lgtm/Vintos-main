@@ -665,3 +665,122 @@ def availability_receipt(value):
     return dict(missing, **value, state='observed' if consistent else 'clock_discontinuity',
                 bytes_observed_by=parsed if consistent else None,
                 parameters_available_by=parsed if consistent and value['stage']=='parameters_loaded' else None)
+
+
+FIT_BLOCKS = ('train', 'validation', 'calibration', 'test')
+
+
+def _fit_array_digest(values):
+    """Fingerprint bounded numeric arrays without retaining their values."""
+    import numpy as np
+    if not isinstance(values, dict) or not 0 < len(values) <= 32:
+        raise ValueError('invalid fit arrays')
+    if any(type(k) is not str or len(k) > 256 for k in values):
+        raise ValueError('invalid fit array names')
+    h = hashlib.sha256(b'self-fit-arrays-v1\x00'); total = 0
+    for name in sorted(values):
+        a = np.asarray(values[name])
+        total += a.nbytes
+        if (a.dtype.kind not in 'biufc' or total > MAX_CHECKPOINT or a.ndim > 4
+                or not np.isfinite(a).all()):
+            raise ValueError('invalid fit array value')
+        descriptor = json.dumps([name,a.dtype.str,list(a.shape)],separators=(',',':')).encode()
+        h.update(len(descriptor).to_bytes(8,'big')); h.update(descriptor)
+        raw = memoryview(np.ascontiguousarray(a)).cast('B')
+        h.update(len(raw).to_bytes(8,'big')); h.update(raw)
+    return h.hexdigest()
+
+
+def begin_fit(mode, rows, features, targets, indices):
+    """Observe actual ordered inputs and existing partitions, not source authenticity."""
+    from witness_capture import _capture_location, _private_root, _fingerprint
+    import numpy as np
+    if mode not in ('self_ahead','self_on_message'): return None
+    location = _capture_location()
+    if not location: return None
+    root = str(_private_root(location))
+    if (not isinstance(rows,list) or not 1 <= len(rows) <= 4096
+            or not isinstance(features,(list,tuple)) or not 1 <= len(features) <= 16
+            or len(indices) != 4):
+        raise ValueError('unbounded fitting inputs')
+    encoded = json.dumps(rows,sort_keys=True,allow_nan=False)
+    if len(encoded) > 8*1024*1024: raise ValueError('unbounded fitting rows')
+    arrays = {str(i):np.asarray(v) for i,v in enumerate(features)}
+    arrays['target'] = np.asarray(targets)
+    if any(v.ndim < 1 or len(v) != len(rows) for v in arrays.values()):
+        raise ValueError('unaligned fitting inputs')
+    _fit_array_digest(arrays)  # Enforce one total input-byte budget before taking subsets.
+    blocks, covered = {}, []
+    for name, supplied in zip(FIT_BLOCKS,indices):
+        ix = np.asarray(supplied)
+        if (ix.ndim != 1 or ix.dtype.kind not in 'iu' or not len(ix)
+                or any(not 0 <= int(i) < len(rows) for i in ix)):
+            raise ValueError('invalid fitting partition')
+        selected = [int(i) for i in ix]; covered.extend(selected)
+        blocks[name] = {'rows':len(ix), 'indices_sha256':_fingerprint(selected),
+                        'ordered_rows_sha256':_fingerprint([rows[i] for i in selected]),
+                        'arrays_sha256':_fit_array_digest({k:v[ix] for k,v in arrays.items()})}
+    if sorted(covered) != list(range(len(rows))): raise ValueError('overlapping fitting partitions')
+    return {'root':root,'mode':mode,'fit_started_at':time.time(),'blocks':blocks}
+
+
+def prepare_fit(scope, meta, parameters):
+    """Bind the completed fitter output before the existing checkpoint write."""
+    from witness_capture import _fingerprint
+    if scope is None: return None
+    if not isinstance(meta,dict) or meta.get('mode') != scope['mode']:
+        raise ValueError('fit metadata mode mismatch')
+    encoded = json.dumps(meta,sort_keys=True,allow_nan=False)
+    if len(encoded) > 262144: raise ValueError('unbounded fit metadata')
+    return dict(scope, metadata_sha256=_fingerprint(meta),
+                parameters_sha256=_fit_array_digest(parameters), parameters_ready_at=time.time())
+
+
+def publish_fit(scope, path):
+    """Read back bounded bytes after save returns; require exact metadata and parameters.
+
+    This observes the matching file at this boundary, not atomic publication,
+    storage durability, source authentication, or the historical fit of an old file.
+    """
+    if scope is None: return None
+    import io
+    import os
+    import stat
+    import zipfile
+    import numpy as np
+    from witness_capture import _private_root, _publish_private, _fingerprint
+    root = _private_root(scope['root'])  # Honor hot disable before reading the output.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= MAX_CHECKPOINT:
+            raise ValueError('unbounded fitting checkpoint')
+        raw = stream.read(MAX_CHECKPOINT+1)
+        after = os.fstat(stream.fileno())
+    identity = lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    if identity(before) != identity(after) or len(raw) != before.st_size:
+        raise ValueError('fitting checkpoint changed while read')
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        entries = archive.infolist(); names = [v.filename for v in entries]
+        if (not 2 <= len(entries) <= 33 or len(set(names)) != len(names)
+                or sum(v.file_size for v in entries) > MAX_CHECKPOINT):
+            raise ValueError('unbounded fitting checkpoint archive')
+    with np.load(io.BytesIO(raw),allow_pickle=False) as loaded:
+        meta = json.loads(str(loaded['meta']))
+        parameters = {k:loaded[k] for k in loaded.files if k != 'meta'}
+    if (_fingerprint(meta) != scope['metadata_sha256']
+            or _fit_array_digest(parameters) != scope['parameters_sha256']):
+        raise ValueError('saved checkpoint does not match fitter output')
+    observed_at = time.time()
+    clocks = (scope['fit_started_at'],scope['parameters_ready_at'],observed_at)
+    if (any(type(v) not in (int,float) or not math.isfinite(v) or v <= 0 for v in clocks)
+            or list(clocks) != sorted(clocks)):
+        raise ValueError('unusable fitting observation clocks')
+    packet = {k:scope[k] for k in ('mode','fit_started_at','parameters_ready_at',
+                                  'blocks','metadata_sha256','parameters_sha256')}
+    packet.update(schema='self-fit-completion-v1', checkpoint_id=hashlib.sha256(raw).hexdigest(),
+                  checkpoint_bytes=len(raw), checkpoint_observed_at=observed_at,
+                  boundary='matching_checkpoint_read_after_save_return',
+                  source_identity='unverified', encoder_identity='unverified',
+                  upstream_complete=False, durability='unconfirmed', scoring_effect='none')
+    return _publish_private(root,packet,'self-fit-completion-')

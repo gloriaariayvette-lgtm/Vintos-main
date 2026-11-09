@@ -2098,3 +2098,19 @@ remain valid. Capture off is unchanged; capture-on real-host overhead is unmeasu
 assign a read-only namespace dictionary; corrected to clear/update its synthetic
 contents. All final tests pass. No private input, model calls, live writes, merge
 or deployment. Submitted predecessor tips remain fixed for independent review.
+
+
+## 9 November — fitting-boundary observations
+
+Source tracing confirmed the anchored readout is preferred by the existing self
+forecast entrance. Its self-only optional observer now binds existing ordered
+input partitions to completed parameters/metadata and exact matching checkpoint
+readback after save returns. No extra encoder calls, training runs or schema
+changes. Failures remain passive; source/encoder identity and durability stay
+unverified. Historical dates are not reconstructed. The offline completion-reader
+is still open and current scoring/admission ignores these receipts.
+
+124 isolated checks pass: new fitting 14, existing readout 5, artifacts 20, sink 26,
+runtime 16, owners 11 and store guard 32. Synthetic numerical warnings persist in
+existing matrix operations, without assertion failures. Generated reports refreshed.
+No private input, real model, live writes, enabling, merge or deployment.
