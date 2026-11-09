@@ -11541,7 +11541,7 @@ Your current self-model (excerpt):
         if _witness_capture is not None:
             try:
                 _witness_module.finish_shadow(_witness_capture, reply, time.time(), _prov_envelope,
-                                              test_mode=_test_turn)
+                                              test_mode=_test_turn, defer=True)
             except Exception:
                 print("[witness] final capture unavailable", flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": ("" if _turn is not None and _turn.carries_capsule else (_claude_reasoning or "")),

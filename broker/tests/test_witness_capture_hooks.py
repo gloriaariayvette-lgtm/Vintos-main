@@ -170,6 +170,10 @@ class Tests(unittest.TestCase):
         self.assertLess(boundary.lineno, guard.lineno)
         final = next(n for n in outer.body if isinstance(n, ast.If) and any(
             isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "finish_shadow" for c in ast.walk(n)))
+        finish = next(c for c in ast.walk(final) if isinstance(c, ast.Call) and
+                      isinstance(c.func, ast.Attribute) and c.func.attr == "finish_shadow")
+        self.assertTrue(any(k.arg == "defer" and isinstance(k.value, ast.Constant)
+                            and k.value.value is True for k in finish.keywords))
         ret = next(n for n in outer.body if isinstance(n, ast.Return) and n.lineno > final.lineno)
         self.assertLess(routed[-1].lineno, select.lineno)
         self.assertLess(select.lineno, guard.lineno)

@@ -245,6 +245,9 @@ def _from_ledger(rows, floor, origin):
         exchange = {"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
                     "withheld": bool(e.get("vintos_withheld")), "origin": origin}
         _attach_forecast_clock(exchange, e.get("timestamp"))
+        source_ref = _forecast_witness("self_reply_source", e, "vintos", his)
+        if source_ref is not None:
+            exchange["_witness_reply_source"] = source_ref
         out.append(exchange)
     return out
 
@@ -296,6 +299,9 @@ def _from_chat(rows, floor, origin, test_times=()):
                     "withheld": False, "origin": origin}
         if clock is not None:
             exchange["_witness_clock"] = clock
+        source_ref = _forecast_witness("self_reply_source", e, "content", his)
+        if source_ref is not None:
+            exchange["_witness_reply_source"] = source_ref
         out.append(exchange)
     return out
 

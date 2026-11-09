@@ -51,6 +51,17 @@ class Tests(unittest.TestCase):
         for value in ('fixture-model','fixture-provider','fixture-turn','Synthetic historical reply'):
             self.assertNotIn(value,json.dumps(report))
 
+    def test_explicit_unobserved_model_identity_never_gains_ledger_attribution(self):
+        for value in ('configured','unknown',None,False,[],{}):
+            self.call['model_identity_evidence']=value
+            report,details=self.run_attribution()
+            self.assertEqual(report['tiers']['recorded_label'],1)
+            self.assertEqual(details[0]['join_state'],'call_model_identity_unobserved')
+            self.assertIsNone(details[0]['ledger_model'])
+        self.call['model_identity_evidence']='response_metadata'
+        report,_=self.run_attribution()
+        self.assertEqual(report['tiers']['ledger_attributed'],1)
+
     def test_provider_id_precedes_nearer_call(self):
         self.row['provider_request_id']='fixture-provider-id'
         self.call.update(provider_request_id='fixture-provider-id',at=50)

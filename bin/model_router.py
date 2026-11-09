@@ -551,13 +551,16 @@ def _needs_provider(convo, params):
         why.append("long context")
     return why
 
-def _ledger(res, surface, t0, stage=""):
+def _ledger(res, surface, t0, stage="", model_identity=None):
     """review 171: every stage's measured latency, memory and reported usage, no quality claim."""
     try:
         import time as _lt, compute_admission as _ca
+        extra = {"provider_request_id": res.get("request_id") or None, "finish_reason": res.get("finish_reason")}
+        if model_identity == "configured":
+            extra["model_identity_evidence"] = "configured"
         _ca.record("router:" + str(surface), "foreground", provider=res.get("provider", ""), model=res.get("model", ""),
                    stage=stage or res.get("status", ""), latency_ms=int((_lt.time() - t0) * 1000), usage=res.get("usage"),
-                   extra={"provider_request_id": res.get("request_id") or None, "finish_reason": res.get("finish_reason")})
+                   extra=extra)
     except Exception:
         pass
 
@@ -623,23 +626,27 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
     if read_mode().get("mode") == "grok":
         return await grok_stage("grok(toggle)")
     if read_mode().get("mode") == "sol":
+        _toggle_t0 = _rb_t.time()
         try:
             _st, _stag = await sol_draft(system_text, convo)
             if _st:
                 print("[router] sol answered (%d chars)" % len(_st), flush=True)
                 res = GR.make_result("openai", model=SOL_MODEL, status="valid", text=_st, finish_reason="stop")
                 res["route"] = "sol"; stages.append(res); res["stages"] = stages
+                _ledger(res, surface, _toggle_t0, "sol", model_identity="configured")
                 return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
         # fall through: Claude next, grok as the unchanged safety net
     if read_mode().get("mode") == "argon":
+        _toggle_t0 = _rb_t.time()
         try:
             _gt, _ = await gemini_draft(system_text, convo, max_tokens=(params or {}).get("max_tokens", 900))
             if _gt:
                 print("[router] argon answered (%d chars)" % len(_gt), flush=True)
                 res = GR.make_result("google", model=GEMINI_MODEL, status="valid", text=_gt, finish_reason="stop")
                 res["route"] = "argon"; stages.append(res); res["stages"] = stages
+                _ledger(res, surface, _toggle_t0, "argon", model_identity="configured")
                 return res
         except Exception as _ae:
             print("[router/argon toggle]", str(_ae)[:120], flush=True)

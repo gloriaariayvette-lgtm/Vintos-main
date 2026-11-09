@@ -544,11 +544,13 @@ def _shadow_provenance(value, turn_id):
     return result
 
 
-def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
+def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False, *, defer=False):
     """Write one private packet after the final guard, never to a live store.
 
     The handler still has no transport receipt: attempted return to the framework
     is recorded separately from delivery. Caller catches observation failures.
+    defer=True queues only the production final packet; True then means accepted
+    in volatile memory, not published. Scratch remains synchronous.
     """
     if capture is None:
         return False
@@ -566,6 +568,9 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         packet["lineage"].append({"id": effect_id, "kind": "tactical", "at": instant(finalized_at),
                                   "complete": False, "parents": [], "origin": "generation_provenance"})
         packet["reply_node"]["parents"].append(effect_id)
+    if defer and not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import enqueue_capture
+        return enqueue_capture(root, packet)
     return _publish_private(root, packet, "capture-")
 
 
@@ -1055,4 +1060,30 @@ def publish_self_forecast(scope, row):
                         "context_clock": scope["context_clock"], "boundary": "forecast_log_close",
                         "durability": "unconfirmed", "source_identity": "unverified"}
         _publish_private(root, clock_packet, "self-forecast-clock-")
+    if matched and scope.get("artifacts") is not None:
+        artifact_packet = {"schema": "self-forecast-artifacts-v1", "forecast_row_sha256": packet["forecast_row_sha256"],
+                           "forecast_at": made, "arrived_at": arrived, "boundary": "forecast_log_close",
+                           "durability": "unconfirmed", "artifacts": scope["artifacts"]}
+        _publish_private(root, artifact_packet, "self-forecast-artifacts-")
     return published
+
+
+def self_artifact_capture_enabled():
+    scope = _self_forecast_scope.get()
+    return scope is not None and _private_root(scope["root"]) is not None
+
+
+def observe_self_artifacts(exchanges, bank, model, forecast):
+    scope = _self_forecast_scope.get()
+    if scope is None or scope.get("observations") != 1 or scope.get("inputs") is None:
+        return
+    from witness_self_artifacts import forecast_artifacts
+    artifacts = forecast_artifacts(exchanges, bank, model, forecast)
+    _self_forecast_scope.set(dict(scope, artifacts=artifacts))
+
+
+def self_reply_source(row, field, normalized):
+    from witness_self_artifacts import _source_scope, reply_source
+    if _self_forecast_scope.get() is None and _source_scope.get() is None:
+        return None
+    return reply_source(row, field, normalized)

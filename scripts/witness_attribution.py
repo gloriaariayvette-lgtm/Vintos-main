@@ -88,7 +88,8 @@ def attribution(rows, ledger, config, cutoff):
         try: at = _clock(record.get('at'), timezone)
         except ValueError: at = None
         call = dict(sha256=sha, at=at, caller=caller, model=model, provider=provider,
-                    foreground=record.get('class') == 'foreground', stage=record.get('stage'))
+                    foreground=record.get('class') == 'foreground', stage=record.get('stage'),
+                    identity_explicit='model_identity_evidence' in record, identity_evidence=record.get('model_identity_evidence'))
         calls[sha] = call
         if _name(record.get('provider_request_id')): by_id[record['provider_request_id']].append(call)
         if caller and call['foreground']:
@@ -153,6 +154,8 @@ def attribution(rows, ledger, config, cutoff):
                 state = 'call_outside_cutoff'; call = None
             elif not call['model'] or not call['provider'] or call['stage'] in ('failed','attempt','reserved','released','refused','claimed'):
                 state = 'call_metadata_unavailable'; call = None
+            elif call['identity_explicit'] and call['identity_evidence'] not in ('response_metadata','runtime_receipt'):
+                state = 'call_model_identity_unobserved'; call = None
             else: state = 'matched'
         detail = dict(copy=len(details)+1, turn_id=identity, observed_model=observed,
                       response_sha256=digest(final_response(row)) if isinstance(final_response(row),str) else None,

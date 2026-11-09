@@ -17,6 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from witness_attribution import attribution
+from witness_artifact_join import join_artifacts
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
@@ -1216,7 +1217,7 @@ def install_guard(root, output):
 
 
 # The local scoring implementation, not provider dependencies or live stores.
-SCORING_FILES = ("scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+SCORING_FILES = ("scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
                  "scripts/evidence_provenance.py", "scripts/evidence_view.py")
 
 
@@ -1308,6 +1309,10 @@ def main():
         ledger = config.pop("compute_ledger")
         rows = [row for kind, records in sources for row in adapt(records, kind)]
         report["historical_attribution"], private_attribution = attribution(rows, ledger, config, args.cutoff)
+    private_artifact_joins = None
+    if "self_artifact_packets" in bundle:
+        report["self_artifact_joins"], private_artifact_joins = join_artifacts(
+            admitted, sources, nodes, bundle["self_artifact_packets"], args.cutoff, bundle.get("forecasts", []))
     private_self_inputs = None
     if "self_input_controls" in bundle:
         report["self_input_baselines"], private_self_inputs = self_input_baselines(
@@ -1330,6 +1335,8 @@ def main():
                ("private-feedback.json", private_feedback)]
     if private_attribution is not None:
         outputs.append(("private-model-attribution.json", private_attribution))
+    if private_artifact_joins is not None:
+        outputs.append(("private-self-artifact-joins.json", private_artifact_joins))
     if private_self_inputs is not None:
         outputs.append(("private-self-input-controls.json", private_self_inputs))
     if private_behaviour is not None:

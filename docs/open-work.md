@@ -6596,3 +6596,85 @@ are unchanged. The reviewer owns the corrected private census rerun and full Aeg
 suite. No historical training admission is decided here; descriptive per-model
 checks can use labelled tiers. Dedicated sink review/enablement and checkpoint /
 target-embedding retention remain separate, with retention next per note 25.
+
+## 9 November — private self artifacts retained, identity joins still open
+
+`codex/judges-self-artifact-retention` adds optional same-byte checkpoint metadata
+and existing self feature/audit-vector retention. 241 affected isolated checks pass;
+no weights, new model calls or changed scores/feeds. Private retention is bounded
+by the existing disabled sink. Full Aegis validation/review remain with the reviewer.
+
+Still open: retain source IDs before the ranking adapter drops them; bind each
+normalized/excerpt vector to its exact finalized reply without timestamp guessing;
+establish explicit encoder-weight identity and training-completion evidence; make
+any replay adapter respect those limits and prefix-versus-full-target semantics.
+No historical fields are fabricated and no strict scoring holds are relaxed.
+Historical attribution census rerun and production capture enablement remain
+separate reviewer/owner steps.
+
+## 9 November — prospective source-ID loss repaired
+
+`codex/judges-self-source-identity` retains original string IDs and raw/normalized
+source hashes through the existing self adapters/merger and ranking projection,
+inside optional capture scopes. 209 affected isolated checks pass. No changed
+ranking/forecast inputs or scores. This resolves the preceding source-ID retention
+item for new observations; old data with missing identity remains unknown.
+Still open: exact producer-final-version joins, explicit encoder-weight and training
+completion evidence, and honest handling of excerpt versus full-reply metrics.
+Review/full Aegis validation and production enablement remain separate.
+
+## 9 November — exact artifact content joins implemented offline
+
+`codex/judges-artifact-final-joins` adds optional exact source-to-admitted-final
+joins, private reproducibility details and aggregate report coverage. 232 affected
+isolated checks pass; previous census/behaviour/innovation output is unchanged.
+Full text and excerpts remain distinct, with no automatic scoring promotion.
+This resolves the content-version join portion of the preceding item. Still open:
+encoder-weight/training-completion provenance and prospective forecast association
+before retained observations can supply scored embeddings. Full Aegis validation,
+private census rerun and production enablement remain separate review/owner steps.
+
+## 9 November — prospective checkpoint availability retained
+
+`codex/judges-checkpoint-availability` records optional observed load timing and
+separates fully loaded parameters from metadata-only reads. 236 affected isolated
+checks pass. Exact logged-forecast timing diagnostics are report-only; no training
+date is inferred and no old artifact gains one. This supplies the prospective
+availability observation portion of checkpoint provenance. Encoder-weight identity,
+training-data provenance and a reviewed scoring adapter remain open. Full host suite,
+private census and capture enablement remain separate review/owner steps.
+
+## 9 November — attribution coverage diagnosis ready for private run
+
+`codex/judges-attribution-coverage` fixes the stale store-owner report and adds
+`experiments/judges-witness/coverage.py`. 179 affected isolated checks pass.
+The configured host route rejected authentication; no private diagnostic has run.
+Reviewer can use the existing copied records plus full admitted ledger and original
+cutoff to report first-retained dates by caller, surface gaps and wider-window
+ambiguity. Current attribution/admission thresholds are unchanged. Source-only
+logging gaps are identified, not yet quantified against records. Off-path sink
+publication before enablement remains open after the reviewer's occupied-capacity
+latency finding. Encoder identity work remains open behind this coverage priority.
+
+## 9 November — bounded deferred final capture ready for review
+
+`codex/judges-deferred-capture` moves final production avatar packet publication to
+an eight-slot per-process daemon queue, leaving scratch/background producers
+synchronous. 122 focused checks pass, including stalled-writer handler equivalence,
+config/limit changes, fork reset and honest exit loss. At representative synthetic
+Mac occupancy, enqueue median/p95 0.168/0.218 ms versus synchronous 12.653/13.211 ms.
+Storage still costs time in the worker; this is not Aegis latency acceptance.
+Reviewer owns full host suite and occupied/full-sink response validation before
+Gloria's enablement. No installed config or production write. Historical private
+coverage diagnosis and encoder identity remain open as recorded above.
+
+## 9 November — prospective completion gaps repaired
+
+`codex/judges-router-completion-coverage` records successful completion on the two
+previously unlogged toggle paths without changing calls, output or fallback order.
+130 focused isolated checks pass. The new model-identity marker is explicitly
+configured-only; offline readers honor that limitation, while old unmarked ledger
+rows retain their separate historical tier. Response-observed identity for these
+draft paths still needs a separately reviewed producer change; no new record is
+pretended to solve that. Private coverage dates/counts, encoder identity and Aegis
+acceptance remain open. No production modification or deployment.

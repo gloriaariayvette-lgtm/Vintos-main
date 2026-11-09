@@ -1369,3 +1369,191 @@ with the reviewer. Historical model-switch stratification is recommended with ti
 and matching methods labelled; character-training admission is not changed. The
 separate sink remains disabled and in review; checkpoint/target retention is next.
 No live write, model/paid call, real test send, merge or deployment.
+
+## 9 November — private self artifact retention
+
+`codex/judges-self-artifact-retention` continues above the submitted historical
+attribution tip. The guarded on-message path retains checkpoint metadata from the
+same bounded bytes it parses and the already computed last-six own-reply feature
+vectors, bound to the exact saved forecast. A mid-forecast checkpoint replacement
+cannot bind the wrong snapshot. Existing anchored self ranking audits retain their
+already computed self-text vectors and all bounded source references for prefix
+collisions. The encoder return object and existing scores are unchanged; no new
+model call, schedule or other-head hook. Both private packet types use the existing
+optional sink, off by default. No weights are copied.
+
+Reported training/calibration dates and encoder labels are kept as reported;
+training completion and encoder-weight identity remain unknown. Current audit rows
+have lost turn IDs and use 400-character excerpts. These artifacts are therefore
+retained without being silently promoted into strict replay evidence or full-reply
+vectors. Final-version joins, explicit encoder provenance and target-transform
+comparability remain open. This is not an accuracy result or complete-retention
+claim. The historical private census remains with the reviewer.
+
+241 affected isolated checks pass: artifacts 16, self input receipts 15, source
+clocks 12, forecast clocks 9, sink 19, capture 27, hooks 21, capture/replay 9,
+self on-message 32, self source 39, readout 5, ranking 26, ownership 11. The first
+regression run exposed an optional-hook absence outside a try boundary; fixed and
+the failure case/new artifact suite rerun successfully. A nested sandbox launch
+was initially refused; the authorized outer runner then executed the isolated
+suite normally. Required reports regenerated; whitespace clean. Full Aegis suite
+and independent review remain with the reviewer. No live writes, real test sends,
+model/paid calls, merge, deployment or capture enablement.
+
+## 9 November — source identity survives the self audit adapter
+
+`codex/judges-self-source-identity` continues above db7500ac. Scoped adapters now
+observe the actual raw ledger/chat reply before cleanup, retaining raw/normalized
+hashes, source-row digest and original string ID/surface. The observation follows
+the preferred text through existing merge rules; it does not follow an earlier
+clock from a different copy. Missing/non-string original IDs remain unknown. The
+ranking adapter keeps its original three values and adds optional metadata only
+when bound to the selected text/ID. Forecast/audit-vector refs retain it privately.
+No additional source read, model call or changed forecast/ranking input.
+
+209 affected isolated checks pass: source identity 13, source clocks 12, artifacts
+16, input receipts 15, sink 19, ranking 26, self on-message 32, self source 39,
+readout 5, capture hooks 21 and ownership 11. Cases cover actual cleanup/merge,
+preferred-source conflicts, missing/malformed IDs, earlier duplicate clocks,
+exception restoration, disabled/bad sinks, unchanged ranking streams and private
+artifact publication. The existing clock equality fixture now removes both optional
+observations before comparing the unchanged source fields. Reports regenerated;
+whitespace clean. Full Aegis suite and private census remain with the reviewer.
+
+The ID-loss gap is addressed prospectively, not by upgrading old rows. Exact
+producer-final-version joins, encoder-weight/training evidence and excerpt/full
+metric comparability remain open; source identity is still labelled unverified.
+No live writes, actual test sends, paid/model calls, enablement, merge or deployment.
+
+## 9 November — offline source-to-final content joins
+
+`codex/judges-artifact-final-joins` continues above fdb4d299. Optional replay input
+self_artifact_packets now joins retained observations by exact source-row digest,
+original string ID, surface, raw/normalized hashes and existing admission. The
+source copy and admitted final reply must agree on receipt and final text. Explicit
+ledger final attestations handle appended marks; cleanup never substitutes for an
+authored final version. Full-text versus 400-codepoint excerpt bindings remain
+separate. Duplicate packets count once; conflicting vectors hold every matching
+reference; malformed vectors abort. No time/text-nearest identity inference.
+
+Fixed aggregate counts and a private manifest-bound join-detail file are produced,
+with no text or vectors in those details. The review formatter reports distinct
+packet/reference/reply counts and content-only limits. No artifact enters scored
+embeddings/checkpoints and no existing eligibility, score, behaviour or feed changes.
+The actual offline CLI verifies identical previous report sections with and without
+the new optional input. Training/encoder evidence and causal forecast selection are
+not inferred from content agreement.
+
+232 affected isolated checks pass: joins 16, strict witness 106, formatter 15,
+report coverage 9, capture/replay 9, self input controls 20, source identity 13,
+artifacts 16, attribution 17 and ownership 11. Cases use actual synthetic artifact
+producers, final-attested ledger marks, long excerpts, changed final versions,
+excluded copies, prefix/hash mismatches, duplicates/conflicts, privacy projection,
+actual reader cleanup equivalence and the isolated CLI. Reports regenerated;
+whitespace clean. Full Aegis validation/private census remain with the reviewer.
+No real records, model/paid calls, actual test sends, live writes, enablement,
+merge or deployment.
+
+## 9 November — observed checkpoint availability
+
+`codex/judges-checkpoint-availability` continues above a5b16797. Optional checkpoint
+observations now retain wall/monotonic read timing around the same byte snapshot.
+Full parameter loads and metadata-only audit reads are distinct; only a completed
+parameter load can supply parameters_available_by. No training date is inferred
+from fitting-day metadata or file mtime. Clock rollback/discontinuity, invalid
+values and observer failures remain explicit without affecting forecasts.
+
+Offline timing diagnostics require the exact saved forecast row, checkpoint and
+matching clocks before comparing load completion with logged forecast time. Audit
+snapshots, late loads, cutoff exclusions and missing records remain separate.
+Fixed aggregate counts are included in the private review report; no private clock
+values, IDs, text or vectors are rendered. Admission, scores and feeds are unchanged.
+Encoder identity and training-data provenance remain open; this is an availability
+bound, not a fabricated historical training-completion attestation.
+
+236 affected isolated checks pass: availability 12, artifacts 16, final joins 16,
+input receipts 15, source clocks 12, strict witness 106, formatter 15, report coverage
+9, readout 5, sink 19 and ownership 11. Cases cover actual checkpoint loading and
+unchanged forecast rows, disabled capture, failed clocks, backward/forward jumps,
+metadata-versus-parameter stages, exact-row/hash/clock consistency, cutoff and report
+denominators. Reports regenerated; whitespace clean. Full Aegis validation/private
+census remain with the reviewer. No real-data reads, model/paid calls, actual test
+sends, live writes, enablement, merge or deployment.
+
+## 9 November — historical attribution coverage diagnostic
+
+Review note 26 reports integration of the dedicated sink and historical tiers.
+Regenerated the stale store-owner inventory for the sink status file. Added a
+separate offline coverage probe: unchanged tight-window attribution, private
+per-caller retained date ranges and source/surface counts, and fixed wider-window
+ambiguity/reuse diagnostics. No widened attribution, training promotion, source
+capture or provider calls. Exact dates and surface names remain private; public
+output uses counts. The command and limitations are in the experiment README.
+
+The configured host route rejected authentication, so no retained input was read
+and no real-data diagnostic result is claimed. The reviewer can run the probe on
+the existing admitted snapshot; use its full copied ledger to measure all callers.
+Source tracing found unlogged successful toggle branches and confirms route labels
+are not necessarily model names; historical attribution impact remains unmeasured.
+
+179 affected isolated checks pass: coverage 13, attribution 17, strict witness 106,
+store guard 32, ownership 11. The coverage CLI initially failed because its file
+handle wrapper triggered the existing descriptor-write guard; changed it to the
+same guarded path-write pattern with a private umask and re-ran successfully.
+No live store, sink enablement, deployment or merge. The reviewer's occupied-sink
+measurements supersede the empty-directory estimate: roughly 11 ms/write, p95
+13 ms, max 16 ms, up to 24 ms at capacity. Off-path publication remains open.
+
+## 9 November — final capture publication deferred, bounded and volatile
+
+`codex/judges-deferred-capture` addresses the occupied-sink latency noted in review
+26, leaving the submitted coverage diagnostic tip fixed. Only the avatar final
+production packet requests deferred storage; scratch and other producers retain
+synchronous semantics. Immutable bytes enter a per-process eight-slot queue with
+one daemon writer. Overflow/busy startup skip, config changes are rechecked at
+publication, and fork children discard inherited queue/lock/thread state and
+counters. No shutdown flush: accepted work may be lost on exit. No durability or
+client-delivery claim follows from enqueue success. Full storage checks and private
+atomic publication remain in the worker; final reply content/timestamps remain
+unchanged. No existing feed or judge is altered.
+
+122 focused isolated checks pass: deferred capture 14, sink 19, handler hooks 21,
+capture replay 9, self artifacts 16, ownership 11, store guard 32. The first queue
+fixture lacked a selected generation and was corrected before the successful run.
+Tests execute actual handler capture/return segments with a deliberately stalled
+writer and stubbed providers, plus fork/exit loss, queue/disk limits, mutation,
+concurrent submitters, configuration changes and failures. No actual sends.
+
+At 4,000 synthetic files / about 226 MiB on the Mac, 20 samples of 24,565-byte
+packets measured synchronous median/p95/max 12.653/13.211/14.908 ms; enqueue
+0.168/0.218/0.236 ms; worker 12.598/13.936/18.997 ms. All 20 queued samples were
+confirmed written. Sequential drained-queue measurement, not concurrent or host
+acceptance. The dedicated-sink proposal documents measurement and volatile loss.
+Full Aegis suite/latency review remains with the reviewer, enablement with Gloria.
+The existing authentication blocker for private measurements is unchanged; no
+repeat notification. No paid calls, live writes, merge, enablement or deployment.
+
+## 9 November — missing router completion records repaired prospectively
+
+`codex/judges-router-completion-coverage` adds completion recording to the two
+successful toggle branches found during coverage source tracing. Both use the
+existing recorder, original surface, current configured model and measured stage
+elapsed time. They explicitly mark model identity as configured because the draft
+return contract does not expose verified response identity. No new provider call,
+retry, generation parameter, output text, fallback order or observed witness
+identity. Failed/empty drafts retain the existing fallback path. Recorder failures
+cannot change the result or cause another model call.
+
+The offline reader now honors the new explicit unknown identity marker: a matching
+call with configured/unknown/malformed evidence stays unobserved, with its own
+reason count. Wider-window diagnostics cannot promote it. Existing unmarked
+historical ledger rows and recorded-label tiers retain the reviewed rules. No
+retroactive edits, attribution claims or strict training admission follow.
+
+130 focused isolated checks pass: real router functions with stubbed providers and
+ledger 7, compute admission 44, router cache 15, handler capture 21, attribution 18,
+coverage 14, ownership 11. Tests prove one completion per successful direct call,
+unchanged forced/fallback paths and return values, logger failure isolation, surface
+retention, no prompt/reply content in the ledger call, and no configured-to-observed
+promotion. Generated reports refreshed. Full host suite and private measurements
+remain with the reviewer. No live writes, paid calls, merge or deployment.

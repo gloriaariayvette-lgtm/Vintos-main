@@ -1282,3 +1282,239 @@ sensitivity checks. This increment makes **no training admission decision** and
 changes no existing strict holds, behaviour/innovation scores or live feed. The
 reviewer and Gloria still decide any historical character-training contract; that
 contract must also handle provenance, final-version conflicts and duplicate turns.
+
+### Private self-readout artifact retention
+
+The optional sink now accepts `self-forecast-artifacts-v1` and
+`self-audit-embedding-v1` packets. This is retention of existing computation, not
+an additional evaluation, encoder invocation, training job or scoring admission.
+The sink is still off unless explicitly configured/enabled. Its existing private
+permissions, retention, caps and disable behavior apply to both packet prefixes.
+
+At a scoped on-message forecast, a bounded checkpoint snapshot is parsed from the
+same bytes whose hash is retained. The existing returned checkpoint ID must match
+that snapshot or no artifact packet is bound to the saved forecast. Publication
+follows the existing exact-row/input binding after forecast-log close. An oversized
+snapshot falls back to ordinary loading without retention. No weights are copied.
+The packet keeps a metadata digest, byte count, source/mode and **reported** fitting,
+calibration and encoder-label fields. Reported dates are not a training-completion
+receipt; file mtime is never substituted. `trained_at` and `encoder_id` remain null,
+with training-completion and encoder-weight identity explicitly unobserved.
+
+The same packet retains the last-six own-reply feature vectors already computed by
+the readout, including their exact input hash, normalized full-reply hash, observed
+source ID when present and first-400-codepoint transform. These may cover earlier
+forecast targets as later conversation arrives; they do not cover every target or
+prove a final reply version. Missing IDs remain missing. The prediction row itself
+is unchanged. No additional encoder call is made.
+
+The existing anchored **self** ranking audits also retain their already computed
+vectors for matching self-text inputs. The wrapper returns the encoder's exact
+result and propagates its original errors; retention failures are swallowed. Each
+packet declares `ledger_vintos_strip_first_400_codepoints`, includes all bounded
+matching source-row/full-text hashes, and never chooses a target from a prefix
+collision. It records `target_selection: unasserted`: these inputs include candidates
+and controls, not only realized targets. The optional source-identity scope now carries original string turn IDs through
+`realized_ledger` when a bound source observation exists. Missing or non-string IDs
+remain null rather than being inferred from timestamps. Unscoped/disabled reads
+retain their original shape.
+The other head uses the original encoder directly and is not instrumented here.
+Duplicate inputs are retained once per audit invocation; later invocations can
+produce duplicates, subject to the sink's existing cap/expiry. No new schedule.
+
+These private packets deliberately are **not** automatically promoted into replay's
+`checkpoints` or `embeddings` fields. That would erase the difference between a
+normalized/truncated audit input and an exact final reply, and would invent missing
+training/encoder provenance. Next integration must bind original reply versions and
+explicit encoder identity, reconcile prefix versus full-target metrics, and retain
+unknowns. The legacy scoring/reporting path is unchanged, including its existing
+mtime-based cutoff; that cutoff is not copied into the new provenance observation.
+No historical accuracy or complete retention claim is made. All packets/vectors and
+source IDs stay private; only synthetic fixtures and aggregate checks belong in Git.
+
+
+### Source identity before normalization and merge
+
+A scoped self forecast or enabled ranking-source read now observes the actual
+ledger `vintos` or assistant `content` field before the self reader's `his_words`
+cleanup is lost. The private `self-reply-source-v1` observation carries a complete
+source-row digest, raw reply digest, normalized reply digest, original string turn
+ID/surface when supplied, and explicit `self_reader_his_words` transform. It never
+copies message text, source filenames or timestamps. Invalid/oversized source rows
+produce no observation; observer failure cannot reject an exchange.
+
+The existing merger keeps its original text selection and chronology. The source
+observation travels with the selected text/ID, **not** an earlier timestamp borrowed
+from another duplicate. A preferred source with no ID cannot inherit a lower-priority
+copy's ID. Original non-string identifiers stay unknown even though the legacy
+exchange reader stringifies them. Neither the old deduplication nor its evidence
+admission rules change.
+
+`realized_ledger` opens a bounded optional scope around its existing single exchange
+read. It keeps the same timestamp/gloria/vintos values, and adds a source observation
+and observed turn ID only when the observation matches the selected normalized text
+and ID. Source metadata is reset even on exceptions. Existing ranking transforms
+ignore those extra fields; scores and model inputs are unchanged. Private forecast
+and audit-vector references retain this observation as optional `reply_source`.
+Older packets without it remain incomplete, not retroactively upgraded.
+
+This closes the adapter's ID-loss gap for newly observed sources. It does **not**
+attest that the source copy is authentic, final, delivered or eligible. Raw ledger
+text can include appended device marks; normalized hashes are not substituted for
+producer-attested final-text hashes. Joining these observations to independently
+admitted finalized replies, preserving conflicts and verifying encoder identity,
+remains separate from retention. No time-nearest identity join or scoring promotion
+has been introduced.
+
+### Optional exact final-version content joins
+
+Supply `self_artifact_packets` as an explicit list of retained
+`self-forecast-artifacts-v1` and/or `self-audit-embedding-v1` packets in the same
+private replay bundle. Exact raw source rows must already be present in the
+bundle's canonical/merged/ledger sources. The helper does no discovery, source
+recovery, time-nearest matching, model invocation or additional scoring.
+
+The join requires the original source-row digest, original string turn ID and
+explicit surface; raw reply and normalized hashes must agree with the declared
+self-reader cleanup. The exact source copy must independently pass existing
+admission, and its receipt and producer-final text must agree with a reply already
+admitted by the complete census. Missing or held duplicates remain held. An older
+packet without reply_source remains missing rather than gaining identity by text.
+
+The normalized string must equal the producer-attested final reply. Explicit
+ledger final-text attestations can therefore handle appended device marks, but
+heuristic cleanup of authored final text cannot stand in for that attestation.
+The existing 400-codepoint input hash and length must also match. Short exact
+inputs count as `bound_full_text`; longer final replies count as `bound_excerpt`.
+Neither label proves which forecast selected the target or establishes encoder
+weight identity. The helper deliberately does not validate or replace forecast-log
+bindings; it only audits retained content references.
+
+Identical packets count once. Different vectors claiming the same checkpoint,
+reply/final-version/input identity mark every such content match conflicting;
+malformed/nonfinite/boolean/zero vectors abort the audit instead of disappearing
+behind another copy. Counts distinguish supplied/unique packets, source references
+and unique admitted replies. A reference count is not an outcome count.
+
+`aggregate.json.self_artifact_joins` contains fixed reason counts only. The private
+0600 `private-self-artifact-joins.json` records packet/reference/checkpoint and
+content hashes plus explicit turn IDs, but no vectors or message text. It is bound
+by private-run.json along with the added helper implementation hashes. The review
+formatter projects fixed count labels and rejects inconsistent denominators; it
+never copies arbitrary source labels or IDs.
+
+All results are content consistency only, including when a complete text matches.
+Artifact-observation time, training completion and encoder identity remain
+unverified; forecast-target selection is not evaluated. No packet is inserted into
+scoring embeddings/checkpoints, no eligibility rule changes, and all pre-existing
+census/behaviour/innovation output is unchanged (actual CLI regression tested).
+The independent private census and full host suite remain reviewer-owned.
+
+### Observed checkpoint availability, separate from training time
+
+New checkpoint observations optionally carry `checkpoint-availability-v1`. In the
+scoped on-message loader, wall and monotonic clocks bracket reading and parsing the
+same bounded checkpoint byte snapshot. A successful `parameters_loaded` observation
+records `parameters_available_by` at parse completion. The audit path only parses
+metadata, so its `metadata_loaded` observation records `bytes_observed_by` but leaves
+parameter availability null. This distinction is enforced during revalidation.
+Neither stage supplies `trained_at`, an encoder identity or a historical fitting
+attestation; old files/packets remain unobserved, with no mtime backfill.
+
+A backward wall clock, or disagreement over one second between wall elapsed and
+monotonic elapsed, produces `clock_discontinuity` with no availability bound. Invalid,
+negative, nonfinite or boolean clocks and spans over 600 seconds remain unobserved.
+Times are not clamped into a favorable order. Clock-observer failures cannot change
+ordinary loading or the forecast. Disabled ordinary loading invokes no observer
+clocks, and this adds no encoder/model calls or file/weight copies.
+
+The optional artifact replay audit reports checkpoint-availability counts per
+unique supplied packet. For a forecast packet it requires its exact saved-row hash,
+on-message mode, checkpoint identity and matching arrival/forecast clocks. It then
+distinguishes parameters parsed by the logged forecast, parsed later, outside-cutoff
+forecasts and missing/inconsistent records. Metadata-only observations cannot count
+as a loaded forecast checkpoint. Audit snapshots are reported separately, without
+claiming prospective use. The formatter uses fixed labels and validates counts;
+private clock values are not rendered.
+
+This is supplied-record timing consistency, not clock authenticity, training-data
+provenance or permission to score. Overall artifact/embedding observation time and
+encoder identity remain unverified. Existing historical mtime-based audits and
+strict scoring inputs are unchanged. The availability bound is retained for a
+future reviewed prospective adapter, rather than being renamed a training date.
+
+### Retained attribution coverage diagnosis (private, offline)
+
+`coverage.py` diagnoses missing historical attribution without changing the
+10-second rule in `witness_attribution.py`. Supply the same explicit snapshot
+bundle (`input_kind`, `sources`, `historical_attribution` including its
+`compute_ledger`, exact surface/caller mapping and explicit naive timezone).
+For first-retained dates across **all callers**, include the full admitted copied
+ledger, not just a router-filtered subset. No source discovery, new capture,
+model calls or writes to the copied input occur. Input is bounded to 128 MiB,
+250,000 ledger records and 10,000 adapted source rows; larger inputs fail rather
+than silently sampling. These limits are not a statement of historical coverage.
+
+Using absolute paths in an existing private scratch workspace outside the repo:
+
+```sh
+SPARK_WORKSPACE="$PRIVATE_SCRATCH" python3 experiments/judges-witness/coverage.py \
+  --scratch "$PRIVATE_SCRATCH" --input "$PRIVATE_SCRATCH/bundle.json" \
+  --output "$PRIVATE_SCRATCH/coverage-new" --cutoff "$CENSUS_CUTOFF"
+```
+
+Use the original census's exclusive, offset-bearing cutoff, not today's date.
+The output directory must be new. `private-coverage.json` gives first/last retained
+UTC timestamps per caller, unknown-clock counts, largest observed inter-call gap,
+foreground counts, and per-source surface/mapping/join-state counts. These are
+**private activity metadata**, not for Git. A long observed gap may simply be
+inactivity; the first retained date is not proof of when logging was installed.
+Background calls are inventoried, but cannot become foreground reply evidence.
+Missing/empty/invalid surfaces remain distinct; no default is invented.
+
+`aggregate.json` contains the unchanged original attribution report, counts of
+unmatched replies before/within/after the mapped retained foreground span, and
+fixed 10/30/60/120-second diagnostic windows. Only originally `no_matching_call`
+rows enter the sensitivity counts. A sole candidate must have usable metadata;
+all nearby replies compete for it, including already matched, exact-ID and
+ambiguous rows. Same-ID/same-final copies may share; unknown IDs or changed
+versions cannot. A wider-window opportunity is **not recovered attribution**.
+Exact-ID failures, unmapped surfaces and bad clocks are never repaired by widening.
+Neither model labels nor per-reply IDs/text enter these outputs. Only the private
+coverage file contains caller/surface names and clock ranges. All files are 0600
+inside a 0700 directory; `private-run.json` binds the input, implementation and
+output hashes. The aggregate file alone can be considered for public review;
+inspect it before publication, and never publish the private manifest or coverage.
+
+Source findings motivating this probe, not measured explanations of a historical
+snapshot: `route_reply()` returns its `route` label, which the avatar handler
+stores in `served_by`; this is not necessarily the provider's exact model name.
+Two toggle success paths in `route_reply_result()` return before `_ledger()`.
+The ledger timestamp is completion recording, while the avatar history timestamp
+is written later after guards and reply processing. A time-window miss is therefore
+not proof that the model was unrecorded. The merge retains surface only when its
+source supplied one; the interaction writer defaults absent environment surface
+to an empty string. None of these facts identifies the affected historical rows
+without the private diagnostic. No route, feed, logging policy or admission rule
+is modified by this probe.
+
+### Explicit configured-only completion metadata
+
+Two successful toggle branches now write the same foreground completion ledger
+used by other router paths. Their current draft contract exposes text but no
+verified served identity, so these new records carry
+`model_identity_evidence: "configured"`. The model field is the configured name;
+no provider request ID or response-observed identity is fabricated. Existing
+provider calls, return values, fallback order and receipt identity are unchanged.
+Ledger failures are swallowed by the existing recorder and cannot trigger a retry.
+
+The offline attribution reader distinguishes this explicit limitation from an old
+record that lacks an identity-evidence field. Explicit values other than
+`response_metadata` or `runtime_receipt` produce
+`call_model_identity_unobserved`; the call is not promoted to ledger-attributed
+served identity. Existing row labels remain recorded labels. A nearer call with
+this limitation cannot be skipped in favor of a farther call. Wider-window
+coverage similarly reports `sole_call_identity_unobserved`, not a recovery
+opportunity. These explicit evidence labels are still recorded claims, not source
+authentication. Historical unmarked ledger rows retain their previously reviewed
+ledger-attributed tier; this change does not fabricate markers on older data.
