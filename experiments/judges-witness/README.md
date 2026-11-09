@@ -729,3 +729,31 @@ ancestry. Exact content presence proves neither clean origin nor provider
 consumption, semantic influence or client delivery. Other prompt parts, guard
 notes and truncated/over-limit material are outside this bounded manifest. No
 production enablement, full-coverage claim or live feed substitution follows.
+
+
+### Guarded JSON reads during rendering (scratch only)
+
+The rendered manifest optionally carries `guarded-reads-v1` observations from
+`store_guard.load_json` calls made inside each existing renderer. The store is
+never reopened for observation. Receipts retain a digest of the locator spelling
+and a digest of the decoded text actually read, not paths or source text. This is
+not a physical-file identity or a digest of the original encoded bytes. Loaded,
+missing, empty, invalid and unreadable outcomes remain distinct. Defaults are not
+labelled as stored data. No historical generation/source identity is inferred.
+
+Limits are 64 observations and 4194304 hashed Unicode codepoints per renderer
+(including nested observation scopes), at most 64 renderer manifests and 256
+observations per assembly/capture. Over-budget versions carry `over_limit` without
+a fabricated hash; omitted records mark truncation. An omitted entire manifest or
+an invalid optional receipt is unavailable. Scratch packets validate the metadata
+allowlist independently. Existing fragment bindings survive unavailable read
+metadata, and saved offer-record shapes are unchanged.
+
+These are conservative read dependencies: reading a JSON document does not prove
+that every field contributed to the rendered result. All such nodes retain
+`stored_unknown_ancestry`, `complete=false`; the renderer remains incomplete too.
+`clock_basis=selection_completed` is the assembly observation boundary, not file
+creation time or a claimed exact read clock. Direct `open`/`json.load` calls and
+other I/O are outside `guarded_json_only` coverage; an empty list is not proof of
+no dependencies. This increment does not yet capture the value map's generating
+prompt or authenticate its upstream effects. Production remains disabled.

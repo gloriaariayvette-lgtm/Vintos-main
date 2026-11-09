@@ -12,6 +12,7 @@ from importlib import import_module
 _OFFERS_PATH = os.path.expanduser("~/.vintos/workspace/memory/context-offers.json")
 
 from contextvars import ContextVar
+from contextlib import contextmanager
 _selection = ContextVar("inner_selection", default=None)
 _rendered_selection = ContextVar("inner_rendered_selection", default=None)
 
@@ -39,7 +40,45 @@ def _remember_rendered(name, text):
 
 def current_rendered_selection():
     value = _rendered_selection.get()
-    return dict(value, fragments=dict(value["fragments"])) if value is not None else None
+    if value is None:
+        return None
+    from copy import deepcopy
+    return deepcopy(value)
+
+
+@contextmanager
+def _renderer_reads(name):
+    """Optional read observation cannot stop an existing renderer or rerender it."""
+    manager, snapshot = None, None
+    if _rendered_selection.get() is not None:
+        try:
+            from context_selection import observe_reads
+            manager = observe_reads()
+            snapshot = manager.__enter__()
+        except Exception:
+            manager = None
+    try:
+        yield
+    finally:
+        if manager is not None:
+            try:
+                observed = snapshot()
+            except Exception:
+                observed = None
+            try:
+                manager.__exit__(None, None, None)
+            except Exception:
+                observed = None
+            try:
+                value = _rendered_selection.get()
+                if value is not None and observed is not None and name not in value["fragments"]:
+                    reads = dict(value.get("reads", {}))
+                    reads.pop(name, None)
+                    if len(reads) < 64 and sum(len(r["reads"]) for r in reads.values()) + len(observed["reads"]) <= 256:
+                        reads[name] = observed
+                    _rendered_selection.set(dict(value, reads=reads))
+            except Exception:
+                pass
 
 
 def current_selection():
@@ -75,7 +114,7 @@ def _run(mods, offers):
         try:
             from context_selection import readonly
             renderer = getattr(import_module(mod), fn)
-            with readonly():
+            with _renderer_reads(mod), readonly():
                 v = renderer()
             if v:
                 parts.append(v)
@@ -152,7 +191,7 @@ def full_inner_block():
     try:
         from subconscious_context import get_subconscious_context_compact
         from context_selection import readonly
-        with readonly(): s = get_subconscious_context_compact()
+        with _renderer_reads("subconscious_context"), readonly(): s = get_subconscious_context_compact()
         if s:
             rendered = "YOUR INNER STATE (subconscious):\n" + s
             parts.append(rendered)
@@ -163,7 +202,7 @@ def full_inner_block():
     try:
         from conversation_pressure import get_pressure_block
         from context_selection import readonly
-        with readonly(): pb = get_pressure_block()
+        with _renderer_reads("conversation_pressure"), readonly(): pb = get_pressure_block()
         if pb:
             parts.append(pb)
             _remember_rendered("conversation_pressure", pb)

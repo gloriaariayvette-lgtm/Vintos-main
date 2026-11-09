@@ -12,23 +12,38 @@ returned - the next save writes a fresh file, the corrupt bytes stay beside it.
     save_json(path, obj)                -> atomic write (tmp + replace)
     quarantined(limit=20)               -> the reported events
 """
-import os, json, time, shutil
+import os, json, time, shutil, sys
 
 WS = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 LOG = os.path.join(MEMORY, "store-quarantine.jsonl")
 
 
+def _observed_read(path, state, raw=None):
+    # An already loaded optional observer cannot change a store result.
+    try:
+        observer = getattr(sys.modules.get("context_selection"), "observe_store_read", None)
+        if observer is not None:
+            observer(path, state, raw)
+    except Exception:
+        pass
+
+
 def load_json(path, default, reader=""):
     if not os.path.exists(path):
+        _observed_read(path, "missing")
         return default
     try:
         with open(path) as f:
             raw = f.read()
         if not raw.strip():
+            _observed_read(path, "empty", raw)
             return default
-        return json.loads(raw)
+        value = json.loads(raw)
+        _observed_read(path, "loaded", raw)
+        return value
     except (ValueError, UnicodeDecodeError) as e:
+        _observed_read(path, "invalid", locals().get("raw"))
         stamp = time.strftime("%Y%m%d-%H%M%S")
         q = "%s.corrupt-%s" % (path, stamp); k = 1
         while os.path.exists(q):
@@ -47,6 +62,7 @@ def load_json(path, default, reader=""):
         print("[store-guard] %s does not parse (%s); kept at %s; serving the default" % (os.path.basename(path), str(e)[:80], os.path.basename(q)), flush=True)
         return default
     except OSError:
+        _observed_read(path, "unreadable")
         return default
 
 
