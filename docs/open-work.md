@@ -6805,3 +6805,13 @@ effects and count conservation before rendering; 46 isolated checks pass. It als
 checks receipt-based cutoff exclusion without changing producer fields or matching.
 Full Aegis suite and prior private coverage/cost checks remain with review. No
 admission/training decision, live-feed change, enabling, merge or deployment.
+
+
+## 9 November — encoder-cost benchmark ready for host review
+
+`codex/judges-encoder-cost-benchmark` supplies a bounded synthetic scratch CLI and
+25 passing isolated checks. Local 64 MiB observation costs about 42–49 ms per first
+call; this does not establish Aegis cost or scale to real tensors automatically.
+Reviewer can run the documented command without models/private inputs; actual
+loaded-runtime compatibility, parameter-scan overhead, worker throughput and full
+Aegis suite remain pending. No production flag, feed, merge or deployment changed.

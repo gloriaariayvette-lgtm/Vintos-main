@@ -1803,3 +1803,40 @@ missing cutoff-clock count cannot exceed supplied copies. A retained finalized
 receipt can establish cutoff membership even without a usable legacy timestamp;
 this is correctly counted as a known cutoff clock. It does not create a timestamp
 for ledger matching or change historical eligibility.
+
+
+### Synthetic CPU cost benchmark
+
+`benchmark_encoder.py` times the actual FeatureEncoder wrapper around a synthetic
+13-by-768 output and already allocated CPU arrays. It makes no real model calls,
+loads no checkpoint, reads no input store and publishes no capture packets. Receipt
+helpers and parameter-array allocation are outside the timer. Each iteration uses
+a fresh wrapper: bare stub, first observed call (two parameter scans), then a repeat
+without new snapshots. Reports include wall/process-CPU medians and maxima, call
+counts, array byte counts and code hashes; no vectors, parameter values, messages
+or identifiers are written. Each first call must retain observed-equal snapshots
+and the exact return object/call counts, or the run fails without a report.
+
+Run from the reviewed checkout with an existing CPU Python environment containing
+numpy. No install is needed:
+
+```sh
+BENCH_SCRATCH="$(python3 -c 'from pathlib import Path; import tempfile; print(Path(tempfile.mkdtemp(prefix="judges-cost-")).resolve())')"
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided
+```
+
+The CLI refuses live/repository/symlinked roots, existing outputs and paths outside
+explicit 0700 scratch. The replay audit hook denies other writes, rename, process
+launch and network. Results are 0600 in new 0700 directories. Limits are 1–512 MiB
+logical arrays, 1/8/64/128 tensors and 1–10 iterations. Strided arrays allocate twice
+the logical parameter bytes and hashing makes temporary contiguous copies; the
+reported allocation is not peak RSS. Default is 64 MiB, eight tensors, three runs.
+
+Local synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
+first observed-call wall median/max 42.219/43.999 ms contiguous and 49.465/54.537 ms
+strided; repeated-call medians 1.886/1.918 ms respectively. These are measurement
+observations, not performance tests with thresholds. They do not establish real
+encoder cost, tensor-runtime compatibility, end-to-end response latency or Aegis
+acceptance. The benchmark uses numpy buffers, not the loaded tensor library; real
+CPU-runtime overhead and packet/sink behavior remain separate reviewer checks.

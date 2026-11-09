@@ -1846,3 +1846,26 @@ The positive control verifies receipt-based exclusions and zero missing clocks.
 CLI with the optional 30-second view. Generated reports refreshed. Only synthetic
 fixtures and fixed prose/count validation changed; full host suite remains with
 review. No live reads/writes, model calls, sends, enabling, merge or deployment.
+
+
+## 9 November — bounded synthetic encoder-cost benchmark
+
+`codex/judges-encoder-cost-benchmark` provides a scratch-only CLI for the pending
+CPU cost review. It exercises the real feature observer over bounded synthetic
+CPU state, returning fixed aggregate timing/call/byte counts plus code hashes.
+No model load, live store, checkpoint, GPU, network or sink. Guard tests attempt
+outside writes, rename, subprocess and network and verify rejection before output.
+
+25 isolated checks pass: benchmark six, parameter receipts 19. Bounds are checked
+before allocation; unavailable snapshots cannot become successful timing reports.
+CLI permissions, overwrite refusal, live-named roots, symlinks, output privacy,
+exact return identity and scan/call counts are tested without latency thresholds.
+
+Local synthetic 64 MiB/eight-tensor/three-repeat results: first observed-call wall
+median/max 42.219/43.999 ms contiguous, 49.465/54.537 ms strided; repeat medians
+1.886/1.918 ms. Two scans per first call, no extra encoding; 9 stub encodes/6 scans
+per layout. This is observer overhead on local arrays, not loaded-model or Aegis
+performance. Array initialization/helper imports are outside timing; temporary
+copy cost is included, peak RSS is unmeasured. README has exact reviewer commands.
+Generated reports refreshed. No producer/feed behavior change, paid calls, sends,
+enabling, merge or deployment; full host suite remains reviewer work.
