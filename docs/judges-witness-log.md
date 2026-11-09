@@ -3121,3 +3121,44 @@ claim of 50 independent full-suite or host runs. Review remains Claude's.
 The test-only follow-up is on codex/judges-clock-followups above 32bda7e4 for
 inclusion with the three #58 commits. No live/service changes, new real provider
 or model calls, GPU, full-suite duplication, merge or deployment. Heartbeat ACTIVE.
+
+
+## 2026-11-09 — review #60: short aggregate-only judges page
+
+Added experiments/nonllm-judges/GLORIA.md and a stdlib-only render_gloria.py. The
+291-word checked-in page is explicitly an unknown-state template. A private render
+reads existing capture-coverage counts, shows all six judges and their sources,
+keeps partially scoreable areas partial, and labels earliest per-area estimates as
+conditional. Only primary attribution can establish observed scoring; sensitivity
+counts and reference floors never promote it. Recurrence/grouping still wait for
+data and review. Every judge shares no-feelings-verdict/no-live-effect boundaries.
+No test messages are requested. No identifiers, hashes, model labels, paths or
+arbitrary input prose are rendered.
+
+The capture report now provides an exact rolling retained-packet count for the
+24 hours ending at its explicit cutoff. It uses recorded finalization, includes
+identical packet copies as files and makes no complete-stream claim. It does not
+sum calendar-day counts or infer arrival time. The renderer leaves older reports'
+missing windows unknown. Sink status is unknown unless given a separate timestamped
+aggregate reviewer observation; the page says last observed on/off and its date,
+never infers current enablement from past writes. No live config read is added.
+README documents the private command, optional health-count schema and these limits.
+
+The renderer emits Markdown to stdout only. Inputs must be bounded owner-private
+regular files inside an explicit isolated private root; linked, outside-root,
+repository/live-store, duplicate-key and nonfinite inputs refuse with a fixed
+error. Audit guards forbid writes/network/process calls. Unknown metadata cannot
+leak into prose. Private pages remain outside the repository; the public template
+is regenerable using --template. Claude renders private counts and handles any
+authorized delivery. Nothing here sends or publishes the page to Gloria.
+
+52 targeted isolated checks pass: renderer 14, coverage/sufficiency 27, owners 11.
+Tests cover actual report-to-page integration, partial readiness, conditional ETA,
+legacy unknowns, primary/sensitivity separation, metadata privacy, dated health,
+24-hour boundary inclusion/exclusion, duplicates and CLI input refusals. Logs:
+/tmp/judges-s60-page.log, /tmp/judges-s60-coverage.log, /tmp/judges-s60-owners.log.
+Reports regenerated unchanged; diff clean. All data and sends are synthetic/stubbed.
+Branch codex/judges-gloria-page starts above 7bdf5ad1, preserving the earlier review
+branch. No live changes, actual provider/model calls, private records, GPU, full
+suite duplication, merge or deployment. Independent review and private rendering
+remain Claude's; heartbeat ACTIVE.

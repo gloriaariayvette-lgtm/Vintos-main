@@ -779,3 +779,65 @@ have no ETA. A zero ETA means the existing evaluator has actually produced a sco
 in that scope; count sufficiency alone never asserts readiness or a positive outcome.
 These are conditional planning estimates, not promises of future evidence quality
 or instructions to generate conversations for tests.
+
+### Gloria's short page from aggregate counts
+
+`render_gloria.py` renders [GLORIA.md](GLORIA.md) without loading messages, features,
+weights or judges. The checked-in page is explicitly an **unknown-state template**,
+not a private run or a claim about today's live setup. Regenerate that template with
+`python3 experiments/nonllm-judges/render_gloria.py --template`.
+
+For a private page, save the existing capture report's JSON in the approved 0700
+scratch root as a 0600 file, then run:
+
+```sh
+python3 experiments/nonllm-judges/render_gloria.py \
+  --scratch "$SCRATCH" --counts "$SCRATCH/coverage-counts.json"
+```
+
+The page goes to stdout. If retaining it, use a **new 0600 private file outside the
+repository**. Do not commit real-run pages or replace the public template with one.
+No scoring/encoding, network, subprocess or filesystem writes occur in this CLI.
+Only fixed prose, validated counts and parsed dates reach the page. Arbitrary
+metadata is ignored. Failures use a fixed error without echoing paths or inputs.
+The renderer refuses linked/nonprivate/out-of-root/repository/live-store inputs,
+nonregular files, duplicate JSON keys, nonfinite values and files above 4 MiB.
+
+The capture report now includes `cutoff_at` and `capture_window`: the exact trailing
+24-hour interval `[cutoff - 86400 seconds, cutoff)`, counting retained packet files
+by their recorded finalization, including identical copies as separate packets.
+This is not a sum of calendar-day buckets, an arrival-time measurement, or proof of
+a complete stream. Unknown-order raw capture clocks remain observation labels.
+Older aggregate reports without this field show an unknown 24-hour count, not zero.
+
+Sink status cannot be inferred from old packets or `status.json` write counters.
+An optional `--sink-health "$SCRATCH/sink-health-counts.json"` accepts only the
+reviewer's separate, timestamped aggregate observation, for example this **synthetic**
+shape:
+
+```json
+{"schema":"judge-sink-health-counts-v1","enabled":true,"observed_at":"2020-02-01T00:00:00Z"}
+```
+
+`enabled` is true, false or null. The timestamp needs an offset and must not exceed
+the counts cutoff. Only supply an actual reviewer observation of the intended
+sink's configuration/runtime state, never infer it from file existence or counts.
+The page says **last observed on/off**, with the observation time; absent/null
+status stays unknown. This renderer neither reads live configuration nor verifies
+the supplied observation independently. It does not expose a destination.
+
+Readiness comes only from `primary_10s` observed-scoreability flags in the supplied
+sufficiency counts. The overlapping `window30` view never promotes readiness or
+adds to it. Partial readiness stays partial across mode/surface/item-kind areas.
+Voice/drift use assessment, humor/taste use the first similarity comparison; the
+latter does not imply the stronger empirical-rank stage is available. Count floors
+alone cannot yield “scoring.” Earliest estimates refer to one qualifying area and
+are explicitly conditional, not a deadline for all areas. Missing rates, inputs or
+estimates remain unknown. Recurrence and grouping still need their reviewed offline
+connection; ordinary data accumulation alone does not make those adapters exist.
+The renderer trusts the aggregate report's measurements, not its arbitrary prose.
+
+Every judge's page explains its observations and sources, and the shared boundary:
+no verdict on feelings and no effect on replies, memory or choices. It asks for no
+test messages. Claude performs the independent private render and any authorized
+handoff; this tool sends nothing.

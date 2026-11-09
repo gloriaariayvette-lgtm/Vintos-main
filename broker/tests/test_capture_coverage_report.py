@@ -40,6 +40,18 @@ class Tests(unittest.TestCase):
             '--cutoff',CUTOFF,*args],capture_output=True,text=True,timeout=45,
             env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1'))
 
+    def test_rolling_capture_count_is_exact_and_not_a_calendar_day_sum(self):
+        at=C.W.instant(self.packets[0]['witness_receipt']['finalized_at'])
+        for hours,expected in ((0,0),(24,1),(24.0001,0)):
+            with self.subTest(hours=hours):
+                r=C.report([self.packets[0]],at+hours*3600,zone='America/Chicago')
+                self.assertEqual(r['capture_window']['retained_packets'],expected)
+                self.assertFalse(r['capture_window']['complete_stream_attested'])
+        r=C.report([self.packets[0],copy.deepcopy(self.packets[0])],at+1)
+        self.assertEqual(r['capture_window']['retained_packets'],2)
+        self.assertEqual(self.total(r,'replies'),1)
+        self.assertEqual(C.report([],at+1)['capture_window']['retained_packets'],0)
+
     def test_packet_only_reports_coverage_without_inventing_scores_or_freezes(self):
         r=self.report();self.assertEqual(self.total(r,'packets'),32)
         self.assertEqual(self.total(r,'provider_reported_served_model'),32)

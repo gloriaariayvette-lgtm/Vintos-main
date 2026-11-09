@@ -3,7 +3,7 @@
 import argparse
 from collections import Counter, defaultdict
 import copy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 import math
@@ -145,13 +145,14 @@ def report(packets, cutoff, zone='America/Chicago', bundle=None, landings=None):
     cutoff = W.instant(cutoff); tz = ZoneInfo(zone)
     if not isinstance(packets, list) or len(packets) > MAX_FILES: raise ValueError('packet bound')
     nodes = X.snapshot_nodes([('capture', packets)], [])
-    groups = defaultdict(list); days = {}; packet_counts = Counter(); outside = 0
+    groups = defaultdict(list); days = {}; packet_counts = Counter(); outside = 0; recent_packets = 0
     for raw in packets:
         # Dates describe the recorded finalization, never file mtime or today's date.
         receipt = W.row_receipt(raw)
         at = W.instant(raw.get('witness_receipt', {}).get('finalized_at'))
         if at >= cutoff:
             outside += 1; continue
+        if at >= cutoff - 86400: recent_packets += 1
         day = datetime.fromtimestamp(at, tz).date().isoformat()
         packet_counts[day] += 1
         key = raw.get('turn_id')
@@ -232,6 +233,11 @@ def report(packets, cutoff, zone='America/Chicago', bundle=None, landings=None):
         for field in ('provider_reported_served_model', 'full_lineage', 'original_act_bindings'):
             cell[field + '_share'] = cell[field] / n if n else None
     return dict(schema='capture-coverage-counts-v1', timezone=zone, days=list(daily.values()),
+                cutoff_at=datetime.fromtimestamp(cutoff, timezone.utc).isoformat(),
+                capture_window=dict(hours=24, retained_packets=recent_packets,
+                    start_inclusive=datetime.fromtimestamp(cutoff-86400, timezone.utc).isoformat(),
+                    end_exclusive=datetime.fromtimestamp(cutoff, timezone.utc).isoformat(),
+                    complete_stream_attested=False),
                 packets_outside_cutoff=outside, scoring=scoring,
                 recurrence_and_grouping='not_evaluated_no_retained_adapter',
                 drift_count_unit='replies_in_assessed_daily_windows_not_shift_verdicts',
