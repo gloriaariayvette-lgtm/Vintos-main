@@ -6385,3 +6385,16 @@ outputs and persisted offer schema are preserved. Missing/ambiguous matches stay
 explicit; generated ancestry and client delivery remain unknown. 223 affected
 isolated checks pass. Full upstream producer coverage, independent Aegis review
 and separately approved production enablement remain outstanding.
+
+
+## 8 November — guarded renderer read producer
+
+`codex/judges-renderer-read-receipts` adds bounded scratch observations of actual
+`store_guard.load_json` reads during rendering, with exact decoded-version hashes
+and outcome states. Unknown stored ancestry remains unknown; direct file reads,
+value-map generation dependencies, delivery acknowledgement and production
+capture enablement remain open. Submitted eb16fce1 is untouched. Independent full
+Aegis review remains with the reviewer; the private snapshot rerun follows producer
+coverage work and is not duplicated here.
+323 affected isolated checks pass on the final increment; this is synthetic
+validation only. No private snapshot was read or rescored.

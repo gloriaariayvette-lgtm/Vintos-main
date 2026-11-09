@@ -804,3 +804,31 @@ selected generation result; corrected to supply an invented observed result.
 Reports regenerated and whitespace checked. No private-data run, model calls,
 real test sends, live writes, merge or deploy. Full independent Aegis suite/review,
 upstream dependency producers, delivery acknowledgement and enablement remain open.
+
+
+## 8 November — partial renderer read receipts
+
+`codex/judges-renderer-read-receipts` continues from eb16fce1 while that submitted
+tip is independently reviewed (coordination note 18). Existing guarded JSON reads
+can now supply bounded context-local version/outcome receipts during rendering.
+No extra store reads, renderer calls, saved offer fields or feed changes. Capture
+validates optional metadata and adds incomplete stored-parent nodes to the exact
+fragment. Source text and locator strings are never persisted in those receipts.
+
+Synthetic acceptance includes actual compact causal rendering against a temporary
+store, version changes after rendering, defaults/error outcomes, unchanged
+read-only write denial, old/failing APIs, capture-off output, nested/interleaved
+contexts, immutable snapshots, size/count limits and invalid optional metadata.
+Direct reads remain outside coverage; no full ancestry or census improvement is
+claimed. Repeated renderer names retain the first rendered fragment and its own
+read version; an earlier empty output cannot donate parents to a later fragment.
+Final affected-suite results are recorded below after completion.
+
+323 affected isolated checks pass: renderer reads 12, rendered fragments 11,
+store guard 32, capture 27, capture/replay 9, hooks 21, witness 106, architecture
+admission 5, lounge 46, journal 18, partials 25, ownership 11. Reports regenerated;
+whitespace checked. The final renderer suites were rerun after adding the
+same-name/version-binding regression. These are synthetic contract checks, not
+private-data eligibility or live performance measurements. No model calls, real
+test sends, live writes, merge or deploy. Full independent Aegis suite/review and
+remaining upstream producers are still open.

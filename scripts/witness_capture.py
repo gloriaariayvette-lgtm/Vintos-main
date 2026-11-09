@@ -18,6 +18,32 @@ def _fingerprint(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
+def _guarded_reads(value):
+    """Validate optional read metadata without admitting paths, text or origin claims."""
+    if (not isinstance(value, dict) or set(value) != {"schema", "coverage", "reads", "truncated"}
+            or value.get("schema") != "guarded-reads-v1" or value.get("coverage") != "guarded_json_only"
+            or type(value.get("truncated")) is not bool or not isinstance(value.get("reads"), list)
+            or len(value["reads"]) > 64):
+        return None
+    for item in value["reads"]:
+        if (not isinstance(item, dict) or not {"resource_sha256", "state"} <= set(item)
+                or set(item) - {"resource_sha256", "state", "decoded_sha256", "version_state"}
+                or item["state"] not in ("loaded", "missing", "empty", "invalid", "unreadable")):
+            return None
+        for field in ("resource_sha256", "decoded_sha256"):
+            if field not in item and field == "decoded_sha256":
+                continue
+            h = item.get(field)
+            if not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
+                return None
+        if ("version_state" in item and item["version_state"] != "over_limit"
+                or "version_state" in item and "decoded_sha256" in item
+                or item["state"] in ("missing", "unreadable") and len(item) != 2
+                or item["state"] in ("loaded", "empty") and not ("decoded_sha256" in item or "version_state" in item)):
+            return None
+    return deepcopy(value)
+
+
 class Invocation:
     """One handler invocation, including its returned root and observed stages.
 
@@ -150,12 +176,26 @@ class Capture:
         if not set(fragments) <= offered:
             raise ValueError("fragment lacks matching offer")
         nodes, retained = [], []
+        read_manifests = value.get("reads", {})
+        read_count = 0
         for i, (organ, text) in enumerate(sorted(fragments.items())):
             key = self.context_id + ":rendered-%d" % i
-            nodes.append({"id": key, "kind": "context", "at": selections[0]["at"],
+            node = {"id": key, "kind": "context", "at": selections[0]["at"],
                           "complete": False, "parents": [], "origin": "generated_unknown_ancestry",
                           "selection_id": value["selection_id"], "organ": organ,
-                          "rendered_sha256": digest(text)})
+                          "rendered_sha256": digest(text), "read_observation": "unavailable"}
+            reads = _guarded_reads(read_manifests.get(organ)) if isinstance(read_manifests, dict) else None
+            if reads is not None and read_count + len(reads["reads"]) <= 256:
+                node.update(read_observation="partial", read_coverage=reads["coverage"],
+                            reads_truncated=reads["truncated"])
+                for j, observation in enumerate(reads["reads"]):
+                    read_key = key + ":read-%d" % j
+                    node["parents"].append(read_key)
+                    nodes.append(dict(observation, id=read_key, kind="context", at=selections[0]["at"],
+                                      complete=False, parents=[], origin="stored_unknown_ancestry",
+                                      observation="guarded_json_read", clock_basis="selection_completed"))
+                read_count += len(reads["reads"])
+            nodes.append(node)
             retained.append((key, organ, text))
         self._nodes.extend(nodes)
         self._rendered_fragments = retained

@@ -78,3 +78,19 @@ Identical offers from multiple organs and repeated occurrences are ambiguous.
 Generated parent chains, client delivery and production enablement remain open.
 The source locations above describe the d22d4032 review baseline, not new line
 numbers after this implementation.
+
+
+## Implementation follow-up: guarded reads inside renderers
+
+`codex/judges-renderer-read-receipts` adds opt-in context-local observation to the
+existing `store_guard.load_json` return path and binds its metadata to the renderer
+that was executing. This records actual reads instead of a static list of possible
+inputs, without reopening stores or rerendering. One synthetic integration uses
+the existing compact causal self-model renderer against a scratch store.
+
+Read edges are conservative: individual fields' contribution is not established.
+Only guarded JSON reads are covered. Direct file reads (including the value map's
+own generation input assembly), cached/in-memory source history and trusted client
+acknowledgements remain unfinished. Neither generated material nor its stored
+parents becomes complete or clean merely because its hash is known. Version and
+resource digests remain private scratch metadata, never public measurement rows.
