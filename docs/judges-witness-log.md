@@ -1917,3 +1917,21 @@ prove deployment. docs/judges-source-coverage.md records exact source pointers,
 synthetic fixture discriminators and the bounded check on the existing private
 copy. Nine historical source assertions passed; no old module execution, private
 inputs or test sends. No production code, matching, admission or stores changed.
+
+
+## 9 November — byte-bounded burst capacity
+
+Read reviewer note 28: reported integration c499460e, full suites 633/633 deploy
+and 636/636 live; host burst still retained 9/30 with the eight-slot queue.
+`codex/judges-burst-capacity` raises slots to 64 but independently caps queued
+serialized bytes at 8 MiB, plus at most one 1 MiB in-flight packet. Reservations
+and releases use the existing queue mutex; overflow skips without eviction or a
+storage wait. No disk-format/config/counter-key change. Queue remains volatile.
+
+66 affected isolated checks pass: deferred queue 26, sink 19, hooks 21. New
+regressions first failed the thirty-packet burst plus two missing byte-bound APIs.
+The stalled-writer fixture now retains all thirty roughly 24 KB packets; concurrent
+large submissions hold the 8 MiB bound, and failures/drains release capacity.
+These are local synthetic contracts, not host latency acceptance. Durable spool,
+restart replay and host cost tests remain open; no claim of restart survival.
+No live inputs, enabling, sends, model calls, merge or deployment.

@@ -6843,3 +6843,14 @@ fixes added test isolation. Review must compare the documented synthetic fixture
 shape and execution evidence against the existing private copied records before
 assigning any origin. This is a new concrete candidate, not a demonstrated cause
 of the retained router-chat endpoint. No attribution or training change is made.
+
+
+## 9 November — burst capacity fixed locally; durable spool still open
+
+Review note 28 reports integration through f7eccc6e as c499460e and full host
+suites passed. `codex/judges-burst-capacity` adds 64 queue slots under the existing
+8 MiB queued-payload budget; 66 affected isolated checks pass, including retention
+of thirty small packets while publication is stalled. Review should remeasure
+host burst retention/latency. Restart persistence is not solved: durable staging,
+bounded replay, idempotent publication and config/disable behavior remain work.
+Do not equate an in-memory enqueue with durable receipt or phone delivery.

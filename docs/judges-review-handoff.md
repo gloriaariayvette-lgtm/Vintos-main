@@ -130,3 +130,24 @@ See judges-source-coverage.md for exact revisions, import-path limitations and
 the check against the existing private copy. Nine source assertions passed; no
 runtime code or historical attribution changed. Retained-row origin is still
 unconfirmed, and no new private collection or deployment is requested.
+
+
+## Reviewer note 28 and burst-capacity increment
+
+Reviewer reports integration through f7eccc6e as c499460e, with full Aegis suites
+633/633 deploy and 636/636 live. This is reviewer-reported integration, not a claim
+of deployment by this worker. The prospective reply-join observer runs even with
+capture off: ledger rows gain completion ID/response hash, saved history gains
+`generation_join`, and the two toggle draft paths record provider-response model
+identity when available. Routing, text and exception behavior remain unchanged.
+Those metadata paths are separate from optional witness capture.
+
+`codex/judges-burst-capacity` is stacked after 1feb34e5, retaining the two later
+attribution/reporting and historical-source commits. It raises FIFO slots to 64
+under an independent 8 MiB byte budget (plus one in flight), with 66 local isolated
+checks passed. Host burst/cost acceptance remains review work. Queue persistence
+and restart replay are still open; this increment makes no durability claim.
+The two missing toggle ledger writes were already fixed in d3dd754a and covered by
+the router completion suite in the prior 393-check checkpoint; no duplicate fix is
+made for that item. Historical chat origin and surface-less copies remain pending
+private evidence, with the concrete test-origin lead documented separately.

@@ -210,9 +210,33 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
         if directory is not None: os.close(directory)
 
 
-# Eight pending immutable packets plus one in flight, each at most MAX_PACKET.
+# Up to 64 pending packets, with eight MiB of serialized payload plus one in flight.
 # This is a volatile per-process queue, not a durability or delivery receipt.
-DEFERRED_SLOTS = 8
+DEFERRED_SLOTS = 64
+DEFERRED_BYTES = 8 * MAX_PACKET
+
+
+class CaptureQueue(queue.Queue):
+    """FIFO bounded by both packet count and bytes; hooks run under Queue's mutex."""
+    def __init__(self):
+        self.queued_bytes = 0
+        self.byte_limit = DEFERRED_BYTES
+        super().__init__(maxsize=DEFERRED_SLOTS)
+
+    def _put(self, item):
+        size = 0 if item is None else len(item[1])
+        if self.queued_bytes + size > self.byte_limit:
+            raise queue.Full
+        super()._put(item)
+        self.queued_bytes += size
+
+    def _get(self):
+        item = super()._get()
+        if item is not None:
+            self.queued_bytes -= len(item[1])
+        return item
+
+
 _writer = None
 _writer_lock = threading.Lock()
 _deferred_pending = {}  # At most eight configuration-scoped scalar counter batches.
@@ -303,7 +327,7 @@ def enqueue_capture(root, packet):
             return False
         try:
             if _writer is None:
-                pending = queue.Queue(maxsize=DEFERRED_SLOTS)
+                pending = CaptureQueue()
                 thread = threading.Thread(target=_write_queued, args=(pending,), name='judges-capture-writer', daemon=True)
                 thread.start()
                 _writer = (os.getpid(), pending, thread)

@@ -119,9 +119,10 @@ attribution and separately retained evaluation inputs remain distinct tasks.
 
 The avatar's final `finish_shadow(..., defer=True)` freezes the completed packet
 as immutable JSON bytes and offers it to one lazy daemon writer per process.
-Eight pending packets plus one in flight, each at most 1 MiB, bound retained queue
-payloads to 9 MiB per serving process (temporary serialization and Python object
-costs are additional). A full queue or busy initialization lock skips capture.
+Up to 64 pending packets share an 8 MiB serialized-payload budget, plus one in
+flight at most 1 MiB. Retained queue payloads stay bounded to 9 MiB per serving
+process (temporary serialization and Python object costs are additional). Either
+a full slot/byte budget or a busy initialization lock skips capture.
 The handler does not wait for filesystem scans, cross-process sink locks, fsync,
 or a free queue slot. Packet finalization, serialization, configuration checks and
 thread startup still occur on the handler path. This is not a zero-cost hook.
@@ -204,9 +205,37 @@ so replaying it could double-count. This deliberately permits undercount. Fork
 children discard inherited pending diagnostic deltas along with the packet queue;
 there is still no exit flush or restart recovery claim.
 
-The packet FIFO remains eight slots plus one in flight (at most nine MiB of payload).
-Increasing it would only move the overflow point, and coalescing distinct reply
-packets would erase evidence. Only diagnostics are coalesced. The last packet of a
+The packet FIFO now permits 64 slots within an 8 MiB queued-byte limit, plus one
+in flight (at most nine MiB of retained payload). This moves the small-packet burst
+limit while preserving the previous payload-memory bound. It does not prevent all
+overflow, and coalescing distinct replies would erase evidence. Only diagnostics
+are coalesced. The last packet of a
 batch can now cause a second background directory scan/status flush; occupied-sink
 worker throughput and reply latency need fresh Aegis measurements for this revision.
 The earlier response timing is not presented as acceptance of these new writes.
+
+
+## Burst-capacity follow-up and remaining restart work
+
+Review note 28 measured 9/30 retention for back-to-back packets and 30/30 at 50 ms
+spacing with the former eight-slot queue. The revised FIFO admits 64 small packets
+while retaining an independent 8 MiB byte ceiling. Both reservations use the
+queue's mutex; a rejected packet neither evicts older work nor reserves bytes.
+Removing an item releases its queue bytes; one in-flight payload is budgeted
+separately. Full-slot and full-byte rejections share the existing `full` counter.
+
+A local synthetic test stalls the actual writer, admits thirty roughly 24 KB
+packets, then verifies all thirty persisted exactly once after release. Other
+fixtures cover slot overflow, byte overflow, concurrent byte reservations, failure
+and drain behavior, disable/retarget, fork and exit. 66 affected isolated checks
+pass (queue 26, sink 19, handler hooks 21). These are contract results, not fresh
+Aegis throughput or latency measurements.
+
+Restart recovery is NOT implemented by this increment. A future spool must bound
+bytes and records, use owner-private files, preserve original packet/config identity,
+and avoid duplicate publication after a crash between publish and acknowledgement.
+An asynchronous spool still loses items before its first durable write; it cannot
+make `enqueue_capture` a durable acknowledgement. Waiting for file/directory fsync
+would add foreground I/O and needs separate measured latency evidence. Until that
+contract is implemented and tested, accepted-in-memory and restart-loss-unknown
+remain the truthful behavior. No boot service, exit flush or new flag is installed.
