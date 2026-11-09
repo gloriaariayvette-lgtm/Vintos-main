@@ -1188,3 +1188,13 @@ This is report scaffolding, tested on synthetic runs. It can format the reviewer
 counts-only snapshot result without changing that result or enabling any live feed.
 No real-data report is bundled. Keep generated reports private until aggregate
 publication has been reviewed; the formatter does not publish anything.
+
+The review also renders the optional excerpt-control coverage already computed by
+replay: all admitted replies, unique targets with/without scorable forecasts,
+forecast rows with/without pairs, paired unique targets, and forecast rows outside
+complete declared blocks. Forecast-pair and distinct-target fractions use separate
+explicit denominators. A zero denominator is undefined, never 0%; absent coverage
+is not filled in. The formatter checks these totals against the census, innovation
+and comparison counts and refuses inconsistent evidence. It does not sum comparison
+rows to invent a unique-target count. Per-block/day activity and arbitrary nested
+coverage labels are omitted; no selection or score is recomputed.

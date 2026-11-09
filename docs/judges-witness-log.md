@@ -1295,3 +1295,23 @@ numbers, manifest/output tampering, scratch/symlink/no-overwrite rules and priva
 permissions. Reports regenerated. No model/paid call, actual test send, live write,
 merge or deployment. Previous submitted tips remain fixed; full Aegis suite and
 private census remain with the reviewer.
+
+## 8 November — review coverage denominators
+
+`codex/judges-review-coverage` extends the pending shadow formatter to display the
+existing optional excerpt-control coverage beside paired scores. Unique replies,
+scorable targets and forecast rows retain different denominators. Missing pairs
+and predictions remain visible; multiple checkpoints cannot inflate unique-target
+coverage. Zero denominators are undefined, while omitted coverage stays unsupplied.
+Cross-report counts must agree with the census, innovation groups and comparison
+rows. Private block labels and day activity remain omitted; no scores or selection
+are recomputed and no data is collected.
+
+68 affected isolated checks pass: new report coverage 9, formatter 15, excerpt
+controls 20, baseline coverage 13 and ownership 11. The new tests use actual
+synthetic producer/replay outputs, including one target with two checkpoints,
+missing receipts, no forecasts, unfinished blocks and inconsistent counts.
+Required reports regenerated; whitespace clean. The reviewer's private census
+remains in progress per note 22; no actual measurement is claimed or duplicated.
+Full Aegis suite/review remain there. No live writes, model/paid calls, actual test
+sends, merge or deployment; submitted previous branch tips remain fixed.

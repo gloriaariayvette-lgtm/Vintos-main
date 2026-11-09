@@ -29,6 +29,43 @@ def number(value, low=0, high=None):
     return format(value, '.6g')
 
 
+def excerpt_coverage(section, eligible, scorable):
+    """Report supplied distinct-target and forecast-row denominators separately."""
+    lines = ['## Observed excerpt-control coverage', '']
+    if section is None:
+        return lines + ['Not configured.', '']
+    if 'coverage' not in section:
+        return lines + ['Coverage not supplied. Paired score counts alone do not establish target coverage.', '']
+    c = section['coverage']
+    keys = ('admitted_replies_before_cutoff', 'targets_with_scorable_forecast',
+            'targets_without_scorable_forecast', 'scorable_forecasts_before_cutoff',
+            'paired_forecasts', 'paired_targets', 'scorable_forecasts_without_pair',
+            'scorable_forecasts_outside_complete_blocks')
+    values = {key: count(c[key]) for key in keys}
+    admitted, targets, missing, forecasts, pairs, paired_targets, unpaired, outside = (values[k] for k in keys)
+    if (admitted != eligible or forecasts != scorable or targets + missing != admitted
+            or targets > forecasts or bool(targets) != bool(forecasts)
+            or pairs + unpaired != forecasts or paired_targets > targets or paired_targets > pairs
+            or bool(pairs) != bool(paired_targets) or outside > unpaired
+            or pairs != sum(count(p['n']) for p in section['paired_groups'])):
+        invalid()
+    lines += [f'- Unique eligible replies: {admitted}.',
+              f'- Unique targets with a scorable forecast: {targets}; without one: {missing}.',
+              f'- Scorable forecast rows: {forecasts}; paired with both excerpt controls: {pairs}; without a pair: {unpaired}.',
+              f'- Unique targets represented in paired comparisons: {paired_targets}.',
+              f'- Scorable forecast rows outside complete declared blocks: {outside}.', '']
+    if not forecasts:
+        lines += ['Forecast pair coverage is undefined because there are no scorable forecasts.', '']
+    else:
+        lines += [f'Forecast pair coverage: {pairs}/{forecasts} scorable forecast rows. This is not a fraction of all replies.', '']
+    if not targets:
+        lines += ['Distinct-target pair coverage is undefined because there are no scorable targets.', '']
+    else:
+        lines += [f'Distinct-target pair coverage: {paired_targets}/{targets} targets with scorable forecasts.', '']
+    lines += ['These are supplied-data counts. Repeated checkpoints can contribute multiple forecasts for one target; no target count is inferred by summing comparison rows. Per-day block activity and private block labels are omitted.', '']
+    return lines
+
+
 def render(report):
     """Only fixed prose and validated numbers leave this projection.
 
@@ -122,6 +159,7 @@ def render(report):
             lines.extend(['', 'Each row compares identical targets within one checkpoint group and evaluation block. Rows are not pooled; full-reply and excerpt controls are different comparisons.', ''])
         comparisons(innovation['baselines'], 'paired_head_mean_error', 'Full-reply controls')
         comparisons(report.get('self_input_baselines'), 'head_error', 'Observed excerpt-input controls')
+        lines += excerpt_coverage(report.get('self_input_baselines'), eligible, total)
         lines += ['## Interpretation limits', '',
                   'No confidence interval or pass decision is inferred from group means. A supplied block declaration is not proof of preregistration or an untouched evaluation.',
                   'Missing origin, delivery, ancestry or clock evidence remains missing. This report neither repairs it nor enables a feed.',

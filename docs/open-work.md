@@ -6569,3 +6569,10 @@ pass. It does not rerun the census, infer missing observations or make a pass cl
 The reviewer is running the real snapshot census; its measured coverage is still
 pending for the actual shadow report. Full Aegis validation/review remain there.
 No feed or production change; generated reports stay private until reviewed.
+
+## 8 November — review coverage denominators
+
+`codex/judges-review-coverage` exposes the existing paired-control coverage in the
+private shadow report, distinguishing forecast rows from unique target replies and
+undefined fractions from zero. 68 affected isolated checks pass. Measured census
+results and full Aegis suite remain with the reviewer; no live or scoring change.
