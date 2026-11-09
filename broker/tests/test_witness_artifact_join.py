@@ -172,6 +172,56 @@ class Tests(unittest.TestCase):
         summary,_=self.state('bound_full_text',sources,admitted,packet)
         self.assertEqual(summary['forecast_target_selection'],'not_evaluated')
 
+    def test_raw_and_readout_vectors_are_mixed_not_an_encoder_conflict(self):
+        import jepa_readout as readout
+        sources, admitted, audit, ex = self.make()
+        audit['emb'] = [3., 4.]
+        normalized = readout.units(audit['emb']).tolist()
+        art = A.forecast_artifacts([ex], {ex['his'][:400]: normalized},
+            {'_witness_checkpoint': self.manifest}, {'checkpoint_id': self.manifest['checkpoint_id']})
+        forecast = {'schema': 'self-forecast-artifacts-v1', 'artifacts': art}
+        from test_witness_review_report import M
+        for values in ([audit, forecast], [forecast, audit]):
+            summary, details = J.join_artifacts(admitted, sources, self.nodes, values, 1000)
+            self.assertEqual(summary['states'], {'mixed_vector_representations': 2})
+            self.assertEqual(summary['bound_unique_replies'], 0)
+            self.assertEqual({d['vector_representation'] for d in details},
+                             {'encoder_return_v1', 'readout_units_v1'})
+            rendered = '\n'.join(M.artifact_coverage(summary, 1))
+            self.assertIn('Conflicting-vector references: 0; mixed vector representations: 2', rendered)
+            self.assertNotIn(self.row['content'], rendered)
+        # Even identical numbers do not establish identical processing contracts.
+        audit['emb'] = normalized
+        summary, _ = J.join_artifacts(admitted, sources, self.nodes, [audit, forecast], 1000)
+        self.assertEqual(summary['states'], {'mixed_vector_representations': 2})
+
+    def test_missing_representation_is_not_reconstructed_from_packet_schema(self):
+        sources, admitted, packet, _ = self.make()
+        old = copy.deepcopy(packet); old.pop('vector_representation')
+        summary, details = self.state('bound_full_text', sources, admitted, old)
+        self.assertIsNone(details[0]['vector_representation'])
+        other = copy.deepcopy(old); other['emb'] = [3., 4.]
+        summary, _ = J.join_artifacts(admitted, sources, self.nodes, [old, other], 1000)
+        self.assertEqual(summary['states'], {'vector_representation_unobserved': 2})
+        summary, _ = J.join_artifacts(admitted, sources, self.nodes, [old, packet], 1000)
+        self.assertEqual(summary['states'], {'mixed_vector_representations': 2})
+
+    def test_representation_must_match_the_explicit_producer_contract(self):
+        sources, admitted, packet, _ = self.make()
+        for value in ('readout_units_v1', 'invented', None, False, {}):
+            bad = copy.deepcopy(packet); bad['vector_representation'] = value
+            with self.assertRaises(ValueError):
+                J.join_artifacts(admitted, sources, self.nodes, [bad], 1000)
+
+    def test_same_representation_conflict_is_not_hidden_by_mixed_packet(self):
+        sources, admitted, packet, ex = self.make()
+        bad = copy.deepcopy(packet); bad['emb'] = [1., 0.]
+        art = A.forecast_artifacts([ex], {ex['his'][:400]: [.8, .6]},
+            {'_witness_checkpoint': self.manifest}, {'checkpoint_id': self.manifest['checkpoint_id']})
+        forecast = {'schema': 'self-forecast-artifacts-v1', 'artifacts': art}
+        summary, _ = J.join_artifacts(admitted, sources, self.nodes, [packet, bad, forecast], 1000)
+        self.assertEqual(summary['states'], {'conflicting_vector_observations': 3})
+
     def test_cleanup_contract_matches_actual_reader(self):
         tree=ast.parse((ROOT/'scripts/jepa_self_head.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='his_words')

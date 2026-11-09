@@ -68,6 +68,9 @@ def claims(packet):
                 or not 1 <= value['encoder_input_chars'] <= 400):
             raise ValueError('invalid retained input identity')
         vector_sha = _vector(value.get('emb'))
+        expected = 'encoder_return_v1' if schema == 'self-audit-embedding-v1' else 'readout_units_v1'
+        if 'vector_representation' in value and value['vector_representation'] != expected:
+            raise ValueError('invalid retained vector representation')
         yield ref, value, manifest['checkpoint_id'], vector_sha
 
 
@@ -96,12 +99,13 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
         if not isinstance(packet, dict):
             raise ValueError('invalid artifact packet')
         unique[fingerprint(packet)] = packet
-    details, vectors = [], defaultdict(set)
+    details, vectors = [], defaultdict(lambda: defaultdict(set))
     for packet_sha, packet in sorted(unique.items()):
         for index, (ref, value, checkpoint, vector_sha) in enumerate(claims(packet)):
             item = {'packet_sha256': packet_sha, 'reference_index': index,
                     'checkpoint_id': checkpoint, 'encoder_input_sha256': value['encoder_input_sha256'],
                     'vector_sha256': vector_sha, 'turn_id': None, 'final_response_sha256': None,
+                    'vector_representation': value.get('vector_representation'),
                     'state': 'missing_source_observation'}
             details.append(item)
             observed = ref.get('reply_source')
@@ -155,12 +159,18 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
                 item['state'] = 'input_transform_mismatch'; continue
             item['state'] = 'bound_full_text' if encoded == final else 'bound_excerpt'
             group = (checkpoint, tid, digest(final), value['encoder_input_sha256'])
-            vectors[group].add(vector_sha)
+            vectors[group][value.get('vector_representation')].add(vector_sha)
             item['_group'] = group
     for item in details:
         group = item.pop('_group', None)
-        if group is not None and len(vectors[group]) > 1:
-            item['state'] = 'conflicting_vector_observations'
+        if group is not None:
+            representations = vectors[group]
+            if any(rep is not None and len(hashes) > 1 for rep, hashes in representations.items()):
+                item['state'] = 'conflicting_vector_observations'
+            elif len(representations) > 1:
+                item['state'] = 'mixed_vector_representations'
+            elif len(representations.get(None, ())) > 1:
+                item['state'] = 'vector_representation_unobserved'
     states = Counter(item['state'] for item in details)
     matched = [item for item in details if item['state'] in ('bound_full_text', 'bound_excerpt')]
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),

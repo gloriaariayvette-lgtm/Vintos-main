@@ -69,6 +69,7 @@ def forecast_artifacts(exchanges, bank, model, forecast):
                          'normalized_reply_sha256': digest(text), 'encoder_input_sha256': digest(encoded),
                          'encoder_input_chars': len(encoded), 'emb': vector(bank[encoded]),
                          'transform': 'normalized_exchange_his_first_400_codepoints',
+                         'vector_representation': 'readout_units_v1',
                          'source_identity': 'unverified', 'encoder_id': None,
                          'reply_source': bound_source(row.get('_witness_reply_source'), text, row.get('turn_id'))})
     return {'checkpoint': manifest, 'recent_own_embeddings': retained,
@@ -123,6 +124,7 @@ class AuditEncoder:
                 packet = {'schema': 'self-audit-embedding-v1', 'checkpoint': self.manifest,
                           'encoder_input_sha256': digest(text), 'encoder_input_chars': len(text),
                           'transform': 'ledger_vintos_strip_first_400_codepoints',
+                          'vector_representation': 'encoder_return_v1',
                           'emb': values, 'source_refs': refs, 'source_identity': 'unverified',
                           'coverage': 'self_texts_encoded_by_existing_ranking_audit',
                           'target_selection': 'unasserted', 'encoder_id': None,

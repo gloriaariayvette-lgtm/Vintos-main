@@ -85,6 +85,7 @@ class Tests(unittest.TestCase):
         self.assertTrue(np.allclose(refs[-1]['emb'], np.array([1., 2.]) / np.sqrt(5)))
         self.assertNotIn(self.case.exs[-1]['his'], json.dumps(packet))
         self.assertIsNone(refs[-1]['encoder_id'])
+        self.assertEqual(refs[-1]['vector_representation'], 'readout_units_v1')
 
     def test_long_reply_binds_exact_prefix_and_full_normalized_hash(self):
         self.case.exs[-1]['his'] = 'a' * 400 + 'different ending'
@@ -125,6 +126,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.case.enc.encode.call_count, 1)
         packet, = self.packets('self-audit-embedding-')
         self.assertEqual(packet['emb'], [3., 4.])
+        self.assertEqual(packet['vector_representation'], 'encoder_return_v1')
         self.assertEqual(packet['source_refs'][0]['observed_turn_id'], 'synthetic-id')
         self.assertEqual(packet['target_selection'], 'unasserted')
         self.assertNotIn('synthetic source reply', json.dumps(packet))

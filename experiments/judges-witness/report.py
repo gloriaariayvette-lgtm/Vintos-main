@@ -81,6 +81,8 @@ def artifact_coverage(section, eligible):
     total = sum(count(v) for v in states.values())
     full, excerpt, conflicts = (count(states.get(k,0)) for k in
         ('bound_full_text','bound_excerpt','conflicting_vector_observations'))
+    mixed = count(states.get('mixed_vector_representations', 0))
+    unobserved = count(states.get('vector_representation_unobserved', 0))
     if (unique > supplied or refs < unique or total != refs or bound > eligible
             or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
         invalid()
@@ -98,9 +100,10 @@ def artifact_coverage(section, eligible):
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
-            f'- Conflicting-vector references: {conflicts}; other unresolved references: {refs-full-excerpt-conflicts}.',
+            f'- Conflicting-vector references: {conflicts}; mixed vector representations: {mixed}; unresolved representation differences: {unobserved}.',
+            f'- Other unresolved references: {refs-full-excerpt-conflicts-mixed-unobserved}.',
             f'- Unique eligible replies with a content binding: {bound}.', '',
-            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', ''] + timing
+            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Encoder-return and readout-normalized vectors are separate representations; no conversion is inferred. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', ''] + timing
 
 
 def render(report):

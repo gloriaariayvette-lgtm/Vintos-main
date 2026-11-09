@@ -1569,3 +1569,30 @@ numerical variation and execution context are not distinguished by this receipt.
 Encoder identity stays unverified and no score, admission rule or live audit verdict
 changes. This repair cannot recover differing vectors already discarded by older
 input-only deduplication.
+
+
+### Vector representation is separate from encoder identity
+
+Prospective artifact observations explicitly label their stored representation:
+`encoder_return_v1` for the audit wrapper's returned vectors, and
+`readout_units_v1` for the forecast bank after the existing readout `units` function
+(float conversion, norm division with a 1e-12 floor). The label records the existing
+producer operation; it does not verify weights, tokenizer, encode defaults,
+training provenance or a common embedding space. No vector is newly normalized or
+recomputed for this observation.
+
+The offline content join validates each explicit label against its producer schema.
+For the same checkpoint, final reply and input, distinct representations are
+`mixed_vector_representations`, held out of the content-bound count. This is not an
+encoder-conflict verdict, even when the stored numbers differ only by scale, and
+identical numbers do not establish matching representation contracts. Differing
+vectors within any one explicitly known representation still make the entire group
+`conflicting_vector_observations`; a mixed packet cannot hide that conflict.
+
+Older packets have no representation label. Their details retain null rather than
+inferring a label from their schema or path. Multiple differing old observations
+become `vector_representation_unobserved`; a known/unknown mixture is mixed. A
+single consistent old observation can still establish the same text-content binding
+as before, with unknown representation and no scoring permission. The report emits
+only fixed labels and aggregate counts for these distinctions. Strict eligibility,
+forecast scoring and live audit results are unchanged.

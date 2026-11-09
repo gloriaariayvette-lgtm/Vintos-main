@@ -1611,3 +1611,23 @@ invalid later vectors, failed publication retries and bounded observation state.
 All fixtures and writes are synthetic/private scratch; external transports are
 stubbed. No live data, model calls, feed changes, enabling, merge or deployment.
 Full Aegis suite/private measurements remain the independent reviewer steps.
+
+
+## 9 November — distinguish observed vector representations
+
+`codex/judges-vector-representations` follows the repeated-vector repair with a
+source-verified distinction: the forecast bank stores the readout's normalized
+vectors, while the audit wrapper stores encoder-return vectors. Prospective private
+packets now name those representations without changing numbers or encode calls.
+The offline content join distinguishes mixed representations from differing vectors
+within a known representation. Unknown legacy representation is never inferred.
+All ambiguous groups remain outside content-bound counts, and no strict admission
+or scoring threshold changes. Encoder-weight identity remains unverified.
+
+65 affected isolated checks pass: self artifacts 20, artifact joins 21, review
+report 15, report coverage 9. Tests use the actual units function for a scaled
+synthetic pair, verify mixed versus genuine within-representation conflicts, old
+unknown packets, invalid producer labels, fixed-count report output and unchanged
+live audit results/call counts. All tests use synthetic data, scratch paths and
+stubbed transports. No real inputs, new model calls, live writes, enabling, merge
+or deployment. Full host suite and private coverage acceptance remain with review.

@@ -6699,3 +6699,13 @@ existing offline conflict checker now receives those conflicts; 62 focused isola
 checks pass. State and sink remain bounded; no complete-capture or encoder-identity
 claim. Existing audit outputs/calls stay unchanged. Full host suite, private
 coverage measurements and encoder identity remain open; no deployment or enabling.
+
+
+## 9 November — vector representation distinction ready for review
+
+`codex/judges-vector-representations` labels existing encoder-return versus
+readout-normalized artifact vectors and reports mixed/unknown representation
+separately from within-representation conflict. 65 affected isolated checks pass.
+No retained vector values, live audit results, eligibility or scoring rules changed. Encoder
+identity, private coverage diagnosis and full host acceptance remain open. No
+production write, enabling or deployment.
