@@ -7573,3 +7573,34 @@ bytes only; no actual model, real GGUF, package install, private record, GPU, pr
 call, live write, merge or deployment. Real runtime compatibility/private execution
 belongs to the reviewer. Exact pushed commit/path/branch in coordination reply.
 Heartbeat ACTIVE; no resumed/completion notification.
+
+
+## 2026-11-09 13:05 CST — reviewed published-artifact freeze (#50)
+
+Added encoder_freeze.py and an empty reviewed published-encoder-pins.json registry.
+Producer defaults to actual copy-time freeze; explicit published_artifact requires
+external_pretrained plus a reviewed exact-file hash/revision/date pin, with no
+subject training. Missing/mismatched/unreviewed pins, local-trained qualification,
+future revision relative to copy, and malformed registries refuse before encoding.
+Actual copy completion and encoding clocks remain recorded; effective freeze alone
+uses the reviewed publication date. No network or production registry override.
+
+Builder and numerical runner revalidate qualified receipts against their checked-in
+registry and preserve them privately. Summaries separate copy_time,
+published_artifact, legacy_unknown and unknown; mixed sources cannot form a global
+encoder. Legacy supplied timestamps retain their prior semantics and explicit
+unknown source. Published revisions after scored acts remain unscored. Existing
+strict lineage, indirect influence, mode, anchor and calibration gates are intact.
+Policy/pin-file hashes join private manifests. READMEs explain review, schema,
+private invocation and differing source-count denominators. No actual pin invented.
+
+148 isolated synthetic checks pass: producer 32, builder 15, runner 18, character 72,
+ownership 11. End-to-end stub producer -> builder -> runner scores synthetic acts
+with a reviewed placeholder pin; refusals include missing pin at downstream stages,
+hash mismatch, subject/local training, missing/tampered receipts and mixed sources.
+Logs: /tmp/judges-published-{producer,builder,runner,character,owners}-tests.log.
+Required reports regenerated unchanged; diff clean. No real encoder/model/provider
+call, private record read, live write, GPU, merge or deployment. Real pin review and
+private run remain with the independent reviewer; full Aegis suite remains theirs.
+Branch codex/judges-published-encoder-freeze, based on bae1abde. Exact pushed commit
+and checkout path in the coordination reply. Heartbeat ACTIVE; no routine ntfy.

@@ -15,7 +15,7 @@ sys.dont_write_bytecode=True
 HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('cache_evidence_runner',HERE.parent/'nonllm-judges/run_private.py')
 R=importlib.util.module_from_spec(spec);spec.loader.exec_module(R)
-C=R.C;P=R.P
+C=R.C;P=R.P;Q=R.Q
 MAX_ARTIFACT=4*1024**3
 
 
@@ -131,6 +131,9 @@ def run(argv=None,factory=LocalEncoder):
     p=R.Parser(description=__doc__)
     for k in ('gguf','input','scratch','output','cutoff','pooling'):p.add_argument('--'+k,required=True)
     p.add_argument('--context-tokens',type=int,default=8192);p.add_argument('--threads',type=int,default=2)
+    p.add_argument('--freeze-source',choices=('copy_time','published_artifact'),default='copy_time')
+    p.add_argument('--artifact-kind',choices=('local_trained','external_pretrained'),default='local_trained')
+    p.add_argument('--published-pin')
     args=p.parse_args(argv)
     if args.pooling not in ('mean','cls','last') or not 128<=args.context_tokens<=32768 or not 1<=args.threads<=32:raise ValueError('invalid encoder settings')
     root=C.scratch_root(args.scratch)
@@ -147,7 +150,9 @@ def run(argv=None,factory=LocalEncoder):
         cutoff=P.stamp(args.cutoff);rows,ids=selected_rows(bundle,cutoff)
         check=copy.deepcopy(bundle);check['embeddings']=[];C.prepare(check,cutoff)
         out.mkdir(mode=0o700);artifact=out/'encoder-copy.gguf'
-        artifact_hash,artifact_sig,frozen_at=copy_artifact(source,artifact)
+        artifact_hash,artifact_sig,copied_at=copy_artifact(source,artifact)
+        freeze=Q.qualify(artifact_hash,copied_at,args.freeze_source,args.artifact_kind,args.published_pin)
+        frozen_at=freeze['frozen_at']
         settings=dict(pooling=args.pooling,normalization='l2',input_policy='exact_full_strings',truncate=False,
                       context_tokens=args.context_tokens,threads=args.threads,n_gpu_layers=0,use_mmap=False,
                       offload_kqv=False,op_offload=False,flash_attn=False)
@@ -164,7 +169,7 @@ def run(argv=None,factory=LocalEncoder):
                     for text in (row['text'],row['context']):
                         if text in vectors:continue
                         unchanged();started=time.time();vector=unit(encoder.encode(text),dimension);finished=time.time();unchanged()
-                        if started<frozen_at or finished<started:raise ValueError('encoding clock inconsistent')
+                        if started<copied_at or finished<started:raise ValueError('encoding clock inconsistent')
                         clocks[text]={'started_at':started,'finished_at':finished}
                         dimension=len(vector);vectors[text]=vector
             finally:
@@ -177,15 +182,15 @@ def run(argv=None,factory=LocalEncoder):
         for row in rows:
             binding={k:row[k] for k in ('reply_sha256','input_sha256','context_sha256')}
             entry=dict(binding,reply_ids=sorted(row['reply_ids']),encoder_id=encoder_id,artifact_sha256=artifact_hash,
-                       frozen_at=frozen_at,runtime=runtime,settings=settings,reply_encoding=clocks[row['text']],context_encoding=clocks[row['context']])
+                       frozen_at=frozen_at,freeze_source=args.freeze_source,freeze_receipt=freeze,runtime=runtime,settings=settings,reply_encoding=clocks[row['text']],context_encoding=clocks[row['context']])
             entries.append(entry)
             embeddings.append(dict(binding,encoder_id=encoder_id,vector=vectors[row['text']],context_vector=vectors[row['context']]))
         projection=copy.deepcopy(bundle);projection['encoder']=enc;projection['embeddings']=embeddings
         manifest={'schema':'private-cache-producer-v1','input_sha256':input_hash,'source_encoder_declaration':bundle['encoder'],
-                  'artifact_sha256':artifact_hash,'artifact_bytes':artifact_sig[2],'frozen_at':frozen_at,'runtime':runtime,'settings':settings,
+                  'artifact_sha256':artifact_hash,'artifact_bytes':artifact_sig[2],'frozen_at':frozen_at,'copy_completed_at':copied_at,'freeze_source':args.freeze_source,'freeze_receipt':freeze,'runtime':runtime,'settings':settings,
                   'encoder_id':encoder_id,'embedding_calls':len(vectors),'completion_calls':0,'historical_backfill':False,
                   'code_sha256':{str(path.relative_to(R.REPO)):C.digest(path.read_text()) for path in
-                    (Path(__file__),HERE/'prototype.py',HERE.parent/'nonllm-judges/run_private.py',HERE.parent/'judges-witness/replay.py')},
+                    (Path(__file__),Path(Q.__file__),Q.PIN_FILE,HERE/'prototype.py',HERE.parent/'nonllm-judges/run_private.py',HERE.parent/'judges-witness/replay.py')},
                   'native_code_sandboxed_by_python_audit':False}
         projection['cache_producer']=manifest
         # Validate the fresh cache contract without selecting or changing lineage/controls.
@@ -193,7 +198,7 @@ def run(argv=None,factory=LocalEncoder):
         payloads={'character-input.json':projection,'cache.json':{'schema':'character-cache-v1','encoder':enc,'embeddings':embeddings,'manifest':manifest},
                   'cache-metadata.json':{'schema':'encoder-cache-metadata-v1','entries':entries},
                   'counts.json':{'schema':'cache-producer-counts-v1','reply_ids':len(ids),'cache_entries':len(entries),
-                      'unique_encoded_strings':len(vectors),'dimension':dimension,'replies_predating_freeze':sum(i[2]<=frozen_at for i in ids.values()),
+                      'encoder_freeze_sources':Q.counts(args.freeze_source,len(entries)),'unique_encoded_strings':len(vectors),'dimension':dimension,'replies_predating_freeze':sum(i[2]<=frozen_at for i in ids.values()),
                       'completion_calls':0,'historical_backfill':False}}
         serialized={k:json.dumps(v,sort_keys=True,allow_nan=False)+'\n' for k,v in payloads.items()}
         unchanged(True)

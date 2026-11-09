@@ -632,7 +632,7 @@ Outputs (JSON files 0600):
   declaration stays in the manifest, not as a claim about the new vectors.
 - `cache-metadata.json`: directly accepted by `build_evidence.py --cache`:
   `encoder-cache-metadata-v1` with `entries`. Each entry includes `reply_ids`, exact
-  full-reply/input/context hashes, encoder ID, artifact hash, copy freeze timestamp,
+  full-reply/input/context hashes, encoder ID, artifact hash, effective freeze timestamp and qualification receipt,
   runtime name/version, pooling/normalization/input/CPU settings, and actual reply
   and context encoding start/finish clocks. Duplicate identical copies retain all
   bound reply IDs without extra encoding.
@@ -649,12 +649,11 @@ unknown unless the installed package exposes independent evidence (not inferred
 from its Python package version). No completion generation is called.
 
 **Migration and temporal limit:** old files stay untouched and their missing metadata
-stays unknown. A freshly encoded historical reply has a freeze time **after** the
-reply. `build_evidence.py`/the numerical judges still require freeze before the act,
+stays unknown. Under the default `copy_time` policy, a freshly encoded historical
+reply has a freeze time **after** the reply. `build_evidence.py`/the numerical judges still require freeze before the act,
 so the new metadata is accepted structurally but those rows remain unscored for that
-prospective contract. The summary counts them. This change neither backdates a copy
-nor silently relaxes that scientific gate; retrospective characterization under a
-newly frozen encoder is a separate evaluation decision. Previously cached vectors
+prospective contract. The summary counts them. The explicit reviewed external-artifact
+qualification below is the sole alternative; it preserves the actual copy time. Previously cached vectors
 are never reused and relabelled as if this run produced them.
 
 The Python audit guard confines Python writes to the new output directory and denies
@@ -667,3 +666,52 @@ process refusal, detects copy mutations, and exercises producer→builder metada
 compatibility. Real runtime/artifact compatibility and private-data coverage remain
 unverified until the reviewer's separately authorized run; the dependency was not
 installed or exercised here.
+
+
+### Reviewed external-artifact freeze qualification
+
+The gate asks whether the exact encoder weights could have been shaped by the acts
+being scored. Default `--freeze-source copy_time --artifact-kind local_trained`
+continues to use actual copy completion. Every local-trained or subject-tuned artifact
+must keep that rule, including self/latent heads. A configured model label, upstream
+base model pin, source mtime or an old cache does not establish a published freeze.
+
+For an external pretrained artifact, explicitly add
+`--freeze-source published_artifact --artifact-kind external_pretrained --published-pin PIN_ID`
+to the producer invocation. `encoder_freeze.py` loads only the checked-in
+`published-encoder-pins.json`; there is no CLI registry override, network lookup,
+download or automatic approval. The registry currently has **no real pins**. The
+reviewer must independently verify and review one before a real published run.
+Tests inject a synthetic registry into the stub process only.
+
+The registry is `{"schema":"published-encoder-pins-v1","pins":[]}`. Each reviewed
+pin requires: unique `id`, `publisher`, `repo`, exact `filename`, immutable full
+40/64-hex `revision`, offset-aware `revision_at`, exact file `artifact_sha256`,
+`artifact_kind: external_pretrained`, `trained_on_subject_data: false`, and
+`reviewed: true`. The pin covers the exact quantized/exported file loaded, not just
+upstream weights. Review must establish that neither that file nor its tuning or
+conversion was shaped by the subject's scored acts. The flags record that review;
+the program cannot independently verify a publisher's training history offline.
+Duplicate keys/IDs, malformed pins and unreviewed/subject-trained pins are refused.
+
+The producer first copies and hashes the GGUF. Before opening the encoder it requires
+exact equality to the selected reviewed hash. Effective `frozen_at` is that pin's
+revision timestamp; revision after copy is refused. `copy_completed_at` stays the
+actual copy completion, and encoding clocks must still follow it. No old vector or
+metadata is backfilled. Existing hash/change-time checks continue throughout encoding.
+
+`freeze_source` and `freeze_receipt` are recorded on every cache entry and the private
+manifest. The receipt retains effective freeze, copy time, artifact kind/hash, full
+published pin and pin fingerprint. Builder and numerical runner revalidate the
+receipt against their own checked-in registry; missing or changed pins, changed
+receipt/scalar, missing receipt, hash mismatch, or local-trained qualification refuse
+the run. Policy and pin-file hashes appear in private code manifests.
+
+Counts separate `copy_time`, `published_artifact`, `legacy_unknown` and `unknown`.
+Producer counts entries; builder counts prepared replies with recorded qualifications,
+even if their freeze is too late; runner counts replies by usable global qualification
+(or unknown if unavailable). Sources are not silently mixed into one global encoder.
+Legacy supplied freeze timestamps retain their old validation and remain explicitly
+`legacy_unknown`; they are never promoted to published evidence. A valid published
+revision still must precede each act. This exception changes only the freeze gate,
+not strict lineage, mode, outcome anchors, calibration, or independence requirements.

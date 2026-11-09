@@ -24,6 +24,9 @@ import importlib.util,json,os,sys
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('producer',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 action=os.environ.get('STUB_ACTION','normal');calls=[]
+if os.environ.get('STUB_PINS'):
+    pins=m.Q.validate_registry(json.loads(os.environ['STUB_PINS']))
+    m.Q.load_pins=lambda:pins
 class Encoder:
     runtime={'name':'synthetic-encoder','version':'test-1','native_version':None}
     def __init__(self,path,settings):
@@ -31,6 +34,7 @@ class Encoder:
         assert path.read_bytes().startswith(b'GGUFsynthetic')
         assert path.stat().st_mode&0o777==0o400
         self.path=path
+        (path.parent/'stub-loaded').write_text('synthetic')
         if action=='network':
             import socket
             socket.socket().connect(('127.0.0.1',1))
@@ -69,6 +73,7 @@ class Tests(unittest.TestCase):
         guard=patch.object(socket.socket,'connect',self.sender);guard.start();self.addCleanup(guard.stop);self.addCleanup(self.sender.assert_not_called)
         self.assertNotIn('.vintos',self.root.parts);self.assertIsInstance(socket.socket.connect,Mock)
         self.bundle,self.graph,_,_=F.fixture();self.original=self.root/'source.gguf';self.original.write_bytes(b'GGUFsynthetic file bytes')
+        self.pins=None
         self.inp=self.root/'input.json';self.out=self.root/'encoded';self.driver=self.root/'driver.py';self.driver.write_text(DRIVER)
 
     def run_cli(self,action='normal',**changes):
@@ -76,8 +81,131 @@ class Tests(unittest.TestCase):
         options=dict(gguf=self.original,input=self.inp,scratch=self.root,output=self.out,cutoff=F.CUTOFF,pooling='mean')
         options.update(changes)
         args=[sys.executable,str(self.driver),str(CLI)]+[part for k,v in options.items() for part in ('--'+k,str(v))]
-        return subprocess.run(args,env=dict(os.environ,SPARK_WORKSPACE=str(self.root),STUB_ACTION=action,PYTHONDONTWRITEBYTECODE='1'),
+        return subprocess.run(args,env=dict(os.environ,SPARK_WORKSPACE=str(self.root),STUB_ACTION=action,STUB_PINS=json.dumps(self.pins) if self.pins else '',PYTHONDONTWRITEBYTECODE='1'),
             capture_output=True,text=True,timeout=30)
+
+    def published(self,**changes):
+        pin=dict(id='synthetic-pin',publisher='synthetic-publisher',repo='synthetic/repository',filename='fixture.gguf',
+            revision='a'*40,revision_at='2019-01-01T00:00:00Z',artifact_sha256=hashlib.sha256(self.original.read_bytes()).hexdigest(),
+            artifact_kind='external_pretrained',trained_on_subject_data=False,reviewed=True)
+        pin.update(changes);self.pins={'schema':'published-encoder-pins-v1','pins':[pin]}
+        return pin
+
+    def published_cli(self,**changes):
+        options={'freeze-source':'published_artifact','artifact-kind':'external_pretrained','published-pin':'synthetic-pin'}
+        options.update(changes);return self.run_cli(**options)
+
+    def test_published_freeze_producer_builder_runner(self):
+        pin=self.published();result=self.published_cli();self.assertEqual(result.returncode,0,result.stderr)
+        projection=json.loads((self.out/'character-input.json').read_text())
+        metadata=json.loads((self.out/'cache-metadata.json').read_text())['entries']
+        counts=json.loads((self.out/'counts.json').read_text())
+        receipt=projection['cache_producer']['freeze_receipt']
+        self.assertEqual(receipt['frozen_at'],E.Q.instant(pin['revision_at']))
+        self.assertGreater(receipt['copy_completed_at'],receipt['frozen_at'])
+        self.assertEqual(receipt['published_pin'],pin)
+        self.assertEqual(counts['encoder_freeze_sources']['published_artifact'],32)
+        self.assertEqual(counts['encoder_freeze_sources']['copy_time'],0)
+        for entry in metadata:
+            self.assertEqual(entry['freeze_receipt'],receipt)
+            self.assertGreaterEqual(entry['reply_encoding']['started_at'],receipt['copy_completed_at'])
+        pins=E.Q.validate_registry(self.pins)
+        with patch.object(F.B.Q,'load_pins',return_value=pins):
+            built,coverage=F.B.build(projection,self.graph,metadata,[],F.CUTOFF)
+            private,public=F.B.R.evaluate(built,None,F.CUTOFF)
+        self.assertTrue(coverage['encoder_metadata_available'])
+        self.assertEqual(coverage['encoder_freeze_sources']['published_artifact'],32)
+        self.assertEqual(public['encoder_freeze_sources']['published_artifact'],32)
+        self.assertEqual(public['views']['window30']['admitted_original_acts'],32)
+        self.assertGreater(sum(s['voice_scored'] for s in public['views']['window30']['per_mode_surface']),0)
+        self.assertEqual(private['encoder_freeze_receipt'],receipt)
+        self.assertEqual(built['rows'],self.bundle['rows'])
+        for word in ('synthetic-pin','sha256','vector','fixture.gguf','synthetic/repository'):
+            self.assertNotIn(word,json.dumps(public))
+        # Recheck the checked-in pin at both downstream boundaries, not only production.
+        with self.assertRaises(ValueError):F.B.build(projection,self.graph,metadata,[],F.CUTOFF)
+        with self.assertRaises(ValueError):F.B.R.evaluate(built,None,F.CUTOFF)
+        with patch.object(F.B.Q,'load_pins',return_value=pins):
+            built['numerical_evidence']['encoder_frozen_at']-=1
+            with self.assertRaises(ValueError):F.B.R.evaluate(built,None,F.CUTOFF)
+
+    def test_published_hash_mismatch_refused(self):
+        self.published(artifact_sha256='0'*64)
+        self.assertNotEqual(self.published_cli().returncode,0);self.assertFalse((self.out/'cache.json').exists());self.assertFalse((self.out/'stub-loaded').exists())
+
+    def test_published_missing_pin_refused(self):
+        self.assertNotEqual(self.published_cli().returncode,0);self.assertFalse((self.out/'cache.json').exists())
+
+    def test_published_local_trained_refused(self):
+        self.published()
+        self.assertNotEqual(self.published_cli(**{'artifact-kind':'local_trained'}).returncode,0)
+        self.assertFalse((self.out/'cache.json').exists())
+
+    def test_published_subject_trained_pin_refused(self):
+        self.published(trained_on_subject_data=True);self.assertNotEqual(self.published_cli().returncode,0)
+
+    def test_published_unreviewed_pin_refused(self):
+        self.published(reviewed=False);self.assertNotEqual(self.published_cli().returncode,0)
+
+    def test_published_future_revision_refused(self):
+        self.published(revision_at='2099-01-01T00:00:00Z');self.assertNotEqual(self.published_cli().returncode,0)
+
+    def test_unused_pin_with_copy_time_refused(self):
+        self.published();self.assertNotEqual(self.published_cli(**{'freeze-source':'copy_time'}).returncode,0)
+
+    def test_copy_source_and_legacy_separate(self):
+        self.assertEqual(self.run_cli().returncode,0)
+        projection=json.loads((self.out/'character-input.json').read_text())
+        receipt=projection['cache_producer']['freeze_receipt']
+        self.assertEqual(receipt['frozen_at'],receipt['copy_completed_at']);self.assertIsNone(receipt['published_pin'])
+        self.assertEqual(receipt['artifact_kind'],'local_trained')
+        self.assertEqual(json.loads((self.out/'counts.json').read_text())['encoder_freeze_sources']['copy_time'],32)
+        b,g,c,h=F.fixture();built,summary=F.B.build(b,g,c,h,F.CUTOFF)
+        self.assertEqual(summary['encoder_freeze_sources']['legacy_unknown'],32)
+        self.assertEqual(F.B.R.evaluate(built,None,F.CUTOFF)[1]['encoder_freeze_sources']['legacy_unknown'],32)
+
+    def test_published_revision_after_acts_stays_unscored(self):
+        self.published(revision_at='2021-01-01T00:00:00Z');self.assertEqual(self.published_cli().returncode,0)
+        projection=json.loads((self.out/'character-input.json').read_text())
+        metadata=json.loads((self.out/'cache-metadata.json').read_text())['entries']
+        with patch.object(F.B.Q,'load_pins',return_value=E.Q.validate_registry(self.pins)):
+            built,counts=F.B.build(projection,self.graph,metadata,[],F.CUTOFF)
+        self.assertFalse(counts['encoder_metadata_available'])
+        self.assertEqual(counts['per_field_reason_counts']['encoder_freeze']['missing_invalid_or_late_freeze'],32)
+        self.assertNotIn('encoder_frozen_at',built['numerical_evidence'])
+
+    def test_mixed_freeze_sources_not_collapsed(self):
+        b,g,c,h=F.fixture();entry=c[0]
+        entry['freeze_source']='copy_time'
+        entry['freeze_receipt']=F.B.Q.qualify(entry['artifact_sha256'],entry['frozen_at'])
+        built,counts=F.B.build(b,g,c,h,F.CUTOFF)
+        self.assertFalse(counts['encoder_metadata_available'])
+        self.assertEqual(counts['encoder_freeze_sources']['copy_time'],1)
+        self.assertEqual(counts['encoder_freeze_sources']['legacy_unknown'],31)
+        self.assertNotIn('encoder_frozen_at',built['numerical_evidence'])
+
+    def test_qualifier_without_receipt_refused(self):
+        b,g,c,h=F.fixture();c[0]['freeze_source']='published_artifact'
+        with self.assertRaises(ValueError):F.B.build(b,g,c,h,F.CUTOFF)
+        b,g,c,h=F.fixture();built,_=F.B.build(b,g,c,h,F.CUTOFF)
+        built['numerical_evidence']['encoder_freeze_source']='published_artifact'
+        with self.assertRaises(ValueError):F.B.R.evaluate(built,None,F.CUTOFF)
+
+    def test_registry_validation_and_receipt_tampering(self):
+        pin=self.published();registry=copy.deepcopy(self.pins)
+        for field,value in [('reviewed',1),('trained_on_subject_data',0),('artifact_kind','local_trained'),
+                            ('revision','main'),('revision_at','2019-01-01'),('publisher',''),('artifact_sha256','x'*64)]:
+            with self.subTest(field=field):
+                bad=copy.deepcopy(registry);bad['pins'][0][field]=value
+                with self.assertRaises(ValueError):E.Q.validate_registry(bad)
+        duplicate=copy.deepcopy(registry);duplicate['pins'].append(pin)
+        with self.assertRaises(ValueError):E.Q.validate_registry(duplicate)
+        with self.assertRaises(ValueError):E.Q.pairs([('schema','a'),('schema','b')])
+        with patch.object(E.Q,'load_pins',return_value=E.Q.validate_registry(registry)):
+            receipt=E.Q.qualify(pin['artifact_sha256'],1700000000,'published_artifact','external_pretrained',pin['id'])
+            for field,value in [('copy_completed_at',0),('artifact_sha256','0'*64),('pin_sha256','0'*64),('artifact_kind','local_trained')]:
+                bad=dict(receipt);bad[field]=value
+                with self.assertRaises(ValueError):E.Q.verify(bad,pin['artifact_sha256'],receipt['frozen_at'],'published_artifact')
 
     def test_full_pipeline_copy_hash_metadata_and_permissions(self):
         result=self.run_cli();self.assertEqual(result.returncode,0,result.stderr)
