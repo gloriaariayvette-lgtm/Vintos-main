@@ -1704,3 +1704,32 @@ mistyped merged-suite filename failed before execution; corrected suite passed.
 All three generated reports refreshed. No new live reads/writes, sends, model
 calls, enabling, merge or deployment. Full host suite/private census remain with
 review; next independent work remains durable queue diagnostics and encoder identity.
+
+
+## 9 November — persisted deferred queue diagnostics
+
+`codex/judges-durable-queue-counts` addresses note 27's volatile queue counters.
+The existing background writer persists coalesced, configuration-scoped scalar
+counter deltas in status.json.deferred; synchronous writes preserve them and later
+processes accumulate them under the sink lock. Counters cover observed admissions,
+confirmed/unconfirmed publications, queue-full skips and observed unavailable
+workers. Each category is a lower bound, never a subtraction-based loss estimate.
+restart_loss is explicitly null. Busy/start/exit failures and unflushed counters
+may be absent. Claimed delta batches are not retried after failed/ambiguous writes,
+so a replacement followed by failed fsync cannot double-count on retry.
+
+Reply-side changes are bounded in-memory updates under the existing nonblocking
+admission lock, with eight diagnostic configuration slots. No foreground disk I/O
+added. FIFO remains eight packets plus one in flight; distinct reply packets are
+not coalesced. Disable, config retargeting and fork reset include the new deltas.
+A final background status flush adds a scan when the queue drains; fresh occupied
+Aegis throughput/response measurements remain required. Earlier latency numbers
+are not acceptance of this revision.
+
+94 isolated checks pass: deferred capture 22, sink 19, handler hooks 21, store guard
+32. Includes fresh-process counter preservation, overflow, ambiguous post-replace
+failure, busy flush, packet failure without a false loss balance, bounded scopes,
+unsafe status paths, hot disable, fork and process-exit loss. Only synthetic
+throwaway stores and stub senders. Three generated reports refreshed and diff
+checked. No live-store writes, capture enabling, paid/model calls, merge or deploy.
+Full host suite and acceptance remain with review. Encoder identity remains open.

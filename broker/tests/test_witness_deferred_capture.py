@@ -80,6 +80,10 @@ class Tests(unittest.TestCase):
             release.set();self.wait_done()
         self.assertEqual(len(self.packets()),S.DEFERRED_SLOTS+1)
         self.assertEqual(S.COUNTERS['deferred_full'],1)
+        status=self.fixture.status()['deferred']
+        self.assertEqual(status['counts'],{'enqueued':9,'written':9,'full':1})
+        self.assertIsNone(status['restart_loss'])
+        self.assertIn('lower bounds',status['coverage'])
 
     def test_hot_disable_drops_queued_packets_without_disk_mutation(self):
         entered,release,stub=self.stalled()
@@ -105,6 +109,100 @@ class Tests(unittest.TestCase):
         self.assertEqual(list(self.sink.iterdir()),[])
         self.assertEqual(list(other.iterdir()),[])
 
+    def test_diagnostic_disk_write_stays_off_foreground(self):
+        entered, release=threading.Event(),threading.Event()
+        original=S._publish_bytes
+        def stall_status(root,payload,*args,**kwargs):
+            if payload is None:
+                entered.set()
+                if not release.wait(3): raise AssertionError('synthetic release missing')
+            return original(root,payload,*args,**kwargs)
+        try:
+            with patch.object(S,'_publish_bytes',side_effect=stall_status):
+                self.assertTrue(self.submit()); self.assertTrue(entered.wait(1))
+                self.assertTrue(self.submit())
+                release.set(); self.wait_done()
+        finally: release.set()
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'enqueued':2,'written':2})
+
+    def test_counters_preserved_by_synchronous_writes_and_process_restart(self):
+        self.assertTrue(self.submit());self.wait_done();self.stop_writer()
+        self.assertTrue(self.fixture.publish())
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'enqueued':1,'written':1})
+        code="import sys;sys.path.insert(0,sys.argv[1]);import witness_sink as s;assert s.enqueue_capture(sys.argv[2],{'synthetic':True});s._writer[1].join()"
+        result=subprocess.run([sys.executable,'-c',code,str(ROOT/'scripts'),str(self.sink)],capture_output=True,text=True,timeout=3)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'enqueued':2,'written':2})
+        self.assertIsNone(self.fixture.status()['deferred']['restart_loss'])
+
+    def test_ambiguous_status_failure_consumes_delta_without_duplicate_retry(self):
+        config=S.configuration(self.sink)
+        with S._writer_lock:S._note_deferred_locked(config,'full')
+        original=S._atomic
+        def replaced_then_failed(directory,name,payload,replace=False):
+            original(directory,name,payload,replace)
+            if name=='status.json':raise OSError('synthetic failure after replacement')
+        with patch.object(S,'_atomic',side_effect=replaced_then_failed):S._flush_deferred()
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'full':1})
+        self.assertEqual(S.COUNTERS['deferred_diagnostic_unconfirmed'],1)
+        S._flush_deferred()
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'full':1})
+        self.assertEqual(self.packets(),[])
+        self.assertEqual(self.fixture.status()['counts'],{'expired':0})
+
+    def test_diagnostic_scopes_are_bounded_and_fork_reset_discards_them(self):
+        config=S.configuration(self.sink)
+        for n in range(9):
+            with S._writer_lock:S._note_deferred_locked(dict(config,max_files=n+1),'full')
+        self.assertEqual(len(S._deferred_pending),8)
+        self.assertEqual(S.COUNTERS['deferred_diagnostic_scope_full'],1)
+        S._reset_after_fork()
+        self.assertFalse(S._deferred_pending);self.assertFalse(S.COUNTERS)
+        self.assertEqual(list(self.sink.iterdir()),[])
+
+    def test_disabled_diagnostics_are_not_replayed_after_reenable(self):
+        config=S.configuration(self.sink)
+        with S._writer_lock:S._note_deferred_locked(config,'full')
+        self.fixture.settings['enabled']=False;self.fixture.write_config()
+        S._flush_deferred()
+        self.assertEqual(list(self.sink.iterdir()),[])
+        self.fixture.settings['enabled']=True;self.fixture.write_config()
+        self.assertTrue(self.submit());self.wait_done()
+        self.assertNotIn('full',self.fixture.status()['deferred']['counts'])
+
+    def test_busy_diagnostic_flush_is_discarded_without_later_double_count(self):
+        import fcntl
+        config=S.configuration(self.sink)
+        with S._writer_lock:S._note_deferred_locked(config,'full')
+        fd=os.open(self.sink/'.capture.lock',os.O_RDWR|os.O_CREAT,0o600)
+        try:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            S._flush_deferred()
+        finally:os.close(fd)
+        self.assertEqual(S.COUNTERS['deferred_diagnostic_unconfirmed'],1)
+        self.assertFalse(S._deferred_pending)
+        self.assertFalse((self.sink/'status.json').exists())
+        self.assertTrue(self.submit());self.wait_done()
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'enqueued':1,'written':1})
+
+    def test_packet_failure_keeps_outcome_unknown_without_claiming_balance(self):
+        with patch.object(S.os,'link',side_effect=OSError('synthetic packet failure')):
+            self.assertTrue(self.submit());self.wait_done()
+        self.assertEqual(self.packets(),[])
+        deferred=self.fixture.status()['deferred']
+        self.assertEqual(deferred['counts'],{'not_confirmed':1})
+        self.assertIsNone(deferred['restart_loss'])
+        self.assertIn('not a loss balance',deferred['coverage'])
+
+    def test_invalid_diagnostic_values_and_unsafe_status_are_refused(self):
+        for counts in ({'private-sentinel':1},{'full':True},{'full':-1},{'full':10**18}):
+            self.assertFalse(S._publish_bytes(self.sink,None,'capture-',diagnostic=counts))
+        self.assertEqual(list(self.sink.iterdir()),[])
+        external=self.fixture.root/'external';external.write_text('{}');external.chmod(0o600)
+        (self.sink/'status.json').symlink_to(external)
+        self.assertFalse(S._publish_bytes(self.sink,None,'capture-',diagnostic={'full':1}))
+        self.assertEqual(external.read_text(),'{}')
+
     def test_disabled_invalid_and_oversize_never_start_worker(self):
         for enabled in (False,1,'true'):
             self.fixture.settings['enabled']=enabled;self.fixture.write_config()
@@ -116,7 +214,13 @@ class Tests(unittest.TestCase):
 
     def test_writer_exception_does_not_stop_next_packet(self):
         original=S._publish_bytes
-        with patch.object(S,'_publish_bytes',side_effect=[OSError('synthetic disk error'),True]):
+        outcomes=iter([OSError('synthetic disk error'),True])
+        def synthetic_write(root,payload,*args,**kwargs):
+            if payload is None: return True
+            result=next(outcomes)
+            if isinstance(result,Exception): raise result
+            return result
+        with patch.object(S,'_publish_bytes',side_effect=synthetic_write):
             self.assertTrue(self.submit());self.assertTrue(self.submit());self.wait_done()
         self.assertEqual(S.COUNTERS['deferred_not_confirmed'],1)
         self.assertEqual(S.COUNTERS['deferred_written'],1)

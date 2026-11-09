@@ -6743,3 +6743,14 @@ admitted bundle to locate missing-surface copies and inspect bilateral stage
 coverage. This does not establish the historical origin of router-chat records,
 fill surfaces, or upgrade model attribution. Durable queue diagnostics and encoder
 identity remain open; full host suite and private counts remain with review.
+
+
+## 9 November — persisted queue counters ready for review
+
+`codex/judges-durable-queue-counts` persists observed deferred diagnostic deltas as
+explicit lower bounds; restart losses remain unknown, not manufactured from a
+counter balance. 94 isolated checks pass. Review must measure occupied-sink worker
+throughput and reply latency for the extra drain-time background status flush;
+full isolated Aegis suite remains with review. Production stays disabled until
+Gloria's enable decision. Encoder identity and private source-coverage counts
+remain pending independently of this review.
