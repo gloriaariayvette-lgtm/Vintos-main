@@ -1589,3 +1589,25 @@ No live/provider calls, real inputs, feed changes, enablement, merge or deployme
 Full host suite and private measured coverage remain reviewer steps. The prior
 configured-host authentication blocker is unchanged; no repeat alert. Encoder
 identity and retained coverage still remain open.
+
+
+## 9 November — preserve repeated audit-vector conflicts
+
+`codex/judges-audit-vector-conflicts` repairs an observation loss in the optional
+self-audit wrapper: input-only deduplication suppressed all later vectors for a
+text, including different results that the offline conflict detector should see.
+Deduplication now uses input plus vector digests. Identical repeats stay collapsed;
+distinct outputs in one or multiple existing calls reach the private sink. The
+wrapper preserves output object identity and adds no encoder calls. An 8,192-key
+per-wrapper limit bounds retained observation state; skipped observations increment
+a process-local counter. Failed publication remains retryable. This does not claim
+complete capture, underlying encoder identity or a cause for vector differences.
+
+62 affected isolated checks pass: self artifacts 20, content joins 17, source
+identity 13, checkpoint availability 12. New cases execute the actual retention
+wrapper through the offline join and produce two conflict references with zero
+bound replies; they also cover repeat deduplication, changed outputs in one batch,
+invalid later vectors, failed publication retries and bounded observation state.
+All fixtures and writes are synthetic/private scratch; external transports are
+stubbed. No live data, model calls, feed changes, enabling, merge or deployment.
+Full Aegis suite/private measurements remain the independent reviewer steps.

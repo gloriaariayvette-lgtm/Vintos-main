@@ -140,6 +140,52 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(refs), 2)
         self.assertNotEqual(refs[0]['source_reply_sha256'], refs[1]['source_reply_sha256'])
 
+    def test_changed_vector_for_same_input_is_retained_without_extra_encoding(self):
+        wrapped = A.audit_encoder(self.case.enc, self.ledger(), self.manifest())
+        first, second = np.array([[3., 4.]]), np.array([[4., 3.]])
+        self.case.enc.encode.side_effect = [first, second, first, second]
+        for value in (first, second, first, second):
+            self.assertIs(wrapped.encode(['synthetic source reply']), value)
+        self.assertEqual(self.case.enc.encode.call_count, 4)
+        packets = self.packets('self-audit-embedding-')
+        self.assertEqual(sorted(p['emb'] for p in packets), [[3., 4.], [4., 3.]])
+        self.assertEqual(len(wrapped.seen), 2)
+        self.assertTrue(all(p['encoder_id'] is None for p in packets))
+
+    def test_invalid_later_vector_is_not_hidden_by_input_deduplication(self):
+        wrapped = A.audit_encoder(self.case.enc, self.ledger(), self.manifest())
+        valid, invalid = np.array([[1., 0.]]), np.array([[float('nan'), 0.]])
+        self.case.enc.encode.side_effect = [valid, invalid]
+        self.assertIs(wrapped.encode(['synthetic source reply']), valid)
+        self.assertIs(wrapped.encode(['synthetic source reply']), invalid)
+        self.assertEqual(len(self.packets('self-audit-embedding-')), 1)
+        self.assertEqual(A.COUNTERS['audit_retention_failed'], 1)
+
+    def test_failed_changed_observation_can_retry_and_limits_are_bounded(self):
+        wrapped = A.audit_encoder(self.case.enc, self.ledger(), self.manifest())
+        self.case.enc.encode.side_effect = None
+        self.case.enc.encode.return_value = np.array([[1., 0.]])
+        with patch.object(W, '_publish_private', return_value=False):
+            wrapped.encode(['synthetic source reply'])
+        self.assertEqual(wrapped.seen, set())
+        wrapped.encode(['synthetic source reply'])
+        self.case.enc.encode.return_value = np.array([[0., 1.]])
+        with patch.object(A, 'MAX_AUDIT_OBSERVATIONS', 1):
+            self.assertIs(wrapped.encode(['synthetic source reply']), self.case.enc.encode.return_value)
+        self.assertEqual(A.COUNTERS['audit_observation_limit'], 1)
+        self.assertEqual(len(wrapped.seen), 1)
+        self.assertEqual(len(self.packets('self-audit-embedding-')), 1)
+        wrapped.encode(['synthetic source reply'])
+        self.assertEqual(len(wrapped.seen), 2)
+
+    def test_same_batch_changed_results_are_retained(self):
+        wrapped = A.audit_encoder(self.case.enc, self.ledger(), self.manifest())
+        output = np.array([[1., 0.], [0., 1.], [1., 0.]])
+        self.case.enc.encode.side_effect = None; self.case.enc.encode.return_value = output
+        self.assertIs(wrapped.encode(['synthetic source reply'] * 3), output)
+        self.assertEqual(len(self.packets('self-audit-embedding-')), 2)
+        self.assertEqual(self.case.enc.encode.call_count, 1)
+
     def test_missing_source_id_stays_missing(self):
         row = self.ledger()[0]; row.pop('turn_id')
         A.audit_encoder(self.case.enc, [row], self.manifest()).encode([row['vintos']])

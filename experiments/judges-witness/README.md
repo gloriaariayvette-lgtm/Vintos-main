@@ -1544,3 +1544,28 @@ requests and earlier attempts discarded inside a draft remain unobserved by this
 new callback; complete request accounting is not claimed. Historical rows receive
 no backfill. Direct callers that do not request observation keep the original tuple
 behavior without a new capture side effect.
+
+
+### Repeated audit vectors remain observable
+
+The optional self-audit wrapper deduplicates by exact input digest **and observed
+vector digest**, not input text alone. A later different vector for the same input
+is retained so the existing offline content join can report
+`conflicting_vector_observations`. Identical repeats remain one observation;
+changed results within a single batch also remain distinct. No extra encoding is
+performed, and callers receive the original result object unchanged.
+
+Each wrapper retains at most 8,192 successfully published observation keys in
+memory. Further new observations are skipped and increment the process-local
+`audit_observation_limit` counter; ordinary sink capacity/retention limits still
+apply first to publication. A failed publication does not mark an observation as
+retained, so a subsequent existing encode can retry it. Counters and keys do not
+survive process exit. These are incomplete observations, not a guarantee that every
+conflict was captured. Invalid vectors remain unretained and increment the existing
+retention-failure counter even when their input was seen previously.
+
+Vector differences do not establish why an encoder changed: parameters, options,
+numerical variation and execution context are not distinguished by this receipt.
+Encoder identity stays unverified and no score, admission rule or live audit verdict
+changes. This repair cannot recover differing vectors already discarded by older
+input-only deduplication.

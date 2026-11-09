@@ -6689,3 +6689,13 @@ Private attempt observations keep provider IDs distinct from internal request ID
 273 focused isolated checks pass. No historical backfill or complete attempt-history
 claim. Full host suite/live coverage measurement, encoder identity and production
 acceptance remain open. No live calls, writes, enabling, merge or deployment.
+
+
+## 9 November — repeated audit-vector retention repaired
+
+`codex/judges-audit-vector-conflicts` retains different observed vectors for the
+same input instead of silently discarding them after the first observation. The
+existing offline conflict checker now receives those conflicts; 62 focused isolated
+checks pass. State and sink remain bounded; no complete-capture or encoder-identity
+claim. Existing audit outputs/calls stay unchanged. Full host suite, private
+coverage measurements and encoder identity remain open; no deployment or enabling.

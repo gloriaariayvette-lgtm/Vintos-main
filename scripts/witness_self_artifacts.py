@@ -14,6 +14,7 @@ import time
 
 COUNTERS = Counter()
 MAX_CHECKPOINT = 64 * 1024 * 1024
+MAX_AUDIT_OBSERVATIONS = 8192
 _source_scope = ContextVar("self_audit_sources", default=None)
 
 
@@ -101,12 +102,19 @@ class AuditEncoder:
     def encode(self, texts, *args, **kwargs):
         result = self.enc.encode(texts, *args, **kwargs)
         try:
-            from witness_capture import _publish_private, _private_root
+            from witness_capture import _publish_private, _private_root, _fingerprint
             from witness_receipts import digest
             if not isinstance(texts, list) or len(texts) > 256 or len(result) != len(texts):
                 raise ValueError('unbounded audit encoding')
             for text, emb in zip(texts, result):
-                if text not in self.refs or text in self.seen:
+                if text not in self.refs:
+                    continue
+                values = vector(emb)
+                observation = (digest(text), _fingerprint(values))
+                if observation in self.seen:
+                    continue
+                if len(self.seen) >= MAX_AUDIT_OBSERVATIONS:
+                    COUNTERS['audit_observation_limit'] += 1
                     continue
                 refs = self.refs[text]
                 if len(refs) > 64:
@@ -115,12 +123,12 @@ class AuditEncoder:
                 packet = {'schema': 'self-audit-embedding-v1', 'checkpoint': self.manifest,
                           'encoder_input_sha256': digest(text), 'encoder_input_chars': len(text),
                           'transform': 'ledger_vintos_strip_first_400_codepoints',
-                          'emb': vector(emb), 'source_refs': refs, 'source_identity': 'unverified',
+                          'emb': values, 'source_refs': refs, 'source_identity': 'unverified',
                           'coverage': 'self_texts_encoded_by_existing_ranking_audit',
                           'target_selection': 'unasserted', 'encoder_id': None,
                           'encoder_weights_identity': 'unobserved', 'target_finalization': 'unobserved'}
                 if _publish_private(_private_root(self.root), packet, 'self-audit-embedding-'):
-                    self.seen.add(text)
+                    self.seen.add(observation)
         except Exception:
             COUNTERS['audit_retention_failed'] += 1
         return result

@@ -84,6 +84,22 @@ class Tests(unittest.TestCase):
         sources,admitted,packet,_=self.make('x'*401)
         self.state('bound_excerpt',sources,admitted,packet)
 
+    def test_repeated_runtime_observations_reach_conflict_detector(self):
+        sources, admitted, _, exchange = self.make()
+        encoder = types.SimpleNamespace(encode=Mock(side_effect=[[[1., 0.]], [[0., 1.]]]))
+        before = set(self.root.glob('self-audit-embedding-*.json'))
+        wrapped = A.audit_encoder(encoder, A.ledger_rows([exchange], retain=True), self.manifest)
+        wrapped.encode([exchange['his'][:400]])
+        wrapped.encode([exchange['his'][:400]])
+        files = set(self.root.glob('self-audit-embedding-*.json')) - before
+        packets = [json.loads(path.read_text()) for path in files]
+        self.assertEqual(len(packets), 2)
+        self.assertEqual(encoder.encode.call_count, 2)
+        summary, details = J.join_artifacts(admitted, sources, self.nodes, packets, 1000)
+        self.assertEqual(summary['states'], {'conflicting_vector_observations': 2})
+        self.assertEqual(summary['bound_unique_replies'], 0)
+        self.assertEqual(summary['scoring_effect'], 'none')
+
     def test_explicit_ledger_final_attestation_handles_appended_marks(self):
         sources,admitted,packet,_=self.make(ledger=True)
         self.state('bound_full_text',sources,admitted,packet)
