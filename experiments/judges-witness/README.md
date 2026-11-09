@@ -1811,19 +1811,30 @@ for ledger matching or change historical eligibility.
 13-by-768 output and already allocated CPU arrays. It makes no real model calls,
 loads no checkpoint, reads no input store and publishes no capture packets. Receipt
 helpers and parameter-array allocation are outside the timer. Each iteration uses
-a fresh wrapper: bare stub, first observed call (two parameter scans), then a repeat
-without new snapshots. Reports include wall/process-CPU medians and maxima, call
-counts, array byte counts and code hashes; no vectors, parameter values, messages
-or identifiers are written. Each first call must retain observed-equal snapshots
-and the exact return object/call counts, or the run fails without a report.
+a fresh wrapper: bare stub, first observed call (two parameter scans), a same-input
+repeat without parameter snapshots, then a fresh-input repeat without parameter
+snapshots. The last phase exercises new receipt retention; the same-input phase
+keeps the first bank entry and cannot prove a new receipt. Both first/fresh-input
+calls must retain equal before/after runtime and Python-entrypoint observations.
+First-call parameter bytes/counts and repeat unavailability are checked separately.
+A missing observation, changed synthetic state, stale invocation or unexpected
+component count fails the run before any report is written.
+
+Version 2 reports include wall/process-CPU medians and maxima, call counts, array
+byte counts, code hashes and fixed observation-coverage counts. No vectors,
+parameter values, messages, invocation IDs or settings are written. The default
+minimal profile observes the root and its code. `--runtime-profile configured`
+adds four synthetic modules across two child levels, four stored module settings,
+one config and one tokenizer-settings object. This is a bounded fixture, not a
+measurement or reconstruction of the real encoder or tokenizer.
 
 Run from the reviewed checkout with an existing CPU Python environment containing
 numpy. No install is needed:
 
 ```sh
 BENCH_SCRATCH="$(python3 -c 'from pathlib import Path; import tempfile; print(Path(tempfile.mkdtemp(prefix="judges-cost-")).resolve())')"
-SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3
-SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3 --runtime-profile configured
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided --runtime-profile configured
 ```
 
 The CLI refuses live/repository/symlinked roots, existing outputs and paths outside
@@ -1833,7 +1844,7 @@ logical arrays, 1/8/64/128 tensors and 1–10 iterations. Strided arrays allocat
 the logical parameter bytes and hashing makes temporary contiguous copies; the
 reported allocation is not peak RSS. Default is 64 MiB, eight tensors, three runs.
 
-Local synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
+Earlier version 1 synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
 first observed-call wall median/max 42.219/43.999 ms contiguous and 49.465/54.537 ms
 strided; repeated-call medians 1.886/1.918 ms respectively. These are measurement
 observations, not performance tests with thresholds. They do not establish real
@@ -2254,3 +2265,36 @@ encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
 self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
 store guard 32. Generated ownership/coverage/store reports refreshed without
 changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — benchmark observation coverage, version 2
+
+`codex/judges-benchmark-observation-coverage` descends from 7b82f337. The offline
+cost tool previously verified parameter snapshots only, allowing runtime/code
+observation failures to yield optimistic timing reports. It now refuses results
+unless first and fresh-input repeat calls retain the expected runtime/code pairs
+and exact synthetic component counts. A separate fourth phase exercises fresh
+receipt retention without another parameter scan; the existing same-input repeat
+retains first-call bank entries and is not claimed as fresh receipt evidence.
+Schema is judges-encoder-cost-v2; version 1 results remain historical measurements.
+
+The configured profile adds four synthetic modules, stored settings, one config
+and one tokenizer-settings object, without loading a model or tokenizer. The
+minimal profile remains default. Both profiles measure the entire wrapper call,
+including inspection and vector/receipt construction, with allocation and receipt
+helper preload excluded. Neither includes sink publication or serving latency.
+
+Local configured-profile measurement: 64 MiB logical arrays, eight tensors, three
+iterations. First-call wall median/max is 42.572/43.139 ms contiguous and
+50.118/51.026 ms strided. Same-input repeat medians are 2.019/1.996 ms; new-input
+receipt-retaining repeat medians are 4.415/4.406 ms. Each run makes twelve stub
+encodes and six parameter snapshots, checking six distinct retained calls. These
+are synthetic observations without pass thresholds, not real-host acceptance.
+No production code, encoder behavior, capture defaults, scoring or admission changed.
+Real encoder compatibility/cost, full ancestry, delivery and integration remain open.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.

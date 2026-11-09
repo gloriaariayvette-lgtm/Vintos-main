@@ -2157,3 +2157,19 @@ encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
 self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
 store guard 32. Generated ownership/coverage/store reports refreshed without
 changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — coverage-checked synthetic cost measurement
+
+Version 2 verifies runtime/entrypoint observations as well as parameter snapshots,
+checks fresh repeat invocations and separately measures new receipt retention.
+Configured synthetic runtime profile measured at 64 MiB/eight tensors/three runs:
+first-call medians 42.572/50.118 ms contiguous/strided; new-input repeat medians
+4.415/4.406 ms. No real model or tokenizer load, live store, send or deployment.
+No production behavior change. Real-host costs remain unmeasured.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.

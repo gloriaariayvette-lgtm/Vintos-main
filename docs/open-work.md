@@ -6991,3 +6991,12 @@ fingerprints and aggregate content-bound comparisons. Unknown/native/legacy data
 stays unknown. Full helper/native/tokenizer identity, real-host cost, complete
 ancestry, delivery evidence and integration remain open. Capture off, scoring and
 eligibility remain unchanged; no enabling, merge or deployment.
+
+
+## 9 November — cost benchmark now verifies inspection coverage
+
+`codex/judges-benchmark-observation-coverage`, on 7b82f337, hardens the offline
+benchmark against missing runtime/code observations and adds a synthetic configured
+profile plus fresh-input repeat retention. Local configured 64 MiB first-call
+medians: 42.572 ms contiguous, 50.118 ms strided. These are not real-encoder costs.
+No runtime change; host compatibility/cost, ancestry, delivery and integration open.

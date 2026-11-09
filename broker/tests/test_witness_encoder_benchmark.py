@@ -32,7 +32,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(r['input_kind'],'synthetic_cpu_arrays')
             self.assertEqual(r['logical_parameter_bytes'],1024*1024)
             self.assertEqual(r['allocated_parameter_array_bytes'],multiplier*1024*1024)
-            self.assertEqual((r['encode_calls'],r['snapshot_calls']),(6,4))
+            self.assertEqual((r['encode_calls'],r['snapshot_calls']),(8,4))
             for phase in r['timings'].values():
                 for metric in phase.values():
                     self.assertGreaterEqual(metric['median'],0)
@@ -52,10 +52,47 @@ class Tests(unittest.TestCase):
         with patch.object(M.SyntheticEncoder,'state_dict',side_effect=RuntimeError('synthetic failure')):
             with self.assertRaises(RuntimeError):M.benchmark(1,1,1)
 
+    def test_configured_profile_covers_stored_settings_and_new_input_repeat(self):
+        r=M.benchmark(1,8,2,'strided','configured')
+        self.assertEqual(r['schema'],'judges-encoder-cost-v2')
+        self.assertEqual(r['runtime_profile'],'configured')
+        coverage=r['observation_coverage']
+        self.assertEqual(coverage['checked_calls'],{'first_observed_call':2,'repeat_new_inputs_without_snapshot':2})
+        self.assertEqual(coverage['stored_runtime_components_per_snapshot'],
+                         {'modules':4,'module_settings':4,'configs':1,'tokenizers':1,'tokenizer_settings':1})
+        self.assertEqual(coverage['parameter_pairs_per_iteration'],1)
+        self.assertIn('repeat_new_inputs_without_snapshot',r['timings'])
+        for private in ('synthetic instruction','hidden_size','padding_side','sha256','invocation'):
+            self.assertNotIn(private,json.dumps(r))
+
+    def test_missing_runtime_or_entrypoint_observation_refuses_measurement(self):
+        import witness_self_artifacts as A
+        for name in ('runtime_snapshot','entrypoint_snapshot'):
+            with patch.object(A,name,side_effect=RuntimeError('synthetic observer failure')):
+                with self.assertRaisesRegex(RuntimeError,'observation unavailable'):
+                    M.benchmark(1,1,1)
+
+    def test_new_input_repeat_cannot_reuse_first_successful_observation(self):
+        import witness_self_artifacts as A
+        original=A.runtime_snapshot
+        calls=[]
+        def fail_later(enc):
+            calls.append(None)
+            if len(calls)>4:raise RuntimeError('repeat observer failure')
+            return original(enc)
+        with patch.object(A,'runtime_snapshot',side_effect=fail_later):
+            with self.assertRaisesRegex(RuntimeError,'observation unavailable'):
+                M.benchmark(1,1,1)
+        self.assertEqual(len(calls),6)
+
+    def test_runtime_profile_is_validated_before_allocation(self):
+        with patch.object(M,'SyntheticEncoder',side_effect=AssertionError('must validate first')):
+            with self.assertRaises(ValueError):M.benchmark(1,1,1,'contiguous','unrecognized')
+
     def cli(self, output, scratch=None):
         root=self.root if scratch is None else scratch
         return subprocess.run([sys.executable,str(SCRIPT),'--scratch',str(root),'--output',str(output),
-            '--mib','1','--iterations','1'],env=dict(os.environ,SPARK_WORKSPACE=str(root),
+            '--mib','1','--iterations','1','--runtime-profile','configured'],env=dict(os.environ,SPARK_WORKSPACE=str(root),
             PYTHONDONTWRITEBYTECODE='1'),text=True,capture_output=True)
 
     def test_cli_writes_one_private_aggregate_and_refuses_overwrite(self):
@@ -67,6 +104,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(target.stat().st_mode&0o777,0o600)
         self.assertEqual(out.stat().st_mode&0o777,0o700)
         self.assertEqual(len(data['code_sha256']),5)
+        self.assertEqual(data['runtime_profile'],'configured')
+        self.assertEqual(data['observation_coverage']['checked_calls']['repeat_new_inputs_without_snapshot'],1)
         self.assertNotEqual(self.cli(out).returncode,0)
         self.assertEqual(target.read_bytes(),raw)
 

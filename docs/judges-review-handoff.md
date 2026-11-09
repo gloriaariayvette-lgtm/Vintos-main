@@ -1,10 +1,13 @@
 # Judges slices 1 and 2: accumulated review handoff
 
-Implementation tip: **83118e87492ba96d254e46289f614dd5ccbeda23**.
-This handoff adds documentation only. The last reviewer-reported integration is
-**41b3a1d5**, including **d3dd754a**. The implementation range to inspect is
-`d3dd754a..83118e87`; do not treat this as a merge or a claim about the current
-remote deploy branch. Existing submitted branch tips remain fixed.
+Current candidate: **codex/judges-benchmark-observation-coverage**, based on
+**7b82f33766be42802825737d3108afc6b17e0bd3**. Its final published hash is recorded in
+the dated local coordination reply. Latest reviewer-reported integration is
+**c499460e**, through **f7eccc6e** (note #28); this is not a fresh verification of
+the deploy branch. Subsequent commits form one stack, `f7eccc6e..HEAD`, and the
+sections below record their scope and validation. Prior review branch tips stay
+fixed. The original dependency table and totals below are historical, not the
+current implementation tip or a combined total of all later checks.
 
 ## Dependency order
 
@@ -520,3 +523,36 @@ encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
 self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
 store guard 32. Generated ownership/coverage/store reports refreshed without
 changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — benchmark observation coverage, version 2
+
+`codex/judges-benchmark-observation-coverage` descends from 7b82f337. The offline
+cost tool previously verified parameter snapshots only, allowing runtime/code
+observation failures to yield optimistic timing reports. It now refuses results
+unless first and fresh-input repeat calls retain the expected runtime/code pairs
+and exact synthetic component counts. A separate fourth phase exercises fresh
+receipt retention without another parameter scan; the existing same-input repeat
+retains first-call bank entries and is not claimed as fresh receipt evidence.
+Schema is judges-encoder-cost-v2; version 1 results remain historical measurements.
+
+The configured profile adds four synthetic modules, stored settings, one config
+and one tokenizer-settings object, without loading a model or tokenizer. The
+minimal profile remains default. Both profiles measure the entire wrapper call,
+including inspection and vector/receipt construction, with allocation and receipt
+helper preload excluded. Neither includes sink publication or serving latency.
+
+Local configured-profile measurement: 64 MiB logical arrays, eight tensors, three
+iterations. First-call wall median/max is 42.572/43.139 ms contiguous and
+50.118/51.026 ms strided. Same-input repeat medians are 2.019/1.996 ms; new-input
+receipt-retaining repeat medians are 4.415/4.406 ms. Each run makes twelve stub
+encodes and six parameter snapshots, checking six distinct retained calls. These
+are synthetic observations without pass thresholds, not real-host acceptance.
+No production code, encoder behavior, capture defaults, scoring or admission changed.
+Real encoder compatibility/cost, full ancestry, delivery and integration remain open.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.
