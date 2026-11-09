@@ -673,6 +673,22 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
     targets = {r["turn_id"]: r for r in admitted}
     cache = defaultdict(list)
     held, candidates, declared = Counter(), defaultdict(list), defaultdict(list)
+    invalid_clocks = defaultdict(Counter)
+    def clock(value, field):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            state = "missing" if value is None else "invalid"
+            if isinstance(value, str):
+                try:
+                    from datetime import datetime
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        state = "missing_timezone"
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            invalid_clocks[field][state] += 1
+            raise
     for e in embeddings:
         if not isinstance(e, dict) or not isinstance(e.get("turn_id"), str) or not e["turn_id"]:
             held["missing_embedding_identity"] += 1
@@ -720,12 +736,12 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             # vector/causality filtering can discard the earliest prediction.
             claim = {"at": None, "sha256": None}
             declared[(row["turn_id"], group)].append(claim)
-            claim["at"] = made = instant(f["ts"])
+            claim["at"] = made = clock(f.get("ts"), "forecast_at")
             claim["sha256"] = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
-            arrived = instant(f["arrived_at"])
-            if not (instant(manifest["trained_at"]) < made < r["finalized_at"]
+            arrived = clock(f.get("arrived_at"), "arrived_at")
+            if not (clock(manifest.get("trained_at"), "trained_at") < made < r["finalized_at"]
                     and arrived <= made and arrived <= r["started_at"]
-                    and instant(head["context_last_ts"]) < arrived):
+                    and clock(head.get("context_last_ts"), "context_last_at") < arrived):
                 held["noncausal_forecast"] += 1
                 continue
             matches = [e for e in cache[row["turn_id"]]
@@ -806,6 +822,7 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             **{key: statistics.mean(r["controls"][key] for r in rows) for key in (
                 "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
     return {"groups": aggregate, "held": dict(held),
+            "invalid_clocks": {field: dict(counts) for field, counts in invalid_clocks.items()},
             "baselines": {"paired_groups": comparisons, "unavailable": dict(control_held),
                           "meaning": "positive improvement favours head; descriptive paired errors, not a pass verdict"},
             "meaning": "prediction innovation, not authenticity or a pass verdict"}, scored

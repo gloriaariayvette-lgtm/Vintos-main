@@ -1191,3 +1191,29 @@ This is coverage of supplied admitted data, not a census of all production traff
 or attempted forecasts. No real-data measurements, private rerun, new producer or
 model call, live write, send, merge or deploy. Full Aegis validation/private census
 remain with the reviewer; earlier branches stay fixed above approved aa85ff5e.
+
+
+## 8 November — actionable forecast clock diagnostics
+
+`codex/judges-forecast-clock-diagnostics` identifies clock failures inside the
+existing innovation report without changing rejection, ordering, scoring or
+admission. Fixed field names distinguish missing, timezone-missing and invalid
+values when parsed. Counts are per input record's first failing parsed clock;
+earlier evidence failures may prevent parsing. Valid but noncausal times retain
+the old noncausal reason. No raw times, identifiers or error text are exposed.
+
+Source tracing found a concrete contract risk: the self head's `_iso` uses local
+`datetime.fromtimestamp(...).isoformat()` without a timezone, while strict replay
+requires explicit time instants. A synthetic test executes that actual formatter
+and demonstrates the held outcome. No claim is made about live prevalence, and
+no historical clock is guessed or reinterpreted. Future explicit clock evidence
+remains producer work, rather than weakening this reader.
+
+183 affected isolated checks pass: clock diagnostics 9, witness 106, paired controls
+20, coverage 13, producer inputs 15, capture/replay 9 and ownership 11. Tests retain
+unknown forecast order and the hold on an unscorable earliest prediction; later
+valid candidates cannot replace it. Numeric and offset-aware equivalents preserve
+scores, while non-clock failures stay separate. Required reports regenerated;
+whitespace checks pass. No private snapshot run, live write, model/paid call, real
+test send, merge or deploy. Independent full Aegis suite/private census remain with
+the reviewer; submitted prior branches remain fixed above approved aa85ff5e.

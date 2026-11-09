@@ -6531,3 +6531,13 @@ denominators and zero-coverage block/group counts. 174 affected isolated checks 
 Scores and admission remain unchanged; supplied-data coverage is not production-wide
 coverage or accuracy. Full Aegis suite/private census and incomplete origin/ancestry/
 delivery work remain with their existing owners; production remains untouched.
+
+
+## 8 November — forecast clock evidence
+
+`codex/judges-forecast-clock-diagnostics` makes existing clock rejection actionable
+with field-specific counts; 183 affected isolated checks pass. The existing source
+formatter can produce naive clocks; the synthetic test proves that contract risk,
+not its live frequency. Explicit future producer clocks remain needed where this
+occurs; no historical timezone backfill or eligibility relaxation is allowed.
+Full Aegis review/private census remain with the reviewer; no live changes.

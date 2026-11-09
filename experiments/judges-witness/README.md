@@ -1073,3 +1073,24 @@ is outside any complete declared comparison block; no window is invented.
 publishing block names or times. Empty blocks have counts but no fabricated score
 group or fraction. The fraction describes evidence availability, not accuracy.
 Scores, matching rules and witness admission do not change.
+
+
+### Forecast clock diagnostics
+
+The existing innovation report's `invalid_clocks` counts `missing`,
+`missing_timezone` and `invalid` values under fixed fields `forecast_at`,
+`arrived_at`, `trained_at` and `context_last_at`. Counts are per input record at
+the first clock parse that fails, not an exhaustive audit of every field or a
+count of unique turns. Earlier identity/shape/serialization failures can prevent
+a clock from being parsed. Valid but noncausal times retain the separate existing
+`noncausal_forecast` outcome; non-clock failures do not gain a clock label.
+
+The existing generic held counts, candidate ordering, scores and eligibility are
+unchanged. A missing/naive earliest forecast still prevents substitution by a later
+one. No raw timestamps, IDs or exception strings enter the diagnostic. Missing or
+null clocks remain missing; timestamps without offsets never borrow the replay
+host's timezone. Source inspection and a synthetic test show the existing self
+head's `_iso` helper emits a naive local string. That is a producer-contract risk,
+not a measurement of the live history. Correct future producer evidence needs an
+explicit observed epoch or offset-aware time; historical clocks must not be
+silently reconstructed. This increment only makes the existing rejection legible.
