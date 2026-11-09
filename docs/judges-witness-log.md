@@ -781,3 +781,26 @@ were run for this documentation-only change; the preceding 126-check result is
 historical, not a fresh suite. No live inputs, model calls, sends from tests,
 production changes, merge or deploy. Code implementation of these producer
 bindings and independent full Aegis review remain outstanding.
+
+
+## 8 November — generated fragment bindings per scratch request
+
+`codex/judges-rendered-fragment-bindings` continues from cb861635. The existing
+inner-context render path now retains a bounded ephemeral selection manifest only
+when scratch settings match. No extra renderer calls or persisted offer fields.
+Capture snapshots the exact selection identity/clock and matches offered fragments
+against each router invocation's system input. It records hashes/spans, distinguishes
+matched/not-found/ambiguous, and does not borrow matches from history or old retries.
+Identical offers from different organs stay ambiguous. Generated nodes remain
+incomplete with unknown upstream ancestry; delivery remains unconfirmed.
+
+223 affected isolated checks pass: new rendered-fragment suite 11, witness 106,
+capture 27, hooks 21, capture/replay 9, existing architecture admission 5, home-map
+prompt 8, last-partials 25, ownership 11. Fixtures cover context interleaving,
+immutable snapshots, old/failing APIs, mismatch/size limits, renderer errors,
+capture-off output, existing offer schema, exact spans, duplicate origins and
+persisted packet replay. The initial new-suite failure was a fixture without a
+selected generation result; corrected to supply an invented observed result.
+Reports regenerated and whitespace checked. No private-data run, model calls,
+real test sends, live writes, merge or deploy. Full independent Aegis suite/review,
+upstream dependency producers, delivery acknowledgement and enablement remain open.

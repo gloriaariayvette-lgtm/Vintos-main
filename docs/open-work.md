@@ -6375,3 +6375,13 @@ promoted to complete prompt ancestry. Next: context-local exact rendered-fragmen
 bindings per invocation, preserving incomplete generated parents and unknown
 delivery. Documentation only; producer implementation and independent Aegis
 review remain outstanding. No capture enablement or live-feed changes.
+
+
+## 8 November — rendered fragment producer implemented in scratch
+
+`codex/judges-rendered-fragment-bindings` implements bounded context-local render
+manifests and exact per-invocation system-fragment hashes/spans. Existing renderer
+outputs and persisted offer schema are preserved. Missing/ambiguous matches stay
+explicit; generated ancestry and client delivery remain unknown. 223 affected
+isolated checks pass. Full upstream producer coverage, independent Aegis review
+and separately approved production enablement remain outstanding.

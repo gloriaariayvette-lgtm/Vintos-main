@@ -701,3 +701,31 @@ an explicit `true` witness or sequence flag; an integer rating and a floating
 copy cannot let input order decide which is selected. Conflicted predecessors
 remain unavailable while their sequence positions stay occupied. Identical
 copies still count once. This applies only to the offline feedback reader.
+
+
+### Context-local rendered fragments (scratch only)
+
+When the existing scratch and workspace settings match, `inner_context` retains
+an ephemeral manifest of at most 64 offered fragments and 262144 codepoints per
+assembly. A new assembly replaces it. Ordinary mode retains no extra rendered
+text; output and persisted offer record shapes are unchanged. The manifest shares
+the selection ID and clock of the observed offer metadata; capture requires both
+to match. Returned manifests and captured fragments are independent snapshots.
+
+Each invocation compares the retained fragments against its actual system string.
+Unambiguous matches record whole-input and full-fragment hashes plus exact Unicode
+spans on that invocation's input node. Repeated occurrences or identical text
+from multiple offering organs are ambiguous. `not_found` means only that this
+exact fragment was not found; it does not distinguish rewriting from omission.
+Moving text into history does not borrow a system binding. Every retry is checked
+again. Older/missing/failing producer APIs preserve ordinary capture without
+fragment bindings. No latest-file read or time-window join is introduced.
+
+Raw fragment text is not added to existing offer stores or persisted capture
+packets; capture drops its transient copy on finalization. The producer retains
+its bounded context-local copy until the next assembly/context lifetime ends.
+The fragment nodes remain generated material with unknown parents and incomplete
+ancestry. Exact content presence proves neither clean origin nor provider
+consumption, semantic influence or client delivery. Other prompt parts, guard
+notes and truncated/over-limit material are outside this bounded manifest. No
+production enablement, full-coverage claim or live feed substitution follows.

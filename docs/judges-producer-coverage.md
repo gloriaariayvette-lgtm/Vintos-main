@@ -65,3 +65,16 @@ Keep the already submitted offline repairs fixed while implementing this next
 increment on a new branch. Production destination/retention/enablement remains
 the separate [disabled proposal](judges-capture-enable-proposal.md). Installation
 and live acceptance must not be inferred from a reviewed branch.
+
+
+## Implementation follow-up: rendered fragment bindings
+
+`codex/judges-rendered-fragment-bindings` implements the bounded context-local
+manifest and per-invocation system matching above, with hashes/spans in scratch
+packets only. Limits are 64 retained fragments / 262144 Unicode codepoints per
+assembly; this is partial coverage, not an enumeration of every prompt producer.
+Exact missing fragments report `not_found`, never an inferred omission reason.
+Identical offers from multiple organs and repeated occurrences are ambiguous.
+Generated parent chains, client delivery and production enablement remain open.
+The source locations above describe the d22d4032 review baseline, not new line
+numbers after this implementation.
