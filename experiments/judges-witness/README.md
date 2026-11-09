@@ -1094,3 +1094,34 @@ head's `_iso` helper emits a naive local string. That is a producer-contract ris
 not a measurement of the live history. Correct future producer evidence needs an
 explicit observed epoch or offset-aware time; historical clocks must not be
 silently reconstructed. This increment only makes the existing rejection legible.
+
+
+### Prospective source-clock sidecar
+
+A scoped scratch on-message forecast may additionally publish
+`self-forecast-clock-*.json` (`self-forecast-clock-v1`). The existing source adapters
+observe numeric epochs or offset-aware timestamps before legacy string formatting.
+The source value must parse to exactly the epoch already used by the adapter;
+naive strings, numeric strings, estimated chat timestamps, mismatches and malformed
+values are not made explicit by inference. Outside the scoped scratch forecast,
+there is no extra source-clock metadata.
+
+The observation retains only the explicit epoch, source clock kind, source-value
+hash and rendered-clock hash. If the existing merger selects an earlier timestamp,
+its clock observation follows that timestamp, even though the higher-priority
+source's reply text remains selected. An earlier source with unknown time clears
+a later known observation; a later duplicate cannot backfill the earlier clock.
+
+Publication requires the existing exact prediction binding and agreement with the
+saved row's context-clock string. The sidecar hashes the entire unchanged saved
+forecast row. This is source exchange time, not reply finalization or authenticated
+source identity. The existing forecast row and `self-forecast-inputs-v1` sidecar
+remain unchanged. Clock publication is independent and may fail after the input
+sidecar succeeds; neither proves a durable or complete capture set.
+
+This increment supplies prospective evidence only. Replay does not yet accept this
+sidecar as a replacement clock, and no legacy forecast or timezone is backfilled.
+A future explicit consumer must check the exact row binding, contradictions,
+source-clock semantics and all existing prospective/identity requirements. Capture
+remains disabled in production; all new writes use the existing private scratch
+validation and mode-0600 publication sink. No source is reopened or model called.

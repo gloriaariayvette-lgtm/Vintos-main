@@ -1217,3 +1217,34 @@ scores, while non-clock failures stay separate. Required reports regenerated;
 whitespace checks pass. No private snapshot run, live write, model/paid call, real
 test send, merge or deploy. Independent full Aegis suite/private census remain with
 the reviewer; submitted prior branches remain fixed above approved aa85ff5e.
+
+
+## 8 November — explicit source-clock observations
+
+`codex/judges-source-clock-receipts` retains explicit source times before the self
+head's legacy timestamp formatting can lose their offset. Observation runs only
+inside an existing scoped scratch forecast. Numeric/offset-aware values must agree
+exactly with the adapter's parsed epoch; ambiguous inputs stay unknown. The actual
+ledger/chat adapters and existing earliest-time merge carry the observation without
+changing their text priority, filtering, selected timestamps or forecast row.
+An earlier unknown clock clears the later known one; no duplicate backfill.
+
+A separate private `self-forecast-clock-v1` sidecar requires exact saved prediction
+and rendered context-clock binding. It contains clock hashes/epoch/kind and explicit
+unverified source identity, not messages or vectors. It records exchange time, not
+reply finalization. Existing input-sidecar schema and forecast logs stay unchanged.
+Observer/sink failures cannot affect the forecast, and a clock-sink failure preserves
+the already published input receipt. The two files do not prove a complete capture
+set or durable storage. Replay consumption is still separate work; no implicit
+historical conversion or eligibility upgrade is introduced.
+
+271 affected isolated checks pass: source clocks 12, input receipts 15, on-message
+32, self source 39, readout 5, clock diagnostics 9, paired controls 20, coverage 13,
+witness 106, capture/replay 9 and ownership 11. New fixtures execute actual source
+adapters, merger and job against synthetic scratch with stubbed encoder/model
+functions. Cases include numeric/aware/naive clocks, off/on equivalence, unscoped
+reads, earlier/later/equal duplicate timing, bad metadata and observer/sink failures.
+The existing synthetic fitting suite passes with its numeric warnings; no real-data
+accuracy claim. Required reports regenerated; whitespace checks pass. No private
+snapshot run, paid/model call, real test send, live write, merge or deploy. Full
+Aegis suite/private census remain with the reviewer; earlier tips remain fixed.

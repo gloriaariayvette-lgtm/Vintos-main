@@ -898,6 +898,43 @@ def begin_self_forecast():
     return _self_forecast_scope.set({"root": str(root), "observations": 0, "inputs": None})
 
 
+def self_exchange_clock(raw, parsed, rendered):
+    """Retain explicit source time before legacy formatting, only in a scoped forecast."""
+    if _self_forecast_scope.get() is None:
+        return None
+    try:
+        epoch = instant(raw)
+        if epoch != instant(parsed) or not isinstance(rendered, str) or len(rendered) > 128:
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return {"schema": "self-exchange-clock-v1", "epoch": epoch,
+            "raw_kind": "offset_iso" if isinstance(raw, str) else "numeric_epoch",
+            "raw_clock_sha256": _fingerprint(raw), "rendered_clock_sha256": digest(rendered),
+            "meaning": "source_exchange_time_not_reply_finalization"}
+
+
+def _self_context_clock(exchange, at):
+    value = exchange.get("_witness_clock")
+    if (not isinstance(exchange.get("ts"), str) or not isinstance(value, dict)
+            or set(value) != {"schema", "epoch", "raw_kind", "raw_clock_sha256",
+                                                    "rendered_clock_sha256", "meaning"}
+            or value["schema"] != "self-exchange-clock-v1"
+            or value["raw_kind"] not in ("offset_iso", "numeric_epoch")
+            or value["meaning"] != "source_exchange_time_not_reply_finalization"):
+        return None
+    try:
+        if (instant(value["epoch"]) != instant(at) or instant(exchange["at"]) != instant(at)
+                or value["rendered_clock_sha256"] != digest(exchange["ts"])):
+            return None
+        raw_hash = value["raw_clock_sha256"]
+        if not isinstance(raw_hash, str) or len(raw_hash) != 64 or any(c not in "0123456789abcdef" for c in raw_hash):
+            return None
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    return deepcopy(value)
+
+
 def observe_self_forecast(exchanges, own, as_of, forecast):
     """Record the actual readout's recent-own inputs, not its complete context.
 
@@ -947,7 +984,8 @@ def observe_self_forecast(exchanges, own, as_of, forecast):
     if forecast.get("context_emb") is not None:
         payload["context_emb"] = forecast["context_emb"]
     _self_forecast_scope.set(dict(scope, observations=count, inputs=inputs,
-                                 payload_sha256=_fingerprint(payload)))
+                                 payload_sha256=_fingerprint(payload),
+                                 context_clock=_self_context_clock(exchanges[-1], observed_at)))
 
 
 def end_self_forecast(token):
@@ -981,4 +1019,13 @@ def publish_self_forecast(scope, row):
               "durability": "unconfirmed", "observations": scope["observations"],
               "state": "observed" if matched else "unavailable",
               "inputs": scope["inputs"] if matched else None, "complete_forecast_context": False}
-    return _publish_private(root, packet, "self-forecast-inputs-")
+    published = _publish_private(root, packet, "self-forecast-inputs-")
+    if (matched and scope.get("context_clock") is not None
+            and isinstance(row["self"].get("context_last_ts"), str)
+            and digest(row["self"]["context_last_ts"]) == scope["context_clock"]["rendered_clock_sha256"]):
+        clock_packet = {"schema": "self-forecast-clock-v1", "forecast_row_sha256": packet["forecast_row_sha256"],
+                        "forecast_at": made, "arrived_at": arrived,
+                        "context_clock": scope["context_clock"], "boundary": "forecast_log_close",
+                        "durability": "unconfirmed", "source_identity": "unverified"}
+        _publish_private(root, clock_packet, "self-forecast-clock-")
+    return published

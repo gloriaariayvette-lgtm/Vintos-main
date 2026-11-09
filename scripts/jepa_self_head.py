@@ -242,8 +242,10 @@ def _from_ledger(rows, floor, origin):
         if key in seen:
             continue
         seen.add(key)
-        out.append({"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
-                    "withheld": bool(e.get("vintos_withheld")), "origin": origin})
+        exchange = {"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
+                    "withheld": bool(e.get("vintos_withheld")), "origin": origin}
+        _attach_forecast_clock(exchange, e.get("timestamp"))
+        out.append(exchange)
     return out
 
 
@@ -272,10 +274,11 @@ def _from_chat(rows, floor, origin, test_times=()):
         ts = raw if (isinstance(raw, str) and "T" in raw) else _iso(at)
         if floor and ts < floor:
             continue
-        clean.append((at, ts, e))
+        clock = _forecast_witness("self_exchange_clock", raw, at, ts) if e["role"] == "assistant" else None
+        clean.append((at, ts, e, clock))
     clean.sort(key=lambda r: r[0])
     out, pending = [], None
-    for at, ts, e in clean:
+    for at, ts, e, clock in clean:
         if e["role"] == "user":
             pending = (at, ts, e)
             continue
@@ -289,8 +292,11 @@ def _from_chat(rows, floor, origin, test_times=()):
             i = bisect.bisect_left(test_times, at - 5)
             if i < len(test_times) and test_times[i] <= at + 180:
                 continue
-        out.append({"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
-                    "withheld": False, "origin": origin})
+        exchange = {"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
+                    "withheld": False, "origin": origin}
+        if clock is not None:
+            exchange["_witness_clock"] = clock
+        out.append(exchange)
     return out
 
 
@@ -376,6 +382,10 @@ def _merge(groups):
                 st["duplicate"] += 1
                 if x["at"] < dup["at"]:
                     dup["at"], dup["ts"] = x["at"], x["ts"]
+                    # The clock observation follows the selected timestamp, not the preferred text source.
+                    dup.pop("_witness_clock", None)
+                    if x.get("_witness_clock") is not None:
+                        dup["_witness_clock"] = x["_witness_clock"]
                 continue
             y = dict(x); y["_vk"] = vk
             kept.append(y); st["added"] += 1
@@ -1007,6 +1017,12 @@ def launch_on_message(her, surface="", turn_id="", now=None):
     except Exception as e:
         log("on-message forecast not launched: %s" % e)
         return None
+
+
+def _attach_forecast_clock(exchange, raw):
+    clock = _forecast_witness("self_exchange_clock", raw, exchange["at"], exchange["ts"])
+    if clock is not None:
+        exchange["_witness_clock"] = clock
 
 
 def _forecast_witness(name, *args):

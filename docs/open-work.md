@@ -6541,3 +6541,13 @@ formatter can produce naive clocks; the synthetic test proves that contract risk
 not its live frequency. Explicit future producer clocks remain needed where this
 occurs; no historical timezone backfill or eligibility relaxation is allowed.
 Full Aegis review/private census remain with the reviewer; no live changes.
+
+
+## 8 November — prospective source-clock receipts
+
+`codex/judges-source-clock-receipts` captures explicit original clock values before
+legacy formatting, follows actual merge timestamp selection, and binds a separate
+private sidecar to the unchanged forecast. 271 affected isolated checks pass.
+Replay consumption still requires a separately validated exact-row/clock join;
+there is no implicit timezone inference, backfill or eligibility change. Production
+capture stays off. Full Aegis review/private census remain with the reviewer.

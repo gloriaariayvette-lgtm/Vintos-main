@@ -231,3 +231,15 @@ keep descriptive pairs separate; declarations do not certify preregistration.
 The old census and innovation output are unchanged. No actual snapshot rerun or
 production capture enablement is included; authenticated origins, complete ancestry
 and delivery still require their own evidence.
+
+
+## Implementation follow-up: original source clocks
+
+The self forecast's ledger/chat adapters now preserve explicit numeric or aware
+source clocks only during a scoped scratch forecast, before legacy formatting.
+Metadata follows the actual earliest-time merge, while text-source priority stays
+unchanged. A separate private sidecar binds that observation to the exact saved
+forecast and context-clock string. Unknown source clocks remain unknown; this is
+exchange timing, not finalization or authenticated origin. The old forecast/input
+receipt shapes remain unchanged. Replay consumption and production enablement are
+separate; no historical conversion or live-data measurement is included.
