@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from bisect import bisect_left, bisect_right
 from datetime import datetime
 import json
+import re
 from zoneinfo import ZoneInfo
 from witness_receipts import digest, instant, joined_identity, normalize_receipt, final_response
 
@@ -80,7 +81,7 @@ def attribution(rows, ledger, config, cutoff):
         try: timezone = ZoneInfo(config['naive_timezone'])
         except (TypeError, ValueError, KeyError): raise ValueError('invalid attribution timezone') from None
     cutoff = instant(cutoff)
-    calls, by_id, by_caller, unordered = {}, defaultdict(list), defaultdict(list), set()
+    calls, by_id, by_completion, by_caller, unordered = {}, defaultdict(list), defaultdict(list), defaultdict(list), set()
     for record in ledger:
         if not isinstance(record, dict): raise ValueError('invalid compute ledger record')
         try: sha = digest(json.dumps(record, sort_keys=True, separators=(',', ':'), allow_nan=False))
@@ -91,8 +92,12 @@ def attribution(rows, ledger, config, cutoff):
         except ValueError: at = None
         call = dict(sha256=sha, at=at, caller=caller, model=model, provider=provider,
                     foreground=record.get('class') == 'foreground', stage=record.get('stage'),
+                    response_sha256=record.get('generation_response_sha256'), request_trace_id=record.get('request_id'),
+                    provider_request_id=record.get('provider_request_id'),
                     identity_explicit='model_identity_evidence' in record, identity_evidence=record.get('model_identity_evidence'))
         calls[sha] = call
+        if _name(record.get('generation_completion_id')):
+            by_completion[record['generation_completion_id']].append(call)
         if _name(record.get('provider_request_id')): by_id[record['provider_request_id']].append(call)
         if caller and call['foreground']:
             if at is None: unordered.add(caller)
@@ -125,6 +130,35 @@ def attribution(rows, ledger, config, cutoff):
             state = 'outside_cutoff'
         elif not callers:
             state = 'surface_caller_unmapped'
+        elif 'generation_join' in row:
+            method = 'generation_completion_id'
+            join = row['generation_join']
+            if (not isinstance(join,dict) or set(join) != {'schema','completion_id','request_trace_id','caller',
+                                                          'raw_response_sha256','stored_response_sha256'}
+                    or join['schema'] != 'router-completion-join-v1'
+                    or not isinstance(join['completion_id'],str) or not re.fullmatch('[0-9a-f]{32}',join['completion_id'])
+                    or not isinstance(row.get('content'),str)
+                    or join['stored_response_sha256'] != digest(row['content'])
+                    or not isinstance(join['raw_response_sha256'],str)
+                    or not re.fullmatch('[0-9a-f]{64}',join['raw_response_sha256'])
+                    or join['caller'] not in callers
+                    or join['request_trace_id'] is not None and not _name(join['request_trace_id'])):
+                state = 'invalid_completion_join'
+            else:
+                matches = by_completion[join['completion_id']]
+                if len(matches) != 1:
+                    state = 'ambiguous_completion_id' if matches else 'completion_id_unmatched'
+                else:
+                    candidate = matches[0]
+                    if (candidate['response_sha256'] != join['raw_response_sha256']
+                            or candidate['request_trace_id'] != join['request_trace_id']
+                            or candidate['caller'] != join['caller']):
+                        state = 'completion_binding_mismatch'
+                    elif supplied_ids and (None in valid_ids or len(valid_ids) != 1
+                                           or candidate['provider_request_id'] != next(iter(valid_ids))):
+                        state = 'completion_provider_id_mismatch'
+                    else:
+                        call = candidate
         elif supplied_ids:
             method = 'provider_request_id'
             if None in valid_ids or len(valid_ids) != 1:

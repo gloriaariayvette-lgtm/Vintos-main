@@ -1655,3 +1655,31 @@ IDs, configured-only/failed calls, bad clocks, cutoff, invalid opt-in, report
 partition validation, scratch CLI and unchanged strict outputs. Synthetic only;
 real added-tier counts remain for the reviewer on the admitted private snapshot.
 No live writes, provider/model calls, enabling, merge or deployment.
+
+
+## 9 November — selected completion joined to saved history
+
+`codex/judges-completion-joins` adds the reviewer-requested prospective correlation
+between router ledger completions and avatar/canonical/merged assistant history.
+A random per-completion ID supplements the existing HTTP request trace so repeated
+attempts under one request remain distinguishable. The accepted invocation's ID,
+caller, raw-text hash and stored-text hash reach history; failures or absent helpers
+never invent origin. Provider IDs remain separate. Offline matching validates all
+bindings and refuses time fallback for bad explicit completion markers.
+
+The saved row is a pre-final-guard history version, not delivery evidence. The
+interaction-ledger subprocess and non-avatar producers remain without this new
+marker. Full host suite, live coverage and latency acceptance stay with the reviewer.
+Source investigation of stopped chat caller/missing surfaces remains open.
+
+309 focused isolated checks pass: completion joins 9, router completions 7,
+handler capture 21, attribution 26, draft identity 9, compute admission 44,
+forced routes 16, learned cache 15, merged chat 31, coverage 14, strict witness 106,
+ownership 11.
+Tests execute real router/handler fragments with stub providers and ledger, including
+retry acceptance/rejection/failure and concurrent request traces. No sockets or
+live stores. Initial extracted fixture needed a local options initializer; fixed
+and reran. One cache-suite invocation used an obsolete filename; corrected to the
+existing learned-cache suite, all 15 pass. Existing draft usage ResourceWarnings
+remain scratch-only and unrelated. No live writes, paid calls, enabling, merge or
+deployment. Full Aegis suite remains the reviewer's responsibility.

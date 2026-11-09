@@ -112,11 +112,16 @@ class Tests(unittest.TestCase):
             self.assertIsNone(capture._attempts[0]['served_model'])
             self.assertEqual(capture._attempts[0]['identity_evidence'],'unknown')
 
-    def test_existing_ledger_metadata_shape_is_unchanged(self):
+    def test_ledger_adds_completion_join_without_changing_existing_result_fields(self):
         result=G.make_result('synthetic-provider',model='synthetic-model',status='valid',request_id='synthetic-request',text='synthetic reply',finish_reason='stop')
         before=copy.deepcopy(result)
         self.ns['_ledger'](result,'chat',0,'synthetic-stage')
+        join=result.pop('ledger_join')
         self.assertEqual(result,before)
-        self.assertEqual(self.record.call_args.kwargs['extra'],{'provider_request_id':'synthetic-request','finish_reason':'stop'})
+        extra=self.record.call_args.kwargs['extra']
+        self.assertEqual(extra['generation_completion_id'],join['completion_id'])
+        self.assertEqual(extra['generation_response_sha256'],join['raw_response_sha256'])
+        self.assertEqual(extra['provider_request_id'],'synthetic-request')
+        self.assertEqual(extra['finish_reason'],'stop')
 
 if __name__=='__main__':unittest.main()

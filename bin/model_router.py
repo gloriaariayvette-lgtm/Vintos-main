@@ -599,6 +599,11 @@ def _ledger(res, surface, t0, stage="", model_identity=None):
     try:
         import time as _lt, compute_admission as _ca
         extra = {"provider_request_id": res.get("request_id") or None, "finish_reason": res.get("finish_reason")}
+        try:
+            from request_trace import completion_join
+            extra.update(completion_join(res, surface))
+        except Exception:
+            pass
         model = res.get("model", "")
         if model_identity == "response_metadata" and _identity_name(res.get("observed_model")):
             model = res["observed_model"]

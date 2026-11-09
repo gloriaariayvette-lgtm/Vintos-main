@@ -1634,3 +1634,37 @@ results, not proof of accuracy or a historical training authorization. The origi
 strict census, behaviour receipt, forecasts, baselines and scoring do not change.
 The real-data tier counts must be measured by the reviewer on the admitted copy;
 previous wider-window opportunity counts are not silently relabelled as results.
+
+
+### Prospective selected-completion joins
+
+Router ledger writes now add a random `generation_completion_id` for each nonempty
+completion plus `generation_response_sha256`. The existing ledger `request_id`
+remains the HTTP trace ID; it is not a provider request ID, and multiple attempts
+can share it. The result carries a content-free `ledger_join` with the completion
+ID, trace ID, caller and raw-text hash. These identify an attempted record, not a
+confirmed durable write: existing accounting failure handling remains unchanged.
+
+The avatar handler (including its room surface) keeps a separate invocation-local
+observer for each first/repeat/replacement router call. Only the accepted call's
+metadata is attached to its saved assistant history row as `generation_join`, with
+a hash of that exact stored text. Rejected repeats clear selection; failed reroutes
+preserve whatever reply the existing handler keeps. This observation works when
+private shadow capture is off, composes with capture when on, and degrades to no
+join for older/missing helpers. No model calls, tuple contracts, reply text, route
+choices, effect parsing or feeds change. Canonical copying preserves the field;
+the merged-chat carry list now preserves it as well.
+
+Offline attribution checks the exact completion ID before provider-ID/time matching.
+It verifies the raw hash, HTTP trace, caller scope and stored-text hash, then applies
+the existing call metadata, cutoff, identity and reuse rules. A supplied provider ID
+must agree too. Missing, duplicate, malformed or contradictory completion markers
+stay unresolved: neither tight-window nor optional 30-second fallback repairs them.
+Unmarked historical rows retain their prior attribution behavior.
+
+This correlates a recorded generation completion with a **saved history version**.
+History is written before the final response guard; a join does not prove client
+delivery, the final transport version, complete internal attempts or clean ancestry.
+It never establishes a model identity that the completion metadata lacks. The
+interaction-ledger subprocess and other non-avatar generation paths are not given
+invented joins; those remaining producers require separate source tracing.

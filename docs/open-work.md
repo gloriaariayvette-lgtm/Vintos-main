@@ -6721,3 +6721,15 @@ on the existing private snapshot before interpreting added counts; no real-data
 result is claimed. Note 27 follow-ups still open: prospective ledger/history join
 key, source tracing of stopped chat logging and absent surfaces, durable queue-loss
 diagnostics, encoder identity. Full Aegis suite remains with review; no deployment.
+
+
+## 9 November — exact completion/history correlation ready for review
+
+`codex/judges-completion-joins` supplies a per-completion ID alongside HTTP trace
+identity in router records and selected avatar/canonical/merged history. Offline
+joins validate caller, trace and raw/stored hashes before attribution. 309 focused
+isolated checks pass. This is saved-history correlation, not final delivery or
+strict admission. Other generation paths and interaction-ledger subprocess copies
+remain uninstrumented by this increment. Remaining note 27 work: trace stopped
+chat logging/missing surfaces and durable queue diagnostics; encoder identity also
+remains open. No enabling, merge or deployment; full host acceptance remains review.
