@@ -8,6 +8,7 @@ from copy import deepcopy
 import json
 import os
 import sys
+import time
 from pathlib import Path
 import uuid
 from witness_receipts import digest, instant, receipt, source_node
@@ -526,6 +527,66 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         packet["lineage"].append({"id": effect_id, "kind": "tactical", "at": instant(finalized_at),
                                   "complete": False, "parents": [], "origin": "generation_provenance"})
         packet["reply_node"]["parents"].append(effect_id)
+    return _publish_private(root, packet, "capture-")
+
+
+def begin_value_map_call(payload):
+    """Observe one existing HTTP invocation; this is not a chat witness or a build."""
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if not location:
+        return None
+    root = _private_root(location)
+    if (not isinstance(payload, dict) or set(payload) != {"model", "messages", "temperature", "max_tokens"}
+            or not isinstance(payload["messages"], list) or len(payload["messages"]) != 2):
+        raise ValueError("invalid value-map call")
+    inputs = []
+    for i, item in enumerate(payload["messages"]):
+        if (not isinstance(item, dict) or set(item) != {"role", "content"}
+                or item["role"] != ("system" if i == 0 else "user")
+                or not isinstance(item["content"], str) or len(item["content"]) > 4194304):
+            raise ValueError("invalid value-map input")
+        inputs.append({"slot": i, "role": item["role"], "input_sha256": _fingerprint(item),
+                       "complete": False, "origin": "generated_or_unknown"})
+    configured = payload["model"]
+    if not isinstance(configured, str) or not 0 < len(configured) <= 256:
+        configured = None
+    return {"root": root, "closed": False, "packet": {
+        "schema": "value-map-call-v1", "request_id": uuid.uuid4().hex,
+        "started_at": instant(time.time()), "input_sha256": _fingerprint(payload), "inputs": inputs,
+        "configured_model": configured, "scope": "one_http_invocation",
+        "upstream_complete": False, "internal_attempts_complete": False,
+        "build_selection": "not_recorded", "stored_output_binding": "not_recorded"}}
+
+
+def finish_value_map_call(observation, response, http_status, returned_text, outcome):
+    """Publish hashes and direct response metadata only; failure text is never retained."""
+    if observation is None:
+        return False
+    if observation["closed"]:
+        return False
+    observation["closed"] = True
+    if outcome not in ("returned", "rejected", "failed"):
+        raise ValueError("invalid value-map outcome")
+    if outcome == "returned" and not isinstance(returned_text, str):
+        raise ValueError("missing returned text")
+    if outcome != "returned" and returned_text is not None:
+        raise ValueError("unexpected returned text")
+    packet = deepcopy(observation["packet"])
+    ended = instant(time.time())
+    if ended < packet["started_at"]:
+        raise ValueError("invalid call clock")
+    observed = response.get("model") if isinstance(response, dict) and outcome == "returned" else None
+    if not isinstance(observed, str) or not observed.strip() or len(observed) > 256:
+        observed = None
+    packet.update(ended_at=ended, outcome=outcome,
+                  served_model=observed, identity_evidence="response_metadata" if observed else "unknown",
+                  http_status=http_status if type(http_status) is int and 100 <= http_status <= 599 else None,
+                  response_sha256=_fingerprint(response) if response is not None else None,
+                  returned_sha256=digest(returned_text) if returned_text is not None else None)
+    return _publish_private(_private_root(observation["root"]), packet, "value-map-call-")
+
+
+def _publish_private(root, packet, prefix):
     # Write an invisible temporary name, then atomically publish a complete file.
     # link (rather than replacing rename) also refuses an existing final name.
     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -534,7 +595,7 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         info = os.fstat(directory)
         if info.st_mode & 0o077 or info.st_uid != os.getuid():
             raise ValueError("scratch permissions changed")
-        name = "capture-" + uuid.uuid4().hex + ".json"
+        name = prefix + uuid.uuid4().hex + ".json"
         candidate = "." + name + ".tmp"
         fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
         temporary = candidate

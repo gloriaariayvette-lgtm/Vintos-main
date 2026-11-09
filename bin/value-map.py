@@ -102,9 +102,20 @@ try:
 except: pass
 
 
-def llm(system, user, temperature=0.6):
+def _witness_call(method, *args):
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        return None
     try:
-        r = requests.post(API, json={
+        import witness_capture
+        return getattr(witness_capture, method)(*args)
+    except Exception:
+        return None
+
+
+def llm(system, user, temperature=0.6):
+    observation = None
+    try:
+        payload = {
             "model": MODEL,
             "messages": [
                 {"role": "system", "content": system},
@@ -112,18 +123,24 @@ def llm(system, user, temperature=0.6):
             ],
             "temperature": temperature,
             "max_tokens": 1500
-        }, timeout=180)
+        }
+        observation = _witness_call("begin_value_map_call", payload)
+        r = requests.post(API, json=payload, timeout=180)
         _j = r.json()
         # the server's own words, not just "'choices'" (2026-10-13). An empty choices list, a body that is not
         # an object, and a choice with no content are read the same way, never as a KeyError or an index error.
         _choice = ((_j.get("choices") or [None])[0]) if isinstance(_j, dict) else None
         _content = (((_choice.get("message") or {}).get("content")) if isinstance(_choice, dict) else None)
         if not _content:
+            _witness_call("finish_value_map_call", observation, _j, r.status_code, None, "rejected")
             _body = _j.get("error", _j) if isinstance(_j, dict) else _j
             log(f"LLM error: HTTP {r.status_code} from {API}: no choices in the reply: {str(_body)[:300]}")
             return None
-        return str(_content).strip()
+        result = str(_content).strip()
+        _witness_call("finish_value_map_call", observation, _j, getattr(r, "status_code", None), result, "returned")
+        return result
     except Exception as e:
+        _witness_call("finish_value_map_call", observation, None, None, None, "failed")
         log(f"LLM error: {e}")
         return None
 

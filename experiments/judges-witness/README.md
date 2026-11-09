@@ -779,3 +779,29 @@ the same fragment matcher. Old or failing optional observer/binding APIs do not
 change output or disable an otherwise working capture. Generated value-map and
 stored-source nodes remain incomplete, with unknown upstream ancestry. Other
 surfaces and the map's own generating dependencies remain outside this increment.
+
+
+### Existing value-map HTTP calls (scratch only)
+
+`value-map-call-v1` observes each existing generator HTTP invocation separately.
+Before the call, it hashes the exact constructed payload and ordered system/user
+messages. Afterward it records returned/rejected/failed outcome, whole parsed
+response hash, normalized returned-text hash when present, and a model identity
+only when a returned response supplies a valid model field. The configured model
+is recorded separately and never fills unknown served identity. Response metadata
+is the server's report, not independent verification of loaded weights.
+
+These are separate private `value-map-call-*.json` files (0600, atomic publication)
+and are not chat witness rows or inputs to the strict chat census. No prompts,
+response text, exception text, endpoint, credentials or paths enter the packet.
+One record is one observed HTTP call, not a claim to observe backend retries or
+fallbacks. Calls interrupted before the completion hook have no completed packet;
+this is not a durable attempt-intent journal. Unobserved upstream dependencies,
+build-level draft selection and the final map-file write remain explicitly
+unrecorded. Do not join a call to an entry using timing proximity or text similarity.
+
+All three deployed value-map source copies retain identical code. Prompts,
+parameters, number of calls, return processing and existing map writes are
+unchanged. Missing, old or failing observer/sink APIs fail open for generation.
+Receipt publication reuses the existing private atomic sink; no capture is enabled
+in production by this change. All verification uses stubbed HTTP and scratch.

@@ -113,3 +113,19 @@ upstream generating prompt, model or causal effects. The map node and stored
 parent remain incomplete. Other surfaces' value-map reads are not covered by
 this main-chat increment. Optional observer failures preserve both the existing
 block and any otherwise working capture; production enablement remains separate.
+
+
+## Implementation follow-up: value-map call boundary
+
+`codex/judges-value-map-call-receipts` observes the generator's existing HTTP
+payload before the call and its returned response afterward. Private metadata
+records exact input/output hashes, response-reported identity when available,
+and explicit failure/rejection outcomes. It neither introduces a model call nor
+turns a configured model into served identity. The three existing deployed source
+copies stay identical, and the private atomic sink is shared with chat capture.
+
+These are per-call receipts, not a complete generated-artifact graph. Build-local
+selection among drafts, final entry/file-write bindings, upstream source ancestry
+and backend internal attempts remain unfinished. Completed call receipts exclude
+interrupted calls and cannot establish complete attempt coverage. The offline
+chat census does not ingest these as assistant turns. No live-data run is claimed.

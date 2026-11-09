@@ -867,3 +867,34 @@ Reports regenerated; whitespace checked. No private-data read/rescore, model
 call, real test send, live-store write, merge or deploy. Generated-map dependency
 receipts and other surfaces remain unfinished; this is source-binding evidence,
 not a claim of clean lineage or improved eligibility.
+
+
+## 8 November — value-map HTTP call receipts and reviewed-base continuation
+
+Coordination note 19 approves/integrates the earlier batch through eb16fce1 and
+requests base 16c74480. The new branch `codex/judges-value-map-call-receipts` rebases
+only its three newer producer commits onto that base; earlier submitted branches
+remain fixed. No integration merge or deployment was performed here.
+
+The existing value-map call wrapper now emits optional private per-call hashes,
+response-reported identity and returned/rejected/failed outcomes. Source copies
+stay identical; request payloads, outputs and call counts are unchanged. There
+is no configured-identity fallback. Optional API/sink failures preserve normal
+behavior. Shared atomic publication retains 0600/no-replace scratch semantics.
+New tests execute the actual wrapper with stub HTTP and verify privacy, identity,
+unknowns, rejected/failed calls, exact pre-call snapshots, disabled capture,
+observer failures, clocks, private-root validation and once-only completion.
+
+These receipts are not chat turns and do not claim draft selection, final map
+writes, complete upstream dependencies or complete backend/interrupted-attempt
+coverage. Those remain open. Final rebased-suite results follow after completion.
+
+374 affected isolated checks pass after the rebase: call receipts 9, value-map
+read binding 7, capture 27, hooks 21, capture/replay 9, fragments 11, renderer reads
+12, witness 106, store guard 32, architecture admission 5, lounge 46, journal 18,
+partials 25, ownership 11, value-map day 17 and choices 18. The two existing
+value-map suites use installed Python 3.12 with the existing read-only dependency
+root; no installation or runner change. Reports regenerated and whitespace
+checked. No private-data run, paid/model call, real test send, live write, merge
+or deployment. Full independent Aegis validation of this newer batch remains
+with the reviewer; earlier batch approval is not claimed for these new producers.

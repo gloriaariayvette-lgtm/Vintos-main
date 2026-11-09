@@ -6411,3 +6411,16 @@ open. The reviewer owns the later private census rerun.
 264 affected isolated checks pass, including existing value-map behavior suites
 under installed Python 3.12 with existing read-only dependencies. Full Aegis
 validation remains separate; no packages were installed.
+
+
+## 8 November — value-map HTTP producer and reviewed rebase
+
+`codex/judges-value-map-call-receipts` continues the newer three-producer batch
+on reviewer-requested base 16c74480, keeping earlier submitted branches fixed.
+Existing generator HTTP calls now have opt-in private hash/identity/outcome
+receipts. No extra model calls or feed changes. Build-level draft selection,
+entry/file-write bindings, upstream ancestry, interrupted/backend attempts and
+trusted delivery remain open. Production capture stays disabled; the reviewer
+owns full Aegis validation and the eventual private census rerun.
+374 affected isolated checks pass on the rebased newer batch. This is synthetic
+validation only; independent Aegis review of these producers remains pending.
