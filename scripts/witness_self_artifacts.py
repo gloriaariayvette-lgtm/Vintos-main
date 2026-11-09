@@ -10,6 +10,7 @@ import json
 import hashlib
 import math
 import numbers
+import time
 
 COUNTERS = Counter()
 MAX_CHECKPOINT = 64 * 1024 * 1024
@@ -20,7 +21,7 @@ def _text(value, limit=256):
     return value if isinstance(value, str) and value.strip() and len(value) <= limit else None
 
 
-def checkpoint(raw, meta):
+def checkpoint(raw, meta, availability=None):
     from witness_capture import _fingerprint
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CHECKPOINT or not isinstance(meta, dict):
         return None
@@ -35,7 +36,7 @@ def checkpoint(raw, meta):
             'reported_encoder_label': _text(meta.get('encoder')),
             'trained_at': None, 'encoder_id': None,
             'training_completion_evidence': 'unobserved', 'encoder_weights_identity': 'unobserved',
-            'weights_retained': False}
+            'weights_retained': False, 'availability': availability_receipt(availability)}
 
 
 def vector(value):
@@ -208,3 +209,49 @@ def ledger_rows(exchanges, retain=False):
                 pass
         result.append(row)
     return result
+
+
+def begin_checkpoint_read():
+    """Two clock readings only; no filesystem, model or encoder invocation."""
+    return (time.time(), time.monotonic())
+
+
+def finish_checkpoint_read(start, stage="parameters_loaded"):
+    return availability_receipt({'read_started_at': start[0], 'parsed_at': time.time(),
+                                 'monotonic_elapsed': time.monotonic() - start[1], 'stage': stage})
+
+
+def availability_receipt(value):
+    """Availability of parsed parameters is not their training-completion timestamp."""
+    missing = {'schema': 'checkpoint-availability-v1', 'state': 'unobserved',
+               'parameters_available_by': None, 'bytes_observed_by': None, 'stage': None,
+               'meaning': 'checkpoint_read_observation_not_training_time'}
+    if value is None:
+        return missing
+    if not isinstance(value, dict):
+        return missing
+    # Revalidation preserves a finished receipt, including an explicit clock gap.
+    if value.get('schema') == 'checkpoint-availability-v1':
+        expected = set(missing) | {'read_started_at', 'parsed_at', 'monotonic_elapsed'}
+        if set(value) == set(missing) and value == missing:
+            return missing
+        if (set(value) != expected or value.get('meaning') != missing['meaning']
+                or (value.get('parameters_available_by') is not None
+                    and type(value['parameters_available_by']) not in (int,float))
+                or (value.get('bytes_observed_by') is not None
+                    and type(value['bytes_observed_by']) not in (int,float))):
+            return missing
+        candidate = availability_receipt({k:value[k] for k in ('read_started_at','parsed_at','monotonic_elapsed','stage')})
+        return candidate if candidate == value else missing
+    if (set(value) != {'read_started_at','parsed_at','monotonic_elapsed','stage'}
+            or value.get('stage') not in ('parameters_loaded','metadata_loaded')):
+        return missing
+    if any(type(value[k]) not in (int,float) or not math.isfinite(value[k]) for k in ('read_started_at','parsed_at','monotonic_elapsed')):
+        return missing
+    start, parsed, elapsed = (value[k] for k in ('read_started_at','parsed_at','monotonic_elapsed'))
+    if start < 0 or parsed < 0 or elapsed < 0 or elapsed > 600:
+        return missing
+    consistent = parsed >= start and abs((parsed-start)-elapsed) <= 1.0
+    return dict(missing, **value, state='observed' if consistent else 'clock_discontinuity',
+                bytes_observed_by=parsed if consistent else None,
+                parameters_available_by=parsed if consistent and value['stage']=='parameters_loaded' else None)

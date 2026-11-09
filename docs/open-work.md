@@ -6633,3 +6633,13 @@ This resolves the content-version join portion of the preceding item. Still open
 encoder-weight/training-completion provenance and prospective forecast association
 before retained observations can supply scored embeddings. Full Aegis validation,
 private census rerun and production enablement remain separate review/owner steps.
+
+## 9 November — prospective checkpoint availability retained
+
+`codex/judges-checkpoint-availability` records optional observed load timing and
+separates fully loaded parameters from metadata-only reads. 236 affected isolated
+checks pass. Exact logged-forecast timing diagnostics are report-only; no training
+date is inferred and no old artifact gains one. This supplies the prospective
+availability observation portion of checkpoint provenance. Encoder-weight identity,
+training-data provenance and a reviewed scoring adapter remain open. Full host suite,
+private census and capture enablement remain separate review/owner steps.

@@ -1453,3 +1453,29 @@ actual reader cleanup equivalence and the isolated CLI. Reports regenerated;
 whitespace clean. Full Aegis validation/private census remain with the reviewer.
 No real records, model/paid calls, actual test sends, live writes, enablement,
 merge or deployment.
+
+## 9 November — observed checkpoint availability
+
+`codex/judges-checkpoint-availability` continues above a5b16797. Optional checkpoint
+observations now retain wall/monotonic read timing around the same byte snapshot.
+Full parameter loads and metadata-only audit reads are distinct; only a completed
+parameter load can supply parameters_available_by. No training date is inferred
+from fitting-day metadata or file mtime. Clock rollback/discontinuity, invalid
+values and observer failures remain explicit without affecting forecasts.
+
+Offline timing diagnostics require the exact saved forecast row, checkpoint and
+matching clocks before comparing load completion with logged forecast time. Audit
+snapshots, late loads, cutoff exclusions and missing records remain separate.
+Fixed aggregate counts are included in the private review report; no private clock
+values, IDs, text or vectors are rendered. Admission, scores and feeds are unchanged.
+Encoder identity and training-data provenance remain open; this is an availability
+bound, not a fabricated historical training-completion attestation.
+
+236 affected isolated checks pass: availability 12, artifacts 16, final joins 16,
+input receipts 15, source clocks 12, strict witness 106, formatter 15, report coverage
+9, readout 5, sink 19 and ownership 11. Cases cover actual checkpoint loading and
+unchanged forecast rows, disabled capture, failed clocks, backward/forward jumps,
+metadata-versus-parameter stages, exact-row/hash/clock consistency, cutoff and report
+denominators. Reports regenerated; whitespace clean. Full Aegis validation/private
+census remain with the reviewer. No real-data reads, model/paid calls, actual test
+sends, live writes, enablement, merge or deployment.

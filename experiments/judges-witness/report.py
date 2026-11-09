@@ -84,12 +84,23 @@ def artifact_coverage(section, eligible):
     if (unique > supplied or refs < unique or total != refs or bound > eligible
             or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
         invalid()
+    timing = []
+    if 'checkpoint_availability_states' in section:
+        values = section['checkpoint_availability_states']
+        if not isinstance(values,dict) or sum(count(n) for n in values.values()) != unique: invalid()
+        labels = ('parsed_by_logged_forecast','parsed_after_logged_forecast','audit_snapshot_observed',
+                  'clock_discontinuity','unobserved','parameters_not_loaded','exact_forecast_row_missing',
+                  'forecast_identity_mismatch','forecast_clock_mismatch','forecast_outside_cutoff')
+        if set(values) - set(labels): invalid()
+        for label in labels:
+            timing.append(f'- Checkpoint availability {label}: {count(values.get(label,0))} packets.')
+        timing += ['', 'These clock checks do not supply a training date or authenticate a forecast. Metadata-only reads never attest loaded parameters.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
             f'- Conflicting-vector references: {conflicts}; other unresolved references: {refs-full-excerpt-conflicts}.',
             f'- Unique eligible replies with a content binding: {bound}.', '',
-            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', '']
+            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', ''] + timing
 
 
 def render(report):

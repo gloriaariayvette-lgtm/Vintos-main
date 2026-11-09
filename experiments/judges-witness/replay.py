@@ -1312,7 +1312,7 @@ def main():
     private_artifact_joins = None
     if "self_artifact_packets" in bundle:
         report["self_artifact_joins"], private_artifact_joins = join_artifacts(
-            admitted, sources, nodes, bundle["self_artifact_packets"], args.cutoff)
+            admitted, sources, nodes, bundle["self_artifact_packets"], args.cutoff, bundle.get("forecasts", []))
     private_self_inputs = None
     if "self_input_controls" in bundle:
         report["self_input_baselines"], private_self_inputs = self_input_baselines(

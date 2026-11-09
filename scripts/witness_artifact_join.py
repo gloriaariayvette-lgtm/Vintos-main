@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source
+from witness_self_artifacts import bound_source, availability_receipt
 
 
 def fingerprint(value):
@@ -71,7 +71,7 @@ def claims(packet):
         yield ref, value, manifest['checkpoint_id'], vector_sha
 
 
-def join_artifacts(admitted, sources, nodes, packets, cutoff):
+def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     """Exact source digest, explicit ID/surface, final version and transform agreement.
 
     Even a content match is not encoder identity, training evidence or a forecast
@@ -165,6 +165,46 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff):
     matched = [item for item in details if item['state'] in ('bound_full_text', 'bound_excerpt')]
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
+            'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'bound_unique_replies': len({item['turn_id'] for item in matched}),
             'admission_effect': 'none', 'scoring_effect': 'none', 'encoder_identity': 'unverified',
             'artifact_observation_time': 'unverified', 'forecast_target_selection': 'not_evaluated'}, details
+
+
+def checkpoint_availability(packets, forecasts, cutoff):
+    """Timing consistency of exact supplied records; never invent a fitting date."""
+    cutoff = instant(cutoff)
+    by_forecast = {fingerprint(f):f for f in forecasts if isinstance(f, dict)}
+    states = Counter()
+    for packet in packets:
+        is_forecast = packet.get('schema') == 'self-forecast-artifacts-v1'
+        manifest = packet.get('artifacts',{}).get('checkpoint') if is_forecast else packet.get('checkpoint')
+        observation = availability_receipt(manifest.get('availability') if isinstance(manifest,dict) else None)
+        state = observation['state']
+        if state != 'observed':
+            states[state] += 1; continue
+        if not is_forecast:
+            states['audit_snapshot_observed'] += 1; continue
+        if observation['stage'] != 'parameters_loaded':
+            states['parameters_not_loaded'] += 1; continue
+        forecast = by_forecast.get(packet.get('forecast_row_sha256'))
+        if forecast is None:
+            states['exact_forecast_row_missing'] += 1; continue
+        if (forecast.get('mode') != 'on_message' or not isinstance(forecast.get('self'),dict)
+                or forecast['self'].get('mode') != 'on_message'
+                or forecast['self'].get('checkpoint_id') != manifest.get('checkpoint_id')):
+            states['forecast_identity_mismatch'] += 1; continue
+        try:
+            made, arrived = instant(forecast['ts']), instant(forecast['arrived_at'])
+            if (made != instant(packet['forecast_at']) or arrived != instant(packet['arrived_at'])
+                    or arrived > made):
+                raise ValueError('inconsistent forecast clocks')
+        except (KeyError,TypeError,ValueError,OverflowError):
+            states['forecast_clock_mismatch'] += 1; continue
+        if made >= cutoff:
+            states['forecast_outside_cutoff'] += 1
+        elif observation['parameters_available_by'] > made:
+            states['parsed_after_logged_forecast'] += 1
+        else:
+            states['parsed_by_logged_forecast'] += 1
+    return dict(sorted(states.items()))

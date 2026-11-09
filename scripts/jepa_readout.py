@@ -197,11 +197,13 @@ def train_mode(rows, cache, mode, out, old=None, steps=200):
 
 def load(path, retain=False):
     raw = None
+    checkpoint_clock = None
     source = path
     if retain:
         try:
             import io
-            from witness_self_artifacts import MAX_CHECKPOINT
+            from witness_self_artifacts import MAX_CHECKPOINT, begin_checkpoint_read
+            checkpoint_clock = begin_checkpoint_read()
             with open(path, 'rb') as stream:
                 raw = stream.read(MAX_CHECKPOINT + 1)
             if len(raw) <= MAX_CHECKPOINT:
@@ -216,8 +218,9 @@ def load(path, retain=False):
     model['meta']=meta
     if raw is not None:
         try:
-            from witness_self_artifacts import checkpoint
-            model['_witness_checkpoint'] = checkpoint(raw, meta)
+            from witness_self_artifacts import checkpoint, finish_checkpoint_read
+            availability = finish_checkpoint_read(checkpoint_clock) if checkpoint_clock is not None else None
+            model['_witness_checkpoint'] = checkpoint(raw, meta, availability)
         except Exception:
             pass
     return model
@@ -296,6 +299,13 @@ def audit(enc, memory=None):
     for mode in MODES:
         path=directory/(mode+'.npz')
         if not path.exists():continue
+        checkpoint_clock = None
+        if mode != 'gloria' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+            try:
+                from witness_self_artifacts import begin_checkpoint_read
+                checkpoint_clock = begin_checkpoint_read()
+            except Exception:
+                pass
         checkpoint_raw=path.read_bytes()
         ck=hashlib.sha256(checkpoint_raw).hexdigest();head='gloria' if mode=='gloria' else 'self'; adapted=[]
         for row in history:
@@ -315,10 +325,12 @@ def audit(enc, memory=None):
         if head == 'self' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
             try:
                 import io
-                from witness_self_artifacts import checkpoint, audit_encoder, MAX_CHECKPOINT
+                from witness_self_artifacts import checkpoint, audit_encoder, MAX_CHECKPOINT, finish_checkpoint_read
                 if len(checkpoint_raw) <= MAX_CHECKPOINT:
                     with np.load(io.BytesIO(checkpoint_raw), allow_pickle=False) as archive:
-                        manifest = checkpoint(checkpoint_raw, json.loads(str(archive['meta'])))
+                        meta = json.loads(str(archive['meta']))
+                    availability = finish_checkpoint_read(checkpoint_clock, stage='metadata_loaded') if checkpoint_clock is not None else None
+                    manifest = checkpoint(checkpoint_raw, meta, availability)
                     audit_enc = audit_encoder(enc, ledger, manifest)
             except Exception:
                 pass

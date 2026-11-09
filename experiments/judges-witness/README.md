@@ -1409,3 +1409,36 @@ unverified; forecast-target selection is not evaluated. No packet is inserted in
 scoring embeddings/checkpoints, no eligibility rule changes, and all pre-existing
 census/behaviour/innovation output is unchanged (actual CLI regression tested).
 The independent private census and full host suite remain reviewer-owned.
+
+### Observed checkpoint availability, separate from training time
+
+New checkpoint observations optionally carry `checkpoint-availability-v1`. In the
+scoped on-message loader, wall and monotonic clocks bracket reading and parsing the
+same bounded checkpoint byte snapshot. A successful `parameters_loaded` observation
+records `parameters_available_by` at parse completion. The audit path only parses
+metadata, so its `metadata_loaded` observation records `bytes_observed_by` but leaves
+parameter availability null. This distinction is enforced during revalidation.
+Neither stage supplies `trained_at`, an encoder identity or a historical fitting
+attestation; old files/packets remain unobserved, with no mtime backfill.
+
+A backward wall clock, or disagreement over one second between wall elapsed and
+monotonic elapsed, produces `clock_discontinuity` with no availability bound. Invalid,
+negative, nonfinite or boolean clocks and spans over 600 seconds remain unobserved.
+Times are not clamped into a favorable order. Clock-observer failures cannot change
+ordinary loading or the forecast. Disabled ordinary loading invokes no observer
+clocks, and this adds no encoder/model calls or file/weight copies.
+
+The optional artifact replay audit reports checkpoint-availability counts per
+unique supplied packet. For a forecast packet it requires its exact saved-row hash,
+on-message mode, checkpoint identity and matching arrival/forecast clocks. It then
+distinguishes parameters parsed by the logged forecast, parsed later, outside-cutoff
+forecasts and missing/inconsistent records. Metadata-only observations cannot count
+as a loaded forecast checkpoint. Audit snapshots are reported separately, without
+claiming prospective use. The formatter uses fixed labels and validates counts;
+private clock values are not rendered.
+
+This is supplied-record timing consistency, not clock authenticity, training-data
+provenance or permission to score. Overall artifact/embedding observation time and
+encoder identity remain unverified. Existing historical mtime-based audits and
+strict scoring inputs are unchanged. The availability bound is retained for a
+future reviewed prospective adapter, rather than being renamed a training date.
