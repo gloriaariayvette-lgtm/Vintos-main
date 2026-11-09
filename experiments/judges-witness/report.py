@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import replay
 from forecast_handoffs import validate_coverage as validate_handoffs, STATES as HANDOFF_STATES
+from fit_completions import validate_coverage as validate_fits, STATES as FIT_STATES, COUNTS as FIT_COUNTS
 
 
 def invalid():
@@ -195,6 +196,15 @@ def render(report):
             for state in HANDOFF_STATES:
                 lines.append(f'- {state}: {handoffs["states"][state]}.')
             lines += ['', 'These compare supplied launcher, pending-file and forecast-log observations. A join does not authenticate the caller, establish forecast-to-delivered-reply association or grant training eligibility. Missing origin markers remain unknown; scoring is unchanged.', '']
+        if 'fit_completion_observations' in report:
+            fits=report['fit_completion_observations']
+            validate_fits(fits)
+            lines += ['## Fitting completion observations', '']
+            for name in FIT_COUNTS:
+                lines.append(f'- {name}: {fits[name]}.')
+            for state in FIT_STATES:
+                lines.append(f'- {state}: {fits["states"][state]}.')
+            lines += ['', 'Counts compare supplied local fit receipts with exact checkpoint observations. They do not authenticate sources, establish encoder ancestry, reconstruct historical training dates or grant eligibility. Multiple distinct receipts are held without choosing one; scoring is unchanged.', '']
         if 'historical_attribution' in report:
             historical = report['historical_attribution']
             if (not isinstance(historical, dict)

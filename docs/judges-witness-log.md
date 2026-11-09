@@ -2114,3 +2114,19 @@ is still open and current scoring/admission ignores these receipts.
 runtime 16, owners 11 and store guard 32. Synthetic numerical warnings persist in
 existing matrix operations, without assertion failures. Generated reports refreshed.
 No private input, real model, live writes, enabling, merge or deployment.
+
+
+## 9 November — fitting receipts reach the offline review
+
+Added strict offline receipt validation, exact checkpoint/metadata/mode/byte
+comparison, conservative conflict handling and before/during/after-read counts.
+Replay accepts an explicit optional self_fit_completions list and binds the reader
+code in its private run manifest; report renders fixed aggregate fields only.
+Malformed peers fail before filtering. Multiple distinct receipts remain ambiguous;
+legacy/missing evidence is never upgraded. Census and innovation stay unchanged.
+
+178 isolated checks pass: reader 17, report 22, artifact joins 30, census/innovation
+109. Actual CLI checks private permissions, code hashes and unchanged nonempty
+scores. Initial fixture filename corrected to the existing private-run.json.
+Generated reports refreshed. No private data, runtime producer change, model call,
+live write, enabling, merge or deployment. Full evidence and host integration open.

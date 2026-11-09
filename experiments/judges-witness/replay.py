@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from forecast_handoffs import coverage as forecast_handoff_coverage
+from fit_completions import coverage as fit_completion_coverage
 from witness_attribution import attribution
 from witness_artifact_join import join_artifacts
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
@@ -1225,7 +1226,7 @@ def install_guard(root, output):
 
 
 # The local scoring implementation, not provider dependencies or live stores.
-SCORING_FILES = ("experiments/judges-witness/forecast_handoffs.py", "scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+SCORING_FILES = ("experiments/judges-witness/fit_completions.py", "experiments/judges-witness/forecast_handoffs.py", "scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
                  "scripts/evidence_provenance.py", "scripts/evidence_view.py")
 
 
@@ -1324,6 +1325,9 @@ def main():
     if "self_artifact_packets" in bundle:
         report["self_artifact_joins"], private_artifact_joins = join_artifacts(
             admitted, sources, nodes, bundle["self_artifact_packets"], args.cutoff, bundle.get("forecasts", []))
+    if "self_fit_completions" in bundle:
+        report["fit_completion_observations"] = fit_completion_coverage(
+            bundle.get("self_artifact_packets", []), bundle["self_fit_completions"], args.cutoff)
     private_self_inputs = None
     if "self_input_controls" in bundle:
         report["self_input_baselines"], private_self_inputs = self_input_baselines(

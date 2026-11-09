@@ -2136,3 +2136,48 @@ test-block changes, partition conflicts, private output, object arrays, symlinks
 size bounds, clocks, dedicated-sink permissions and hot disable. Existing synthetic
 numeric code emits matrix-operation warnings; all asserted checks pass. Generated
 reports refreshed. No private data, real model, live write, enabling, merge or deploy.
+
+
+## 9 November — offline fitting-receipt reader
+
+`codex/judges-fit-receipt-reader` descends from 48b29f6a. Replay accepts an optional
+`self_fit_completions` list containing retained `self-fit-completion-v1` packets.
+It compares these with the existing explicitly supplied `self_artifact_packets`
+and adds `fit_completion_observations` to the aggregate. No directory discovery,
+checkpoint loading, encoder calls, training or receipt synthesis occurs. The new
+reader is included in the private run's scoring-code hash manifest. The existing
+review renderer projects only fixed counters and states after validation.
+
+Every supplied receipt and artifact is validated before cutoff filtering. Exact
+receipt copies and exact checkpoint-manifest copies collapse, while supplied-copy
+counts remain visible. States count unique checkpoint-manifest observations, not
+training runs, source replies or unique checkpoints: two reads of the same bytes
+at different clocks are separate observations. Orphan receipts are counted
+separately and do not prove a failed fit or absent forecast.
+
+Matching requires exact checkpoint digest, metadata digest, mode and byte count.
+Legacy manifests, missing receipts, unknown read clocks, mismatch and cutoff states
+stay separate. Multiple distinct fitting receipts for one checkpoint are held;
+the reader does not select an earlier or preferred one. This includes differing
+clock observations that could represent legitimate repeated fits; it is ambiguity,
+not a claim of fabrication. Conflicting manifest peers also hold the join. All
+supplied peers participate, including outside-cutoff peers, so filtering cannot
+hide an alternative claim. These conservative comparisons have no scoring effect.
+
+A single matching completion is classified as observed before the checkpoint read
+(start boundary), overlapping the read interval, or observed after parsing. Only
+parameter-loaded read clocks qualify for this temporal comparison. Neither a match
+nor its timing authenticates sources, establishes encoder/cache ancestry, proves
+disk durability, rewrites a historical fitting date or grants training eligibility.
+Current census, behaviour, innovation and checkpoint metadata remain unchanged.
+Full lineage, real-host cost, delivery evidence and host integration remain open.
+
+178 isolated checks pass: fitting reader 17, review report 22, artifact joins 30
+and census/innovation 109. Tests cover exact binding, clock intervals, missing and
+legacy evidence, duplicate/order invariance, receipt/manifest conflicts including
+future peers, malformed evidence, orphan counts, strict public projection, actual
+producer compatibility and the real scratch replay CLI. The CLI verifies private
+file permissions/code binding and exact unchanged nonempty census/innovation.
+An initial test used the wrong existing run-manifest filename; corrected to
+`private-run.json`. Generated reports refreshed. No runtime producer changes,
+private records, model calls, live writes, enabling, merge or deployment.

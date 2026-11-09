@@ -6964,3 +6964,13 @@ No runtime training was started; capture off and the other head remain unchanged
 The offline receipt reader/join is the next independent piece; complete source and
 encoder lineage, historical fitting dates, real-data cost and host integration
 remain open. Receipts do not change scoring or admission. No enablement/deployment.
+
+
+## 9 November — offline fitting reader implemented
+
+`codex/judges-fit-receipt-reader`, on 48b29f6a, implements the previously open
+completion-receipt reader/join. Explicit fitting receipts and existing artifact
+packets now yield fixed consistency/timing counts in replay and its review report.
+178 isolated checks pass; nonempty census and innovation are unchanged. Complete
+lineage, real-host costs, delivery evidence and host integration remain open.
+No runtime producer change, historical date inference, eligibility change or deploy.
