@@ -1047,3 +1047,29 @@ not a pass verdict, authenticity score or proof of held-out accuracy. Declaratio
 times are supplied evidence, not independently verified preregistration. Existing
 checkpoint and prospective-clock requirements still apply; no legacy missing or
 naive clock is repaired implicitly. No receipt authenticates its own producer.
+
+
+### Coverage denominators for excerpt controls
+
+`self_input_baselines.coverage` accompanies the scores. It separately counts
+admitted replies, distinct targets with scorable forecasts, selected forecast
+rows, paired forecast rows and paired targets before cutoff. Two checkpoints can
+forecast one target; that is two forecasts and one target, not two conversations.
+Missing and unscorable forecasts are counted as absent coverage, never as zero
+error or zero innovation. These counts cover only the supplied admitted snapshot,
+not all production activity or all attempted forecasts.
+
+Every supplied block remains visible, even if empty or incomplete. Block source
+counts use finalization in `[start, min(end, cutoff))`; a baseline pair additionally
+requires arrival inside the completed block. Thus a target can have a scorable
+forecast in the source window without qualifying for an in-block comparison.
+`targets_without_scorable_forecast` does not distinguish an absent forecast from
+one rejected by the existing innovation checks; that report retains its reasons.
+
+Per-checkpoint/block coverage includes zero-pair groups, the scorable denominator,
+paired fraction and unavailable reasons. A null `block_group` means the forecast
+is outside any complete declared comparison block; no window is invented.
+`block_group` is the ordinal of the validated declarations sorted by start, without
+publishing block names or times. Empty blocks have counts but no fabricated score
+group or fraction. The fraction describes evidence availability, not accuracy.
+Scores, matching rules and witness admission do not change.

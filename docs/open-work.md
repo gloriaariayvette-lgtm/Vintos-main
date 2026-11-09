@@ -6522,3 +6522,12 @@ normalization must leave final reply bytes unchanged; other transformations and
 missing legacy identity/clock/encoder evidence remain unavailable. Block declarations
 are supplied evidence, not authenticated preregistration. Review/full Aegis suite
 and private census remain with the reviewer; no actual-data result or live change.
+
+
+## 8 November — explicit baseline coverage
+
+`codex/judges-baseline-coverage` adds separate admitted-target/scorable-forecast/pair
+denominators and zero-coverage block/group counts. 174 affected isolated checks pass.
+Scores and admission remain unchanged; supplied-data coverage is not production-wide
+coverage or accuracy. Full Aegis suite/private census and incomplete origin/ancestry/
+delivery work remain with their existing owners; production remains untouched.

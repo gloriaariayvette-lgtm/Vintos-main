@@ -1166,3 +1166,28 @@ warnings remain visible. No real-data measurements, private snapshots, live writ
 model/paid calls, actual test sends, merge or deploy. Full Aegis suite/private census
 remain with the reviewer. Source ancestry, delivery and production enablement are
 still separate; this does not grant eligibility or claim accuracy.
+
+
+## 8 November — baseline coverage denominators
+
+`codex/judges-baseline-coverage` adds explicit coverage to the optional observed-input
+baseline report. Counts distinguish admitted replies, distinct scorable targets,
+selected forecasts and successful pairs. Multiple checkpoints do not inflate the
+distinct-target count. Zero-pair groups retain their denominator and missing-evidence
+reasons. Empty/future/incomplete declared blocks remain visible with counts, never
+fake scores. Source windows use finalization, while pair eligibility also requires
+in-block arrival; unmatched complete-block scope is explicit. No dates, IDs or
+hashes enter these aggregate coverage fields.
+
+174 affected isolated checks pass: coverage 13, paired controls 20, witness 106,
+producer inputs 15, capture/replay 9 and ownership 11. Fixtures exercise half-covered
+groups, missing/unscorable forecasts, multiple checkpoints of one target, incomplete
+and empty blocks, arrival/finalization boundaries, exclusive cutoff and misaligned
+decisions. The report cannot silently truncate its denominator through a mismatched
+score/decision list. Required reports regenerated; whitespace checks pass. The
+score calculations, selection, old output and witness admission remain unchanged.
+
+This is coverage of supplied admitted data, not a census of all production traffic
+or attempted forecasts. No real-data measurements, private rerun, new producer or
+model call, live write, send, merge or deploy. Full Aegis validation/private census
+remain with the reviewer; earlier branches stay fixed above approved aa85ff5e.

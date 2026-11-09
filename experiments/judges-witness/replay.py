@@ -994,8 +994,62 @@ def self_input_baselines(scored, admitted, forecasts, target_embeddings, config,
         comparisons.append({"comparison_group": len(comparisons)+1, "checkpoint_group": group_numbers[group], "n": len(rows),
                             **{k: statistics.mean(r[k] for r in rows) for k in
                                ("head_error", "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
-    return {"paired_groups": comparisons, "unavailable": dict(held), "admission_effect": "none",
+    coverage = self_input_coverage(admitted, scored, details, originals, blocks, group_numbers, cutoff)
+    return {"paired_groups": comparisons, "unavailable": dict(held), "coverage": coverage, "admission_effect": "none",
             "meaning": "descriptive paired excerpt-input controls; supplied block declarations, not verified preregistration or a pass verdict"}, details
+
+
+def self_input_coverage(admitted, scored, details, forecasts, blocks, group_numbers, cutoff):
+    """Denominators for the validated optional control run; never a new selection.
+
+    Source counts use finalization windows; a pair additionally needs its arrival
+    in the block. Multiple checkpoint forecasts of one target are counted apart
+    from distinct targets. No missing forecast is assigned a score.
+    """
+    if (len(scored) != len(details) or any(s["forecast_sha256"] != d["forecast_sha256"]
+            or s["turn_id"] != d["turn_id"] for s, d in zip(scored, details))):
+        raise ValueError("inconsistent self-input coverage decisions")
+    targets = {r["turn_id"]: instant(row_receipt(r)["finalized_at"]) for r in admitted
+               if instant(row_receipt(r)["finalized_at"]) < cutoff}
+    eligible = [(s, d) for s, d in zip(scored, details) if instant(s["finalized_at"]) < cutoff]
+    paired = [(s, d) for s, d in eligible if d["status"] == "available"]
+    scoped, unscoped = defaultdict(list), []
+    for score, decision in eligible:
+        forecast = forecasts.get(score["forecast_sha256"])
+        match = next((i + 1 for i, block in enumerate(blocks)
+                      if forecast is not None and instant(block["start"]) <= instant(forecast["arrived_at"])
+                      and instant(score["finalized_at"]) < instant(block["end"]) <= cutoff), None)
+        if match is None:
+            unscoped.append((score, decision))
+        scoped[(tuple(score["group"]), match)].append((score, decision))
+    block_counts = []
+    for i, block in enumerate(blocks):
+        lower, upper = instant(block["start"]), min(instant(block["end"]), cutoff)
+        source_ids = {key for key, at in targets.items() if lower <= at < upper}
+        scored_ids = {s["turn_id"] for s, _ in eligible if s["turn_id"] in source_ids}
+        observed = [s for s, d in paired if d["evaluation_block"] == block["block_id"]]
+        block_counts.append({"block_group": i + 1, "complete_at_cutoff": instant(block["end"]) <= cutoff,
+            "admitted_replies_finalized": len(source_ids), "targets_with_scorable_forecast": len(scored_ids),
+            "targets_without_scorable_forecast": len(source_ids - scored_ids),
+            "paired_forecasts": len(observed), "paired_targets": len({s["turn_id"] for s in observed})})
+    group_counts = []
+    for (group, block_number), rows in scoped.items():
+        available = [(s, d) for s, d in rows if d["status"] == "available"]
+        group_counts.append({"checkpoint_group": group_numbers[group], "block_group": block_number,
+            "scorable_forecasts": len(rows), "scorable_targets": len({s["turn_id"] for s, _ in rows}),
+            "paired_forecasts": len(available), "paired_targets": len({s["turn_id"] for s, _ in available}),
+            "paired_fraction": len(available) / len(rows),
+            "unavailable": dict(Counter(d["reason"] for _, d in rows if d["status"] != "available"))})
+    scored_ids = {s["turn_id"] for s, _ in eligible}
+    return {"admitted_replies_before_cutoff": len(targets),
+            "targets_with_scorable_forecast": len(scored_ids),
+            "targets_without_scorable_forecast": len(set(targets) - scored_ids),
+            "scorable_forecasts_before_cutoff": len(eligible),
+            "paired_forecasts": len(paired), "paired_targets": len({s["turn_id"] for s, _ in paired}),
+            "scorable_forecasts_without_pair": len(eligible) - len(paired),
+            "scorable_forecasts_outside_complete_blocks": len(unscoped),
+            "blocks": block_counts, "groups": group_counts,
+            "meaning": "coverage of supplied admitted data only; missing or unscorable forecasts are not zero innovation; source windows use finalization"}
 
 
 def scratch_root(value):
