@@ -72,6 +72,42 @@ def summarize(values,seed=17):
     return result
 
 
+def context_pairs(left,right):
+    """Deterministic one-to-one matching on supplied context, never outcome scores."""
+    available={r['id']:r for r in right};pairs=[]
+    for a in sorted(left,key=lambda r:r['id']):
+        choices=[]
+        for b in available.values():
+            if (a['day']!=b['day'] or not a['language'] or a['language']!=b['language']
+                    or not .5<=len(a['text'])/max(1,len(b['text']))<=2):continue
+            similarity=float(a['context_vector']@b['context_vector'])
+            if similarity>=.7:choices.append((-similarity,b['id']))
+        if choices:
+            negative,bid=min(choices);pairs.append((a,available.pop(bid),-negative))
+    return pairs
+
+
+def context_family_comparisons(scored):
+    by_family=defaultdict(list);out=[]
+    for row,percentiles in scored:by_family[row['family']].append(row)
+    outcomes={r['id']:p for r,p in scored}
+    for i,left in enumerate(FAMILIES[:3]):
+        for right in FAMILIES[i+1:3]:
+            a,b=by_family[left],by_family[right]
+            pairs=context_pairs(a,b)
+            metrics={k:summarize([(x['day'],outcomes[x['id']][k]-outcomes[y['id']][k])
+                for x,y,_ in pairs if outcomes[x['id']][k] is not None and outcomes[y['id']][k] is not None])
+                for k in ('semantic','style','centroid','recent_centroid')}
+            out.append({'families':[left,right],'left_scored':len(a),'right_scored':len(b),
+                'matched_pairs':len(pairs),'left_unmatched':len(a)-len(pairs),'right_unmatched':len(b)-len(pairs),
+                'context_cosine':summarize([(x['day'],c) for x,y,c in pairs]),
+                'percentile_differences':metrics})
+    return {'matching':'same_day_language_length_ratio_0.5_to_2_context_cosine_at_least_0.7',
+        'assignment':'left_reply_id_order_best_available_context_then_right_id',
+        'meaning':'descriptive_matched_association_not_causal_model_effect',
+        'pairs':out}
+
+
 def scores(row,reference):
     groups=defaultdict(list)
     for r in reference:groups[r['day']].append(r['vector'])
@@ -219,7 +255,7 @@ def prepare(bundle,cutoff):
 
 
 def evaluate(rows,controls,candidates,positive):
-    metrics=defaultdict(list);families=defaultdict(list);private=[];status=Counter()
+    metrics=defaultdict(list);families=defaultdict(list);private=[];status=Counter();scored=[]
     by_day=defaultdict(list)
     for r in rows:by_day[r['day']].append(r)
     for day,held in sorted(by_day.items()):
@@ -238,6 +274,7 @@ def evaluate(rows,controls,candidates,positive):
             pct={k:percentile(v,calibration[k]) if v is not None else None for k,v in s.items()}
             for k,v in pct.items():metrics[k+'_percentile'].append((day,v))
             families[r['family']].append((day,pct['semantic']))
+            scored.append((r,pct))
             humor=[x for x in ref if x['id'] in positive and any(d!=day for d in positive[x['id']])]
             hs=scores(r,humor) if len({x['day'] for x in humor})>=2 else None
             if hs:metrics['witnessed_positive_similarity'].append((day,hs['semantic']))
@@ -270,7 +307,8 @@ def evaluate(rows,controls,candidates,positive):
             overlap=sorted(set(a)&set(b))
             if overlap:differences.append({'families':[left,right],**summarize([(d,np.mean(a[d])-np.mean(b[d])) for d in overlap])})
     return {'status':dict(status),'metrics':results,
-            'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences},private
+            'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences,
+            'context_matched_family_comparisons':context_family_comparisons(scored)},private
 
 
 def run(bundle,cutoff):

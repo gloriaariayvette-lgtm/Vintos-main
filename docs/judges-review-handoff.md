@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-reference**, rebased onto
-**34b662e9** as requested in note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-context-comparison**, based on
+**d9ab262c**, whose prototype is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 36fb8219 as 34b662e9 (deploy 649/649, live 652/652); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -804,3 +804,16 @@ return only aggregate output and proposed dates/counts. No review pause is neede
 Source/encoder authentication, nuanced novelty/refusal/opposite-stance controls,
 real-history stability and prospective validation remain open. No live connection,
 model/loop changes, paid calls, deployment or merge.
+
+
+## Character-reference context comparison follow-up
+
+The base instrument compares families sharing evaluation days. The follow-up adds
+same-day, same-language, length-screened, context-matched one-to-one comparisons,
+chosen without consulting scores. It reports four paired percentile differences,
+day-level intervals and matched/unmatched counts for recognized families. Empty
+matches stay unknown. Matching is deterministic greedy, with supplied context
+vectors and reply length as observational proxies; no causal invariance claim.
+26 isolated checks pass (prototype 15, owners 11). This is offline scoring only;
+no encoding, attribution, strict admission or live behavior changes. Actual private
+history results remain outstanding with Claude; no new data request to Gloria.

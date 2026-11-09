@@ -46,7 +46,19 @@ missing. There is no substitute text embedder or silent fallback.
   that a reply was humorous; the output is `witnessed_positive_similarity`.
 - **Model context:** fixed model-family strata, plus differences on evaluation days
   shared by both families. This does not assert model invariance; inspect the
-  differences and uncertainty. Unrecognized models remain `other`, absent ones
+  differences and uncertainty. An additional comparison pairs recognized families
+  one-to-one within the same day and language, with reply-length ratio 0.5–2 and
+  context cosine at least 0.7. Each left reply in stable ID order selects the
+  highest-cosine available right reply (ties by right ID), without looking at
+  familiarity/style outcomes. This deterministic greedy assignment is not an
+  optimal matching. Reuse is forbidden within each family pair but allowed across
+  different family-pair comparisons. It reports paired percentile differences for
+  all four facets, context similarity, matched/unmatched counts and day intervals.
+  No pairs means unknown, not zero difference or evidence of invariance. Only
+  recognized families enter this view; pooled `other`/`unknown` stay in the ordinary
+  strata. Supplied context similarity is a topic proxy, and reply length is an
+  outcome of generation: these are descriptive associations, not causal effects.
+  Unrecognized models remain `other`, absent ones
   `unknown`; no model is changed.
 
 Means weight evaluation days equally. Intervals use 1,000 deterministic day-bootstrap
@@ -108,7 +120,9 @@ Outputs are mode 0600 in a 0700 directory:
 
 ## Validation and current boundary
 
-49 isolated checks pass: prototype 12, existing attribution 26, ownership 11.
+Current follow-up: 26 isolated checks pass (prototype 15, ownership 11). The base
+prototype also passed the 26-check attribution suite before this scoring-only
+addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
 reference days. All 32 are held out by day; deliberately separated foreign vectors
 score a paired semantic win of 1.0, while shuffled own semantic marginal AUC is 0.5.
@@ -116,6 +130,9 @@ These are mathematical fixture checks, **not findings about his character/histor
 Tests cover no-day leakage, nonreference evaluation independence, exact feedback,
 primary/sensitivity separation, controls, duplicates/conflicts, encoder/input
 contracts, insufficient reference days, interval determinism and scratch-only CLI.
+Context-comparison regressions cover shared-day/topic confounding, one-to-one
+assignment, outcome-independent matching, order stability, language/length/day
+bounds, tie-breaking, empty comparisons and aggregate privacy.
 
 The actual-history result and actual candidate dates are **not yet produced**. Claude
 can now assemble the explicit cache bundle above and run it on the private copied

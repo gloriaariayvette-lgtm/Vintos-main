@@ -7066,3 +7066,14 @@ Actual copied-history evaluation and real candidate dates are still outstanding:
 Claude needs to supply/run the explicit frozen-cache bundle and matched controls.
 Synthetic fixtures are not real-history findings. No strict admission change,
 model load, paid call, enabling, deployment or merge. Continue instrument work.
+
+
+## 9 November — context-matched character-family comparisons
+
+`codex/judges-character-context-comparison` follows d9ab262c without changing its
+review tip. Adds outcome-independent same-day/context/language/length matching,
+one-to-one family pairs, four percentile differences, uncertainty and explicit
+unmatched counts. 26 isolated checks pass (prototype 15, owners 11). Topic-disjoint
+shared-day fixtures correctly report no comparable pairs, not model invariance.
+Private copied-history evaluation remains Claude's next step. No new model calls,
+live changes, deployment or merge; see the character-reference README.

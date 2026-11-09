@@ -2251,3 +2251,14 @@ view. Input vectors are explicitly supplied frozen caches; no encoder calls.
 0600 aggregate/evaluation/run files in new 0700 scratch output. Synthetic fixture
 results are labelled; actual-history results and candidate dates await the private
 bundle/run. Full scope and limits are in the new instrument README.
+
+
+## 9 November — context-matched character-family comparisons
+
+`codex/judges-character-context-comparison` follows d9ab262c without changing its
+review tip. Adds outcome-independent same-day/context/language/length matching,
+one-to-one family pairs, four percentile differences, uncertainty and explicit
+unmatched counts. 26 isolated checks pass (prototype 15, owners 11). Topic-disjoint
+shared-day fixtures correctly report no comparable pairs, not model invariance.
+Private copied-history evaluation remains Claude's next step. No new model calls,
+live changes, deployment or merge; see the character-reference README.

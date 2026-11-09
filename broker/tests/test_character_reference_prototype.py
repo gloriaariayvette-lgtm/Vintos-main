@@ -140,6 +140,48 @@ class Tests(unittest.TestCase):
             if key!=target['id']:self.assertEqual(old[key],new[key])
         self.assertNotEqual(old[target['id']]['percentiles'],new[target['id']]['percentiles'])
 
+    def test_context_family_comparison_matches_before_inspecting_scores(self):
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        report,_=P.evaluate(rows,controls,days,positive)
+        comparison=report['context_matched_family_comparisons']['pairs'][0]
+        self.assertEqual(comparison['matched_pairs'],16)
+        self.assertEqual(comparison['left_unmatched'],0)
+        self.assertEqual(comparison['percentile_differences']['semantic']['days'],16)
+        self.assertIsNotNone(comparison['percentile_differences']['style']['interval95'])
+        def pairs(rs):
+            return [(a['id'],b['id']) for a,b,c in P.context_pairs(
+                [r for r in rs if r['family']==P.FAMILIES[0]],
+                [r for r in rs if r['family']==P.FAMILIES[1]])]
+        before=pairs(rows)
+        for r in rows:r['vector']=-r['vector'];r['style']=r['style']*100
+        self.assertEqual(before,pairs(list(reversed(rows))))
+
+    def test_shared_day_does_not_imply_shared_context(self):
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        for r in rows:
+            if r['family']==P.FAMILIES[1]:r['context_vector']=-r['context_vector']
+        report,_=P.evaluate(rows,controls,days,positive)
+        self.assertEqual(report['shared_day_family_differences'][0]['days'],16)
+        comparison=report['context_matched_family_comparisons']['pairs'][0]
+        self.assertEqual(comparison['matched_pairs'],0)
+        self.assertEqual(comparison['left_unmatched'],16)
+        self.assertIsNone(comparison['percentile_differences']['semantic']['mean'])
+        self.assertIsNone(comparison['percentile_differences']['semantic']['interval95'])
+
+    def test_context_pairing_is_one_to_one_with_language_length_and_day_bounds(self):
+        rows,_,_,_,_=P.prepare(self.bundle,self.cutoff)
+        a=rows[0];b=rows[1];other=copy.deepcopy(b);other['id']='extra'
+        duplicate=copy.deepcopy(a);duplicate['id']='additional'
+        pairs=P.context_pairs([a,duplicate],[b,other])
+        self.assertEqual(len(pairs),2)
+        self.assertEqual(len({r['id'] for _,r,_ in pairs}),2)
+        self.assertEqual(len(P.context_pairs([a,duplicate],[b])),1)
+        for fields in ({'language':'fr'},{'language':None},{'text':'x'},
+                       {'day':'1900-01-01'},{'context_vector':np.asarray([-1.,0.])}):
+            bad=dict(b,**fields);self.assertEqual(P.context_pairs([a],[bad]),[])
+        tied=P.context_pairs([a],[b,other])[0][1]['id']
+        self.assertEqual(tied,min(b['id'],other['id']))
+
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))
         for scratch,output in ((str(ROOT),str(self.root/'result')),(str(self.root),str(self.root.parent/'forbidden-character-output'))):
