@@ -225,12 +225,17 @@ def get_world_block():
         _kitchen = kitchen_presence.context_line()
     except Exception:
         _kitchen = ""
+    try:   # her phone within 1 m of his shower, sofa or office-chair board (house_boards.py, 8 November)
+        import house_boards
+        _boards = house_boards.context_line()
+    except Exception:
+        _boards = ""
     try:   # he has been calling her back (attention_ladder.py, 27 October): one line while a chain runs
         import attention_ladder
         _call = attention_ladder.context_line()
     except Exception:
         _call = ""
-    return "\n".join(x for x in (block, _home, _bed, _kitchen, _call) if x)
+    return "\n".join(x for x in (block, _home, _bed, _kitchen, _boards, _call) if x)
 
 
 def _scene_block(st):

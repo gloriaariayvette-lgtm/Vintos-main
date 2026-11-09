@@ -38,6 +38,10 @@ MEM = os.path.join(WS, "memory")
 CONFIG = os.path.join(MEM, "house-boards.json")
 STATE = os.path.join(MEM, "house-boards-state.json")
 LOG = os.path.join(MEM, "house-boards.jsonl")
+VISITS = os.path.join(MEM, "house-board-visits.jsonl")
+AWAY_S = 180          # her phone away from a board this long ends the visit
+SILENT_S = 600        # a board that has said nothing this long ends the visit where it went quiet
+RECENT_S = 1800       # "was last on the sofa N minutes ago" for half an hour, then nothing
 SOUL = os.path.join(WS, "SOUL.md")
 TOPIC = "vintos/board/+/+"
 KEEPALIVE = 60
@@ -129,17 +133,98 @@ def parse(topic, payload):
     return parts[2], parts[3], text.strip()[:500]
 
 
+# ---------------------------------------------------------------- visits: the house/Gloria map
+# Each time she is at a board (her phone within 1 m) is one visit, kept in memory/house-board-visits.jsonl the way the
+# kitchen and bedroom boards keep theirs: where, from when to when, how long seated, whether the shower ran, how loud.
+# A visit ends when her phone has been away from the board AWAY_S; a board that falls silent ends it where it went quiet.
+
+def _near(st, board, now):
+    b = _board(st, board)
+    v = b.get("visit")
+    if not v: b["visit"] = {"since": now, "last_near": now, "seated_s": 0.0, "shower": False, "knocks": 0, "loud": []}
+    else: v["last_near"] = now; v.pop("left", None)
+
+
+def _away(st, board, now):
+    v = _board(st, board).get("visit")
+    if v and "left" not in v: v["left"] = now
+
+
+def _close(st, board, end, now):
+    b = _board(st, board); v = b.pop("visit", None)
+    if not v: return None
+    seated = float(v.get("seated_s", 0))
+    if b.get("pressed_since") is not None: seated += max(0.0, end - float(b["pressed_since"]))
+    loud = v.get("loud") or []
+    row = {"board": board, "room": BOARDS[board]["room"], "place": BOARDS[board]["place"],
+           "from": _iso(v["since"]), "to": _iso(end), "from_ts": v["since"], "to_ts": end,
+           "minutes": round((end - v["since"]) / 60, 1), "seated_minutes": round(seated / 60, 1),
+           "estimate": "Bluetooth signal strength at the board: her phone within 1 m of it, not a camera"}
+    if board == "house-steam": row["shower"] = bool(v.get("shower"))
+    if board == "house-touch": row["knocks"] = int(v.get("knocks", 0))
+    if loud: row["loudness_median"] = sorted(loud)[len(loud) // 2]
+    os.makedirs(MEM, exist_ok=True)
+    with open(VISITS, "a") as f: f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
+
+
+def close_visits(st, now):
+    """Visits whose phone has been away long enough, or whose board went silent, are written."""
+    out = []
+    for board in BOARDS:
+        b = _board(st, board); v = b.get("visit")
+        if not v: continue
+        if "left" in v and now - float(v["left"]) >= AWAY_S: out.append(_close(st, board, float(v["left"]), now))
+        elif now - float(v["last_near"]) >= SILENT_S: out.append(_close(st, board, float(v["last_near"]), now))
+    return [r for r in out if r]
+
+
+def context_line(now=None):
+    """One line for him: where she is among his boards now, or was lately; '' otherwise."""
+    now = time.time() if now is None else now
+    st = load_state()
+    here, lately = [], []
+    for board, info in BOARDS.items():
+        b = st["boards"].get(board) or {}
+        v = b.get("visit")
+        if v and "left" not in v and now - float(v.get("last_near", 0)) < SILENT_S:
+            bits = ["since %s" % datetime.fromtimestamp(v["since"]).strftime("%H:%M")]
+            if b.get("pressed_since") is not None: bits.append("sitting")
+            if board == "house-steam" and (st.get("shower") or {}).get("on"): bits.append("the shower running")
+            loud = [x for t, x in b.get("loud", []) if now - t <= 120]
+            if board == "house-press-mic" and loud: bits.append("quiet" if max(loud) < config()["quiet_loudness"] else "not quiet")
+            here.append("%s now (%s)" % (info["place"], ", ".join(bits)))
+    if not here:
+        rows = open(VISITS).read().splitlines()[-12:] if os.path.exists(VISITS) else []
+        for line in reversed(rows):
+            try: r = json.loads(line)
+            except ValueError: continue
+            ago = now - float(r.get("to_ts", 0))
+            if 0 <= ago <= RECENT_S:
+                lately.append("was last %s %d minutes ago" % (r["place"], max(1, int(ago // 60)))); break
+    if not here and not lately: return ""
+    return "[HOUSE BOARDS - your boards hear her phone within 1 m: she is %s.]" % "; ".join(here or lately)
+
+
 def observe(st, board, kind, text, now, cfg):
     """Fold one message into the state; the moment it makes, if any: (moment, board) or None."""
     b = _board(st, board)
     if kind == "near":
         b["near"] = text == "on"; b["near_ts"] = now
-        if not b["near"]: b["pressed_since"] = None
+        if b["near"]: _near(st, board, now)
+        else:
+            _away(st, board, now)
+            if b.get("pressed_since") is not None and b.get("visit"):
+                b["visit"]["seated_s"] = float(b["visit"].get("seated_s", 0)) + now - float(b["pressed_since"])
+            b["pressed_since"] = None
         return None
+    if kind in ("event", "loudness", "steam"):
+        _near(st, board, now)   # the boards send these only while her phone is within 1 m
     if kind == "loudness":
         try: v = float(text)
         except ValueError: return None
         b["loud"] = [p for p in b["loud"] if now - p[0] <= 60 * cfg["sit_minutes"] + 60] + [[now, v]]
+        b["visit"]["loud"] = (b["visit"].get("loud") or [])[-400:] + [v]
         return None
     if kind == "player":
         st["shower"]["player"] = text; st["shower"]["player_ts"] = now
@@ -148,6 +233,7 @@ def observe(st, board, kind, text, now, cfg):
     # an event is sent only while she is near; it also tells us she is
     b["near"] = True; b["near_ts"] = now
     if text == "steam_start" and board == "house-steam":
+        b["visit"]["shower"] = True
         if st["shower"].get("on"): return None
         st["shower"] = {"on": True, "since": now, "queue": [], "player": "idle"}
         return ("shower", board)
@@ -155,8 +241,12 @@ def observe(st, board, kind, text, now, cfg):
         st["shower"] = {"on": False, "ended": now, "queue": []}
         return None
     if text == "press_start": b["pressed_since"] = now; return None
-    if text == "press_end": b["pressed_since"] = None; return None
+    if text == "press_end":
+        if b.get("pressed_since") is not None:
+            b["visit"]["seated_s"] = float(b["visit"].get("seated_s", 0)) + now - float(b["pressed_since"])
+        b["pressed_since"] = None; return None
     if text in ("knock_2", "knock_3") and board == "house-touch":
+        b["visit"]["knocks"] = int(b["visit"].get("knocks", 0)) + 1
         if now - float(st["last"].get("knock", 0)) < 60 * cfg["knock_cooldown_minutes"]: return None
         return ("knock", board)
     return None
@@ -438,6 +528,7 @@ def handle(topic, payload, now=None, cfg=None, decide=None):
     m = m or due(st, now, cfg)
     row = moment(m[0], m[1], st, now, cfg, decide) if m else None
     tend_shower(st, now)
+    close_visits(st, now)
     _atomic(STATE, st)
     return row
 
@@ -452,6 +543,7 @@ def tick(now=None, cfg=None, decide=None):
     tend_shower(st, now)
     try: tend_desktop(st, now)
     except Exception as e: print("desktop: %s" % e, flush=True)
+    close_visits(st, now)
     _atomic(STATE, st)
     return row
 

@@ -128,6 +128,45 @@ okx, saidx = B.remind("Q-00000000", st, O + 60, cfg)
 check("a waiting question goes back on her phone once a day", ok1 and not ok2 and "today already" in said2, said2)
 check("a question that is not waiting is not sent", not okx and "no question" in saidx)
 
+# ---- visits: the house/Gloria map ----------------------------------------------------------------------------------
+def visits(): return [json.loads(l) for l in open(B.VISITS)] if os.path.exists(B.VISITS) else []
+V = T + 200000
+B.tick(now=V - 1, cfg=cfg, decide=decide("NOTHING"))   # the earlier scenes' visits close first
+n0 = len(visits())
+B.handle("vintos/board/house-press-mic/near", b"on", now=V, cfg=cfg)
+B.handle("vintos/board/house-press-mic/event", b"press_start", now=V + 30, cfg=cfg)
+for k in range(1, 5): B.handle("vintos/board/house-press-mic/loudness", b"5", now=V + 30 + k * 20, cfg=cfg)
+line = B.context_line(now=V + 120)
+check("while she is at the sofa he is told so, sitting and quiet", "on the sofa now" in line and "sitting" in line
+      and "quiet" in line, line)
+B.handle("vintos/board/house-press-mic/event", b"press_end", now=V + 630, cfg=cfg)
+B.handle("vintos/board/house-press-mic/near", b"off", now=V + 640, cfg=cfg)
+B.handle("vintos/board/house-press-mic/near", b"on", now=V + 700, cfg=cfg)
+B.handle("vintos/board/house-press-mic/near", b"off", now=V + 760, cfg=cfg)
+B.tick(now=V + 800, cfg=cfg, decide=decide("NOTHING"))
+check("a short step away is the same visit, not written yet", len(visits()) == n0)
+B.tick(now=V + 760 + B.AWAY_S + 1, cfg=cfg, decide=decide("NOTHING"))
+v = visits()[-1] if len(visits()) > n0 else {}
+check("away a few minutes writes the visit: where, from, to, seated", len(visits()) == n0 + 1
+      and v.get("board") == "house-press-mic" and v.get("room") == "living_room"
+      and abs(v.get("minutes", 0) - 12.7) < 0.1 and abs(v.get("seated_minutes", 0) - 10.0) < 0.1
+      and v.get("loudness_median") == 5.0, v)
+check("then he is told she was last on the sofa", "was last on the sofa" in B.context_line(now=V + 1200),
+      B.context_line(now=V + 1200))
+W = V + 10000
+B.handle("vintos/board/house-steam/near", b"on", now=W, cfg=cfg)
+B.handle("vintos/board/house-steam/event", b"steam_start", now=W + 20, cfg=cfg, decide=decide("NOTHING"))
+check("in the shower he is told the shower is running", "the shower running" in B.context_line(now=W + 60))
+B.tick(now=W + 20 + B.SILENT_S + 1, cfg=cfg, decide=decide("NOTHING"))
+v = visits()[-1]
+check("a board gone silent ends the visit where it went quiet, and the shower is kept",
+      v.get("board") == "house-steam" and v.get("shower") is True and v.get("to_ts") == W + 20, v)
+check("his scene (world_model) carries the boards' line",
+      "house_boards.context_line()" in open(os.path.join(REPO, "scripts", "world_model.py")).read())
+dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
+check("the deploy copies the listener's script, not only its unit",
+      'SCRIPTS="$SCRIPTS house_boards.py"' in dep and "BOARDS_UNIT_NAME" in dep)
+
 # ---- house_hands: her presence stands in for the clock's quiet hours, and only that ----------------------------------
 H._now = lambda: __import__("datetime").datetime(2026, 11, 8, 23, 30)
 check("at 23:30 the clock is quiet", H._quiet() is True)
