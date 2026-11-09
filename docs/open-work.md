@@ -6944,3 +6944,13 @@ outside-cutoff peers now remain in the conflict check. 165 isolated checks pass,
 including three regression failures demonstrated before the fix. Runtime, scoring
 and training admission are unchanged. Host integration and remaining evidence
 requirements stay open; no enabling, merge or deployment.
+
+
+## 9 November — stored encoder runtime evidence
+
+`codex/judges-loaded-runtime`, on 3d022fb8, adds bounded before/after stored-setting
+observations to optional artifact capture, with legacy compatibility and 221
+isolated checks. This supplies partial configuration evidence; tokenizer content,
+code, fitting lineage, atomic identity and real-host observation cost remain open.
+Capture off is unchanged. Capture on adds background observation overhead that
+existing encode/parameter timing fields do not include. No enablement or deployment.

@@ -2081,3 +2081,20 @@ turn remain separate. No runtime producer, forecast selection or admission chang
 census/innovation 109. Fixtures remain synthetic and sender/encoder/launcher
 boundaries stubbed. No private data, new capture, model calls, live writes, merge
 or deployment. Submitted predecessor branches remain fixed for review.
+
+
+## 9 November — stored runtime fields around existing encodes
+
+Optional artifact receipts now fingerprint bounded stored settings before/after
+each existing encode; no extra encoding, tokenizer calls, configuration methods,
+file loads or version-discovery imports. Partial scope and unknown tokenizer/code/
+fitting identity are explicit. Runtime changes survive audit deduplication, while
+conflicting copies of one call are excluded from cost aggregation. Legacy receipts
+remain valid. Capture off is unchanged; capture-on real-host overhead is unmeasured.
+
+221 isolated checks pass: runtime 16, parameters 19, costs 14, artifacts 20, joins
+30, report 22, benchmark 6, checkpoint consistency 13, forecast inputs 15, handoffs
+23, entry owners 11 and store guard 32. One initial new-test fixture attempted to
+assign a read-only namespace dictionary; corrected to clear/update its synthetic
+contents. All final tests pass. No private input, model calls, live writes, merge
+or deployment. Submitted predecessor tips remain fixed for independent review.

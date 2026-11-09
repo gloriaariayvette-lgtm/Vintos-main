@@ -316,3 +316,47 @@ Three synthetic failures reproduced the old behavior; all 165 affected isolated
 checks now pass (handoffs 23, chat keys 11, report 22, census/innovation 109).
 No source authentication or training permission is conferred. No private input,
 live service, enabling, merge or deployment. Full host integration stays yours.
+
+
+## 9 November — observe stored encoder runtime settings
+
+`codex/judges-loaded-runtime` descends from 3d022fb8. Optional self artifact
+capture now records before/after fingerprints around each existing encode call
+for bounded fields already stored on the encoder and two child-module levels:
+training/truncation/prompt settings, primitive stored model configuration,
+selected stored tokenizer settings and already-loaded package versions. Child
+order is retained. No config/tokenizer methods, vocabulary reads, imports for
+version discovery, file loads, device transfers or extra encoding calls are used.
+Receipts retain hashes and counts, never the underlying setting values.
+
+These are partial observations, not complete encoder identity. Tokenizer backend
+bytes/vocabulary, dynamic properties, deeper module state, executable code,
+hardware and fitting lineage remain unobserved. Unsupported components are marked
+inside the fingerprint; bounds or observer failures leave evidence unavailable.
+Equality means only equality of observed stored fields. Snapshots are not atomic
+attestations and do not prove immutability between boundaries. `encoder_identity`
+remains unverified; scoring and training admission are unchanged.
+
+Capture-off behavior remains unchanged. With capture on, this adds bounded work
+around every wrapped background encode (64 modules, two child levels, 4096 plain
+value visits, 65536 string characters, 131072 serialized bytes per snapshot).
+It does not change outputs, exception propagation, call arguments or the existing
+one-pair parameter sampling limit. Observation cost on the real encoder remains
+unmeasured, and existing parameter/encode stage timings exclude this new runtime
+observation overhead. The full host cost check remains open.
+
+Legacy receipts without the optional `runtime` field remain valid and unknown on
+this axis. Audit retention includes runtime changes even when outputs repeat;
+conflicting runtime copies of one invocation are excluded from call-cost totals.
+The existing public `encoding_consistency.settings` axis still describes explicit
+call arguments only; it does not summarize the new runtime snapshots. Keep the
+artifact producer and reader versions together when integrating.
+
+221 isolated synthetic checks pass: runtime 16, parameters 19, costs 14,
+self artifacts 20, joins 30, review report 22, encoder benchmark 6, checkpoint
+consistency 13, forecast inputs 15, handoffs 23, entry owners 11 and store guard 32.
+Tests cover changed settings despite identical parameters/vectors, module order,
+loaded versions, unsupported/oversized/cyclic values, forbidden dynamic reads,
+legacy/malformed receipts, exceptions, capture off and exact call/result parity.
+Generated reports refreshed. No private records, real encoder, model calls,
+live writes, enabling, merge or deployment. Full host integration remains open.

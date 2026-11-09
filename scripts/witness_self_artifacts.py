@@ -3,7 +3,7 @@
 These are observations, not a training-time attestation, encoder-weight identity,
 final-reply origin, or permission to score. No encoder calls are added.
 """
-from collections import Counter
+from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
 import json
@@ -162,6 +162,125 @@ def parameter_state(before, after):
 
 TIMING_STAGES = ('parameter_before_seconds', 'encode_seconds', 'parameter_after_seconds')
 
+RUNTIME_COUNTS = ('modules', 'module_settings', 'configs', 'tokenizers',
+                  'tokenizer_settings', 'runtime_versions')
+RUNTIME_FIELDS = ('training', 'max_seq_length', 'do_lower_case', 'truncate_dim',
+                  'prompts', 'default_prompt_name', '_similarity_fn_name')
+TOKENIZER_FIELDS = ('init_kwargs', 'model_max_length', 'padding_side', 'truncation_side',
+                    'clean_up_tokenization_spaces', 'split_special_tokens')
+RUNTIME_PACKAGES = ('sentence_transformers', 'transformers', 'tokenizers', 'torch', 'numpy')
+
+
+def runtime_snapshot(enc):
+    """Hash bounded stored fields only; never call config/tokenizer methods or load files.
+
+    Deliberately partial: encoder and two child levels, not every leaf module.
+    Vocabulary, backend tokenizer bytes, code, hardware and fitting remain unknown.
+    Unsupported fields are distinguished from absent fields inside the digest.
+    """
+    unavailable = dict(schema='encoder-runtime-snapshot-v1', state='unavailable', sha256=None,
+                       **dict.fromkeys(RUNTIME_COUNTS, 0))
+    try:
+        budget = [4096, 65536]
+
+        def plain(value, depth=0):
+            budget[0] -= 1
+            if budget[0] < 0 or depth > 12: raise ValueError('runtime field bound')
+            if value is None or type(value) is bool: return value
+            if type(value) is int and value.bit_length() <= 128: return value
+            if type(value) is float and math.isfinite(value): return value
+            if type(value) is str:
+                budget[1] -= len(value)
+                if budget[1] < 0: raise ValueError('runtime string bound')
+                return value
+            if type(value) in (list, tuple) and len(value) <= 1024:
+                return [plain(v, depth+1) for v in value]
+            if type(value) in (dict, OrderedDict) and len(value) <= 1024:
+                if any(type(k) is not str for k in value): raise TypeError('runtime key type')
+                return {plain(k, depth+1):plain(value[k], depth+1) for k in sorted(value)}
+            raise TypeError('unsupported stored runtime value')
+
+        def stored(obj):
+            try: value = object.__getattribute__(obj, '__dict__')
+            except Exception: return None
+            return value if type(value) is dict else None
+
+        def component(value):
+            try: return ['observed', plain(value)]
+            except TypeError: return ['unsupported', None]
+
+        counts = dict.fromkeys(RUNTIME_COUNTS, 0)
+        rows, pending = [], [((), enc, 0)]
+        while pending:
+            path, obj, depth = pending.pop(0)
+            counts['modules'] += 1
+            if counts['modules'] > 64: return unavailable
+            data = stored(obj)
+            if data is None: return unavailable
+            cls = type(obj)
+            row = [path, plain([cls.__module__, cls.__qualname__])]
+            fields = {k:data[k] for k in RUNTIME_FIELDS if k in data}
+            observed = component(fields) if fields else ['absent', None]
+            counts['module_settings'] += int(observed[0] == 'observed')
+            row.append(observed)
+            config = stored(data['config']) if 'config' in data else None
+            observed = component(config) if config is not None else ['unavailable', None]
+            counts['configs'] += int(observed[0] == 'observed')
+            row.append(observed)
+            tokenizer = stored(data['tokenizer']) if 'tokenizer' in data else None
+            counts['tokenizers'] += int(tokenizer is not None)
+            fields = {k:tokenizer[k] for k in TOKENIZER_FIELDS if k in tokenizer} if tokenizer is not None else {}
+            observed = component(fields) if fields else ['unavailable', None]
+            counts['tokenizer_settings'] += int(observed[0] == 'observed')
+            row.append(observed)
+            children = data.get('_modules', {})
+            if type(children) not in (dict, OrderedDict) or len(children) > 64: return unavailable
+            if any(type(k) is not str or len(k) > 256 for k in children): return unavailable
+            # Preserve child order: sequential encoders can change behavior when reordered.
+            row.append(list(children))
+            rows.append(row)
+            if depth < 2:
+                pending.extend((path+(k,), v, depth+1) for k,v in children.items() if v is not None)
+                if len(pending)+counts['modules'] > 64: return unavailable
+        versions = {}
+        for name in RUNTIME_PACKAGES:
+            data = stored(sys.modules[name]) if name in sys.modules else None
+            version = data.get('__version__') if data is not None else None
+            versions[name] = plain(version) if type(version) is str else None
+            counts['runtime_versions'] += int(versions[name] is not None)
+        raw = json.dumps([rows, versions], sort_keys=True, ensure_ascii=True, allow_nan=False,
+                         separators=(',', ':')).encode()
+        if len(raw) > 131072: return unavailable
+        return dict(unavailable, state='observed', sha256=hashlib.sha256(raw).hexdigest(), **counts)
+    except Exception:
+        return unavailable
+
+
+def validate_runtime_observation(value):
+    if (not isinstance(value, dict) or set(value) != {'schema','before','after','state','scope'}
+            or value['schema'] != 'encoder-runtime-observation-v1'
+            or value['scope'] != 'stored_fields_two_child_levels_not_tokenizer_content_code_or_fitting'):
+        raise ValueError('invalid runtime observation')
+    for key in ('before', 'after'):
+        snap = value[key]
+        if (not isinstance(snap, dict) or set(snap) != {'schema','state','sha256',*RUNTIME_COUNTS}
+                or snap['schema'] != 'encoder-runtime-snapshot-v1'
+                or any(type(snap[k]) is not int or not 0 <= snap[k] <= 64 for k in RUNTIME_COUNTS)
+                or snap['runtime_versions'] > len(RUNTIME_PACKAGES)
+                or any(snap[k] > snap['modules'] for k in ('module_settings','configs','tokenizers'))
+                or snap['tokenizer_settings'] > snap['tokenizers']):
+            raise ValueError('invalid runtime snapshot')
+        if snap['state'] == 'observed':
+            h = snap['sha256']
+            if (not snap['modules'] or not isinstance(h,str) or len(h)!=64
+                    or any(c not in '0123456789abcdef' for c in h)):
+                raise ValueError('invalid runtime fingerprint')
+        elif (snap['state'] != 'unavailable' or snap['sha256'] is not None
+              or any(snap[k] for k in RUNTIME_COUNTS)):
+            raise ValueError('invalid unavailable runtime snapshot')
+    if value['state'] != parameter_state(value['before'],value['after']):
+        raise ValueError('inconsistent runtime comparison')
+
 
 def _clock():
     try:
@@ -177,7 +296,7 @@ def _elapsed(start, stop):
     return elapsed if math.isfinite(elapsed) and 0 <= elapsed <= 86400 else None
 
 
-def observed_encode(enc, texts, args, kwargs, sample):
+def observed_encode(enc, texts, args, kwargs, sample, runtime=None):
     """Time existing work; observer failures never retry or replace the encode."""
     missing = {'schema':'encoder-parameter-snapshot-v1','state':'unavailable',
                'sha256':None,'tensors':0,'bytes':0}
@@ -189,9 +308,20 @@ def observed_encode(enc, texts, args, kwargs, sample):
         try: before = parameter_snapshot(enc)
         except Exception: pass
         timing['parameter_before_seconds'] = _elapsed(start,_clock())
+    if runtime is not None:
+        try: runtime['before'] = runtime_snapshot(enc)
+        except Exception: pass
     start = _clock()
     result = enc.encode(texts,*args,**kwargs)
     timing['encode_seconds'] = _elapsed(start,_clock())
+    if runtime is not None:
+        try:
+            runtime['after'] = runtime_snapshot(enc)
+            runtime.update(schema='encoder-runtime-observation-v1',
+                           state=parameter_state(runtime['before'],runtime['after']),
+                           scope='stored_fields_two_child_levels_not_tokenizer_content_code_or_fitting')
+            validate_runtime_observation(runtime)
+        except Exception: runtime.clear()
     if sample:
         start = _clock()
         try: after = parameter_snapshot(enc)
@@ -210,7 +340,7 @@ def validate_call_timing(value):
             raise ValueError('invalid encoding timing')
 
 
-def encoding_observation(text, values, before, after, settings, invocation, timing=None):
+def encoding_observation(text, values, before, after, settings, invocation, timing=None, runtime=None):
     from witness_receipts import digest
     from witness_capture import _fingerprint
     observation = {'schema': 'audit-encoding-observation-v1', 'invocation': invocation,
@@ -222,6 +352,9 @@ def encoding_observation(text, values, before, after, settings, invocation, timi
     if timing is not None:
         validate_call_timing(timing)
         observation['timing'] = dict(timing)
+    if runtime:
+        validate_runtime_observation(runtime)
+        observation['runtime'] = json.loads(json.dumps(runtime))
     return observation
 
 
@@ -233,7 +366,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
     if observation is None: return 'missing'
     expected = {'schema','invocation','input_sha256','raw_vector_sha256','settings_sha256',
                 'parameter_before','parameter_after','parameter_state','encoder_identity','meaning'}
-    if (not isinstance(observation,dict) or set(observation)-{'timing'} != expected
+    if (not isinstance(observation,dict) or set(observation)-{'timing','runtime'} != expected
             or observation['schema'] != expected_schema
             or observation['encoder_identity'] != 'unverified'
             or observation['meaning'] != 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'
@@ -244,6 +377,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
             or (observation['settings_sha256'] is not None and not ishash(observation['settings_sha256']))):
         raise ValueError('invalid encoding observation')
     if 'timing' in observation: validate_call_timing(observation['timing'])
+    if 'runtime' in observation: validate_runtime_observation(observation['runtime'])
     for key in ('parameter_before','parameter_after'):
         snap = observation[key]
         if (not isinstance(snap,dict) or set(snap) != {'schema','state','sha256','tensors','bytes'}
@@ -273,7 +407,8 @@ class FeatureEncoder:
             sampled = bool(self._parameter_pairs)
             if sampled: self._parameter_pairs -= 1
         except Exception: pass
-        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sampled)
+        runtime = {}
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sampled,runtime)
         try:
             from witness_receipts import digest
             if (not isinstance(texts,list) or len(texts)>256 or len(result)!=len(texts)
@@ -292,7 +427,7 @@ class FeatureEncoder:
                     COUNTERS['feature_encoding_observation_limit'] += 1
                     break
                 self._retained_values += len(raw)
-                observation=encoding_observation(text,raw,before,after,settings,invocation,timing)
+                observation=encoding_observation(text,raw,before,after,settings,invocation,timing,runtime)
                 observation['schema']='forecast-encoding-observation-v1'
                 self.records[text]={'schema':'readout-encoding-link-v1','transform':'readout_units_v1',
                                     'raw_emb':raw,'call':observation}
@@ -358,7 +493,8 @@ class AuditEncoder:
                                      and any(isinstance(t,str) and t in self.refs for t in texts))
             if sample_parameters: self._parameter_pairs -= 1
         except Exception: pass
-        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sample_parameters)
+        runtime = {}
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sample_parameters,runtime)
         try:
             from witness_capture import _publish_private, _private_root, _fingerprint
             from witness_receipts import digest
@@ -373,8 +509,8 @@ class AuditEncoder:
                 if text not in self.refs:
                     continue
                 values = vector(emb)
-                encoded = encoding_observation(text, values, before, after, settings, invocation,timing)
-                observation = (digest(text), _fingerprint(values), _fingerprint([before, after, settings]))
+                encoded = encoding_observation(text, values, before, after, settings, invocation,timing,runtime)
+                observation = (digest(text), _fingerprint(values), _fingerprint([before, after, settings, runtime]))
                 if observation in self.seen:
                     continue
                 if len(self.seen) >= MAX_AUDIT_OBSERVATIONS:

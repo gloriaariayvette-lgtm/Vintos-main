@@ -308,7 +308,7 @@ def encoder_call_cost(packets):
             if call is None:
                 unidentified += 1
                 continue
-            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256')}
+            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256','runtime')}
             calls[call['invocation']][fingerprint(signature)] = signature
     conflicts = sum(len(values)>1 for values in calls.values())
     valid = [next(iter(values.values())) for values in calls.values() if len(values)==1]
