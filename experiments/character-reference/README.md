@@ -2,7 +2,7 @@
 
 This is an instrument for **familiarity relative to a provisional reference**, not
 an authenticity probability, moral verdict, truth detector or live judge. It was
-requested in coordination note #29. New receipt work is paused while this instrument
+requested in coordination note #29; mode and surface stratification follow notes #33–34. New receipt work is paused while this instrument
 is evaluated. No existing loop, model, feed, admission rule or live store changes.
 
 The runner consumes an explicit private history copy and cached frozen embeddings.
@@ -20,7 +20,9 @@ missing. There is no substitute text embedder or silent fallback.
   unconfirmed dates, selected without looking at the familiarity results. Calendar
   days without supplied events are not invented as zero-activity days.
 - **Day-held-out familiarity:** each evaluation day is excluded from reference and
-  calibration. A day is scorable only with at least two other reference days.
+  calibration. References match the reply's independently labelled mode and
+  surface; a day is scorable only with at least two other days in that same stratum.
+  Unknown mode or surface stays unscored; no pooling fallback fills the gap.
   Semantic similarity is maximum cosine to daily reference centroids. Percentiles
   use reference-only leave-one-day-out calibration; no point is its own anchor.
   This is retrospective cross-validation, not a prospective time-forward test.
@@ -44,26 +46,27 @@ missing. There is no substitute text embedder or silent fallback.
   cutoff. Feedback on the held-out day is excluded from its positive reference.
   Missing/nonpositive feedback is never a flop label. A positive rating is not proof
   that a reply was humorous; the output is `witnessed_positive_similarity`.
-- **Model context:** fixed model-family strata, plus differences on evaluation days
-  shared by both families. This does not assert model invariance; inspect the
-  differences and uncertainty. An additional comparison pairs recognized families
-  one-to-one within the same day and language, with reply-length ratio 0.5–2 and
-  context cosine at least 0.7. Each left reply in stable ID order selects the
-  highest-cosine available right reply (ties by right ID), without looking at
-  familiarity/style outcomes. This deterministic greedy assignment is not an
-  optimal matching. Reuse is forbidden within each family pair but allowed across
-  different family-pair comparisons. It reports paired percentile differences for
-  all four facets, context similarity, matched/unmatched counts and day intervals.
-  No pairs means unknown, not zero difference or evidence of invariance. Only
-  recognized families enter this view; pooled `other`/`unknown` stay in the ordinary
-  strata. Supplied context similarity is a topic proxy, and reply length is an
-  outcome of generation: these are descriptive associations, not causal effects.
-  Reference-family composition is reported per candidate day and per actual
-  held-out fold, separately for primary and sensitivity views, including zero
-  coverage. This exposes imbalance without automatically balancing or changing
-  the reference. Unequal composition may explain apparent family differences.
-  Unrecognized models remain `other`, absent ones
-  `unknown`; no model is changed.
+- **Mode first:** `opening_everyday`, `intimate`, or `unknown` from supplied
+  exact-linked observations of a router decision, intimate state or a documented
+  conversation transition. Never derive mode from the serving model, a bare model
+  switch, text keywords or missing logs. Unknown/conflicting mode stays unknown.
+  Each reference, calibration, positive-feedback subset and control comparison
+  matches mode. Reference rows and cross-family matched pairs also match surface.
+- **Within-mode family checks:** compare recognized families only within a known
+  mode, same surface/day/language, reply-length ratio 0.5–2 and context cosine at
+  least 0.7. Stable ID order chooses the best available context match, with no
+  outcome-based pairing and no reuse within a family pair. This is deterministic
+  greedy matching, not optimal matching or causal identification. No matched
+  overlap is explicitly `not_identifiable`, never invariant. Model-family means
+  and unconditioned differences remain diagnostic JSON fields marked with their
+  interpretation; pooled differences are confounded with mode and omitted from
+  the readable summary. `per_mode` supplies separate facets and comparisons.
+- **Surface and reference composition:** preserve explicit ReelRoom separately
+  from avatar, even though both use the same router caller. Engagement counts
+  deduplicate owner events and retain fixed surface totals; conflicting/missing
+  surface labels stay unknown. Reference-family counts are reported for candidate
+  days and actual held-out mode/surface folds, separately in each attribution view.
+  No automatic reference reweighting or changes to the engagement-day selection.
 
 Optional **evaluation groups** expose the review's benign novelty, refusal,
 opposite-stance, humor and surface-shift checks. Explicit annotations must link
@@ -110,9 +113,10 @@ One JSON object, with only these sources explicitly assembled by the reviewer:
 | `embeddings` | Each cache entry has `reply_sha256` for full final text; `input_sha256` for its encoder prefix; `context_sha256`; matching `encoder_id`; unit `vector` and `context_vector` with one shared dimension. Context and response features stay separate. |
 | `feedback` | Optional exact-linked records: `reply_id`, `reply_sha256`, `link: "exact_reply"`, `witnessed: true`, `timestamp`, `kind: "laugh"` with string `value`, or `kind: "rating"` with numeric `value`. Unlinked reactions are excluded. |
 | `evaluation_annotations` | Optional list of exact-linked `reply_id`, `reply_sha256`, `link: "exact_reply"`, `annotator: "owner"` or `"reviewer"`, and `category` in `benign_novelty`, `refusal`, `opposite_stance`, `humor`, `surface_shift`. Duplicate annotations collapse. Unlinked/not-admitted examples are counted as unavailable. No rationale or free text is emitted. |
-| `controls` | Optional `kind: "foreign"` or `"other_surface"`, `matched_reply_id`, `content`, `context`, `language`, `encoder_id`, `input_sha256`, `context_sha256`, unit `vector` and `context_vector`. Supply provenance-reviewed controls; do not invent foreign status from a model/surface label. |
+| `mode_observations` | Optional list with exact `reply_id`, `reply_sha256`, `link: "exact_reply"`, `timestamp` at/before the reply and before cutoff, `mode` in `opening_everyday`, `intimate`, `unknown`, `source` in `router_decision`, `intimate_state`, `conversation_transition`, and a 64-lowercase-hex `evidence_sha256` of the retained observation. Conflicting modes become unknown. Source content remains private. This binds supplied evidence; it does not authenticate the exporter or infer a label. |
+| `controls` | Optional list; each entry requires explicit matching `mode`, `kind: "foreign"` or `"other_surface"`, `matched_reply_id`, `content`, `context`, `language`, `encoder_id`, `input_sha256`, `context_sha256`, unit `vector` and `context_vector`. Supply provenance-reviewed controls; do not invent foreign status from a model/surface label. |
 
-Limits: 64 MiB input, 10,000 history/cache/feedback/annotation records, 4,096 admitted unique
+Limits: 64 MiB input, 10,000 history/cache/feedback/annotation/mode-observation records, 4,096 admitted unique
 replies and control records, vectors at most 8,192 dimensions. No real data belongs
 in this public repository. Raw messages, cached vectors and row-level evaluations
 stay in the reviewer's private scratch copy.
@@ -142,7 +146,12 @@ Outputs are mode 0600 in a 0700 directory:
 
 ## Validation and current boundary
 
-Current follow-up: 36 isolated checks pass (prototype 25, ownership 11). The base
+Schema v2 requires mode evidence for scoring; legacy bundles without it remain
+admissible but their replies are unscored (`mode_unknown`). No model label serves
+as fallback. Intimate rows and per-reply outputs must remain in local private
+scratch; export only aggregates. No cloud prompts or external annotation calls.
+
+Current follow-up: 42 isolated checks pass (prototype 31, ownership 11). The base
 prototype also passed the 26-check attribution suite before this scoring-only
 addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
@@ -162,6 +171,9 @@ Summary tests cover actual 0600 CLI output, deterministic rendering, unknown
 measurements, source-type labels, rejected malformed dates and private-field exclusion.
 Reference-composition regressions check held-out-day exclusion, family-count
 conservation, primary/sensitivity differences and zero coverage without imputation.
+Mode tests prove no family fallback, exact/dated evidence binding, conflict-to-unknown,
+mode/reference isolation, within-mode identifiability, ReelRoom separation and
+matching-mode controls. All new fixtures remain synthetic and non-intimate text.
 
 Reference means/scales/centroids are built once per held-out day, calibration day
 and witnessed-positive subset, then reused for replies and controls. Reuse is
@@ -176,7 +188,30 @@ was unscored (38 replies on one day); the 30-second view scored 123 replies acro
 36 days, but had no provenance-reviewed controls and an unverified encoder
 revision. These are reviewer-reported exploratory results, not independently
 reproduced here or validation of identity. Engagement surface completeness,
-reviewed controls, reference-family balance and exact encoder identity remain open.
+reviewed controls, mode conditioning and exact encoder identity remained open.
+Gloria clarified in note #33 that low counts are expected: avatar and ReelRoom
+are the main surfaces. The missing-surface hypothesis is withdrawn. The ten dates
+reported by Claude remain provisional; this implementation does not change them.
+Note #34 explains the family/mode confound; the earlier pooled family difference
+must not be interpreted as a model effect.
 The bundle contract above supports the next private run. Missing cached embeddings/controls must be reported as coverage gaps; no
 encoder is silently loaded here. Gloria can then confirm/veto the actual proposed
 dates. No approval is needed to continue other authorized prototype implementation.
+
+
+## Existing signal paths for the private exporter
+
+`bin/server.py:10374` keeps ReelRoom distinct from avatar; the same surface reaches
+post-turn handling at `bin/server.py:11376`. `bin/server.py:1513` passes the surface
+and turn ID into writers; `scripts/interaction_ledger.py:548` retains both.
+Use the ledger's explicit surface rather than deriving it from `router:avatar`.
+
+`bin/server.py:11109` has a separate intimacy gate before a refusal-driven reroute.
+Its temporary result is not a universal stored mode label. `bin/model_router.py:663`
+also has forced/toggle routes for provider choice; those route names alone do not
+identify conversation mode. `scripts/intimate_stream.py` preserves typed local
+observations (measured events, choices, readings and system state); presence of a
+file or a physical event is not automatically a label for every contemporaneous
+reply. The private exporter must bind actual retained evidence to an exact reply,
+record its mapping, and emit unknown where that link or meaning is unavailable.
+This runner does not read those stores or create new gate/latent-model calls.

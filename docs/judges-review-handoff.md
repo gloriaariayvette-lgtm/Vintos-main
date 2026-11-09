@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-summary**, based on
-**40b4f416**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-mode-strata**, based on
+**97917df6**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -869,3 +869,29 @@ without changing the reference or scoring. The Markdown summary includes per-day
 composition. Next work: trace engagement across all source surfaces, assemble
 provenance-reviewed controls privately with Claude, and pin known encoder identity
 rather than promoting an unverified revision. No frozen-day decision is made here.
+
+
+## Notes #33–34: mode first; avatar and ReelRoom remain distinct
+
+Gloria confirms the low daily counts are expected. Withdraw the missing-surface
+hypothesis from note #32; the ten reviewer-reported dates remain provisional.
+The reported pooled family difference is confounded with conversation mode, not
+evidence of a model effect.
+
+Schema v2 binds explicit local mode observations to exact reply IDs/hashes, using
+router-decision, intimate-state or documented conversation-transition evidence.
+Model family/toggle alone never supplies a mode. Missing/conflicting evidence is
+unknown and unscored. References, calibration and positive-feedback subsets match
+mode AND surface; controls require matching mode. Explicit ReelRoom remains
+separate from avatar in engagement totals, references and cross-family pairing.
+Within-mode overlap is required for matched comparisons; no pairs is explicitly
+not identifiable. The summary omits pooled family comparisons, includes separate
+mode results and marks admitted-but-unscored unknowns. No new encoding or gate call.
+
+42 isolated checks pass (prototype 31, owners 11). Fixtures prove cross-mode and
+cross-surface independence, exact/dated mode binding, no family inference,
+conflicting signals, one-family non-identifiability, controls and aggregate output.
+The private exporter contract/source trace is in the experiment README. It still
+needs actual retained mode evidence, reviewed controls and encoder pinning before
+a meaningful rerun. Intimate rows remain local-only in private scratch; export only
+aggregates. No source stores read here, live writes, routing changes or deployment.

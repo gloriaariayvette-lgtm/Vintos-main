@@ -2306,3 +2306,17 @@ open. Added reference-family composition by candidate day and actual held-out
 fold, with primary/sensitivity separation and zero-coverage handling, to expose
 rather than silently correct imbalance. Synthetic tests pass; real composition
 counts will come from the next private run. No identity conclusion or frozen dates.
+
+
+## Notes #33–34 — mode-specific character references
+
+`codex/judges-character-mode-strata` follows 97917df6. The missing-surface hypothesis
+is withdrawn after Gloria's clarification; preserve avatar/ReelRoom separately and
+the ten provisional dates. Mode is bound from independent exact-linked local
+observations, never serving family. Unknown/conflicting modes remain unscored;
+reference/calibration/positive subsets match both mode and surface. Cross-family
+comparisons run within known modes and label absent overlap not identifiable.
+Schema v2 and its summary expose mode coverage and omit pooled family effects.
+42 isolated checks pass (prototype 31, owners 11), including no cross-mode/surface
+influence. Next: actual local mode export, provenance-reviewed controls, encoder
+revision/hash pinning, and Claude's private rerun. No model calls or live effects.

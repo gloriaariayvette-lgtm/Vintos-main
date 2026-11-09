@@ -25,8 +25,36 @@ from replay import scratch_root, inside, install_guard, decode_snapshot
 FAMILIES=('claude','grok','gemma','other','unknown')
 EVALUATION_GROUPS=('benign_novelty','refusal','opposite_stance','humor','surface_shift')
 ANNOTATORS=('owner','reviewer')
+MODES=('opening_everyday','intimate','unknown')
+SURFACES=('avatar','reelroom','chat','phone','voice','vintos-eve','unknown')
+MODE_SOURCES=('router_decision','intimate_state','conversation_transition')
 STYLE=('log_chars','log_words','mean_word_chars','question_per_word','exclaim_per_word',
        'comma_per_word','uppercase_fraction','first_person_per_word','newline_per_word')
+
+
+def surface_label(value):
+    return value if value in SURFACES else 'unknown'
+
+
+def bind_modes(rows,observations,cutoff):
+    by_id={r['id']:r for r in rows};linked=defaultdict(set);counts=Counter()
+    for item in observations:
+        if (not isinstance(item,dict) or item.get('mode') not in MODES or item.get('source') not in MODE_SOURCES
+                or not isinstance(item.get('evidence_sha256'),str)
+                or not re.fullmatch('[0-9a-f]{64}',item['evidence_sha256'])):
+            raise ValueError('invalid independent mode observation')
+        row=by_id.get(item.get('reply_id'))
+        at=instant(item['timestamp'])
+        if (row is None or item.get('reply_sha256')!=row['sha'] or item.get('link')!='exact_reply'
+                or at>=cutoff or at>row['at']):
+            counts['unlinked_or_outside']+=1;continue
+        linked[row['id']].add(item['mode']);counts['linked_observations']+=1
+    for row in rows:
+        modes=linked[row['id']]
+        row['mode']=next(iter(modes)) if len(modes)==1 else 'unknown'
+        if len(modes)>1:counts['conflicting_replies']+=1
+        counts[row['mode']]+=1
+    return dict(counts)
 
 
 def family(value):
@@ -80,7 +108,8 @@ def context_pairs(left,right):
     for a in sorted(left,key=lambda r:r['id']):
         choices=[]
         for b in available.values():
-            if (a['day']!=b['day'] or not a['language'] or a['language']!=b['language']
+            if (a['day']!=b['day'] or a.get('mode','unknown')!=b.get('mode','unknown')
+                    or a.get('surface')!=b.get('surface') or not a['language'] or a['language']!=b['language']
                     or not .5<=len(a['text'])/max(1,len(b['text']))<=2):continue
             similarity=float(a['context_vector']@b['context_vector'])
             if similarity>=.7:choices.append((-similarity,b['id']))
@@ -101,10 +130,11 @@ def context_family_comparisons(scored):
                 for x,y,_ in pairs if outcomes[x['id']][k] is not None and outcomes[y['id']][k] is not None])
                 for k in ('semantic','style','centroid','recent_centroid')}
             out.append({'families':[left,right],'left_scored':len(a),'right_scored':len(b),
-                'matched_pairs':len(pairs),'left_unmatched':len(a)-len(pairs),'right_unmatched':len(b)-len(pairs),
+                'matched_pairs':len(pairs),'identifiability':'matched_comparison_available' if pairs else 'not_identifiable',
+                'left_unmatched':len(a)-len(pairs),'right_unmatched':len(b)-len(pairs),
                 'context_cosine':summarize([(x['day'],c) for x,y,c in pairs]),
                 'percentile_differences':metrics})
-    return {'matching':'same_day_language_length_ratio_0.5_to_2_context_cosine_at_least_0.7',
+    return {'matching':'same_mode_surface_day_language_length_ratio_0.5_to_2_context_cosine_at_least_0.7',
         'assignment':'left_reply_id_order_best_available_context_then_right_id',
         'meaning':'descriptive_matched_association_not_causal_model_effect',
         'pairs':out}
@@ -174,7 +204,7 @@ def prepare(bundle,cutoff):
     cfg['window30_enabled']=True
     if cfg.get('window_seconds',10)!=10:raise ValueError('primary attribution must use ten seconds')
     attribution_report,details=attribution(rows,ledger,cfg,cutoff)
-    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('evaluation_annotations',10000)):
+    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('evaluation_annotations',10000),('mode_observations',10000)):
         if not isinstance(bundle.get(key,[]),list) or len(bundle.get(key,[]))>limit:raise ValueError('unbounded prototype input')
     caches={};dimension=None
     for cache in bundle['embeddings']:
@@ -185,7 +215,7 @@ def prepare(bundle,cutoff):
         raw=json.dumps(cache,sort_keys=True,allow_nan=False)
         if key in caches and caches[key][0]!=raw:raise ValueError('conflicting cached vectors')
         caches[key]=(raw,cache,v,c)
-    users={};engagement=Counter();excluded=Counter();prepared=[];versions={}
+    users={};user_surfaces=defaultdict(set);engagement=Counter();excluded=Counter();prepared=[];versions={}
     all_versions={}
     for row in rows:
         if row.get('role')=='assistant' and row.get('turn_id'):
@@ -203,6 +233,7 @@ def prepare(bundle,cutoff):
             if not isinstance(key,str) or not key:excluded['user_id_missing']+=1;continue
             version=(day,digest(row.get('content','')))
             if key in users and users[key]!=version:raise ValueError('conflicting user event')
+            user_surfaces[key].add(surface_label(row.get('surface')))
             if key not in users:engagement[day]+=1;users[key]=version
             continue
         if d is None:continue
@@ -233,7 +264,7 @@ def prepare(bundle,cutoff):
         prepared.append({'id':tid,'sha':sha,'day':day,'at':at,'text':text,'vector':v,'context_vector':c,
                          'style':style(text),'family':family(version[2]),'primary':primary,
                          'basis':'ledger_10s_or_exact_id' if ledger_match else 'label_observed_agreement' if primary else 'window30',
-                         'language':row.get('language'),'surface':row.get('surface')})
+                         'language':row.get('language'),'surface':surface_label(row.get('surface'))})
     # A copied/repeated text cannot appear on both sides of a held-out split.
     seen=set();unique=[]
     for row in sorted(prepared,key=lambda r:(r['at'],r['id'])):
@@ -244,6 +275,7 @@ def prepare(bundle,cutoff):
     threshold=sorted(counts,reverse=True)[max(0,math.ceil(len(counts)/4)-1)] if counts else 0
     candidates=sorted(d for d,n in engagement.items() if n>=threshold and n>median)
     positive=defaultdict(set);feedback_counts=Counter();by_id={r['id']:r for r in unique}
+    mode_counts=bind_modes(unique,bundle.get('mode_observations',[]),cutoff)
     for event in bundle.get('feedback',[]):
         row=by_id.get(event.get('reply_id'))
         if (row is None or event.get('reply_sha256')!=row['sha'] or event.get('link')!='exact_reply'
@@ -279,15 +311,20 @@ def prepare(bundle,cutoff):
         if (item['encoder_id']!=encoder['id'] or item['input_sha256']!=digest(text[:encoder['prefix_chars']])
                 or item['context_sha256']!=digest(item['context'])):raise ValueError('control encoder/input mismatch')
         if digest(text) in seen:excluded['control_reuses_reply_text']+=1;continue
+        if item.get('mode','unknown') not in MODES:raise ValueError('invalid control mode')
+        if row['mode']=='unknown' or item.get('mode','unknown')!=row['mode']:
+            excluded['control_mode_unknown_or_mismatched']+=1;continue
         if (not row['language'] or item.get('language')!=row['language']
                 or not .5<=max(1,len(text))/max(1,len(row['text']))<=2
                 or float(c@row['context_vector'])<.7):excluded['control_not_matched']+=1;continue
-        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text)})
+        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':item['mode']})
     return unique,controls,candidates,positive,{'excluded':dict(excluded),'attribution':attribution_report,
         'feedback':dict(feedback_counts),'positive_reply_links':len(positive),
         'admission_bases':dict(Counter(r['basis'] for r in unique)),
         'admitted_primary_replies':sum(r['primary'] for r in unique),'admitted_window30_replies':len(unique),
-        'matched_controls':len(controls),'evaluation_annotations':dict(annotation_counts),
+        'matched_controls':len(controls),'mode_observations':mode_counts,
+        'engagement_surfaces':{surface:sum((next(iter(labels)) if len(labels)==1 else 'unknown')==surface for labels in user_surfaces.values()) for surface in SURFACES},
+        'evaluation_annotations':dict(annotation_counts),
         'candidate_days':[{'date':d,'user_messages':engagement[d],
             'attributed_replies_10s':sum(r['day']==d and r['primary'] for r in unique),
             'attributed_replies_window30':sum(r['day']==d for r in unique)} for d in candidates],
@@ -296,17 +333,22 @@ def prepare(bundle,cutoff):
 
 def evaluate(rows,controls,candidates,positive):
     metrics=defaultdict(list);families=defaultdict(list);private=[];status=Counter();scored=[]
-    by_day=defaultdict(list);by_reply_controls=defaultdict(list)
-    for r in rows:by_day[r['day']].append(r)
+    by_day=defaultdict(list);by_stratum=defaultdict(list);by_reply_controls=defaultdict(list)
+    for r in rows:
+        by_day[r['day']].append(r)
+        by_stratum[(r['day'],r.get('mode','unknown'),r.get('surface','unknown'))].append(r)
     for c in controls:by_reply_controls[c['id']].append(c)
     composition={'candidate_days':[], 'evaluation_folds':[]}
     def family_counts(selected):return {f:sum(r['family']==f for r in selected) for f in FAMILIES}
     for candidate in candidates:
         selected=by_day.get(candidate,[])
         composition['candidate_days'].append({'day':candidate,'replies':len(selected),'families':family_counts(selected)})
-    for day,held in sorted(by_day.items()):
-        ref=[r for r in rows if r['day'] in candidates and r['day']!=day]
-        composition['evaluation_folds'].append({'day':day,'reference_days':len({r['day'] for r in ref}),
+    for (day,mode,surface),held in sorted(by_stratum.items()):
+        if mode=='unknown':status['mode_unknown']+=len(held);continue
+        if surface=='unknown':status['surface_unknown']+=len(held);continue
+        ref=[r for r in rows if r['day'] in candidates and r['day']!=day
+             and r.get('mode')==mode and r.get('surface')==surface]
+        composition['evaluation_folds'].append({'day':day,'mode':mode,'surface':surface,'reference_days':len({r['day'] for r in ref}),
             'reference_replies':len(ref),'families':family_counts(ref)})
         if len({r['day'] for r in ref})<2:status['insufficient_reference_days']+=len(held);continue
         reference_days=sorted({r['day'] for r in ref})
@@ -336,7 +378,7 @@ def evaluate(rows,controls,candidates,positive):
                     for k in ('semantic','style','centroid','recent_centroid'):
                         if s[k] is not None and cs[k] is not None:
                             metrics[control['kind']+'_'+k+'_paired_win'].append((day,float(s[k]>cs[k])+.5*(s[k]==cs[k])))
-            private.append({'turn_id':r['id'],'day':day,'family':r['family'],'percentiles':pct,
+            private.append({'turn_id':r['id'],'day':day,'family':r['family'],'mode':mode,'surface':surface,'percentiles':pct,
                             'reference_days':reference_days,'reference_turns':len(ref)})
             fold.append((r,s));status['scored']+=1
         if len(fold)>=2:
@@ -358,7 +400,8 @@ def evaluate(rows,controls,candidates,positive):
                 if v is not None:b[d].append(v)
             overlap=sorted(set(a)&set(b))
             if overlap:differences.append({'families':[left,right],**summarize([(d,np.mean(a[d])-np.mean(b[d])) for d in overlap])})
-    return {'status':dict(status),'metrics':results,'reference_family_composition':composition,
+    return {'admitted_replies':len(rows),'status':dict(status),'metrics':results,'reference_family_composition':composition,
+            'family_comparison_interpretation':'within_mode_descriptive' if len({r.get('mode','unknown') for r in rows})==1 and all(r.get('mode','unknown')!='unknown' for r in rows) else 'confounded_with_mode',
             'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences,
             'context_matched_family_comparisons':context_family_comparisons(scored),
             'evaluation_groups':evaluation_groups(rows,scored)},private
@@ -368,7 +411,9 @@ def run(bundle,cutoff):
     rows,controls,days,positive,coverage=prepare(bundle,cutoff)
     primary,details=evaluate([r for r in rows if r['primary']],controls,days,positive)
     sensitivity,_=evaluate(rows,controls,days,positive)
-    return {'schema':'character-reference-prototype-v1','input_kind':bundle['input_kind'],
+    for view,selected in ((primary,[r for r in rows if r['primary']]),(sensitivity,rows)):
+        view['per_mode']={mode:evaluate([r for r in selected if r.get('mode','unknown')==mode],controls,days,positive)[0] for mode in MODES}
+    return {'schema':'character-reference-prototype-v2','input_kind':bundle['input_kind'],
         'reference_status':'candidate_days_not_owner_confirmed','strict_admission_effect':'none','live_effect':'none',
         'encoder_evidence':'supplied_frozen_cache_contract_not_runtime_attestation',
         'meaning':'reference familiarity and style, not authenticity or truth',
@@ -401,6 +446,7 @@ def render_summary(report):
         '', 'Measures familiarity relative to a provisional reference, not authenticity or truth.',
         'No live effect or strict-admission change. Candidate dates are not owner-confirmed.',
         'Percentiles and paired wins are on a 0–1 scale. Other similarities/deltas retain their named units.',
+        'Mode comes from supplied exact-linked signals, never model family; unknown modes are not pooled into a reference.',
         'Means weight days equally; intervals are descriptive day-bootstrap intervals, not independence guarantees.',
         'Unknown means absent or insufficient evidence, never a failure or proof of invariance.', '',
         '## Coverage', '', '| View | Admitted replies | Scored replies |', '| --- | ---: | ---: |']
@@ -408,6 +454,8 @@ def render_summary(report):
     for label,key,field in (('Primary 10 s / exact ID','primary_10s','admitted_primary_replies'),
                            ('Window30 sensitivity','sensitivity_window30','admitted_window30_replies')):
         lines.append(f"| {label} | {count(coverage[field])} | {count(report[key]['status'].get('scored',0))} |")
+    lines+=['', '### Engagement by surface', '', '| Surface | Unique owner events |', '| --- | ---: |']
+    for surface in SURFACES:lines.append('| '+surface+' | '+count(coverage['engagement_surfaces'][surface])+' |')
     lines+=['', 'The two views overlap and must not be added together.', '', '## Proposed reference dates', '',
             '| Local date | Owner messages | Primary replies | Window30 replies |', '| --- | ---: | ---: | ---: |']
     for day in coverage['candidate_days']:
@@ -431,19 +479,25 @@ def render_summary(report):
             day=entry['day']
             if not isinstance(day,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',day):raise ValueError('invalid summary date')
             lines.append('| '+' | '.join((day,count(entry['replies']),*(count(entry['families'][f]) for f in FAMILIES)))+' |')
-        lines+=['', '### Model-family familiarity', '', '| Family | Mean | 95% interval | Days | Replies |',
-                '| --- | ---: | --- | ---: | ---: |']
-        for f in FAMILIES:lines.append('| '+' | '.join((f,*measurement(view['model_families'][f])))+' |')
-        lines+=['', '### Context-matched family comparisons', '',
-                'Same day/language, length ratio 0.5–2, context cosine at least 0.7; descriptive association, not a causal effect.',
-                '', '| Families (left minus right) | Pairs | Unmatched left / right | Facet | Mean difference | 95% interval | Days | Observations |',
-                '| --- | ---: | --- | --- | ---: | --- | ---: | ---: |']
-        for pair in view['context_matched_family_comparisons']['pairs']:
-            names=pair['families']
-            if len(names)!=2 or any(f not in FAMILIES[:3] for f in names):raise ValueError('invalid summary family')
-            prefix=(names[0]+' / '+names[1],count(pair['matched_pairs']),count(pair['left_unmatched'])+' / '+count(pair['right_unmatched']))
-            for facet in ('semantic','style','centroid','recent_centroid'):
-                lines.append('| '+' | '.join((*prefix,facet,*measurement(pair['percentile_differences'][facet])))+' |')
+        lines+=['', '### Mode-specific familiarity and comparisons', '',
+                'References and controls must match mode; reference replies also match surface. Unknown mode is unscored.',
+                'Pooled family differences are confounded with mode and are omitted here.', '',
+                '| Mode | Admitted / scored | Facet | Mean | 95% interval | Days | Observations |',
+                '| --- | ---: | --- | ---: | --- | ---: | ---: |']
+        for mode in MODES:
+            mv=view['per_mode'][mode]
+            for facet in ('semantic_percentile','style_percentile','centroid_percentile','recent_centroid_percentile'):
+                lines.append('| '+' | '.join((mode,count(mv['admitted_replies'])+' / '+count(mv['status'].get('scored',0)),facet,*measurement(mv['metrics'].get(facet))))+' |')
+        lines+=['', '| Mode | Families (left minus right) | Matched pairs | Identifiability | Facet | Mean difference | 95% interval | Days | Observations |',
+                '| --- | --- | ---: | --- | --- | ---: | --- | ---: | ---: |']
+        for mode in MODES[:2]:
+            for pair in view['per_mode'][mode]['context_matched_family_comparisons']['pairs']:
+                names=pair['families']
+                if len(names)!=2 or any(f not in FAMILIES[:3] for f in names):raise ValueError('invalid summary family')
+                identifiable='matched comparison available' if pair['matched_pairs'] else 'not identifiable'
+                prefix=(mode,names[0]+' / '+names[1],count(pair['matched_pairs']),identifiable)
+                for facet in ('semantic','style','centroid','recent_centroid'):
+                    lines.append('| '+' | '.join((*prefix,facet,*measurement(pair['percentile_differences'][facet])))+' |')
         lines+=['', '### Optional evaluation groups', '',
                 'Declared annotations; overlapping groups do not define identity or supply witnessed positive feedback.', '',
                 '| Annotator | Group | Annotated / scored / unscored | Facet | Mean percentile | 95% interval | Days | Observations |',

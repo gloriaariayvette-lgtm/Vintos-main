@@ -22,21 +22,23 @@ P=importlib.util.module_from_spec(spec);spec.loader.exec_module(P)
 
 def fixture():
     encoder=dict(family='nomic',id='synthetic-frozen',revision='synthetic-revision',pooling='mean',normalization='l2',prefix_chars=400,frozen=True)
-    bundle=dict(input_kind='synthetic',timezone='America/Chicago',encoder=encoder,rows=[],embeddings=[],controls=[],feedback=[],
-        historical_attribution={'compute_ledger':[],'surface_callers':{'fixture-chat':['router:fixture']},'window_seconds':10})
+    bundle=dict(input_kind='synthetic',timezone='America/Chicago',encoder=encoder,rows=[],embeddings=[],controls=[],feedback=[],mode_observations=[],
+        historical_attribution={'compute_ledger':[],'surface_callers':{'avatar':['router:fixture']},'window_seconds':10})
     start=datetime(2020,1,1,18,tzinfo=timezone.utc)
     for d in range(16):
         at=(start+timedelta(days=d)).timestamp()
-        for j in range(10 if d<4 else 2):bundle['rows'].append(dict(role='user',turn_id=f'user-{d}-{j}',timestamp=at+j,content='synthetic user event'))
+        for j in range(10 if d<4 else 2):bundle['rows'].append(dict(role='user',turn_id=f'user-{d}-{j}',timestamp=at+j,content='synthetic user event',surface='avatar'))
         for j,model in enumerate(('claude-synthetic','grok-synthetic')):
             text=f'I wonder about synthetic sample {d} and option {j}. Shall we try this?'
             tid=f'reply-{d}-{j}';ts=at+100+j*100;v=np.asarray([1.,.03*d+.01*j]);v=(v/np.linalg.norm(v)).tolist()
-            row=dict(role='assistant',turn_id=tid,timestamp=ts,content=text,context='synthetic shared topic',surface='fixture-chat',language='en',served_by=model)
+            row=dict(role='assistant',turn_id=tid,timestamp=ts,content=text,context='synthetic shared topic',surface='avatar',language='en',served_by=model)
             bundle['rows'].append(row)
+            bundle['mode_observations'].append(dict(reply_id=tid,reply_sha256=P.digest(text),link='exact_reply',
+                timestamp=ts-1,mode='opening_everyday',source='router_decision',evidence_sha256=P.digest('synthetic mode evidence '+tid)))
             bundle['historical_attribution']['compute_ledger'].append(dict(at=ts-1,organ='router:fixture',model=model,provider='synthetic',stage='complete',**{'class':'foreground'}))
             bundle['embeddings'].append(dict(reply_sha256=P.digest(text),input_sha256=P.digest(text),context_sha256=P.digest(row['context']),encoder_id=encoder['id'],vector=v,context_vector=[1.,0.]))
             foreign=f'An unrelated synthetic sample {d} for the alternative case {j} appears.'
-            bundle['controls'].append(dict(kind='foreign',matched_reply_id=tid,content=foreign,context=row['context'],language='en',encoder_id=encoder['id'],input_sha256=P.digest(foreign),context_sha256=P.digest(row['context']),vector=[-1.,0.],context_vector=[1.,0.]))
+            bundle['controls'].append(dict(kind='foreign',mode='opening_everyday',matched_reply_id=tid,content=foreign,context=row['context'],language='en',encoder_id=encoder['id'],input_sha256=P.digest(foreign),context_sha256=P.digest(row['context']),vector=[-1.,0.],context_vector=[1.,0.]))
             bundle['feedback'].append(dict(reply_id=tid,reply_sha256=P.digest(text),link='exact_reply',witnessed=True,kind='laugh',value='hahaha',timestamp=ts+10))
     return bundle
 
@@ -260,6 +262,8 @@ class Tests(unittest.TestCase):
         self.assertIsNone(groups['owner']['humor']['percentiles']['semantic']['mean'])
         for view in ('primary_10s','sensitivity_window30'):
             report[view].pop('evaluation_groups');baseline[view].pop('evaluation_groups')
+            for mode in P.MODES:
+                report[view]['per_mode'][mode].pop('evaluation_groups');baseline[view]['per_mode'][mode].pop('evaluation_groups')
         report['coverage'].pop('evaluation_annotations');baseline['coverage'].pop('evaluation_annotations')
         self.assertEqual(report,baseline)
 
@@ -344,6 +348,91 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(empty['candidate_days']),4)
         self.assertTrue(all(r['replies']==0 for r in empty['candidate_days']))
         self.assertEqual(empty['evaluation_folds'],[])
+
+    def test_missing_mode_never_infers_mode_from_family_or_scores_unknown(self):
+        self.bundle.pop('mode_observations')
+        report,private=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['primary_10s']['status'],{'mode_unknown':32})
+        self.assertEqual(private,[])
+        self.assertEqual(report['coverage']['mode_observations']['unknown'],32)
+        self.assertTrue(all(p['identifiability']=='not_identifiable' for p in
+            report['primary_10s']['per_mode']['intimate']['context_matched_family_comparisons']['pairs']))
+        self.assertIn('not identifiable',P.render_summary(report))
+        self.assertIn('| unknown | 32 / 0 |',P.render_summary(report))
+
+    def test_mode_links_reject_family_proxy_and_keep_conflicts_unknown(self):
+        first=self.bundle['mode_observations'][0]
+        self.bundle['mode_observations']+=[dict(first,mode='intimate')]
+        self.bundle['mode_observations'][1]['reply_sha256']='0'*64
+        self.bundle['mode_observations'][2]['timestamp']+=1000
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['primary_10s']['status']['mode_unknown'],3)
+        self.assertEqual(report['coverage']['mode_observations']['conflicting_replies'],1)
+        self.assertEqual(report['coverage']['mode_observations']['unlinked_or_outside'],2)
+        self.bundle['mode_observations'][0]['source']='model_family'
+        with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
+
+    def test_mode_specific_references_do_not_cross_registers(self):
+        for event in self.bundle['mode_observations']:
+            if event['reply_id'].endswith('-1'):event['mode']='intimate'
+        for control in self.bundle['controls']:
+            if control['matched_reply_id'].endswith('-1'):control['mode']='intimate'
+        report,private=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['primary_10s']['status']['scored'],32)
+        for mode in P.MODES[:2]:
+            view=report['primary_10s']['per_mode'][mode]
+            self.assertEqual(view['status']['scored'],16)
+            self.assertTrue(all(p['identifiability']=='not_identifiable' for p in view['context_matched_family_comparisons']['pairs']))
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        before=P.evaluate(rows,controls,days,positive)[1]
+        for row in rows:
+            if row['mode']=='intimate':row['vector']=-row['vector'];row['style']=row['style']*100
+        after=P.evaluate(rows,controls,days,positive)[1]
+        self.assertEqual([r for r in before if r['mode']=='opening_everyday'],
+                         [r for r in after if r['mode']=='opening_everyday'])
+        text=P.render_summary(report)
+        self.assertIn('confounded with mode',text)
+        self.assertNotIn('### Model-family familiarity',text)
+
+    def test_cross_family_comparison_exists_only_inside_the_same_mode(self):
+        for event in self.bundle['mode_observations']:
+            if int(event['reply_id'].split('-')[1])%2:event['mode']='intimate'
+        for control in self.bundle['controls']:
+            if int(control['matched_reply_id'].split('-')[1])%2:control['mode']='intimate'
+        report,_=P.run(self.bundle,self.cutoff)
+        for mode in P.MODES[:2]:
+            pair=report['primary_10s']['per_mode'][mode]['context_matched_family_comparisons']['pairs'][0]
+            self.assertEqual(pair['matched_pairs'],6)
+            self.assertEqual(pair['identifiability'],'matched_comparison_available')
+        rows,_,_,_,_=P.prepare(self.bundle,self.cutoff)
+        a,b=rows[0],dict(rows[1],mode='intimate')
+        self.assertEqual(P.context_pairs([a],[b]),[])
+
+    def test_reelroom_is_separate_in_engagement_reference_and_matching(self):
+        for row in self.bundle['rows']:
+            if row['turn_id'].endswith('-1'):row['surface']='reelroom'
+        self.bundle['historical_attribution']['surface_callers']['reelroom']=['router:fixture']
+        report,private=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['primary_10s']['status']['scored'],32)
+        self.assertEqual(report['coverage']['engagement_surfaces']['reelroom'],16)
+        self.assertIn('| reelroom | 16 |',P.render_summary(report))
+        for row in private:self.assertEqual(row['reference_turns'],3 if row['day']<'2020-01-05' else 4)
+        rows,controls,days,positive,_=P.prepare(self.bundle,self.cutoff)
+        a,b=rows[0],rows[1]
+        self.assertNotEqual(a['surface'],b['surface'])
+        self.assertEqual(P.context_pairs([a],[b]),[])
+        before=P.evaluate(rows,controls,days,positive)[1]
+        for row in rows:
+            if row['surface']=='reelroom':row['vector']=-row['vector']
+        after=P.evaluate(rows,controls,days,positive)[1]
+        self.assertEqual([r for r in before if r['surface']=='avatar'],[r for r in after if r['surface']=='avatar'])
+
+    def test_controls_require_an_explicit_matching_mode(self):
+        self.bundle['controls'][0].pop('mode')
+        self.bundle['controls'][1]['mode']='intimate'
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['coverage']['excluded']['control_mode_unknown_or_mismatched'],2)
+        self.assertEqual(report['primary_10s']['metrics']['foreign_semantic_paired_win']['observations'],30)
 
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))
