@@ -18,6 +18,21 @@ def _fingerprint(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
+def value_map_read(decoded, selected, at):
+    """Observe the existing newest-entry transform without reopening the source."""
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        return None
+    _private_root(os.environ["JUDGES_CAPTURE_SCRATCH"])
+    if not isinstance(decoded, str) or len(decoded) > 4194304 or not isinstance(selected, str) or not selected:
+        return None
+    import re
+    expected = re.split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + decoded)[-1].strip()[:1500]
+    if selected != expected:
+        return None
+    return {"schema": "value-map-read-v1", "at": instant(at), "decoded_sha256": digest(decoded),
+            "selected_sha256": digest(selected), "transform": "newest_entry_strip_first_1500_codepoints"}
+
+
 def _guarded_reads(value):
     """Validate optional read metadata without admitting paths, text or origin claims."""
     if (not isinstance(value, dict) or set(value) != {"schema", "coverage", "reads", "truncated"}
@@ -93,6 +108,38 @@ class Capture:
         self._input_bindings = []
         self._finalization_nodes = []
         self._rendered_fragments = []
+
+    def bind_value_map(self, observation, fragment):
+        """Bind the exact current-handler read to its offered block; ancestry stays unknown."""
+        if self._closed or self._requests or any(n.get("observation") == "value_map_read" for n in self._nodes):
+            raise ValueError("invalid value-map binding lifecycle")
+        if (not isinstance(observation, dict)
+                or set(observation) != {"schema", "at", "decoded_sha256", "selected_sha256", "transform"}
+                or observation.get("schema") != "value-map-read-v1"
+                or observation.get("transform") != "newest_entry_strip_first_1500_codepoints"):
+            return False
+        prefix = "Your value map:\n"
+        if (not isinstance(fragment, str) or not fragment.startswith(prefix)
+                or not 0 < len(fragment) - len(prefix) <= 1500):
+            return False
+        for field in ("decoded_sha256", "selected_sha256"):
+            h = observation.get(field)
+            if not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
+                return False
+        at = instant(observation.get("at"))
+        if at > self.started_at or digest(fragment[len(prefix):]) != observation["selected_sha256"]:
+            return False
+        key = self.context_id + ":value-map"
+        read_key = key + ":read"
+        self._nodes.append({"id": read_key, "kind": "context", "at": at, "complete": False,
+                            "parents": [], "origin": "stored_unknown_ancestry", "observation": "value_map_read",
+                            "decoded_sha256": observation["decoded_sha256"], "clock_basis": "read_completed"})
+        self._nodes.append({"id": key, "kind": "value_map", "at": at, "complete": False,
+                            "parents": [read_key], "origin": "generated_unknown_ancestry", "organ": "value_map",
+                            "rendered_sha256": digest(fragment), "selected_sha256": observation["selected_sha256"],
+                            "transform": observation["transform"]})
+        self._rendered_fragments.append((key, "value_map", fragment))
+        return True
 
     def bind_counterpart_input(self, original_text, message, slot):
         """Bind an explicitly marked original fragment to one exact input version.

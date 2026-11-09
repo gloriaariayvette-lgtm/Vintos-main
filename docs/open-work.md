@@ -6398,3 +6398,16 @@ Aegis review remains with the reviewer; the private snapshot rerun follows produ
 coverage work and is not duplicated here.
 323 affected isolated checks pass on the final increment; this is synthetic
 validation only. No private snapshot was read or rescored.
+
+
+## 8 November — main-chat value-map producer boundary
+
+`codex/judges-value-map-read-binding` connects the main-chat handler's actual direct
+value-map read/selection to its offered block and exact router requests, in
+explicit scratch only. Stored-version identity does not establish upstream
+ancestry. Other surfaces, the value map's generating dependencies, trusted
+client delivery, full independent Aegis review and production enablement remain
+open. The reviewer owns the later private census rerun.
+264 affected isolated checks pass, including existing value-map behavior suites
+under installed Python 3.12 with existing read-only dependencies. Full Aegis
+validation remains separate; no packages were installed.

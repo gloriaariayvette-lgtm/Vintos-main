@@ -757,3 +757,25 @@ creation time or a claimed exact read clock. Direct `open`/`json.load` calls and
 other I/O are outside `guarded_json_only` coverage; an empty list is not proof of
 no dependencies. This increment does not yet capture the value map's generating
 prompt or authenticate its upstream effects. Production remains disabled.
+
+
+### Main-chat value-map read boundary
+
+The main-chat handler can supply `value-map-read-v1` alongside the existing
+inner-context manifest. Only explicit validated private scratch enables it.
+It hashes the decoded source already read, verifies the existing deterministic
+newest-entry/strip/1500-codepoint selection, and binds the selected hash to the
+exact offered block. Source observation time is labelled `read_completed`;
+a future read cannot attach to an earlier capture. Documents above 4194304
+codepoints supply no observation; the existing display selection is unchanged.
+No raw source or path enters this receipt, and the temporary full decoded
+source is released after selection/observation.
+
+This is a handler-local observation, never a latest-file lookup or time-window
+join. A second handler read resets the observation even when the file is missing.
+Binding is once before routing; every invocation independently checks actual
+system presence, with retries, repeated copies and history movement handled by
+the same fragment matcher. Old or failing optional observer/binding APIs do not
+change output or disable an otherwise working capture. Generated value-map and
+stored-source nodes remain incomplete, with unknown upstream ancestry. Other
+surfaces and the map's own generating dependencies remain outside this increment.

@@ -832,3 +832,38 @@ same-name/version-binding regression. These are synthetic contract checks, not
 private-data eligibility or live performance measurements. No model calls, real
 test sends, live writes, merge or deploy. Full independent Aegis suite/review and
 remaining upstream producers are still open.
+
+
+## 8 November — main-chat value-map read binding
+
+`codex/judges-value-map-read-binding` continues from 74b74c4f, preserving submitted
+review tips. The handler's direct read now optionally attests the decoded version
+and exact existing selection transform. Binding to the existing offered block is
+handler-local and per-request matching remains independent for every retry. No
+extra source reads, new model calls or feed changes. Missing/old/failing observer
+APIs preserve output; over-limit sources supply no observation. The map and its
+stored parent stay incomplete/unknown, without inferred generation history.
+
+Tests execute the actual handler read and binding segments, not a second test
+implementation of them. Synthetic fixtures cover Unicode truncation, unchanged
+selected text over changed source versions, missing-file reset, retry edits,
+history movement, duplicates, clocks, limits, old APIs and lifecycle enforcement.
+An initial fixture lacked a selected generation result before checking delivery;
+the fixture now supplies an invented observed result. No live-data finding is
+claimed. Final affected-suite results follow after completion.
+
+264 affected isolated checks pass: new value-map binding 7, capture 27, hooks 21,
+capture/replay 9, fragments 11, renderer reads 12, witness 106, value-map day 17,
+value-map choices 18, partials 25, ownership 11. The new suite also passes under
+installed Python 3.12. The two existing value-map suites use unchanged Python
+3.12 f-string syntax: default local Python 3.9 could not import them. Installed
+3.12 lacked requests, so their successful isolated runs used the existing 3.9
+site-packages directory as a read-only dependency root via the runner's existing
+mechanism. No package installation or repository runner change. The first
+launcher attempt lacked its scripts import path; corrected before successful
+runs. Independent full Aegis validation remains pending.
+
+Reports regenerated; whitespace checked. No private-data read/rescore, model
+call, real test send, live-store write, merge or deploy. Generated-map dependency
+receipts and other surfaces remain unfinished; this is source-binding evidence,
+not a claim of clean lineage or improved eligibility.
