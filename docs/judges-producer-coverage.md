@@ -168,3 +168,13 @@ stored_unknown_ancestry; read-set coverage does not establish contribution after
 filtering/truncation. Failed opens, directory selection, evidence-view internals,
 separate system/temporal reads, cached material and source/effect history remain
 outside this increment. Production capture and eligibility are unchanged.
+
+
+## Implementation follow-up: auxiliary producer inputs
+
+Identity and temporal reads now have their own bounded scopes and per-request
+slot bindings. Their returned text is distinguished from source content; fallback
+identity has unavailable read evidence, and empty text cannot match every prompt.
+This covers those two reader boundaries without completing their upstream history
+or granting eligibility. Evidence-view internals, cached material, source/effect
+history, trusted delivery and production enablement remain separate work.

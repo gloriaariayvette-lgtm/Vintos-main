@@ -597,21 +597,60 @@ def finish_value_map_context(token, build, rendered):
     build["assembled_context"] = (rendered, metadata)
 
 
-def _value_map_context_binding(build, payload, at):
+def begin_value_map_material(build, label):
+    """A separate read scope for the existing identity or temporal reader."""
+    if label not in ("system_identity", "temporal"):
+        raise ValueError("invalid value-map material")
+    if build is None:
+        return (None, begin_value_map_context(None), None, label)
+    if build["closed"]:
+        raise ValueError("closed value-map build")
+    counts = build.setdefault("material_entries", {})
+    counts[label] = counts.get(label, 0) + 1
+    build.setdefault("materials", {}).pop(label, None)
+    scope = {"started_at": build["started_at"], "closed": False}
+    return (scope, begin_value_map_context(scope), build, label)
+
+
+def finish_value_map_material(observation, rendered):
+    if observation is None:
+        return
+    scope, token, build, label = observation
+    finish_value_map_context(token, scope, rendered)
+    if build is None or build["closed"] or build["material_entries"][label] != 1:
+        return
+    assembly = scope.get("assembled_context")
+    if assembly is not None:
+        text, metadata = assembly
+        metadata.update(scope="direct_reads_during_material", material=label,
+                        read_state="observed" if metadata["reads"] else "unavailable")
+        build["materials"][label] = (text, metadata)
+
+
+def _value_map_context_binding(build, payload, at, slot=1):
     assembly = build.get("assembled_context")
     if build.get("context_entries") != 1 or assembly is None:
         return {"state": "unavailable"}
     rendered, metadata = assembly
     if metadata["ended_at"] > at:
         return {"state": "unavailable"}
-    text = payload["messages"][1]["content"]
+    text = payload["messages"][slot]["content"]
     start = text.find(rendered)
     state = "not_found" if start < 0 else "ambiguous" if text.find(rendered, start + 1) >= 0 else "matched"
     result = {"state": state, "assembly": deepcopy(metadata)}
     if state == "matched":
-        result.update(slot=1, input_sha256=_fingerprint(payload["messages"][1]),
+        result.update(slot=slot, input_sha256=_fingerprint(payload["messages"][slot]),
                       span={"start": start, "end": start + len(rendered), "unit": "unicode_codepoints"})
     return result
+
+
+def _value_map_material_bindings(build, payload, at):
+    bindings = {}
+    for label, slot in (("system_identity", 0), ("temporal", 1)):
+        assembly = build.get("materials", {}).get(label)
+        proxy = {"context_entries": build.get("material_entries", {}).get(label, 0), "assembled_context": assembly}
+        bindings[label] = _value_map_context_binding(proxy, payload, at, slot)
+    return bindings
 
 
 def begin_value_map_call(payload):
@@ -646,6 +685,7 @@ def begin_value_map_call(payload):
         if not build["closed"] and build["root"] == root and len(build["calls"]) < 8:
             observation["packet"].update(build_id=build["build_id"], stage=stage,
                                          assembled_context=_value_map_context_binding(build, payload, observation["packet"]["started_at"]),
+                                         auxiliary_inputs=_value_map_material_bindings(build, payload, observation["packet"]["started_at"]),
                                          dependencies=[_map_dependency(build, k, v, observation["packet"]["started_at"])
                                                        for k, v in parents.items()])
             build["calls"].append(observation)

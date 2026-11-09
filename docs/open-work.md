@@ -6458,3 +6458,14 @@ isolated checks pass. This is not source contribution or complete ancestry:
 evidence-view internals, cached material, separate temporal/system reads and
 source/effect history remain open. Capture stays disabled; independent Aegis
 validation and the private census rerun remain with the reviewer. No live change.
+
+
+## 8 November — auxiliary value-map input observations
+
+`codex/judges-value-map-auxiliary-inputs` adds separate identity/temporal read
+observations and intended-slot binding, preserving fallback text and readers.
+314 affected isolated checks pass. Reviewer note #20 approved through aa85ff5e,
+which is already an ancestor; the newer stack still needs independent review.
+Evidence-view internals, cached material and complete source/effect ancestry
+remain open. Production capture and eligibility remain unchanged; full Aegis
+validation/private census stay with the reviewer.

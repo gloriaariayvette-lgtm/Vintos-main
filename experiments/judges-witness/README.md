@@ -890,3 +890,27 @@ assembly ancestry stay incomplete, including when no direct reads were observed.
 Early/failed builds without a completed call publish no such packet; this is not
 a complete attempt log. No input, output, feed, model call count or admission
 behavior changes; production capture remains disabled.
+
+
+### Separate identity and temporal inputs
+
+The existing system-identity and temporal readers now run in separate optional
+read scopes. The identity read closes its existing file handle explicitly; text
+and its existing fallback are unchanged. Temporal stripping/300-codepoint
+selection is unchanged. Each component records source-version hashes separately
+from its returned-text hash, then compares the returned text against the actual
+request's intended slot (identity: system; temporal: user). Unique matches carry
+spans and exact slot hashes. Missing/changed text, duplicates, future clocks and
+repeated component assembly cannot inherit a binding.
+
+A default identity can match the prompt with read_state unavailable: its presence
+does not attest a successful file read. Empty or over-60,000-codepoint material
+remains unavailable while generation receives the unchanged result. Each scope
+uses the existing 64-read/4,194,304-hashed-codepoint bound; only two named auxiliary
+components can be retained. Missing/old/failed observers preserve normal readers.
+Scopes reset even on reader exceptions and disabled nesting masks attribution.
+
+Both components remain unknown ancestry; field contribution, source history,
+evidence-view internals, cached material, effects and delivery are not established.
+Their call-packet metadata does not make a chat turn eligible. No source reopen,
+new model call or feed change; production capture remains disabled.

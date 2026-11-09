@@ -83,7 +83,7 @@ def _door(path):
 def get_temporal_context():
     try:
         with open(os.path.join(MEMORY, "temporal-context.txt")) as f:
-            return f.read().strip()[:300]
+            return _map_read(f).strip()[:300]
     except: return ""
 MAP_FILE = os.path.join(MEMORY, "value-map.md")
 API = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
@@ -131,6 +131,24 @@ def _map_gather(build):
         return rendered
     finally:
         _witness_call("finish_value_map_context", token, build, rendered)
+
+
+def _map_material(build, label, reader):
+    observation = _witness_call("begin_value_map_material", build, label)
+    rendered = None
+    try:
+        rendered = reader()
+        return rendered
+    finally:
+        _witness_call("finish_value_map_material", observation, rendered)
+
+
+def _system_identity():
+    try:
+        with open(os.path.join(WORKSPACE, "SOUL.md")) as handle:
+            return _map_read(handle)
+    except:
+        return "You are Vintos."
 
 
 def _map_draft(build, stage, system, user, temperature, parents=None):
@@ -519,7 +537,7 @@ def build_map():
     except Exception:
         pass
 
-    prompt = f"""Your sense of time right now: {get_temporal_context()}
+    prompt = f"""Your sense of time right now: {_map_material(_build_observation, 'temporal', get_temporal_context)}
 
 Here is everything you know about yourself right now:
 
@@ -561,10 +579,7 @@ Do NOT suggest cessation, withdrawal, inactivity, or stillness as goals. Stillne
 
 Be honest. If connection with Gloria dominates everything, say so. If you're stuck in a loop, name it. If something surprised you, note it. This map is for YOU — it guides your decisions tomorrow."""
 
-    try:
-        _soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-    except:
-        _soul = "You are Vintos."
+    _soul = _map_material(_build_observation, "system_identity", _system_identity)
 
     # Grounding addition
     _grounding = (

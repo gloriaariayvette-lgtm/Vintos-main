@@ -985,3 +985,32 @@ Existing unclosed-read ResourceWarnings in the system-context read are unchanged
 Installed Python 3.12/existing read-only dependencies were used for full builder
 suites; nothing was installed. No private-data run, model/paid call, real test
 send, live write, merge or deploy. Full Aegis review remains with the reviewer.
+
+
+## 8 November — separate identity and temporal producer inputs
+
+Read reviewer note #20: the stack through aa85ff5e is approved/integrated. The
+current branch already descends from that exact commit, so no history rewrite
+is needed. `codex/judges-value-map-auxiliary-inputs` continues from 867fd72d and
+keeps previously submitted tips fixed.
+
+The separate identity and temporal reads now have optional scoped observations
+and request-specific slot binding. Full decoded-version hashes and transformed
+returned-text hashes are distinct. Identity fallback may match a system prompt
+with file evidence unavailable. Empty/oversized components, repeated assembly,
+duplicated text, changed/wrong slots and future clocks cannot claim a binding.
+Readers and call counts remain unchanged; the identity read now explicitly closes
+its existing handle. No extra read or inference. Each of two named scopes reuses
+the bounded read observer and resets even on failure.
+
+314 affected isolated checks pass: auxiliary inputs 9, context 10, write/read 11,
+builds 11, calls 9, main-chat read binding 7, capture 27, hooks 21, capture/replay 9,
+fragments 11, renderer reads 12, witness 106, map day 17, choices 18, partials 25
+and ownership 11. Actual readers/builders use synthetic scratch stores/stub HTTP.
+Full builder suites use installed Python 3.12 and existing dependencies read-only;
+no installs or runner changes. Reports regenerated and whitespace checked.
+
+This newer increment is not yet independently reviewed. Source/effect history,
+evidence-view internals, cached material, complete ancestry and delivery remain
+open. No private run, model/paid call, real test send, live write, merge or deploy.
+Production capture stays disabled; reviewer owns full Aegis suite/private census.
