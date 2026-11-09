@@ -6255,3 +6255,133 @@ has the installation handoff, and live acceptance is not claimed here.
 that approved base, retaining both sides of the additive open-work conflict.
 173 fresh local checks plus 67 wants checks under coarse-clock simulation pass.
 The combined judges changes remain pending independent review/full Aegis suite.
+
+
+## 8 November — consistent ancestry depth limit
+
+`codex/judges-depth-consistency` makes the existing traversal limit apply even
+when a shared ancestor has a cached result from a shorter path. Over-deep evidence
+stays unknown regardless of parent order. 148 affected isolated checks pass;
+independent review/full Aegis validation remain pending. Existing feeds unchanged.
+
+
+## 8 November — private replay run receipt
+
+`codex/judges-run-manifest` adds scratch-only input/code/options/output hashes to
+the offline replay. 150 affected isolated checks pass. Scoring and witness holds
+are unchanged; no upstream provenance is inferred. The receipt is private and
+not a source-authenticity attestation. Independent review/full Aegis validation
+remain pending; previous pushed review tips stay fixed.
+
+
+## 8 November — duplicate embedding validity
+
+`codex/judges-embedding-copy-validity` removes order-dependent acceptance of
+boolean-containing duplicate embeddings in offline scoring and paired controls.
+Every matching copy must be valid; equal valid numeric copies remain accepted.
+152 affected isolated checks pass. Independent review/full Aegis suite remain
+pending. Prior review tips and every live feed are unchanged.
+
+
+## 8 November — dependency-copy identity
+
+`codex/judges-lineage-copy-identity` rejects conflicting JSON attestations that
+Python equality previously treated as identical, including boolean versus numeric
+completeness flags. Exact repeated copies remain accepted regardless of object
+key ordering. 184 affected isolated checks pass. Independent review/full Aegis
+validation remain pending; no live stores or feeds changed.
+
+
+## 8 November — current slices 1 and 2 review map
+
+The replay README now distinguishes implemented capture/replay/feedback/control
+contracts from incomplete producer ancestry, delivery, private validation and
+separately approved enablement. This supersedes its stale next-increment list;
+it does not authorize a new producer claim or production change. Latest code
+validation remains 184 local isolated checks at 0ab38cdf. Later judges review
+and full Aegis validation remain pending; note 17 approved the separate wants work.
+
+
+## 8 November — independent evidence coverage
+
+`codex/judges-evidence-coverage` exposes missing receipt fields even behind an
+earlier delivery/admission hold. Counts are per supplied assistant copy, not
+unique eligible turns; conflicting receipts remain unselected. 158 affected
+isolated checks pass. No private snapshot run or admission/feed change. Review
+and the full isolated Aegis suite remain pending.
+
+
+## 8 November — strict snapshot parsing
+
+`codex/judges-strict-snapshot-json` refuses duplicate object keys before they can
+erase contradictory provenance, plus nonfinite values and non-object roots.
+Malformed bundles produce no reports; diagnostics omit private keys/values.
+160 affected isolated checks pass. Valid scoring and live feeds unchanged.
+Independent review/full Aegis suite remain pending.
+
+
+## 8 November — capture-to-coverage acceptance fixture
+
+`codex/judges-capture-coverage-integration` adds an end-to-end synthetic fallback
+capture/private-packet/CLI-replay test. Request identity survives, relay claims
+stay unknown, and delivery alone does not admit incomplete ancestry. All 9
+capture/replay integration tests pass; production code unchanged from ef2c9c8d.
+Independent review/full Aegis validation remain pending.
+
+
+## 8 November — explicit final-reply ancestry
+
+`codex/judges-final-reply-lineage` prevents a clean prompt context from clearing
+an explicitly supplied influenced/unknown final-output node. Exact reply/version
+and graph bindings are checked; capture records the digest and merge retains the
+node. Absent optional nodes remain `not_supplied`, with no historical backfill.
+236 affected isolated checks pass. Existing live evidence readers/feeds unchanged;
+independent review/full Aegis validation remain pending.
+
+
+## 8 November — scratch provenance type preservation
+
+`codex/judges-shadow-provenance-types` prevents legacy coercion from upgrading
+malformed raw shadow provenance into explicit witness permission. Invalid
+identity/flag shapes stay ineligible; known tactical influence survives malformed
+envelopes. Shared normalization/live evidence readers are unchanged. 208 affected
+isolated checks pass; independent review/full Aegis validation remain pending.
+
+
+## 8 November — earliest-forecast selection integrity
+
+`codex/judges-earliest-forecast-evidence` fixes offline selection occurring after
+invalid forecast filtering. Identified earliest/equal-time/unknown-clock evidence
+now survives into the selection decision; no later forecast silently replaces
+an unscorable first one. New fixtures verify both input orders and independent
+groups. 171 affected isolated checks pass. Independent review/full isolated
+Aegis validation remain pending.
+
+
+## 8 November — feedback copy identity
+
+`codex/judges-feedback-copy-types` prevents malformed duplicate witness flags,
+sequence claims and rating types from hiding behind Python numeric equality.
+Canonical JSON agreement is required before selecting a duplicate event; both
+input orders are covered. 126 affected isolated checks pass. Live feeds are
+unchanged; independent full Aegis review remains pending.
+
+
+## 8 November — next producer coverage increment
+
+Source trace documented in [judges-producer-coverage.md](judges-producer-coverage.md).
+Existing offer/marker records predate the final router boundary and cannot be
+promoted to complete prompt ancestry. Next: context-local exact rendered-fragment
+bindings per invocation, preserving incomplete generated parents and unknown
+delivery. Documentation only; producer implementation and independent Aegis
+review remain outstanding. No capture enablement or live-feed changes.
+
+
+## 8 November — rendered fragment producer implemented in scratch
+
+`codex/judges-rendered-fragment-bindings` implements bounded context-local render
+manifests and exact per-invocation system-fragment hashes/spans. Existing renderer
+outputs and persisted offer schema are preserved. Missing/ambiguous matches stay
+explicit; generated ancestry and client delivery remain unknown. 223 affected
+isolated checks pass. Full upstream producer coverage, independent Aegis review
+and separately approved production enablement remain outstanding.

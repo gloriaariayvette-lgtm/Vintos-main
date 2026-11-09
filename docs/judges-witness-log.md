@@ -516,3 +516,291 @@ and completion checks under the coarse-clock simulation**. Generated reports and
 whitespace verified. The combined tip still requires Claude's independent review
 and full isolated Aegis suite. No private inputs, model calls, real test sends,
 live writes, merge or deploy were performed here.
+
+
+## 8 November — depth-consistent shared ancestry
+
+`codex/judges-depth-consistency` continues from the submitted combined tip
+c7e9638f, leaving it fixed for independent review. A synthetic graph reproduced
+order-dependent admission: traversing a shared ancestor by its short path first
+cached clean standing, which was then reused along an over-deep path. Reversing
+the root's parents correctly returned unknown. The memo now includes remaining
+traversal depth; edge clocks and active-cycle checks still precede cache lookup.
+The existing 128-level bound is unchanged and cannot be bypassed by cache order.
+
+**148 isolated checks pass:** witness 86, capture 27, replay adapter 6, hooks 18,
+ownership 11. The new regression checks both orders of an over-deep shared graph
+and both orders of a valid shorter graph, with fewer than 400 node lookups per
+case. The previous 60-level diamond performance bound and causal-edge fixtures
+still pass. Reports regenerated and whitespace verified. Synthetic evidence only;
+no retained-data read, model call, live write, feed change, merge or deployment.
+Full Aegis review remains with Claude; no duplicate remote work was started.
+
+
+## 8 November — private reproducibility receipt
+
+`codex/judges-run-manifest` continues from fa4dad54 while its review tip remains
+fixed. Offline replay now writes a private run receipt binding exact supplied
+input bytes, four named scoring files, parsed options, Python version and exact
+output bytes. The receipt is written last; code changes detected across scoring
+abort before output creation. No scoring, admission or live path changes.
+
+**150 isolated checks pass:** witness 88, capture 27, replay adapter 6, hooks 18,
+ownership 11. Tests verify independent hashes/sizes against actual CLI artifacts,
+restart determinism and permissions, changed-input/code/settings/output identity,
+result tampering, and abort-before-write on a simulated scoring source change.
+Reports regenerated and whitespace checked. Synthetic fixtures only. The receipt
+stays private and proves neither source authenticity nor complete dependencies.
+Full isolated Aegis review remains with the independent reviewer. No retained
+input reads, model calls, real test sends, live writes, merge or deployment.
+
+
+## 8 November — validate every matching embedding copy
+
+`codex/judges-embedding-copy-validity` continues from eefb3764 with prior review
+tips fixed. Synthetic fixtures reproduced order-dependent acceptance: a numeric
+vector first and a boolean-containing duplicate second compare equal in Python,
+so only validating the first copy incorrectly admitted the evidence. Reversing
+the copies held it. The same issue affected forecast-context baselines.
+
+Every matching copy now passes finite, numeric, dimension and norm validation.
+Malformed target copies hold the forecast; malformed context copies hold only
+its paired controls. Valid equal integer/float copies remain usable. Two new
+regression methods produced four failures before the repair and pass afterward.
+152 affected isolated checks pass: witness 90, capture 27, replay adapter 6,
+hooks 18, ownership 11. Reports regenerated and whitespace checked. Evidence is
+synthetic, not a claim about live data. No model calls, private snapshots, live
+writes, feed changes, merge or deployment. Independent Aegis review remains pending.
+
+
+## 8 November — exact dependency-copy attestations
+
+`codex/judges-lineage-copy-identity` continues from 7f138cea with prior review
+tips untouched. The request/attempt retention trace found no new field loss.
+A separate synthetic regression showed dependency snapshot merging used Python
+dictionary equality: boolean completeness flags and numeric 0/1 compared equal,
+then the later copy replaced the first. The new fixture failed before repair.
+
+Repeated dependency nodes now compare complete JSON attestations with sorted
+keys and preserve the first identical copy. Conflicting typed flags abort in
+both packet orders and when competing with separately supplied lineage. Object
+key ordering stays harmless. This is the existing strict conflict policy, not
+a new live evidence gate. Exact JSON comparison also distinguishes 1 from 1.0.
+
+184 isolated checks pass: witness 90, capture 27, replay adapter 8, hooks 18,
+merge retention 30, ownership 11. Reports regenerated and whitespace checked.
+Only synthetic evidence was used; no claim of a live-data occurrence. Full
+Aegis validation remains with the reviewer. No private input read, model call,
+real test send, live write, feed change, merge or deployment.
+
+
+## 8 November — current slice review map
+
+`codex/judges-current-review-map` continues from 0ab38cdf without modifying the
+submitted code. The replay guide's opening and next-increment list were stale:
+they said capture hooks were absent and listed already implemented paired controls
+and witnessed-feedback contracts as future work. Updated those sections, listed
+all four source adapters and private outputs, and added a component-by-component
+map separating implemented contracts from producer coverage and live acceptance.
+
+The actual remaining gaps are explicit: complete assembled-context/indirect
+ancestry, provider-attempt coverage, trustworthy delivery acknowledgement,
+independently verified retained evidence, and separately approved production
+shadow enablement. None can be replaced by passing synthetic tests. Note 17's
+wants integration does not approve later judges repairs. No new tests were run
+for this documentation-only change; the map attributes 184 passing local checks
+to the prior code tip rather than claiming a fresh run. Relative links and
+whitespace checked. No production commands, configuration or code changed.
+
+
+## 8 November — independent evidence coverage counts
+
+`codex/judges-evidence-coverage` continues from af247ebb, keeping prior review tips
+fixed. The census's first admission failure is useful for disjoint hold counts
+but hides later missing evidence: an unconfirmed delivery can conceal unknown
+served identity, request binding and context ancestry. Added independent per-copy
+coverage for receipt state, identity/surface binding, observed generator, selected
+request/input hash, delivery, response binding and context lineage.
+
+Unknown/malformed/conflicting receipts do not supply selected facts. All supplied
+assistant copies, including excluded/duplicate/out-of-cutoff copies, contribute
+to coverage; they do not become eligible. User rows do not contribute. Four new
+synthetic regressions verify hidden gaps, duplicate/excluded denominators, receipt
+conflicts and binding mismatches. Admission and the existing hold reasons remain
+unchanged. Coverage reports contain only statuses and counts.
+
+158 isolated checks pass: witness 94, capture 27, replay adapter 8, hooks 18,
+ownership 11. Reports regenerated and whitespace checked. No private evidence
+was read and no actual-coverage result is claimed. Full isolated Aegis review
+remains pending. No model calls, test sends, live writes, feed changes, merge or
+deployment. Production capture enablement remains a separate decision.
+
+
+## 8 November — reject ambiguous snapshot JSON
+
+`codex/judges-strict-snapshot-json` continues from b89743f4, leaving earlier review
+tips fixed. Source-to-replay inspection found the standard parser could discard
+contradictory evidence before admission: duplicate keys silently kept the last
+value. Four synthetic CLI bundles, including opposite provenance-denial orders,
+were accepted before the repair and now abort before reports are created.
+
+The loader rejects duplicate keys at any depth (even equal values), nonfinite
+constants/overflowing floats and non-object roots. Error text does not echo keys
+or values. Valid input bytes and valid-record scoring remain unchanged. Two new
+test methods cover CLI refusal/no output/input preservation/error privacy and
+finite/unambiguous object contracts. No live-data occurrence is claimed.
+
+160 isolated checks pass: witness 96, capture 27, replay adapter 8, hooks 18,
+ownership 11. Reports regenerated and whitespace checked. No private snapshot
+read, model call, real test send, live write, feed change, merge or deployment.
+Independent review/full Aegis suite remain pending; capture is still disabled
+outside explicit scratch.
+
+
+## 8 November — capture-to-coverage integration acceptance
+
+`codex/judges-capture-coverage-integration` continues from ef2c9c8d without changing
+production code. A new synthetic end-to-end test builds two request-local captures,
+each with a failed first attempt and selected fallback, through `begin_shadow`,
+`prepare_shadow` and `finish_shadow`. One selected result has observed identity;
+the other has only a relay claim. Exact request/input hashes and failed-attempt
+retention are checked on the persisted private packets before CLI replay.
+
+Replay reports both request bindings, one observed/one unknown generator and two
+unknown ancestries. With original unconfirmed delivery, neither reply is admitted.
+With explicitly invented delivery attestations, one stays held for unknown served
+identity and the other for unknown lineage. No forecast scores are manufactured.
+Aggregate/stdout checks exclude synthetic private names and text, and every output
+file is mode 0600. All 9 capture/replay integration tests pass. The production code
+is unchanged from ef2c9c8d (its earlier 160-check validation is not a new run here).
+Reports regenerated and whitespace checked. No private data, model calls, test
+sends, live writes, merge or deploy; independent full Aegis review remains pending.
+
+
+## 8 November — honor explicitly supplied final-reply ancestry
+
+`codex/judges-final-reply-lineage` continues from 8299a02e, keeping earlier review
+tips fixed. Two new synthetic regression methods exposed seven failed assertions:
+a clean pre-generation context could admit a supplied final reply node whose
+own influence, version binding or graph record contradicted that admission.
+
+The strict reader now checks supplied reply nodes against the exact turn, context,
+response hash, final timestamp and retained graph, then traverses final-output
+ancestry through finalization time. Prompt-context traversal retains its previous
+start-time boundary and context-root requirement. The scratch producer records
+the reply-node response hash; merged-chat carries the optional node unchanged.
+Coverage reports final-reply standing separately; absent optional nodes remain
+`not_supplied` and retain their prior admission contract. No missing history is
+backfilled and no live consumer's evidence rule is changed.
+
+236 isolated checks pass: witness 98, capture 27, replay adapter 9, hooks 18,
+merge retention 31, provenance 11, evidence view 31, ownership 11. Regressions
+cover direct/finalization influence, unknowns, stale versions, mismatched graph,
+malformed node shapes and the clean control. Reports regenerated and whitespace
+checked. No private input read, model calls, real test sends, live-store writes,
+merge or deploy. Independent full Aegis review remains pending.
+
+
+## 8 November — preserve raw provenance types at scratch capture
+
+`codex/judges-shadow-provenance-types` continues from 84582fc3. Synthetic
+regressions reproduced two assertion failures and one exception: the shared
+legacy normalizer coerced truthy nonboolean witness flags into true and could
+raise on a malformed output marker, dropping the private packet.
+
+The scratch producer now requires an actual boolean witness flag and an explicit
+matching turn identity in a present envelope before retaining eligibility.
+Invalid shapes become malformed/ineligible; normalization errors still produce
+an unknown packet. An explicit tactical marker survives even if other envelope
+fields are malformed. The shared normalizer and all live evidence rules remain
+unchanged. This is a synthetic boundary finding, not a claim about live records.
+
+208 isolated checks pass: witness 98, capture 27, replay adapter 9, hooks 21,
+provenance 11, evidence view 31, ownership 11. Tests assert packet counts,
+nonboolean/mismatched inputs, valid true/false controls and retained tactical
+influence. Reports regenerated and whitespace checked. No private inputs, model
+calls, real test sends, live writes, merge or deployment. Independent review and
+full isolated Aegis validation remain pending.
+
+
+## 8 November — select earliest forecast before filtering invalid evidence
+
+`codex/judges-earliest-forecast-evidence` continues from 2ee4053f. Five new
+synthetic regression methods exposed eight failed assertions: invalid earliest
+predictions were discarded before earliest-selection, permitting later predictions
+or valid equal-time copies to be scored instead.
+
+The offline reader now retains ordering claims for each identified group before
+causality/vector validation. An invalid earliest forecast holds that selection;
+conflicting earliest copies remain conflicted; a missing/invalid clock makes
+selection order unknown. Later invalid records do not erase an earlier valid
+forecast, and separate checkpoint groups remain independent. No live consumer,
+producer, feed or historical record changes.
+
+171 isolated checks pass: witness 103, capture 27, replay adapter 9, hooks 21,
+ownership 11. Reports regenerated and whitespace checked. Tests use synthetic
+records in both input orders. No private-data accuracy claim, model call, real
+test send, live-store write, merge or deploy. Independent Aegis review remains
+pending.
+
+
+## 8 November — exact feedback copy identity
+
+`codex/judges-feedback-copy-types` continues from d39f7a47. Synthetic regressions
+showed Python dictionary equality hiding boolean/integer witness and sequence
+conflicts, and integer/float rating conflicts. With the valid copy first, the
+reader could emit positive feedback; reversed copies could instead be held for a
+different reason. Three new methods cover both orders and key-order invariance.
+
+Duplicate feedback IDs now require identical canonical JSON attestations before
+any copy is selected. Type conflicts hold the event, including predecessor
+conflicts; occupied sequence positions remain retained. Identical copies with
+reordered object keys still join. Non-JSON/nonfinite direct-call records are held
+without selecting a usable copy. Existing literal marker and rating policies,
+unknown labels and all live readers remain unchanged.
+
+126 affected isolated checks pass: witness 106, capture/replay 9, ownership 11.
+Reports regenerated and whitespace checked. This is synthetic contract evidence,
+not a live-data finding or a new accuracy measurement. No private input read,
+model call, real test send, live write, merge or deployment. Independent full
+Aegis review remains pending.
+
+
+## 8 November — source-grounded producer coverage handoff
+
+`codex/judges-producer-coverage-map` continues from d22d4032 with documentation
+only. Traced offer assembly, marker-based turn recording, later prompt edits and
+the exact per-invocation scratch fingerprint boundary. The new
+[judges-producer-coverage.md](judges-producer-coverage.md) identifies which existing
+records can be reused and which claims they cannot establish. It specifies the
+next bounded generated-fragment binding increment and its synthetic acceptance,
+without declaring completeness or enabling capture.
+
+Source references checked against the unchanged implementation. No new tests
+were run for this documentation-only change; the preceding 126-check result is
+historical, not a fresh suite. No live inputs, model calls, sends from tests,
+production changes, merge or deploy. Code implementation of these producer
+bindings and independent full Aegis review remain outstanding.
+
+
+## 8 November — generated fragment bindings per scratch request
+
+`codex/judges-rendered-fragment-bindings` continues from cb861635. The existing
+inner-context render path now retains a bounded ephemeral selection manifest only
+when scratch settings match. No extra renderer calls or persisted offer fields.
+Capture snapshots the exact selection identity/clock and matches offered fragments
+against each router invocation's system input. It records hashes/spans, distinguishes
+matched/not-found/ambiguous, and does not borrow matches from history or old retries.
+Identical offers from different organs stay ambiguous. Generated nodes remain
+incomplete with unknown upstream ancestry; delivery remains unconfirmed.
+
+223 affected isolated checks pass: new rendered-fragment suite 11, witness 106,
+capture 27, hooks 21, capture/replay 9, existing architecture admission 5, home-map
+prompt 8, last-partials 25, ownership 11. Fixtures cover context interleaving,
+immutable snapshots, old/failing APIs, mismatch/size limits, renderer errors,
+capture-off output, existing offer schema, exact spans, duplicate origins and
+persisted packet replay. The initial new-suite failure was a fixture without a
+selected generation result; corrected to supply an invented observed result.
+Reports regenerated and whitespace checked. No private-data run, model calls,
+real test sends, live writes, merge or deploy. Full independent Aegis suite/review,
+upstream dependency producers, delivery acknowledgement and enablement remain open.

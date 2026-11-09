@@ -13,6 +13,34 @@ _OFFERS_PATH = os.path.expanduser("~/.vintos/workspace/memory/context-offers.jso
 
 from contextvars import ContextVar
 _selection = ContextVar("inner_selection", default=None)
+_rendered_selection = ContextVar("inner_rendered_selection", default=None)
+
+
+def _begin_rendered_selection():
+    # Ephemeral observation only; ordinary serving retains no extra text.
+    enabled = bool(os.environ.get("JUDGES_CAPTURE_SCRATCH")) and (
+        os.environ.get("JUDGES_CAPTURE_SCRATCH") == os.environ.get("SPARK_WORKSPACE"))
+    _rendered_selection.set({"schema": "rendered-selection-v1", "selection_id": None,
+                             "fragments": {}, "chars": 0} if enabled else None)
+
+
+def _remember_rendered(name, text):
+    try:
+        value = _rendered_selection.get()
+        if value is None or not isinstance(text, str) or not text:
+            return
+        if name in value["fragments"] or len(value["fragments"]) >= 64 or value["chars"] + len(text) > 262144:
+            return
+        _rendered_selection.set(dict(value, fragments=dict(value["fragments"], **{name: text}),
+                                     chars=value["chars"] + len(text)))
+    except Exception:
+        pass
+
+
+def current_rendered_selection():
+    value = _rendered_selection.get()
+    return dict(value, fragments=dict(value["fragments"])) if value is not None else None
+
 
 def current_selection():
     return _selection.get()
@@ -32,6 +60,9 @@ def _note_offers(offers, selection_id=None):
         record = {"ts": time.time(), "selection_version": _SELECTION_VERSION, "selection_id": sel,
                    "pure": True, "offers": offers}
         _selection.set(record)
+        rendered = _rendered_selection.get()
+        if rendered is not None:
+            _rendered_selection.set(dict(rendered, selection_id=sel, ts=record["ts"]))
         save_json(_OFFERS_PATH, record)
         save_json(os.path.join(os.path.dirname(_OFFERS_PATH),"context-selections",sel+".json"),record)
         return sel
@@ -48,6 +79,7 @@ def _run(mods, offers):
                 v = renderer()
             if v:
                 parts.append(v)
+                _remember_rendered(mod, v)
                 import hashlib as _ih
                 offers[mod] = {"state": "offered", "len": len(v),
                                "influence_id": _ih.md5((mod + "\x00" + v).encode()).hexdigest()[:10]}
@@ -114,13 +146,17 @@ def _guard_note():
         return ""
 
 def full_inner_block():
+    _begin_rendered_selection()
     offers = {}
     parts = []
     try:
         from subconscious_context import get_subconscious_context_compact
         from context_selection import readonly
         with readonly(): s = get_subconscious_context_compact()
-        if s: parts.append("YOUR INNER STATE (subconscious):\n" + s)
+        if s:
+            rendered = "YOUR INNER STATE (subconscious):\n" + s
+            parts.append(rendered)
+            _remember_rendered("subconscious_context", rendered)
         offers["subconscious_context"] = {"state": "offered" if s else "no_material"}
     except Exception as e:
         offers["subconscious_context"] = {"state": "organ_error", "err": str(e)[:120]}
@@ -128,7 +164,9 @@ def full_inner_block():
         from conversation_pressure import get_pressure_block
         from context_selection import readonly
         with readonly(): pb = get_pressure_block()
-        if pb: parts.append(pb)
+        if pb:
+            parts.append(pb)
+            _remember_rendered("conversation_pressure", pb)
         offers["conversation_pressure"] = {"state": "offered" if pb else "no_material"}
     except Exception as e:
         offers["conversation_pressure"] = {"state": "organ_error", "err": str(e)[:120]}
@@ -140,6 +178,7 @@ def missing_inner_block():
     """The 7 systems that ONLY reached voice: field, spark, simulation, world,
     relational, withheld, presence. For avatar/main chat, which already inject
     joke_fermentation, curiosity_debt, unsaid_questions, session_map, social_calibration."""
+    _begin_rendered_selection()
     offers = {}
     parts = _run(_MISSING, offers)
     _note_offers(offers)

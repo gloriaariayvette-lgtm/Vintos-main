@@ -4,6 +4,7 @@ This instrument does not change legacy evidence eligibility or any live feed.
 Receipt producers must supply observed facts; configured models are not served models.
 """
 import hashlib
+import json
 import math
 from datetime import datetime
 
@@ -118,14 +119,19 @@ def receipt(turn_id, surface, started_at, finalized_at, final_response,
 
 
 def lineage_status(root, nodes, before):
-    """Memoized DAG traversal. Check each edge's clock even for cached ancestors."""
+    """Context-root ancestry; a reply cannot masquerade as a prompt context."""
+    return _lineage_status(root, nodes, before, "context")
+
+
+def _lineage_status(root, nodes, before, root_kind):
+    """Memoize within a depth budget; check every edge clock before cache reuse."""
     try:
         root, before = _name(root), instant(before)
     except (TypeError, ValueError, OverflowError):
         return "unknown"
     if not isinstance(nodes, dict) or not isinstance(nodes.get(root), dict):
         return "unknown"
-    if nodes[root].get("kind") != "context":
+    if nodes[root].get("kind") != root_kind:
         return "unknown"
     memo, visiting = {}, set()
 
@@ -141,8 +147,11 @@ def lineage_status(root, nodes, before):
         # follow another. Do not cache an edge failure as the node's standing.
         if at > latest or key in visiting or len(visiting) >= 128:
             return "unknown"
-        if key in memo:
-            return memo[key]
+        # A result proved near the root may need more depth than remains on
+        # another path. Reuse only within the same remaining traversal budget.
+        memo_key = (key, 128 - len(visiting))
+        if memo_key in memo:
+            return memo[memo_key]
         kind, parents = n.get("kind"), n.get("parents")
         if not isinstance(kind, str) or kind not in KINDS or not isinstance(parents, list):
             return "unknown"
@@ -188,7 +197,7 @@ def lineage_status(root, nodes, before):
             state in ("influenced", "influenced_incomplete") for state in states)
         result = ("influenced_incomplete" if incomplete else "influenced") if influenced else (
             "unknown" if incomplete else "clean")
-        memo[key] = result
+        memo[memo_key] = result
         return result
     return visit(root, before)
 
@@ -231,6 +240,25 @@ def envelope_status(row):
         if not p.get("turn_id") or p["turn_id"] != row.get("turn_id"):
             return "conflicting_identity"
     return "explicit_witness"
+
+
+def final_reply_status(row, nodes, r):
+    """Honor explicitly supplied final-output ancestry, bound to this exact reply."""
+    try:
+        node = row["reply_node"]
+        if not isinstance(node, dict) or not isinstance(nodes, dict):
+            return "unknown"
+        key = _name(node["id"])
+        if (node.get("kind") != "reply" or node.get("turn_id") != r["turn_id"]
+                or node.get("context_receipt_id") != r["context_receipt_id"]
+                or node.get("response_sha256") != r["response_sha256"]
+                or instant(node.get("at")) != r["finalized_at"]):
+            return "unknown"
+        if json.dumps(node, sort_keys=True, allow_nan=False) != json.dumps(nodes.get(key), sort_keys=True, allow_nan=False):
+            return "unknown"
+        return _lineage_status(key, nodes, r["finalized_at"], "reply")
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return "unknown"
 
 
 def admission(row, nodes, cutoff):
@@ -282,7 +310,13 @@ def admission(row, nodes, cutoff):
     if selected["served_model"] is None:
         return "unknown_served_model"
     state = lineage_status(r["context_receipt_id"], nodes, r["started_at"])
-    return "eligible" if state == "clean" else state + "_lineage"
+    if state != "clean":
+        return state + "_lineage"
+    if "reply_node" in row:
+        state = final_reply_status(row, nodes, r)
+        if state != "clean":
+            return state + "_reply_lineage"
+    return "eligible"
 
 
 def row_receipt(row):

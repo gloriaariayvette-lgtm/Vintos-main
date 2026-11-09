@@ -5,6 +5,7 @@ Only explicitly supplied scratch snapshots are read. No backup discovery, live
 stores, fitting, feed writes, emotion verdicts, or identity verdicts.
 """
 import argparse
+import hashlib
 from collections import Counter, defaultdict
 import json
 import math
@@ -15,7 +16,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response
+from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
 def adapt(rows, kind):
@@ -49,8 +50,15 @@ def snapshot_nodes(sources, lineage):
         if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
             raise ValueError("invalid lineage identity")
         key = node["id"]
-        if key in nodes and (not repeated or nodes[key] != node):
-            raise ValueError("duplicate or conflicting lineage identity")
+        if key in nodes:
+            # Dictionary equality aliases true/1 and false/0, although the
+            # lineage contract requires explicit booleans. Compare the complete
+            # JSON attestations without allowing the last copy to pick a type.
+            if (not repeated or
+                    json.dumps(nodes[key], sort_keys=True, separators=(",", ":"), allow_nan=False) !=
+                    json.dumps(node, sort_keys=True, separators=(",", ":"), allow_nan=False)):
+                raise ValueError("duplicate or conflicting lineage identity")
+            return
         nodes[key] = node
 
     if not isinstance(lineage, list):
@@ -73,9 +81,43 @@ def snapshot_nodes(sources, lineage):
     return nodes
 
 
+def evidence_coverage(row, nodes):
+    """Independent per-copy coverage, never an admission or completeness verdict.
+
+    An early delivery hold must not conceal missing ancestry or request binding.
+    Conflicting receipts contribute no selected facts. Recorded facts on excluded
+    acts remain coverage observations, not evidence eligible for learning.
+    """
+    candidates = [row["witness_receipt"]] if "witness_receipt" in row else []
+    candidates += [row[k]["witness_receipt"] for k in ("generation_provenance", "provenance")
+                   if isinstance(row.get(k), dict) and "witness_receipt" in row[k]]
+    receipts = [normalize_receipt(r) for r in candidates]
+    status = ("absent" if not receipts else "conflicting" if any(r != receipts[0] for r in receipts)
+              else "recorded" if receipts[0]["status"] == "recorded" else "unknown")
+    result = dict.fromkeys(("identity_binding", "served_identity", "request_binding",
+                           "delivery", "response_binding", "context_lineage", "final_reply_lineage"), "not_evaluated")
+    result["receipt"] = status
+    if status != "recorded":
+        return result
+    r = receipts[0]
+    selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+    identity, _ = joined_identity(row)
+    text = final_response(row)
+    result.update(
+        identity_binding="matched" if identity == r["turn_id"] and row.get("surface") == r["surface"] else "mismatch",
+        served_identity="observed" if selected["served_model"] is not None else "unknown",
+        request_binding="recorded" if selected.get("request_id") and selected.get("input_sha256") else "unknown",
+        delivery=r["delivery"],
+        response_binding="matched" if isinstance(text, str) and digest(text) == r["response_sha256"] else "missing_or_changed",
+        context_lineage=lineage_status(r["context_receipt_id"], nodes, r["started_at"]),
+        final_reply_lineage=final_reply_status(row, nodes, r) if "reply_node" in row else "not_supplied")
+    return result
+
+
 def census(sources, nodes, cutoff):
     groups, reasons, envelopes = defaultdict(list), Counter(), Counter()
     source_counts, identity_joins, duplicate_reasons = {}, 0, Counter()
+    coverage, coverage_n = defaultdict(Counter), 0
     for kind, rows in sources:
         adapted = list(adapt(rows, kind))
         source_counts[kind] = source_counts.get(kind, 0) + len(adapted)
@@ -83,6 +125,9 @@ def census(sources, nodes, cutoff):
             if row.get("role") != "assistant":
                 reasons["not_reply"] += 1
                 continue
+            coverage_n += 1
+            for field, status in evidence_coverage(row, nodes).items():
+                coverage[field][status] += 1
             key, identity_status = joined_identity(row)
             if key is None:
                 envelopes[envelope_status(row)] += 1
@@ -113,7 +158,11 @@ def census(sources, nodes, cutoff):
     summary = {"source_rows": source_counts, "envelope_rows": dict(envelopes),
                "unique_identified_replies": len(groups), "eligible_replies": len(admitted),
                "held": dict(reasons), "duplicate_held_copy_reasons": dict(duplicate_reasons),
-               "envelope_id_joins": identity_joins, "behaviour": {
+               "envelope_id_joins": identity_joins,
+               "evidence_coverage": {"assistant_copies": coverage_n,
+                   "fields": {k: dict(v) for k, v in sorted(coverage.items())},
+                   "meaning": "per-copy independent coverage, including excluded acts; not eligibility or complete-stream proof"},
+               "behaviour": {
                    "mean_words": statistics.mean(lengths) if lengths else None,
                    "question_fraction": sum("?" in final_response(r) for r in admitted) / len(admitted)
                    if admitted else None},
@@ -207,7 +256,15 @@ def feedback_receipts(admitted, events, cutoff):
         copies[event["event_id"]].append(event)
     unique = {}
     for key, rows in copies.items():
-        if any(r != rows[0] for r in rows):
+        try:
+            # Numeric equality aliases explicit booleans and integer ratings.
+            # Select only identical JSON attestations, independent of input order.
+            versions = {json.dumps(r, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                        for r in rows}
+        except (TypeError, ValueError, OverflowError):
+            held["invalid_feedback_evidence"] += 1
+            continue
+        if len(versions) != 1:
             held["conflicting_event_identity"] += 1
         else: unique[key] = rows[0]
     # Include every claimed position, even excluded/conflicting/unknown events.
@@ -367,8 +424,11 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
                        and e.get("response_sha256") == r["response_sha256"]]
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 return unavailable("missing_or_conflicting_context_embedding")
+            # Python numeric equality can hide booleans behind 0/1 in a later
+            # duplicate. Every matching copy must independently be a valid vector.
+            for match in matches:
+                cosine_error(match.get("emb"), actual)
             vector = matches[0]["emb"]
-            cosine_error(vector, actual)  # same dimension, finite and nonzero
             norm = math.hypot(*vector)
             vectors.append([x / norm for x in vector])
         mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
@@ -379,7 +439,10 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
         return unavailable("invalid_context_evidence")
 
 
-def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20):
+MINIMUM_INNOVATION_HISTORY = 20
+
+
+def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MINIMUM_INNOVATION_HISTORY):
     """Match a pre-finalization on-message forecast to one finalized output.
 
     Checkpoint identities/encoder/training times must come from an independently
@@ -393,7 +456,7 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
         raise ValueError("forecast/embedding lists and checkpoint mapping required")
     targets = {r["turn_id"]: r for r in admitted}
     cache = defaultdict(list)
-    held, candidates = Counter(), defaultdict(list)
+    held, candidates, declared = Counter(), defaultdict(list), defaultdict(list)
     for e in embeddings:
         if not isinstance(e, dict) or not isinstance(e.get("turn_id"), str) or not e["turn_id"]:
             held["missing_embedding_identity"] += 1
@@ -431,7 +494,18 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             if manifest.get("source") != head["source"]:
                 held["checkpoint_source_mismatch"] += 1
                 continue
-            made = instant(f["ts"])
+            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
+                held["unknown_target_generator"] += 1
+                continue
+            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
+                     selected["served_model"], selected.get("served_revision") or "")
+            # Establish ordering from identified producer records before any
+            # vector/causality filtering can discard the earliest prediction.
+            claim = {"at": None, "sha256": None}
+            declared[(row["turn_id"], group)].append(claim)
+            claim["at"] = made = instant(f["ts"])
+            claim["sha256"] = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
             arrived = instant(f["arrived_at"])
             if not (instant(manifest["trained_at"]) < made < r["finalized_at"]
                     and arrived <= made and arrived <= r["started_at"]
@@ -444,16 +518,13 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 held["missing_or_conflicting_embedding"] += 1
                 continue
-            error = cosine_error(head["emb"], matches[0]["emb"])
-            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
-            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
-                held["unknown_target_generator"] += 1
-                continue
-            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
-                     selected["served_model"], selected.get("served_revision") or "")
+            # Validate all copies before selecting one; equality alone does not
+            # establish numeric validity (True == 1 and False == 0).
+            errors = [cosine_error(head["emb"], match.get("emb")) for match in matches]
+            error = errors[0]
             # Equal errors are not equal forecasts. Retain a private digest of
             # the complete producer record, including vector and context claims.
-            forecast_sha = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
+            forecast_sha = claim["sha256"]
             candidates[(row["turn_id"], group)].append({
                 "turn_id": row["turn_id"], "response_sha256": r["response_sha256"],
                 "group": group, "forecast_at": made, "forecast_sha256": forecast_sha, "finalized_at": r["finalized_at"],
@@ -462,9 +533,23 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
         except (KeyError, TypeError, ValueError, OverflowError):
             held["missing_or_invalid_forecast_evidence"] += 1
     scored = []
-    for choices in candidates.values():
-        earliest = min(c["forecast_at"] for c in choices)
+    for key, choices in candidates.items():
+        claims = declared[key]
+        if any(c["at"] is None for c in claims):
+            held["unknown_forecast_order"] += 1
+            continue
+        earliest = min(c["at"] for c in claims)
+        first_claims = [c for c in claims if c["at"] == earliest]
+        if any(c["sha256"] is None for c in first_claims):
+            held["unscorable_earliest_forecast"] += 1
+            continue
+        if len({c["sha256"] for c in first_claims}) != 1:
+            held["conflicting_forecast"] += 1
+            continue
         tied = [c for c in choices if c["forecast_at"] == earliest]
+        if not tied:
+            held["unscorable_earliest_forecast"] += 1
+            continue
         if any(c != tied[0] for c in tied):
             held["conflicting_forecast"] += 1
             continue
@@ -555,6 +640,52 @@ def install_guard(root, output):
     sys.addaudithook(hook)
 
 
+# The local scoring implementation, not provider dependencies or live stores.
+SCORING_FILES = ("experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+                 "scripts/evidence_provenance.py", "scripts/evidence_view.py")
+
+
+def scoring_hashes():
+    repo = Path(__file__).resolve().parents[2]
+    return {name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in SCORING_FILES}
+
+
+def run_manifest(source_bytes, code, options, outputs):
+    """Private reproducibility receipt; fingerprints do not authenticate a source."""
+    body = {"schema": "judges-replay-run-v1", "input_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "input_bytes": len(source_bytes), "scoring_files": code, "options": options,
+            "outputs": outputs, "python_version": list(sys.version_info[:3]),
+            "python_implementation": sys.implementation.name}
+    return dict(body, run_sha256=digest(json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False)))
+
+
+def decode_snapshot(raw):
+    """Reject contradictory JSON before a parser can discard an evidence field."""
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                # Keys may themselves contain private data. Never echo one.
+                raise ValueError("duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite JSON constant")
+
+    def finite_float(token):
+        value = float(token)
+        if not math.isfinite(value):
+            raise ValueError("nonfinite JSON constant")
+        return value
+
+    value = json.loads(raw, object_pairs_hook=object_pairs, parse_constant=nonfinite,
+                       parse_float=finite_float)
+    if not isinstance(value, dict):
+        raise ValueError("snapshot must be a JSON object")
+    return value
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--scratch", required=True)
@@ -571,8 +702,9 @@ def main():
     if output.exists() or output in source.parents:
         raise ValueError("output must be new and cannot contain input")
     install_guard(root, output)
-    with source.open() as f:
-        bundle = json.load(f)
+    code_hashes = scoring_hashes()
+    source_bytes = source.read_bytes()
+    bundle = decode_snapshot(source_bytes)
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
@@ -589,16 +721,29 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    if scoring_hashes() != code_hashes:
+        raise ValueError("scoring source changed during replay")
     output.mkdir(mode=0o700)
     outputs = [("aggregate.json", report), ("private-innovation.json", details),
                ("private-feedback.json", private_feedback)]
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
+    output_hashes = {}
     for name, value in outputs:
-        with (output / name).open("x") as f:
+        payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        with (output / name).open("xb") as f:
             os.chmod(f.name, 0o600)
-            json.dump(value, f, indent=2, allow_nan=False)
-            f.write("\n")
+            f.write(payload)
+        output_hashes[name] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+    manifest = run_manifest(source_bytes, code_hashes,
+        {"input_kind": bundle["input_kind"], "cutoff": instant(args.cutoff),
+         "behaviour_start": instant(args.behaviour_start) if args.behaviour_start else None,
+         "behaviour_surfaces": sorted(set(args.behaviour_surface)), "minimum_innovation_history": MINIMUM_INNOVATION_HISTORY}, output_hashes)
+    # Written last. Missing, partial or mismatching receipts cannot establish a complete run.
+    with (output / "private-run.json").open("x") as f:
+        os.chmod(f.name, 0o600)
+        json.dump(manifest, f, indent=2, allow_nan=False)
+        f.write("\n")
     print(json.dumps({"eligible_replies": len(admitted), "forecast_groups": len(scores["groups"])}))
 
 

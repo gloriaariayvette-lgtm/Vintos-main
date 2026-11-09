@@ -1,9 +1,11 @@
 # Witness slices 1 and 2: offline foundation
 
-Status: review branch, synthetic contracts only. No live capture hooks, scheduler,
-model calls, training, feed substitution or deployment. Existing legacy evidence
-consumers and all feeds retain their behaviour. This reader is a separate, strict
-consumer; its exclusions do not silence an act or remove it from a live store.
+Status: offline replay plus disabled request-local capture hooks. The reviewed
+capture base and later submitted repairs are distinguished in the current review
+map below. Synthetic contracts do not establish live eligibility or head accuracy.
+No scheduler, model calls, training, feed substitution or deployment is performed
+by this replay. This reader is a separate strict consumer; its exclusions do not
+silence an act or remove it from a live store.
 
 ## What is implemented
 
@@ -27,11 +29,12 @@ The ancestry root must be a `context` node. Reply-to-next-context hops use a
 explicit `influence` (`clean`, `influenced`, `unknown`). A clean assertion cannot
 clear influencing parents or explicit tactical/character-influenced flags. A
 generated-output node cannot use `ordinary_source` to bypass this contract.
-Traversal memoizes node standing and checks every edge's clock independently;
+Traversal memoizes node standing within its remaining depth budget and checks
+every edge's clock independently;
 shared ancestry does not cause exponential replay.
 
 `replay.py` accepts only explicitly supplied snapshots of canonical chat, merged
-chat or the interaction ledger. It never searches backups or reinstates erased
+chat, the interaction ledger or private capture packets. It never searches backups or reinstates erased
 history. It counts both provenance envelope fields, requires explicit witness
 eligibility, and keeps unknown/denied duplicates out. Repeated copies of one
 eligible finalized reply count once. Duplicate copies must all qualify: this is
@@ -93,9 +96,11 @@ the same outputs in a new directory. This is not an always-on runtime.
 One private JSON bundle contains:
 
 - `input_kind`: `synthetic` or `retained_snapshot` (never mix their reports).
-- `sources`: objects with `kind` (`canonical`, `merged`, `ledger`) and `rows`.
-  Canonical/merged rows have `role`, `content`, `turn_id`, `surface`, provenance
-  and `witness_receipt`. Ledger adapters read `vintos` as the assistant content.
+- `sources`: objects with `kind` (`canonical`, `merged`, `ledger`, `capture`) and
+  `rows`. Canonical/merged rows have `role`, `content`, `turn_id`, `surface`,
+  provenance and `witness_receipt`. Ledger adapters read `vintos` as the assistant
+  content. Capture packets require `witness-capture-v1`, their explicit `lineage`
+  and `reply_node`; reading them never upgrades delivery or incomplete ancestry.
 - `lineage`: nodes with unique `id`, `kind`, epoch/offset-aware `at`, `complete`,
   and `parents`. Ordinary kinds are `context`, `ordinary_source`, `value_map`;
   influencing kinds are `character_score`, `behaviour_receipt`, `judge_effect`,
@@ -130,30 +135,49 @@ directory. This protects this trusted tool against accidental writes; it is not
 a sandbox for hostile Python or native extensions. Tests additionally run under
 the repository's OS-isolated runner.
 
-`aggregate.json` contains descriptive counts/errors; `private-innovation.json`
-contains private turn IDs/digests and must never enter Git. Neither file is
-automatically published. Public evidence requires an explicit privacy review;
-even aggregate day-by-day activity can be sensitive. No raw text is emitted.
+`aggregate.json` contains descriptive counts/errors. `private-innovation.json`,
+`private-feedback.json`, optional `private-behaviour.json` and `private-run.json`
+contain private evidence bindings and must never enter Git. None is automatically
+published. Public evidence requires an explicit privacy review; even aggregate
+day-by-day activity can be sensitive. No raw text is emitted in these reports.
 
-## Next review increment: what is not done
+## Current review map (8 November)
 
-1. Trace each actual chat provider/fallback and final-delivery path. Capture
-   served identity from observed response/runtime receipts; leave it unknown
-   when unavailable. Bind only the final response, including postprocessing.
-2. Add complete context/effect receipts at assembly time, including indirect
-   value-map inputs. Persistent context influence must not be cleared merely
-   because the immediate nudge ended. Persist these through canonical/ledger
-   writers, not just the merged view.
-3. Independently verify checkpoint/encoder manifests and adapters against
-   private retained source shapes, without copying private records into Git.
-   No real-data accuracy claim has been made by this slice.
-4. Add explicitly witnessed reaction receipts: her `haha` (or longer) tied to
-   the immediately preceding reply ID, and 4–5-star practice ratings tied to
-   that practice. A single `ha`, 1–3 stars, absence or delayed return remains
-   unknown, not a negative label. Retain old inferred laughter separately.
-5. Build paired last-reply/recent-mean comparisons from the same causal context;
-   keep checkpoint groups and evaluation blocks separate. Existing head audit
-   qualifications are not replaced by this descriptive reader.
+This map supersedes the original next-increment list. It separates implemented
+contracts from producer coverage and production acceptance; it does not authorize
+any enablement. The append-only [implementation log](../../docs/judges-witness-log.md)
+retains review history, measurements and exact earlier tips.
+
+| Part | Implemented and exercised with synthetic fixtures | Still unproved or unfinished |
+|---|---|---|
+| Strict census | Explicit provenance, both envelope fields, duplicate denials, exact response/version and complete causal ancestry requirements; four source adapters | No historical backfill. Private-copy census reported in note 10 has zero strict-eligible turns; this is not a head-accuracy result. |
+| Request and attempt capture | Request-local invocation binding, observed served identity where supplied, explicit selected attempt, repeat/fallback selection and final-return digest | Provider-attempt coverage remains incomplete; configured/relay names cannot fill missing observed identity. |
+| Dependency receipts | Known counterpart origins, request inputs, observed router results, finalization boundaries, reply-to-context and indirect-effect contracts | Assembled context/value-map ancestry is not fully attested; no producer may declare completeness just to admit a turn. |
+| Delivery | Framework handoff recorded separately | A trustworthy client-delivery acknowledgement producer is not implemented. Return/handoff is not delivery. |
+| Shadow behaviour | Explicit window/surfaces, descriptive counts, model/revision groups and private member manifest | No character verdict, golden-day reference, learned identity model or live consumer. |
+| On-message innovation | Exact reply/checkpoint/encoder joins, causal earlier-outcome percentiles, paired last-reply/recent-mean controls from attested forecast context | Requires private retained manifests, embeddings and forecast-context receipts. No superiority or accuracy claim follows from synthetic contracts. |
+| Witnessed feedback | Exact-origin/adjacency checks, literal laughter and high practice ratings as positives; missing or lower ratings stay unknown | Requires producer-attested events and complete local sequence evidence. Existing weak inference/feed is unchanged. |
+| Reproducibility | Private input/code/options/output receipt, deterministic restart fixtures and scratch-only outputs | Not source authentication, complete dependency locking or loaded-runtime attestation. |
+
+Capture hooks and packet replay exist; production capture enablement does not.
+The current sink requires `JUDGES_CAPTURE_SCRATCH` and `SPARK_WORKSPACE` to match
+an isolated private directory. **Do not set these on production.** The separate
+[disabled enablement proposal](../../docs/judges-capture-enable-proposal.md)
+describes the future dedicated destination, retention bounds and acceptance.
+Capture alone cannot supply missing ancestry or delivery evidence.
+
+Code baseline when this map was prepared: `0ab38cdf`, including the preceding
+manifest, embedding-copy and dependency-copy repairs. Its 184 affected local
+isolated checks passed; the latest independent note read is #17, which approves
+wants through `de2cd7b4`, not these later judges repairs. Their independent review
+and full isolated Aegis suite remain pending. Integration, installation and live
+acceptance are separate facts; no production state is inferred from a branch.
+
+Remaining work within slices 1 and 2 is complete producer coverage and independently
+verified private evidence, not another classifier. The current offline pieces can
+be reviewed without weakening holds or enabling a live feed. Keep later character
+references and judge replacement outside this slice. The [open-work log](../../docs/open-work.md)
+remains the repository task ledger.
 
 Golden days are not needed for these slices. Later they are familiarity
 references, not good/bad identity labels. Candidate high-engagement dates require
@@ -164,7 +188,7 @@ test merge, and handles reviewed integration. Gloria handles deployment. The
 ten-minute coordination heartbeat remains active between batches.
 
 
-## Capture increment in progress
+## Implemented capture contract (disabled outside scratch)
 
 `scripts/witness_capture.py` keeps capture state request-local. The avatar handler
 observes results at all three router call sites, explicitly selects a raw reply
@@ -519,3 +543,189 @@ the shared explicit timestamp parser: booleans, nonfinite values, negative times
 and timezone-naive strings are unknown. Valid offset-aware boundary strings are
 handled consistently with epoch timestamps. These checks tighten shadow evidence
 admission only; they do not rewrite legacy records or alter any live feed.
+
+
+### Shared ancestry and depth limits
+
+The existing 128-level traversal bound applies to every path, including paths
+through cached ancestors. A shorter path cannot lend its cached clean result to
+a longer path whose remaining budget cannot reach the same leaves. Memoization
+is keyed by node and remaining depth, while each edge's clock and active-cycle
+check still run before cache reuse. Over-deep ancestry remains unknown in either
+parent order; within-bound shared graphs retain their result without exponential
+re-walking. This is a strict shadow-consumer repair, not a new live gating rule.
+
+
+### Private replay run receipt
+
+The CLI writes `private-run.json` last, with mode 0600 in the explicit scratch
+output directory. It binds the exact input bytes, input kind, parsed cutoff,
+optional behaviour window/surfaces, innovation history minimum, four named local
+scoring files, Python implementation/version, and every report's exact bytes.
+The run fingerprint is SHA256 of the remaining manifest serialized with sorted
+keys, compact separators and no nonfinite numbers. Repeating the same replay
+under those recorded conditions yields the same receipt; private input/output
+paths and wall-clock run time are deliberately absent.
+
+Before accepting a copied result, recompute its output hashes and sizes, compare
+the input hash with the retained bundle, and compare the named code hashes with
+the review checkout. The CLI checks code hashes before and after scoring; a
+change aborts before creating outputs. A missing, partial or mismatching receipt
+is not a verified completed run. Partial output directories are never reused.
+
+Keep this receipt private, even though it contains hashes rather than message
+text. It is not a signature, proof of source authenticity, complete dependency
+lock, or attestation of the interpreter's loaded runtime. It does not repair
+missing lineage or prove that a snapshot is complete. All existing strict holds,
+scoring, live feeds and capture enablement remain unchanged.
+
+
+### Every embedding copy must be valid
+
+All cached copies matching a target's response hash and encoder are validated
+individually, including copies that compare numerically equal. Python considers
+booleans equal to 0/1, but boolean embedding components are invalid evidence.
+A valid first copy cannot hide a later malformed one, and input ordering cannot
+change this decision. Matching context copies receive the same check. Invalid
+target copies hold the forecast; invalid context copies make paired baselines
+unavailable while preserving the independently valid head score. Equal valid
+integer/float copies remain usable. This repairs offline scoring only.
+
+
+### Dependency copies retain JSON identity
+
+Repeated capture dependency nodes must have the same complete JSON attestation,
+compared with sorted object keys. A boolean and a number are distinct, including
+nested fields; a later copy cannot replace `complete: true` with `complete: 1`,
+or vice versa. Numeric spelling changes such as 1 versus 1.0 also conflict under
+this exact-copy contract. Object key ordering is irrelevant; array order remains
+part of the attestation. Conflicts abort the supplied snapshot, preserving the
+existing policy of never choosing a winning dependency claim. Valid identical
+copies keep the first node. No live merger or eligibility rule is changed.
+
+
+### Independent evidence coverage
+
+`census.evidence_coverage` reports independent field counts alongside the existing
+first-failure admission reasons. Its denominator is every supplied assistant copy,
+including duplicates, excluded acts and copies outside the cutoff. User rows are
+not included. Each field's counts sum to `assistant_copies`; empty input has zero
+copies and an empty field map. These counts are not unique-turn counts and are
+not evidence that a source stream is complete.
+
+Receipt state is `absent`, `unknown`, `conflicting` or `recorded`. Only an agreeing
+recorded receipt supplies further field observations: row identity/surface binding,
+observed selected generator, selected request/input-hash binding, delivery state,
+exact response binding, context-lineage standing, and supplied final-reply lineage. An absent, malformed or
+conflicting receipt leaves those fields `not_evaluated`. A recorded request
+binding means the receipt names the request and valid hash; it does not verify
+the original provider input or claim complete provider-attempt coverage.
+
+For example, a row held for unconfirmed delivery can independently report unknown
+served identity, request binding and ancestry. A tactical row can have observed
+generator metadata and still be excluded. Coverage never substitutes for the
+strict admission result, clears a hold, infers a missing fact or feeds a live
+consumer. The report carries statuses/counts only, never the identities or hashes
+being assessed. Existing private-artifact and aggregate-review rules still apply.
+
+
+### Snapshot JSON is checked before evidence admission
+
+The CLI rejects repeated object keys at any nesting level, including duplicates
+with equal values. Otherwise the default JSON parser would silently keep the last
+value and could erase a provenance denial or input-kind declaration before the
+strict census sees it. Object keys are checked after JSON decoding. Reusing a key
+in different objects remains valid.
+
+NaN, Infinity, negative Infinity and numeric literals that overflow to infinity
+are also rejected, as is a top-level value other than an object. These are bundle
+errors: no output directory or report is created, and the input is unchanged.
+Duplicate-key diagnostics deliberately omit the key and values. Valid JSON with
+malformed evidence records still follows the existing held/counting contracts;
+this does not repair records, alter live-store readers or change scoring for
+valid evidence. All earlier private snapshot and aggregate-publication rules apply.
+
+
+### Supplied final-reply ancestry also constrains the strict reader
+
+A clean pre-generation context cannot clear an explicitly supplied influenced or
+unknown final reply. When a row contains `reply_node`, the strict reader requires
+its ID to resolve to the same complete JSON node in the supplied graph; its turn,
+context, response digest and final timestamp must match the generation receipt.
+It then evaluates that reply's ancestry through finalization time, separately
+from the prompt-context check at generation start. Finalization effects and
+unknown editors therefore cannot disappear behind a clean prompt reference.
+
+The scratch capture adds the exact final response digest to its reply node. The
+merged projection carries a supplied reply node without rewriting it. Existing
+live evidence consumers are unchanged. Missing, stale, malformed or conflicting
+supplied nodes remain unknown; influenced descendants remain excluded from this
+strict offline reader. Older rows without this optional node retain their previous
+admission contract; coverage labels them `not_supplied`, never a proved clean
+finalization. Existing captures with incomplete ancestry remain unqualified.
+
+
+### Raw provenance at the scratch producer boundary
+
+Shadow capture checks the raw envelope before retaining a normalized witness
+permission: `may_witness` must be a boolean, the explicit string turn ID must
+match the capture, and the envelope must be present. Truthy strings/numbers do
+not become permission. Malformed inputs produce an ineligible packet rather
+than losing the capture; explicit tactical influence is retained even when
+other fields are malformed. This guard is local to scratch capture. It neither
+changes the shared legacy normalizer nor certifies complete ancestry or delivery.
+
+
+### Forecast ordering precedes validity filtering
+
+For an identified target/checkpoint/encoder/surface/source group, the reader
+retains the declared forecast clock and complete-record digest before checking
+vectors and causal validity. An invalid earliest record cannot be discarded to
+score a later prediction. Distinct equal-time earliest copies conflict even if
+one is unscorable. An identified record with an invalid/missing clock leaves the
+group's order unknown; it does not get guessed after the valid records. A later
+invalid record does not displace a valid earliest one. Records without enough
+identity to join this group remain separately counted; other groups are unaffected.
+
+`unscorable_earliest_forecast` and `unknown_forecast_order` are selection holds
+counted per group that otherwise had a scorable candidate. Raw invalid-record
+counts remain separate, so these counters are not additive populations. No
+historical scores or private snapshots were recomputed for this synthetic repair.
+
+
+### Feedback duplicate identity
+
+Repeated feedback event IDs must carry identical JSON attestations, ignoring
+object-key order but preserving value types. A numeric `1` cannot stand in for
+an explicit `true` witness or sequence flag; an integer rating and a floating
+copy cannot let input order decide which is selected. Conflicted predecessors
+remain unavailable while their sequence positions stay occupied. Identical
+copies still count once. This applies only to the offline feedback reader.
+
+
+### Context-local rendered fragments (scratch only)
+
+When the existing scratch and workspace settings match, `inner_context` retains
+an ephemeral manifest of at most 64 offered fragments and 262144 codepoints per
+assembly. A new assembly replaces it. Ordinary mode retains no extra rendered
+text; output and persisted offer record shapes are unchanged. The manifest shares
+the selection ID and clock of the observed offer metadata; capture requires both
+to match. Returned manifests and captured fragments are independent snapshots.
+
+Each invocation compares the retained fragments against its actual system string.
+Unambiguous matches record whole-input and full-fragment hashes plus exact Unicode
+spans on that invocation's input node. Repeated occurrences or identical text
+from multiple offering organs are ambiguous. `not_found` means only that this
+exact fragment was not found; it does not distinguish rewriting from omission.
+Moving text into history does not borrow a system binding. Every retry is checked
+again. Older/missing/failing producer APIs preserve ordinary capture without
+fragment bindings. No latest-file read or time-window join is introduced.
+
+Raw fragment text is not added to existing offer stores or persisted capture
+packets; capture drops its transient copy on finalization. The producer retains
+its bounded context-local copy until the next assembly/context lifetime ends.
+The fragment nodes remain generated material with unknown parents and incomplete
+ancestry. Exact content presence proves neither clean origin nor provider
+consumption, semantic influence or client delivery. Other prompt parts, guard
+notes and truncated/over-limit material are outside this bounded manifest. No
+production enablement, full-coverage claim or live feed substitution follows.

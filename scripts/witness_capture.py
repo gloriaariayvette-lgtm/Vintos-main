@@ -66,6 +66,7 @@ class Capture:
         self._nodes = []
         self._input_bindings = []
         self._finalization_nodes = []
+        self._rendered_fragments = []
 
     def bind_counterpart_input(self, original_text, message, slot):
         """Bind an explicitly marked original fragment to one exact input version.
@@ -131,6 +132,34 @@ class Capture:
                             "scope": "offers_not_admission", "selection_id": value["selection_id"],
                             "selection_version": value.get("selection_version"), "offers": deepcopy(observed)})
 
+    def rendered_selection(self, value):
+        """Retain bounded ephemeral fragments from the exact observed selection."""
+        if self._closed or self._requests or self._rendered_fragments or not isinstance(value, dict):
+            raise ValueError("invalid rendered selection lifecycle")
+        selections = [n for n in self._nodes if n.get("observation") == "context_selection"]
+        if (len(selections) != 1 or value.get("schema") != "rendered-selection-v1"
+                or value.get("selection_id") != selections[0]["selection_id"]
+                or instant(value.get("ts")) != selections[0]["at"]):
+            raise ValueError("rendered selection identity mismatch")
+        fragments = value.get("fragments")
+        if (not isinstance(fragments, dict) or len(fragments) > 64
+                or any(not isinstance(k, str) or not k or not isinstance(v, str) or not v for k, v in fragments.items())
+                or sum(len(v) for v in fragments.values()) > 262144):
+            raise ValueError("invalid rendered selection fragments")
+        offered = {o["organ"] for o in selections[0]["offers"] if o["state"] == "offered"}
+        if not set(fragments) <= offered:
+            raise ValueError("fragment lacks matching offer")
+        nodes, retained = [], []
+        for i, (organ, text) in enumerate(sorted(fragments.items())):
+            key = self.context_id + ":rendered-%d" % i
+            nodes.append({"id": key, "kind": "context", "at": selections[0]["at"],
+                          "complete": False, "parents": [], "origin": "generated_unknown_ancestry",
+                          "selection_id": value["selection_id"], "organ": organ,
+                          "rendered_sha256": digest(text)})
+            retained.append((key, organ, text))
+        self._nodes.extend(nodes)
+        self._rendered_fragments = retained
+
     def request(self, system, messages, params, reason, at):
         """Bind exact handler arguments and their ordered dependencies before routing.
 
@@ -148,7 +177,20 @@ class Capture:
         body = {"system": system, "messages": messages, "params": params, "reason": reason}
         fingerprint = _fingerprint(body)
         inputs = [{"role": "system", "content": system}] + messages
-        nodes, parents = [], []
+        nodes, parents, fragment_observations = [], [], []
+        rendered_bindings = []
+        for key, organ, text in self._rendered_fragments:
+            start = system.find(text)
+            duplicate_offer = sum(other_text == text for _, _, other_text in self._rendered_fragments) > 1
+            state = "not_found" if start < 0 else "ambiguous" if duplicate_offer or system.find(text, start + 1) >= 0 else "matched"
+            observation = {"source_id": key, "organ": organ, "rendered_sha256": digest(text), "state": state}
+            if state == "matched":
+                binding = dict(observation, slot=0, input_sha256=_fingerprint(inputs[0]),
+                               span={"start": start, "end": start + len(text), "unit": "unicode_codepoints"},
+                               basis="exact_rendered_fragment")
+                rendered_bindings.append(binding)
+                observation = binding
+            fragment_observations.append(observation)
         for index, item in enumerate(inputs):
             key = node_id + ":input-%d" % index
             parents.append(key)
@@ -156,7 +198,8 @@ class Capture:
             bindings = [b for b in self._input_bindings if index == b["slot"] + 1
                         and version == b["message_sha256"]]
             nodes.append({"id": key, "kind": "context", "at": at, "complete": False,
-                          "parents": [b["source_id"] for b in bindings],
+                          "parents": [b["source_id"] for b in bindings] + ([b["source_id"] for b in rendered_bindings] if index == 0 else []),
+                          "rendered_bindings": deepcopy(rendered_bindings) if index == 0 else [],
                           "source_bindings": deepcopy(bindings), "origin": "unknown", "input_sha256": version,
                           "slot": index, "role": item.get("role", "unknown") if isinstance(item, dict) else "unknown"})
         # A retry is conditional on earlier calls and their results. Retain those
@@ -167,7 +210,8 @@ class Capture:
                       "parents": parents, "input_sha256": fingerprint, "request_id": request_id})
         record = {"request_id": request_id, "at": at, "context_receipt_id": node_id,
                   "input_sha256": fingerprint, "scope": "handler_arguments",
-                  "input_count": len(inputs), "provider_attempts_complete": False}
+                  "input_count": len(inputs), "provider_attempts_complete": False,
+                  "rendered_fragments": fragment_observations}
         self._nodes.extend(nodes)
         self._requests.append(record)
         return Invocation(self, request_id)
@@ -277,6 +321,7 @@ class Capture:
             raise ValueError("invalid finalization")
         self._record_finalization("handler_return", final_text, finalized_at)
         self._closed = True
+        self._rendered_fragments = []
         attempts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in self._attempts]
         for attempt in attempts:
             if attempt["attempt_id"] == self._selected:
@@ -303,6 +348,7 @@ class Capture:
                                           ("router_result", "context_selection", "finalization_boundary")]}] + self._nodes,
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
+                             "response_sha256": digest(final_text),
                              "context_receipt_id": self.context_id,
                              "parents": [self.context_id, self._finalization_nodes[-1]["id"]],
                              "influence": "unknown"}})
@@ -341,9 +387,34 @@ def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_mess
         value = module.current_selection() if module is not None else None
         if value is not None:
             capture.context_selection(value)
+            getter = getattr(module, "current_rendered_selection", None)
+            if callable(getter):
+                rendered = getter()
+                if rendered is not None:
+                    capture.rendered_selection(rendered)
     except Exception:
         pass
     return capture
+
+
+def _shadow_provenance(value, turn_id):
+    """Do not let legacy coercions manufacture explicit shadow evidence."""
+    from evidence_provenance import normalize
+    unknown = {"turn_id": turn_id, "output_provenance": "unknown", "may_witness": False,
+               "envelope_state": "malformed"}
+    try:
+        result = normalize(value if isinstance(value, dict) else unknown)
+    except (TypeError, ValueError, KeyError, OverflowError):
+        result = normalize(unknown)
+    explicit = (isinstance(value, dict) and isinstance(value.get("turn_id"), str)
+                and value["turn_id"] == turn_id and type(value.get("may_witness")) is bool
+                and value.get("envelope_state", "present") == "present")
+    if not explicit:
+        result.update(may_witness=False, envelope_state="malformed")
+    # A malformed envelope does not erase a separately explicit influence marker.
+    if isinstance(value, dict) and value.get("output_provenance") == "stratagem_influenced":
+        result.update(output_provenance="stratagem_influenced", may_witness=False)
+    return result
 
 
 def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
@@ -356,9 +427,7 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         return False
     root = _private_root(capture._scratch_root)
     packet = capture.finalize(final_text, finalized_at, "handed_to_framework")
-    from evidence_provenance import normalize
-    p = normalize(provenance if isinstance(provenance, dict) else {
-        "turn_id": capture.turn_id, "output_provenance": "unknown", "may_witness": False})
+    p = _shadow_provenance(provenance, capture.turn_id)
     packet["generation_provenance"] = p
     packet["content"] = final_text
     packet["role"] = "assistant"
