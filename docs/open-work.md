@@ -6622,3 +6622,14 @@ item for new observations; old data with missing identity remains unknown.
 Still open: exact producer-final-version joins, explicit encoder-weight and training
 completion evidence, and honest handling of excerpt versus full-reply metrics.
 Review/full Aegis validation and production enablement remain separate.
+
+## 9 November — exact artifact content joins implemented offline
+
+`codex/judges-artifact-final-joins` adds optional exact source-to-admitted-final
+joins, private reproducibility details and aggregate report coverage. 232 affected
+isolated checks pass; previous census/behaviour/innovation output is unchanged.
+Full text and excerpts remain distinct, with no automatic scoring promotion.
+This resolves the content-version join portion of the preceding item. Still open:
+encoder-weight/training-completion provenance and prospective forecast association
+before retained observations can supply scored embeddings. Full Aegis validation,
+private census rerun and production enablement remain separate review/owner steps.

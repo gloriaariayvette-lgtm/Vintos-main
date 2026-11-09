@@ -1424,3 +1424,32 @@ The ID-loss gap is addressed prospectively, not by upgrading old rows. Exact
 producer-final-version joins, encoder-weight/training evidence and excerpt/full
 metric comparability remain open; source identity is still labelled unverified.
 No live writes, actual test sends, paid/model calls, enablement, merge or deployment.
+
+## 9 November — offline source-to-final content joins
+
+`codex/judges-artifact-final-joins` continues above fdb4d299. Optional replay input
+self_artifact_packets now joins retained observations by exact source-row digest,
+original string ID, surface, raw/normalized hashes and existing admission. The
+source copy and admitted final reply must agree on receipt and final text. Explicit
+ledger final attestations handle appended marks; cleanup never substitutes for an
+authored final version. Full-text versus 400-codepoint excerpt bindings remain
+separate. Duplicate packets count once; conflicting vectors hold every matching
+reference; malformed vectors abort. No time/text-nearest identity inference.
+
+Fixed aggregate counts and a private manifest-bound join-detail file are produced,
+with no text or vectors in those details. The review formatter reports distinct
+packet/reference/reply counts and content-only limits. No artifact enters scored
+embeddings/checkpoints and no existing eligibility, score, behaviour or feed changes.
+The actual offline CLI verifies identical previous report sections with and without
+the new optional input. Training/encoder evidence and causal forecast selection are
+not inferred from content agreement.
+
+232 affected isolated checks pass: joins 16, strict witness 106, formatter 15,
+report coverage 9, capture/replay 9, self input controls 20, source identity 13,
+artifacts 16, attribution 17 and ownership 11. Cases use actual synthetic artifact
+producers, final-attested ledger marks, long excerpts, changed final versions,
+excluded copies, prefix/hash mismatches, duplicates/conflicts, privacy projection,
+actual reader cleanup equivalence and the isolated CLI. Reports regenerated;
+whitespace clean. Full Aegis validation/private census remain with the reviewer.
+No real records, model/paid calls, actual test sends, live writes, enablement,
+merge or deployment.

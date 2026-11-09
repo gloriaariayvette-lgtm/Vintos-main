@@ -1365,3 +1365,47 @@ producer-attested final-text hashes. Joining these observations to independently
 admitted finalized replies, preserving conflicts and verifying encoder identity,
 remains separate from retention. No time-nearest identity join or scoring promotion
 has been introduced.
+
+### Optional exact final-version content joins
+
+Supply `self_artifact_packets` as an explicit list of retained
+`self-forecast-artifacts-v1` and/or `self-audit-embedding-v1` packets in the same
+private replay bundle. Exact raw source rows must already be present in the
+bundle's canonical/merged/ledger sources. The helper does no discovery, source
+recovery, time-nearest matching, model invocation or additional scoring.
+
+The join requires the original source-row digest, original string turn ID and
+explicit surface; raw reply and normalized hashes must agree with the declared
+self-reader cleanup. The exact source copy must independently pass existing
+admission, and its receipt and producer-final text must agree with a reply already
+admitted by the complete census. Missing or held duplicates remain held. An older
+packet without reply_source remains missing rather than gaining identity by text.
+
+The normalized string must equal the producer-attested final reply. Explicit
+ledger final-text attestations can therefore handle appended device marks, but
+heuristic cleanup of authored final text cannot stand in for that attestation.
+The existing 400-codepoint input hash and length must also match. Short exact
+inputs count as `bound_full_text`; longer final replies count as `bound_excerpt`.
+Neither label proves which forecast selected the target or establishes encoder
+weight identity. The helper deliberately does not validate or replace forecast-log
+bindings; it only audits retained content references.
+
+Identical packets count once. Different vectors claiming the same checkpoint,
+reply/final-version/input identity mark every such content match conflicting;
+malformed/nonfinite/boolean/zero vectors abort the audit instead of disappearing
+behind another copy. Counts distinguish supplied/unique packets, source references
+and unique admitted replies. A reference count is not an outcome count.
+
+`aggregate.json.self_artifact_joins` contains fixed reason counts only. The private
+0600 `private-self-artifact-joins.json` records packet/reference/checkpoint and
+content hashes plus explicit turn IDs, but no vectors or message text. It is bound
+by private-run.json along with the added helper implementation hashes. The review
+formatter projects fixed count labels and rejects inconsistent denominators; it
+never copies arbitrary source labels or IDs.
+
+All results are content consistency only, including when a complete text matches.
+Artifact-observation time, training completion and encoder identity remain
+unverified; forecast-target selection is not evaluated. No packet is inserted into
+scoring embeddings/checkpoints, no eligibility rule changes, and all pre-existing
+census/behaviour/innovation output is unchanged (actual CLI regression tested).
+The independent private census and full host suite remain reviewer-owned.

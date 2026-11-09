@@ -66,6 +66,32 @@ def excerpt_coverage(section, eligible, scorable):
     return lines
 
 
+def artifact_coverage(section, eligible):
+    if section is None:
+        return []
+    if (section['scope'] != 'content_binding_only' or section['admission_effect'] != 'none'
+            or section['scoring_effect'] != 'none' or section['encoder_identity'] != 'unverified'
+            or section['artifact_observation_time'] != 'unverified'
+            or section['forecast_target_selection'] != 'not_evaluated'):
+        invalid()
+    supplied, unique, refs, bound = (count(section[k]) for k in
+        ('packets_supplied','unique_packets','source_references','bound_unique_replies'))
+    states = section['states']
+    if not isinstance(states, dict): invalid()
+    total = sum(count(v) for v in states.values())
+    full, excerpt, conflicts = (count(states.get(k,0)) for k in
+        ('bound_full_text','bound_excerpt','conflicting_vector_observations'))
+    if (unique > supplied or refs < unique or total != refs or bound > eligible
+            or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
+        invalid()
+    return ['## Retained artifact content joins', '',
+            f'- Packets supplied: {supplied}; unique packets: {unique}.',
+            f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
+            f'- Conflicting-vector references: {conflicts}; other unresolved references: {refs-full-excerpt-conflicts}.',
+            f'- Unique eligible replies with a content binding: {bound}.', '',
+            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', '']
+
+
 def render(report):
     """Only fixed prose and validated numbers leave this projection.
 
@@ -175,6 +201,7 @@ def render(report):
         comparisons(innovation['baselines'], 'paired_head_mean_error', 'Full-reply controls')
         comparisons(report.get('self_input_baselines'), 'head_error', 'Observed excerpt-input controls')
         lines += excerpt_coverage(report.get('self_input_baselines'), eligible, total)
+        lines += artifact_coverage(report.get('self_artifact_joins'), eligible)
         lines += ['## Interpretation limits', '',
                   'No confidence interval or pass decision is inferred from group means. A supplied block declaration is not proof of preregistration or an untouched evaluation.',
                   'Missing origin, delivery, ancestry or clock evidence remains missing. This report neither repairs it nor enables a feed.',
