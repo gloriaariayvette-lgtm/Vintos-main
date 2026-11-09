@@ -841,3 +841,29 @@ Every judge's page explains its observations and sources, and the shared boundar
 no verdict on feelings and no effect on replies, memory or choices. It asks for no
 test messages. Claude performs the independent private render and any authorized
 handoff; this tool sends nothing.
+
+## Offline recorded-judge agreement
+
+[`agreement.py`](agreement.py) compares exactly joined retained voice-coherence,
+deviation, presence and humor judgments with the existing numerical voice/humor
+receipts. It reuses the strict cached-evidence pipeline, makes no model calls and
+prints counts only. Separate primary/sensitivity and mode/surface reports include
+coverage, a three-band confusion matrix, agreement with its denominator,
+decisive-only agreement, and both flag/pass disagreement directions. Missing
+verdicts never become passes or abstention votes. Empty joins produce null rates.
+
+See [AGREEMENT.md](AGREEMENT.md) for the read-only projection/CLI contract, all 33
+writers' persistence destinations, source-selection limitations and explicit
+unavailable counterparts. Daily drift is not joined to per-reply verdicts. The
+native voice/deviation logs lack exact bindings and cannot be rescued by timestamp
+or excerpt matching. Deviation's persisted decision is mixed classifier/similarity,
+not pure LLM output; its ambiguous Aligned entries and presence exemptions remain
+abstentions. Historical presence lacks exemption fields. Humor moments are a
+positive-selected sample and are not proof of a laugh.
+
+Agreement is evidence about two recorded decisions on their intersection, **not
+ground truth or permission to replace a judge**. The LLM may be wrong; familiarity
+may flag a valuable unfamiliar reply. Coverage/selection bias, different constructs
+and correlated days prevent an accuracy or causal-benefit claim. Held-out common
+rubrics and independent outcomes would be needed for replace/keep/run-both choices.
+All existing loops remain active; no new data collection, thresholds or live writes.

@@ -1740,3 +1740,55 @@ Branch codex/judges-gloria-page starts above 7bdf5ad1, preserving the earlier re
 branch. No live changes, actual provider/model calls, private records, GPU, full
 suite duplication, merge or deployment. Independent review and private rendering
 remain Claude's; heartbeat ACTIVE.
+
+
+## 2026-11-09 16:18 CST — #61 offline retained-judgment agreement
+
+New experiments/nonllm-judges/agreement.py re-evaluates the existing cached
+numerical pipeline and compares exact-bound retained voice-coherence, deviation,
+presence and humor judgments. It prints counts only: per pair and attribution
+view, population/each-side/intersection/unmatched coverage, 3-by-3 abstain/flag/pass
+confusion, overall and decisive-only agreement with denominators, directional
+disagreements and mode/surface cells. Missing is not abstain or pass; zero
+intersection has null rates. Humor compares message attempts only, not practice
+jokes. No supplied numerical verdict override, model/encoder call or live read.
+
+AGREEMENT.md inventories persistence destinations for all 33 source entries and
+explains why 29 have no equivalent reply comparator. Their projected records can
+be counted but agreement remains unavailable. Daily sustained drift is not a
+reply verdict; taste/recurrence/grouping have no matching retained reply rubric.
+All four supported comparisons are exploratory proxies, not equivalent constructs
+or replacement recommendations. The existing LLM is not ground truth either.
+
+Native voice/deviation logs have no exact full-reply binding, and sparse flags
+cannot supply pass denominators. Bindings must be independently retained exact
+relations, not timestamp/excerpt guesses. Absent relations stay missing. Deviation
+is a mixed classifier/identity score; ambiguous Aligned entries (also used for
+commitment friction) abstain. Presence requested-work exemptions and historical
+rows lacking flags/exemptions abstain. Humor retains positives only. Copies
+deduplicate; conflicting copies or multiple verdicts for a reply exclude its join.
+Recorded served model/fallback stay known only when supplied as actual serving
+metadata; output contains only known/unknown counts. Caller claims are not
+independently authenticated. Source fields and provenance remain private/intact.
+
+CLI requires explicit private scratch/input/verdicts/cutoff and optional Landings;
+0700 root, 0600 bounded regular files, no symlinks, live/repository roots refused.
+Audit guard blocks network/subprocess/writes; errors sanitized; stdout has no
+private text, IDs, hashes, vectors, scores or model names. No persistence or sends.
+
+50 targeted isolated checks pass: agreement 21, existing numerical runner 18,
+owners 11. Logs /tmp/judges-s61-agreement.log, /tmp/judges-s61-numerical.log,
+/tmp/judges-s61-owners.log. Integration exercises actual cached numerical replay,
+all four pairs, 33-entry census, strict joins, missing/abstain denominators,
+indirect lineage rejection, duplicate/conflicting verdicts, history exemptions,
+message/joke separation, attribution views, metadata privacy and read-only CLI.
+One new test initially used an invalid lineage kind; corrected it to a synthetic
+emotion-nudge/context ancestry chain and reran successfully. No production gate
+changed. Generated ownership/testing/store reports unchanged; diff clean.
+
+Branch codex/judges-agreement starts above c27b8d84 in the existing isolated
+judges-witness-slices checkout. Independent review/full isolated suite/private
+projection and replay remain Claude's. Actual agreement is not measured here;
+legacy missing bindings may leave no overlap. No new unresolved blocker, ntfy,
+private-record access, actual provider call, GPU, live changes, merge or deploy.
+Heartbeat remains ACTIVE.
