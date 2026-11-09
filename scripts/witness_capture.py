@@ -358,6 +358,10 @@ class Capture:
                 "identity_evidence": evidence if actual else "unknown",
                 "_claimed_model": stage.get("claimed_model") if evidence == "claimed" else None,
                 "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None}
+            provider_id = stage.get("request_id")
+            if (isinstance(provider_id, str) and 0 < len(provider_id) <= 256
+                    and provider_id.strip() == provider_id and provider_id.isprintable()):
+                attempt["provider_request_id"] = provider_id
             if request is not None:
                 attempt.update(request_id=request_id, input_sha256=request["input_sha256"])
             self._attempts.append(attempt)

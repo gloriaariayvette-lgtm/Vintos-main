@@ -1557,3 +1557,35 @@ unchanged forced/fallback paths and return values, logger failure isolation, sur
 retention, no prompt/reply content in the ledger call, and no configured-to-observed
 promotion. Generated reports refreshed. Full host suite and private measurements
 remain with the reviewer. No live writes, paid calls, merge or deployment.
+
+## 9 November — response identity survives existing draft contracts
+
+`codex/judges-draft-response-identity` supplements the prior completion repair with
+optional invocation-local callbacks in the two existing draft parsers. Bounded
+response model/ID metadata is bound to the exact returned-text digest, without
+changing payloads, tuple return values, reasoning, route labels or fallback order.
+Only present valid response fields become observed identity; missing/invalid data
+stays unknown and completion recording remains explicitly configured-only when
+appropriate. A known response ID without a known model does not manufacture one.
+
+Successful routed results carry observed identity separately from configured model
+fields. The ledger records the observed name/ID when known. Private capture keeps
+provider IDs in observed_attempts, separately from internal request/input bindings;
+normalized strict receipt requirements are unchanged. Empty output emits no selected
+identity, callbacks cannot change a draft, and failed/concurrent calls cannot reuse
+another call's metadata. No new model call or historical backfill. Complete internal
+draft attempt history and underlying weight identity remain unasserted.
+
+273 focused isolated checks pass: new draft-parser identity 9, completion 7, forced
+routes 16, learned cache 15, compute admission 44, reply budget 11, avatar sight 37,
+result contract 52, handler capture 21, ownership 11, capture primitives 27, replay 9,
+deferred capture 14. Tests execute actual parser/router functions with synthetic
+responses and stubbed transports. The first extracted-parser fixture omitted its
+module filename; fixed that test namespace and reran. Existing usage-log writes
+emit ResourceWarning for unclosed handles; all are redirected to private scratch
+and these pre-existing write patterns are unchanged by this work.
+
+No live/provider calls, real inputs, feed changes, enablement, merge or deployment.
+Full host suite and private measured coverage remain reviewer steps. The prior
+configured-host authentication blocker is unchanged; no repeat alert. Encoder
+identity and retained coverage still remain open.

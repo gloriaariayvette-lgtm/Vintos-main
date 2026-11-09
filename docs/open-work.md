@@ -6678,3 +6678,14 @@ rows retain their separate historical tier. Response-observed identity for these
 draft paths still needs a separately reviewed producer change; no new record is
 pretended to solve that. Private coverage dates/counts, encoder identity and Aegis
 acceptance remain open. No production modification or deployment.
+
+## 9 November — draft response identity propagation ready for review
+
+`codex/judges-draft-response-identity` adds optional response metadata callbacks to
+the two previously configured-only draft paths while preserving their tuple and
+request contracts. Routed results and completion records now retain observed model
+and provider response ID when actually supplied; missing metadata stays unknown.
+Private attempt observations keep provider IDs distinct from internal request IDs.
+273 focused isolated checks pass. No historical backfill or complete attempt-history
+claim. Full host suite/live coverage measurement, encoder identity and production
+acceptance remain open. No live calls, writes, enabling, merge or deployment.

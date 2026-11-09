@@ -1518,3 +1518,29 @@ coverage similarly reports `sole_call_identity_unobserved`, not a recovery
 opportunity. These explicit evidence labels are still recorded claims, not source
 authentication. Historical unmarked ledger rows retain their previously reviewed
 ledger-attributed tier; this change does not fabricate markers on older data.
+
+### Draft response identity propagation
+
+The two draft parsers now offer an optional `identity_observer` keyword while
+keeping their original `(text, reasoning)` return contract and request payloads.
+The callback receives only bounded provider response model/ID fields and a digest
+of the exact stripped text returned. It is per invocation, not a global last-result
+slot. Empty output emits no selected identity; observer failures cannot change the
+draft. No body, prompt, reasoning or credentials enter the callback packet.
+
+For a successful routed draft, the observation must match the returned text digest
+before it can supplement `observed_model`, `identity_evidence` and `request_id`.
+Only supplied valid response fields count. Configured names are not substituted.
+The completion ledger uses the observed name and response ID when present; otherwise
+it retains the explicit configured-only limit. The public route label and existing
+result `model` field stay unchanged; identity evidence is separate. Provider metadata
+is an observed response claim, not independent proof of underlying model weights.
+
+Optional `provider_request_id` is retained in the private capture's
+`observed_attempts`. It is distinct from the instrument's internal request ID and
+input binding. It is not added to normalized strict receipt requirements and does
+not upgrade unknown context ancestry, attempt completeness or delivery. Failed
+requests and earlier attempts discarded inside a draft remain unobserved by this
+new callback; complete request accounting is not claimed. Historical rows receive
+no backfill. Direct callers that do not request observation keep the original tuple
+behavior without a new capture side effect.
