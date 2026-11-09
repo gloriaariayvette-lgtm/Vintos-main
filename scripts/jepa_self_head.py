@@ -1027,7 +1027,7 @@ def _attach_forecast_clock(exchange, raw):
 
 def _forecast_witness(name, *args):
     """Optional scratch observer; its failure cannot change the forecast/feed."""
-    if name != "end_self_forecast" and not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+    if name != "end_self_forecast" and not (os.environ.get("JUDGES_CAPTURE_SCRATCH") or os.environ.get("JUDGES_CAPTURE_CONFIG")):
         return None
     try:
         import witness_capture

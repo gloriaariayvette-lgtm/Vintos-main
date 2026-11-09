@@ -1315,3 +1315,27 @@ Required reports regenerated; whitespace clean. The reviewer's private census
 remains in progress per note 22; no actual measurement is claimed or duplicated.
 Full Aegis suite/review remain there. No live writes, model/paid calls, actual test
 sends, merge or deployment; submitted previous branch tips remain fixed.
+
+## 8 November — dedicated disabled production sink
+
+`codex/judges-production-sink` implements note 23's independent config/destination,
+atomic 0600 packets, 0700 directory, nonblocking writer lock, bounded packet/byte/file
+counts, opportunistic expiry, kill switch and rollback contract. Existing capture
+hooks accept the explicit config pointer, without repointing SPARK_WORKSPACE or
+changing forecasts, value-map output or feeds. No config/environment was installed
+or enabled. Existing scratch capture retains precedence and its original guard.
+
+314 affected isolated checks pass, including 19 sink cases, actual synthetic
+self-forecast off/on equality and concurrent capacity handling. Required reports
+regenerated. A 100-call tiny synthetic local storage benchmark measured median
+1.139 ms, p95 1.300 ms and maximum 1.659 ms; Aegis end-to-end/occupancy measurements
+remain with review. Persistent status counts only lock-owning operations; other
+failures have process-local counters and are not silently claimed complete.
+
+The reviewer reported the strict census had zero eligible replies. Note 24 corrects
+its interpretation: historical served_by labels and compute-ledger model fields
+exist. Strict observed identity absence is not tracking absence. A separately
+labelled historical attribution tier is next; checkpoint/target-vector retention
+also remains open. No historical eligibility, delivery or lineage upgrade. Full
+Aegis suite, review and Gloria's enable decision remain outstanding; no merge,
+deploy, live write, model/paid call or actual test send occurred.

@@ -19,8 +19,13 @@ _rendered_selection = ContextVar("inner_rendered_selection", default=None)
 
 def _begin_rendered_selection():
     # Ephemeral observation only; ordinary serving retains no extra text.
-    enabled = bool(os.environ.get("JUDGES_CAPTURE_SCRATCH")) and (
-        os.environ.get("JUDGES_CAPTURE_SCRATCH") == os.environ.get("SPARK_WORKSPACE"))
+    enabled = False
+    if os.environ.get("JUDGES_CAPTURE_SCRATCH") or os.environ.get("JUDGES_CAPTURE_CONFIG"):
+        try:
+            from witness_capture import capture_enabled
+            enabled = capture_enabled()
+        except Exception:
+            pass
     _rendered_selection.set({"schema": "rendered-selection-v1", "selection_id": None,
                              "fragments": {}, "chars": 0} if enabled else None)
 

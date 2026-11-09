@@ -6576,3 +6576,13 @@ No feed or production change; generated reports stay private until reviewed.
 private shadow report, distinguishing forecast rows from unique target replies and
 undefined fractions from zero. 68 affected isolated checks pass. Measured census
 results and full Aegis suite remain with the reviewer; no live or scoring change.
+
+## 8 November — dedicated shadow sink and corrected historical attribution
+
+`codex/judges-production-sink` implements the independent disabled sink requested
+in note 23, with config limits, private atomic writes, expiry, status and kill switch.
+314 affected isolated checks pass. No config/environment or production flag changed.
+Full Aegis suite and representative sink latency precede Gloria's enable decision.
+Note 24 confirms historical model labels already exist: implement their separate
+recorded-label/ledger-attributed tier next, without promoting them to observed or
+strict-eligible. Checkpoint-manifest and target-embedding retention remain open.

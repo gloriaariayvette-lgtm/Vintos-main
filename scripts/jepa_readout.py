@@ -231,7 +231,7 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
             'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':hashlib.sha256(path.read_bytes()).hexdigest(),
             'context_last_ts':exs[-1]['ts'],'context_last_turn_id':exs[-1].get('turn_id',''),
             'coherence':float(a[0][0]@a[1][0]),'confidence_evaluation':m['meta']['report']['confidence']}
-    if mode == 'self_on_message' and os.environ.get('JUDGES_CAPTURE_SCRATCH'):
+    if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
         try:
             sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
         except Exception:
