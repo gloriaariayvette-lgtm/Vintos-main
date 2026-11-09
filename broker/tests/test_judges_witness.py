@@ -292,6 +292,34 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.nodes["old-reply"]["kind"] = "ordinary_source"
         self.assertEqual(self.admit(), "unknown_lineage")
 
+    def test_malformed_lineage_kinds_remain_unknown_without_crashing(self):
+        for kind in ([], {}, None, 1, True):
+            with self.subTest(kind=kind):
+                nodes=copy.deepcopy(self.nodes); nodes['external-0']['kind']=kind
+                self.assertEqual(W.lineage_status('context-1',nodes,100),'unknown')
+                self.assertEqual(W.admission(self.row,nodes,1000),'unknown_lineage')
+
+    def test_reply_lineage_requires_explicit_string_turn_identity(self):
+        nodes=copy.deepcopy(self.nodes)
+        nodes['context-1']['parents']=['earlier-reply']
+        nodes['earlier-context']=dict(id='earlier-context',kind='context',at=50,complete=True,parents=['external-0'])
+        nodes['earlier-reply']=dict(id='earlier-reply',kind='reply',at=60,complete=True,
+            parents=['earlier-context'],context_receipt_id='earlier-context',turn_id='fixture-earlier',influence='clean')
+        self.assertEqual(W.admission(self.row,nodes,1000),'eligible')
+        for turn in (True,1,['fixture-earlier'],{'id':'fixture-earlier'},'', 'x'*257):
+            with self.subTest(turn=turn):
+                nodes['earlier-reply']['turn_id']=turn
+                self.assertEqual(W.admission(self.row,nodes,1000),'unknown_lineage')
+
+    def test_lineage_root_and_boundary_never_guess_invalid_types(self):
+        for root in ([], {}, None, True, 1, ''):
+            with self.subTest(root=root):
+                self.assertEqual(W.lineage_status(root,self.nodes,100),'unknown')
+        for boundary in (None,True,float('nan'),float('inf'),-1,{},'2026-11-08T10:00:00'):
+            with self.subTest(boundary=boundary):
+                self.assertEqual(W.lineage_status('context-1',self.nodes,boundary),'unknown')
+        self.assertEqual(W.lineage_status('context-1',self.nodes,'1970-01-01T00:01:40Z'),'clean')
+
     def test_shared_ancestry_is_memoized_and_edge_clocks_checked(self):
         class Counted(dict):
             calls = 0
@@ -330,6 +358,50 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         del ledger["role"]; del ledger["content"]
         self.assertEqual(R.census([("ledger", [ledger])], self.nodes, 1000)[0]["eligible_replies"], 1)
         self.assertEqual(R.census([], {}, 1000)[0]["eligible_replies"], 0)
+
+    def test_malformed_record_shapes_do_not_abort_valid_innovation(self):
+        for bad in (None, [], 'synthetic malformed record', 7):
+            with self.subTest(bad=bad):
+                report,rows=self.score(forecasts=[bad,self.f])
+                self.assertEqual(len(rows),1)
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+                report,rows=R.innovation([self.row],[self.f],[bad,self.e],self.ck)
+                self.assertEqual(len(rows),1)
+                self.assertEqual(report['held']['missing_embedding_identity'],1)
+
+    def test_invalid_embedding_identity_is_counted_without_guessing(self):
+        for key in (None, [], {}, True, '', 4):
+            with self.subTest(key=key):
+                bad=dict(self.e,turn_id=key)
+                report,rows=R.innovation([self.row],[self.f],[bad],self.ck)
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_embedding_identity'],1)
+                self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
+
+    def test_malformed_head_or_manifest_is_unscored(self):
+        for bad in (None, [], 'synthetic invalid manifest', 3):
+            with self.subTest(bad=bad):
+                forecast=dict(self.f,self=bad)
+                report,rows=self.score(forecasts=[forecast])
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+                report,rows=R.innovation([self.row],[self.f],[self.e],{'fixture-checkpoint':bad})
+                self.assertEqual(rows,[])
+                self.assertEqual(report['held']['missing_or_invalid_forecast_evidence'],1)
+
+    def test_malformed_matching_embedding_cannot_be_hidden_by_valid_copy(self):
+        for bad in (None, [], 'synthetic invalid vector'):
+            with self.subTest(bad=bad):
+                for embeddings in ([self.e,dict(self.e,emb=bad)],[dict(self.e,emb=bad),self.e]):
+                    report,rows=R.innovation([self.row],[self.f],embeddings,self.ck)
+                    self.assertEqual(rows,[])
+                    self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
+
+    def test_innovation_container_shape_is_not_silently_empty(self):
+        for forecasts,embeddings,checkpoints in (({},[],{}),([],{},{}),([],[],[])):
+            with self.subTest(forecasts=forecasts,embeddings=embeddings,checkpoints=checkpoints):
+                with self.assertRaises(ValueError):
+                    R.innovation([self.row],forecasts,embeddings,checkpoints)
 
     def test_forecast_matches_final_once(self):
         summary, rows = self.score(forecasts=[self.f, copy.deepcopy(self.f)])

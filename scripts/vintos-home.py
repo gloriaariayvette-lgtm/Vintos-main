@@ -243,11 +243,11 @@ def _is_govee(ent):
 
 
 def _light_on(ent, rgb=None, brightness=None, hs=None):
-    """One light, either backend. brightness is HA-style 0-254."""
+    """One light, either backend: colour only. brightness is accepted from older callers and never sent:
+    Gloria, 8 November: "Make sure he doesn't change the strength of the lights, only the color." """
     if _is_govee(ent):
         dev = ent.split(":", 1)[1]
         ok = govee_power(dev, True)
-        if brightness is not None: ok = govee_brightness(dev, round(brightness / 254 * 100)) and ok
         if rgb is not None: ok = govee_color(dev, rgb) and ok
         elif hs is not None:
             rr, gg, bb = colorsys.hsv_to_rgb(hs[0] / 360.0, hs[1] / 100.0, 1.0); ok = govee_color(dev, [rr * 255, gg * 255, bb * 255]) and ok
@@ -255,7 +255,6 @@ def _light_on(ent, rgb=None, brightness=None, hs=None):
     payload = {"entity_id": ent}
     if rgb is not None: payload["rgb_color"] = rgb
     if hs is not None: payload["hs_color"] = hs
-    if brightness is not None: payload["brightness"] = brightness
     code, _ = ha_request("light/turn_on", payload)
     return code == 200
 
@@ -563,7 +562,7 @@ def set_room_color(hex_color, brightness=120, room=None):
 
 
 def flicker(room=None, times=1):
-    """Dim, bright, back to a low violet. Mischief, not a scare: bounded and short. One pass by default:
+    """White, white, back to a low violet: a colour flicker (the strength is never changed, 8 November). Mischief, not a scare: bounded and short. One pass by default:
     the Govee cloud reaches bulbs one at a time, so two passes over three bulbs read as a storm."""
     lights = room_lights(room)
     _ensure_plugs(lights)

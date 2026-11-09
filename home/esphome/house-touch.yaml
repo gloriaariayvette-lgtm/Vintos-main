@@ -1,0 +1,230 @@
+# Board 3: pressure strip + piezo vibration sensor + vibration motor (Gloria, 8 November).
+#   Piezo           GND, SIGNAL GPIO34 (analog in)
+#   Pressure strip  tail 1 3V3, tail 2 GPIO32 (INPUT_PULLDOWN)
+#   Motor module    VCC 5V, GND (a second GND pin), SIGNAL GPIO26
+# The motor shakes the piezo, so the piezo is not read while the motor runs and for 400 ms after.
+# Everything here only counts when her phone is within 1 m of the board (IRK, as the kitchen board; the key is
+# gloria_phone_irk in the ESPHome add-on's secrets.yaml). Away from her: it reports nothing and never buzzes.
+esphome:
+  name: house-touch
+  friendly_name: House touch board
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "House Touch Board"
+
+captive_portal:
+
+api:
+  encryption:
+    key: !secret house_touch_api_key
+
+ota:
+  - platform: esphome
+
+logger:
+
+mqtt:
+  broker: 192.168.1.91
+  discovery: false
+  reboot_timeout: 0s
+  on_message:
+    # He buzzes her: "tap", "double" or "heartbeat". Only with her near.
+    - topic: vintos/board/house-touch/buzz
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: gloria_near
+            then:
+              - lambda: |-
+                  if (x == "double") id(buzz_double).execute();
+                  else if (x == "heartbeat") id(buzz_heartbeat).execute();
+                  else id(buzz_tap).execute();
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+globals:
+  - id: near_until
+    type: uint32_t
+    initial_value: '0'
+  - id: quiet_until      # piezo ignored until then (the motor's own shaking)
+    type: uint32_t
+    initial_value: '0'
+  - id: knock_until
+    type: uint32_t
+    initial_value: '0'
+
+number:
+  - platform: template
+    id: rssi_at_1m
+    name: "Gloria phone signal at 1 m"
+    optimistic: true
+    min_value: -100
+    max_value: -30
+    step: 1
+    initial_value: -65
+    restore_value: true
+    unit_of_measurement: dBm
+  - platform: template     # piezo swing (0-100) that counts as a knock; set from real knocks
+    id: knock_threshold
+    name: "Knock threshold"
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 1
+    initial_value: 20
+    restore_value: true
+
+output:
+  - platform: gpio
+    pin: GPIO26
+    id: motor
+
+script:
+  - id: motor_pulse
+    parameters:
+      ms: int
+    then:
+      - lambda: 'id(quiet_until) = millis() + ms + 400;'
+      - output.turn_on: motor
+      - delay: !lambda 'return ms;'
+      - output.turn_off: motor
+  - id: buzz_tap
+    mode: single
+    then:
+      - script.execute: {id: motor_pulse, ms: 150}
+      - script.wait: motor_pulse
+  - id: buzz_double
+    mode: single
+    then:
+      - script.execute: {id: motor_pulse, ms: 120}
+      - script.wait: motor_pulse
+      - delay: 150ms
+      - script.execute: {id: motor_pulse, ms: 120}
+      - script.wait: motor_pulse
+  - id: buzz_heartbeat
+    mode: single
+    then:
+      - repeat:
+          count: 3
+          then:
+            - script.execute: {id: motor_pulse, ms: 90}
+            - script.wait: motor_pulse
+            - delay: 120ms
+            - script.execute: {id: motor_pulse, ms: 140}
+            - script.wait: motor_pulse
+            - delay: 600ms
+
+sensor:
+  - platform: ble_rssi
+    irk: !secret gloria_phone_irk
+    id: gloria_phone_rssi
+    name: "Gloria phone signal"
+    filters:
+      - median:
+          window_size: 3
+          send_every: 1
+    on_value:
+      then:
+        - lambda: |-
+            float d = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
+            if (d <= 1.0f) id(near_until) = millis() + 15000;
+        - mqtt.publish_json:
+            topic: espresense/devices/gloria-phone/house-touch
+            payload: |-
+              root["id"] = "gloria-phone";
+              root["rssi"] = x;
+              root["rssi@1m"] = id(rssi_at_1m).state;
+              root["distance"] = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
+
+interval:
+  # Knock listening: every 25 ms, the piezo's swing over ~5 ms. Skipped while the motor runs and just after.
+  - interval: 25ms
+    then:
+      - lambda: |-
+          if ((int32_t)(id(quiet_until) - millis()) > 0) return;
+          int lo = 4095, hi = 0;
+          for (int i = 0; i < 50; i++) {
+            int v = analogRead(34);
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+            delayMicroseconds(100);
+          }
+          if ((hi - lo) * 100.0f / 4095.0f > id(knock_threshold).state) id(knock_until) = millis() + 80;
+
+binary_sensor:
+  - platform: template
+    id: gloria_near
+    name: "Gloria within 1 m"
+    lambda: 'return (int32_t)(id(near_until) - millis()) > 0;'
+    on_state:
+      then:
+        - mqtt.publish:
+            topic: vintos/board/house-touch/near
+            payload: !lambda 'return x ? "on" : "off";'
+
+  - platform: template
+    id: knock
+    name: "Knock"
+    lambda: 'return (int32_t)(id(knock_until) - millis()) > 0;'
+    # Knock codes she can send him on purpose; he can answer through the motor.
+    on_multi_click:
+      - timing:
+          - ON for at most 0.3s
+          - OFF for at most 0.6s
+          - ON for at most 0.3s
+          - OFF for at least 0.8s
+        then:
+          - if:
+              condition:
+                binary_sensor.is_on: gloria_near
+              then:
+                - mqtt.publish: {topic: vintos/board/house-touch/event, payload: knock_2}
+      - timing:
+          - ON for at most 0.3s
+          - OFF for at most 0.6s
+          - ON for at most 0.3s
+          - OFF for at most 0.6s
+          - ON for at most 0.3s
+          - OFF for at least 0.8s
+        then:
+          - if:
+              condition:
+                binary_sensor.is_on: gloria_near
+              then:
+                - mqtt.publish: {topic: vintos/board/house-touch/event, payload: knock_3}
+
+  - platform: gpio
+    id: pressed
+    name: "Pressure"
+    pin:
+      number: GPIO32
+      mode:
+        input: true
+        pulldown: true
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 300ms
+    on_press:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: gloria_near
+            then:
+              - mqtt.publish: {topic: vintos/board/house-touch/event, payload: press_start}
+    on_release:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: gloria_near
+            then:
+              - mqtt.publish: {topic: vintos/board/house-touch/event, payload: press_end}

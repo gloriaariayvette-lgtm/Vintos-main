@@ -490,3 +490,32 @@ contexts and unknown siblings; the census reports `influenced_incomplete_lineage
 It remains excluded exactly like complete influence and unknown lineage. Invalid
 clocks/identities do not become trusted influence attestations. This distinction
 improves counts only and changes no live evidence admission.
+
+
+### Malformed innovation evidence
+
+Forecasts and embeddings must be lists and checkpoints a mapping; a wrong-shaped
+container is rejected rather than interpreted as an empty evidence set. Within
+valid containers, malformed forecast/head/manifest records receive the existing
+`missing_or_invalid_forecast_evidence` count. Embedding records without an explicit
+nonempty string turn ID receive `missing_embedding_identity`; no target is guessed.
+Identifiable embedding copies remain in conflict checks, including malformed
+vectors. A valid duplicate cannot hide an invalid matching target/version copy.
+
+These held counts have different units: the new identity count is per embedding
+record, while forecast holds are per forecast. They must not be summed as a count
+of distinct replies. Valid records retain the existing causal scoring, checkpoint,
+source and served-model grouping. This handles malformed supplied snapshots only;
+it neither repairs missing upstream provenance nor expands witness eligibility.
+
+
+### Strict lineage identity and clock shapes
+
+A reply dependency's turn_id must satisfy the same nonempty, bounded string
+contract as a generation receipt. Truthy booleans, numbers, containers and
+oversized strings are not identities. Malformed node kinds and root identifiers
+return unknown rather than crashing graph traversal. The traversal boundary uses
+the shared explicit timestamp parser: booleans, nonfinite values, negative times
+and timezone-naive strings are unknown. Valid offset-aware boundary strings are
+handled consistently with epoch timestamps. These checks tighten shadow evidence
+admission only; they do not rewrite legacy records or alter any live feed.

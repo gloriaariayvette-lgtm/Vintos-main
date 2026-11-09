@@ -119,6 +119,10 @@ def receipt(turn_id, surface, started_at, finalized_at, final_response,
 
 def lineage_status(root, nodes, before):
     """Memoized DAG traversal. Check each edge's clock even for cached ancestors."""
+    try:
+        root, before = _name(root), instant(before)
+    except (TypeError, ValueError, OverflowError):
+        return "unknown"
     if not isinstance(nodes, dict) or not isinstance(nodes.get(root), dict):
         return "unknown"
     if nodes[root].get("kind") != "context":
@@ -140,7 +144,7 @@ def lineage_status(root, nodes, before):
         if key in memo:
             return memo[key]
         kind, parents = n.get("kind"), n.get("parents")
-        if kind not in KINDS or not isinstance(parents, list):
+        if not isinstance(kind, str) or kind not in KINDS or not isinstance(parents, list):
             return "unknown"
         if any(not isinstance(p, str) or not p for p in parents):
             return "unknown"
@@ -150,10 +154,14 @@ def lineage_status(root, nodes, before):
         incomplete = n.get("complete") is not True
         own = "influenced" if kind in INFLUENCING else "clean"
         if kind == "reply":
+            try:
+                _name(n.get("turn_id"))
+            except ValueError:
+                return "unknown"
             context_id = n.get("context_receipt_id")
             context = nodes.get(context_id) if isinstance(context_id, str) else None
             if (context_id not in parents or not isinstance(context, dict)
-                    or context.get("kind") != "context" or not n.get("turn_id")
+                    or context.get("kind") != "context"
                     or n.get("influence") not in ("clean", "influenced", "unknown")):
                 return "unknown"
             own = n["influence"]

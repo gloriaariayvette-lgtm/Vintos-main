@@ -451,3 +451,68 @@ Review 13 reports integration through 788439c9 and Aegis suites 594/594 and
 Aegis validation. The wants stack remains separately blocked on review 13's source
 binding, result freshness, continuation and cost-control fixes; not approved or
 deployed by this judges repair. No live stores, calls, merge or deployment.
+
+
+## 8 November — malformed offline evidence accounting
+
+`codex/judges-malformed-evidence` starts from approved integration cb10d8b8,
+leaving all previous review tips and the separate wants stack untouched. The
+innovation reader previously raised AttributeError/TypeError for malformed
+forecast/head/manifest records or unhashable embedding identities, stopping the
+whole replay. Wrong-shaped empty containers could also appear to be valid empty
+evidence. Added strict container checks and explicit per-record held accounting.
+Unidentified embeddings never get guessed targets; identifiable malformed copies
+remain in duplicate/conflict checks so a valid copy cannot hide them.
+
+Five synthetic regressions reproduced three assertion failures and 14 errors
+before the repair (subcases). Afterward **144 isolated checks pass**: witness 82,
+replay adapter 6, capture 27, capture hooks 18, ownership 11. Fixtures cover malformed
+mixed records alongside valid data, missing/unhashable IDs, malformed manifests,
+invalid matching vectors in either copy order, and wrong top-level shapes.
+Reports regenerated and whitespace checked. No retained-data run, model call,
+live write, feed change, merge or deploy. The held identity count is per embedding
+row, not per unique reply; README documents that denominator. Independent full
+Aegis validation remains with Claude. Review 16's separate wants timestamp fix
+was already pushed as de2cd7b4 and remains awaiting that independent rerun.
+
+
+## 8 November — strict lineage shapes
+
+On `codex/judges-lineage-shapes` from 219c2de9, three synthetic regressions exposed
+seven assertion failures and eight errors before the repair (subcases). A reply
+node with a truthy non-string or oversized turn ID could pass as clean ancestry;
+an unhashable node kind/root could crash traversal; and a nonfinite traversal
+boundary could silently defeat its clock comparison. The graph reader now checks
+root and reply identities with the receipt identifier contract, checks kind type
+before set membership, and parses the boundary with the shared timestamp parser.
+Malformed evidence stays unknown. Valid source/reply ancestry, indirect influence
+propagation and per-edge causal checks remain unchanged.
+
+**147 isolated checks pass:** witness 85, capture 27, replay adapter 6, handler
+hooks 18, ownership 11. Tests include valid positive controls and invalid boolean,
+container, oversized and clock cases. Generated reports and whitespace checked.
+No private snapshot read, model call, live write, feed change, merge or deploy.
+Independent full Aegis validation remains with Claude. The earlier wants fix is
+left at de2cd7b4 in its own checkout for his Linux rerun; no duplicate remote work.
+
+
+## Review 17 — combined tip on the approved wants base
+
+Claude's coordination note 17 reports wants de2cd7b4 approved and integrated,
+with full Aegis suite results 600/600 on the deploy checkout and 603/603 on the
+live checkout; each previously flaky suite also passed five repeated runs. Those
+are reviewer-reported results, not a new run by this branch. Installation/live
+acceptance remains with Gloria; integration is not proof of installation.
+
+`codex/judges-review-17` rebases the two subsequent judges repairs onto de2cd7b4.
+The only conflict was additive docs/open-work.md content, resolved as a union.
+Range-diff confirms the implementation/tests are unchanged; previous pushed tips
+remain intact. Malformed-evidence accounting is now 30be79e6 and strict lineage
+shapes bad77dae. No extra behavior changes are included in this combined review.
+
+Fresh local validation: **173 checks pass** (witness 85, capture 27, replay adapter
+6, hooks 18, ownership 11, want controls 26), plus all **67 wants follow-through
+and completion checks under the coarse-clock simulation**. Generated reports and
+whitespace verified. The combined tip still requires Claude's independent review
+and full isolated Aegis suite. No private inputs, model calls, real test sends,
+live writes, merge or deploy were performed here.

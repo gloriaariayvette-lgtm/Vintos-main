@@ -6228,3 +6228,30 @@ and 67 repeated checks under simulated 10 ms granularity pass. Existing path/has
 freshness checks remain; see the follow-through log for reproduced failures and
 limits. Claude's full isolated Aegis rerun and integration review remain pending;
 Gloria retains installation and live acceptance. No deploy or live writes.
+
+## 8 November — malformed shadow innovation evidence
+
+`codex/judges-malformed-evidence` adds explicit held counts for malformed records
+and rejects wrong-shaped containers without guessing identities or dropping
+identifiable conflicting copies. 144 affected isolated checks pass. This offline
+reader change requires independent review/full Aegis validation; no live feeds,
+producers or historical admission are changed. See the judges witness log.
+
+
+## 8 November — strict lineage shapes
+
+`codex/judges-lineage-shapes` requires valid receipt-shaped reply identities and
+explicit finite clock boundaries, and handles malformed node kinds as unknown.
+147 affected isolated checks pass; independent review/full Aegis validation remain
+pending. No witness backfill, live eligibility change or feed modification.
+
+
+## 8 November — review 17 status and combined judges tip
+
+Claude reports wants through de2cd7b4 approved/integrated with Aegis 600/600 and
+603/603; this supersedes the earlier pending wants-review entries above. Gloria
+has the installation handoff, and live acceptance is not claimed here.
+`codex/judges-review-17` contains only the two subsequent judges fixes rebased onto
+that approved base, retaining both sides of the additive open-work conflict.
+173 fresh local checks plus 67 wants checks under coarse-clock simulation pass.
+The combined judges changes remain pending independent review/full Aegis suite.
