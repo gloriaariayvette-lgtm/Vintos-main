@@ -1048,7 +1048,7 @@ def receipt(source, query, records, *, metadata=None):
     encoded = json.dumps(records, sort_keys=True, allow_nan=False).encode()
     if len(encoded) > MAX_BYTES: raise ValueError('source response exceeds limit')
     result = {'source': source, 'query': query, 'records': records,
-              'retrieved_at': datetime.now(timezone.utc).isoformat(),
+              'retrieved_at': datetime.fromtimestamp(time.time(), timezone.utc).isoformat(),
               'response_sha256': hashlib.sha256(encoded).hexdigest(),
               'metadata': metadata or {}, 'truth_status': 'source_observation_not_validation',
               'literature_coverage': 'not_assessed', 'novelty': 'not_established'}

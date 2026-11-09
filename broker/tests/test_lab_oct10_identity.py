@@ -19,6 +19,8 @@ assert all(str(p).startswith(scratch.name) for p in (C.ROOT,C.NOTEBOOK,C.STATE,C
 
 class IdentityTests(unittest.TestCase):
     def setUp(self):
+        C._IDENTITY_CACHE_INTERVALS.clear()
+        C.IDENTITY_CACHE_CLOCK_COUNTS.clear()
         pathlib.Path(R.ROOT).mkdir(parents=True,exist_ok=True)
         for name in ('lookups.jsonl','notebook.jsonl','source-receipts.jsonl','sessions.jsonl'):
             pathlib.Path(R.ROOT,name).write_text('')
@@ -237,6 +239,84 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(routes,['pdb','interpro'])
         self.assertEqual(ground.call_count,2)
         self.assertIsNone(C._next_evidence_work({},R,None,None))
+
+    def clock_receipt(self):
+        return S.receipt('ncbi_gene_identity',{'symbol':'FAKE123','taxon_id':9606},[],
+                         metadata={'status':'unresolved','match_count':0,'service':'NCBI_Gene'})
+
+    def test_receipt_and_identity_reader_use_same_wall_clock(self):
+        with patch.object(S.time,'time',return_value=1000.25): row=self.clock_receipt()
+        self.assertEqual(datetime.fromisoformat(row['retrieved_at']).timestamp(),1000.25)
+        pathlib.Path(R.ROOT,'source-receipts.jsonl').write_text(json.dumps(row)+'\n')
+        with patch.object(C.time,'time',return_value=1001), patch.object(S.Sources,'human_gene_identity',side_effect=forbidden):
+            self.assertEqual(C._human_identity('FAKE123'),row)
+
+    def test_new_identity_receipt_reuses_exact_interval_through_backstep(self):
+        def fetch(symbol): return self.clock_receipt()
+        with patch.object(S.Sources,'human_gene_identity',side_effect=fetch) as provider:
+            with patch.object(C.time,'time',return_value=1000), patch.object(C.time,'monotonic',return_value=100):
+                first=C._ground_inquiry(self.inquiry())
+            with patch.object(C.time,'time',return_value=997.2), patch.object(C.time,'monotonic',return_value=101):
+                second=C._ground_inquiry(self.inquiry())
+                third=C._ground_inquiry(self.inquiry())
+        self.assertEqual(provider.call_count,1)
+        self.assertEqual(first,second);self.assertEqual(second,third)
+        self.assertEqual(first['status'],'unresolved')
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['monotonic_reused'],2)
+
+    def test_persisted_negative_age_rechecks_clock_once_without_lookup_when_resolved(self):
+        with patch.object(S.time,'time',return_value=1000): row=self.clock_receipt()
+        pathlib.Path(R.ROOT,'source-receipts.jsonl').write_text(json.dumps(row)+'\n')
+        with patch.object(C.time,'time',side_effect=[997.2,1000]) as clock, patch.object(S.Sources,'human_gene_identity',side_effect=forbidden):
+            self.assertEqual(C._human_identity('FAKE123'),row)
+        self.assertEqual(clock.call_count,2)
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['unknown_age'],1)
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['wall_recheck_resolved'],1)
+
+    def test_persisted_negative_age_refreshes_once_and_does_not_loop(self):
+        with patch.object(S.time,'time',return_value=1000): row=self.clock_receipt()
+        pathlib.Path(R.ROOT,'source-receipts.jsonl').write_text(json.dumps(row)+'\n')
+        with patch.object(C.time,'time',return_value=997.2), patch.object(C.time,'monotonic',return_value=100), patch.object(S.Sources,'human_gene_identity',return_value=row) as provider:
+            self.assertEqual(C._human_identity('FAKE123'),row)
+            self.assertEqual(C._human_identity('FAKE123'),row)
+        self.assertEqual(provider.call_count,1)
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['wall_rechecked'],1)
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['unknown_age_refresh'],1)
+
+    def test_identity_monotonic_expiry_and_reverse_interval_still_refresh(self):
+        for elapsed in (86400,-1,float('nan')):
+            with self.subTest(elapsed=elapsed):
+                self.setUp()
+                with patch.object(C.time,'time',return_value=1000), patch.object(C.time,'monotonic',return_value=100), patch.object(S.Sources,'human_gene_identity',side_effect=lambda _:self.clock_receipt()):
+                    row=C._human_identity('FAKE123')
+                with patch.object(C.time,'time',return_value=997.2), patch.object(C.time,'monotonic',return_value=100+elapsed), patch.object(S.Sources,'human_gene_identity',return_value=row) as provider:
+                    C._human_identity('FAKE123')
+                self.assertEqual(provider.call_count,1)
+                self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['interval_unavailable_or_expired'],1)
+
+    def test_identity_interval_cannot_extend_forward_wall_expiry_or_cross_process(self):
+        pid=os.getpid()
+        for wall,consumer_pid in ((87400,pid),(997.2,pid+1)):
+            with self.subTest(wall=wall,consumer_pid=consumer_pid):
+                self.setUp()
+                with patch.object(C.time,'time',return_value=1000), patch.object(C.time,'monotonic',return_value=100), patch.object(S.Sources,'human_gene_identity',side_effect=lambda _:self.clock_receipt()):
+                    row=C._human_identity('FAKE123')
+                with patch.object(C.time,'time',return_value=wall), patch.object(C.time,'monotonic',return_value=101), patch.object(C.os,'getpid',return_value=consumer_pid), patch.object(S.Sources,'human_gene_identity',return_value=row) as provider:
+                    C._human_identity('FAKE123')
+                self.assertEqual(provider.call_count,1)
+                self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['monotonic_reused'],0)
+
+    def test_identity_interval_is_bound_to_exact_row_and_failures_are_not_cached(self):
+        with patch.object(C.time,'time',return_value=1000), patch.object(C.time,'monotonic',return_value=100), patch.object(S.Sources,'human_gene_identity',side_effect=lambda _:self.clock_receipt()):
+            row=C._human_identity('FAKE123')
+        row['metadata']['synthetic_changed']=True
+        pathlib.Path(R.ROOT,'source-receipts.jsonl').write_text(json.dumps(row)+'\n')
+        with patch.object(C.time,'time',return_value=997.2), patch.object(C.time,'monotonic',return_value=101), patch.object(S.Sources,'human_gene_identity',side_effect=RuntimeError('synthetic unavailable')) as provider:
+            for _ in range(2):
+                with self.assertRaises(RuntimeError): C._human_identity('FAKE123')
+        self.assertEqual(provider.call_count,2)
+        self.assertEqual(C._IDENTITY_CACHE_INTERVALS,{})
+        self.assertEqual(C.IDENTITY_CACHE_CLOCK_COUNTS['monotonic_reused'],0)
 
     def test_real_grounding_refreshes_eight_day_receipt(self):
         old=S.receipt('ncbi_gene_identity',{'symbol':'FAKE123','taxon_id':9606},[],

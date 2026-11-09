@@ -3017,3 +3017,250 @@ No live changes, provider/model calls, real artifacts, GPU, full-suite duplicati
 merge or deployment. Both commits are for Claude's independent review and full
 isolated suite/test merge; real runtime acceptance remains his private run.
 Heartbeat ACTIVE; no new unresolved blocker or completion notification.
+
+
+## 2026-11-09 — review #58: spool configuration failures
+
+Recovery now includes configuration and clock acquisition inside its existing
+exception boundary. A configuration exception increments spool_replay_unconfirmed,
+leaves durable ingress intact, and lets the writer continue volatile work and retry
+recovery on the next scheduled pass. The synthetic writer regression exercises a
+configuration exception followed by successful volatile publication and durable
+replay. All 28 isolated durable-spool checks pass. Initial fixture failure was an
+incomplete stub signature; it now forwards the production expected-root argument.
+No retention, authorization, destination or delivery rule changed. Review only;
+no live changes or model calls. Remaining #58 artifact/Lab fixes are in progress.
+
+
+## 2026-11-09 — review #58: artifact clock ordering
+
+New requests retain a wall reading bracketed by monotonic samples and bound to the
+boot/time namespace, with a process-local fallback. The original request wall
+lower bound and the existing two-second lower/one-second upper precision allowances
+remain. Only an upper-window failure explained by a same-domain measured backward
+wall discrepancy can continue as unknown_order, and only within the anchored upper
+bound. Raw mtime, raw check time, discrepancy and elapsed bounds are retained. This
+does not attest filesystem causality or turn clock uncertainty into evidence.
+Old requests, changed/invalid domains or anchors, files below the lower bound, and
+files beyond the anchored upper bound still refuse. Exact request paths, sizes,
+known-byte rejection and hashes remain mandatory. A file created after a step can
+still fail the lower bound; this change deliberately addresses the requested upper
+bound only. No tolerances widened.
+
+CLI manifests retain their initial clock check. Authenticated arrival atomically
+records checks beside the result, independently of the immutable result digest;
+repeated arrival and completion preserve earlier unknown ordering for that revision.
+Prior revision receipts remain in history. All 71 nested followthrough/completion
+checks plus the isolated coarse-clock wrapper pass. New regressions cover the
+backstep through delivery, receipt retention, domains, malformed anchors, old/future
+files and unchanged byte-identity gates. Fixtures are synthetic and sends stubbed.
+No live change, model/provider call, merge or deployment. Lab follow-up still pending.
+
+
+## 2026-11-09 — review #58: Lab receipt cache clocks and handoff
+
+lab_sources.receipt now serializes time.time through UTC fromtimestamp, using the
+same wall source as the identity reader. A persisted negative age is explicitly
+counted as unknown and re-read once. If still negative, the existing refresh path
+is counted and used once, without a retry loop. Successful new fetches retain only
+a bounded process/path/symbol key, exact receipt digest and monotonic lookup-start
+anchor in memory. Subsequent grounding/retrieval reuses the exact persisted row
+within one day even through a wall backstep. A changed row, process or workspace
+cannot inherit that interval. Negative/nonfinite elapsed, one-day monotonic expiry
+or forward wall expiry still refresh. Failed lookups raise and cache nothing.
+Identity verdicts, validation hashes, source chronology and scientific checks are
+unchanged; unresolved remains unresolved. No new provider or model call category,
+background task or store. Clock counters are process-local counts only.
+
+Targeted isolated validation totals 227 checks: spool 28, sink 26, deferred 26;
+artifact followthrough/completion 71 plus coarse-clock wrapper 1; Lab identity 23,
+alias identity 11, source receipts 30; owners 11. Logs are /tmp/judges-s58-spool.log,
+/tmp/judges-s58-artifact.log, /tmp/judges-s58-lab.log,
+/tmp/judges-s58-test_{lab_alias_identity,lab_sources,witness_sink,witness_deferred_capture}.log
+and /tmp/judges-s58-owners.log. All fixtures are synthetic; sends/providers are
+stubbed and suites run via run_isolated_test. Reports regenerated unchanged; diff
+check clean. Artifact fixture corrections were scratch gallery setup and a future
+mtime beyond coarse rounding; production tolerance assertions stayed unchanged.
+
+Three separate review commits above 6363f5a1: f562c900 spool survival, 707898ba
+artifact ordering, and this Lab commit, on codex/judges-clock-followups. All #58
+implementation work is complete for independent review. Claude retains full-suite,
+test-merge and host stress validation; Gloria retains host-clock correction and
+deployment. Historical flake root cause remains candidate until corresponding
+numeric host evidence proves it. No live changes, actual provider/model calls,
+GPU, full-suite duplication, merge or deployment. Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 — review #59: align latent consumer test clocks
+
+Reviewer reports integration through 6363f5a1 at be0cd015, with 661/661 deploy
+and 664/664 live checks, capture 20/20 and latent 19/20 on the host stress run.
+The retained failing test_09 diagnostic is future_packet. Source inspection
+confirms its fixture explicitly supplied now to refresh, selecting the legacy wall
+path, while real consumer adapters omitted now. A backwards wall step therefore
+correctly refused that replay packet. This identifies the retained test failure;
+it does not establish the cause of unrelated historical flakes. No host inspection
+or production gate change was made here.
+
+The three consumer-path tests (05, 08, 09) now call refresh with now omitted and
+assert the resulting freshness receipt. Explicit replay/causality tests keep their
+paired timestamps. The negative control still constructs a legacy packet and
+proves that a 2.8-second backward consumer clock refuses with future_packet while
+preserving the original feed. No gate or assertion weakened.
+
+A regression repeats each of the three consumer paths 50 times, with fresh scratch
+fixtures and a synthetic shared domain. It applies the 2.8-second step immediately
+after the actual refresh returns, asserts the producer recorded the pre-step wall
+clock, and requires stepped consumer reads plus forward monotonic reads. This
+avoids accidentally consuming the step in a pre-refresh baseline read. Existing
+content preservation and call-count assertions remain active; providers/senders
+are stubs. All 22 suite tests pass, including 150 injected consumer-path subruns.
+Log: /tmp/judges-s59-latent-50.log. This is 50 repetitions per consumer path, not a
+claim of 50 independent full-suite or host runs. Review remains Claude's.
+
+The test-only follow-up is on codex/judges-clock-followups above 32bda7e4 for
+inclusion with the three #58 commits. No live/service changes, new real provider
+or model calls, GPU, full-suite duplication, merge or deployment. Heartbeat ACTIVE.
+
+
+## 2026-11-09 — review #60: short aggregate-only judges page
+
+Added experiments/nonllm-judges/GLORIA.md and a stdlib-only render_gloria.py. The
+291-word checked-in page is explicitly an unknown-state template. A private render
+reads existing capture-coverage counts, shows all six judges and their sources,
+keeps partially scoreable areas partial, and labels earliest per-area estimates as
+conditional. Only primary attribution can establish observed scoring; sensitivity
+counts and reference floors never promote it. Recurrence/grouping still wait for
+data and review. Every judge shares no-feelings-verdict/no-live-effect boundaries.
+No test messages are requested. No identifiers, hashes, model labels, paths or
+arbitrary input prose are rendered.
+
+The capture report now provides an exact rolling retained-packet count for the
+24 hours ending at its explicit cutoff. It uses recorded finalization, includes
+identical packet copies as files and makes no complete-stream claim. It does not
+sum calendar-day counts or infer arrival time. The renderer leaves older reports'
+missing windows unknown. Sink status is unknown unless given a separate timestamped
+aggregate reviewer observation; the page says last observed on/off and its date,
+never infers current enablement from past writes. No live config read is added.
+README documents the private command, optional health-count schema and these limits.
+
+The renderer emits Markdown to stdout only. Inputs must be bounded owner-private
+regular files inside an explicit isolated private root; linked, outside-root,
+repository/live-store, duplicate-key and nonfinite inputs refuse with a fixed
+error. Audit guards forbid writes/network/process calls. Unknown metadata cannot
+leak into prose. Private pages remain outside the repository; the public template
+is regenerable using --template. Claude renders private counts and handles any
+authorized delivery. Nothing here sends or publishes the page to Gloria.
+
+52 targeted isolated checks pass: renderer 14, coverage/sufficiency 27, owners 11.
+Tests cover actual report-to-page integration, partial readiness, conditional ETA,
+legacy unknowns, primary/sensitivity separation, metadata privacy, dated health,
+24-hour boundary inclusion/exclusion, duplicates and CLI input refusals. Logs:
+/tmp/judges-s60-page.log, /tmp/judges-s60-coverage.log, /tmp/judges-s60-owners.log.
+Reports regenerated unchanged; diff clean. All data and sends are synthetic/stubbed.
+Branch codex/judges-gloria-page starts above 7bdf5ad1, preserving the earlier review
+branch. No live changes, actual provider/model calls, private records, GPU, full
+suite duplication, merge or deployment. Independent review and private rendering
+remain Claude's; heartbeat ACTIVE.
+
+
+## 2026-11-09 16:18 CST — #61 offline retained-judgment agreement
+
+New experiments/nonllm-judges/agreement.py re-evaluates the existing cached
+numerical pipeline and compares exact-bound retained voice-coherence, deviation,
+presence and humor judgments. It prints counts only: per pair and attribution
+view, population/each-side/intersection/unmatched coverage, 3-by-3 abstain/flag/pass
+confusion, overall and decisive-only agreement with denominators, directional
+disagreements and mode/surface cells. Missing is not abstain or pass; zero
+intersection has null rates. Humor compares message attempts only, not practice
+jokes. No supplied numerical verdict override, model/encoder call or live read.
+
+AGREEMENT.md inventories persistence destinations for all 33 source entries and
+explains why 29 have no equivalent reply comparator. Their projected records can
+be counted but agreement remains unavailable. Daily sustained drift is not a
+reply verdict; taste/recurrence/grouping have no matching retained reply rubric.
+All four supported comparisons are exploratory proxies, not equivalent constructs
+or replacement recommendations. The existing LLM is not ground truth either.
+
+Native voice/deviation logs have no exact full-reply binding, and sparse flags
+cannot supply pass denominators. Bindings must be independently retained exact
+relations, not timestamp/excerpt guesses. Absent relations stay missing. Deviation
+is a mixed classifier/identity score; ambiguous Aligned entries (also used for
+commitment friction) abstain. Presence requested-work exemptions and historical
+rows lacking flags/exemptions abstain. Humor retains positives only. Copies
+deduplicate; conflicting copies or multiple verdicts for a reply exclude its join.
+Recorded served model/fallback stay known only when supplied as actual serving
+metadata; output contains only known/unknown counts. Caller claims are not
+independently authenticated. Source fields and provenance remain private/intact.
+
+CLI requires explicit private scratch/input/verdicts/cutoff and optional Landings;
+0700 root, 0600 bounded regular files, no symlinks, live/repository roots refused.
+Audit guard blocks network/subprocess/writes; errors sanitized; stdout has no
+private text, IDs, hashes, vectors, scores or model names. No persistence or sends.
+
+50 targeted isolated checks pass: agreement 21, existing numerical runner 18,
+owners 11. Logs /tmp/judges-s61-agreement.log, /tmp/judges-s61-numerical.log,
+/tmp/judges-s61-owners.log. Integration exercises actual cached numerical replay,
+all four pairs, 33-entry census, strict joins, missing/abstain denominators,
+indirect lineage rejection, duplicate/conflicting verdicts, history exemptions,
+message/joke separation, attribution views, metadata privacy and read-only CLI.
+One new test initially used an invalid lineage kind; corrected it to a synthetic
+emotion-nudge/context ancestry chain and reran successfully. No production gate
+changed. Generated ownership/testing/store reports unchanged; diff clean.
+
+Branch codex/judges-agreement starts above c27b8d84 in the existing isolated
+judges-witness-slices checkout. Independent review/full isolated suite/private
+projection and replay remain Claude's. Actual agreement is not measured here;
+legacy missing bindings may leave no overlap. No new unresolved blocker, ntfy,
+private-record access, actual provider call, GPU, live changes, merge or deploy.
+Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 16:39 CST — #62 capture-gap proposals prepared, not applied
+
+New VALUE-MAP-CAPTURE.md specifies a single environment assignment on the existing
+37 3,11,19 cron line, preserving the complete command, wrappers and redirections.
+A tested proposal-only generator takes a private crontab export and the actual
+reviewed config path; neither complete live command nor private config location
+is invented. No crontab/config read or write on the host, no manual value-map run.
+It documents metadata receipts, unknown serving/internal-attempt limits, zero
+additional model/paid/GPU calls, unmeasured per-cron overhead, shared storage caps,
+ordinary-scheduled-run acceptance, and rollback of only that assignment.
+
+New landings_project.py reads explicit authorized private snapshot/map files,
+never the live store or scripts/landings.py. It produces a new 0600
+landings-projection-v1 in a new 0700 directory, stdout counts only. Full frozen
+text must match both piece/made and an exact retained item identity/hash binding.
+Latest rating per item before cutoff wins; partly/missed suppress older landed
+without becoming negative examples. Copies deduplicate; conflicting identities
+refuse. Ambiguous/unknown/backward times cannot resurrect positives. Native naive
+times require a reviewed timezone; DST folds/gaps remain unknown. Images/songs/
+videos, missing exact bindings, truncated/mismatched text and observations before
+the original act stay unused. The downstream runner still enforces strict original
+lineage, attribution and scoring rules; projection alone proves no eligibility.
+
+No explanations, conversation, before-context or piece prose enter output. The
+projector necessarily parses the full staged native records privately, checks a
+nonempty required explanation, and preserves a private source-record hash. Source
+claims/identity map are not independently authenticated. Native snapshots/maps
+remain unchanged; no overwrite/live discovery/network/process calls. Bounds and
+sanitized failure behavior documented. LANDINGS-ASK.md is the one-paragraph,
+precise separate authorization request for a bounded offline projection, not a
+recurring reader. No real Landings data was accessed for this implementation.
+
+28 targeted isolated checks pass: projector/proposal 17, owners 11. Logs
+/tmp/judges-s62-landings.log and /tmp/judges-s62-owners.log. Includes actual
+numerical-runner anchor integration, exact identity/text joins, latest-rating
+retractions, cutoff and timezone edges, unknown clocks, duplicate/conflicting
+records, private permissions, unchanged inputs, no overwrite and the cron-copy
+transformation/refusals. Integration initially exposed reused anchor identities;
+fixed by deriving each evidence ID from its own row, with uniqueness regression.
+Generated reports refreshed (untested inventory changes because the synthetic cron
+proposal test now mentions its wrapper; this is not a live wrapper execution test).
+Diff clean. No runtime/deploy manifest changes.
+
+Branch codex/judges-capture-proposals starts above c1303e2e in the existing isolated
+judges-witness-slices checkout. Both real-data access and actual cron application
+remain for Gloria's separate decision through Claude. No new unresolved failure,
+ntfy, provider calls, private-record access, GPU, live writes, merge or deploy.
+Heartbeat ACTIVE; independent review/private execution remains Claude's.

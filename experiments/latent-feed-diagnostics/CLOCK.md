@@ -69,3 +69,54 @@ Lab identity reuse, artifact-mtime admission and durable-spool retention gates a
 not changed by this commit. Host correction and their future receipt work remain
 separate. Tests use synthetic inputs and injected backward clocks, never services
 or private observations. Neither change makes missing ancestry or delivery known.
+
+
+## Review #58: artifact upper-window uncertainty
+
+New want requests pair their raw created_at wall bound with bracketed monotonic
+samples and a boot/time-namespace domain (process-local fallback elsewhere). The
+filesystem comparison still uses wall mtime, created_at minus two seconds, and
+current wall plus one second. When only the upper comparison fails, a matching
+anchor can establish a backward wall discrepancy; mtime must still be no later
+than the anchored upper estimate plus the same one-second allowance. Such a file
+continues with unknown_order, never an assertion of causal creation. Raw clocks,
+elapsed bounds and the discrepancy remain on the revision's clock checks, including
+after repeated arrival/completion. CLI manifests retain the initial observation.
+Unknown ordering does not bypass exact request paths, hashes, known-output rejection
+or any other delivery gate. Legacy or changed-domain anchors cannot authorize this
+path. The lower wall bound remains unchanged, including its backstep limitation.
+
+
+## Review #58: identity cache and recovery exception boundary
+
+Source receipt serialization and identity cache reading now both use time.time.
+A persisted negative cache age is unknown: re-read that wall clock exactly once,
+then use/count the existing refresh if still unknown. Process-local counters expose
+unknown_age, wall_rechecked, wall_recheck_resolved and unknown_age_refresh without
+source contents. New successful fetches retain a bounded exact-digest interval
+anchor scoped to process, path and symbol. That interval prevents repeat lookups
+during same-process grounding/retrieval after a wall backstep; the persisted receipt
+must still match byte-for-byte. The one-day cap uses monotonic elapsed and permits
+early forward-wall expiry. Unknown/reversed intervals, changed rows/processes and
+expired receipts cannot reuse it. Failures cache nothing; identity validation and
+research chronology are untouched. No persisted age is reclassified as fresh just
+because its wall age is negative, and no model call is added.
+
+recover_spool now catches configuration/clock acquisition exceptions within its
+existing recovery boundary, counts spool_replay_unconfirmed, and keeps the writer
+alive for volatile work and subsequent recovery. Durable ingress remains intact.
+The separate persisted spool-retention wall-clock gates remain unchanged.
+
+
+## Review #59: retained latent consumer-test failure
+
+The reviewer retained future_packet from test_09 during a real-host 20-run stress
+check (latent 19/20, capture 20/20). That fixture used explicit refresh(now=...),
+which intentionally creates a legacy replay packet without a freshness clock,
+then invoked real consumer paths with their default wall clock. A backward step
+correctly refuses that combination. Consumer tests 05/08/09 now use default
+refresh and assert a monotonic freshness receipt. Replay tests retain explicit
+clocks, including a 2.8-second negative control that still refuses future_packet.
+Each consumer path passes 50 injected post-publication backward steps in isolated
+synthetic fixtures. Production gates are unchanged. This establishes the retained
+fixture mismatch, not a general explanation for every historical clock failure.

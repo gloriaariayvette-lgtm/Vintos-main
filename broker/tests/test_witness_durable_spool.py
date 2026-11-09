@@ -84,6 +84,30 @@ class Tests(unittest.TestCase):
             def empty(self):return False
         with patch.object(S.time,'monotonic',side_effect=lambda:clock[0]):S._write_queued(Queue())
 
+    def test_configuration_failure_does_not_kill_writer_or_drop_ingress(self):
+        self.assertTrue(self.stage())
+        configuration=S.configuration
+        failures=[True]; clock=[100.0]; owner=self
+        def config(*args,**kwargs):
+            if failures[0]: raise ValueError('synthetic configuration read failure')
+            return configuration(*args,**kwargs)
+        class Queue:
+            def get(self,timeout):
+                if failures[0]:
+                    owner.assertEqual(S.COUNTERS['spool_replay_unconfirmed'],1)
+                    owner.assertEqual(len(owner.entries()),1)
+                    failures[0]=False;clock[0]+=.3
+                    return owner.sink,b'{"synthetic":"volatile"}','capture-',configuration()
+                owner.assertEqual(owner.entries(),[])
+                owner.assertEqual(len(owner.packets()),2)
+                return None
+            def task_done(self): pass
+            def empty(self): return False
+        with patch.object(S,'configuration',side_effect=config), patch.object(S.time,'monotonic',side_effect=lambda:clock[0]):
+            S._write_queued(Queue())
+        self.assertEqual(S.COUNTERS['spool_replayed'],1)
+        self.assertEqual(S.COUNTERS['deferred_written'],1)
+
     def test_new_process_recovers_on_startup_without_a_new_capture(self):
         code="import os,sys;sys.path.insert(0,sys.argv[1]);import witness_sink as s;s.start_recovery=lambda:False;assert s.enqueue_capture(sys.argv[2],{'synthetic':'restart'});os._exit(0)"
         result=subprocess.run([sys.executable,'-c',code,str(ROOT/'scripts'),str(self.sink)],capture_output=True,text=True,timeout=3)
