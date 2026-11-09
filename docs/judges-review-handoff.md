@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-mode-strata**, based on
-**97917df6**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-encoder-pin**, based on
+**bc5d784d**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -895,3 +895,17 @@ The private exporter contract/source trace is in the experiment README. It still
 needs actual retained mode evidence, reviewed controls and encoder pinning before
 a meaningful rerun. Intimate rows remain local-only in private scratch; export only
 aggregates. No source stores read here, live writes, routing changes or deployment.
+
+
+## Requested encoder revision/artifact pin in private run manifest
+
+The manifest now retains the exact supplied encoder contract instead of only an
+opaque input hash. Optional `--encoder-artifact` hashes one explicit regular copy
+inside private scratch (1 byte–4 GiB, no model loading). An optional expected
+artifact SHA-256 must match observed bytes or output is refused. Unknown, declared,
+observed and verified-hash states remain separate; raw identity stays private.
+Revision-label verification and cached-vector derivation are never inferred from
+an artifact hash. 45 isolated checks pass (prototype 34, owners 11), including
+actual CLI verification/mismatch/outside-scratch/privacy cases. Actual Aegis
+artifact identity must still be supplied/observed there; no live model inspected,
+called or changed here. This addresses notes #32/#33's manifest omission.

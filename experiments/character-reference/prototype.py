@@ -10,6 +10,8 @@ from datetime import datetime
 import hashlib
 import json
 import math
+import os
+import stat
 from pathlib import Path
 import re
 import sys
@@ -30,6 +32,45 @@ SURFACES=('avatar','reelroom','chat','phone','voice','vintos-eve','unknown')
 MODE_SOURCES=('router_decision','intimate_state','conversation_transition')
 STYLE=('log_chars','log_words','mean_word_chars','question_per_word','exclaim_per_word',
        'comma_per_word','uppercase_fraction','first_person_per_word','newline_per_word')
+
+
+ENCODER_ARTIFACT_LIMIT=4*1024*1024*1024
+
+
+def observe_encoder_artifact(path):
+    """Hash one explicitly supplied regular scratch artifact, without loading it."""
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        before=os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=ENCODER_ARTIFACT_LIMIT:
+            raise ValueError('invalid encoder artifact size or type')
+        sha=hashlib.sha256();size=0
+        while size<=ENCODER_ARTIFACT_LIMIT:
+            chunk=stream.read(min(1024*1024,ENCODER_ARTIFACT_LIMIT+1-size))
+            if not chunk:break
+            size+=len(chunk);sha.update(chunk)
+        after=os.fstat(stream.fileno())
+        keys=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+        if size!=before.st_size or any(getattr(before,k)!=getattr(after,k) for k in keys):
+            raise ValueError('encoder artifact changed during observation')
+    return {'sha256':sha.hexdigest(),'bytes':size}
+
+
+def encoder_pin(encoder,observation=None):
+    expected=encoder.get('artifact_sha256')
+    if expected is not None and (not isinstance(expected,str) or not re.fullmatch('[0-9a-f]{64}',expected)):
+        raise ValueError('invalid declared encoder artifact hash')
+    if observation is not None and expected is not None and expected!=observation['sha256']:
+        raise ValueError('encoder artifact hash mismatch')
+    status=('artifact_hash_verified' if expected else 'artifact_hash_observed') if observation is not None else ('artifact_hash_declared' if expected else 'unknown')
+    return {'artifact_status':status,'declared_contract':dict(encoder),
+            'artifact_sha256':observation['sha256'] if observation else expected,
+            'artifact_bytes':observation['bytes'] if observation else None,
+            'revision_verified':False,'cache_derivation_verified':False}
+
+
+def public_encoder_pin(pin):
+    return {key:pin[key] for key in ('artifact_status','revision_verified','cache_derivation_verified')}
 
 
 def surface_label(value):
@@ -192,11 +233,12 @@ def prepare(bundle,cutoff):
     if bundle.get('input_kind') not in ('synthetic','retained_snapshot'):raise ValueError('explicit input kind required')
     encoder=bundle['encoder']
     fields={'family','revision','pooling','normalization','prefix_chars','frozen','id'}
-    if (not isinstance(encoder,dict) or set(encoder)!=fields or encoder['family']!='nomic'
+    if (not isinstance(encoder,dict) or not fields<=set(encoder) or set(encoder)-fields-{'artifact_sha256'} or encoder['family']!='nomic'
             or encoder['frozen'] is not True or encoder['normalization']!='l2'
             or type(encoder['prefix_chars']) is not int or not 1<=encoder['prefix_chars']<=65536
             or any(not isinstance(encoder[k],str) or not 1<=len(encoder[k])<=256 for k in ('id','revision','pooling'))):
         raise ValueError('explicit frozen encoder contract required')
+    encoder_pin(encoder)
     zone=ZoneInfo(bundle['timezone']);cutoff=instant(cutoff)
     rows=bundle['rows']
     if not isinstance(rows,list) or len(rows)>10000:raise ValueError('bounded explicit history required')
@@ -416,6 +458,7 @@ def run(bundle,cutoff):
     return {'schema':'character-reference-prototype-v2','input_kind':bundle['input_kind'],
         'reference_status':'candidate_days_not_owner_confirmed','strict_admission_effect':'none','live_effect':'none',
         'encoder_evidence':'supplied_frozen_cache_contract_not_runtime_attestation',
+        'encoder_pin':public_encoder_pin(encoder_pin(bundle['encoder'])),
         'meaning':'reference familiarity and style, not authenticity or truth',
         'interval_method':'day_equal_mean_percentile_day_bootstrap_1000_seed17',
         'style_features':list(STYLE),'coverage':coverage,'primary_10s':primary,'sensitivity_window30':sensitivity,
@@ -450,6 +493,13 @@ def render_summary(report):
         'Means weight days equally; intervals are descriptive day-bootstrap intervals, not independence guarantees.',
         'Unknown means absent or insufficient evidence, never a failure or proof of invariance.', '',
         '## Coverage', '', '| View | Admitted replies | Scored replies |', '| --- | ---: | ---: |']
+    pin=report['encoder_pin']
+    names={'unknown':'unknown','artifact_hash_declared':'supplied hash; not checked against artifact bytes',
+        'artifact_hash_observed':'hash observed from supplied scratch artifact',
+        'artifact_hash_verified':'supplied hash matches observed scratch artifact bytes'}
+    if pin['artifact_status'] not in names:raise ValueError('invalid encoder identity status')
+    lines[3:3]=['Encoder artifact identity: '+names[pin['artifact_status']]+'.',
+        'Declared revision is retained privately; cached-vector derivation and revision are not attested by this hash.', '']
     coverage=report['coverage']
     for label,key,field in (('Primary 10 s / exact ID','primary_10s','admitted_primary_replies'),
                            ('Window30 sensitivity','sensitivity_window30','admitted_window30_replies')):
@@ -521,16 +571,21 @@ def render_summary(report):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for arg in ('scratch','input','output','cutoff'):p.add_argument('--'+arg,required=True)
+    p.add_argument('--encoder-artifact',help='explicit regular artifact copy inside private scratch; hash only')
     args=p.parse_args();root=scratch_root(args.scratch)
     source,out=inside(root,args.input),inside(root,args.output)
     if out.exists() or out in source.parents:raise ValueError('new output directory required')
     install_guard(root,out)
     with source.open('rb') as f:raw=f.read(64*1024*1024+1)
     if len(raw)>64*1024*1024:raise ValueError('snapshot exceeds prototype limit')
-    report,details=run(decode_snapshot(raw),args.cutoff)
+    bundle=decode_snapshot(raw)
+    report,details=run(bundle,args.cutoff)
+    artifact=inside(root,args.encoder_artifact) if args.encoder_artifact else None
+    pin=encoder_pin(bundle['encoder'],observe_encoder_artifact(artifact) if artifact is not None else None)
+    report['encoder_pin']=public_encoder_pin(pin)
     out.mkdir(mode=0o700)
     for name,data in (('aggregate.json',report),('private-evaluation.json',details),
-                      ('private-run.json',{'input_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':instant(args.cutoff),
+                      ('private-run.json',{'input_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':instant(args.cutoff),'encoder_pin':pin,
                         'code_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
                             ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py')}})):
         with (out/name).open('x') as f:json.dump(data,f,sort_keys=True,allow_nan=False)

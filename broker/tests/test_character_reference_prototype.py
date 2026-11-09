@@ -434,6 +434,65 @@ class Tests(unittest.TestCase):
         self.assertEqual(report['coverage']['excluded']['control_mode_unknown_or_mismatched'],2)
         self.assertEqual(report['primary_10s']['metrics']['foreign_semantic_paired_win']['observations'],30)
 
+    def test_encoder_pin_keeps_unknown_declared_observed_and_verified_distinct(self):
+        encoder=self.bundle['encoder']
+        self.assertEqual(P.encoder_pin(encoder)['artifact_status'],'unknown')
+        artifact=self.root/'synthetic-artifact.bin';artifact.write_bytes(b'synthetic encoder fixture')
+        observation=P.observe_encoder_artifact(artifact)
+        self.assertEqual(observation,{'sha256':P.digest('synthetic encoder fixture'),'bytes':25})
+        self.assertEqual(P.encoder_pin(encoder,observation)['artifact_status'],'artifact_hash_observed')
+        declared=dict(encoder,artifact_sha256=observation['sha256'])
+        self.assertEqual(P.encoder_pin(declared)['artifact_status'],'artifact_hash_declared')
+        verified=P.encoder_pin(declared,observation)
+        self.assertEqual(verified['artifact_status'],'artifact_hash_verified')
+        self.assertEqual(verified['declared_contract'],declared)
+        self.assertFalse(verified['revision_verified']);self.assertFalse(verified['cache_derivation_verified'])
+        with self.assertRaises(ValueError):P.encoder_pin(dict(encoder,artifact_sha256='0'*64),observation)
+        self.bundle['encoder']['artifact_sha256']='private invalid hash'
+        with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
+
+    def test_encoder_artifact_is_bounded_regular_and_refuses_observed_mutation(self):
+        artifact=self.root/'artifact.bin';artifact.write_bytes(b'abcd')
+        link=self.root/'artifact-link';link.symlink_to(artifact)
+        with self.assertRaises(OSError):P.observe_encoder_artifact(link)
+        with patch.object(P,'ENCODER_ARTIFACT_LIMIT',3):
+            with self.assertRaises(ValueError):P.observe_encoder_artifact(artifact)
+        before=os.stat(artifact)
+        changed=Mock(st_dev=before.st_dev,st_ino=before.st_ino,st_size=before.st_size,
+                     st_mtime_ns=before.st_mtime_ns+1,st_ctime_ns=before.st_ctime_ns)
+        with patch.object(P.os,'fstat',side_effect=[before,changed]):
+            with self.assertRaises(ValueError):P.observe_encoder_artifact(artifact)
+        artifact.write_bytes(b'')
+        with self.assertRaises(ValueError):P.observe_encoder_artifact(artifact)
+
+    def test_cli_retains_exact_encoder_contract_privately_and_verifies_scratch_hash(self):
+        artifact=self.root/'artifact.bin';artifact.write_bytes(b'synthetic bytes')
+        self.bundle['encoder']['artifact_sha256']=P.digest('synthetic bytes')
+        self.bundle['encoder']['revision']='private-revision-identifier'
+        source=self.root/'input.json';source.write_text(json.dumps(self.bundle));out=self.root/'pinned-run'
+        cmd=[sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+             '--scratch',str(self.root),'--input',str(source),'--output',str(out),'--cutoff',self.cutoff,
+             '--encoder-artifact',str(artifact)]
+        result=subprocess.run(cmd,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        manifest=json.loads((out/'private-run.json').read_text())
+        self.assertEqual(manifest['encoder_pin']['declared_contract'],self.bundle['encoder'])
+        self.assertEqual(manifest['encoder_pin']['artifact_status'],'artifact_hash_verified')
+        for name in ('aggregate.json','summary.md'):
+            public=(out/name).read_text()
+            self.assertNotIn('private-revision-identifier',public)
+            self.assertNotIn(self.bundle['encoder']['artifact_sha256'],public)
+            self.assertNotIn(str(artifact),public)
+        artifact.write_bytes(b'different bytes')
+        cmd[cmd.index('--output')+1]=str(self.root/'mismatch')
+        result=subprocess.run(cmd,capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse((self.root/'mismatch').exists())
+        cmd[cmd.index('--encoder-artifact')+1]=str(ROOT/'AGENTS.md')
+        result=subprocess.run(cmd,capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse((self.root/'mismatch').exists())
+
     def test_cli_rejects_live_workspace_and_writes_outside_scratch(self):
         source=self.root/'input.json';source.write_text(json.dumps(self.bundle))
         for scratch,output in ((str(ROOT),str(self.root/'result')),(str(self.root),str(self.root.parent/'forbidden-character-output'))):
@@ -452,6 +511,9 @@ class Tests(unittest.TestCase):
         report=json.loads((out/'aggregate.json').read_text());self.assertEqual(report['input_kind'],'synthetic')
         self.assertNotIn('reply-0-0',json.dumps(report))
         self.assertEqual((out/'summary.md').read_text(),P.render_summary(report))
+        pin=json.loads((out/'private-run.json').read_text())['encoder_pin']
+        self.assertEqual(pin['artifact_status'],'unknown')
+        self.assertEqual(pin['declared_contract'],self.bundle['encoder'])
         again=subprocess.run(cmd,capture_output=True,text=True);self.assertNotEqual(again.returncode,0)
 
 

@@ -107,7 +107,7 @@ One JSON object, with only these sources explicitly assembled by the reviewer:
 | --- | --- |
 | `input_kind` | `synthetic` or `retained_snapshot`. |
 | `timezone` | Explicit IANA timezone for day grouping, e.g. `America/Chicago`. |
-| `encoder` | `family: "nomic"`, immutable `id`, exact `revision`, `pooling`, `normalization: "l2"`, integer `prefix_chars`, `frozen: true`. |
+| `encoder` | `family: "nomic"`, immutable `id`, exact `revision`, `pooling`, `normalization: "l2"`, integer `prefix_chars`, `frozen: true`; optional `artifact_sha256` (64 lowercase hex) for an expected artifact hash. |
 | `rows` | History copies with explicit `role`, `turn_id`, offset-aware/numeric `timestamp`, and `content`. User rows must be the owner's messages from the declared scope. Assistant rows also carry `surface`, `language`, exact `context` text, and existing attribution fields such as `served_by`/provider IDs. Preserve final-response receipt fields where present. |
 | `historical_attribution` | Existing attribution configuration: explicit `surface_callers`, `window_seconds: 10`, optional source/timezone mapping, and `compute_ledger` records. The runner enables the independent window30 diagnostic. |
 | `embeddings` | Each cache entry has `reply_sha256` for full final text; `input_sha256` for its encoder prefix; `context_sha256`; matching `encoder_id`; unit `vector` and `context_vector` with one shared dimension. Context and response features stay separate. |
@@ -142,7 +142,29 @@ Outputs are mode 0600 in a 0700 directory:
   dates plus message/reply counts. No text, private IDs, model labels, or vectors.
 - `private-evaluation.json`: held-out reply IDs, percentiles and reference-day
   membership, for verifying splits locally. Do not publish it.
-- `private-run.json`: input/code fingerprints and cutoff, for reproducibility.
+- `private-run.json`: input/code fingerprints, cutoff, exact declared encoder
+  contract and optional observed artifact hash/byte count, for reproducibility.
+  Raw revision/encoder IDs, hashes and paths are not printed in public summaries.
+
+## Pinning a known encoder artifact without loading it
+
+The private run manifest now retains the exact supplied revision, pooling,
+normalization, prefix contract and encoder ID. A revision label remains declared,
+not independently verified. To observe bytes, optionally add
+`--encoder-artifact /private/scratch/encoder-copy.gguf` using an explicitly retained
+regular artifact copy inside the same private scratch. No model directory is
+scanned, download started, endpoint queried or encoder loaded. The reader hashes
+in 1 MiB chunks, accepts 1 byte through 4 GiB, refuses symlinks/nonregular files and
+observable mutation/size disagreement, and writes no artifact bytes to output.
+
+If `encoder.artifact_sha256` is supplied, observed bytes must match it or the run
+fails before creating its output directory. Without that field, supplied bytes
+are observed but not checked against an independent expected hash. Without an
+artifact file, an expected hash remains a declaration. With neither a file nor an expected hash, identity stays unknown. The aggregate summary emits only these fixed evidence states.
+`revision_verified` and `cache_derivation_verified` remain false: one artifact
+hash neither proves the revision label nor authenticates the origin of cached
+vectors, runtime/tokenizer settings, or completeness of a multi-file model.
+Do not backfill a hash observed today as evidence of yesterday's encoder.
 
 ## Validation and current boundary
 
@@ -151,7 +173,7 @@ admissible but their replies are unscored (`mode_unknown`). No model label serve
 as fallback. Intimate rows and per-reply outputs must remain in local private
 scratch; export only aggregates. No cloud prompts or external annotation calls.
 
-Current follow-up: 42 isolated checks pass (prototype 31, ownership 11). The base
+Current follow-up: 45 isolated checks pass (prototype 34, ownership 11). The base
 prototype also passed the 26-check attribution suite before this scoring-only
 addition; attribution code and admission are unchanged.
 Synthetic fixture: 16 days, 32 replies across two labelled families, four candidate
@@ -173,7 +195,9 @@ Reference-composition regressions check held-out-day exclusion, family-count
 conservation, primary/sensitivity differences and zero coverage without imputation.
 Mode tests prove no family fallback, exact/dated evidence binding, conflict-to-unknown,
 mode/reference isolation, within-mode identifiability, ReelRoom separation and
-matching-mode controls. All new fixtures remain synthetic and non-intimate text.
+matching-mode controls. All new fixtures remain synthetic and non-intimate text. Encoder-pin tests cover
+unknown/declared/observed/verified states, mismatches, bounds, symlinks, observed
+mutation, private contract retention, outside-scratch refusal and aggregate privacy.
 
 Reference means/scales/centroids are built once per held-out day, calibration day
 and witnessed-positive subset, then reused for replies and controls. Reuse is

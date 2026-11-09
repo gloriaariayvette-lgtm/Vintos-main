@@ -2320,3 +2320,15 @@ Schema v2 and its summary expose mode coverage and omit pooled family effects.
 42 isolated checks pass (prototype 31, owners 11), including no cross-mode/surface
 influence. Next: actual local mode export, provenance-reviewed controls, encoder
 revision/hash pinning, and Claude's private rerun. No model calls or live effects.
+
+
+## 9 November — explicit encoder identity retained in the private manifest
+
+`codex/judges-character-encoder-pin` follows bc5d784d. The exact declared encoder
+contract is preserved; optional bounded hashing reads one supplied regular scratch
+artifact without loading it. Expected/observed hashes must agree when both exist;
+unknowns remain unknown and raw identity is excluded from aggregate outputs.
+45 isolated checks pass (prototype 34, owners 11). A hash does not authenticate
+cached-vector derivation, runtime, multi-file completeness or revision labels.
+Real identity observation and reviewed control data remain with the private run.
+No inference, download, live write, merge or deployment.
