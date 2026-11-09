@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import re
+import queue
+import threading
 import stat
 import time
 import uuid
@@ -101,15 +103,29 @@ def _atomic(directory, name, payload, replace=False):
 
 
 def publish(root, packet, prefix):
-    """Best effort, bounded and nonblocking; recheck the kill switch at publish."""
+    """Synchronous best-effort publication for existing background producers."""
     c = configuration(root)
     if c is None:
+        COUNTERS['disabled_or_changed'] += 1
+        return False
+    try:
+        payload = (json.dumps(packet, allow_nan=False) + '\n').encode()
+        return _publish_bytes(root, payload, prefix, expected=c)
+    except Exception:
+        COUNTERS['write_failure'] += 1
+        return False
+
+
+def _publish_bytes(root, payload, prefix, expected=None):
+    """Publish an immutable snapshot, rechecking current limits and permission."""
+    c = configuration(root)
+    if c is None or (expected is not None and c != expected):
         COUNTERS['disabled_or_changed'] += 1
         return False
     directory = lock = None
     try:
         if prefix not in PREFIXES: raise ValueError('unknown packet type')
-        payload = (json.dumps(packet, allow_nan=False) + '\n').encode()
+        if not isinstance(payload, bytes): raise ValueError('immutable payload required')
         if len(payload) > c['max_packet_bytes']:
             COUNTERS['oversize'] += 1
             return False
@@ -175,6 +191,83 @@ def publish(root, packet, prefix):
     finally:
         if lock is not None: os.close(lock)
         if directory is not None: os.close(directory)
+
+
+# Eight pending immutable packets plus one in flight, each at most MAX_PACKET.
+# This is a volatile per-process queue, not a durability or delivery receipt.
+DEFERRED_SLOTS = 8
+_writer = None
+_writer_lock = threading.Lock()
+
+
+def _reset_after_fork():
+    global _writer, _writer_lock
+    _writer = None
+    _writer_lock = threading.Lock()
+    COUNTERS.clear()
+
+
+if hasattr(os, 'register_at_fork'):
+    os.register_at_fork(after_in_child=_reset_after_fork)
+
+
+def _write_queued(pending):
+    while True:
+        item = pending.get()
+        try:
+            if item is None: return
+            root, payload, prefix, config = item
+            try:
+                ok = _publish_bytes(root, payload, prefix, expected=config)
+                COUNTERS['deferred_written' if ok else 'deferred_not_confirmed'] += 1
+            except Exception:
+                COUNTERS['deferred_not_confirmed'] += 1
+        finally:
+            pending.task_done()
+            item = None  # Do not retain the previous private payload while idle.
+            root = payload = prefix = config = None
+
+
+def enqueue_capture(root, packet):
+    """True means queued only. Never wait for storage or a free queue slot.
+
+    Used only at final chat capture. Other producers keep synchronous semantics.
+    Process exit can lose queued work; no shutdown flush delays serving shutdown.
+    """
+    global _writer
+    try:
+        c = configuration(root)
+        if c is None:
+            COUNTERS['disabled_or_changed'] += 1
+            return False
+        payload = (json.dumps(packet, allow_nan=False) + '\n').encode()
+        if len(payload) > c['max_packet_bytes']:
+            COUNTERS['oversize'] += 1
+            return False
+        if not _writer_lock.acquire(blocking=False):
+            COUNTERS['deferred_busy'] += 1
+            return False
+        try:
+            if _writer is None:
+                pending = queue.Queue(maxsize=DEFERRED_SLOTS)
+                thread = threading.Thread(target=_write_queued, args=(pending,), name='judges-capture-writer', daemon=True)
+                thread.start()
+                _writer = (os.getpid(), pending, thread)
+            if _writer[0] != os.getpid() or not _writer[2].is_alive():
+                COUNTERS['deferred_unavailable'] += 1
+                return False
+            try:
+                _writer[1].put_nowait((root, payload, 'capture-', c))
+            except queue.Full:
+                COUNTERS['deferred_full'] += 1
+                return False
+            COUNTERS['deferred_enqueued'] += 1
+            return True
+        finally:
+            _writer_lock.release()
+    except Exception:
+        COUNTERS['deferred_unavailable'] += 1
+        return False
 
 
 def main():

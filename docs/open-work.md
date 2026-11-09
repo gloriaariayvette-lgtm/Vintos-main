@@ -6655,3 +6655,15 @@ ambiguity. Current attribution/admission thresholds are unchanged. Source-only
 logging gaps are identified, not yet quantified against records. Off-path sink
 publication before enablement remains open after the reviewer's occupied-capacity
 latency finding. Encoder identity work remains open behind this coverage priority.
+
+## 9 November — bounded deferred final capture ready for review
+
+`codex/judges-deferred-capture` moves final production avatar packet publication to
+an eight-slot per-process daemon queue, leaving scratch/background producers
+synchronous. 122 focused checks pass, including stalled-writer handler equivalence,
+config/limit changes, fork reset and honest exit loss. At representative synthetic
+Mac occupancy, enqueue median/p95 0.168/0.218 ms versus synchronous 12.653/13.211 ms.
+Storage still costs time in the worker; this is not Aegis latency acceptance.
+Reviewer owns full host suite and occupied/full-sink response validation before
+Gloria's enablement. No installed config or production write. Historical private
+coverage diagnosis and encoder identity remain open as recorded above.

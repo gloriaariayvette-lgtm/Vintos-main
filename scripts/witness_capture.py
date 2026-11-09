@@ -544,11 +544,13 @@ def _shadow_provenance(value, turn_id):
     return result
 
 
-def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
+def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False, *, defer=False):
     """Write one private packet after the final guard, never to a live store.
 
     The handler still has no transport receipt: attempted return to the framework
     is recorded separately from delivery. Caller catches observation failures.
+    defer=True queues only the production final packet; True then means accepted
+    in volatile memory, not published. Scratch remains synchronous.
     """
     if capture is None:
         return False
@@ -566,6 +568,9 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         packet["lineage"].append({"id": effect_id, "kind": "tactical", "at": instant(finalized_at),
                                   "complete": False, "parents": [], "origin": "generation_provenance"})
         packet["reply_node"]["parents"].append(effect_id)
+    if defer and not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import enqueue_capture
+        return enqueue_capture(root, packet)
     return _publish_private(root, packet, "capture-")
 
 

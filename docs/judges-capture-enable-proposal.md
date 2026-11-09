@@ -114,3 +114,57 @@ checks before Gloria's enable decision. No production latency guarantee is made.
 Capture does not establish complete ancestry, authenticated client delivery or
 previously missing attempts. Those facts remain unknown. Historical model-label
 attribution and separately retained evaluation inputs remain distinct tasks.
+
+## Review follow-up: final reply storage off the handler wait path
+
+The avatar's final `finish_shadow(..., defer=True)` freezes the completed packet
+as immutable JSON bytes and offers it to one lazy daemon writer per process.
+Eight pending packets plus one in flight, each at most 1 MiB, bound retained queue
+payloads to 9 MiB per serving process (temporary serialization and Python object
+costs are additional). A full queue or busy initialization lock skips capture.
+The handler does not wait for filesystem scans, cross-process sink locks, fsync,
+or a free queue slot. Packet finalization, serialization, configuration checks and
+thread startup still occur on the handler path. This is not a zero-cost hook.
+
+Only final production chat capture uses this queue. Scratch capture, background
+value-map receipts and self-forecast/audit sidecars keep synchronous publication
+and their existing return-value meaning. Queued `finish_shadow` returning true
+means accepted in memory, **not written, durable or delivered**. Its value is not
+used to change the chat response. The packet keeps its original finalization time
+and unknown delivery; the writer does not recast persistence time as reply time.
+
+The worker uses the same atomic publisher and current permission/capacity checks.
+It rejects a queued packet if the observed config no longer matches (including
+destination/limit changes), or the pointer is absent/disabled/invalid when writing.
+As before, a publication already past its final check may complete. A disable and
+re-enable between checks is not an observable generation boundary. The writer
+creates no new config, service, timer or scheduled job. Fork children reset the
+queue, thread reference, initialization lock and process counters; they cannot
+replay the parent's queued packets.
+
+Queue contents are volatile. Process death, reboot, cancellation of the process,
+or ordinary exit can lose pending work; there is deliberately no shutdown flush
+that delays serving shutdown. `COUNTERS` distinguishes deferred_enqueued,
+deferred_written, deferred_not_confirmed, deferred_full, deferred_busy and
+deferred_unavailable. These counters do not survive restart. The existing on-disk
+status covers completed lock-owning operations only; it cannot count lost queue
+items after a crash. A false/unconfirmed write can still leave a completed packet
+if later status or fsync failed. Missing packets are not evidence of no activity.
+
+Synthetic Mac benchmark at representative occupancy: 4,000 existing files,
+236,976,000 bytes (about 226 MiB), new packets 24,565 bytes, 20 samples each.
+Synchronous publication: median 12.653 ms, p95 13.211, max 14.908.
+Queue admission: median 0.168 ms, p95 0.218, max 0.236.
+Background publication: median 12.598 ms, p95 13.936, max 18.997; 20/20 confirmed.
+This includes a cold first writer start, but is a sequential drained-queue
+measurement, not concurrent request latency or an Aegis acceptance result.
+The reviewer's earlier occupied Aegis sink measured roughly 11 ms/write and cap
+skips up to 24 ms. Disk cost remains; it is moved to the worker. Aegis review must
+check occupied/full sink behavior and response latency before Gloria enables it.
+
+122 focused isolated checks pass, including 14 queue cases, 19 sink cases and
+execution of the actual handler capture/return segments with a stalled writer and
+stubbed provider. Overflow, kill switch, retarget, limits, immutable snapshots,
+fork reset, exit loss, thread/write failures, private permissions, synchronous
+producer compatibility and unchanged response/delivery semantics are exercised.
+No production flag, environment, unit or store was changed by this follow-up.

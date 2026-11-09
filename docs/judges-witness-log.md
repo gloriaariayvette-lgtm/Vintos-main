@@ -1503,3 +1503,32 @@ same guarded path-write pattern with a private umask and re-ran successfully.
 No live store, sink enablement, deployment or merge. The reviewer's occupied-sink
 measurements supersede the empty-directory estimate: roughly 11 ms/write, p95
 13 ms, max 16 ms, up to 24 ms at capacity. Off-path publication remains open.
+
+## 9 November — final capture publication deferred, bounded and volatile
+
+`codex/judges-deferred-capture` addresses the occupied-sink latency noted in review
+26, leaving the submitted coverage diagnostic tip fixed. Only the avatar final
+production packet requests deferred storage; scratch and other producers retain
+synchronous semantics. Immutable bytes enter a per-process eight-slot queue with
+one daemon writer. Overflow/busy startup skip, config changes are rechecked at
+publication, and fork children discard inherited queue/lock/thread state and
+counters. No shutdown flush: accepted work may be lost on exit. No durability or
+client-delivery claim follows from enqueue success. Full storage checks and private
+atomic publication remain in the worker; final reply content/timestamps remain
+unchanged. No existing feed or judge is altered.
+
+122 focused isolated checks pass: deferred capture 14, sink 19, handler hooks 21,
+capture replay 9, self artifacts 16, ownership 11, store guard 32. The first queue
+fixture lacked a selected generation and was corrected before the successful run.
+Tests execute actual handler capture/return segments with a deliberately stalled
+writer and stubbed providers, plus fork/exit loss, queue/disk limits, mutation,
+concurrent submitters, configuration changes and failures. No actual sends.
+
+At 4,000 synthetic files / about 226 MiB on the Mac, 20 samples of 24,565-byte
+packets measured synchronous median/p95/max 12.653/13.211/14.908 ms; enqueue
+0.168/0.218/0.236 ms; worker 12.598/13.936/18.997 ms. All 20 queued samples were
+confirmed written. Sequential drained-queue measurement, not concurrent or host
+acceptance. The dedicated-sink proposal documents measurement and volatile loss.
+Full Aegis suite/latency review remains with the reviewer, enablement with Gloria.
+The existing authentication blocker for private measurements is unchanged; no
+repeat notification. No paid calls, live writes, merge, enablement or deployment.
