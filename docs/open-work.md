@@ -7045,3 +7045,12 @@ baseline encode and validates its exact saved-forecast binding in offline counts
 175 isolated checks pass; no extra encoding or parameter scans. Baseline encoder
 identity/cost, complete ancestry, phone delivery and real-host integration remain
 open. Capture defaults and scoring unchanged; no enabling, merge or deployment.
+
+
+## 9 November — selected-feature coverage in aggregate review
+
+`codex/judges-selected-feature-coverage`, on 71081e44, exposes fixed packet counts
+for selected-input receipts with exact forecast/cutoff/arrival consistency checks.
+90 isolated checks pass. This is offline-only; runtime capture and admission are
+unchanged. Source identity, full ancestry, host integration and delivery remain
+open. No enabling, merge or deployment.

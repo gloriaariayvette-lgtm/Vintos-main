@@ -1,7 +1,7 @@
 # Judges slices 1 and 2: accumulated review handoff
 
-Current candidate: **codex/judges-context-baseline-binding**, based on
-**204e369f0439575350d05e685147cf43fab65997**. Its final published hash is recorded in
+Current candidate: **codex/judges-selected-feature-coverage**, based on
+**71081e44d945222d5ba237b59da9c5ee122c87dd**. Its final published hash is recorded in
 the dated local coordination reply. Latest reviewer-reported integration is
 **c499460e**, through **f7eccc6e** (note #28); this is not a fresh verification of
 the deploy branch. Subsequent commits form one stack, `f7eccc6e..HEAD`, and the
@@ -736,3 +736,41 @@ warnings in the existing readout suite persist with all assertions passing.
 Generated reports refreshed; no new files need deployment manifest entries.
 No private input, real model calls, live writes, enabling, merge or deployment.
 Host integration, complete ancestry and phone delivery remain open.
+
+
+## 9 November — selected-input observations become visible in offline coverage
+
+`codex/judges-selected-feature-coverage`, on 71081e44, adds the optional public
+`selected_feature_states` aggregate alongside context-baseline bindings. Selected
+input receipts were already retained and validated, but their coverage was absent
+from the aggregate review. This change is offline only: no producer, capture,
+encoder, model, feed, scoring or admission behavior changes.
+
+Counts are per unique supplied artifact packet, not unique turns or training
+examples. Exact duplicates collapse. States distinguish non-forecast packets,
+legacy/missing observation, conflicting receipt variants, missing exact saved
+forecast version, mode/checkpoint or clock mismatch, outside cutoff, a selected
+exchange clock that is not strictly before arrival, and binding to the forecast.
+All supplied receipt variants participate in conflicts before cutoff/row matching;
+a future-dated or unmatched peer cannot hide behind a usable copy. Present malformed
+receipts or disagreement with retained own embeddings reject the input bundle.
+
+Binding means exact saved-row hash, checkpoint/mode and packet clocks agree, the
+forecast precedes cutoff and the observed selected-exchange clock precedes arrival.
+It does not reconstruct counterpart/arriving source identity, prove derivation,
+certify encoder identity or complete ancestry, select a target, or admit training.
+The shared exact-row checker preserves existing context-baseline behavior.
+
+The renderer accepts only fixed labels and nonnegative integer counts summing to
+unique packets, rejects a lone conflict, and cross-checks non-forecast counts with
+context-baseline coverage when both are present. Older reports without this field
+remain accepted. Private hashes, text, vectors and IDs are not rendered.
+
+90 isolated checks pass: new coverage 9, selected features 8, context baseline 10,
+artifact joins 30, review report 22, entry owners 11. Tests include actual synthetic
+producer receipts, duplicate collapse, missing versions, conflict order/future
+peers, malformed claims, cutoff and selected-clock boundaries, renderer bounds,
+legacy reports and the actual scratch replay CLI with 0600 aggregate output.
+Generated ownership/coverage/store reports refreshed without changes; diff clean.
+No real data, new encoding, live writes, enabling, merge or deployment. Host
+integration and full source/encoder/delivery evidence remain open.

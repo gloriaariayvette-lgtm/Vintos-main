@@ -2229,3 +2229,13 @@ baseline 10, artifacts 20, inputs 15, selected 8, joins 30, report 22, cost 14,
 loaded checkpoint 8, readout 5, owners 11, store guard 32. Encodes/scans unchanged.
 Formatter/observer failure preserves old artifacts; encode failure propagates
 without retry. Full source/encoder/delivery evidence and host costs remain open.
+
+
+## 9 November — selected-input coverage no longer absent from reports
+
+Added offline packet states for selected-feature receipts, preserving duplicates,
+conflicts, missing versions and arrival/cutoff distinctions. Shared exact-row
+validation leaves baseline semantics unchanged. 90 isolated checks pass: coverage
+9, selected 8, baseline 10, joins 30, report 22, owners 11. Actual scratch replay
+CLI writes 0600 aggregate-only output. No producer or admission change; full
+source/encoder/delivery evidence and host integration remain open.

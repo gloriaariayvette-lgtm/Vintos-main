@@ -98,6 +98,17 @@ def artifact_coverage(section, eligible):
         timing += ['Context-baseline receipt bindings (exact saved forecast rows):']
         timing += [f'- {name}: {values.get(name,0)}.' for name in CONTEXT_BASELINE_STATES]
         timing += ['', 'These are hash-only observations. Encoder identity, full source ancestry, raw-vector reconstruction and baseline-call cost remain unobserved. Binding does not admit a target or certify delivery.', '']
+    if 'selected_feature_states' in section:
+        from witness_artifact_join import SELECTED_FEATURE_STATES
+        values=section['selected_feature_states']
+        if (not isinstance(values,dict) or set(values)-set(SELECTED_FEATURE_STATES)
+                or sum(count(n) for n in values.values())!=unique
+                or values.get('conflicting_observations',0)==1
+                or ('context_baseline_states' in section and
+                    values.get('not_forecast',0)!=section['context_baseline_states'].get('not_forecast',0))):invalid()
+        timing += ['Selected-feature receipt bindings (unique artifact packets):']
+        timing += [f'- {name}: {values.get(name,0)}.' for name in SELECTED_FEATURE_STATES]
+        timing += ['', 'Binding checks the exact saved forecast version, retained own-input agreement and a selected exchange clock before arrival. Counterpart/arriving source identity, feature derivation, full ancestry and encoder identity remain unverified. These packet counts do not admit turns or change scores.', '']
     if 'checkpoint_availability_states' in section:
         values = section['checkpoint_availability_states']
         if not isinstance(values,dict) or sum(count(n) for n in values.values()) != unique: invalid()

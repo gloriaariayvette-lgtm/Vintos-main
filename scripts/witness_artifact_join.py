@@ -202,6 +202,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'runtime_consistency': runtime_consistency(encodings),
             'entrypoint_consistency': entrypoint_consistency(encodings),
             'encoder_call_cost': encoder_call_cost(list(unique.values())),
+            'selected_feature_states': selected_feature_coverage(list(unique.values()), forecasts, cutoff),
             'context_baseline_states': context_baseline_coverage(list(unique.values()), forecasts, cutoff),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
@@ -219,19 +220,24 @@ CONTEXT_BASELINE_STATES = ('not_forecast','unobserved','conflicting_observations
                            'forecast_clock_mismatch','outside_cutoff','baseline_vector_mismatch','bound_to_forecast')
 
 
-def context_baseline_coverage(packets, forecasts, cutoff):
-    """Compare exact supplied forecast versions, not content/time-near target guesses."""
+SELECTED_FEATURE_STATES = ('not_forecast','unobserved','conflicting_observations',
+                          'exact_forecast_row_missing','forecast_identity_mismatch',
+                          'forecast_clock_mismatch','outside_cutoff','selected_clock_not_before_arrival','bound_to_forecast')
+
+
+def _forecast_observation_coverage(packets, forecasts, cutoff, field, validate, compare):
+    """Compare exact supplied versions; conflicts include all supplied peers."""
     cutoff=instant(cutoff)
     rows={fingerprint(f):f for f in forecasts if isinstance(f,dict)}
     variants=defaultdict(set)
     for packet in packets:
-        if packet.get('schema')=='self-forecast-artifacts-v1' and 'context_baseline' in packet['artifacts']:
-            value=packet['artifacts']['context_baseline'];validate_context_baseline(value)
+        if packet.get('schema')=='self-forecast-artifacts-v1' and field in packet['artifacts']:
+            value=packet['artifacts'][field];validate(value)
             variants[packet.get('forecast_row_sha256')].add(fingerprint(value))
     states=Counter()
     for packet in packets:
         if packet.get('schema')!='self-forecast-artifacts-v1':state='not_forecast'
-        elif 'context_baseline' not in packet['artifacts']:state='unobserved'
+        elif field not in packet['artifacts']:state='unobserved'
         elif len(variants[packet.get('forecast_row_sha256')])>1:state='conflicting_observations'
         else:
             row=rows.get(packet.get('forecast_row_sha256'))
@@ -244,19 +250,30 @@ def context_baseline_coverage(packets, forecasts, cutoff):
                 try:
                     made,arrived=instant(row['ts']),instant(row['arrived_at'])
                     if made!=instant(packet['forecast_at']) or arrived!=instant(packet['arrived_at']) or arrived>made:
-                        raise ValueError('baseline forecast clocks')
+                        raise ValueError('forecast observation clocks')
                 except (ValueError,TypeError,KeyError,OverflowError):state='forecast_clock_mismatch'
                 else:
-                    if made>=cutoff:state='outside_cutoff'
-                    else:
-                        value=packet['artifacts']['context_baseline']
-                        try:
-                            matched=(_vector(row.get('context_emb'))==value['normalized_vector_sha256']
-                                     and len(row['context_emb'])==value['dimensions'])
-                        except (ValueError,TypeError,KeyError):matched=False
-                        state='bound_to_forecast' if matched else 'baseline_vector_mismatch'
+                    state='outside_cutoff' if made>=cutoff else compare(row,packet['artifacts'][field])
         states[state]+=1
     return dict(sorted(states.items()))
+
+
+def context_baseline_coverage(packets, forecasts, cutoff):
+    def compare(row,value):
+        try:
+            matched=(_vector(row.get('context_emb'))==value['normalized_vector_sha256']
+                     and len(row['context_emb'])==value['dimensions'])
+        except (ValueError,TypeError,KeyError):matched=False
+        return 'bound_to_forecast' if matched else 'baseline_vector_mismatch'
+    return _forecast_observation_coverage(packets,forecasts,cutoff,'context_baseline',validate_context_baseline,compare)
+
+
+def selected_feature_coverage(packets, forecasts, cutoff):
+    """Attachment/time consistency only; hashes do not certify full source ancestry."""
+    def compare(row,value):
+        return ('bound_to_forecast' if instant(value['exchange_at'])<instant(row['arrived_at'])
+                else 'selected_clock_not_before_arrival')
+    return _forecast_observation_coverage(packets,forecasts,cutoff,'feature_inputs',validate_selected_feature_inputs,compare)
 
 
 def checkpoint_availability(packets, forecasts, cutoff):
