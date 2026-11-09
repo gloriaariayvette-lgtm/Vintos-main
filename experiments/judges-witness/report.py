@@ -89,6 +89,15 @@ def artifact_coverage(section, eligible):
             or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
         invalid()
     timing = []
+    if 'context_baseline_states' in section:
+        from witness_artifact_join import CONTEXT_BASELINE_STATES
+        values=section['context_baseline_states']
+        if (not isinstance(values,dict) or set(values)-set(CONTEXT_BASELINE_STATES)
+                or sum(count(n) for n in values.values())!=unique
+                or values.get('conflicting_observations',0)==1):invalid()
+        timing += ['Context-baseline receipt bindings (exact saved forecast rows):']
+        timing += [f'- {name}: {values.get(name,0)}.' for name in CONTEXT_BASELINE_STATES]
+        timing += ['', 'These are hash-only observations. Encoder identity, full source ancestry, raw-vector reconstruction and baseline-call cost remain unobserved. Binding does not admit a target or certify delivery.', '']
     if 'checkpoint_availability_states' in section:
         values = section['checkpoint_availability_states']
         if not isinstance(values,dict) or sum(count(n) for n in values.values()) != unique: invalid()

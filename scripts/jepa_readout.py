@@ -301,7 +301,18 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
         if e['her']:turns.append({'role':'user','content':e['her']})
         if e['his']:turns.append({'role':'assistant','content':e['his']})
     if mode=='self_on_message':turns.append({'role':'user','content':her})
-    copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
+    context_baseline = None
+    if retain:
+        rendered = format_context(turns[-6:])
+        raw_context = enc.encode([rendered],show_progress_bar=False)
+        copied = units(raw_context)[0]
+        try:
+            from witness_self_artifacts import context_baseline_receipt
+            context_baseline = context_baseline_receipt(turns[-6:], rendered, raw_context[0], copied)
+        except Exception:
+            pass
+    else:
+        copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
     result = {'her_key':sh.her_key(her), 'context_emb':copied.tolist(),'emb':p[0].astype('float32'),'confidence':float(confidence(m,p,a)[0]),'qualification':'qualified',
             'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':m['_loaded_checkpoint_id'] if self_mode else hashlib.sha256(path.read_bytes()).hexdigest(),
             'context_last_ts':exs[-1]['ts'],'context_last_turn_id':exs[-1].get('turn_id',''),
@@ -310,7 +321,7 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
         try:
             sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
             sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result,
-                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None, feature_inputs)
+                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None, feature_inputs, context_baseline)
         except Exception:
             pass
     return result

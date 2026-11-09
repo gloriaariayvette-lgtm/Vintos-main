@@ -2218,3 +2218,14 @@ and cross-checks retained own inputs; no complete-ancestry claim or admission ch
 148 isolated checks pass: selected 8, artifacts 20, inputs 15, joins 30, runtime 12,
 loaded checkpoint 8, availability 12, owners 11, store guard 32. Maximum bounded
 receipt is under 4 KiB. Source and host evidence remains open; no deployment.
+
+
+## 9 November — baseline receipt bound to the exact forecast version
+
+Added bounded hash-only receipt for the existing rendered context and raw/normalized
+baseline output. Offline states separate absent, conflicting, mismatched and bound
+observations; packet counts do not become eligible turns. 175 isolated checks pass:
+baseline 10, artifacts 20, inputs 15, selected 8, joins 30, report 22, cost 14,
+loaded checkpoint 8, readout 5, owners 11, store guard 32. Encodes/scans unchanged.
+Formatter/observer failure preserves old artifacts; encode failure propagates
+without retry. Full source/encoder/delivery evidence and host costs remain open.

@@ -7036,3 +7036,12 @@ receipts for the selected own/counterpart/arriving inputs and six computed array
 148 isolated checks pass. Complete ancestry, separate context-baseline encoding,
 real-host cost, delivery and integration remain open. Capture defaults and scoring
 unchanged; no enabling, merge or deployment.
+
+
+## 9 November — context-baseline input/output hash binding
+
+`codex/judges-context-baseline-binding`, on 204e369f, observes the separate existing
+baseline encode and validates its exact saved-forecast binding in offline counts.
+175 isolated checks pass; no extra encoding or parameter scans. Baseline encoder
+identity/cost, complete ancestry, phone delivery and real-host integration remain
+open. Capture defaults and scoring unchanged; no enabling, merge or deployment.

@@ -1,7 +1,7 @@
 # Judges slices 1 and 2: accumulated review handoff
 
-Current candidate: **codex/judges-selected-feature-inputs**, based on
-**2e3962a34f28a844bcd23b7c31bce6c5169030ff**. Its final published hash is recorded in
+Current candidate: **codex/judges-context-baseline-binding**, based on
+**204e369f0439575350d05e685147cf43fab65997**. Its final published hash is recorded in
 the dated local coordination reply. Latest reviewer-reported integration is
 **c499460e**, through **f7eccc6e** (note #28); this is not a fresh verification of
 the deploy branch. Subsequent commits form one stack, `f7eccc6e..HEAD`, and the
@@ -689,3 +689,50 @@ zero features, failure isolation, malformed claims, legacy data and maximum boun
 All inputs synthetic and encoders/sends stubbed. No new model calls, private input,
 live writes, enabling, merge or deployment. Host integration and remaining ancestry
 and delivery evidence are still open.
+
+
+## 9 November — existing context-baseline call gets a bounded receipt
+
+`codex/judges-context-baseline-binding`, on 204e369f, observes the separate existing
+context-baseline encoding when optional self forecast artifact capture is enabled.
+It adds `context_baseline` (`self-context-baseline-v1`) to the exact-row-bound
+artifact packet. There is no new encode, retry, parameter scan or model load.
+The original capture-off and other-head encoding paths remain unchanged.
+
+The receipt records ordered role/prefix hashes for the six selected turns,
+checks the actual legacy rendering (300 codepoints per turn, joined by a space
+and newline; at most 1,810 codepoints), and hashes the exact rendered input.
+It records dimension and canonical float-list hashes of the existing raw result
+and normalized context vector. The producer checks the normalization and saved
+forecast vector agree. No text, private IDs, paths or vectors are added by this
+receipt. Maximum vector dimension is 8,192; its maximal text-selection fixture
+receipt is under 2 KiB. Zero/nonfinite/out-of-bounds observations are unavailable.
+A formatter change also leaves this receipt absent rather than mislabelling it.
+
+Observation failure leaves the existing forecast and artifact path intact.
+Encoder failure still propagates the original exception without retry. The
+baseline's encoder identity, parameters/runtime, source ancestry and cost remain
+unobserved; existing cost totals still concern the separately instrumented calls.
+This is bounded extra background hashing/normalization, with real-host latency
+unmeasured. It does not certify feature derivation or full upstream completeness.
+
+Offline replay validates any present receipt and reports fixed counts per unique
+artifact packet: missing observation, missing exact forecast version, conflicting
+receipt variants, identity/clock/vector disagreement, outside cutoff, or bound to
+the exact saved forecast. All supplied peers participate in conflict checks.
+Binding requires the same checkpoint/mode, exact saved-row hash, matching packet
+clocks, an in-window forecast and the exact normalized baseline vector/dimension.
+These are packet counts, not unique turns or eligible training examples. The
+public renderer emits only fixed aggregate states. Legacy absence stays unknown.
+No admission/scoring, target-selection or delivery claim changes.
+
+175 isolated checks pass: context baseline 10, artifacts 20, inputs 15, selected
+features 8, artifact joins 30, review report 22, encoder cost 14, loaded checkpoint
+8, existing readout 5, entry owners 11, store guard 32. Tests exercise the actual
+formatter/predictor path, capture parity and unchanged scan counts, ordered repeated
+prefixes, failure isolation, exact-version/conflict/cutoff handling, malformed and
+legacy receipts, bounded output and aggregate rendering. Synthetic numerical
+warnings in the existing readout suite persist with all assertions passing.
+Generated reports refreshed; no new files need deployment manifest entries.
+No private input, real model calls, live writes, enabling, merge or deployment.
+Host integration, complete ancestry and phone delivery remain open.

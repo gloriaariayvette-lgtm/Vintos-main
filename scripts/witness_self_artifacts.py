@@ -167,7 +167,60 @@ def validate_selected_feature_inputs(value):
         raise ValueError('inconsistent feature dimensions')
 
 
-def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None, feature_inputs=None):
+def context_baseline_receipt(turns, rendered, raw, normalized):
+    """Observe existing baseline values, without encoding or claiming encoder identity."""
+    from witness_receipts import digest
+    from witness_capture import _fingerprint
+    if not isinstance(turns,list) or not 1<=len(turns)<=6:
+        raise ValueError('invalid baseline turns')
+    refs=[];prefixes=[]
+    for turn in turns:
+        if (not isinstance(turn,dict) or turn.get('role') not in ('user','assistant')
+                or not isinstance(turn.get('content'),str) or not turn['content']):
+            raise ValueError('invalid baseline turn')
+        text=turn['content'][:300];prefixes.append(text)
+        refs.append({'role':turn['role'],'sha256':digest(text),'chars':len(text)})
+    if rendered!=' \n'.join(prefixes):raise ValueError('unknown baseline rendering')
+    raw_values,values=vector(raw),vector(normalized)
+    import numpy as np
+    expected=np.asarray(raw_values,dtype=float)
+    expected=expected/np.maximum(np.linalg.norm(expected),1e-12)
+    if not np.array_equal(expected,np.asarray(values,dtype=float)):
+        raise ValueError('baseline normalization mismatch')
+    result={'schema':'self-context-baseline-v1','turns':refs,
+            'input_sha256':digest(rendered),'input_chars':len(rendered),
+            'raw_vector_sha256':_fingerprint(raw_values),'normalized_vector_sha256':_fingerprint(values),
+            'dimensions':len(values),'rendering':'last_six_turns_first300_join_space_newline_v1',
+            'normalization':'readout_units_v1','source_identity':'unverified',
+            'encoder_identity':'unobserved','upstream_complete':False,'values_retained':False}
+    validate_context_baseline(result)
+    return result
+
+
+def validate_context_baseline(value):
+    fixed={'schema':'self-context-baseline-v1','rendering':'last_six_turns_first300_join_space_newline_v1',
+           'normalization':'readout_units_v1','source_identity':'unverified','encoder_identity':'unobserved'}
+    if (not isinstance(value,dict) or set(value)!={*fixed,'turns','input_sha256','input_chars',
+            'raw_vector_sha256','normalized_vector_sha256','dimensions','upstream_complete','values_retained'}
+            or any(value[k]!=v for k,v in fixed.items()) or value['upstream_complete'] is not False
+            or value['values_retained'] is not False):raise ValueError('invalid baseline receipt')
+    def hashed(v):return isinstance(v,str) and len(v)==64 and all(c in '0123456789abcdef' for c in v)
+    if (any(not hashed(value[k]) for k in ('input_sha256','raw_vector_sha256','normalized_vector_sha256'))
+            or type(value['dimensions']) is not int or not 1<=value['dimensions']<=8192
+            or type(value['input_chars']) is not int or not 1<=value['input_chars']<=1810):
+        raise ValueError('invalid baseline hashes or bounds')
+    turns=value['turns']
+    if not isinstance(turns,list) or not 1<=len(turns)<=6:raise ValueError('invalid baseline turn list')
+    for turn in turns:
+        if (not isinstance(turn,dict) or set(turn)!={'role','sha256','chars'}
+                or turn['role'] not in ('user','assistant') or not hashed(turn['sha256'])
+                or type(turn['chars']) is not int or not 1<=turn['chars']<=300):
+            raise ValueError('invalid baseline turn reference')
+    if value['input_chars']!=sum(t['chars'] for t in turns)+2*(len(turns)-1):
+        raise ValueError('inconsistent baseline rendered length')
+
+
+def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None, feature_inputs=None, context_baseline=None):
     """Recent-own vectors can cover earlier targets; never claim all targets exist."""
     from witness_receipts import digest
     manifest = model.get('_witness_checkpoint')
@@ -195,6 +248,12 @@ def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None, 
     if feature_inputs is not None:
         validate_selected_feature_inputs(feature_inputs)
         result['feature_inputs'] = feature_inputs
+    if context_baseline is not None:
+        validate_context_baseline(context_baseline)
+        from witness_capture import _fingerprint
+        if context_baseline['normalized_vector_sha256'] != _fingerprint(vector(forecast.get('context_emb'))):
+            raise ValueError('baseline forecast mismatch')
+        result['context_baseline'] = context_baseline
     return result
 
 

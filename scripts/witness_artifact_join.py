@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt, validate_selected_feature_inputs, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
+from witness_self_artifacts import bound_source, availability_receipt, validate_context_baseline, validate_selected_feature_inputs, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
 
 
 def fingerprint(value):
@@ -53,6 +53,8 @@ def claims(packet):
         if not isinstance(refs, list) or not 1 <= len(refs) <= 6:
             raise ValueError('invalid forecast input references')
         manifest = artifacts.get('checkpoint')
+        if 'context_baseline' in artifacts:
+            validate_context_baseline(artifacts['context_baseline'])
         if 'feature_inputs' in artifacts:
             feature_inputs = artifacts['feature_inputs']
             validate_selected_feature_inputs(feature_inputs)
@@ -200,6 +202,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'runtime_consistency': runtime_consistency(encodings),
             'entrypoint_consistency': entrypoint_consistency(encodings),
             'encoder_call_cost': encoder_call_cost(list(unique.values())),
+            'context_baseline_states': context_baseline_coverage(list(unique.values()), forecasts, cutoff),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
             'encoder_parameter_observation_states': dict(sorted(Counter(
@@ -209,6 +212,51 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'bound_unique_replies': len({item['turn_id'] for item in matched}),
             'admission_effect': 'none', 'scoring_effect': 'none', 'encoder_identity': 'unverified',
             'artifact_observation_time': 'unverified', 'forecast_target_selection': 'not_evaluated'}, details
+
+
+CONTEXT_BASELINE_STATES = ('not_forecast','unobserved','conflicting_observations',
+                           'exact_forecast_row_missing','forecast_identity_mismatch',
+                           'forecast_clock_mismatch','outside_cutoff','baseline_vector_mismatch','bound_to_forecast')
+
+
+def context_baseline_coverage(packets, forecasts, cutoff):
+    """Compare exact supplied forecast versions, not content/time-near target guesses."""
+    cutoff=instant(cutoff)
+    rows={fingerprint(f):f for f in forecasts if isinstance(f,dict)}
+    variants=defaultdict(set)
+    for packet in packets:
+        if packet.get('schema')=='self-forecast-artifacts-v1' and 'context_baseline' in packet['artifacts']:
+            value=packet['artifacts']['context_baseline'];validate_context_baseline(value)
+            variants[packet.get('forecast_row_sha256')].add(fingerprint(value))
+    states=Counter()
+    for packet in packets:
+        if packet.get('schema')!='self-forecast-artifacts-v1':state='not_forecast'
+        elif 'context_baseline' not in packet['artifacts']:state='unobserved'
+        elif len(variants[packet.get('forecast_row_sha256')])>1:state='conflicting_observations'
+        else:
+            row=rows.get(packet.get('forecast_row_sha256'))
+            if row is None:state='exact_forecast_row_missing'
+            elif (row.get('mode')!='on_message' or not isinstance(row.get('self'),dict)
+                    or row['self'].get('mode')!='on_message'
+                    or row['self'].get('checkpoint_id')!=packet['artifacts']['checkpoint']['checkpoint_id']):
+                state='forecast_identity_mismatch'
+            else:
+                try:
+                    made,arrived=instant(row['ts']),instant(row['arrived_at'])
+                    if made!=instant(packet['forecast_at']) or arrived!=instant(packet['arrived_at']) or arrived>made:
+                        raise ValueError('baseline forecast clocks')
+                except (ValueError,TypeError,KeyError,OverflowError):state='forecast_clock_mismatch'
+                else:
+                    if made>=cutoff:state='outside_cutoff'
+                    else:
+                        value=packet['artifacts']['context_baseline']
+                        try:
+                            matched=(_vector(row.get('context_emb'))==value['normalized_vector_sha256']
+                                     and len(row['context_emb'])==value['dimensions'])
+                        except (ValueError,TypeError,KeyError):matched=False
+                        state='bound_to_forecast' if matched else 'baseline_vector_mismatch'
+        states[state]+=1
+    return dict(sorted(states.items()))
 
 
 def checkpoint_availability(packets, forecasts, cutoff):
