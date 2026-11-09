@@ -119,3 +119,14 @@ thirteen-commit range and 393-check result above remain the prior checkpoint, no
 a test claim for this increment. Its 79 affected isolated checks pass: completion
 joins 10, report 22, attribution 26, source coverage 21. Exact revision is recorded
 in the coordination reply after push. Full host acceptance remains outstanding.
+
+
+## Historical source follow-up
+
+`codex/judges-historical-test-caller` adds source evidence for an old test-origin
+candidate: a lower-level result-contract test called the chat router without
+isolating the accounting path, followed by September 11 isolation fixes.
+See judges-source-coverage.md for exact revisions, import-path limitations and
+the check against the existing private copy. Nine source assertions passed; no
+runtime code or historical attribution changed. Retained-row origin is still
+unconfirmed, and no new private collection or deployment is requested.

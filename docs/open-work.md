@@ -6833,3 +6833,13 @@ completion/provider-key matches from bounded timestamp matches. 79 affected loca
 isolated checks pass. This is an offline aggregate/report increment on the submitted
 handoff tip; private source/window30 counts and the full integrated Aegis suite
 remain review work. No historical training decision or production change.
+
+
+## 9 November — check historical test-origin candidate
+
+The old result-contract suite explicitly exercised the chat router and could use
+an unisolated compute ledger when accounting was importable. September 11 source
+fixes added test isolation. Review must compare the documented synthetic fixture
+shape and execution evidence against the existing private copied records before
+assigning any origin. This is a new concrete candidate, not a demonstrated cause
+of the retained router-chat endpoint. No attribution or training change is made.

@@ -1903,3 +1903,17 @@ conflicting completion records, reused keys, cutoffs, observed-tier overlap,
 legacy reports, privacy and nonmutation. No matching algorithm, live producer,
 training permission, model call, live input, enablement, merge or deployment
 changed. Full integrated Aegis suite and private-data runs remain with review.
+
+
+## 9 November — historical router-chat test-origin lead
+
+Read-only source tracing found an explicit lower-level router invocation with
+chat surface in the old result-contract suite. At d335de72 it faked network calls
+but did not isolate the compute ledger. Source commits e9000f2d and 19232935 added
+OS-runner and direct-suite isolation on September 11. This is a conditional
+source-level contamination path, not confirmed provenance of retained rows.
+Accounting had to be importable and the store writable; source timestamps do not
+prove deployment. docs/judges-source-coverage.md records exact source pointers,
+synthetic fixture discriminators and the bounded check on the existing private
+copy. Nine historical source assertions passed; no old module execution, private
+inputs or test sends. No production code, matching, admission or stores changed.
