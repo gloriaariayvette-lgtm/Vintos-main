@@ -8,9 +8,12 @@ esphome:
   name: house-press-mic
   friendly_name: House pressure + mic board
   on_boot:
-    priority: 800
-    then:
-      - output.turn_on: strip_power   # GPIO33 HIGH powers the strip
+    - priority: 800
+      then:
+        - output.turn_on: strip_power   # GPIO33 HIGH powers the strip
+    - priority: -100
+      then:
+      - lambda: 'gpio_pulldown_en(GPIO_NUM_32); gpio_pullup_dis(GPIO_NUM_32);'   # the strip's pull-down, kept while read as a level
 
 esp32:
   board: esp32dev
@@ -49,6 +52,15 @@ globals:
     initial_value: '0'
 
 number:
+  - platform: template     # the pressure level (0-100) above which someone is sitting; set from real readings
+    id: pressure_threshold
+    name: "Pressure threshold"
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 1
+    initial_value: 50
+    restore_value: true
   - platform: template
     id: rssi_at_1m
     name: "Gloria phone signal at 1 m"
@@ -66,6 +78,20 @@ output:
     id: strip_power
 
 sensor:
+  # The strip read as a level, not on/off: at rest these strips still pass enough current to read as pressed
+  # on a plain digital pin (8 November: the sofa read pressed with no one on it). 0 = nothing, 100 = hard press.
+  - platform: adc
+    pin: GPIO32
+    id: pressure_level
+    name: "Pressure level"
+    attenuation: 12db
+    update_interval: 250ms
+    filters:
+      - lambda: return x / 3.3f * 100.0f;
+      - sliding_window_moving_average:
+          window_size: 4
+          send_every: 1
+      - delta: 2.0
   - platform: ble_rssi
     irk: !secret gloria_phone_irk
     id: gloria_phone_rssi
@@ -121,15 +147,16 @@ binary_sensor:
         - mqtt.publish:
             topic: vintos/board/house-press-mic/near
             payload: !lambda 'return x ? "on" : "off";'
+        - if:
+            condition:
+              lambda: 'return x && id(pressed).state;'
+            then:
+              - mqtt.publish: {topic: vintos/board/house-press-mic/event, payload: press_start}
 
-  - platform: gpio
+  - platform: template
     id: pressed
     name: "Pressure"
-    pin:
-      number: GPIO32
-      mode:
-        input: true
-        pulldown: true
+    lambda: 'return id(pressure_level).state > id(pressure_threshold).state;'
     filters:
       - delayed_on: 50ms
       - delayed_off: 300ms
