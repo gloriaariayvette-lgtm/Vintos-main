@@ -1263,3 +1263,38 @@ view separation, input immutability, path/privacy refusals and receipt retention
 Required reports regenerated unchanged; diff clean. No private data, GPU, paid call,
 model swap, merge or deployment. Full review/private Aegis run belongs to Claude.
 Exact pushed tip is in the coordination reply. Heartbeat ACTIVE.
+
+
+## 2026-11-09 12:06 CST — retained numerical evidence builder (#47)
+
+Added experiments/nonllm-judges/build_evidence.py on codex/judges-evidence-builder,
+stacked above 7014046e. It consumes the character importer projection and optional
+read-only lineage, recorded cache-metadata and humor-draft projections. Original
+provenance/generation/fallback/merge fields remain intact; existing numerical
+evidence is refused rather than overwritten. Full strict witness admission, exact
+final nodes and complete indirect ancestry are required before graph normalization.
+Any denial in another copy still denies the act. Private normalized nodes retain
+full validated ancestry and raw projection/hash receipts.
+
+Encoder pin and freeze come only from exact cache input/context/encoder bindings.
+All prepared caches must agree before the runner's global metadata is emitted.
+The existing character cache format does not require a freeze timestamp; no writer
+for historical freeze evidence was established. Missing metadata is a documented
+coverage gap, never filled from a revision, mtime or a current artifact observation.
+Humor requires explicit row/draft joke_id plus full draft text equality. Standalone
+drafts without timed row identity remain unjoined. No positive/taste anchor inference.
+README names source fields and provides the coverage/unknown table and projection
+contracts. No raw-store adapter, encoder call, deployment manifest or runtime change.
+
+Scratch-only CLI preserves immutable inputs; new 0700 output directory, 0600 files,
+no repository/live paths or symlinks, no overwrite, sanitized errors, network/process
+audit guard. Public output is counts/availability/fixed reasons only; all source
+claims remain independently unverified. Historical results belong to the reviewer.
+
+225 isolated checks pass: builder 15, runner 18, strict witness 109, character 72,
+ownership 11. Logs: /tmp/judges-evidence-builder-tests.log and
+/tmp/judges-builder-{runner,witness,character,owners}-tests.log. Required reports
+regenerated unchanged; diff clean. Full Aegis suite, test merge and private-copy run
+remain with the reviewer. No private data, new model/provider call, GPU, model swap,
+live write, merge or deployment. Exact branch/path/pushed tip in coordination reply.
+Heartbeat ACTIVE; no completion/routine notification.

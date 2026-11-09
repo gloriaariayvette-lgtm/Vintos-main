@@ -542,3 +542,93 @@ missing lineage/freeze evidence, indirect influence, legacy-feedback refusal,
 Landings boundaries, original-input immutability, private receipt retention,
 counts-only output, 0700/0600 modes, repository/symlink/overwrite refusal and
 sanitized failures. Run only through the repository's isolated-test harness.
+
+## Building evidence from retained projections
+
+`build_evidence.py` derives `numerical_evidence` for `run_private.py` without opening
+any store, discovering a cache, loading an encoder or calling a provider. Its private
+output is the original character importer projection with additive evidence and
+private derivation receipts. Existing `numerical_evidence` is refused, never replaced.
+All original rows (including provenance, generation/fallback and merge fields), cache
+vectors and other projection fields are retained. Historical attribution alone does
+not establish independent original-act lineage.
+
+| Output field | Recorded source fields and exact join | Missing/unsupported evidence |
+| --- | --- | --- |
+| Original act / ancestry | `generation_provenance` and/or `provenance`: agreeing `turn_id`, `output_provenance`, `may_witness`, `envelope_state`; `witness_receipt` at top level or inside either envelope; exact delivered response hash, actual selected generation evidence, timestamps, surface, `context_receipt_id`; explicit `reply_node` and complete supplied lineage | Legacy ordinary-generation labels alone, configured model names, absent final nodes, estimated times, missing ancestors, tactical/copy/derived exclusions, indirect effects and contradictory copies never become clean roots. Each failure gets a fixed reason count. |
+| Encoder artifact pin | A retained cache-metadata entry's `artifact_sha256`, bound to the original embedding's `reply_sha256`, `input_sha256`, `context_sha256`, `encoder_id`; any existing declared artifact pin must agree | Missing/unbound/conflicting pin remains unknown. No current artifact hashing or revision-name inference. |
+| Encoder freeze time | Same cache entry's explicitly recorded `frozen_at`, finite offset-aware timestamp/epoch before the reply | `frozen: true`, model revision, cache-file mtime, encoding time and import time are not freeze evidence. No historical backfill. |
+| Humor attempt | Character row's explicit `joke_id` agrees across copies and equals an existing humor-practice draft's `joke_id`; its full `joke` equals the exact prepared reply text | Text-only, prefix, date proximity and guessed-ID matches are refused. Standalone drafts lacking an exact timed character-row join remain unjoined. |
+| Positive humor anchor | None derived by this importer | An attempt, screening decision or generated rating is not an owner's positive reaction. Anchors stay empty. |
+| Taste attempt / positive anchor | None derived by this importer | Taste attempts stay unknown; independently projected exact Landings outcomes still enter the runner through its separate `--landings` input. |
+
+Source contracts: `scripts/witness_receipts.py` (`joined_identity`, `admission`,
+`row_receipt`, `final_reply_status`, transitive lineage validation),
+`scripts/evidence_view.py` (least-eligible ancestry), and
+`scripts/evidence_provenance.py` (normalization without legacy opt-in). The builder
+calls the strict consumer with supplied records; it never invokes a producer, writer
+or environment-envelope fallback. `bin/humor_practice.py` saves full `joke` and
+`joke_id` in accepted drafts. Those records carry a date, not an exact generation
+instant or complete independent lineage, so this importer cannot turn an unjoined
+practice draft into a timed witnessed original act.
+
+**Cache coverage limit:** `experiments/character-reference/prototype.py` accepts
+`encoder.artifact_sha256` but its existing embedding contract has no required freeze
+time. No historical cache freeze writer was established by this source inspection.
+The optional projection below is a transport contract for metadata actually retained
+by the caller, not a claim that existing caches contain those fields. If they do not,
+omit them/the projection and report the gap. Do not manufacture a metadata entry
+from the encoder declaration. Source claims and cached-vector derivation remain
+independently unverified.
+
+Optional inputs (all JSON objects in the same private scratch root):
+
+- `--lineage`: `{"schema":"witness-lineage-projection-v1","nodes":[...]}`.
+  Nodes use the existing witness contract, including source hashes, parent IDs,
+  explicit completeness, influence and clocks. Final `reply_node` objects from rows
+  are joined without overwriting differing copies. Maximum 512 supplied/joined nodes.
+- `--cache`: `{"schema":"encoder-cache-metadata-v1","entries":[...]}`.
+  Each entry copies `reply_sha256`, `input_sha256`, `context_sha256`, `encoder_id`
+  and, only when recorded, `artifact_sha256` and `frozen_at`. Maximum 512 entries.
+  Duplicate conflicting metadata refuses the run. Every prepared reply must have
+  the same recorded pin/freeze pair before the runner's single global encoder
+  contract is emitted. Partial metadata remains visible in field coverage but does
+  not silently select an encoder or drop replies.
+- `--humor`: `{"schema":"humor-drafts-projection-v1","drafts":[...]}`.
+  Copies of existing `joke_id`/`joke` records; maximum 512. Conflicting IDs refuse.
+
+The normalizer checks every copy of a prepared original against strict witness
+admission. It retains the entire validated ancestry under deterministic private
+`ancestry-<hash>` IDs; the original turn ID is an original-act node linked to the
+validated final node. Normalized context nodes do not bypass the original contract:
+only ancestry already proved clean, complete and temporally consistent by that
+contract is converted. Raw projections and source-copy fingerprints remain private.
+The numerical runner rechecks the resulting graph; exceeding its 512-node budget
+refuses instead of truncating. Source claims are never authenticated by this process.
+
+```sh
+SPARK_WORKSPACE="$TASK_SCRATCH" python3 experiments/nonllm-judges/build_evidence.py \
+  --scratch "$TASK_SCRATCH" --input "$TASK_SCRATCH/character-input.json" \
+  --lineage "$TASK_SCRATCH/lineage-projection.json" \
+  --cache "$TASK_SCRATCH/cache-metadata.json" \
+  --humor "$TASK_SCRATCH/humor-drafts.json" \
+  --cutoff YOUR_OFFSET_AWARE_CUTOFF \
+  --output "$TASK_SCRATCH/evidence/character-with-evidence.json" \
+  --summary "$TASK_SCRATCH/evidence/counts.json"
+```
+
+Omit unavailable optional inputs. Then pass `character-with-evidence.json` to
+`run_private.py --input`, choosing a different new output directory. All paths must
+be inside an existing mode-0700 scratch root outside any repository/live workspace.
+Outputs share one new directory (0700), files are 0600, existing paths and symlink
+traversal are refused. Inputs are read-only; network/subprocesses are denied after
+startup. Errors contain no private paths, IDs or content. No deploy manifest change.
+
+The public summary contains only counts/availability booleans and fixed field/reason
+names: prepared replies, admitted bindings, ancestry nodes, attempts, unjoined drafts
+and per-field reasons. No text, IDs, hashes, vectors, model labels or scores. A global
+metadata inconsistency adds a separate diagnostic count; reason counts therefore
+need not sum to the reply count. Private output retains input/code fingerprints and
+original serving evidence; the importer itself records no served model/fallback
+because it makes no such call. Neither missing evidence nor unjoined attempts are
+negative outcomes. Synthetic validation is not evidence of historical coverage.
