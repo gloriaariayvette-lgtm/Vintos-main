@@ -103,6 +103,19 @@ def artifact_coverage(section, eligible):
         if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
         timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
         timing += ['', 'Matching CPU parameter snapshots and retained feature-call links are partial observations. Tokenizer, execution code and training lineage remain unverified; missing call links are not inferred.', '']
+    if 'encoding_consistency' in section:
+        from witness_artifact_join import ENCODING_CONSISTENCY_LABELS
+        c = section['encoding_consistency']
+        if not isinstance(c, dict) or set(c) != {'groups', 'references', *ENCODING_CONSISTENCY_LABELS}: invalid()
+        groups, compared = count(c['groups']), count(c['references'])
+        if (groups > compared or compared > refs or bool(groups) != bool(compared)
+                or compared != full + excerpt + conflicts + mixed + unobserved): invalid()
+        timing += [f'- Encoding consistency content groups: {groups}; references: {compared}.']
+        for axis, labels in ENCODING_CONSISTENCY_LABELS.items():
+            values = c[axis]
+            if not isinstance(values, dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != groups: invalid()
+            timing += [f'- Encoding consistency {axis} {label}: {count(values.get(label, 0))} groups.' for label in labels]
+        timing += ['', 'Each axis counts exact content groups independently, before representation-conflict classification. Differences remain visible with incomplete peers; matching requires every reference and at least two distinct call markers. Raw outputs are compared only through validated call receipts, never by converting legacy vectors. Matching is partial evidence, not encoder identity, forecast-target selection or scoring permission.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',

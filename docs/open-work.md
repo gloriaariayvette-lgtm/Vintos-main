@@ -6776,3 +6776,13 @@ hashing cost and private packet sizes. Full encoder identity still needs tokeniz
 loaded execution configuration/code and fitting-lineage evidence; context-copy
 control encoding is not instrumented by this increment. No automatic eligibility
 or scoring upgrades, enabling, merge or deployment.
+
+
+## 9 November — offline encoding consistency ready for review
+
+`codex/judges-encoding-consistency` compares retained validated call observations
+within exact bound content groups; 65 focused isolated checks pass. This is an
+offline diagnostic with fixed aggregate labels, not a scoring/admission upgrade.
+Full host suite and copied-data coverage remain with review. Complete encoder
+identity and fitting lineage remain unresolved; prior sink throughput and producer
+coverage checks remain pending. No enablement, merge or deployment.

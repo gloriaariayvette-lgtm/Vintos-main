@@ -227,6 +227,126 @@ class Tests(unittest.TestCase):
         summary, _ = J.join_artifacts(admitted, sources, self.nodes, [packet, bad, forecast], 1000)
         self.assertEqual(summary['states'], {'conflicting_vector_observations': 3})
 
+    def observed_pair(self):
+        import numpy as np
+        sources, admitted, packet, ex = self.make()
+        snapshot = A.parameter_snapshot(types.SimpleNamespace(state_dict=lambda: {'synthetic': np.array([1.])}))
+        packet['encoding_observation'] = A.encoding_observation(
+            ex['his'][:400], packet['emb'], copy.deepcopy(snapshot), copy.deepcopy(snapshot), digest('synthetic options'), '1'*32)
+        other = copy.deepcopy(packet)
+        other['encoding_observation']['invocation'] = '2'*32
+        return sources, admitted, packet, other, ex
+
+    def test_encoding_consistency_compares_observed_raw_across_representations(self):
+        import jepa_readout as readout
+        from test_witness_review_report import M
+        sources, admitted, audit, _, ex = self.observed_pair()
+        audit['emb'] = [3., 4.]
+        audit['encoding_observation']['raw_vector_sha256'] = J.fingerprint(audit['emb'])
+        call = copy.deepcopy(audit['encoding_observation'])
+        call.update(schema='forecast-encoding-observation-v1', invocation='2'*32)
+        records = {ex['his'][:400]: {'schema':'readout-encoding-link-v1', 'transform':'readout_units_v1',
+                                   'raw_emb': audit['emb'], 'call': call}}
+        art = A.forecast_artifacts([ex], {ex['his'][:400]: readout.units(audit['emb'])},
+            {'_witness_checkpoint':self.manifest}, {'checkpoint_id':self.manifest['checkpoint_id']}, records)
+        forecast = {'schema':'self-forecast-artifacts-v1','artifacts':art}
+        summary, _ = J.join_artifacts(admitted, sources, self.nodes, [audit,forecast,audit], 1000)
+        c = summary['encoding_consistency']
+        self.assertEqual((c['groups'], c['references']), (1,2))
+        self.assertEqual(c['parameters'], {'matching_snapshots':1})
+        self.assertEqual(c['settings'], {'matching_settings':1})
+        self.assertEqual(c['raw_vectors'], {'matching_raw_vectors':1})
+        self.assertEqual(summary['states'], {'mixed_vector_representations':2})
+        self.assertEqual(summary['scoring_effect'], 'none')
+        text = '\n'.join(M.artifact_coverage(summary,1))
+        for private in (ex['his'], call['invocation'], call['raw_vector_sha256'], call['settings_sha256']):
+            self.assertNotIn(private,text)
+
+    def test_equal_output_does_not_hide_changed_parameters_or_settings(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        for key in ('parameter_before','parameter_after'):
+            two['encoding_observation'][key]['sha256'] = 'a'*64
+        two['encoding_observation']['settings_sha256'] = 'b'*64
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        c = summary['encoding_consistency']
+        self.assertEqual(c['parameters'], {'different_snapshots':1})
+        self.assertEqual(c['settings'], {'different_settings':1})
+        self.assertEqual(c['raw_vectors'], {'matching_raw_vectors':1})
+        self.assertEqual(summary['states'], {'bound_full_text':2})
+
+    def test_observed_differences_remain_visible_with_missing_peer(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        two['encoding_observation']['parameter_after']['sha256'] = 'a'*64
+        two['encoding_observation']['parameter_state'] = 'observed_changed'
+        two['emb'] = [0.,1.]
+        two['encoding_observation']['raw_vector_sha256'] = J.fingerprint(two['emb'])
+        legacy = copy.deepcopy(one);legacy.pop('encoding_observation')
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two,legacy],1000)
+        c = summary['encoding_consistency']
+        self.assertEqual(c['parameters'], {'changed_during_call':1})
+        self.assertEqual(c['raw_vectors'], {'different_raw_vectors':1})
+        self.assertEqual(c['settings'], {'incomplete':1})
+        self.assertEqual(summary['states'], {'conflicting_vector_observations':3})
+
+    def test_missing_reference_prevents_consistency_claim(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        legacy = copy.deepcopy(one);legacy.pop('encoding_observation')
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two,legacy],1000)
+        self.assertTrue(all(summary['encoding_consistency'][axis] == {'incomplete':1}
+                            for axis in J.ENCODING_CONSISTENCY_LABELS))
+        two['encoding_observation']['settings_sha256'] = None
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        self.assertEqual(summary['encoding_consistency']['settings'], {'incomplete':1})
+        self.assertEqual(summary['encoding_consistency']['parameters'], {'matching_snapshots':1})
+
+    def test_same_call_copies_are_not_independent_encodes(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        two['encoding_observation']['invocation'] = one['encoding_observation']['invocation']
+        two['synthetic_copy_marker'] = True
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        self.assertTrue(all(summary['encoding_consistency'][axis] == {'single_call':1}
+                            for axis in J.ENCODING_CONSISTENCY_LABELS))
+
+    def test_unbound_sources_excluded_and_checkpoints_partitioned(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        two['checkpoint']['checkpoint_id'] = 'a'*64
+        unbound = copy.deepcopy(one);unbound['source_refs'][0].pop('reply_source')
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two,unbound],1000)
+        c = summary['encoding_consistency']
+        self.assertEqual((c['groups'],c['references']), (2,2))
+        self.assertEqual(c['parameters'], {'single_call':2})
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[unbound],1000)
+        self.assertEqual(summary['encoding_consistency'], {'groups':0,'references':0,'parameters':{},'settings':{},'raw_vectors':{}})
+
+    def test_encoding_consistency_order_invariant_and_legacy_not_upgraded(self):
+        sources, admitted, one, two, _ = self.observed_pair()
+        a, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        b, _ = J.join_artifacts(admitted,sources,self.nodes,[two,one],1000)
+        self.assertEqual(a,b)
+        one.pop('encoding_observation');two.pop('encoding_observation')
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        self.assertEqual(summary['unique_packets'],1)
+        self.assertTrue(all(summary['encoding_consistency'][axis] == {'incomplete':1}
+                            for axis in J.ENCODING_CONSISTENCY_LABELS))
+
+    def test_consistency_report_requires_all_content_bound_references(self):
+        from test_witness_review_report import M
+        sources, admitted, one, two, _ = self.observed_pair()
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        summary['encoding_consistency'] = {'groups':0,'references':0,'parameters':{},'settings':{},'raw_vectors':{}}
+        with self.assertRaises(ValueError):M.artifact_coverage(summary,1)
+
+    def test_consistency_report_rejects_bad_counts_and_private_labels(self):
+        from test_witness_review_report import M
+        sources, admitted, one, two, _ = self.observed_pair()
+        summary, _ = J.join_artifacts(admitted,sources,self.nodes,[one,two],1000)
+        for path,value in ((('groups',),3), (('references',),99), (('parameters','private-label'),1),
+                           (('raw_vectors','matching_raw_vectors'),True), (('settings','matching_settings'),0)):
+            bad = copy.deepcopy(summary);target=bad['encoding_consistency']
+            for key in path[:-1]:target=target[key]
+            target[path[-1]]=value
+            with self.assertRaises(ValueError):M.artifact_coverage(bad,1)
+
     def test_cleanup_contract_matches_actual_reader(self):
         tree=ast.parse((ROOT/'scripts/jepa_self_head.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='his_words')

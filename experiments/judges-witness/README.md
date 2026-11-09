@@ -1756,3 +1756,28 @@ references, not complete encoder identity. Tokenizer/code/configuration identity
 checkpoint fitting lineage, observation clocks and target selection remain separate
 requirements. The context-copy control has no new encoder receipt in this slice.
 No historical vector or legacy cache is attributed to a present runtime by guessing.
+
+
+### Cross-call encoding consistency
+
+The offline artifact summary now compares validated call observations within each
+exact checkpoint, admitted turn, final-reply digest and encoder-input digest group.
+Groups are formed after source/final/input binding and before vector-representation
+conflict classification. Public output contains only group/reference counts and
+fixed categories on three independent axes: parameter snapshots, encode settings
+digests and raw-vector digests. Counts on each axis sum to the same group total.
+
+Observed differences remain visible even with missing peers. Matching requires
+every reference observed and at least two distinct invocation markers; duplicated
+packets/call markers cannot manufacture repeatability. Single-call and incomplete
+categories remain explicit. Validated forecast raw-to-normalized links permit raw
+output comparisons with audit receipts; legacy normalized vectors are never
+converted or relabelled. Parameter changes during a call take precedence over
+between-call differences. These categories describe supplied observations, not
+causes: different settings, batch context or execution state may affect outputs.
+
+This adds no runtime work and changes no admission, vector-conflict classification,
+forecast scoring or feeds. Matching snapshots are still partial evidence, not full
+encoder identity, tokenizer/execution-code identity, checkpoint training lineage,
+observation-time authentication or forecast-target association. Private copied-data
+measurements and the full isolated host suite remain reviewer work.

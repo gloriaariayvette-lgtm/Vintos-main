@@ -104,6 +104,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             raise ValueError('invalid artifact packet')
         unique[fingerprint(packet)] = packet
     details, vectors = [], defaultdict(lambda: defaultdict(set))
+    encodings = defaultdict(list)
     for packet_sha, packet in sorted(unique.items()):
         for index, (ref, value, checkpoint, vector_sha) in enumerate(claims(packet)):
             item = {'packet_sha256': packet_sha, 'reference_index': index,
@@ -164,6 +165,10 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             item['state'] = 'bound_full_text' if encoded == final else 'bound_excerpt'
             group = (checkpoint, tid, digest(final), value['encoder_input_sha256'])
             vectors[group][value.get('vector_representation')].add(vector_sha)
+            link = value.get('encoding_link')
+            observation = (value.get('encoding_observation') if packet['schema'] == 'self-audit-embedding-v1'
+                           else link.get('call') if isinstance(link, dict) else None)
+            encodings[group].append(observation)
             item['_group'] = group
     for item in details:
         group = item.pop('_group', None)
@@ -179,6 +184,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     matched = [item for item in details if item['state'] in ('bound_full_text', 'bound_excerpt')]
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
+            'encoding_consistency': encoding_consistency(encodings),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'encoder_parameter_observation_states': dict(sorted(Counter(
                 validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
@@ -232,3 +238,50 @@ def forecast_parameter_state(packet):
     states={validate_forecast_encoding_link(r.get('encoding_link'),r['encoder_input_sha256'],r['emb'])
             for r in packet['artifacts']['recent_own_embeddings']}
     return next(iter(states)) if len(states)==1 else 'mixed_forecast_observations'
+
+
+ENCODING_CONSISTENCY_LABELS = {
+    'parameters': ('changed_during_call', 'different_snapshots', 'incomplete', 'single_call', 'matching_snapshots'),
+    'settings': ('different_settings', 'incomplete', 'single_call', 'matching_settings'),
+    'raw_vectors': ('different_raw_vectors', 'incomplete', 'single_call', 'matching_raw_vectors'),
+}
+
+
+def encoding_consistency(groups):
+    """Compare already validated calls for exact content groups, without scoring.
+
+    Each axis counts groups once. Observed differences survive incomplete peers;
+    equality needs every reference observed and at least two distinct call markers.
+    A matching snapshot is not a complete encoder identity or proof of immutability.
+    """
+    counts = {axis: Counter() for axis in ENCODING_CONSISTENCY_LABELS}
+    references = 0
+    for observations in groups.values():
+        references += len(observations)
+        calls = [o for o in observations if o is not None]
+        markers = {o['invocation'] for o in calls}
+        absent = len(calls) != len(observations) or not calls
+        snapshots = {fingerprint(o[k]) for o in calls for k in ('parameter_before', 'parameter_after')
+                     if o[k]['state'] == 'observed'}
+        if any(o['parameter_state'] == 'observed_changed' for o in calls):
+            parameter = 'changed_during_call'
+        elif len(snapshots) > 1:
+            parameter = 'different_snapshots'
+        elif absent or any(o['parameter_state'] != 'observed_equal' for o in calls):
+            parameter = 'incomplete'
+        else:
+            parameter = 'single_call' if len(markers) < 2 else 'matching_snapshots'
+        counts['parameters'][parameter] += 1
+        for axis, field, different, matching in (
+            ('settings', 'settings_sha256', 'different_settings', 'matching_settings'),
+            ('raw_vectors', 'raw_vector_sha256', 'different_raw_vectors', 'matching_raw_vectors')):
+            values = {o[field] for o in calls if o[field] is not None}
+            if len(values) > 1:
+                state = different
+            elif absent or any(o[field] is None for o in calls):
+                state = 'incomplete'
+            else:
+                state = 'single_call' if len(markers) < 2 else matching
+            counts[axis][state] += 1
+    return {'groups': len(groups), 'references': references,
+            **{axis: dict(sorted(values.items())) for axis, values in counts.items()}}

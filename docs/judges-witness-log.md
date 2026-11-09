@@ -1787,3 +1787,23 @@ suite emitted RuntimeWarnings in untouched fitting/ranking matrix routines while
 norm/finiteness assertions passed; no mathematical change or warning suppression
 was made. Three reports regenerated. No live data reads/writes, provider calls,
 sends, enabling, merge or deployment; full host suite remains with review.
+
+
+## 9 November — offline cross-call encoding consistency
+
+`codex/judges-encoding-consistency` adds independent aggregate comparisons of
+validated parameter, settings and raw-vector observations for exact bound content
+groups. Differences survive incomplete peers; equality requires all references and
+at least two distinct call markers. Legacy records remain incomplete. Raw forecast
+links permit comparisons across representations without changing the existing
+mixed/conflicting-vector classification, eligibility or scoring. No runtime path
+changes or additional model calls.
+
+65 isolated checks pass: artifact joins 30, review report 16, parameter receipts 19.
+New cases cover same-output/different-parameter evidence, changed-during-call with
+missing peers, raw versus normalized representations, duplicate invocation markers,
+checkpoint partitioning, unbound-source exclusion, order invariance, legacy gaps,
+public privacy and count denominators. The first run exposed aliased before/after
+snapshots in the synthetic fixture; independent fixture copies fixed the test, with
+validation unchanged. Generated reports refreshed. Full Aegis suite and real copied
+evidence remain with review; no live writes, sends, enabling, merge or deployment.
