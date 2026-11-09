@@ -6982,3 +6982,12 @@ No runtime producer change, historical date inference, eligibility change or dep
 consistency counts to artifact replay/review. 187 isolated checks pass. Legacy or
 missing observations stay unknown; full encoder identity and host integration
 remain open. No new capture, runtime producer change, eligibility change or deploy.
+
+
+## 9 November — loaded Python encode code is observed
+
+`codex/judges-encode-entrypoint`, on b683b7ce, adds optional bounded loaded-code
+fingerprints and aggregate content-bound comparisons. Unknown/native/legacy data
+stays unknown. Full helper/native/tokenizer identity, real-host cost, complete
+ancestry, delivery evidence and integration remain open. Capture off, scoring and
+eligibility remain unchanged; no enabling, merge or deployment.

@@ -480,3 +480,43 @@ legacy/unavailable data, duplicate and invocation semantics, cross-representatio
 comparison, checkpoint partitioning, public-field validation and actual scratch
 CLI parity for census/innovation. Generated reports refreshed without changes.
 No private input, live writes, model calls, enabling, merge or deployment.
+
+
+## 9 November — observe and compare the loaded encode entrypoint
+
+`codex/judges-encode-entrypoint` descends from b683b7ce. Optional artifact capture
+now fingerprints the already resolved Python encode function before and after its
+single existing invocation. Bounded code-object traversal includes bytecode,
+constants and nested code, excluding file/line locations. Only hashes and counts
+are retained. No source files, model loads or additional encoder calls are used.
+The encode attribute is resolved once; its original result or exception survives.
+Observer failures remain passive, and native/callable-object implementations stay
+unavailable. Legacy receipts remain valid without invented implementation identity.
+
+Audit retention and invocation-conflict checks include the optional observation.
+Offline artifact replay and review add fixed entrypoint-consistency counts within
+exact content/checkpoint groups. Matching requires all references observed and two
+distinct calls; incomplete evidence never conceals an observed difference. These
+are partial Python-code observations: globals, defaults, closure contents, helper
+functions, native code, tokenizer contents and full encoder identity remain open.
+Scoring, eligibility, forecast choice, fitting and all existing feeds are unchanged.
+
+Capture off is unchanged. Capture on adds bounded background inspection whose
+real-encoder cost remains unmeasured. With this observer, encode_seconds measures
+the resolved callable execution; attribute resolution and runtime/entrypoint
+inspection are outside that timer. It is not a total observation/job cost.
+
+Validation covers synthetic Python code changes with unchanged vectors, nested
+code, relocation invariance, unsupported/oversized constants, single property
+resolution, mutation during the call, original exceptions, observer failures,
+legacy receipts, audit retention, cost conflicts and aggregate report validation.
+Two fixture issues were corrected: a nested fixture changed the capture root, and
+receipt selection depended on directory order. Production failures were not found.
+Full encoder ancestry, real-host costs, phone delivery and host integration remain
+open. No private records, real model calls, live writes, enabling, merge or deploy.
+
+211 isolated checks pass: entrypoint 14, runtime producer 16, parameters 19,
+encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
+self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
+store guard 32. Generated ownership/coverage/store reports refreshed without
+changes; diff check clean. All inputs synthetic, sends and encoders stubbed.

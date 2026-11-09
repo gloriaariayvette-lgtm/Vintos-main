@@ -187,6 +187,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'source_references': len(details), 'states': dict(sorted(states.items())),
             'encoding_consistency': encoding_consistency(encodings),
             'runtime_consistency': runtime_consistency(encodings),
+            'entrypoint_consistency': entrypoint_consistency(encodings),
             'encoder_call_cost': encoder_call_cost(list(unique.values())),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
@@ -334,6 +335,20 @@ def validate_runtime_consistency(value, references, groups=None):
         raise ValueError('inconsistent runtime consistency totals')
 
 
+def entrypoint_consistency(groups):
+    projected = {key:[None if o is None else dict(o,runtime=o.get('entrypoint')) for o in rows]
+                 for key,rows in groups.items()}
+    value = runtime_consistency(projected)
+    value['scope'] = 'content_bound_python_entrypoint_observations_only'
+    return value
+
+
+def validate_entrypoint_consistency(value, references, groups=None):
+    if not isinstance(value,dict) or value.get('scope')!='content_bound_python_entrypoint_observations_only':
+        raise ValueError('invalid entrypoint consistency contract')
+    validate_runtime_consistency(dict(value,scope='content_bound_partial_runtime_observations_only'),references,groups)
+
+
 def encoder_call_cost(packets):
     """Aggregate validated retained calls, including unbound inputs; no identities out."""
     from witness_self_artifacts import TIMING_STAGES
@@ -352,7 +367,7 @@ def encoder_call_cost(packets):
             if call is None:
                 unidentified += 1
                 continue
-            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256','runtime')}
+            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256','runtime','entrypoint')}
             calls[call['invocation']][fingerprint(signature)] = signature
     conflicts = sum(len(values)>1 for values in calls.values())
     valid = [next(iter(values.values())) for values in calls.values() if len(values)==1]

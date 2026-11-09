@@ -152,6 +152,15 @@ def artifact_coverage(section, eligible):
         timing += ['', 'Runtime snapshots cover selected stored fields and loaded package versions only. Missing observations remain incomplete, while observed differences survive missing peers. Matching requires every reference observed and two distinct call markers; it does not establish tokenizer content, code identity, deeper runtime state, fitting lineage or source authenticity. This comparison does not change scoring or eligibility.', '']
     else:
         timing += ['Stored runtime comparison is unavailable in this legacy report.', '']
+    if 'entrypoint_consistency' in section:
+        from witness_artifact_join import validate_entrypoint_consistency, RUNTIME_CONSISTENCY_STATES
+        entry=section['entrypoint_consistency']
+        validate_entrypoint_consistency(entry,full+excerpt+conflicts+mixed+unobserved,
+                                       section.get('encoding_consistency',{}).get('groups'))
+        timing += [f'- Python encode entrypoint {state}: {entry["states"][state]} groups.' for state in RUNTIME_CONSISTENCY_STATES]
+        timing += ['', 'Entrypoint observations cover loaded Python code objects only. Native/callable-object implementations and legacy receipts stay incomplete. Globals, defaults, closures, helper/native code and full implementation identity remain unverified. No scoring or eligibility change.', '']
+    else:
+        timing += ['Python encode entrypoint comparison is unavailable in this legacy report.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',

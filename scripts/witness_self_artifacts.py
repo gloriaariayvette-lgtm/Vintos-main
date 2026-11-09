@@ -296,7 +296,86 @@ def _elapsed(start, stop):
     return elapsed if math.isfinite(elapsed) and 0 <= elapsed <= 86400 else None
 
 
-def observed_encode(enc, texts, args, kwargs, sample, runtime=None):
+ENTRYPOINT_SCOPE = 'python_entry_code_not_globals_defaults_closures_helpers_or_native_code'
+
+
+def entrypoint_snapshot(call):
+    """Fingerprint already loaded Python code only, excluding file/line locations."""
+    import types
+    missing = dict(schema='encode-python-code-v1', state='unavailable', sha256=None,
+                   code_objects=0, observed_bytes=0)
+    try:
+        if type(call) is types.MethodType: call = call.__func__
+        if type(call) is not types.FunctionType: return missing
+        budget = [8192, 1024*1024, 128]
+
+        def charged(raw):
+            budget[1] -= len(raw)
+            if budget[1] < 0: raise ValueError('entrypoint byte bound')
+            return raw.hex()
+
+        def visit(value, depth=0):
+            budget[0] -= 1
+            if budget[0]<0 or depth>16: raise ValueError('entrypoint traversal bound')
+            if value is None: return ['none']
+            if value is Ellipsis: return ['ellipsis']
+            if type(value) is bool: return ['bool',value]
+            if type(value) is int:
+                if value.bit_length()>4096: raise ValueError('entrypoint integer bound')
+                return ['int',charged(str(value).encode())]
+            if type(value) is float: return ['float',charged(value.hex().encode())]
+            if type(value) is complex: return ['complex',visit(value.real,depth+1),visit(value.imag,depth+1)]
+            if type(value) is str:
+                if len(value)>budget[1]: raise ValueError('entrypoint string bound')
+                return ['str',charged(value.encode('utf-8','surrogatepass'))]
+            if type(value) is bytes: return ['bytes',charged(value)]
+            if type(value) in (tuple,frozenset):
+                if len(value)>8192: raise ValueError('entrypoint sequence bound')
+                items=[visit(v,depth+1) for v in value]
+                if type(value) is frozenset: items.sort(key=lambda v:json.dumps(v,separators=(',',':')))
+                return ['tuple' if type(value) is tuple else 'frozenset',items]
+            if type(value) is types.CodeType:
+                budget[2]-=1
+                if budget[2]<0: raise ValueError('entrypoint code bound')
+                fields=('co_argcount','co_posonlyargcount','co_kwonlyargcount','co_nlocals','co_stacksize',
+                        'co_flags','co_code','co_consts','co_names','co_varnames','co_freevars','co_cellvars',
+                        'co_exceptiontable')
+                return ['code',[(k,visit(getattr(value,k,None),depth+1)) for k in fields]]
+            raise ValueError('unsupported entrypoint constant')
+
+        body = visit(call.__code__)
+        raw = json.dumps([sys.implementation.name,list(sys.version_info[:2]),body],
+                         ensure_ascii=True,separators=(',',':'),allow_nan=False).encode()
+        if len(raw)>4*1024*1024: return missing
+        return dict(missing,state='observed',sha256=hashlib.sha256(raw).hexdigest(),
+                    code_objects=128-budget[2],observed_bytes=1024*1024-budget[1])
+    except Exception:
+        return missing
+
+
+def validate_entrypoint_observation(value):
+    if (not isinstance(value,dict) or set(value)!={'schema','before','after','state','scope'}
+            or value['schema']!='encode-entrypoint-observation-v1' or value['scope']!=ENTRYPOINT_SCOPE):
+        raise ValueError('invalid encode entrypoint observation')
+    for key in ('before','after'):
+        snap=value[key]
+        if (not isinstance(snap,dict) or set(snap)!={'schema','state','sha256','code_objects','observed_bytes'}
+                or snap['schema']!='encode-python-code-v1'
+                or type(snap['code_objects']) is not int or type(snap['observed_bytes']) is not int):
+            raise ValueError('invalid encode entrypoint snapshot')
+        if snap['state']=='observed':
+            h=snap['sha256']
+            if (not isinstance(h,str) or len(h)!=64 or any(c not in '0123456789abcdef' for c in h)
+                    or not 1<=snap['code_objects']<=128 or not 1<=snap['observed_bytes']<=1024*1024):
+                raise ValueError('invalid encode entrypoint fingerprint')
+        elif (snap['state']!='unavailable' or snap['sha256'] is not None
+              or snap['code_objects']!=0 or snap['observed_bytes']!=0):
+            raise ValueError('invalid unavailable entrypoint snapshot')
+    if value['state']!=parameter_state(value['before'],value['after']):
+        raise ValueError('inconsistent encode entrypoint comparison')
+
+
+def observed_encode(enc, texts, args, kwargs, sample, runtime=None, entrypoint=None):
     """Time existing work; observer failures never retry or replace the encode."""
     missing = {'schema':'encoder-parameter-snapshot-v1','state':'unavailable',
                'sha256':None,'tensors':0,'bytes':0}
@@ -311,9 +390,23 @@ def observed_encode(enc, texts, args, kwargs, sample, runtime=None):
     if runtime is not None:
         try: runtime['before'] = runtime_snapshot(enc)
         except Exception: pass
-    start = _clock()
-    result = enc.encode(texts,*args,**kwargs)
+    if entrypoint is not None:
+        call = enc.encode  # Resolve the actual callable once, at the existing call boundary.
+        try: entrypoint['before'] = entrypoint_snapshot(call)
+        except Exception: pass
+        start = _clock()
+        result = call(texts,*args,**kwargs)
+    else:
+        start = _clock()
+        result = enc.encode(texts,*args,**kwargs)
     timing['encode_seconds'] = _elapsed(start,_clock())
+    if entrypoint is not None:
+        try:
+            entrypoint['after'] = entrypoint_snapshot(call)
+            entrypoint.update(schema='encode-entrypoint-observation-v1',scope=ENTRYPOINT_SCOPE,
+                              state=parameter_state(entrypoint['before'],entrypoint['after']))
+            validate_entrypoint_observation(entrypoint)
+        except Exception: entrypoint.clear()
     if runtime is not None:
         try:
             runtime['after'] = runtime_snapshot(enc)
@@ -340,7 +433,7 @@ def validate_call_timing(value):
             raise ValueError('invalid encoding timing')
 
 
-def encoding_observation(text, values, before, after, settings, invocation, timing=None, runtime=None):
+def encoding_observation(text, values, before, after, settings, invocation, timing=None, runtime=None, entrypoint=None):
     from witness_receipts import digest
     from witness_capture import _fingerprint
     observation = {'schema': 'audit-encoding-observation-v1', 'invocation': invocation,
@@ -355,6 +448,9 @@ def encoding_observation(text, values, before, after, settings, invocation, timi
     if runtime:
         validate_runtime_observation(runtime)
         observation['runtime'] = json.loads(json.dumps(runtime))
+    if entrypoint:
+        validate_entrypoint_observation(entrypoint)
+        observation['entrypoint'] = json.loads(json.dumps(entrypoint))
     return observation
 
 
@@ -366,7 +462,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
     if observation is None: return 'missing'
     expected = {'schema','invocation','input_sha256','raw_vector_sha256','settings_sha256',
                 'parameter_before','parameter_after','parameter_state','encoder_identity','meaning'}
-    if (not isinstance(observation,dict) or set(observation)-{'timing','runtime'} != expected
+    if (not isinstance(observation,dict) or set(observation)-{'timing','runtime','entrypoint'} != expected
             or observation['schema'] != expected_schema
             or observation['encoder_identity'] != 'unverified'
             or observation['meaning'] != 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'
@@ -378,6 +474,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
         raise ValueError('invalid encoding observation')
     if 'timing' in observation: validate_call_timing(observation['timing'])
     if 'runtime' in observation: validate_runtime_observation(observation['runtime'])
+    if 'entrypoint' in observation: validate_entrypoint_observation(observation['entrypoint'])
     for key in ('parameter_before','parameter_after'):
         snap = observation[key]
         if (not isinstance(snap,dict) or set(snap) != {'schema','state','sha256','tensors','bytes'}
@@ -407,8 +504,8 @@ class FeatureEncoder:
             sampled = bool(self._parameter_pairs)
             if sampled: self._parameter_pairs -= 1
         except Exception: pass
-        runtime = {}
-        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sampled,runtime)
+        runtime, entrypoint = {}, {}
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sampled,runtime,entrypoint)
         try:
             from witness_receipts import digest
             if (not isinstance(texts,list) or len(texts)>256 or len(result)!=len(texts)
@@ -427,7 +524,7 @@ class FeatureEncoder:
                     COUNTERS['feature_encoding_observation_limit'] += 1
                     break
                 self._retained_values += len(raw)
-                observation=encoding_observation(text,raw,before,after,settings,invocation,timing,runtime)
+                observation=encoding_observation(text,raw,before,after,settings,invocation,timing,runtime,entrypoint)
                 observation['schema']='forecast-encoding-observation-v1'
                 self.records[text]={'schema':'readout-encoding-link-v1','transform':'readout_units_v1',
                                     'raw_emb':raw,'call':observation}
@@ -493,8 +590,8 @@ class AuditEncoder:
                                      and any(isinstance(t,str) and t in self.refs for t in texts))
             if sample_parameters: self._parameter_pairs -= 1
         except Exception: pass
-        runtime = {}
-        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sample_parameters,runtime)
+        runtime, entrypoint = {}, {}
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sample_parameters,runtime,entrypoint)
         try:
             from witness_capture import _publish_private, _private_root, _fingerprint
             from witness_receipts import digest
@@ -509,8 +606,8 @@ class AuditEncoder:
                 if text not in self.refs:
                     continue
                 values = vector(emb)
-                encoded = encoding_observation(text, values, before, after, settings, invocation,timing,runtime)
-                observation = (digest(text), _fingerprint(values), _fingerprint([before, after, settings, runtime]))
+                encoded = encoding_observation(text, values, before, after, settings, invocation,timing,runtime,entrypoint)
+                observation = (digest(text), _fingerprint(values), _fingerprint([before, after, settings, runtime, entrypoint]))
                 if observation in self.seen:
                     continue
                 if len(self.seen) >= MAX_AUDIT_OBSERVATIONS:

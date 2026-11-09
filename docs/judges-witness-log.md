@@ -2141,3 +2141,19 @@ not reconstructed. Census and innovation remain exactly unchanged in CLI tests.
 187 isolated checks pass: comparison 12, joins 30, report 22, costs 14, census and
 innovation 109. Generated reports refreshed without changes. No private input, new
 capture, runtime producer change, model call, live write, enabling, merge or deploy.
+
+
+## 9 November — bounded encode entrypoint observation
+
+Loaded Python code now has optional before/after fingerprints, audit retention,
+invocation conflict handling and fixed offline consistency counts. The original
+encode method is resolved once and called once. Missing/native implementations
+remain unavailable; no source reads or extra model calls. Full implementation and
+source identity are not claimed. Two fixture issues (capture-root nesting and
+unordered receipt selection) corrected. Real-host cost and integration remain open.
+
+211 isolated checks pass: entrypoint 14, runtime producer 16, parameters 19,
+encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
+self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
+store guard 32. Generated ownership/coverage/store reports refreshed without
+changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
