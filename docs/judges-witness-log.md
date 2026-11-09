@@ -3017,3 +3017,16 @@ No live changes, provider/model calls, real artifacts, GPU, full-suite duplicati
 merge or deployment. Both commits are for Claude's independent review and full
 isolated suite/test merge; real runtime acceptance remains his private run.
 Heartbeat ACTIVE; no new unresolved blocker or completion notification.
+
+
+## 2026-11-09 — review #58: spool configuration failures
+
+Recovery now includes configuration and clock acquisition inside its existing
+exception boundary. A configuration exception increments spool_replay_unconfirmed,
+leaves durable ingress intact, and lets the writer continue volatile work and retry
+recovery on the next scheduled pass. The synthetic writer regression exercises a
+configuration exception followed by successful volatile publication and durable
+replay. All 28 isolated durable-spool checks pass. Initial fixture failure was an
+incomplete stub signature; it now forwards the production expected-root argument.
+No retention, authorization, destination or delivery rule changed. Review only;
+no live changes or model calls. Remaining #58 artifact/Lab fixes are in progress.

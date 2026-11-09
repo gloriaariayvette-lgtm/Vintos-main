@@ -407,14 +407,14 @@ def _stage_capture(c,payload,prefix="capture-"):
 def recover_spool(limit=8):
     """Bounded replay; disabled/changed config never publishes old ingress."""
     if type(limit) is not int or not 1<=limit<=SPOOL_FILES: raise ValueError('invalid replay limit')
-    c = configuration()
-    if c is None or not c.get('durable_queue'): return 0
-    clock = time.time()
-    if not math.isfinite(clock) or clock<0:
-        COUNTERS['spool_clock_unavailable'] += 1
-        return 0
     confirmed = 0
     try:
+        c = configuration()
+        if c is None or not c.get('durable_queue'): return 0
+        clock = time.time()
+        if not math.isfinite(clock) or clock<0:
+            COUNTERS['spool_clock_unavailable'] += 1
+            return 0
         with _spool_lock(c) as (_,directory):
             entries,_ = _spool_entries(directory)
         attempted = 0
