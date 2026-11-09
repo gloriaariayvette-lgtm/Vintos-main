@@ -45,6 +45,54 @@ class Tests(unittest.TestCase):
         self.assertNotIn('fixture-',text)
         self.assertNotIn(self.row['content'],text)
 
+    def historical_report(self):
+        import witness_attribution as A
+        historical, _ = A.attribution([self.row], [], {'surface_callers':{},'window_seconds':5}, 1000)
+        report = copy.deepcopy(self.report)
+        report['historical_attribution'] = historical
+        return report
+
+    def test_historical_attribution_valid_producer_is_descriptive_and_private(self):
+        report = self.historical_report()
+        original = copy.deepcopy(report)
+        text = M.render(report)
+        self.assertEqual(report, original)
+        self.assertIn('Historical model attribution',text)
+        self.assertIn('not unique training turns',text)
+        self.assertNotIn(self.row['content'],text)
+        self.assertNotIn(self.row['turn_id'],text)
+
+    def test_historical_cutoff_exclusions_and_receipt_clock_are_not_lost(self):
+        import witness_attribution as A
+        report = self.historical_report()
+        self.assertEqual(report['historical_attribution']['copies_without_cutoff_clock'],0)
+        self.assertIn('Without a usable cutoff clock: 0',M.render(report))
+        historical, _ = A.attribution([self.row], [], {'surface_callers':{},'window_seconds':5}, 100)
+        report['historical_attribution'] = historical
+        self.assertEqual(historical['excluded'],{'outside_cutoff':1})
+        self.assertEqual(historical['join_states'],{})
+        text = M.render(report)
+        self.assertIn('Outside cutoff: 1',text)
+        self.assertIn('Without a usable cutoff clock: 0',text)
+
+    def test_historical_attribution_requires_no_admission_or_training_effect(self):
+        for key,value in (('scope','unique_training_turns'),('admission_effect','admit'),('training_effect','train')):
+            report = self.historical_report()
+            report['historical_attribution'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):M.render(report)
+
+    def test_historical_attribution_counter_conservation_and_bounds(self):
+        for field,value in (
+            ('label_ledger_agreement',{}), ('label_ledger_agreement',{'agree':2}),
+            ('label_ledger_agreement',{'private-label':1}), ('label_ledger_agreement',{'agree':True}),
+            ('join_states',{}), ('join_states',{'matched':2}),
+            ('excluded',{'outside_cutoff':0,'other_private_exclusion':1}),
+            ('copies_without_cutoff_clock',2), ('copies_without_cutoff_clock',True),
+            ('tiers',{'observed':1,'ledger_attributed':0,'recorded_label':0,'unknown':0,'private-tier':1})):
+            report = self.historical_report()
+            report['historical_attribution'][field] = value
+            with self.subTest(field=field,value_type=type(value).__name__), self.assertRaises(ValueError):M.render(report)
+
     def test_zero_eligible_is_insufficient_not_zero_accuracy(self):
         self.report['census']['eligible_replies']=0
         self.report['innovation']['groups']=[]
@@ -101,6 +149,29 @@ class Tests(unittest.TestCase):
     def test_missing_coverage_is_not_filled_with_zero(self):
         self.report['census']['evidence_coverage']['fields'].pop('request_binding')
         self.assertIn('request_binding: coverage not supplied',M.render(self.report))
+
+    def test_window30_report_validates_separate_partition_and_comparisons(self):
+        import witness_attribution as A
+        row = dict(role='assistant', content='Synthetic historical reply', turn_id='synthetic-turn',
+                   surface='synthetic-chat', timestamp=100, served_by='synthetic-model')
+        call = dict(at=80, organ='router:synthetic-chat', model='synthetic-model',
+                    provider='synthetic-provider', **{'class':'foreground'})
+        config = dict(window_seconds=10, window30_enabled=True,
+                      surface_callers={'synthetic-chat':['router:synthetic-chat']})
+        historical, _ = A.attribution([row], [call], config, 1000)
+        self.report['historical_attribution'] = historical
+        text = M.render(self.report)
+        self.assertIn('ledger_attributed_window30: 1', text)
+        self.assertIn('Exact agreement among added copies with one label: 1/1', text)
+        self.assertNotIn('synthetic-model', text)
+        for changes in ({'added_copies':2}, {'window_seconds':True}, {'training_effect':'enabled'},
+                        {'added_label_ledger_agreement':{'agree':2}}, {'join_states':{'matched_window30':0}}):
+            changed = copy.deepcopy(self.report)
+            changed['historical_attribution']['window30'].update(changes)
+            with self.assertRaises(ValueError): M.render(changed)
+        changed = copy.deepcopy(self.report)
+        changed['historical_attribution']['window30']['tiers']['observed'] = 1
+        with self.assertRaises(ValueError): M.render(changed)
 
     def paired(self):
         return {'checkpoint_group':1,'n':1,'paired_head_mean_error':.2,'head_error':.2,

@@ -81,6 +81,8 @@ def artifact_coverage(section, eligible):
     total = sum(count(v) for v in states.values())
     full, excerpt, conflicts = (count(states.get(k,0)) for k in
         ('bound_full_text','bound_excerpt','conflicting_vector_observations'))
+    mixed = count(states.get('mixed_vector_representations', 0))
+    unobserved = count(states.get('vector_representation_unobserved', 0))
     if (unique > supplied or refs < unique or total != refs or bound > eligible
             or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
         invalid()
@@ -95,12 +97,32 @@ def artifact_coverage(section, eligible):
         for label in labels:
             timing.append(f'- Checkpoint availability {label}: {count(values.get(label,0))} packets.')
         timing += ['', 'These clock checks do not supply a training date or authenticate a forecast. Metadata-only reads never attest loaded parameters.', '']
+    if 'encoder_parameter_observation_states' in section:
+        values = section['encoder_parameter_observation_states']
+        labels = ('observed_equal','observed_changed','unavailable','missing','not_instrumented_forecast','mixed_forecast_observations')
+        if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
+        timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
+        timing += ['', 'Matching CPU parameter snapshots and retained feature-call links are partial observations. Tokenizer, execution code and training lineage remain unverified; missing call links are not inferred.', '']
+    if 'encoding_consistency' in section:
+        from witness_artifact_join import ENCODING_CONSISTENCY_LABELS
+        c = section['encoding_consistency']
+        if not isinstance(c, dict) or set(c) != {'groups', 'references', *ENCODING_CONSISTENCY_LABELS}: invalid()
+        groups, compared = count(c['groups']), count(c['references'])
+        if (groups > compared or compared > refs or bool(groups) != bool(compared)
+                or compared != full + excerpt + conflicts + mixed + unobserved): invalid()
+        timing += [f'- Encoding consistency content groups: {groups}; references: {compared}.']
+        for axis, labels in ENCODING_CONSISTENCY_LABELS.items():
+            values = c[axis]
+            if not isinstance(values, dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != groups: invalid()
+            timing += [f'- Encoding consistency {axis} {label}: {count(values.get(label, 0))} groups.' for label in labels]
+        timing += ['', 'Each axis counts exact content groups independently, before representation-conflict classification. Differences remain visible with incomplete peers; matching requires every reference and at least two distinct call markers. Raw outputs are compared only through validated call receipts, never by converting legacy vectors. Matching is partial evidence, not encoder identity, forecast-target selection or scoring permission.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
-            f'- Conflicting-vector references: {conflicts}; other unresolved references: {refs-full-excerpt-conflicts}.',
+            f'- Conflicting-vector references: {conflicts}; mixed vector representations: {mixed}; unresolved representation differences: {unobserved}.',
+            f'- Other unresolved references: {refs-full-excerpt-conflicts-mixed-unobserved}.',
             f'- Unique eligible replies with a content binding: {bound}.', '',
-            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', ''] + timing
+            'These are content-consistency counts, not scorable forecasts. Encoder identity, artifact observation time and forecast-target selection are unverified. Encoder-return and readout-normalized vectors are separate representations; no conversion is inferred. Excerpt vectors do not become full-reply vectors, and no admission or score changes.', ''] + timing
 
 
 def render(report):
@@ -141,19 +163,62 @@ def render(report):
         lines += ['', 'Coverage fields count copies independently, including excluded acts. A positive field does not admit a reply.', '']
         if 'historical_attribution' in report:
             historical = report['historical_attribution']
+            if (not isinstance(historical, dict)
+                    or historical['scope'] != 'per_assistant_source_copy_not_unique_training_turns'
+                    or historical['admission_effect'] != 'none' or historical['training_effect'] != 'none'):
+                invalid()
             tiers = historical['tiers']
-            counts = {tier:count(tiers[tier]) for tier in ('observed','ledger_attributed','recorded_label','unknown')}
-            excluded = count(historical['excluded'].get('outside_cutoff',0))
-            if sum(counts.values()) + excluded != copies or count(historical['assistant_copies']) != copies:
+            tier_names = ('observed','ledger_attributed','recorded_label','unknown')
+            if not isinstance(tiers, dict) or set(tiers) != set(tier_names): invalid()
+            counts = {tier:count(tiers[tier]) for tier in tier_names}
+            exclusions = historical['excluded']
+            if not isinstance(exclusions, dict) or set(exclusions) - {'outside_cutoff'}: invalid()
+            excluded = count(exclusions.get('outside_cutoff',0))
+            agreement = historical['label_ledger_agreement']
+            agreement_names = ('agree','disagree','label_conflict','label_missing','ledger_unavailable')
+            joins = historical['join_states']
+            missing_clock = count(historical['copies_without_cutoff_clock'])
+            if (sum(counts.values()) + excluded != copies or count(historical['assistant_copies']) != copies
+                    or missing_clock > copies
+                    or not isinstance(agreement, dict) or set(agreement) - set(agreement_names)
+                    or sum(count(n) for n in agreement.values()) != sum(counts.values())
+                    or not isinstance(joins, dict) or sum(count(n) for n in joins.values()) != sum(counts.values())):
                 invalid()
             lines += ['## Historical model attribution', '']
             for tier, n in counts.items(): lines.append(f'- {tier}: {n} assistant source copies.')
-            agreement = historical['label_ledger_agreement']
-            for state in ('agree','disagree','label_conflict','label_missing','ledger_unavailable'):
+            for state in agreement_names:
                 lines.append(f'- Label/ledger {state}: {count(agreement.get(state,0))}.')
             lines += [f'- Outside cutoff: {excluded}.',
-                      f"- Without a usable cutoff clock: {count(historical['copies_without_cutoff_clock'])}.", '',
+                      f"- Without a usable cutoff clock: {missing_clock}.", '',
                       'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
+            if 'window30' in historical:
+                extension = historical['window30']
+                names = ('observed','ledger_attributed','recorded_label','unknown','ledger_attributed_window30')
+                alternative = {name:count(extension['tiers'][name]) for name in names}
+                added = count(extension['added_copies'])
+                comparisons = {state:count(extension['added_label_ledger_agreement'].get(state,0))
+                               for state in ('agree','disagree','label_conflict','label_missing')}
+                if (type(extension['window_seconds']) is not int or extension['window_seconds'] != 30
+                        or extension['selection'] != 'sole_call_all_replies_compete'
+                        or extension['admission_effect'] != 'none' or extension['training_effect'] != 'none'
+                        or sum(alternative.values()) != sum(counts.values())
+                        or any(alternative[k] != counts[k] for k in ('observed','ledger_attributed'))
+                        or any(alternative[k] > counts[k] for k in ('recorded_label','unknown'))
+                        or alternative['ledger_attributed_window30'] != added
+                        or sum(comparisons.values()) != added
+                        or sum(count(v) for v in extension['join_states'].values()) != sum(counts.values())
+                        or count(extension['join_states'].get('matched_window30',0)) != added):
+                    invalid()
+                lines += ['## Optional 30-second historical view', '',
+                          'Alternative partition of the same source copies; do not add these counts to the original tiers.', '']
+                for name in names:
+                    lines.append(f'- {name}: {alternative[name]} assistant source copies.')
+                for state, n in comparisons.items():
+                    lines.append(f'- Added-copy exact label agreement {state}: {n}.')
+                denominator = comparisons['agree'] + comparisons['disagree']
+                lines += [f'- Exact agreement among added copies with one label: {comparisons["agree"]}/{denominator}.'
+                          if denominator else '- Exact agreement is undefined: no added copies have one comparable label.', '',
+                          'This uses a sole call within 30 seconds, not the nearest of several. All nearby replies compete. Exact string disagreement can reflect route aliases; no model family is inferred. This is sensitivity evidence, not validated accuracy, independent samples or a training decision.', '']
         if not eligible:
             lines += ['No strictly eligible replies: behaviour and prediction accuracy are insufficient on this evidence.', '']
         behaviour = report['behaviour_receipt']

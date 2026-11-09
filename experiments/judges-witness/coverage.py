@@ -24,6 +24,56 @@ MAX_ROWS = 10000
 BAD_STAGES = ('failed', 'attempt', 'reserved', 'released', 'refused', 'claimed')
 
 
+
+def source_coverage(rows, cutoff, tz):
+    """Count producer copies and explicit same-turn surface evidence, without repair."""
+    admitted, groups, counts = [], defaultdict(list), Counter()
+    excluded = 0
+    for row in rows:
+        if row.get('role') != 'assistant': continue
+        try: at = _row_clock(row, tz)
+        except ValueError: at = None
+        if at is not None and at >= cutoff:
+            excluded += 1
+            continue
+        ident, identity_state = joined_identity(row)
+        admitted.append((row, ident, identity_state, at))
+        if ident is not None and at is not None:
+            groups[ident].append(row)
+    for row, ident, identity_state, at in admitted:
+        adapter = row.get('_witness_adapter_kind')
+        adapter = adapter if adapter in ('canonical', 'merged', 'ledger', 'capture') else 'unknown'
+        origin = row.get('source')
+        origin = origin if origin in ('canonical', 'ledger') else 'absent' if origin is None else 'other'
+        surface = row.get('surface')
+        state = ('absent' if surface is None else 'empty' if surface == '' else
+                 'declared' if _name(surface) else 'invalid')
+        evidence = 'not_needed'
+        if state != 'declared':
+            if at is None: evidence = 'clock_unavailable'
+            elif ident is None: evidence = identity_state
+            elif not isinstance(row.get('content'), str) or not row['content']:
+                evidence = 'stored_text_unavailable'
+            else:
+                peers = groups[ident]
+                # Stored copies only: no trimming, device-mark stripping or
+                # similarity guesses. A changed version cannot attest this copy.
+                if any(peer.get('content') != row['content'] for peer in peers):
+                    evidence = 'conflicting_stored_versions'
+                else:
+                    surfaces = {_name(peer.get('surface')) for peer in peers}
+                    surfaces.discard(None)
+                    if len(surfaces) > 1: evidence = 'conflicting_declared_surfaces'
+                    elif surfaces: evidence = 'one_declared_surface_same_id_and_text'
+                    else: evidence = 'no_declared_surface_same_id_and_text'
+        counts[(adapter, origin, state, evidence)] += 1
+    return dict(assistant_copies=len(admitted), excluded_at_or_after_cutoff=excluded,
+                groups=[dict(adapter=a, projection_source=o, surface_state=s,
+                             same_turn_evidence=e, copies=n)
+                        for (a,o,s,e),n in sorted(counts.items())],
+                meaning='source copies, not independent turns; explicit surface evidence is diagnostic only; no inferred surface or model attribution')
+
+
 def diagnose(rows, ledger, config, cutoff):
     if not isinstance(rows, list) or len(rows) > MAX_ROWS or not isinstance(ledger, list) or len(ledger) > MAX_CALLS:
         raise ValueError('coverage input exceeds bounds')
@@ -58,6 +108,8 @@ def diagnose(rows, ledger, config, cutoff):
         ats = sorted(at for at, _ in items if at is not None)
         callers.append(dict(caller=caller, records=len(items), clock_unavailable=sum(at is None for at, _ in items),
                             foreground=sum(r.get('class') == 'foreground' for _, r in items),
+                            nonempty_model_and_provider=sum(bool(_name(r.get('model')) and _name(r.get('provider'))) for _, r in items),
+                            stages=dict(Counter(_name(r.get('stage')) or 'unknown' for _, r in items)),
                             first_retained_at=iso(ats[0]) if ats else None,
                             last_retained_at=iso(ats[-1]) if ats else None,
                             largest_observed_gap_seconds=max((b-a for a,b in zip(ats, ats[1:])), default=None)))
@@ -126,6 +178,7 @@ def diagnose(rows, ledger, config, cutoff):
                   unique_callers=len(all_callers), ledger_records_after_cutoff=after_cutoff,
                   effect='diagnosis_only_no_attribution_or_training_changes',
                   meaning='wider windows are opportunities for inspection, not recovered attribution; silence is not proof of a logging outage')
+    public['source_coverage'] = source_coverage(rows, cutoff, tz)
     private = dict(callers=callers, surfaces=[dict(source_kind=k, surface=s, surface_state=v, mapped=m, join_state=j, copies=n)
                    for (k,s,v,m,j),n in sorted(surfaces.items(), key=lambda v: str(v[0]))],
                    date_meaning='first and last supplied retained records, not logging start or complete coverage')

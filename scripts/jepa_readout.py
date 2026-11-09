@@ -240,14 +240,21 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
     if not exs:return None
     r=context(exs,mode,her=her) # identical clock semantics at training and serving
     if not r['own']:return None
-    cache = Embeddings(enc)
-    a=arrays([r],cache)
     retain = False
     if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
         try:
             retain = bool(sh._forecast_witness('self_artifact_capture_enabled'))
         except Exception:
             pass
+    feature_encoder = enc
+    if retain:
+        try:
+            from witness_self_artifacts import FeatureEncoder
+            feature_encoder = FeatureEncoder(enc)
+        except Exception:
+            pass
+    cache = Embeddings(feature_encoder)
+    a=arrays([r],cache)
     m=load(path, retain=True) if retain else load(path)
     if m['meta']['mode'] != mode:raise ValueError('checkpoint is for a different head or mode')
     p=predict(m,a)
@@ -265,7 +272,8 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
     if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
         try:
             sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
-            sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result)
+            sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result,
+                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None)
         except Exception:
             pass
     return result

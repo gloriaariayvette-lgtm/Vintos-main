@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import copy
 import io
+import hashlib
 import json
 from pathlib import Path
 import socket
@@ -31,13 +32,13 @@ class Tests(unittest.TestCase):
         p=patch.dict(sys.modules,compute_admission=self.accounting);p.start();self.addCleanup(p.stop)
         tree=ast.parse((ROOT/'bin/model_router.py').read_text())
         nodes=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and
-               n.name in ('_ledger','route_reply_result','route_reply')]
-        self.assertEqual(len(nodes),3)
+               n.name in ('_ledger','route_reply_result','route_reply','_identity_name','_bind_draft_identity')]
+        self.assertEqual(len(nodes),5)
         self.a=AsyncMock(return_value=('synthetic direct reply','existing reasoning'))
         self.b=AsyncMock(return_value=('synthetic direct reply',''))
         self.fallback=AsyncMock(return_value=G.make_result('synthetic-primary',model='fixture-fallback',status='valid',text='synthetic fallback',finish_reason='stop'))
         self.last=AsyncMock(return_value=G.make_result('synthetic-last',model='fixture-last',status='valid',text='synthetic last',finish_reason='stop'))
-        self.ns=dict(GR=G,profile=lambda:'mixed',_needs_provider=lambda *a:[],_consume_forced=lambda:False,
+        self.ns=dict(GR=G,hashlib=hashlib,profile=lambda:'mixed',_needs_provider=lambda *a:[],_consume_forced=lambda:False,
                      CLAUDE_SURFACES={'avatar','chat'},read_mode=lambda:{'mode':'sol'},sol_draft=self.a,
                      gemini_draft=self.b,SOL_MODEL='fixture-request-a',GEMINI_MODEL='fixture-request-b',
                      GEMMA_MODEL='fixture-local',_claude=self.fallback,_grok_result=self.last,
@@ -111,11 +112,16 @@ class Tests(unittest.TestCase):
             self.assertIsNone(capture._attempts[0]['served_model'])
             self.assertEqual(capture._attempts[0]['identity_evidence'],'unknown')
 
-    def test_existing_ledger_metadata_shape_is_unchanged(self):
+    def test_ledger_adds_completion_join_without_changing_existing_result_fields(self):
         result=G.make_result('synthetic-provider',model='synthetic-model',status='valid',request_id='synthetic-request',text='synthetic reply',finish_reason='stop')
         before=copy.deepcopy(result)
         self.ns['_ledger'](result,'chat',0,'synthetic-stage')
+        join=result.pop('ledger_join')
         self.assertEqual(result,before)
-        self.assertEqual(self.record.call_args.kwargs['extra'],{'provider_request_id':'synthetic-request','finish_reason':'stop'})
+        extra=self.record.call_args.kwargs['extra']
+        self.assertEqual(extra['generation_completion_id'],join['completion_id'])
+        self.assertEqual(extra['generation_response_sha256'],join['raw_response_sha256'])
+        self.assertEqual(extra['provider_request_id'],'synthetic-request')
+        self.assertEqual(extra['finish_reason'],'stop')
 
 if __name__=='__main__':unittest.main()

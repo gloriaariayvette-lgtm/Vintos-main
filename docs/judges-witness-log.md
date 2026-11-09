@@ -1557,3 +1557,331 @@ unchanged forced/fallback paths and return values, logger failure isolation, sur
 retention, no prompt/reply content in the ledger call, and no configured-to-observed
 promotion. Generated reports refreshed. Full host suite and private measurements
 remain with the reviewer. No live writes, paid calls, merge or deployment.
+
+## 9 November — response identity survives existing draft contracts
+
+`codex/judges-draft-response-identity` supplements the prior completion repair with
+optional invocation-local callbacks in the two existing draft parsers. Bounded
+response model/ID metadata is bound to the exact returned-text digest, without
+changing payloads, tuple return values, reasoning, route labels or fallback order.
+Only present valid response fields become observed identity; missing/invalid data
+stays unknown and completion recording remains explicitly configured-only when
+appropriate. A known response ID without a known model does not manufacture one.
+
+Successful routed results carry observed identity separately from configured model
+fields. The ledger records the observed name/ID when known. Private capture keeps
+provider IDs in observed_attempts, separately from internal request/input bindings;
+normalized strict receipt requirements are unchanged. Empty output emits no selected
+identity, callbacks cannot change a draft, and failed/concurrent calls cannot reuse
+another call's metadata. No new model call or historical backfill. Complete internal
+draft attempt history and underlying weight identity remain unasserted.
+
+273 focused isolated checks pass: new draft-parser identity 9, completion 7, forced
+routes 16, learned cache 15, compute admission 44, reply budget 11, avatar sight 37,
+result contract 52, handler capture 21, ownership 11, capture primitives 27, replay 9,
+deferred capture 14. Tests execute actual parser/router functions with synthetic
+responses and stubbed transports. The first extracted-parser fixture omitted its
+module filename; fixed that test namespace and reran. Existing usage-log writes
+emit ResourceWarning for unclosed handles; all are redirected to private scratch
+and these pre-existing write patterns are unchanged by this work.
+
+No live/provider calls, real inputs, feed changes, enablement, merge or deployment.
+Full host suite and private measured coverage remain reviewer steps. The prior
+configured-host authentication blocker is unchanged; no repeat alert. Encoder
+identity and retained coverage still remain open.
+
+
+## 9 November — preserve repeated audit-vector conflicts
+
+`codex/judges-audit-vector-conflicts` repairs an observation loss in the optional
+self-audit wrapper: input-only deduplication suppressed all later vectors for a
+text, including different results that the offline conflict detector should see.
+Deduplication now uses input plus vector digests. Identical repeats stay collapsed;
+distinct outputs in one or multiple existing calls reach the private sink. The
+wrapper preserves output object identity and adds no encoder calls. An 8,192-key
+per-wrapper limit bounds retained observation state; skipped observations increment
+a process-local counter. Failed publication remains retryable. This does not claim
+complete capture, underlying encoder identity or a cause for vector differences.
+
+62 affected isolated checks pass: self artifacts 20, content joins 17, source
+identity 13, checkpoint availability 12. New cases execute the actual retention
+wrapper through the offline join and produce two conflict references with zero
+bound replies; they also cover repeat deduplication, changed outputs in one batch,
+invalid later vectors, failed publication retries and bounded observation state.
+All fixtures and writes are synthetic/private scratch; external transports are
+stubbed. No live data, model calls, feed changes, enabling, merge or deployment.
+Full Aegis suite/private measurements remain the independent reviewer steps.
+
+
+## 9 November — distinguish observed vector representations
+
+`codex/judges-vector-representations` follows the repeated-vector repair with a
+source-verified distinction: the forecast bank stores the readout's normalized
+vectors, while the audit wrapper stores encoder-return vectors. Prospective private
+packets now name those representations without changing numbers or encode calls.
+The offline content join distinguishes mixed representations from differing vectors
+within a known representation. Unknown legacy representation is never inferred.
+All ambiguous groups remain outside content-bound counts, and no strict admission
+or scoring threshold changes. Encoder-weight identity remains unverified.
+
+65 affected isolated checks pass: self artifacts 20, artifact joins 21, review
+report 15, report coverage 9. Tests use the actual units function for a scaled
+synthetic pair, verify mixed versus genuine within-representation conflicts, old
+unknown packets, invalid producer labels, fixed-count report output and unchanged
+live audit results/call counts. All tests use synthetic data, scratch paths and
+stubbed transports. No real inputs, new model calls, live writes, enabling, merge
+or deployment. Full host suite and private coverage acceptance remain with review.
+
+
+## 9 November — opt-in 30-second historical tier
+
+Reviewer note 27 accepted the completion-path repair and measured the deferred
+writer on Aegis at median 0.35 ms, p95 0.49 ms, max 0.62 ms at representative
+occupancy. A 30-reply burst retained 9; queue loss across restart remains unknown.
+Persisted queue-drop diagnostics are follow-up work, not claimed complete here.
+
+`codex/judges-window30-attribution` adds the explicitly requested separate
+ledger_attributed_window30 view. Original tight-window fields remain unchanged;
+only unmatched copies with a sole in-scope call within 30 seconds can be added.
+All nearby replies compete, including existing exact-ID matches outside the window.
+Identity, metadata, clock, cutoff and reuse holds are retained. Extra exact-label
+agreement counts provide sensitivity evidence without model-family guesses.
+Neither strict eligibility nor training admission changes.
+
+162 focused isolated checks pass: attribution 26, coverage 14, review report 16,
+strict witness 106. Cases cover original-result preservation, exact window edges,
+ambiguity, duplicate copies, competing unknown/different replies, reserved exact
+IDs, configured-only/failed calls, bad clocks, cutoff, invalid opt-in, report
+partition validation, scratch CLI and unchanged strict outputs. Synthetic only;
+real added-tier counts remain for the reviewer on the admitted private snapshot.
+No live writes, provider/model calls, enabling, merge or deployment.
+
+
+## 9 November — selected completion joined to saved history
+
+`codex/judges-completion-joins` adds the reviewer-requested prospective correlation
+between router ledger completions and avatar/canonical/merged assistant history.
+A random per-completion ID supplements the existing HTTP request trace so repeated
+attempts under one request remain distinguishable. The accepted invocation's ID,
+caller, raw-text hash and stored-text hash reach history; failures or absent helpers
+never invent origin. Provider IDs remain separate. Offline matching validates all
+bindings and refuses time fallback for bad explicit completion markers.
+
+The saved row is a pre-final-guard history version, not delivery evidence. The
+interaction-ledger subprocess and non-avatar producers remain without this new
+marker. Full host suite, live coverage and latency acceptance stay with the reviewer.
+Source investigation of stopped chat caller/missing surfaces remains open.
+
+309 focused isolated checks pass: completion joins 9, router completions 7,
+handler capture 21, attribution 26, draft identity 9, compute admission 44,
+forced routes 16, learned cache 15, merged chat 31, coverage 14, strict witness 106,
+ownership 11.
+Tests execute real router/handler fragments with stub providers and ledger, including
+retry acceptance/rejection/failure and concurrent request traces. No sockets or
+live stores. Initial extracted fixture needed a local options initializer; fixed
+and reran. One cache-suite invocation used an obsolete filename; corrected to the
+existing learned-cache suite, all 15 pass. Existing draft usage ResourceWarnings
+remain scratch-only and unrelated. No live writes, paid calls, enabling, merge or
+deployment. Full Aegis suite remains the reviewer's responsibility.
+
+
+## 9 November — producer/source coverage diagnostic
+
+`codex/judges-source-coverage` extends the private coverage runner with fixed-label
+source-copy/surface groups and explicit same-ID/exact-stored-text peer evidence;
+no automatic repair or eligibility/attribution change. Caller metadata counters
+now count nonempty model/provider values and private stage counts. Source history
+shows the bilateral chat route predates the reported router-chat tail; it does not
+prove why those retained router rows ended. The origin of those rows and the
+missing-surface copies remain private-snapshot questions, documented with a runnable
+command in `docs/judges-source-coverage.md`. No guessed surface or final-model
+identity is installed.
+
+78 focused isolated checks pass: coverage 21, attribution 26, merged chat 31.
+Includes bounded private CLI, fixed public labels, cutoff/clock exclusions,
+conflicting IDs/text/surfaces and unchanged original attribution. An initially
+mistyped merged-suite filename failed before execution; corrected suite passed.
+All three generated reports refreshed. No new live reads/writes, sends, model
+calls, enabling, merge or deployment. Full host suite/private census remain with
+review; next independent work remains durable queue diagnostics and encoder identity.
+
+
+## 9 November — persisted deferred queue diagnostics
+
+`codex/judges-durable-queue-counts` addresses note 27's volatile queue counters.
+The existing background writer persists coalesced, configuration-scoped scalar
+counter deltas in status.json.deferred; synchronous writes preserve them and later
+processes accumulate them under the sink lock. Counters cover observed admissions,
+confirmed/unconfirmed publications, queue-full skips and observed unavailable
+workers. Each category is a lower bound, never a subtraction-based loss estimate.
+restart_loss is explicitly null. Busy/start/exit failures and unflushed counters
+may be absent. Claimed delta batches are not retried after failed/ambiguous writes,
+so a replacement followed by failed fsync cannot double-count on retry.
+
+Reply-side changes are bounded in-memory updates under the existing nonblocking
+admission lock, with eight diagnostic configuration slots. No foreground disk I/O
+added. FIFO remains eight packets plus one in flight; distinct reply packets are
+not coalesced. Disable, config retargeting and fork reset include the new deltas.
+A final background status flush adds a scan when the queue drains; fresh occupied
+Aegis throughput/response measurements remain required. Earlier latency numbers
+are not acceptance of this revision.
+
+94 isolated checks pass: deferred capture 22, sink 19, handler hooks 21, store guard
+32. Includes fresh-process counter preservation, overflow, ambiguous post-replace
+failure, busy flush, packet failure without a false loss balance, bounded scopes,
+unsafe status paths, hot disable, fork and process-exit loss. Only synthetic
+throwaway stores and stub senders. Three generated reports refreshed and diff
+checked. No live-store writes, capture enabling, paid/model calls, merge or deploy.
+Full host suite and acceptance remain with review. Encoder identity remains open.
+
+
+## 9 November — bounded audit encoding parameter receipts
+
+`codex/judges-encoder-parameter-receipts` binds optional private self-audit vectors
+to their actual encoding invocation, input/output hashes, bounded settings digest
+and one before/after loaded CPU parameter snapshot pair per wrapper. No additional
+encode, model load, GPU operation or device transfer. Byte/count caps bound hashing;
+unsupported state and later calls remain unavailable. Encoder identity remains
+unverified: tokenizer/execution code/configuration and forecast-call binding are
+still missing. No learned weights or source text are retained by the new receipt.
+
+Offline validation rejects contradictory receipts and reports fixed parameter
+observation counts separately from full encoder identity and scoring. Legacy
+packets remain missing, forecast packets not instrumented. Existing content-only
+synthetic fixtures now explicitly remove the new receipt before manufacturing
+legacy vector conflicts; forged new receipts have independent rejection tests.
+Initial run exposed five such fixture contradictions; corrected, no contract
+weakened. Removed imported-fixture duplicate discovery from the new test module.
+
+69 isolated checks pass: parameter observer 12, self artifacts 20, artifact join 21,
+review report 16. Tests cover parameter content/order/dtype/shape, bounded scans,
+non-CPU refusal before transfer, unchanged return identity/call count, mutation
+between snapshots, observer failures, missing settings and forged bindings. Actual
+self-audit fragments and scratch CLI remain exercised by existing suites. Three
+generated reports refreshed. No live reads/writes, new model calls, sends, enabling,
+merge or deployment. Full host suite and loaded-runtime overhead remain with review.
+
+
+## 9 November — forecast feature encoding links
+
+`codex/judges-forecast-encoding-links` binds optional on-message self-readout feature
+vectors to the existing encoding call and exact raw-to-normalized transformation.
+The helper returns the original result object, observes one bounded CPU parameter
+pair, and retains at most 256 inputs/65,536 raw values in process. Only selected
+recent-own records enter private artifact packets; no new messages or weight bytes.
+Other head modes, legacy cache and context-copy control remain unchanged.
+
+Offline validation checks the forecast-call schema, input/raw hashes and exact
+normalization including its floor. Missing links remain not instrumented; mixed
+per-reference parameter states stay mixed at packet level. Full encoder identity,
+training lineage and scoring remain unverified/unchanged. Host review must measure
+up to two GiB of hashing per captured forecast and packet sizes against sink caps.
+
+76 unit cases plus five readout scenario groups pass in isolated scratch:
+encoder/feature observations 19, self artifacts 20, artifact joins 21, review report
+16, existing readout groups 5. Actual job still makes two encode calls (feature batch
+and untouched context-copy control); off/on results remain identical in the existing
+contract test. Covers forged input/raw/transform links, null call receipts, small
+norm floor, mixed/legacy states, bounds and failures without retries. The readout
+suite emitted RuntimeWarnings in untouched fitting/ranking matrix routines while
+norm/finiteness assertions passed; no mathematical change or warning suppression
+was made. Three reports regenerated. No live data reads/writes, provider calls,
+sends, enabling, merge or deployment; full host suite remains with review.
+
+
+## 9 November — offline cross-call encoding consistency
+
+`codex/judges-encoding-consistency` adds independent aggregate comparisons of
+validated parameter, settings and raw-vector observations for exact bound content
+groups. Differences survive incomplete peers; equality requires all references and
+at least two distinct call markers. Legacy records remain incomplete. Raw forecast
+links permit comparisons across representations without changing the existing
+mixed/conflicting-vector classification, eligibility or scoring. No runtime path
+changes or additional model calls.
+
+65 isolated checks pass: artifact joins 30, review report 16, parameter receipts 19.
+New cases cover same-output/different-parameter evidence, changed-during-call with
+missing peers, raw versus normalized representations, duplicate invocation markers,
+checkpoint partitioning, unbound-source exclusion, order invariance, legacy gaps,
+public privacy and count denominators. The first run exposed aliased before/after
+snapshots in the synthetic fixture; independent fixture copies fixed the test, with
+validation unchanged. Generated reports refreshed. Full Aegis suite and real copied
+evidence remain with review; no live writes, sends, enabling, merge or deployment.
+
+
+## 9 November — innovation input contract
+
+`codex/judges-innovation-input-contract` fixes a reproducible offline boundary gap:
+innovation() built a target dictionary without checking uniqueness, so the last
+admitted copy silently won. It now requires a list of identified records and
+rejects repeated turn IDs, even identical copies. Census remains responsible for
+admission/deduplication. The history minimum must be a positive integer; booleans,
+floats, NaN/infinity and other malformed values are refused before scoring.
+
+Three new regression cases reproduced the gaps before repair (14 failing and nine
+erroring subcases). After repair, 155 isolated checks pass: strict witness 109,
+review report 16 and artifact joins 30. Both conflict orders, identical copies,
+invalid shapes/IDs and malformed minima are covered; existing valid scores and
+causal percentile/control tests pass unchanged. This is a defensive function-input
+fix, not evidence that census-produced historical reports had duplicate targets.
+Generated reports refreshed. No producers, feeds, model calls, live data, sends,
+enabling, merge or deployment changed; full host suite remains reviewer work.
+
+
+## 9 November — historical attribution report contract
+
+`codex/judges-attribution-report-contract` makes the formatter validate the
+historical section's per-copy scope, no-admission/no-training declarations, fixed
+tier/agreement/exclusion categories, counter conservation and timestamp-count bound.
+Previously it could render contradictory effect declarations or agreement totals
+as descriptive evidence. New synthetic regressions reproduced 11 failing subcases
+before the repair. No attribution producer or selection rule changed.
+
+A proposed clock-label change was rejected by the added positive-control test:
+the producer already includes receipt-based cutoff clocks. Kept the original label
+and fixed that test expectation before submission; no producer semantics changed.
+The positive control verifies receipt-based exclusions and zero missing clocks.
+
+46 isolated checks pass: report 20, historical attribution 26, including scratch
+CLI with the optional 30-second view. Generated reports refreshed. Only synthetic
+fixtures and fixed prose/count validation changed; full host suite remains with
+review. No live reads/writes, model calls, sends, enabling, merge or deployment.
+
+
+## 9 November — bounded synthetic encoder-cost benchmark
+
+`codex/judges-encoder-cost-benchmark` provides a scratch-only CLI for the pending
+CPU cost review. It exercises the real feature observer over bounded synthetic
+CPU state, returning fixed aggregate timing/call/byte counts plus code hashes.
+No model load, live store, checkpoint, GPU, network or sink. Guard tests attempt
+outside writes, rename, subprocess and network and verify rejection before output.
+
+25 isolated checks pass: benchmark six, parameter receipts 19. Bounds are checked
+before allocation; unavailable snapshots cannot become successful timing reports.
+CLI permissions, overwrite refusal, live-named roots, symlinks, output privacy,
+exact return identity and scan/call counts are tested without latency thresholds.
+
+Local synthetic 64 MiB/eight-tensor/three-repeat results: first observed-call wall
+median/max 42.219/43.999 ms contiguous, 49.465/54.537 ms strided; repeat medians
+1.886/1.918 ms. Two scans per first call, no extra encoding; 9 stub encodes/6 scans
+per layout. This is observer overhead on local arrays, not loaded-model or Aegis
+performance. Array initialization/helper imports are outside timing; temporary
+copy cost is included, peak RSS is unmeasured. README has exact reviewer commands.
+Generated reports refreshed. No producer/feed behavior change, paid calls, sends,
+enabling, merge or deployment; full host suite remains reviewer work.
+
+
+## 9 November — accumulated integration review handoff
+
+`codex/judges-review-integration-handoff` documents the thirteen-commit chain after
+the last reviewer-reported integrated base, with exact dependency order, active
+metadata paths, optional capture costs and offline-only boundaries. No runtime
+code changes. Reran 16 affected/ownership suites together at implementation tip
+83118e87: 393 local isolated checks passed. The report distinguishes unittest cases
+from older named checks; this is not the full Aegis suite.
+
+`docs/judges-review-handoff.md` consolidates host acceptance work: full integrated
+suite, occupied sink throughput/retention, CPU observation cost/compatibility,
+private source/attribution counts and future artifact coverage. No historical
+training decision or full encoder identity is inferred. No live inputs, sends,
+model calls, enabling, merge or deployment. Previous submitted tips remain fixed.

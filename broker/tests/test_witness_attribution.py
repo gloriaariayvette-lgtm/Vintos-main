@@ -165,6 +165,86 @@ class Tests(unittest.TestCase):
         self.call['stage']='failed'
         self.assertEqual(self.run_attribution()[1][0]['join_state'],'call_metadata_unavailable')
 
+    def test_window30_is_opt_in_and_preserves_original_partition(self):
+        self.call['at'] = 80
+        original, old_details = self.run_attribution()
+        self.config['window30_enabled'] = True
+        report, details = self.run_attribution()
+        extension = report.pop('window30')
+        self.assertEqual(report, original)
+        self.assertEqual(details[0].pop('window30')['tier'], 'ledger_attributed_window30')
+        self.assertEqual(details, old_details)
+        self.assertEqual(extension['tiers']['ledger_attributed_window30'], 1)
+        self.assertEqual(extension['added_label_ledger_agreement'], {'agree': 1})
+        self.assertNotIn('fixture-', json.dumps(extension))
+
+    def test_window30_unique_call_not_nearest_and_boundaries(self):
+        self.config['window30_enabled'] = True
+        for at, expected in ((70,1),(69.99,0),(130,1),(130.01,0)):
+            report, _ = self.run_attribution(calls=[dict(self.call,at=at)])
+            self.assertEqual(report['window30']['added_copies'],expected)
+        report, _ = self.run_attribution(calls=[dict(self.call,at=80),dict(self.call,at=75)])
+        self.assertEqual(report['window30']['join_states'],{'multiple_calls_in_window':1})
+
+    def test_window30_all_other_replies_compete_including_matched_and_ambiguous(self):
+        self.config['window30_enabled'] = True
+        call = dict(self.call,at=80)
+        for other in (dict(self.row,turn_id='other',timestamp=80),
+                      dict(self.row,turn_id='other',provider_request_id='unmatched'),
+                      dict(self.row,turn_id=None),dict(self.row,content='Changed synthetic final')):
+            report, details = self.run_attribution(rows=[self.row,other],calls=[call])
+            self.assertEqual(report['window30']['added_copies'],0)
+            self.assertEqual(details[0]['window30']['join_state'],'call_contested_by_other_reply')
+        report,_=self.run_attribution(rows=[self.row,dict(self.row)],calls=[call,dict(call)])
+        self.assertEqual(report['window30']['added_copies'],2)
+
+    def test_window30_exact_id_outside_window_still_reserves_call(self):
+        self.config['window30_enabled'] = True
+        call=dict(self.call,at=80,provider_request_id='bound-id')
+        other=dict(self.row,turn_id='other',timestamp=150,provider_request_id='bound-id')
+        report,details=self.run_attribution(rows=[self.row,other],calls=[call])
+        self.assertEqual(details[1]['tier'],'ledger_attributed')
+        self.assertEqual(report['window30']['added_copies'],0)
+
+    def test_window30_never_repairs_explicit_id_or_bad_metadata(self):
+        self.config['window30_enabled'] = True
+        self.call['at']=80
+        self.row['provider_request_id']='unmatched'
+        report,_=self.run_attribution()
+        self.assertEqual(report['window30']['added_copies'],0)
+        self.row.pop('provider_request_id')
+        for changes in ({'stage':'failed'},{'model_identity_evidence':'configured'}, {'model':''},
+                        {'class':'background'},{'organ':'router:other'}):
+            report,_=self.run_attribution(calls=[dict(self.call,**changes)])
+            self.assertEqual(report['window30']['added_copies'],0)
+
+    def test_window30_cutoff_bad_clocks_and_unmapped_are_never_repaired(self):
+        self.config['window30_enabled'] = True
+        self.call['at']=80
+        for row in (dict(self.row,surface=None),dict(self.row,timestamp='bad'),dict(self.row,timestamp=200)):
+            report,_=self.run_attribution(rows=[row])
+            self.assertEqual(report['window30']['added_copies'],0)
+        report,_=self.run_attribution(calls=[self.call,dict(self.call,at='bad')])
+        self.assertEqual(report['window30']['added_copies'],0)
+        self.row['timestamp']=195
+        report,_=self.run_attribution(calls=[dict(self.call,at=205)])
+        self.assertEqual(report['window30']['added_copies'],0)
+
+    def test_window30_label_sensitivity_and_no_alias_guessing(self):
+        self.config['window30_enabled']=True; self.call['at']=80
+        for label,expected in (('fixture-model','agree'),('route-alias','disagree'),(None,'label_missing')):
+            self.row['served_by']=label
+            report,_=self.run_attribution()
+            self.assertEqual(report['window30']['added_label_ledger_agreement'],{expected:1})
+        self.row.update(served_by='one',model='two')
+        report,_=self.run_attribution()
+        self.assertEqual(report['window30']['added_label_ledger_agreement'],{'label_conflict':1})
+
+    def test_window30_invalid_opt_in_is_rejected(self):
+        for value in (None,0,1,'yes',[],{}):
+            self.config['window30_enabled']=value
+            with self.assertRaises(ValueError): self.run_attribution()
+
     def test_cli_keeps_strict_results_and_private_details_separate(self):
         with tempfile.TemporaryDirectory(prefix='legacy-attribution-') as directory:
             root=Path(directory).resolve();root.chmod(0o700)
@@ -172,8 +252,9 @@ class Tests(unittest.TestCase):
             bundle={'input_kind':'synthetic','sources':[{'kind':'canonical','rows':[self.row]}]}
             reports=[]
             with patch.dict(os.environ,SPARK_WORKSPACE=str(root)):
-                for index in range(2):
+                for index in range(3):
                     if index:bundle['historical_attribution']=dict(self.config,compute_ledger=[self.call])
+                    if index == 2:bundle['historical_attribution']['window30_enabled']=True
                     source=root/f'input-{index}.json';source.write_text(json.dumps(bundle))
                     output=root/f'out-{index}'
                     result=subprocess.run([sys.executable,str(ROOT/'experiments/judges-witness/replay.py'),
@@ -181,6 +262,10 @@ class Tests(unittest.TestCase):
                         '--cutoff','1970-01-01T00:03:20+00:00'],capture_output=True,text=True)
                     self.assertEqual(result.returncode,0,result.stderr)
                     report=json.loads((output/'aggregate.json').read_text());reports.append(report)
+                extended=reports[2].pop('historical_attribution')
+                extension=extended.pop('window30')
+                self.assertEqual(extended,reports[1]['historical_attribution'])
+                self.assertEqual(reports[0],reports[2])
                 historical=reports[1].pop('historical_attribution')
                 self.assertEqual(historical['tiers']['ledger_attributed'],1)
                 self.assertEqual(reports[0],reports[1])
@@ -192,6 +277,7 @@ class Tests(unittest.TestCase):
                     '--scratch',str(root),'--run',str(output),'--output',str(root/'review')],capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
                 text=(root/'review/review.md').read_text()
+                self.assertIn('Optional 30-second historical view',text)
                 self.assertIn('ledger_attributed: 1',text);self.assertIn('Strictly eligible replies: 0',text)
                 self.assertNotIn('fixture-model',text)
 

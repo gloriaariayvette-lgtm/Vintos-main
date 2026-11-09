@@ -1,7 +1,9 @@
 """Offline historical attribution tiers; never alter witness admission or receipts."""
 from collections import Counter, defaultdict
+from bisect import bisect_left, bisect_right
 from datetime import datetime
 import json
+import re
 from zoneinfo import ZoneInfo
 from witness_receipts import digest, instant, joined_identity, normalize_receipt, final_response
 
@@ -63,7 +65,8 @@ def attribution(rows, ledger, config, cutoff):
     proof of successful generation, final reply selection or clean ancestry.
     """
     if (not isinstance(rows, list) or not isinstance(ledger, list) or not isinstance(config, dict)
-            or set(config) - {'surface_callers','source_surfaces','window_seconds','naive_timezone'}):
+            or set(config) - {'surface_callers','source_surfaces','window_seconds','naive_timezone','window30_enabled'}
+            or type(config.get('window30_enabled', False)) is not bool):
         raise ValueError('invalid historical attribution inputs')
     window = config.get('window_seconds')
     mapping = config.get('surface_callers')
@@ -78,7 +81,7 @@ def attribution(rows, ledger, config, cutoff):
         try: timezone = ZoneInfo(config['naive_timezone'])
         except (TypeError, ValueError, KeyError): raise ValueError('invalid attribution timezone') from None
     cutoff = instant(cutoff)
-    calls, by_id, by_caller, unordered = {}, defaultdict(list), defaultdict(list), set()
+    calls, by_id, by_completion, by_caller, unordered = {}, defaultdict(list), defaultdict(list), defaultdict(list), set()
     for record in ledger:
         if not isinstance(record, dict): raise ValueError('invalid compute ledger record')
         try: sha = digest(json.dumps(record, sort_keys=True, separators=(',', ':'), allow_nan=False))
@@ -89,8 +92,12 @@ def attribution(rows, ledger, config, cutoff):
         except ValueError: at = None
         call = dict(sha256=sha, at=at, caller=caller, model=model, provider=provider,
                     foreground=record.get('class') == 'foreground', stage=record.get('stage'),
+                    response_sha256=record.get('generation_response_sha256'), request_trace_id=record.get('request_id'),
+                    provider_request_id=record.get('provider_request_id'),
                     identity_explicit='model_identity_evidence' in record, identity_evidence=record.get('model_identity_evidence'))
         calls[sha] = call
+        if _name(record.get('generation_completion_id')):
+            by_completion[record['generation_completion_id']].append(call)
         if _name(record.get('provider_request_id')): by_id[record['provider_request_id']].append(call)
         if caller and call['foreground']:
             if at is None: unordered.add(caller)
@@ -123,6 +130,35 @@ def attribution(rows, ledger, config, cutoff):
             state = 'outside_cutoff'
         elif not callers:
             state = 'surface_caller_unmapped'
+        elif 'generation_join' in row:
+            method = 'generation_completion_id'
+            join = row['generation_join']
+            if (not isinstance(join,dict) or set(join) != {'schema','completion_id','request_trace_id','caller',
+                                                          'raw_response_sha256','stored_response_sha256'}
+                    or join['schema'] != 'router-completion-join-v1'
+                    or not isinstance(join['completion_id'],str) or not re.fullmatch('[0-9a-f]{32}',join['completion_id'])
+                    or not isinstance(row.get('content'),str)
+                    or join['stored_response_sha256'] != digest(row['content'])
+                    or not isinstance(join['raw_response_sha256'],str)
+                    or not re.fullmatch('[0-9a-f]{64}',join['raw_response_sha256'])
+                    or join['caller'] not in callers
+                    or join['request_trace_id'] is not None and not _name(join['request_trace_id'])):
+                state = 'invalid_completion_join'
+            else:
+                matches = by_completion[join['completion_id']]
+                if len(matches) != 1:
+                    state = 'ambiguous_completion_id' if matches else 'completion_id_unmatched'
+                else:
+                    candidate = matches[0]
+                    if (candidate['response_sha256'] != join['raw_response_sha256']
+                            or candidate['request_trace_id'] != join['request_trace_id']
+                            or candidate['caller'] != join['caller']):
+                        state = 'completion_binding_mismatch'
+                    elif supplied_ids and (None in valid_ids or len(valid_ids) != 1
+                                           or candidate['provider_request_id'] != next(iter(valid_ids))):
+                        state = 'completion_provider_id_mismatch'
+                    else:
+                        call = candidate
         elif supplied_ids:
             method = 'provider_request_id'
             if None in valid_ids or len(valid_ids) != 1:
@@ -182,10 +218,104 @@ def attribution(rows, ledger, config, cutoff):
         if d['outside_cutoff']:
             exclusions['outside_cutoff'] += 1; continue
         tiers[d['tier']] += 1; joins[d['join_state']] += 1; agreement[d['label_ledger_agreement']] += 1
-    return {'scope':'per_assistant_source_copy_not_unique_training_turns',
+    report = {'scope':'per_assistant_source_copy_not_unique_training_turns',
             'tiers':{tier:tiers[tier] for tier in TIERS},'join_states':dict(joins),
             'label_ledger_agreement':dict(agreement),'excluded':dict(exclusions),
             'assistant_copies':len(details),'copies_without_cutoff_clock':sum(not d['reply_clock_known'] for d in details),
             'unique_ledger_records_supplied':len(calls),'naive_timezone_explicitly_supplied':timezone is not None,
             'admission_effect':'none','training_effect':'none',
-            'meaning':'historical model attribution only; no proof of selected successful generation, delivery or clean ancestry'}, details
+            'meaning':'historical model attribution only; no proof of selected successful generation, delivery or clean ancestry'}
+    if config.get('window30_enabled', False):
+        report['window30'] = _window30(rows, details, calls, mapping, defaults, timezone, cutoff)
+    return report, details
+
+
+def _window30(rows, details, calls, mapping, defaults, timezone, cutoff):
+    """Separate opt-in view; all nearby replies compete, not just unmatched ones."""
+    by_caller, unordered = defaultdict(list), set()
+    for call in calls.values():
+        if not call['foreground'] or not call['caller']:
+            continue
+        if call['at'] is None:
+            unordered.add(call['caller'])
+        elif call['at'] < cutoff:
+            by_caller[call['caller']].append(call)
+    for values in by_caller.values():
+        values.sort(key=lambda c: (c['at'], c['sha256']))
+    clocks = {caller: [c['at'] for c in values] for caller, values in by_caller.items()}
+    uses, selected = defaultdict(list), {}
+    assistant = [r for r in rows if r.get('role') == 'assistant']
+    for index, (row, detail) in enumerate(zip(assistant, details)):
+        detail['window30'] = dict(tier=detail['tier'], join_state='not_eligible_for_extension',
+                                  ledger_sha256=None, ledger_model=None, ledger_provider=None)
+        if detail['outside_cutoff']:
+            detail['window30']['join_state'] = 'outside_cutoff'
+            continue
+        surface = row.get('surface')
+        if surface is None:
+            surface = defaults.get(row.get('_witness_adapter_kind'))
+        callers = mapping.get(surface, []) if isinstance(surface, str) else []
+        try: at = _row_clock(row, timezone)
+        except ValueError: at = None
+        candidates = {}
+        if at is not None:
+            for caller in callers:
+                times = clocks.get(caller, [])
+                values = by_caller[caller]
+                for call in values[bisect_left(times, at-30):bisect_right(times, at+30)]:
+                    candidates[call['sha256']] = call
+        # An exact-ID match outside the time window also reserves its call.
+        reserved = set(candidates)
+        if detail['ledger_sha256'] is not None:
+            reserved.add(detail['ledger_sha256'])
+        identity = (detail['turn_id'], detail['response_sha256'])
+        for sha in reserved:
+            uses[sha].append((index, identity))
+        if detail['join_state'] != 'no_matching_call' or detail['tier'] == 'observed':
+            continue
+        state, call = 'none_in_window', None
+        if at is None or not callers:
+            state = 'scope_or_clock_unavailable'
+        elif any(caller in unordered for caller in callers):
+            state = 'unordered_caller'
+        elif len(candidates) > 1:
+            state = 'multiple_calls_in_window'
+        elif candidates:
+            call = next(iter(candidates.values()))
+            if (not call['model'] or not call['provider']
+                    or call['stage'] in ('failed','attempt','reserved','released','refused','claimed')):
+                state = 'call_metadata_unavailable'
+            elif call['identity_explicit'] and call['identity_evidence'] not in ('response_metadata','runtime_receipt'):
+                state = 'call_model_identity_unobserved'
+            else:
+                state = 'candidate'
+                selected[index] = call
+        detail['window30']['join_state'] = state
+    for sha, contenders in uses.items():
+        identities = {identity for _, identity in contenders}
+        contested = len(contenders) > 1 and (len(identities) > 1 or any(None in i for i in identities))
+        if contested:
+            for index, _ in contenders:
+                if index in selected and selected[index]['sha256'] == sha:
+                    details[index]['window30']['join_state'] = 'call_contested_by_other_reply'
+                    del selected[index]
+    for index, call in selected.items():
+        details[index]['window30'].update(tier='ledger_attributed_window30', join_state='matched_window30',
+            ledger_sha256=call['sha256'], ledger_model=call['model'], ledger_provider=call['provider'])
+    tiers, states, agreement = Counter(), Counter(), Counter()
+    for detail in details:
+        if detail['outside_cutoff']: continue
+        extra = detail['window30']
+        tiers[extra['tier']] += 1
+        states[extra['join_state']] += 1
+        if extra['tier'] == 'ledger_attributed_window30':
+            comparison = ('label_conflict' if detail['label_conflict'] else
+                          'label_missing' if not detail['recorded_label'] else
+                          'agree' if detail['recorded_label'] == extra['ledger_model'] else 'disagree')
+            agreement[comparison] += 1
+    return dict(window_seconds=30, selection='sole_call_all_replies_compete',
+                tiers={tier:tiers[tier] for tier in (*TIERS, 'ledger_attributed_window30')},
+                join_states=dict(states), added_copies=len(selected),
+                added_label_ledger_agreement=dict(agreement),
+                admission_effect='none', training_effect='none',
+                meaning='alternative partition of the same source copies; do not add to original tier counts')

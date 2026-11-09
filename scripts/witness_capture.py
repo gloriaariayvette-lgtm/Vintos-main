@@ -358,6 +358,10 @@ class Capture:
                 "identity_evidence": evidence if actual else "unknown",
                 "_claimed_model": stage.get("claimed_model") if evidence == "claimed" else None,
                 "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None}
+            provider_id = stage.get("request_id")
+            if (isinstance(provider_id, str) and 0 < len(provider_id) <= 256
+                    and provider_id.strip() == provider_id and provider_id.isprintable()):
+                attempt["provider_request_id"] = provider_id
             if request is not None:
                 attempt.update(request_id=request_id, input_sha256=request["input_sha256"])
             self._attempts.append(attempt)
@@ -1073,12 +1077,12 @@ def self_artifact_capture_enabled():
     return scope is not None and _private_root(scope["root"]) is not None
 
 
-def observe_self_artifacts(exchanges, bank, model, forecast):
+def observe_self_artifacts(exchanges, bank, model, forecast, encoding_records=None):
     scope = _self_forecast_scope.get()
     if scope is None or scope.get("observations") != 1 or scope.get("inputs") is None:
         return
     from witness_self_artifacts import forecast_artifacts
-    artifacts = forecast_artifacts(exchanges, bank, model, forecast)
+    artifacts = forecast_artifacts(exchanges, bank, model, forecast, encoding_records)
     _self_forecast_scope.set(dict(scope, artifacts=artifacts))
 
 

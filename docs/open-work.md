@@ -6678,3 +6678,149 @@ rows retain their separate historical tier. Response-observed identity for these
 draft paths still needs a separately reviewed producer change; no new record is
 pretended to solve that. Private coverage dates/counts, encoder identity and Aegis
 acceptance remain open. No production modification or deployment.
+
+## 9 November — draft response identity propagation ready for review
+
+`codex/judges-draft-response-identity` adds optional response metadata callbacks to
+the two previously configured-only draft paths while preserving their tuple and
+request contracts. Routed results and completion records now retain observed model
+and provider response ID when actually supplied; missing metadata stays unknown.
+Private attempt observations keep provider IDs distinct from internal request IDs.
+273 focused isolated checks pass. No historical backfill or complete attempt-history
+claim. Full host suite/live coverage measurement, encoder identity and production
+acceptance remain open. No live calls, writes, enabling, merge or deployment.
+
+
+## 9 November — repeated audit-vector retention repaired
+
+`codex/judges-audit-vector-conflicts` retains different observed vectors for the
+same input instead of silently discarding them after the first observation. The
+existing offline conflict checker now receives those conflicts; 62 focused isolated
+checks pass. State and sink remain bounded; no complete-capture or encoder-identity
+claim. Existing audit outputs/calls stay unchanged. Full host suite, private
+coverage measurements and encoder identity remain open; no deployment or enabling.
+
+
+## 9 November — vector representation distinction ready for review
+
+`codex/judges-vector-representations` labels existing encoder-return versus
+readout-normalized artifact vectors and reports mixed/unknown representation
+separately from within-representation conflict. 65 affected isolated checks pass.
+No retained vector values, live audit results, eligibility or scoring rules changed. Encoder
+identity, private coverage diagnosis and full host acceptance remain open. No
+production write, enabling or deployment.
+
+
+## 9 November — separate historical 30-second tier ready for review
+
+`codex/judges-window30-attribution` adds an opt-in alternative historical partition
+with ledger_attributed_window30, sole-call selection, competing-reply holds and
+exact-label sensitivity counts. 162 isolated checks pass. The original tight-window
+and strict census/scoring outputs remain unchanged. Reviewer must run the new view
+on the existing private snapshot before interpreting added counts; no real-data
+result is claimed. Note 27 follow-ups still open: prospective ledger/history join
+key, source tracing of stopped chat logging and absent surfaces, durable queue-loss
+diagnostics, encoder identity. Full Aegis suite remains with review; no deployment.
+
+
+## 9 November — exact completion/history correlation ready for review
+
+`codex/judges-completion-joins` supplies a per-completion ID alongside HTTP trace
+identity in router records and selected avatar/canonical/merged history. Offline
+joins validate caller, trace and raw/stored hashes before attribution. 309 focused
+isolated checks pass. This is saved-history correlation, not final delivery or
+strict admission. Other generation paths and interaction-ledger subprocess copies
+remain uninstrumented by this increment. Remaining note 27 work: trace stopped
+chat logging/missing surfaces and durable queue diagnostics; encoder identity also
+remains open. No enabling, merge or deployment; full host acceptance remains review.
+
+
+## 9 November — producer/source coverage ready for review
+
+`codex/judges-source-coverage` supplies a counts-only source-copy diagnostic and
+source-history trace; 78 isolated checks pass. Reviewer can run it on the existing
+admitted bundle to locate missing-surface copies and inspect bilateral stage
+coverage. This does not establish the historical origin of router-chat records,
+fill surfaces, or upgrade model attribution. Durable queue diagnostics and encoder
+identity remain open; full host suite and private counts remain with review.
+
+
+## 9 November — persisted queue counters ready for review
+
+`codex/judges-durable-queue-counts` persists observed deferred diagnostic deltas as
+explicit lower bounds; restart losses remain unknown, not manufactured from a
+counter balance. 94 isolated checks pass. Review must measure occupied-sink worker
+throughput and reply latency for the extra drain-time background status flush;
+full isolated Aegis suite remains with review. Production stays disabled until
+Gloria's enable decision. Encoder identity and private source-coverage counts
+remain pending independently of this review.
+
+
+## 9 November — audit parameter receipts ready for review
+
+`codex/judges-encoder-parameter-receipts` adds bounded loaded-CPU-state observations
+around the first retained encoding call per self-audit wrapper; 69 isolated checks
+pass. It does not establish complete encoder identity or promote vectors into
+scoring. Remaining identity work: tokenizer/configuration/loaded code, forecast-side
+encoding evidence and binding to the checkpoint's fitting encoder. Review owns
+installed-runtime compatibility, CPU/memory overhead and full isolated host suite.
+Private source-coverage counts and the prior queue throughput check remain open.
+
+
+## 9 November — forecast feature encoding links ready for review
+
+`codex/judges-forecast-encoding-links` observes captured self-readout feature calls
+and verifies raw-to-normalized links without changing forecasts or call count.
+76 unit cases plus five readout groups pass. Review owns full Aegis suite, snapshot
+hashing cost and private packet sizes. Full encoder identity still needs tokenizer,
+loaded execution configuration/code and fitting-lineage evidence; context-copy
+control encoding is not instrumented by this increment. No automatic eligibility
+or scoring upgrades, enabling, merge or deployment.
+
+
+## 9 November — offline encoding consistency ready for review
+
+`codex/judges-encoding-consistency` compares retained validated call observations
+within exact bound content groups; 65 focused isolated checks pass. This is an
+offline diagnostic with fixed aggregate labels, not a scoring/admission upgrade.
+Full host suite and copied-data coverage remain with review. Complete encoder
+identity and fitting lineage remain unresolved; prior sink throughput and producer
+coverage checks remain pending. No enablement, merge or deployment.
+
+
+## 9 November — innovation input validation ready for review
+
+`codex/judges-innovation-input-contract` rejects ambiguous admitted target lists and
+non-integer history minima before offline scoring; 155 isolated checks pass.
+The census already supplies unique admitted replies, so this closes a standalone
+function boundary without changing valid report results. Full Aegis suite remains
+with review. Earlier private coverage, sink cost and encoder-lineage work remains
+open; no enabling, merge or deployment.
+
+
+## 9 November — historical attribution formatter ready for review
+
+`codex/judges-attribution-report-contract` validates historical summary scope,
+effects and count conservation before rendering; 46 isolated checks pass. It also
+checks receipt-based cutoff exclusion without changing producer fields or matching.
+Full Aegis suite and prior private coverage/cost checks remain with review. No
+admission/training decision, live-feed change, enabling, merge or deployment.
+
+
+## 9 November — encoder-cost benchmark ready for host review
+
+`codex/judges-encoder-cost-benchmark` supplies a bounded synthetic scratch CLI and
+25 passing isolated checks. Local 64 MiB observation costs about 42–49 ms per first
+call; this does not establish Aegis cost or scale to real tensors automatically.
+Reviewer can run the documented command without models/private inputs; actual
+loaded-runtime compatibility, parameter-scan overhead, worker throughput and full
+Aegis suite remain pending. No production flag, feed, merge or deployment changed.
+
+
+## 9 November — consolidated review handoff
+
+`docs/judges-review-handoff.md` now maps the thirteen pending implementation commits
+through 83118e87 and their dependencies. 393 local isolated checks across 16 suites
+pass at that tip. The full integrated Aegis suite and listed host/private-data
+acceptance checks remain with review. This documentation-only branch does not
+change feeds or grant enablement/merge/deployment approval.

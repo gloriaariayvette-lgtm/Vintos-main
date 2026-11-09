@@ -768,11 +768,17 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
     Percentiles use outcomes finalized strictly before the forecast was made,
     within the same checkpoint and observed target-generator group.
     """
-    if minimum_history < 1:
-        raise ValueError("history minimum must be positive")
+    if type(minimum_history) is not int or minimum_history < 1:
+        raise ValueError("history minimum must be a positive integer")
     if not isinstance(forecasts, list) or not isinstance(embeddings, list) or not isinstance(checkpoints, dict):
         raise ValueError("forecast/embedding lists and checkpoint mapping required")
+    if (not isinstance(admitted, list) or any(
+            not isinstance(row, dict) or not isinstance(row.get("turn_id"), str) or not row["turn_id"]
+            for row in admitted)):
+        raise ValueError("innovation requires identified admitted reply records")
     targets = {r["turn_id"]: r for r in admitted}
+    if len(targets) != len(admitted):
+        raise ValueError("innovation requires unique admitted replies")
     cache = defaultdict(list)
     held, candidates, declared = Counter(), defaultdict(list), defaultdict(list)
     invalid_clocks = defaultdict(Counter)

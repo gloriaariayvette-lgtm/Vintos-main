@@ -39,7 +39,7 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          "admitted", "offered", "withheld", "tactical",
          # what she sent and what she herself said: without these a photo's description reads as her words
          # to every reader of the merged file (Chat's subconscious review, 16 October)
-         "input_kind", "original_text", "witness_receipt", "context_receipt_id",
+         "input_kind", "original_text", "witness_receipt", "context_receipt_id", "generation_join",
          "character_influenced", "test_mode", "generated_output_witness_eligible",
          "witness_final_text", "witness_final_sha256", "witness_origin_source", "reply_node", "derived_from", "parents", "ancestors",
          "evidence_standing", "dream_only", "imported", "transplanted", "timestamp_estimated",

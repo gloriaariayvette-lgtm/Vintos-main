@@ -162,7 +162,47 @@ def _release_provider(provider, model, why="", reservation_id=None, paid_reserva
     except Exception:
         pass
 
-async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
+def _identity_name(value):
+    import re
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}", value) else None
+
+
+def _observe_draft_identity(observer, response, text, model_field, id_field):
+    """Allowlisted response metadata, bound to the exact returned text; no body retention."""
+    if observer is None:
+        return
+    try:
+        if not isinstance(response, dict) or not isinstance(text, str) or not text:
+            return
+        observer({"schema": "draft-response-identity-v1",
+                  "observed_model": _identity_name(response.get(model_field)),
+                  "request_id": _identity_name(response.get(id_field)),
+                  "text_sha256": hashlib.sha256(text.encode()).hexdigest()})
+    except Exception:
+        pass
+
+
+def _bind_draft_identity(result, observation):
+    """Supplement a successful result without altering its text or route contract."""
+    try:
+        if (not isinstance(observation, dict) or set(observation) != {
+                "schema", "observed_model", "request_id", "text_sha256"}
+                or observation["schema"] != "draft-response-identity-v1"
+                or observation["text_sha256"] != hashlib.sha256(result["text"].encode()).hexdigest()):
+            return "configured"
+        observed = _identity_name(observation["observed_model"])
+        request_id = _identity_name(observation["request_id"])
+        if request_id:
+            result["request_id"] = request_id
+        if observed:
+            result.update(observed_model=observed, identity_evidence="response_metadata")
+            return "response_metadata"
+    except Exception:
+        pass
+    return "configured"
+
+
+async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None, *, identity_observer=None):
     """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
     k = _openai_key()
@@ -222,6 +262,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
             elif item.get("type") == "reasoning":
                 reasoning += "\n".join(s.get("text", "") for s in item.get("summary", []))
         txt = txt.strip()
+        _observe_draft_identity(identity_observer, d, txt, "model", "id")
         return (txt or None), (reasoning.strip() if txt else "")
     except Exception as e:
         print("[router/sol]", str(e)[:150], flush=True)
@@ -392,7 +433,7 @@ GEMINI_MODEL = "gemini-4-argon"   # Google's Gemini 4 Argon (Gloria, 2026-10-14)
 GOOGLE_USAGE_LOG = os.path.expanduser("~/.vintos/logs/google-usage.jsonl")
 
 
-async def gemini_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
+async def gemini_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None, *, identity_observer=None):
     """A draft from Gemini (Argon). Returns (text|None, ''), like claude_draft and sol_draft. Its usage, cached tokens
     included, goes to ~/.vintos/logs/google-usage.jsonl. Gemini caches a repeated start by itself."""
     key = _env("GEMINI_API_KEY")
@@ -418,7 +459,9 @@ async def gemini_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     except Exception: pass
     cand = (d.get("candidates") or [{}])[0]
     text = "".join(p.get("text", "") for p in ((cand.get("content") or {}).get("parts") or []) if not p.get("thought"))
-    return (text.strip() or None), ""
+    text = text.strip()
+    _observe_draft_identity(identity_observer, d, text, "modelVersion", "responseId")
+    return (text or None), ""
 
 
 async def described(convo):
@@ -556,9 +599,18 @@ def _ledger(res, surface, t0, stage="", model_identity=None):
     try:
         import time as _lt, compute_admission as _ca
         extra = {"provider_request_id": res.get("request_id") or None, "finish_reason": res.get("finish_reason")}
-        if model_identity == "configured":
+        try:
+            from request_trace import completion_join
+            extra.update(completion_join(res, surface))
+        except Exception:
+            pass
+        model = res.get("model", "")
+        if model_identity == "response_metadata" and _identity_name(res.get("observed_model")):
+            model = res["observed_model"]
+            extra["model_identity_evidence"] = "response_metadata"
+        elif model_identity is not None:
             extra["model_identity_evidence"] = "configured"
-        _ca.record("router:" + str(surface), "foreground", provider=res.get("provider", ""), model=res.get("model", ""),
+        _ca.record("router:" + str(surface), "foreground", provider=res.get("provider", ""), model=model,
                    stage=stage or res.get("status", ""), latency_ms=int((_lt.time() - t0) * 1000), usage=res.get("usage"),
                    extra=extra)
     except Exception:
@@ -628,12 +680,14 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
     if read_mode().get("mode") == "sol":
         _toggle_t0 = _rb_t.time()
         try:
-            _st, _stag = await sol_draft(system_text, convo)
+            _draft_identity = {}
+            _st, _stag = await sol_draft(system_text, convo, identity_observer=_draft_identity.update)
             if _st:
                 print("[router] sol answered (%d chars)" % len(_st), flush=True)
                 res = GR.make_result("openai", model=SOL_MODEL, status="valid", text=_st, finish_reason="stop")
                 res["route"] = "sol"; stages.append(res); res["stages"] = stages
-                _ledger(res, surface, _toggle_t0, "sol", model_identity="configured")
+                _identity = _bind_draft_identity(res, _draft_identity)
+                _ledger(res, surface, _toggle_t0, "sol", model_identity=_identity)
                 return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
@@ -641,12 +695,15 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
     if read_mode().get("mode") == "argon":
         _toggle_t0 = _rb_t.time()
         try:
-            _gt, _ = await gemini_draft(system_text, convo, max_tokens=(params or {}).get("max_tokens", 900))
+            _draft_identity = {}
+            _gt, _ = await gemini_draft(system_text, convo, max_tokens=(params or {}).get("max_tokens", 900),
+                                        identity_observer=_draft_identity.update)
             if _gt:
                 print("[router] argon answered (%d chars)" % len(_gt), flush=True)
                 res = GR.make_result("google", model=GEMINI_MODEL, status="valid", text=_gt, finish_reason="stop")
                 res["route"] = "argon"; stages.append(res); res["stages"] = stages
-                _ledger(res, surface, _toggle_t0, "argon", model_identity="configured")
+                _identity = _bind_draft_identity(res, _draft_identity)
+                _ledger(res, surface, _toggle_t0, "argon", model_identity=_identity)
                 return res
         except Exception as _ae:
             print("[router/argon toggle]", str(_ae)[:120], flush=True)

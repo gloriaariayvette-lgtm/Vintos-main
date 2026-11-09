@@ -146,12 +146,12 @@ Queue contents are volatile. Process death, reboot, cancellation of the process,
 or ordinary exit can lose pending work; there is deliberately no shutdown flush
 that delays serving shutdown. `COUNTERS` distinguishes deferred_enqueued,
 deferred_written, deferred_not_confirmed, deferred_full, deferred_busy and
-deferred_unavailable. These counters do not survive restart. The existing on-disk
-status covers completed lock-owning operations only; it cannot count lost queue
+deferred_unavailable. The process counters reset on restart. The follow-up below persists observed
+deferred deltas as explicitly incomplete lower bounds; it cannot count lost queue
 items after a crash. A false/unconfirmed write can still leave a completed packet
 if later status or fsync failed. Missing packets are not evidence of no activity.
 
-Synthetic Mac benchmark at representative occupancy: 4,000 existing files,
+Prior queue revision synthetic Mac benchmark at representative occupancy: 4,000 existing files,
 236,976,000 bytes (about 226 MiB), new packets 24,565 bytes, 20 samples each.
 Synchronous publication: median 12.653 ms, p95 13.211, max 14.908.
 Queue admission: median 0.168 ms, p95 0.218, max 0.236.
@@ -168,3 +168,45 @@ stubbed provider. Overflow, kill switch, retarget, limits, immutable snapshots,
 fork reset, exit loss, thread/write failures, private permissions, synchronous
 producer compatibility and unchanged response/delivery semantics are exercised.
 No production flag, environment, unit or store was changed by this follow-up.
+
+
+### Persisted deferred diagnostics (9 November follow-up)
+
+The existing writer now coalesces scalar diagnostic deltas, separately from the
+packet queue. `status.json.deferred.counts` stores observed `enqueued`, `written`,
+`not_confirmed`, `full` and `unavailable` counts that reached a status write.
+Synchronous producers preserve this section; later processes accumulate into it
+under the same cross-process lock. All names are fixed; no text, identities, paths
+or provider values enter the counters. Status stays bounded and owner-private.
+
+These are **lower bounds for each category**, not a complete ledger or an equation.
+A packet can be written before status/fsync fails, so `not_confirmed` does not mean
+proven packet loss. A failed status write can also lose its admission delta while
+a later outcome delta survives. `restart_loss` is always JSON null: without durable
+pre-crash admission receipts, subtraction cannot tell what a restart destroyed.
+A missing field is unobserved, not zero verified events. Busy initialization skips,
+thread-start failures and unflushed observations may remain process-local only.
+Counters saturate at their bounded integer ceiling rather than growing status.
+
+The reply thread only updates a small in-memory batch while holding its existing
+nonblocking queue-admission lock. Up to eight configuration-scoped batches are
+retained, with fixed scalar fields. No disk lock, scan, write or fsync is added to
+that thread. The background writer incorporates claimed deltas into its next packet
+publication and flushes remaining outcomes when the queue empties; an idle worker
+checks for remaining batches every 250 ms but performs no I/O when none exist.
+Diagnostics obey the original expected-config equality and kill switch. Changing
+destination or limits discards stale pending deltas rather than moving them to the
+new configuration. Already persisted counts stay with their original directory.
+
+Each delta batch is claimed once before I/O. Busy/full-disk/disabled or ambiguous
+post-replacement failures are not retried: a replacement may already have succeeded,
+so replaying it could double-count. This deliberately permits undercount. Fork
+children discard inherited pending diagnostic deltas along with the packet queue;
+there is still no exit flush or restart recovery claim.
+
+The packet FIFO remains eight slots plus one in flight (at most nine MiB of payload).
+Increasing it would only move the overflow point, and coalescing distinct reply
+packets would erase evidence. Only diagnostics are coalesced. The last packet of a
+batch can now cause a second background directory scan/status flush; occupied-sink
+worker throughput and reply latency need fresh Aegis measurements for this revision.
+The earlier response timing is not presented as acceptance of these new writes.

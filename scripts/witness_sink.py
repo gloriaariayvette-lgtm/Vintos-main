@@ -17,6 +17,7 @@ MAX_BYTES = 256 * 1024 * 1024
 MAX_FILES = 4096
 MAX_PACKET = 1024 * 1024
 RETENTION = 7 * 86400
+DEFERRED_COUNT_KEYS = ('enqueued', 'written', 'not_confirmed', 'full', 'unavailable')
 RESERVE = 8192  # Lock, status and one atomic status replacement.
 PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
@@ -116,7 +117,7 @@ def publish(root, packet, prefix):
         return False
 
 
-def _publish_bytes(root, payload, prefix, expected=None):
+def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
     """Publish an immutable snapshot, rechecking current limits and permission."""
     c = configuration(root)
     if c is None or (expected is not None and c != expected):
@@ -125,8 +126,13 @@ def _publish_bytes(root, payload, prefix, expected=None):
     directory = lock = None
     try:
         if prefix not in PREFIXES: raise ValueError('unknown packet type')
-        if not isinstance(payload, bytes): raise ValueError('immutable payload required')
-        if len(payload) > c['max_packet_bytes']:
+        if diagnostic is not None and (not isinstance(diagnostic, dict) or any(
+                k not in DEFERRED_COUNT_KEYS or type(v) is not int or not 0 <= v < 10**18
+                for k,v in diagnostic.items())):
+            raise ValueError('invalid deferred diagnostic')
+        if not isinstance(payload, bytes) and not (payload is None and diagnostic):
+            raise ValueError('immutable payload required')
+        if payload is not None and len(payload) > c['max_packet_bytes']:
             COUNTERS['oversize'] += 1
             return False
         directory = os.open(c['directory'], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -162,29 +168,40 @@ def _publish_bytes(root, payload, prefix, expected=None):
                     os.unlink(name, dir_fd=directory); expired += 1
                 else:
                     total += info.st_size; files += 1
-        previous = {}
+        previous_status = {}
         try:
-            previous = _read_private(c['directory'] / 'status.json', 4096).get('counts', {})
+            previous_status = _read_private(c['directory'] / 'status.json', 4096)
         except FileNotFoundError: pass
+        if not isinstance(previous_status, dict): raise ValueError('invalid status')
+        previous = previous_status.get('counts', {})
+        deferred = previous_status.get('deferred', {}).get('counts', {})
+        if not isinstance(deferred, dict) or any(k not in DEFERRED_COUNT_KEYS or type(v) is not int
+                or not 0 <= v < 10**18 for k,v in deferred.items()):
+            raise ValueError('invalid deferred status')
+        for key, value in (diagnostic or {}).items():
+            deferred[key] = min(10**18-1, deferred.get(key, 0) + value)
         if not isinstance(previous, dict) or any(k not in ('written','capacity','expired') or type(v) is not int or not 0 <= v < 10**18 for k,v in previous.items()):
             previous = {}
-        state = 'written' if files < c['max_files'] and total + len(payload) + RESERVE <= c['max_bytes'] else 'capacity'
+        state = None if payload is None else ('written' if files < c['max_files'] and total + len(payload) + RESERVE <= c['max_bytes'] else 'capacity')
         if configuration(root) != c:
             COUNTERS['disabled_or_changed'] += 1
             return False
         if state == 'written':
             _atomic(directory, prefix + uuid.uuid4().hex + '.json', payload)
             files += 1; total += len(payload)
-        COUNTERS[state] += 1
+        if state is not None: COUNTERS[state] += 1
         # Persistent counters for lock-owning operations, never a complete-stream
         # claim. Busy/invalid-path failures remain in process-local COUNTERS.
-        previous[state] = previous.get(state, 0) + 1
+        if state is not None: previous[state] = previous.get(state, 0) + 1
         previous['expired'] = previous.get('expired', 0) + expired
         status = {'schema':'judges-shadow-status-v1','counts':previous,'retained_files':files,'retained_bytes':total,
                   'coverage':'lock-owning operations only; process failures and busy skips may be absent'}
+        if deferred:
+            status['deferred'] = dict(counts=deferred, restart_loss=None,
+                coverage='persisted lower bounds; unflushed observations, busy skips and process-exit losses are unknown; counts are not a loss balance')
         _atomic(directory, 'status.json', (json.dumps(status)+'\n').encode(), replace=True)
         os.fsync(directory)
-        return state == 'written'
+        return state is None or state == 'written'
     except Exception:
         COUNTERS['write_failure'] += 1
         return False
@@ -198,12 +215,43 @@ def _publish_bytes(root, payload, prefix, expected=None):
 DEFERRED_SLOTS = 8
 _writer = None
 _writer_lock = threading.Lock()
+_deferred_pending = {}  # At most eight configuration-scoped scalar counter batches.
+
+
+def _note_deferred_locked(config, key):
+    identity = tuple(sorted(config.items()))
+    if identity not in _deferred_pending:
+        if len(_deferred_pending) >= 8:
+            COUNTERS['deferred_diagnostic_scope_full'] += 1
+            return
+        _deferred_pending[identity] = (config, Counter())
+    _deferred_pending[identity][1][key] += 1
+
+
+def _take_deferred(config):
+    with _writer_lock:
+        entry = _deferred_pending.pop(tuple(sorted(config.items())), None)
+    return dict(entry[1]) if entry else None
+
+
+def _flush_deferred():
+    # Claim once before I/O. Failed/ambiguous writes are never retried, because a
+    # replace may have succeeded before fsync failed. Undercount instead of double count.
+    with _writer_lock:
+        batches = list(_deferred_pending.values())
+        _deferred_pending.clear()
+    for config, counts in batches:
+        try:
+            ok = _publish_bytes(config['directory'], None, 'capture-', expected=config, diagnostic=dict(counts))
+        except Exception: ok = False
+        if not ok: COUNTERS['deferred_diagnostic_unconfirmed'] += 1
 
 
 def _reset_after_fork():
-    global _writer, _writer_lock
+    global _writer, _writer_lock, _deferred_pending
     _writer = None
     _writer_lock = threading.Lock()
+    _deferred_pending = {}
     COUNTERS.clear()
 
 
@@ -213,15 +261,21 @@ if hasattr(os, 'register_at_fork'):
 
 def _write_queued(pending):
     while True:
-        item = pending.get()
+        try: item = pending.get(timeout=0.25)
+        except queue.Empty:
+            _flush_deferred()
+            continue
         try:
             if item is None: return
             root, payload, prefix, config = item
             try:
-                ok = _publish_bytes(root, payload, prefix, expected=config)
-                COUNTERS['deferred_written' if ok else 'deferred_not_confirmed'] += 1
-            except Exception:
-                COUNTERS['deferred_not_confirmed'] += 1
+                diagnostic = _take_deferred(config)
+                ok = _publish_bytes(root, payload, prefix, expected=config, diagnostic=diagnostic)
+            except Exception: ok = False
+            outcome = 'written' if ok else 'not_confirmed'
+            COUNTERS['deferred_' + outcome] += 1
+            with _writer_lock: _note_deferred_locked(config, outcome)
+            if pending.empty(): _flush_deferred()
         finally:
             pending.task_done()
             item = None  # Do not retain the previous private payload while idle.
@@ -255,13 +309,16 @@ def enqueue_capture(root, packet):
                 _writer = (os.getpid(), pending, thread)
             if _writer[0] != os.getpid() or not _writer[2].is_alive():
                 COUNTERS['deferred_unavailable'] += 1
+                _note_deferred_locked(c, 'unavailable')
                 return False
             try:
                 _writer[1].put_nowait((root, payload, 'capture-', c))
             except queue.Full:
                 COUNTERS['deferred_full'] += 1
+                _note_deferred_locked(c, 'full')
                 return False
             COUNTERS['deferred_enqueued'] += 1
+            _note_deferred_locked(c, 'enqueued')
             return True
         finally:
             _writer_lock.release()

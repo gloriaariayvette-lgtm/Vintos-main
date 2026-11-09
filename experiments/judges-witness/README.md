@@ -1518,3 +1518,325 @@ coverage similarly reports `sole_call_identity_unobserved`, not a recovery
 opportunity. These explicit evidence labels are still recorded claims, not source
 authentication. Historical unmarked ledger rows retain their previously reviewed
 ledger-attributed tier; this change does not fabricate markers on older data.
+
+### Draft response identity propagation
+
+The two draft parsers now offer an optional `identity_observer` keyword while
+keeping their original `(text, reasoning)` return contract and request payloads.
+The callback receives only bounded provider response model/ID fields and a digest
+of the exact stripped text returned. It is per invocation, not a global last-result
+slot. Empty output emits no selected identity; observer failures cannot change the
+draft. No body, prompt, reasoning or credentials enter the callback packet.
+
+For a successful routed draft, the observation must match the returned text digest
+before it can supplement `observed_model`, `identity_evidence` and `request_id`.
+Only supplied valid response fields count. Configured names are not substituted.
+The completion ledger uses the observed name and response ID when present; otherwise
+it retains the explicit configured-only limit. The public route label and existing
+result `model` field stay unchanged; identity evidence is separate. Provider metadata
+is an observed response claim, not independent proof of underlying model weights.
+
+Optional `provider_request_id` is retained in the private capture's
+`observed_attempts`. It is distinct from the instrument's internal request ID and
+input binding. It is not added to normalized strict receipt requirements and does
+not upgrade unknown context ancestry, attempt completeness or delivery. Failed
+requests and earlier attempts discarded inside a draft remain unobserved by this
+new callback; complete request accounting is not claimed. Historical rows receive
+no backfill. Direct callers that do not request observation keep the original tuple
+behavior without a new capture side effect.
+
+
+### Repeated audit vectors remain observable
+
+The optional self-audit wrapper deduplicates by exact input digest **and observed
+vector digest**, not input text alone. A later different vector for the same input
+is retained so the existing offline content join can report
+`conflicting_vector_observations`. Identical repeats remain one observation;
+changed results within a single batch also remain distinct. No extra encoding is
+performed, and callers receive the original result object unchanged.
+
+Each wrapper retains at most 8,192 successfully published observation keys in
+memory. Further new observations are skipped and increment the process-local
+`audit_observation_limit` counter; ordinary sink capacity/retention limits still
+apply first to publication. A failed publication does not mark an observation as
+retained, so a subsequent existing encode can retry it. Counters and keys do not
+survive process exit. These are incomplete observations, not a guarantee that every
+conflict was captured. Invalid vectors remain unretained and increment the existing
+retention-failure counter even when their input was seen previously.
+
+Vector differences do not establish why an encoder changed: parameters, options,
+numerical variation and execution context are not distinguished by this receipt.
+Encoder identity stays unverified and no score, admission rule or live audit verdict
+changes. This repair cannot recover differing vectors already discarded by older
+input-only deduplication.
+
+
+### Vector representation is separate from encoder identity
+
+Prospective artifact observations explicitly label their stored representation:
+`encoder_return_v1` for the audit wrapper's returned vectors, and
+`readout_units_v1` for the forecast bank after the existing readout `units` function
+(float conversion, norm division with a 1e-12 floor). The label records the existing
+producer operation; it does not verify weights, tokenizer, encode defaults,
+training provenance or a common embedding space. No vector is newly normalized or
+recomputed for this observation.
+
+The offline content join validates each explicit label against its producer schema.
+For the same checkpoint, final reply and input, distinct representations are
+`mixed_vector_representations`, held out of the content-bound count. This is not an
+encoder-conflict verdict, even when the stored numbers differ only by scale, and
+identical numbers do not establish matching representation contracts. Differing
+vectors within any one explicitly known representation still make the entire group
+`conflicting_vector_observations`; a mixed packet cannot hide that conflict.
+
+Older packets have no representation label. Their details retain null rather than
+inferring a label from their schema or path. Multiple differing old observations
+become `vector_representation_unobserved`; a known/unknown mixture is mixed. A
+single consistent old observation can still establish the same text-content binding
+as before, with unknown representation and no scoring permission. The report emits
+only fixed labels and aggregate counts for these distinctions. Strict eligibility,
+forecast scoring and live audit results are unchanged.
+
+
+### Optional separate 30-second historical attribution
+
+To evaluate the reviewer's requested wider historical tier on an existing private
+snapshot, set `historical_attribution.window30_enabled` to the JSON boolean `true`.
+Keep the original explicit surface map, naive timezone, exclusive cutoff and
+`window_seconds` (at most 10) unchanged, then run the existing scratch replay into
+a **new** output directory. There are no default changes and no extra input reads.
+
+The original `historical_attribution.tiers`, joins and label-agreement counts stay
+unchanged. Its optional `window30` section gives an **alternative partition of the
+same assistant source copies**, with the additional `ledger_attributed_window30`
+tier. Never sum the two partitions or treat duplicate source copies as independent
+training turns. Private per-copy details keep the original fields plus a separate
+`window30` object containing the selected ledger identity and state.
+
+Only original `no_matching_call` copies without an observed identity can enter the
+extension. There must be exactly one foreground call in the mapped caller scope
+within inclusive +/-30 seconds and before the exclusive cutoff. This is not the
+nearest of multiple calls. Missing/invalid call metadata, explicitly configured-only
+identity and unordered caller clocks cannot be promoted. Exact-ID failures,
+unmapped surfaces and bad reply clocks are not repaired by widening.
+
+All other clocked replies compete for nearby calls, including already matched,
+observed, ambiguous and failed-exact-ID replies. An existing exact-ID match outside
+the window also reserves its call. Reuse is allowed only for copies with the same
+explicit turn ID and final-text hash; different or unidentified replies hold the
+candidate. Identical ledger records are deduplicated before this check.
+
+The aggregate report supplies added-copy exact label agreement, disagreement,
+conflicting-label and missing-label counts. The agreement denominator excludes
+missing/conflicting labels and is explicitly undefined when empty. Route aliases
+are not guessed to be model families. These descriptive checks are sensitivity
+results, not proof of accuracy or a historical training authorization. The original
+strict census, behaviour receipt, forecasts, baselines and scoring do not change.
+The real-data tier counts must be measured by the reviewer on the admitted copy;
+previous wider-window opportunity counts are not silently relabelled as results.
+
+
+### Prospective selected-completion joins
+
+Router ledger writes now add a random `generation_completion_id` for each nonempty
+completion plus `generation_response_sha256`. The existing ledger `request_id`
+remains the HTTP trace ID; it is not a provider request ID, and multiple attempts
+can share it. The result carries a content-free `ledger_join` with the completion
+ID, trace ID, caller and raw-text hash. These identify an attempted record, not a
+confirmed durable write: existing accounting failure handling remains unchanged.
+
+The avatar handler (including its room surface) keeps a separate invocation-local
+observer for each first/repeat/replacement router call. Only the accepted call's
+metadata is attached to its saved assistant history row as `generation_join`, with
+a hash of that exact stored text. Rejected repeats clear selection; failed reroutes
+preserve whatever reply the existing handler keeps. This observation works when
+private shadow capture is off, composes with capture when on, and degrades to no
+join for older/missing helpers. No model calls, tuple contracts, reply text, route
+choices, effect parsing or feeds change. Canonical copying preserves the field;
+the merged-chat carry list now preserves it as well.
+
+Offline attribution checks the exact completion ID before provider-ID/time matching.
+It verifies the raw hash, HTTP trace, caller scope and stored-text hash, then applies
+the existing call metadata, cutoff, identity and reuse rules. A supplied provider ID
+must agree too. Missing, duplicate, malformed or contradictory completion markers
+stay unresolved: neither tight-window nor optional 30-second fallback repairs them.
+Unmarked historical rows retain their prior attribution behavior.
+
+This correlates a recorded generation completion with a **saved history version**.
+History is written before the final response guard; a join does not prove client
+delivery, the final transport version, complete internal attempts or clean ancestry.
+It never establishes a model identity that the completion metadata lacks. The
+interaction-ledger subprocess and other non-avatar generation paths are not given
+invented joins; those remaining producers require separate source tracing.
+
+
+### Producer/source coverage
+
+`coverage.py` now adds a fixed-label `source_coverage` aggregate, distinguishing
+adapter copies from projection sources and absent/empty/invalid declared surfaces.
+Same-turn surface evidence requires agreeing explicit IDs, identical stored text
+and usable pre-cutoff clocks. It does not repair rows or change attribution.
+Private caller summaries also distinguish nonempty model/provider values from
+mere key presence and count stages. See `docs/judges-source-coverage.md` for the
+source trace, limitations and command for the existing admitted private bundle.
+
+
+### Audit encoding call and loaded-parameter observations
+
+With private capture enabled, the existing self-audit encoder wrapper now binds
+retained raw vectors to an `encoding_observation`: random invocation identifier,
+input digest, raw-vector digest, bounded JSON settings digest (or null), and CPU
+parameter/buffer snapshots immediately before/after the existing encode call.
+No extra encode or model load occurs. The return object and arguments are unchanged.
+The shared audit's other head is not wrapped by this observer.
+
+Overhead is bounded to **one before/after snapshot pair per wrapper**, consumed by
+the first call containing a retained self-text input. Each snapshot admits at most
+8,192 state entries and one GiB of already loaded CPU tensor/array bytes. It hashes
+names, dtype, shape and logical contiguous bytes; only the combined digest, tensor
+count and byte count are retained. CPU tensors support a byte view without a device
+transfer. Non-CPU/sparse/unsupported state, oversized state or observation failures
+produce unavailable snapshots. Later calls do not inherit the first call's identity;
+they remain unavailable and perform no further parameter reads. No weights, tokens,
+parameter names, settings values or source text are added to the private packet.
+
+The first successful matching call can therefore supply `observed_equal` or
+`observed_changed`. These mean matching/different loaded-state snapshots around
+that call; they do not prove immutability throughout the interval. `unavailable`
+is not a match. Output deduplication includes the snapshot/settings evidence, so
+an observed receipt and an unavailable receipt are not silently collapsed even
+when the same vector was returned. Existing observation count caps still apply.
+
+The offline join validates each supplied receipt's schema, parameter comparison,
+input digest and exact raw-vector digest. Contradictory attached evidence is an
+input error; older packets with no receipt remain explicitly `missing`. Forecast
+feature packets remain `not_instrumented_forecast`. Aggregate review output exposes
+only these fixed labels and packet counts; hashes and invocation IDs remain private.
+No existing content-binding verdict, witness admission or score is upgraded.
+
+Full `encoder_identity` remains unverified. Parameter bytes omit tokenizer,
+pooling/execution configuration, loaded code, training lineage and the forecast's
+encoding call. This increment does not close those gaps or make representations
+interchangeable. It also does not reinterpret the legacy persisted embedding cache
+as a current-runtime observation. The forecast-side readout and live feeds are
+unchanged. Host review must check the installed runtime's state types, packet
+sizes and audit CPU/memory overhead; synthetic array tests are not that acceptance.
+
+
+### Forecast feature encoding links
+
+When an on-message self-forecast capture scope is active, its replacement readout
+observes the existing feature-batch encoder call with `FeatureEncoder`. The same
+raw result object is returned to `Embeddings.fill`; the existing `units` transform
+still produces the bank. No extra encoding or model load occurs. The context-copy
+control remains a direct call through the original encoder, and other head modes
+and the legacy persisted cache are unchanged.
+
+The observer holds at most 256 distinct input records and 65,536 raw vector values,
+with at most one before/after CPU parameter snapshot pair for its first call. This
+is up to two GiB of bounded parameter hashing per captured forecast, not per vector;
+production timing/memory acceptance remains with host review. Only the selected
+recent-own references are serialized. Their `encoding_link` contains the raw vector,
+its input/output-bound call receipt and the explicit `readout_units_v1` transform.
+The private packet already contains the normalized vector; the additional raw
+observation allows the offline reader to verify the actual transform rather than
+infer it from a model name. No new message text, parameter bytes or settings values
+are serialized. Existing private sink packet caps can refuse oversized observations.
+
+Validation requires the exact input hash, raw-vector hash, forecast-call receipt
+schema and exact float64 normalized output, including the existing 1e-12 norm
+floor. A supplied link with no call receipt or a mismatched transform is rejected.
+Missing links remain `not_instrumented_forecast`. The packet-level parameter summary
+uses `mixed_forecast_observations` when its references have different observation
+states; it never borrows an observed state from one reference for another. Counts
+are diagnostic only, with no score/admission or automatic raw/normalized conversion.
+
+This closes the feature-call/normalization observation gap for those captured
+references, not complete encoder identity. Tokenizer/code/configuration identity,
+checkpoint fitting lineage, observation clocks and target selection remain separate
+requirements. The context-copy control has no new encoder receipt in this slice.
+No historical vector or legacy cache is attributed to a present runtime by guessing.
+
+
+### Cross-call encoding consistency
+
+The offline artifact summary now compares validated call observations within each
+exact checkpoint, admitted turn, final-reply digest and encoder-input digest group.
+Groups are formed after source/final/input binding and before vector-representation
+conflict classification. Public output contains only group/reference counts and
+fixed categories on three independent axes: parameter snapshots, encode settings
+digests and raw-vector digests. Counts on each axis sum to the same group total.
+
+Observed differences remain visible even with missing peers. Matching requires
+every reference observed and at least two distinct invocation markers; duplicated
+packets/call markers cannot manufacture repeatability. Single-call and incomplete
+categories remain explicit. Validated forecast raw-to-normalized links permit raw
+output comparisons with audit receipts; legacy normalized vectors are never
+converted or relabelled. Parameter changes during a call take precedence over
+between-call differences. These categories describe supplied observations, not
+causes: different settings, batch context or execution state may affect outputs.
+
+This adds no runtime work and changes no admission, vector-conflict classification,
+forecast scoring or feeds. Matching snapshots are still partial evidence, not full
+encoder identity, tokenizer/execution-code identity, checkpoint training lineage,
+observation-time authentication or forecast-target association. Private copied-data
+measurements and the full isolated host suite remain reviewer work.
+
+
+### Innovation input boundary
+
+Direct innovation() callers must supply a list of admitted records with unique,
+nonempty string turn IDs. Repeated IDs are rejected, including identical copies;
+use the census to adjudicate source copies first. The percentile history minimum
+is a positive integer (booleans and floating-point values are not counts). Invalid
+container/identity/minimum contracts raise ValueError before scoring. This does not
+replace census eligibility checks or change scores for valid census outputs.
+
+
+### Historical summary validation
+
+The renderer requires the historical section to declare per-source-copy scope and
+no admission/training effect. Tier totals plus cutoff exclusions must equal source
+copies; label-agreement and join-state totals each equal the included-copy count.
+Unknown tiers, agreement categories or exclusion categories are rejected, and the
+missing cutoff-clock count cannot exceed supplied copies. A retained finalized
+receipt can establish cutoff membership even without a usable legacy timestamp;
+this is correctly counted as a known cutoff clock. It does not create a timestamp
+for ledger matching or change historical eligibility.
+
+
+### Synthetic CPU cost benchmark
+
+`benchmark_encoder.py` times the actual FeatureEncoder wrapper around a synthetic
+13-by-768 output and already allocated CPU arrays. It makes no real model calls,
+loads no checkpoint, reads no input store and publishes no capture packets. Receipt
+helpers and parameter-array allocation are outside the timer. Each iteration uses
+a fresh wrapper: bare stub, first observed call (two parameter scans), then a repeat
+without new snapshots. Reports include wall/process-CPU medians and maxima, call
+counts, array byte counts and code hashes; no vectors, parameter values, messages
+or identifiers are written. Each first call must retain observed-equal snapshots
+and the exact return object/call counts, or the run fails without a report.
+
+Run from the reviewed checkout with an existing CPU Python environment containing
+numpy. No install is needed:
+
+```sh
+BENCH_SCRATCH="$(python3 -c 'from pathlib import Path; import tempfile; print(Path(tempfile.mkdtemp(prefix="judges-cost-")).resolve())')"
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided
+```
+
+The CLI refuses live/repository/symlinked roots, existing outputs and paths outside
+explicit 0700 scratch. The replay audit hook denies other writes, rename, process
+launch and network. Results are 0600 in new 0700 directories. Limits are 1–512 MiB
+logical arrays, 1/8/64/128 tensors and 1–10 iterations. Strided arrays allocate twice
+the logical parameter bytes and hashing makes temporary contiguous copies; the
+reported allocation is not peak RSS. Default is 64 MiB, eight tensors, three runs.
+
+Local synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
+first observed-call wall median/max 42.219/43.999 ms contiguous and 49.465/54.537 ms
+strided; repeated-call medians 1.886/1.918 ms respectively. These are measurement
+observations, not performance tests with thresholds. They do not establish real
+encoder cost, tensor-runtime compatibility, end-to-end response latency or Aegis
+acceptance. The benchmark uses numpy buffers, not the loaded tensor library; real
+CPU-runtime overhead and packet/sink behavior remain separate reviewer checks.
