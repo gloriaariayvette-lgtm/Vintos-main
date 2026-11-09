@@ -982,6 +982,12 @@ def _self_on_message(her, surface, turn_id="", test_mode=False):
     nothing here waits on it, and nothing it does can raise into the turn. A test-mode turn forecasts nothing."""
     if test_mode:
         return None
+    if surface == "chat/full" and turn_id == "":
+        try:
+            from request_trace import forecast_turn_id
+            turn_id = forecast_turn_id()
+        except Exception:
+            pass
     try:
         import sys as _som
         _p = os.path.join(WORKSPACE, "scripts")

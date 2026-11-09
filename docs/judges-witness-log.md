@@ -2047,3 +2047,22 @@ synthetic files, including the actual replay CLI and private output permissions.
 Observer failures preserve output and previous sidecars. Full integration, real
 cost, source authenticity and delivery association remain unverified. No live
 writes, model calls, enabling, merge or deployment.
+
+
+## 9 November — shared main-chat forecast event key
+
+Continued on a new branch from f5dd8728. Main chat previously launched its forecast
+before the later bilateral coordinator existed and passed no turn ID. Both can
+use the already-existing deterministic request-event mapping without moving any
+coordinator or forecast call. The early hook now reserves that key only for a
+validated current HTTP marker, only on chat/full and only when the explicit turn
+argument is the default empty string. Missing context and observer/helper failures
+remain unknown; test mode still exits before either correlation or launch.
+
+105 affected isolated checks pass: key propagation 11, coordinator 33, forecast
+handoffs 19, existing on-message head 32 and completion joins 10. The existing
+synthetic head suite emits numerical warnings but all 32 checks pass. Tests
+include actual pending/log propagation, two interleaved request contexts and
+unchanged no-event random coordinator fallback. This metadata operates with
+capture off. No history/merge/post-turn feed, model, scoring or training changes;
+no private data, live calls/writes, enabling, merge or deployment.

@@ -6922,3 +6922,15 @@ markers stay unknown, and consistency does not authenticate the source or grant
 scoring/training admission. 307 affected isolated synthetic checks pass. Host
 integration and added launch-publication cost still need review. No capture was
 enabled; full forecast-to-delivered-reply association and lineage remain open.
+
+
+## 9 November — main-chat forecast event key
+
+`codex/judges-chat-forecast-key`, on f5dd8728, closes the prospective main-chat
+missing-key gap by reusing the coordinator's existing event-ID calculation at the
+early forecast boundary. Actual coordinator timing and existing IDs stay the same.
+105 affected isolated synthetic checks pass. This metadata change runs with capture
+off; it changes no reply or training rule. A reserved event key still requires a
+real matching target and independent delivery/lineage evidence. Historical empty
+markers stay unknown; full host integration and the remaining identity work stay
+open. No enabling, merge or deployment.

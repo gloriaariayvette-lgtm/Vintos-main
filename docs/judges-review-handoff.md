@@ -277,3 +277,27 @@ existing synchronous publication semantics. Both new final packet prefixes are
 recognized by sink retention. Invalid v2 prefixes are held, never replayed as chat
 packets. Older sink code does not understand these new types; coordinate the sink
 and producer versions if capture is enabled. No configuration is changed here.
+
+
+## Main-chat forecast event-key increment
+
+`codex/judges-chat-forecast-key` descends from f5dd8728. One shared pure function
+retains the coordinator's existing event-ID mapping. Main chat's early forecast
+hook uses it to reserve the same key that the bilateral wrapper will use later;
+it neither opens the coordinated turn early nor moves the forecast call. Unknown
+request context remains unknown. Explicit keys and non-chat/full surfaces are
+unchanged. No historical record is rewritten or assigned an inferred identity.
+
+This changes prospective pending/log metadata even with capture off. Coordinator
+IDs, duplicate detection, barrier/capsule order, history selection/merging,
+post-turn feeds, model routing and output/evaluator behavior remain unchanged.
+The reserved key does not establish an actual target or phone delivery; full
+origin/lineage/clock and strict eligibility requirements still apply. Keep server,
+request_trace and turn_coordinator versions together in integration.
+
+105 affected isolated checks pass (new 11, coordinator 33, handoffs 19, on-message
+head 32, completion joins 10), with owner/generated checks recorded in the reply.
+Actual launcher/pending/log propagation and concurrent request separation are
+covered with synthetic data and stubbed external actions. No real encoder,
+checkpoint, source snapshot or service was used. Host integration remains yours;
+Gloria owns enabling/deployment. No review pause or deploy action introduced.

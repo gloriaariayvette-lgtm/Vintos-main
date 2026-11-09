@@ -2005,3 +2005,30 @@ complete influence ancestry remain separate work.
 source clocks 12, census/innovation 109, existing on-message head 32, public report
 22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25). The legacy synthetic head suite emits numerical runtime
 warnings while all 32 checks pass; no live encoder or checkpoint was loaded.
+
+
+### Main-chat prospective forecast key
+
+The existing coordinator's event-key calculation now has one shared pure helper.
+For `chat/full` only, the early self-forecast hook can reserve that key from the
+current validated HTTP request marker, before the bilateral wrapper opens the
+actual turn later. The coordinator uses exactly the same pre-existing mapping;
+its no-event random fallback, barrier/capsule ordering and duplicate behavior are
+unchanged. The early hook does not open a turn, fetch a capsule or move the
+forecast's arrival time. Missing/malformed request markers stay empty. Explicit
+turn IDs, other surfaces and test-mode behavior are preserved.
+
+This is prospective metadata active even when optional witness capture is off:
+ordinary main-chat pending/forecast rows can now carry the event-derived turn key.
+It does not alter history rows or merge/deduplication selection, post-turn feeds,
+model routing, reply text, forecast vectors or the existing evaluator. It cannot
+backfill historical markers or establish that a future target reply was produced
+or delivered. A reserved key is not authenticated evidence or training admission.
+Existing exact target/source/lineage/clock requirements still apply.
+
+105 affected isolated synthetic checks pass: new key propagation 11, coordinator
+33, handoff capture 19, existing on-message head 32 and completion joins 10. The
+new tests exercise concurrent request contexts, shared coordinator key parity,
+missing/malformed input, exception behavior and the actual launcher, pending file
+and forecast log (including the full 66-character ID). No live inputs, models or
+services are used. Full integrated host validation remains with review.
