@@ -1497,3 +1497,24 @@ source supplied one; the interaction writer defaults absent environment surface
 to an empty string. None of these facts identifies the affected historical rows
 without the private diagnostic. No route, feed, logging policy or admission rule
 is modified by this probe.
+
+### Explicit configured-only completion metadata
+
+Two successful toggle branches now write the same foreground completion ledger
+used by other router paths. Their current draft contract exposes text but no
+verified served identity, so these new records carry
+`model_identity_evidence: "configured"`. The model field is the configured name;
+no provider request ID or response-observed identity is fabricated. Existing
+provider calls, return values, fallback order and receipt identity are unchanged.
+Ledger failures are swallowed by the existing recorder and cannot trigger a retry.
+
+The offline attribution reader distinguishes this explicit limitation from an old
+record that lacks an identity-evidence field. Explicit values other than
+`response_metadata` or `runtime_receipt` produce
+`call_model_identity_unobserved`; the call is not promoted to ledger-attributed
+served identity. Existing row labels remain recorded labels. A nearer call with
+this limitation cannot be skipped in favor of a farther call. Wider-window
+coverage similarly reports `sole_call_identity_unobserved`, not a recovery
+opportunity. These explicit evidence labels are still recorded claims, not source
+authentication. Historical unmarked ledger rows retain their previously reviewed
+ledger-attributed tier; this change does not fabricate markers on older data.

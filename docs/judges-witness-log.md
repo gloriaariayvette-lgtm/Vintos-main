@@ -1532,3 +1532,28 @@ acceptance. The dedicated-sink proposal documents measurement and volatile loss.
 Full Aegis suite/latency review remains with the reviewer, enablement with Gloria.
 The existing authentication blocker for private measurements is unchanged; no
 repeat notification. No paid calls, live writes, merge, enablement or deployment.
+
+## 9 November — missing router completion records repaired prospectively
+
+`codex/judges-router-completion-coverage` adds completion recording to the two
+successful toggle branches found during coverage source tracing. Both use the
+existing recorder, original surface, current configured model and measured stage
+elapsed time. They explicitly mark model identity as configured because the draft
+return contract does not expose verified response identity. No new provider call,
+retry, generation parameter, output text, fallback order or observed witness
+identity. Failed/empty drafts retain the existing fallback path. Recorder failures
+cannot change the result or cause another model call.
+
+The offline reader now honors the new explicit unknown identity marker: a matching
+call with configured/unknown/malformed evidence stays unobserved, with its own
+reason count. Wider-window diagnostics cannot promote it. Existing unmarked
+historical ledger rows and recorded-label tiers retain the reviewed rules. No
+retroactive edits, attribution claims or strict training admission follow.
+
+130 focused isolated checks pass: real router functions with stubbed providers and
+ledger 7, compute admission 44, router cache 15, handler capture 21, attribution 18,
+coverage 14, ownership 11. Tests prove one completion per successful direct call,
+unchanged forced/fallback paths and return values, logger failure isolation, surface
+retention, no prompt/reply content in the ledger call, and no configured-to-observed
+promotion. Generated reports refreshed. Full host suite and private measurements
+remain with the reviewer. No live writes, paid calls, merge or deployment.

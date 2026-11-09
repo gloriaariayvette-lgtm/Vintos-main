@@ -6667,3 +6667,14 @@ Storage still costs time in the worker; this is not Aegis latency acceptance.
 Reviewer owns full host suite and occupied/full-sink response validation before
 Gloria's enablement. No installed config or production write. Historical private
 coverage diagnosis and encoder identity remain open as recorded above.
+
+## 9 November — prospective completion gaps repaired
+
+`codex/judges-router-completion-coverage` records successful completion on the two
+previously unlogged toggle paths without changing calls, output or fallback order.
+130 focused isolated checks pass. The new model-identity marker is explicitly
+configured-only; offline readers honor that limitation, while old unmarked ledger
+rows retain their separate historical tier. Response-observed identity for these
+draft paths still needs a separately reviewed producer change; no new record is
+pretended to solve that. Private coverage dates/counts, encoder identity and Aegis
+acceptance remain open. No production modification or deployment.

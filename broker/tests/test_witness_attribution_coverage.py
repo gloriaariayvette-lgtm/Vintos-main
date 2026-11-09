@@ -89,6 +89,11 @@ class Tests(unittest.TestCase):
         report,_ = self.run_probe(calls=[dict(self.call,stage='failed')])
         self.assertEqual(report['window_sensitivity']['30'],{'sole_call_metadata_unavailable':1})
 
+    def test_explicit_configured_only_candidate_is_not_recovery(self):
+        report,_=self.run_probe(calls=[dict(self.call,model_identity_evidence='configured')])
+        self.assertEqual(report['window_sensitivity']['30'],{'sole_call_identity_unobserved':1})
+        self.assertEqual(report['baseline']['tiers']['ledger_attributed'],0)
+
     def test_exact_id_failure_never_enters_wider_recovery(self):
         report,_ = self.run_probe(rows=[dict(self.row,provider_request_id='missing-synthetic-id')])
         self.assertEqual(report['window_sensitivity']['120'],{})

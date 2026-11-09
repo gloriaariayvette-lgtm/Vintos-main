@@ -104,6 +104,8 @@ def diagnose(rows, ledger, config, cutoff):
                 state = 'sole_call_in_window'
                 if not _name(record.get('model')) or not _name(record.get('provider')) or record.get('stage') in BAD_STAGES:
                     state = 'sole_call_metadata_unavailable'
+                elif 'model_identity_evidence' in record and record['model_identity_evidence'] not in ('response_metadata','runtime_receipt'):
+                    state = 'sole_call_identity_unobserved'
             index = len(outcomes)
             outcomes.append([detail['join_state'] == 'no_matching_call', state])
             identity = (joined_identity(row)[0], digest(final_response(row)) if isinstance(final_response(row), str) else None)
