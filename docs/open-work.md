@@ -7009,3 +7009,12 @@ counts that claim more launch-backed rows than paired launches, or more paired
 launches than job receipts. Six regression assertions failed before the fix.
 Underlying joins, runtime and scoring are unchanged. Host integration and the
 remaining source/encoder/delivery evidence are still open; no enabling or deploy.
+
+
+## 9 November — exact loaded self-checkpoint identity
+
+`codex/judges-loaded-checkpoint-binding`, on 905881ba, fixes a reproduced race:
+self forecasts now identify the bytes parsed, rather than a later read of a replaced
+path. Active with capture off; stable output and encode counts unchanged. 106
+isolated checks pass. Real-host memory/latency, full ancestry/delivery evidence and
+integration remain open. No model change, enablement, merge or deployment.

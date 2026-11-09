@@ -2186,3 +2186,14 @@ orphan and conflict cases remain accepted. No production or admission change.
 59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
 Generated ownership, untested and store reports refreshed without changes; diff
 check clean. Regression evidence was captured before applying the validator fix.
+
+
+## 9 November — correct self-forecast checkpoint replacement race
+
+Reproduced old prediction/new checkpoint-ID mismatch, artifact suppression and
+late deletion failure. Self modes now parse/hash the same buffer and use its
+identity, including capture off. The other head and default loader are unchanged.
+106 isolated checks pass (binding 8, artifacts 20, availability 12, readout 5,
+inputs 15, handoffs 26, clocks 9, owners 11). Existing replacement expectation now
+requires a retained matching artifact. Synthetic numerical warnings persist with
+all assertions passing. Host costs and integration remain open; no deployment.

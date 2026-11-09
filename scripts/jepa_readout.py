@@ -210,11 +210,23 @@ def train_mode(rows, cache, mode, out, old=None, steps=200):
     return report
 
 
-def load(path, retain=False):
+def load(path, retain=False, bind_identity=False):
     raw = None
     checkpoint_clock = None
     source = path
-    if retain:
+    if bind_identity:
+        import io
+        if retain:
+            try:
+                from witness_self_artifacts import begin_checkpoint_read
+                checkpoint_clock = begin_checkpoint_read()
+            except Exception:
+                pass
+        # The self forecast's identity names the exact buffer parsed below. A
+        # later path replacement must not relabel the already loaded parameters.
+        raw = Path(path).read_bytes()
+        source = io.BytesIO(raw)
+    elif retain:
         try:
             import io
             from witness_self_artifacts import MAX_CHECKPOINT, begin_checkpoint_read
@@ -231,7 +243,9 @@ def load(path, retain=False):
         model={k:z[k] for k in z.files if k!='meta'}; meta=json.loads(str(z['meta']))
     if meta['schema']!=SCHEMA:raise ValueError('unsupported readout schema')
     model['meta']=meta
-    if raw is not None:
+    if bind_identity:
+        model['_loaded_checkpoint_id'] = hashlib.sha256(raw).hexdigest()
+    if retain and raw is not None:
         try:
             from witness_self_artifacts import checkpoint, finish_checkpoint_read
             availability = finish_checkpoint_read(checkpoint_clock) if checkpoint_clock is not None else None
@@ -270,7 +284,8 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
             pass
     cache = Embeddings(feature_encoder)
     a=arrays([r],cache)
-    m=load(path, retain=True) if retain else load(path)
+    self_mode = mode in ('self_ahead','self_on_message')
+    m=load(path, retain=retain, bind_identity=True) if self_mode else load(path)
     if m['meta']['mode'] != mode:raise ValueError('checkpoint is for a different head or mode')
     p=predict(m,a)
     from jepa_predictor import format_context
@@ -281,7 +296,7 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
     if mode=='self_on_message':turns.append({'role':'user','content':her})
     copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
     result = {'her_key':sh.her_key(her), 'context_emb':copied.tolist(),'emb':p[0].astype('float32'),'confidence':float(confidence(m,p,a)[0]),'qualification':'qualified',
-            'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':hashlib.sha256(path.read_bytes()).hexdigest(),
+            'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':m['_loaded_checkpoint_id'] if self_mode else hashlib.sha256(path.read_bytes()).hexdigest(),
             'context_last_ts':exs[-1]['ts'],'context_last_turn_id':exs[-1].get('turn_id',''),
             'coherence':float(a[0][0]@a[1][0]),'confidence_evaluation':m['meta']['report']['confidence']}
     if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):

@@ -1,7 +1,7 @@
 # Judges slices 1 and 2: accumulated review handoff
 
-Current candidate: **codex/judges-handoff-count-conservation**, based on
-**32c27b20245a576afecaada4803f9e72f0c40746**. Its final published hash is recorded in
+Current candidate: **codex/judges-loaded-checkpoint-binding**, based on
+**905881ba592fbb1acf1e2457d0c9d412f33daefa**. Its final published hash is recorded in
 the dated local coordination reply. Latest reviewer-reported integration is
 **c499460e**, through **f7eccc6e** (note #28); this is not a fresh verification of
 the deploy branch. Subsequent commits form one stack, `f7eccc6e..HEAD`, and the
@@ -585,3 +585,38 @@ integration requirements remain open.
 59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
 Generated ownership, untested and store reports refreshed without changes; diff
 check clean. Regression evidence was captured before applying the validator fix.
+
+
+## 9 November — self forecasts name the checkpoint bytes they parsed
+
+`codex/judges-loaded-checkpoint-binding` descends from 905881ba. The anchored self
+forecast previously parsed a checkpoint, computed a prediction, then reopened the
+path to label the result. An atomic replacement in between labelled old parameters
+with the new file hash; deletion caused an unnecessary late failure. With capture
+on, the manifest mismatch correctly suppressed artifacts, but the saved forecast
+still carried the wrong checkpoint identity.
+
+Both self modes now ask the loader to parse and hash one in-memory byte buffer.
+Their results use that loaded identity; the later path read is gone. The optional
+manifest uses the same buffer. This prospective identity correction is active with
+capture OFF too. Stable-file output, prediction/confidence and encoder-call counts
+are unchanged. Replacement/deletion after parsing no longer relabels or discards a
+valid result. The default loader contract and the other head's path are unchanged.
+The optional observation size limit still controls retention, not model loading.
+
+This does not certify atomic publication, fitting/source ancestry or durability.
+Bytes describe exactly what was parsed; a concurrently modified/corrupt read can
+still fail parsing as before. The compressed byte buffer overlaps parsing instead
+of being allocated for a later hash; real-host peak memory/latency is unmeasured.
+No checkpoint format, parameter value, model selection, loop/feed or eligibility
+policy changes. No private input, model calls, live writes, enabling, merge or deploy.
+
+106 isolated checks pass: new binding 8, artifacts 20, checkpoint availability 12,
+existing readout 5, forecast inputs 15, handoffs 26, forecast clocks 9, owners 11.
+Before the fix, replacement regressions showed wrong IDs and missing artifacts,
+and deletion caused a late file error. New tests use valid atomic replacements,
+compare predictions/confidence/call counts, and cover capture off without observer
+imports, retention limits, malformed inputs and unchanged other-head loading.
+The existing replacement test was updated from artifact suppression to exact
+loaded binding; the artifact mismatch guard itself remains unchanged. Existing
+synthetic matrix-operation warnings in readout tests persist; all assertions pass.
