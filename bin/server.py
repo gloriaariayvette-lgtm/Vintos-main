@@ -982,6 +982,12 @@ def _self_on_message(her, surface, turn_id="", test_mode=False):
     nothing here waits on it, and nothing it does can raise into the turn. A test-mode turn forecasts nothing."""
     if test_mode:
         return None
+    if surface == "chat/full" and turn_id == "":
+        try:
+            from request_trace import forecast_turn_id
+            turn_id = forecast_turn_id()
+        except Exception:
+            pass
     try:
         import sys as _som
         _p = os.path.join(WORKSPACE, "scripts")
@@ -3681,6 +3687,16 @@ if os.path.isdir(AVATAR_MODELS_DIR):
         app.mount("/models", StaticFiles(directory=_REPO_MODELS), name="models")
 
 # === Startup ===
+
+@app.on_event("startup")
+async def start_judges_capture_recovery():
+    try:
+        import sys as _capture_sys
+        _capture_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from witness_sink import start_recovery
+        start_recovery()
+    except Exception:
+        pass
 
 @app.on_event("startup")
 async def startup():

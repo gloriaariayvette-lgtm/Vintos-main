@@ -1885,3 +1885,357 @@ suite, occupied sink throughput/retention, CPU observation cost/compatibility,
 private source/attribution counts and future artifact coverage. No historical
 training decision or full encoder identity is inferred. No live inputs, sends,
 model calls, enabling, merge or deployment. Previous submitted tips remain fixed.
+
+
+## 9 November — historical exact-key coverage exposed
+
+`codex/judges-attribution-match-methods` adds an offline-only matched-method count
+and public fixed-label rendering. Exact completion keys, provider request keys and
+bounded timestamp matches no longer disappear inside one aggregate matched count.
+Counts are source copies after ambiguity/reuse/cutoff checks and overlap the
+attribution tiers; observed copies may also have a ledger match. Legacy aggregates
+remain readable with coverage explicitly unavailable. Window30 stays separate.
+
+79 isolated checks pass: completion joins 10, report 22, attribution 26, coverage
+21. New regressions first reproduced two missing-field errors and seven validation
+failures. Synthetic fixtures cover mixed methods, duplicate copies/ledger records,
+conflicting completion records, reused keys, cutoffs, observed-tier overlap,
+legacy reports, privacy and nonmutation. No matching algorithm, live producer,
+training permission, model call, live input, enablement, merge or deployment
+changed. Full integrated Aegis suite and private-data runs remain with review.
+
+
+## 9 November — historical router-chat test-origin lead
+
+Read-only source tracing found an explicit lower-level router invocation with
+chat surface in the old result-contract suite. At d335de72 it faked network calls
+but did not isolate the compute ledger. Source commits e9000f2d and 19232935 added
+OS-runner and direct-suite isolation on September 11. This is a conditional
+source-level contamination path, not confirmed provenance of retained rows.
+Accounting had to be importable and the store writable; source timestamps do not
+prove deployment. docs/judges-source-coverage.md records exact source pointers,
+synthetic fixture discriminators and the bounded check on the existing private
+copy. Nine historical source assertions passed; no old module execution, private
+inputs or test sends. No production code, matching, admission or stores changed.
+
+
+## 9 November — byte-bounded burst capacity
+
+Read reviewer note 28: reported integration c499460e, full suites 633/633 deploy
+and 636/636 live; host burst still retained 9/30 with the eight-slot queue.
+`codex/judges-burst-capacity` raises slots to 64 but independently caps queued
+serialized bytes at 8 MiB, plus at most one 1 MiB in-flight packet. Reservations
+and releases use the existing queue mutex; overflow skips without eviction or a
+storage wait. No disk-format/config/counter-key change. Queue remains volatile.
+
+66 affected isolated checks pass: deferred queue 26, sink 19, hooks 21. New
+regressions first failed the thirty-packet burst plus two missing byte-bound APIs.
+The stalled-writer fixture now retains all thirty roughly 24 KB packets; concurrent
+large submissions hold the 8 MiB bound, and failures/drains release capacity.
+These are local synthetic contracts, not host latency acceptance. Durable spool,
+restart replay and host cost tests remain open; no claim of restart survival.
+No live inputs, enabling, sends, model calls, merge or deployment.
+
+
+## 9 November — stable packet publication for recovery
+
+`codex/judges-replay-publication` adds optional stable IDs to the internal publisher.
+Matching retries verify owner-private exact bytes under the sink lock and sync the
+file/directory; conflicts are refused rather than overwritten. Existing producers
+omit the new argument, so their publication semantics are unchanged. Replays do
+not reset retention age or reapply diagnostic/persisted status counters.
+
+73 isolated checks pass: sink 26, deferred queue 26, hooks 21. The new child-process
+crash fixture exits immediately after linking the packet and retries without a
+second packet; concurrent writers, malformed IDs, unsafe files, config changes,
+capacity and fsync failure are also covered. No hardware power-loss claim. This
+is the first restart-recovery prerequisite only: ingress spool, startup replay,
+bounded expiry and acknowledgement remain unfinished. No live writes, enabling,
+model calls, sends, merge or deployment; full host checks remain with review.
+
+
+## 9 November — durable ingress and startup replay
+
+`codex/judges-durable-spool` completes optional synchronous private staging plus
+background replay, stacked on 272b2d0b. Records preserve exact bytes, config identity
+and age; stable publication and acknowledgement handle process exits without
+another final packet. 64 spool entry names/8 MiB logical bytes are bounded separately
+from final packet count; final capacity reserves the spool budget. New startup
+hook recovers enabled durable capture without a new turn. Default memory mode,
+reply text/routing and delivery/admission semantics remain unchanged.
+
+25 synthetic spool checks pass, plus sink 26, queue 26 and hooks 21. Includes real
+process termination, config/age retention, capacity, privacy, busy locks, immutable
+bytes, 30 roughly 24 KB packets and fail-open hook behavior. This is not hardware
+power-loss or host latency acceptance. Durable ingress introduces foreground scans
+and fsync; the earlier memory-queue latency does not apply. Diagnostics remain
+lower bounds and restart loss unknown. No private input/config change, enabling,
+sends, model calls, merge or deployment. Host integration and acceptance remain
+with review; work continues on independent branches.
+
+
+## 9 November — retained encoder call costs
+
+`codex/judges-encoder-call-cost` continues from 0c9c42cf while prior tips remain
+fixed for review. Optional capture now records monotonic durations for the existing
+parameter-before, encode and parameter-after stages. Null denotes unmeasured or
+invalid clock evidence, not zero. Existing output objects, exception behavior,
+encoder-call counts and once-per-wrapper snapshot budget are preserved. The
+capture-off path is unchanged. No real encoder is loaded or timed by this batch.
+
+Offline cost aggregates deduplicate invocation markers across batch outputs and
+source references. Conflicting cost/snapshot copies exclude that call; legacy
+receipts remain valid and unknown call identity is counted separately. Fixed
+numbers-only reports keep partial cost evidence separate from identity/admission.
+111 isolated checks pass: new cost 14, parameter receipts 19, artifact joins 30,
+review report 22, self artifacts 20, synthetic benchmark 6. Report validation and
+fixtures cover malformed counts/durations, privacy and nonmutation. Host cost and
+full integration remain reviewer work. No enabling, live inputs/writes, model or
+paid calls, merge or deployment.
+
+
+## 9 November — fixed historical fixture counts
+
+`codex/judges-historical-fixture-counts` follows 3260aa77. The existing offline
+coverage report gains a fixed source-fixture metadata comparison, partitioned by
+exact caller, complete/missing metadata, clock availability and cutoff. Identical
+rows deduplicate; distinct matching records are not collapsed into one imagined
+test run. Output contains only fixed labels/counts and the public source revision.
+Origin stays unconfirmed and baseline attribution remains unchanged.
+
+55 isolated synthetic checks pass (coverage 29, attribution 26); five additional
+source assertions verify the archived fixture and accounting call without running
+historical code. Tests cover strict token types, extra fields, all tuple changes,
+clock ambiguity, cutoff, duplicate rows, nonmutation, private-label exclusion and
+the actual CLI's permissions/hashes. No real-data census or execution evidence was
+read. Reviewer owns that check using the already-copied evidence. No live writes,
+new model calls, enablement, merge or deployment; heartbeat continues.
+
+
+## 9 November — checkpoint field consistency
+
+`codex/judges-checkpoint-consistency` follows 2895b42f. Offline artifact ingestion
+now validates the existing versioned checkpoint observation contract, rejecting
+malformed fields or invented verified identities. Schemaless legacy records with
+valid hashes remain unknown. The aggregate compares manifests sharing a checkpoint
+hash, excluding separately validated read clocks, and preserves conflicts with
+incomplete peers. It emits only fixed counts, not labels, dates, hashes or vectors.
+
+111 affected isolated checks pass: new consistency 13, joins 30, availability 12,
+report 22, cost 14, self artifacts 20. Tests cover current and older producer shapes,
+read-clock differences, all metadata conflict fields, malformed/forged copies,
+legacy mixing, duplicate references/packets, forecast/audit grouping, nonmutation
+and public formatter conservation/privacy. Consistency is not authentication or
+fitting-lineage verification; content joins and scoring permission stay separate.
+No runtime producers, capture flags, private inputs, model calls, live writes,
+merge or deployment changed. Host integration remains with review.
+
+
+## 9 November — pending-to-forecast handoff observations
+
+Continued from fixed submitted c6829c80 on a new branch. Optional capture now
+hashes the existing pending value/locator at launcher return and job consumption,
+then binds job observation to the exact unchanged saved row. The offline replay
+and formatter report only fixed states/counts, with code included in run hashes.
+No new origin markers enter the historical or runtime forecast log. Missing or
+conflicting evidence never becomes a joined observation or training admission.
+
+307 affected isolated checks pass: new handoffs 19, existing forecast inputs 15,
+source clocks 12, census/innovation 109, existing on-message head 32, public report
+22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25. New tests use stub process launches/encoders/senders and
+synthetic files, including the actual replay CLI and private output permissions.
+Observer failures preserve output and previous sidecars. Full integration, real
+cost, source authenticity and delivery association remain unverified. No live
+writes, model calls, enabling, merge or deployment.
+
+
+## 9 November — shared main-chat forecast event key
+
+Continued on a new branch from f5dd8728. Main chat previously launched its forecast
+before the later bilateral coordinator existed and passed no turn ID. Both can
+use the already-existing deterministic request-event mapping without moving any
+coordinator or forecast call. The early hook now reserves that key only for a
+validated current HTTP marker, only on chat/full and only when the explicit turn
+argument is the default empty string. Missing context and observer/helper failures
+remain unknown; test mode still exits before either correlation or launch.
+
+105 affected isolated checks pass: key propagation 11, coordinator 33, forecast
+handoffs 19, existing on-message head 32 and completion joins 10. The existing
+synthetic head suite emits numerical warnings but all 32 checks pass. Tests
+include actual pending/log propagation, two interleaved request contexts and
+unchanged no-event random coordinator fallback. This metadata operates with
+capture off. No history/merge/post-turn feed, model, scoring or training changes;
+no private data, live calls/writes, enabling, merge or deployment.
+
+
+## 9 November — reverse handoff cardinality correction
+
+Source review found that forward uniqueness did not prevent one pending resource
+from being claimed by two distinct saved forecast rows. Three new synthetic
+regressions reproduced false joined states. The offline index now retains every
+supplied job row hash per pending resource before filtering; conflicting, absent
+or outside-cutoff peers cannot be hidden. Distinct pending resources sharing a
+turn remain separate. No runtime producer, forecast selection or admission change.
+
+165 isolated checks pass: handoffs 23, chat forecast keys 11, report 22 and
+census/innovation 109. Fixtures remain synthetic and sender/encoder/launcher
+boundaries stubbed. No private data, new capture, model calls, live writes, merge
+or deployment. Submitted predecessor branches remain fixed for review.
+
+
+## 9 November — stored runtime fields around existing encodes
+
+Optional artifact receipts now fingerprint bounded stored settings before/after
+each existing encode; no extra encoding, tokenizer calls, configuration methods,
+file loads or version-discovery imports. Partial scope and unknown tokenizer/code/
+fitting identity are explicit. Runtime changes survive audit deduplication, while
+conflicting copies of one call are excluded from cost aggregation. Legacy receipts
+remain valid. Capture off is unchanged; capture-on real-host overhead is unmeasured.
+
+221 isolated checks pass: runtime 16, parameters 19, costs 14, artifacts 20, joins
+30, report 22, benchmark 6, checkpoint consistency 13, forecast inputs 15, handoffs
+23, entry owners 11 and store guard 32. One initial new-test fixture attempted to
+assign a read-only namespace dictionary; corrected to clear/update its synthetic
+contents. All final tests pass. No private input, model calls, live writes, merge
+or deployment. Submitted predecessor tips remain fixed for independent review.
+
+
+## 9 November — fitting-boundary observations
+
+Source tracing confirmed the anchored readout is preferred by the existing self
+forecast entrance. Its self-only optional observer now binds existing ordered
+input partitions to completed parameters/metadata and exact matching checkpoint
+readback after save returns. No extra encoder calls, training runs or schema
+changes. Failures remain passive; source/encoder identity and durability stay
+unverified. Historical dates are not reconstructed. The offline completion-reader
+is still open and current scoring/admission ignores these receipts.
+
+124 isolated checks pass: new fitting 14, existing readout 5, artifacts 20, sink 26,
+runtime 16, owners 11 and store guard 32. Synthetic numerical warnings persist in
+existing matrix operations, without assertion failures. Generated reports refreshed.
+No private input, real model, live writes, enabling, merge or deployment.
+
+
+## 9 November — fitting receipts reach the offline review
+
+Added strict offline receipt validation, exact checkpoint/metadata/mode/byte
+comparison, conservative conflict handling and before/during/after-read counts.
+Replay accepts an explicit optional self_fit_completions list and binds the reader
+code in its private run manifest; report renders fixed aggregate fields only.
+Malformed peers fail before filtering. Multiple distinct receipts remain ambiguous;
+legacy/missing evidence is never upgraded. Census and innovation stay unchanged.
+
+178 isolated checks pass: reader 17, report 22, artifact joins 30, census/innovation
+109. Actual CLI checks private permissions, code hashes and unchanged nonempty
+scores. Initial fixture filename corrected to the existing private-run.json.
+Generated reports refreshed. No private data, runtime producer change, model call,
+live write, enabling, merge or deployment. Full evidence and host integration open.
+
+
+## 9 November — partial runtime comparison reaches the review
+
+Retained forecast/audit runtime snapshots now have their own content-group count
+in replay and the public review. Observed changes survive incomplete peers;
+matching needs every reference and two distinct calls. Legacy data is unavailable,
+not reconstructed. Census and innovation remain exactly unchanged in CLI tests.
+187 isolated checks pass: comparison 12, joins 30, report 22, costs 14, census and
+innovation 109. Generated reports refreshed without changes. No private input, new
+capture, runtime producer change, model call, live write, enabling, merge or deploy.
+
+
+## 9 November — bounded encode entrypoint observation
+
+Loaded Python code now has optional before/after fingerprints, audit retention,
+invocation conflict handling and fixed offline consistency counts. The original
+encode method is resolved once and called once. Missing/native implementations
+remain unavailable; no source reads or extra model calls. Full implementation and
+source identity are not claimed. Two fixture issues (capture-root nesting and
+unordered receipt selection) corrected. Real-host cost and integration remain open.
+
+211 isolated checks pass: entrypoint 14, runtime producer 16, parameters 19,
+encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
+self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
+store guard 32. Generated ownership/coverage/store reports refreshed without
+changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — coverage-checked synthetic cost measurement
+
+Version 2 verifies runtime/entrypoint observations as well as parameter snapshots,
+checks fresh repeat invocations and separately measures new receipt retention.
+Configured synthetic runtime profile measured at 64 MiB/eight tensors/three runs:
+first-call medians 42.572/50.118 ms contiguous/strided; new-input repeat medians
+4.415/4.406 ms. No real model or tokenizer load, live store, send or deployment.
+No production behavior change. Real-host costs remain unmeasured.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.
+
+
+## 9 November — aggregate handoff support cannot reuse a launch
+
+Reproduced six failed assertions in three synthetic regression cases: impossible
+launch support counts passed the validator and renderer. Added paired-launch and
+job conservation bounds. The producer already refused pending-resource reuse;
+this change brings its public aggregate validation into line. Valid duplicate,
+orphan and conflict cases remain accepted. No production or admission change.
+
+59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
+Generated ownership, untested and store reports refreshed without changes; diff
+check clean. Regression evidence was captured before applying the validator fix.
+
+
+## 9 November — correct self-forecast checkpoint replacement race
+
+Reproduced old prediction/new checkpoint-ID mismatch, artifact suppression and
+late deletion failure. Self modes now parse/hash the same buffer and use its
+identity, including capture off. The other head and default loader are unchanged.
+106 isolated checks pass (binding 8, artifacts 20, availability 12, readout 5,
+inputs 15, handoffs 26, clocks 9, owners 11). Existing replacement expectation now
+requires a retained matching artifact. Synthetic numerical warnings persist with
+all assertions passing. Host costs and integration remain open; no deployment.
+
+
+## 9 November — self-audit checkpoint replacement regression
+
+Before the fix, synthetic replacement paired old bytes with a new cutoff (failure)
+and deletion after hashing raised a late FileNotFoundError. Self audits now use
+one descriptor's bytes/time and reject observable changes during the read.
+80 isolated checks pass: audit races 6, artifacts 20, availability 12, readout 5,
+ranking 26, owners 11. Capture-off behavior is included; mtime remains an estimate,
+not an attested fitting date. No live data, real encoding, enabling or deployment.
+
+
+## 9 November — counterpart and arriving inputs no longer omitted from observation
+
+Optional artifacts now record ordered selected-input hashes and six computed array
+hashes before prediction, without additional encoding. Existing artifacts remain
+available when the new observer fails. The offline reader validates optional data
+and cross-checks retained own inputs; no complete-ancestry claim or admission change.
+148 isolated checks pass: selected 8, artifacts 20, inputs 15, joins 30, runtime 12,
+loaded checkpoint 8, availability 12, owners 11, store guard 32. Maximum bounded
+receipt is under 4 KiB. Source and host evidence remains open; no deployment.
+
+
+## 9 November — baseline receipt bound to the exact forecast version
+
+Added bounded hash-only receipt for the existing rendered context and raw/normalized
+baseline output. Offline states separate absent, conflicting, mismatched and bound
+observations; packet counts do not become eligible turns. 175 isolated checks pass:
+baseline 10, artifacts 20, inputs 15, selected 8, joins 30, report 22, cost 14,
+loaded checkpoint 8, readout 5, owners 11, store guard 32. Encodes/scans unchanged.
+Formatter/observer failure preserves old artifacts; encode failure propagates
+without retry. Full source/encoder/delivery evidence and host costs remain open.
+
+
+## 9 November — selected-input coverage no longer absent from reports
+
+Added offline packet states for selected-feature receipts, preserving duplicates,
+conflicts, missing versions and arrival/cutoff distinctions. Shared exact-row
+validation leaves baseline semantics unchanged. 90 isolated checks pass: coverage
+9, selected 8, baseline 10, joins 30, report 22, owners 11. Actual scratch replay
+CLI writes 0600 aggregate-only output. No producer or admission change; full
+source/encoder/delivery evidence and host integration remain open.

@@ -1,8 +1,11 @@
 """Dedicated optional shadow storage. No workspace redirection, transport or model."""
 import argparse
 from collections import Counter
+from contextlib import contextmanager
 import fcntl
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -17,9 +20,13 @@ MAX_BYTES = 256 * 1024 * 1024
 MAX_FILES = 4096
 MAX_PACKET = 1024 * 1024
 RETENTION = 7 * 86400
-DEFERRED_COUNT_KEYS = ('enqueued', 'written', 'not_confirmed', 'full', 'unavailable')
+DEFERRED_COUNT_KEYS = ('enqueued', 'written', 'not_confirmed', 'full', 'unavailable', 'spooled', 'replayed')
 RESERVE = 8192  # Lock, status and one atomic status replacement.
-PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
+SPOOL_BYTES = 8 * 1024 * 1024
+SPOOL_FILES = 64
+SPOOL_NAME = '.capture-spool'
+SPOOL_PACKET = re.compile(r'[0-9a-f]{32}\.packet\Z')
+PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-launch-', 'self-forecast-handoff-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-', 'self-fit-completion-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
 
 
@@ -70,8 +77,12 @@ def configuration(expected=None):
         c = _read_private(location, 4096)
         if not isinstance(c, dict) or c.get('enabled') is not True:
             return None
-        if set(c) != {'schema', 'enabled', 'directory', 'max_bytes', 'max_files', 'retention_seconds', 'max_packet_bytes'} or c['schema'] != 'judges-shadow-sink-v1':
+        if set(c) - {'durable_queue'} != {'schema', 'enabled', 'directory', 'max_bytes', 'max_files', 'retention_seconds', 'max_packet_bytes'} or c['schema'] != 'judges-shadow-sink-v1':
             raise ValueError('invalid shadow config')
+        if type(c.get('durable_queue',False)) is not bool:
+            raise ValueError('invalid queue mode')
+        if c.get('durable_queue') and (type(c.get('max_bytes')) is not int or c['max_bytes'] <= SPOOL_BYTES + RESERVE):
+            raise ValueError('insufficient durable sink capacity')
         for key, ceiling, floor in [('max_bytes',MAX_BYTES,RESERVE+1), ('max_files',MAX_FILES,1),
                                     ('retention_seconds',RETENTION,1), ('max_packet_bytes',MAX_PACKET,1)]:
             if type(c[key]) is not int or not floor <= c[key] <= ceiling:
@@ -117,7 +128,7 @@ def publish(root, packet, prefix):
         return False
 
 
-def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
+def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None, packet_id=None, retained_at=None):
     """Publish an immutable snapshot, rechecking current limits and permission."""
     c = configuration(root)
     if c is None or (expected is not None and c != expected):
@@ -126,6 +137,15 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
     directory = lock = None
     try:
         if prefix not in PREFIXES: raise ValueError('unknown packet type')
+        if packet_id is not None and (not isinstance(packet_id,str)
+                or not re.fullmatch(r'[0-9a-f]{32}',packet_id) or diagnostic is not None or payload is None):
+            raise ValueError('invalid replay publication')
+        if retained_at is not None:
+            clock = time.time()
+            if (packet_id is None or type(retained_at) not in (int,float)
+                    or not math.isfinite(retained_at) or retained_at<0 or not math.isfinite(clock)
+                    or not 0<=clock-retained_at<=c['retention_seconds']):
+                raise ValueError('invalid replay retention clock')
         if diagnostic is not None and (not isinstance(diagnostic, dict) or any(
                 k not in DEFERRED_COUNT_KEYS or type(v) is not int or not 0 <= v < 10**18
                 for k,v in diagnostic.items())):
@@ -152,13 +172,44 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
         if configuration(root) != c:
             COUNTERS['disabled_or_changed'] += 1
             return False
+        # A durable ingress record can retry its stable name after an uncertain
+        # publication outcome. Never replace conflicting or unsafe evidence.
+        if packet_id is not None:
+            name = prefix + packet_id + '.json'
+            try:
+                existing = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            except FileNotFoundError:
+                existing = None
+            if existing is not None:
+                with os.fdopen(existing,'rb') as f:
+                    info = os.fstat(f.fileno())
+                    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size != len(payload)
+                            or f.read(len(payload)+1) != payload):
+                        raise ValueError('conflicting replay publication')
+                    if configuration(root) != c:
+                        COUNTERS['disabled_or_changed'] += 1
+                        return False
+                    if retained_at is not None and info.st_mtime>retained_at:
+                        os.utime(name,(retained_at,retained_at),dir_fd=directory,follow_symlinks=False)
+                    os.fsync(f.fileno())
+                os.fsync(directory)
+                COUNTERS['already_published'] += 1
+                return True
         now = time.time()
         total = files = expired = 0
+        spool_reserve = SPOOL_BYTES if c.get('durable_queue') else 0
         with os.scandir(directory) as entries:
             for index, entry in enumerate(entries):
                 if index >= MAX_FILES + 16: raise ValueError('directory entry limit')
                 name = entry.name
                 if name in ('.capture.lock', 'status.json'): continue
+                if name == SPOOL_NAME:
+                    child = os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory)
+                    try: _spool_entries(child)
+                    finally: os.close(child)
+                    spool_reserve = SPOOL_BYTES
+                    continue
                 if not (PACKET.fullmatch(name) or re.fullmatch(r'\.pending-[0-9a-f]{32}', name)):
                     raise ValueError('unmanaged sink entry')
                 info = entry.stat(follow_symlinks=False)
@@ -182,12 +233,18 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
             deferred[key] = min(10**18-1, deferred.get(key, 0) + value)
         if not isinstance(previous, dict) or any(k not in ('written','capacity','expired') or type(v) is not int or not 0 <= v < 10**18 for k,v in previous.items()):
             previous = {}
-        state = None if payload is None else ('written' if files < c['max_files'] and total + len(payload) + RESERVE <= c['max_bytes'] else 'capacity')
+        state = None if payload is None else ('written' if files < c['max_files'] and total + len(payload) + RESERVE + spool_reserve <= c['max_bytes'] else 'capacity')
         if configuration(root) != c:
             COUNTERS['disabled_or_changed'] += 1
             return False
         if state == 'written':
-            _atomic(directory, prefix + uuid.uuid4().hex + '.json', payload)
+            name = prefix + (packet_id or uuid.uuid4().hex) + '.json'
+            _atomic(directory, name, payload)
+            if retained_at is not None:
+                os.utime(name,(retained_at,retained_at),dir_fd=directory,follow_symlinks=False)
+                fd = os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)
+                try: os.fsync(fd)
+                finally: os.close(fd)
             files += 1; total += len(payload)
         if state is not None: COUNTERS[state] += 1
         # Persistent counters for lock-owning operations, never a complete-stream
@@ -210,9 +267,228 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
         if directory is not None: os.close(directory)
 
 
-# Eight pending immutable packets plus one in flight, each at most MAX_PACKET.
+def _config_sha(c):
+    value = dict(c, directory=str(c['directory']))
+    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def _spool_entries(directory):
+    info = os.fstat(directory)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError('unsafe spool directory')
+    entries = []
+    total = 0
+    inodes = set()
+    with os.scandir(directory) as scan:
+        for index, entry in enumerate(scan):
+            if index >= SPOOL_FILES + 4: raise ValueError('spool entry limit')
+            if entry.name != '.lock' and not (SPOOL_PACKET.fullmatch(entry.name)
+                    or re.fullmatch(r'\.pending-[0-9a-f]{32}',entry.name)):
+                raise ValueError('unmanaged spool entry')
+            try: info = entry.stat(follow_symlinks=False)
+            except FileNotFoundError: continue  # A concurrent atomic write finished.
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                raise ValueError('unsafe spool entry')
+            identity = (info.st_dev,info.st_ino)
+            if identity not in inodes:
+                total += info.st_size
+                inodes.add(identity)
+            if entry.name != '.lock': entries.append((entry.name,info.st_size,info.st_mtime))
+    if total + RESERVE > SPOOL_BYTES: raise ValueError('spool byte limit')
+    return entries, total
+
+
+@contextmanager
+def _spool_lock(c, create=False):
+    root = directory = lock = None
+    try:
+        if configuration(c['directory']) != c or not c.get('durable_queue'):
+            raise ValueError('durable configuration changed')
+        root = os.open(c['directory'],os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        info = os.fstat(root)
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ValueError('unsafe spool root')
+        if create:
+            try: os.mkdir(SPOOL_NAME,mode=0o700,dir_fd=root)
+            except FileExistsError: pass
+        directory = os.open(SPOOL_NAME,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=root)
+        _spool_entries(directory)
+        lock = os.open('.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600,dir_fd=directory)
+        info = os.fstat(lock)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError('unsafe spool lock')
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        if configuration(c['directory']) != c: raise ValueError('durable configuration changed')
+        yield root, directory
+    finally:
+        if lock is not None: os.close(lock)
+        if directory is not None: os.close(directory)
+        if root is not None: os.close(root)
+
+
+def _spool_read(directory, name):
+    fd = os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+    with os.fdopen(fd,'rb') as f:
+        info = os.fstat(f.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > MAX_PACKET+2048):
+            raise ValueError('unsafe spool record')
+        line = f.readline(2049)
+        if len(line)>2048 or not line.endswith(b'\n'): raise ValueError('invalid spool header')
+        def unique(pairs):
+            out = {}
+            for key,value in pairs:
+                if key in out: raise ValueError('ambiguous spool header')
+                out[key] = value
+            return out
+        header = json.loads(line,object_pairs_hook=unique)
+        payload = f.read(MAX_PACKET+1)
+    expected_keys = {'schema','configuration','created_at','sha256'}
+    if isinstance(header,dict) and header.get('schema')=='judges-ingress-v2': expected_keys.add('prefix')
+    if (not isinstance(header,dict) or set(header) != expected_keys
+            or header.get('schema') not in ('judges-ingress-v1','judges-ingress-v2')
+            or (header.get('schema')=='judges-ingress-v2' and header.get('prefix')!='self-forecast-launch-')
+            or not isinstance(header['configuration'],str) or not re.fullmatch('[0-9a-f]{64}',header['configuration'])
+            or type(header['created_at']) not in (int,float) or not math.isfinite(header['created_at']) or header['created_at']<0
+            or not payload or len(payload)>MAX_PACKET
+            or hashlib.sha256(payload).hexdigest()!=header['sha256']):
+        raise ValueError('invalid spool record')
+    return header,payload
+
+
+def _stage_capture(c,payload,prefix="capture-"):
+    """True confirms synced private ingress, not final publication or phone delivery."""
+    try:
+        if prefix not in ('capture-','self-forecast-launch-'): raise ValueError('unsupported ingress prefix')
+        now = time.time()
+        if not math.isfinite(now) or now<0 or not payload or len(payload)>c['max_packet_bytes']:
+            raise ValueError('invalid ingress')
+        header = dict(schema='judges-ingress-v1',configuration=_config_sha(c),created_at=now,
+                      sha256=hashlib.sha256(payload).hexdigest())
+        if prefix!='capture-': header.update(schema='judges-ingress-v2',prefix=prefix)
+        record = json.dumps(header,separators=(',',':')).encode()+b'\n'+payload
+        with _spool_lock(c,create=True) as (root,directory):
+            entries,total = _spool_entries(directory)
+            if len(entries)>=SPOOL_FILES or total+len(record)+RESERVE>SPOOL_BYTES:
+                COUNTERS['spool_full'] += 1
+                _note_ingress(c,'full')
+                return False
+            # Existing files may predate durable mode or a reduced capacity.
+            # Never assume reserved headroom just because the new config asks for it.
+            retained = 0
+            with os.scandir(root) as scan:
+                for index,entry in enumerate(scan):
+                    if index>=MAX_FILES+16: raise ValueError('sink entry limit')
+                    if entry.name in (SPOOL_NAME,'.capture.lock','status.json'): continue
+                    if not (PACKET.fullmatch(entry.name) or re.fullmatch(r'\.pending-[0-9a-f]{32}',entry.name)):
+                        raise ValueError('unmanaged sink entry')
+                    try: info = entry.stat(follow_symlinks=False)
+                    except FileNotFoundError: continue
+                    if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600:
+                        raise ValueError('unsafe sink entry')
+                    retained += info.st_size
+            if retained+total+len(record)+RESERVE>c['max_bytes']:
+                COUNTERS['spool_full'] += 1
+                _note_ingress(c,'full')
+                return False
+            if configuration(c['directory']) != c: return False
+            _atomic(directory,uuid.uuid4().hex+'.packet',record)
+            os.fsync(directory)
+            os.fsync(root)
+        COUNTERS['spool_staged'] += 1
+        _note_ingress(c,'spooled')
+        return True
+    except Exception:
+        COUNTERS['spool_not_confirmed'] += 1
+        _note_ingress(c,'not_confirmed')
+        return False
+
+
+def recover_spool(limit=8):
+    """Bounded replay; disabled/changed config never publishes old ingress."""
+    if type(limit) is not int or not 1<=limit<=SPOOL_FILES: raise ValueError('invalid replay limit')
+    c = configuration()
+    if c is None or not c.get('durable_queue'): return 0
+    clock = time.time()
+    if not math.isfinite(clock) or clock<0:
+        COUNTERS['spool_clock_unavailable'] += 1
+        return 0
+    confirmed = 0
+    try:
+        with _spool_lock(c) as (_,directory):
+            entries,_ = _spool_entries(directory)
+        attempted = 0
+        for name,_,mtime in sorted(entries,key=lambda row:(row[2],row[0])):
+            with _spool_lock(c) as (_,directory):
+                if not SPOOL_PACKET.fullmatch(name):
+                    # Uncommitted temporary records are never replayed.
+                    if time.time()-mtime>c['retention_seconds']:
+                        os.unlink(name,dir_fd=directory);os.fsync(directory)
+                    continue
+                try: header,payload = _spool_read(directory,name)
+                except FileNotFoundError: continue
+                except (ValueError,TypeError,UnicodeError):
+                    COUNTERS['spool_invalid'] += 1
+                    continue
+                if header['configuration'] != _config_sha(c): continue
+                age = clock-header['created_at']
+                if age<0: continue
+                if age>c['retention_seconds']:
+                    os.unlink(name,dir_fd=directory);os.fsync(directory)
+                    COUNTERS['spool_expired'] += 1
+                    continue
+            if attempted>=limit: break
+            attempted += 1
+            # Do not hold the ingress lock across the slower final sink scan.
+            if not _publish_bytes(c['directory'],payload,header.get('prefix','capture-'),expected=c,packet_id=name[:-7],retained_at=header['created_at']):
+                continue
+            with _spool_lock(c) as (_,directory):
+                try: current,body = _spool_read(directory,name)
+                except FileNotFoundError: continue
+                if current!=header or body!=payload: raise ValueError('ingress changed during replay')
+                os.unlink(name,dir_fd=directory);os.fsync(directory)
+            confirmed += 1
+            COUNTERS['spool_replayed'] += 1
+            _note_ingress(c,'replayed')
+    except FileNotFoundError: pass
+    except Exception: COUNTERS['spool_replay_unconfirmed'] += 1
+    return confirmed
+
+
+def _note_ingress(c,key):
+    if _writer_lock.acquire(blocking=False):
+        try: _note_deferred_locked(c,key)
+        finally: _writer_lock.release()
+    else: COUNTERS['deferred_diagnostic_unconfirmed'] += 1
+
+
+# Up to 64 pending packets, with eight MiB of serialized payload plus one in flight.
 # This is a volatile per-process queue, not a durability or delivery receipt.
-DEFERRED_SLOTS = 8
+DEFERRED_SLOTS = 64
+DEFERRED_BYTES = 8 * MAX_PACKET
+
+
+class CaptureQueue(queue.Queue):
+    """FIFO bounded by both packet count and bytes; hooks run under Queue's mutex."""
+    def __init__(self):
+        self.queued_bytes = 0
+        self.byte_limit = DEFERRED_BYTES
+        super().__init__(maxsize=DEFERRED_SLOTS)
+
+    def _put(self, item):
+        size = 0 if item is None else len(item[1])
+        if self.queued_bytes + size > self.byte_limit:
+            raise queue.Full
+        super()._put(item)
+        self.queued_bytes += size
+
+    def _get(self):
+        item = super()._get()
+        if item is not None:
+            self.queued_bytes -= len(item[1])
+        return item
+
+
 _writer = None
 _writer_lock = threading.Lock()
 _deferred_pending = {}  # At most eight configuration-scoped scalar counter batches.
@@ -264,6 +540,7 @@ def _write_queued(pending):
         try: item = pending.get(timeout=0.25)
         except queue.Empty:
             _flush_deferred()
+            recover_spool()
             continue
         try:
             if item is None: return
@@ -282,14 +559,39 @@ def _write_queued(pending):
             root = payload = prefix = config = None
 
 
-def enqueue_capture(root, packet):
-    """True means queued only. Never wait for storage or a free queue slot.
+def _ensure_writer_locked():
+    global _writer
+    if _writer is None:
+        pending = CaptureQueue()
+        thread = threading.Thread(target=_write_queued,args=(pending,),name='judges-capture-writer',daemon=True)
+        thread.start()
+        _writer = (os.getpid(),pending,thread)
+    return _writer[0]==os.getpid() and _writer[2].is_alive()
 
-    Used only at final chat capture. Other producers keep synchronous semantics.
-    Process exit can lose queued work; no shutdown flush delays serving shutdown.
+
+def start_recovery():
+    """Startup hook: enabled durable mode only; actual disk recovery is background."""
+    c = configuration()
+    if c is None or not c.get('durable_queue'): return False
+    if not _writer_lock.acquire(blocking=False): return False
+    try: return _ensure_writer_locked()
+    except Exception:
+        COUNTERS['deferred_unavailable'] += 1
+        return False
+    finally: _writer_lock.release()
+
+
+def enqueue_capture(root, packet, *, prefix="capture-"):
+    """Snapshot final chat capture or a forecast launch; neither confirms delivery.
+
+    Default True means volatile admission without waiting for storage or a slot.
+    Explicit durable mode waits for private ingress file/directory sync instead;
+    True then confirms ingress, not final publication. Other producers keep their
+    synchronous semantics. Neither mode adds a shutdown flush.
     """
     global _writer
     try:
+        if prefix not in ('capture-','self-forecast-launch-'): return False
         c = configuration(root)
         if c is None:
             COUNTERS['disabled_or_changed'] += 1
@@ -298,21 +600,20 @@ def enqueue_capture(root, packet):
         if len(payload) > c['max_packet_bytes']:
             COUNTERS['oversize'] += 1
             return False
+        if c.get('durable_queue'):
+            staged = _stage_capture(c,payload) if prefix=='capture-' else _stage_capture(c,payload,prefix)
+            start_recovery()  # Staging remains confirmed even if worker startup fails.
+            return staged
         if not _writer_lock.acquire(blocking=False):
             COUNTERS['deferred_busy'] += 1
             return False
         try:
-            if _writer is None:
-                pending = queue.Queue(maxsize=DEFERRED_SLOTS)
-                thread = threading.Thread(target=_write_queued, args=(pending,), name='judges-capture-writer', daemon=True)
-                thread.start()
-                _writer = (os.getpid(), pending, thread)
-            if _writer[0] != os.getpid() or not _writer[2].is_alive():
+            if not _ensure_writer_locked():
                 COUNTERS['deferred_unavailable'] += 1
                 _note_deferred_locked(c, 'unavailable')
                 return False
             try:
-                _writer[1].put_nowait((root, payload, 'capture-', c))
+                _writer[1].put_nowait((root, payload, prefix, c))
             except queue.Full:
                 COUNTERS['deferred_full'] += 1
                 _note_deferred_locked(c, 'full')
@@ -338,8 +639,11 @@ def main():
         raise ValueError('requires a prepared private sink configuration')
     c['enabled'] = args.action == 'enable'
     if c['enabled']:
-        if set(c) != {'schema','enabled','directory','max_bytes','max_files','retention_seconds','max_packet_bytes'}:
+        if set(c)-{'durable_queue'} != {'schema','enabled','directory','max_bytes','max_files','retention_seconds','max_packet_bytes'}:
             raise ValueError('invalid shadow config')
+        if type(c.get('durable_queue',False)) is not bool or (c.get('durable_queue')
+                and (type(c.get('max_bytes')) is not int or c['max_bytes']<=SPOOL_BYTES+RESERVE)):
+            raise ValueError('invalid durable queue config')
         # Validate the full proposed configuration through the same reader before
         # publication, without changing any serving environment or workspace.
         private_directory(c['directory'])

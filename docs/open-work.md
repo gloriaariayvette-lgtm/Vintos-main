@@ -6824,3 +6824,233 @@ through 83118e87 and their dependencies. 393 local isolated checks across 16 sui
 pass at that tip. The full integrated Aegis suite and listed host/private-data
 acceptance checks remain with review. This documentation-only branch does not
 change feeds or grant enablement/merge/deployment approval.
+
+
+## 9 November — attribution method coverage ready for review
+
+`codex/judges-attribution-match-methods` adds counts separating retained exact
+completion/provider-key matches from bounded timestamp matches. 79 affected local
+isolated checks pass. This is an offline aggregate/report increment on the submitted
+handoff tip; private source/window30 counts and the full integrated Aegis suite
+remain review work. No historical training decision or production change.
+
+
+## 9 November — check historical test-origin candidate
+
+The old result-contract suite explicitly exercised the chat router and could use
+an unisolated compute ledger when accounting was importable. September 11 source
+fixes added test isolation. Review must compare the documented synthetic fixture
+shape and execution evidence against the existing private copied records before
+assigning any origin. This is a new concrete candidate, not a demonstrated cause
+of the retained router-chat endpoint. No attribution or training change is made.
+
+
+## 9 November — burst capacity fixed locally; durable spool still open
+
+Review note 28 reports integration through f7eccc6e as c499460e and full host
+suites passed. `codex/judges-burst-capacity` adds 64 queue slots under the existing
+8 MiB queued-payload budget; 66 affected isolated checks pass, including retention
+of thirty small packets while publication is stalled. Review should remeasure
+host burst retention/latency. Restart persistence is not solved: durable staging,
+bounded replay, idempotent publication and config/disable behavior remain work.
+Do not equate an in-memory enqueue with durable receipt or phone delivery.
+
+
+## 9 November — restart publication prerequisite ready
+
+`codex/judges-replay-publication` provides verified stable-name retries after a
+crash between packet publication and acknowledgement. 73 affected isolated checks
+pass, including actual child-process termination after linking. Existing call
+sites do not yet use the API. Durable ingress spool and startup recovery remain
+required; memory enqueue still does not survive restart. Continue that work
+without waiting for review of this prerequisite. Host fsync cost remains unmeasured.
+
+
+## 9 November — durable queue implemented; host acceptance remains
+
+`codex/judges-durable-spool` wires optional private ingress and startup replay on
+272b2d0b. This completes the local spool implementation left open in the preceding
+entries. Default memory mode and production configuration remain unchanged.
+25 new isolated spool checks and 73 existing sink/queue/hook checks pass. Reviewer
+must measure the new synchronous ingress/fsync response cost near capacity, burst
+retention and startup recovery on the isolated host copy before enablement. Old
+memory-queue latency cannot be reused for durable mode. Real encoder/runtime cost,
+private historical origin, full identity/lineage and phone-delivery/ancestry work
+remain open. No live writes, model calls, merge or deployment.
+
+
+## 9 November — prospective encoder-call cost receipts
+
+`codex/judges-encoder-call-cost`, on 0c9c42cf, adds timing around existing optional
+CPU parameter observations and encoding calls, plus an offline aggregate over
+retained calls. 111 affected local isolated checks pass. This supplies a way to
+measure real ordinary background calls after approved capture enablement; it is
+not a measured real-encoder result or permission to enable capture. Durations are
+wall time and retained-call coverage only. Host cost/runtime compatibility, full
+identity/lineage, historical source evidence and delivery/ancestry remain open.
+No additional model loads, encodes, live writes, merge or deployment.
+
+
+## 9 November — historical fixture comparison executable
+
+`codex/judges-historical-fixture-counts`, stacked on 3260aa77, makes the previously
+documented historical test-origin lead reproducible inside the existing offline
+coverage CLI. 55 isolated checks pass, plus five read-only archived-source checks.
+No private evidence has been newly collected or measured. Reviewer should inspect
+fixed aggregate counts on the existing admitted copy; origin remains unconfirmed
+without execution provenance. No automatic relabelling, exclusion, model
+attribution, training decision, live writes, merge or deployment occurs.
+
+
+## 9 November — checkpoint manifest consistency
+
+`codex/judges-checkpoint-consistency`, on 2895b42f, validates versioned checkpoint
+observation shapes and reports contradictions under the same checkpoint hash.
+Legacy gaps stay explicit; read clocks are not compared as immutable metadata.
+111 affected isolated checks pass. This completes the consistency diagnostic,
+not verification of real weights, encoder identity, fitting lineage or target
+association. Runtime capture and scoring rules are unchanged. Reviewer owns host
+integration and existing private evidence; no live reads/writes or deployment.
+
+
+## 9 November — forecast pending handoff capture
+
+`codex/judges-forecast-handoff`, on c6829c80, adds optional receipts connecting
+launcher return, the pending record consumed by the job, and the exact saved
+forecast row. Offline aggregate joins remain diagnostic; missing turn/surface
+markers stay unknown, and consistency does not authenticate the source or grant
+scoring/training admission. 307 affected isolated synthetic checks pass. Host
+integration and added launch-publication cost still need review. No capture was
+enabled; full forecast-to-delivered-reply association and lineage remain open.
+
+
+## 9 November — main-chat forecast event key
+
+`codex/judges-chat-forecast-key`, on f5dd8728, closes the prospective main-chat
+missing-key gap by reusing the coordinator's existing event-ID calculation at the
+early forecast boundary. Actual coordinator timing and existing IDs stay the same.
+105 affected isolated synthetic checks pass. This metadata change runs with capture
+off; it changes no reply or training rule. A reserved event key still requires a
+real matching target and independent delivery/lineage evidence. Historical empty
+markers stay unknown; full host integration and the remaining identity work stay
+open. No enabling, merge or deployment.
+
+
+## 9 November — reject ambiguous reverse handoff joins
+
+`codex/judges-handoff-cardinality`, on 991f4830, fixes an offline diagnostic that
+could join one pending resource to multiple different forecast rows. Missing and
+outside-cutoff peers now remain in the conflict check. 165 isolated checks pass,
+including three regression failures demonstrated before the fix. Runtime, scoring
+and training admission are unchanged. Host integration and remaining evidence
+requirements stay open; no enabling, merge or deployment.
+
+
+## 9 November — stored encoder runtime evidence
+
+`codex/judges-loaded-runtime`, on 3d022fb8, adds bounded before/after stored-setting
+observations to optional artifact capture, with legacy compatibility and 221
+isolated checks. This supplies partial configuration evidence; tokenizer content,
+code, fitting lineage, atomic identity and real-host observation cost remain open.
+Capture off is unchanged. Capture on adds background observation overhead that
+existing encode/parameter timing fields do not include. No enablement or deployment.
+
+
+## 9 November — observe existing self fitting and exact saved output
+
+`codex/judges-fit-completion`, on 4353b824, adds optional private input-partition and
+save-completion receipts to the anchored self fitter. 124 isolated checks pass.
+No runtime training was started; capture off and the other head remain unchanged.
+The offline receipt reader/join is the next independent piece; complete source and
+encoder lineage, historical fitting dates, real-data cost and host integration
+remain open. Receipts do not change scoring or admission. No enablement/deployment.
+
+
+## 9 November — offline fitting reader implemented
+
+`codex/judges-fit-receipt-reader`, on 48b29f6a, implements the previously open
+completion-receipt reader/join. Explicit fitting receipts and existing artifact
+packets now yield fixed consistency/timing counts in replay and its review report.
+178 isolated checks pass; nonempty census and innovation are unchanged. Complete
+lineage, real-host costs, delivery evidence and host integration remain open.
+No runtime producer change, historical date inference, eligibility change or deploy.
+
+
+## 9 November — retained runtime settings are now compared
+
+`codex/judges-runtime-comparison`, on 5283d12b, adds validated partial-runtime
+consistency counts to artifact replay/review. 187 isolated checks pass. Legacy or
+missing observations stay unknown; full encoder identity and host integration
+remain open. No new capture, runtime producer change, eligibility change or deploy.
+
+
+## 9 November — loaded Python encode code is observed
+
+`codex/judges-encode-entrypoint`, on b683b7ce, adds optional bounded loaded-code
+fingerprints and aggregate content-bound comparisons. Unknown/native/legacy data
+stays unknown. Full helper/native/tokenizer identity, real-host cost, complete
+ancestry, delivery evidence and integration remain open. Capture off, scoring and
+eligibility remain unchanged; no enabling, merge or deployment.
+
+
+## 9 November — cost benchmark now verifies inspection coverage
+
+`codex/judges-benchmark-observation-coverage`, on 7b82f337, hardens the offline
+benchmark against missing runtime/code observations and adds a synthetic configured
+profile plus fresh-input repeat retention. Local configured 64 MiB first-call
+medians: 42.572 ms contiguous, 50.118 ms strided. These are not real-encoder costs.
+No runtime change; host compatibility/cost, ancestry, delivery and integration open.
+
+
+## 9 November — handoff aggregate launch counts conserved
+
+`codex/judges-handoff-count-conservation`, on 32c27b20, rejects supplied aggregate
+counts that claim more launch-backed rows than paired launches, or more paired
+launches than job receipts. Six regression assertions failed before the fix.
+Underlying joins, runtime and scoring are unchanged. Host integration and the
+remaining source/encoder/delivery evidence are still open; no enabling or deploy.
+
+
+## 9 November — exact loaded self-checkpoint identity
+
+`codex/judges-loaded-checkpoint-binding`, on 905881ba, fixes a reproduced race:
+self forecasts now identify the bytes parsed, rather than a later read of a replaced
+path. Active with capture off; stable output and encode counts unchanged. 106
+isolated checks pass. Real-host memory/latency, full ancestry/delivery evidence and
+integration remain open. No model change, enablement, merge or deployment.
+
+
+## 9 November — self-audit checkpoint cutoff binding
+
+`codex/judges-audit-checkpoint-clock`, on e9e3221a, binds self-audit checkpoint bytes
+and its existing filesystem cutoff to one open file; observable mutation refuses
+the audit. Active with capture off; the timestamp is still not fitting provenance.
+80 isolated checks pass. Host integration and source/encoder/delivery evidence
+remain open. No enabling, merge or deployment.
+
+
+## 9 November — selected forecast feature dependencies
+
+`codex/judges-selected-feature-inputs`, on 2e3962a3, adds optional bounded hash-only
+receipts for the selected own/counterpart/arriving inputs and six computed arrays.
+148 isolated checks pass. Complete ancestry, separate context-baseline encoding,
+real-host cost, delivery and integration remain open. Capture defaults and scoring
+unchanged; no enabling, merge or deployment.
+
+
+## 9 November — context-baseline input/output hash binding
+
+`codex/judges-context-baseline-binding`, on 204e369f, observes the separate existing
+baseline encode and validates its exact saved-forecast binding in offline counts.
+175 isolated checks pass; no extra encoding or parameter scans. Baseline encoder
+identity/cost, complete ancestry, phone delivery and real-host integration remain
+open. Capture defaults and scoring unchanged; no enabling, merge or deployment.
+
+
+## 9 November — selected-feature coverage in aggregate review
+
+`codex/judges-selected-feature-coverage`, on 71081e44, exposes fixed packet counts
+for selected-input receipts with exact forecast/cutoff/arrival consistency checks.
+90 isolated checks pass. This is offline-only; runtime capture and admission are
+unchanged. Source identity, full ancestry, host integration and delivery remain
+open. No enabling, merge or deployment.

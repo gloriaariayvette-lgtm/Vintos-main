@@ -61,6 +61,32 @@ class Tests(unittest.TestCase):
         self.assertEqual(report['tiers']['ledger_attributed'],2)
         self.assertEqual(len({d['ledger_sha256'] for d in details}),2)
 
+    def test_match_method_counts_partition_only_retained_matches(self):
+        _, exact, call = self.routed()
+        provider = dict(role='assistant',content='synthetic provider reply',turn_id='provider-turn',
+                        surface='avatar',timestamp=160,provider_request_id='synthetic-provider-request')
+        nearby = dict(role='assistant',content='synthetic nearby reply',turn_id='nearby-turn',
+                      surface='avatar',timestamp=170)
+        provider_call = dict(at=30,organ='router:avatar',model='synthetic-model',provider='synthetic-provider',
+                             provider_request_id=provider['provider_request_id'],**{'class':'foreground'})
+        nearby_call = dict(at=170,organ='router:avatar',model='synthetic-model',provider='synthetic-provider',
+                          **{'class':'foreground'})
+        rows = [exact, copy.deepcopy(exact), provider, nearby, dict(nearby, timestamp=200)]
+        ledger = [call, copy.deepcopy(call), provider_call, nearby_call]
+        before = copy.deepcopy((rows, ledger, self.config))
+        report, _ = A.attribution(rows, ledger, self.config, 200)
+        self.assertEqual(report['matched_methods'],dict(generation_completion_id=2,provider_request_id=1,nearest_time=1))
+        self.assertEqual(sum(report['matched_methods'].values()),report['join_states']['matched'])
+        self.assertEqual(report['excluded'],{'outside_cutoff':1})
+        self.assertEqual((rows, ledger, self.config),before)
+        # An exact key claimed by another distinct turn is no longer a match.
+        rows.append(dict(exact,turn_id='other-exact-turn'))
+        report, _ = A.attribution(rows,ledger,self.config,200)
+        self.assertEqual(report['matched_methods'],dict(generation_completion_id=0,provider_request_id=1,nearest_time=1))
+        # A conflicting ledger copy also removes all exact-key matches.
+        report, _ = A.attribution([exact],[call,dict(call,model='other')],self.config,200)
+        self.assertEqual(sum(report['matched_methods'].values()),0)
+
     def test_missing_or_conflicting_completion_never_falls_back_to_time(self):
         _, row, call = self.routed()
         nearby = dict(call,at=150,generation_completion_id='0'*32)

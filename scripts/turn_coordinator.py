@@ -104,8 +104,8 @@ def _post(path, body, timeout=2.0):
 
 def begin(raw_text, surface, test_mode=False, event_id=None):
     """Open a turn. Returns a Turn. Never raises into the request path."""
-    turn_id = ("t-" + hashlib.sha256(str(event_id).encode()).hexdigest()
-               if event_id else "t-" + uuid.uuid4().hex[:16])
+    from request_trace import event_turn_id
+    turn_id = event_turn_id(event_id) or "t-" + uuid.uuid4().hex[:16]
     surface = surface if surface in SURFACES else "chat"
 
     # 1. exact strategy-stop interceptor. If she used the reserved command, stop

@@ -195,4 +195,87 @@ class Tests(unittest.TestCase):
             self.assertEqual(self.config.stat().st_mode&0o777,0o600)
         self.assertEqual(list(self.sink.iterdir()),[]);self.assertEqual(list(self.workspace.iterdir()),[])
 
+    def test_replayed_packet_is_one_file_without_fresh_status_or_retention_clock(self):
+        payload=b'{"synthetic":true}\n';identity='a'*32
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        packet=self.packets()[0];before=(packet.stat().st_mtime_ns,self.status(),(self.sink/'status.json').stat().st_mtime_ns)
+        self.settings['max_files']=1;self.write_config()
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertEqual(len(self.packets()),1)
+        self.assertEqual((packet.stat().st_mtime_ns,self.status(),(self.sink/'status.json').stat().st_mtime_ns),before)
+        self.assertEqual(S.COUNTERS['already_published'],1)
+        self.assertEqual(self.status()['counts']['written'],1)
+
+    def test_replay_refuses_conflicts_and_unsafe_existing_entries(self):
+        payload=b'{"synthetic":true}\n';identity='b'*32
+        name=self.sink/('capture-'+identity+'.json')
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertFalse(S._publish_bytes(self.sink,payload.replace(b'true',b'null'),'capture-',packet_id=identity))
+        self.assertEqual(name.read_bytes(),payload)
+        name.chmod(0o644)
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        name.unlink();outside=self.root/'outside';outside.write_bytes(payload);outside.chmod(0o600)
+        name.symlink_to(outside)
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertEqual(outside.read_bytes(),payload)
+        name.unlink();name.mkdir(mode=0o700)
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+
+    def test_replay_input_contract_refuses_ids_or_diagnostic_reapplication(self):
+        for identity in ('',True,[],{},'../escape','A'*32,'a'*31,'a'*33):
+            self.assertFalse(S._publish_bytes(self.sink,b'{}','capture-',packet_id=identity))
+        self.assertFalse(S._publish_bytes(self.sink,None,'capture-',packet_id='c'*32,diagnostic={'full':1}))
+        self.assertFalse(S._publish_bytes(self.sink,b'{}','capture-',packet_id='c'*32,diagnostic={'full':1}))
+        self.assertEqual(list(self.sink.iterdir()),[])
+
+    def test_replay_rechecks_configuration_and_payload_size(self):
+        payload=b'{"synthetic":true}\n';identity='d'*32
+        expected=S.configuration(self.sink)
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity,expected=expected))
+        self.settings['max_packet_bytes']=1;self.write_config()
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity,expected=expected))
+        self.settings['max_packet_bytes']=S.MAX_PACKET;self.settings['enabled']=False;self.write_config()
+        self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertEqual(len(self.packets()),1)
+
+    def test_replay_sync_failure_is_unconfirmed_and_can_retry(self):
+        payload=b'{}\n';identity='e'*32
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        with patch.object(S.os,'fsync',side_effect=OSError('synthetic sync failure')):
+            self.assertFalse(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertEqual(S.COUNTERS['already_published'],0)
+        self.assertTrue(S._publish_bytes(self.sink,payload,'capture-',packet_id=identity))
+        self.assertEqual(len(self.packets()),1)
+
+    def test_actual_process_death_after_link_can_retry_same_name(self):
+        code='''import os,sys
+sys.path.insert(0,sys.argv[1])
+import witness_sink as S
+original=S.os.link
+def die(*a,**k):
+ original(*a,**k)
+ os._exit(23)
+S.os.link=die
+S._publish_bytes(sys.argv[2],b'{"synthetic":true}\\n','capture-',packet_id='f'*32)
+'''
+        result=subprocess.run([sys.executable,'-c',code,str(ROOT/'scripts'),str(self.sink)],capture_output=True,text=True,timeout=3)
+        self.assertEqual(result.returncode,23,result.stderr)
+        self.assertFalse((self.sink/'status.json').exists())
+        self.assertEqual(len(self.packets()),1)
+        self.assertTrue(S._publish_bytes(self.sink,b'{"synthetic":true}\n','capture-',packet_id='f'*32))
+        self.assertEqual(len(self.packets()),1)
+        # Recovery cannot invent a lost status increment. The packet itself is present.
+        self.assertFalse((self.sink/'status.json').exists())
+        self.assertEqual(S.COUNTERS['already_published'],1)
+
+    def test_same_replay_name_across_processes_never_creates_duplicates(self):
+        code="import sys;sys.path.insert(0,sys.argv[1]);import witness_sink as s;s._publish_bytes(sys.argv[2],b'{}','capture-',packet_id='1'*32)"
+        jobs=[subprocess.Popen([sys.executable,'-c',code,str(ROOT/'scripts'),str(self.sink)],stdout=subprocess.PIPE,stderr=subprocess.PIPE) for _ in range(6)]
+        for job in jobs:
+            out,err=job.communicate(timeout=3);self.assertEqual(job.returncode,0,err)
+        self.assertTrue(S._publish_bytes(self.sink,b'{}','capture-',packet_id='1'*32))
+        self.assertEqual(len(self.packets()),1)
+        self.assertEqual(self.status()['counts']['written'],1)
+
 if __name__=='__main__':unittest.main()

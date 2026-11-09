@@ -81,6 +81,31 @@ class Tests(unittest.TestCase):
             report['historical_attribution'][key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):M.render(report)
 
+    def test_historical_match_methods_include_observed_tier_and_legacy_unknown(self):
+        import witness_attribution as A
+        row = dict(self.row,provider_request_id='private-provider-key')
+        call = dict(at=50,organ='private-caller',provider='private-provider',model='private-model',
+                    provider_request_id=row['provider_request_id'],**{'class':'foreground'})
+        historical,_ = A.attribution([row],[call],
+            {'surface_callers':{row['surface']:['private-caller']},'window_seconds':5},1000)
+        self.assertEqual(historical['tiers']['observed'],1)
+        self.assertEqual(historical['matched_methods']['provider_request_id'],1)
+        report = copy.deepcopy(self.report); report['historical_attribution']=historical
+        before = copy.deepcopy(report); text=M.render(report)
+        self.assertEqual(before,report)
+        self.assertIn('provider request key: 1',text)
+        self.assertIn('overlaps the attribution tiers',text)
+        self.assertNotIn('private-',text)
+        del historical['matched_methods']
+        self.assertIn('Match-method coverage not supplied',M.render(report))
+
+    def test_historical_match_methods_reject_bad_counts_or_labels(self):
+        zero=dict(generation_completion_id=0,provider_request_id=0,nearest_time=0)
+        for values in (None,[],{},dict(zero,private_label=0),dict(zero,nearest_time=True),
+                       dict(zero,nearest_time=-1),dict(zero,generation_completion_id=1)):
+            report=self.historical_report();report['historical_attribution']['matched_methods']=values
+            with self.subTest(values=values),self.assertRaises(ValueError):M.render(report)
+
     def test_historical_attribution_counter_conservation_and_bounds(self):
         for field,value in (
             ('label_ledger_agreement',{}), ('label_ledger_agreement',{'agree':2}),

@@ -10,6 +10,21 @@ current = ContextVar('vintos_request_trace', default=None)
 LOG = str(Path.home() / '.vintos/workspace/memory/request-trace.jsonl')
 
 
+def event_turn_id(event_id):
+    """Existing coordinator event-key rule; no event means no reserved identity."""
+    import hashlib
+    return "t-" + hashlib.sha256(str(event_id).encode()).hexdigest() if event_id else None
+
+
+def forecast_turn_id():
+    """Reserve the current HTTP event key without opening or authenticating a turn."""
+    import re
+    trace = current.get()
+    if not isinstance(trace, str) or re.fullmatch(r"[A-Za-z0-9:._-]{1,160}", trace) is None:
+        return ""
+    return event_turn_id(trace)
+
+
 def completion_join(result, surface):
     """Correlation for one recorded completion, not a delivery or origin attestation."""
     import hashlib
