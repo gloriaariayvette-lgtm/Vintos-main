@@ -1158,3 +1158,36 @@ Full isolated suite/private character4 provenance review stays with Claude; runt
 format compliance and per-surface results still need ordinary-use evidence. No
 private records, live writes, GPU/model/encoder/provider calls, merge or deployment.
 Exact pushed tip is in the coordination reply. Heartbeat ACTIVE.
+
+
+## 2026-11-09 11:14 CST — offline voice familiarity and sustained drift (#44)
+
+Added experiments/nonllm-judges/voice_drift.py on codex/judges-voice-drift-prototypes
+above 71193c5702e3cd85de5262b0bb07eed2863d1c43. Reuses character-reference metric
+functions with exact cached text/vector/encoder bindings and complete original-act
+lineage admission. Known mode and surface are separate; target day and all future
+days are excluded from its reference. Calibration leaves each reference day out,
+weights days equally, and emits an empirical familiarity percentile with an inclusive
+0.2–0.8 abstain band. It is not an identity probability or a quality verdict. Sparse
+or degenerate coverage stays unscored. A rounding repair keeps identical features
+tied despite floating-point arithmetic.
+
+Drift needs four consecutive calendar days beyond the held-out baseline maximum
+plus an explicit distance margin. A single outlier cannot flag sustained change.
+Persistence alone does not update the reference. An exact, externally owner-reviewed
+adoption receipt can simulate replacing the scoped reference for later days only;
+stale, unbound, nonpersistent, family-derived or adjacent-rule adoption evidence
+cannot promote itself. Private version/membership receipts retain the transition;
+public output is aggregate only. No writes or runtime integration. README states
+the experimental thresholds, unverified source/adoption claims, lack of real-world
+calibration and how changes can be adopted without a self-scoring feedback loop.
+
+123 isolated checks pass: new voice/drift 23, existing character-reference 72,
+existing numerical candidates 17, ownership 11. Logs: /tmp/judges-voice-drift-tests.log,
+/tmp/judges-voice-character-tests.log, /tmp/judges-voice-candidate-tests.log and
+/tmp/judges-voice-owners.log. Generated reports refreshed unchanged; diff clean.
+No private records, model/encoder/provider calls, live writes, model changes, GPU,
+merge or deployment. Full suite/private character4 investigation stays with Claude.
+The latent-feed full-suite-interaction hypothesis is still unconfirmed: the earlier
+50-run pass did not identify a root cause. Exact pushed tip is in the coordination
+reply. Heartbeat ACTIVE; no completion/routine notification.

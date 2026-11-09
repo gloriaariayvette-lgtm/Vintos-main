@@ -1,18 +1,20 @@
 # Offline numerical judge candidates
 
-Two components are prototyped: **witnessed recurrence counts** and **thread-grouping
-suggestions**. They have explicit numerical targets and can be tested without
+Four components are prototyped: **witnessed recurrence counts**, **thread-grouping
+suggestions**, **voice familiarity with abstention**, and **sustained drift with
+explicitly reviewed reference epochs**. They have explicit numerical targets and can be tested without
 reading private messages, running an encoder, or evaluating the system's identity.
 They do not replace any current judge, author a thread, consume a thread, score a
 person, nudge emotion, or change a feed. No runtime module imports this directory.
 
-This responds to coordination note #42. Source baseline is review tip
+The original inventory responds to note #42; the voice/drift extension responds to
+note #44. The inventory source baseline is review tip
 `ef0b2fb5f512478c286cfee9a47258d6d3d6de33`. The earlier accepted judge review and
 existing character-reference/on-message innovation experiments remain applicable.
 The inventory below is a source-based design assessment, not measured task accuracy.
 The synthetic tests listed for other candidates are proposals, **not executed tests**.
 
-## Selection and cost
+## Original selection and cost
 
 1. **Recurrence, entries 22 and 1.** Count distinct original acts and distinct local
    days for explicitly reviewed topics, stratified by mode and surface. This can
@@ -33,7 +35,9 @@ prose; their full call cannot be removed by replacing one statistic.
 
 The existing on-message innovation scorer already handles a stronger exact-join
 forecast-error contract. The existing character-reference experiment already handles
-held-out familiarity. This batch does not duplicate either implementation.
+held-out familiarity. The voice/drift extension below reuses its metric functions
+and adds past-only calibration, abstention and adoption-bound reference epochs;
+it does not duplicate the character evaluator or private control work.
 
 ## All 33 entries
 
@@ -43,8 +47,8 @@ the current source path/function; existing effects stay untouched.
 
 | Entry / source | Decision and explicit input | Proposed non-LLM scorer | Principal failure mode | Offline synthetic test before any integration |
 |---|---|---|---|---|
-| A [voice coherence](../../bin/voice_coherence.py), `check:100` | Component: finalized replies, reviewed mode/surface reference and provenance | Existing leave-one-day-out semantic/style percentiles | Familiarity penalizes legitimate novelty, refusal or a different surface; does not identify performance | Hold out a day, include benign novelty/refusal and matched other-author controls; verify missing references stay unscored |
-| B [deviation](../../bin/deviation_check.py), `check:182` | Component: same inputs plus independently labelled contextual stance | Separate familiarity from labelled stance agreement; do not blend them into authenticity | Topic overlap hides opposite stance; judge nudges leak into reference state | Same-topic opposite-stance pair and indirect nudge ancestry; refuse a unified truth verdict |
+| A [voice coherence](../../bin/voice_coherence.py), `check:100` | Component: finalized replies, reviewed mode/surface reference and provenance | **Voice prototype below:** past-only leave-one-day-out semantic/style empirical score and abstain band | Familiarity penalizes legitimate novelty, refusal or a different surface; does not identify performance | Hold out a day, include benign novelty/refusal and matched other-author controls; verify missing references stay unscored |
+| B [deviation](../../bin/deviation_check.py), `check:182` | Component: same scoped inputs and explicit adoption evidence; contextual stance remains separate | **Drift prototype below:** consecutive-day distance shift with reviewed future reference updates; stance agreement remains a proposed separate measure | Topic overlap hides opposite stance; judge nudges leak into reference state | Same-topic opposite-stance pair and indirect nudge ancestry; refuse a unified truth verdict |
 | 1 [thread triage](../../bin/thread-triage.py), `main:92` | Component: original return/engagement events joined to a thread | **Recurrence prototype**, unique acts/days and explicit unresolved outcomes | Repeated scans/copies become fake attention; global activity is misassigned to a thread | Duplicate scans add zero acts; unrelated-thread activity does not change its counts |
 | 2 [thread weaver](../../bin/thread_weaver.py), `main:138` | Component: exact source text hashes, frozen cached vectors and scope | **Grouping prototype**, complete-link suggestions; retain manual choice and authored weave | Transitive similarity collapses distinct questions; similarity is not information-preserving equivalence | A–B and B–C similar but A–C dissimilar must not form one group; no member removed |
 | 3 [thread resolution](../../bin/thread-resolution.py), `resolve_threads:126` | Retain verdict; component from exact completion/closure receipts | Receipt coverage and elapsed-time counters | Cooling/age is mistaken for completion; a promise is counted as execution | Old but unresolved thread stays unresolved; wrong task receipt cannot close it |
@@ -138,3 +142,138 @@ All existing loops, feeds and judge effects remain intact. Any later substitutio
 requires independent task labels, explicit abstention/error targets, source/effect
 inventory, held-out evaluation, Claude's full isolated suite and Gloria's deployment.
 No golden-day or acceptance-threshold change is made here.
+
+## Voice coherence and deviation: offline prototypes
+
+`voice_drift.py` adds the two specifically requested components. It imports the
+existing character-reference `style`, `reference_statistics`, `score_statistics`
+and empirical `percentile` functions. It never runs an encoder, calls a provider,
+reads a private store, sends a result or changes a runtime reference. An authorized
+private caller can supply already cached features; this change ships synthetic tests
+only. No production call is saved until separately reviewed integration exists.
+
+Call `analyze(events, nodes, features, encoder, reference_ids, cutoff, ...)` in memory.
+It returns `(aggregate_report, private_receipts)`. Events and complete lineage use
+this directory's original-act contract. Copies and direct or indirect generated,
+judge, tactical and emotion-nudge ancestors remain excluded. Unknown mode/surface,
+unbound features and post-event encoders never silently pass. Initial reference IDs
+must all be admitted; otherwise the call refuses. At most 512 events/nodes/features,
+2,048 vector dimensions and 10,000 text characters per feature are accepted.
+
+Each feature has exactly `node_id`, `content_sha256`, `text`, `vector`, `encoder_id`,
+`artifact_sha256`, `mode_source`, `mode_evidence_sha256`. Text must hash to the
+original event; vectors must be finite unit vectors tied to the supplied frozen
+encoder ID and artifact hash. The caller must use an already frozen artifact whose
+`frozen_at` precedes the event. Hash bindings do not authenticate the source, artifact
+or derivation of the cache. The code neither loads nor independently verifies them.
+Modes here are `everyday` and `intimate`; an adapter must explicitly map the character
+experiment's `opening_everyday` to `everyday`, preserving the supplied evidence and
+source. No mode is inferred from text. Family-rule modes are reported as assumptions;
+this prototype makes no family comparison. Adjacent-reply rules carry inherited
+uncertainty, not independent mode evidence.
+
+### Voice score and abstention
+
+Reference and target must share mode and surface. Each reference day contributes
+one mean feature row (unit-normalized mean vector and mean stylometry), so a prolific
+day cannot dominate. For a target on local day D, only reference days strictly before
+D are available. D is excluded entirely, even if its early turns occur before the
+reply. Future additions cannot calibrate an earlier target. At least four distinct
+past reference days are required, otherwise no score is issued. Zone defaults to
+UTC and must be supplied explicitly when interpreting a different local calendar.
+
+The two distances are:
+
+- Semantic: `(1 - cosine(reply, reference centroid)) / 2`.
+- Style: `z / (1 + z)`, where z is the existing RMS standardized distance over the
+  nine character-reference style features, with its existing 0.05 scale floor.
+
+Their equal-weight mean is the joint distance. Component distances are rounded to
+12 decimal places before ranking so identical features do not lose a tie to floating
+point arithmetic. All reference calibration replies are scored with their entire
+own day held out of the reference. The target's score is the survival midrank of its
+joint distance in those held-out distances, averaging the empirical ranks equally
+across days. It lies in [0,1]; higher means more familiar relative to this reference.
+Component ranks and raw distances are retained privately for inspection.
+
+This is **empirical reference calibration**, not a calibrated probability of
+identity, correctness, coherence with context or being "him." The default inclusive
+abstain band is [0.2,0.8]; values outside it are labeled only `below_band` or
+`above_band`, never pass/fail or authentic/inauthentic. Sparse/degenerate reference
+coverage produces no score and explicit counts. No threshold or weight was tuned
+on private data. There is no verified false-alarm rate, semantic quality guarantee
+or validated real-world calibration. Scores and bands are descriptive experimental
+outputs. New topics, vocabulary, languages, humor, length and negation can change
+them without anything being wrong. A small constant reference is valid but gives
+coarse ranks (identical rows tie at 0.5), not high confidence.
+
+### Sustained drift without making growth an error
+
+The deviation component evaluates each post-reference scope/day against the same
+frozen reference epoch. It averages reply joint distances for that day. Its threshold
+is the maximum leave-one-day-out calibration day mean plus an explicit margin
+(default 0.05, capped at 1). A sustained shift requires four **consecutive calendar
+days** above threshold by default; missing days, a below-threshold day, or unavailable
+calibration reset the run. `sustain_days` must be at least `min_days`. The threshold
+is an experimental effect-size rule; it is not a statistical significance claim.
+A single odd reply on one day cannot produce a sustained flag. Many mixed replies
+can dilute a shift; alternation between very different styles may also keep distance
+high. This is a distance monitor, not a proof of a coherent new personality.
+
+A flag means only "sustained measured change." It never changes routing, training,
+weights, emotion, feeds or a live reference, and it never subtracts a quality score.
+Persistence alone is insufficient evidence that he has adopted a change. This
+avoids the circular rule "resemble the old reference to count as yourself" and the
+equally circular rule "persist long enough and every fault is accepted."
+
+**Updates with his changes** are a separate, explicit offline transition:
+
+1. An owner-reviewed adoption receipt names the exact currently active
+   `reference_version`, the selected new original act IDs and content hashes, the
+   owner's `decision: adopt`, `observed_at`, and an `evidence_sha256` identifying the
+   independent adoption evidence. A metric or another automatic judge cannot sign
+   it. Supplying `reviewer: owner` is a claim, not cryptographic authentication;
+   an eventual private integration must enforce reviewer identity and independently
+   assess adoption in context. No private adoption records are included here.
+2. Every selected act must already belong to a sustained shift detected against
+   that version in the same mode/surface, span at least four days, and predate the
+   review. Family-derived or adjacent-reply mode evidence cannot authorize an
+   update. A stale version, missing binding, insufficient persistence or degenerate
+   replacement reference cannot update it. Other modes and surfaces are untouched.
+3. The selected, independently accepted acts replace that scope's reference **only
+   for later calendar days**, after the adoption observation. They never rescore
+   earlier targets. Both versions, exact selected membership and the adoption
+   receipt hash remain in the private revision log. Subsequent calibration is again
+   leave-one-day-out and day-equal within the new epoch. A later change needs a new
+   review bound to that new version. Duplicate receipts apply once.
+
+The function simulates those epochs and returns a revision log; it writes nothing.
+The owner can choose a balanced representative reference, retaining appropriate old
+behavior by a future explicitly reviewed policy; this first prototype intentionally
+uses exact replacement membership, not silent blending. There is no auto-promotion,
+self-score selection, feedback into his prompts, or claim that a shift is bad.
+Until external adoption evidence exists, the old epoch and the unexplained shift
+remain visible. Ordinary-use evidence must resolve that uncertainty; no one should
+send a message just to manufacture a test.
+
+Receipt shape: `reference_version`, `members: [{node_id, content_sha256}]`,
+`reviewer: owner`, `decision: adopt`, `observed_at`, `evidence_sha256` (all required).
+The reference version binds ordered members, content, timestamps/local days, source,
+mode/surface/provenance, encoder ID/artifact/freeze and both feature vectors. Unknown
+actual runtime served model/fallback remains unknown; these prototypes have no
+served model at all and make zero model/encoder calls. They do not infer model
+identity from the cached encoder ID.
+
+The public report contains only coverage, score/band totals, known mode-source counts,
+sustained scope/day counts and revision/adoption status counts. Text, turn IDs,
+source identifiers, hashes, dates, reference membership, raw vectors and private
+revision details remain in the in-memory private return. Do not publish that return.
+
+Synthetic validation lives in `broker/tests/test_nonllm_voice_drift.py`: shifted
+style and cached semantics, exact tie behavior, reuse of held-out character metrics,
+future/day leakage, prolific-day balance, mode/surface isolation, single outlier,
+gradual drift, missing-day reset, persistent adoption and future-only reference
+updates, duplicate/stale/unbound/automatic adoption refusal, indirect influence,
+feature binding, sparse/unknown coverage, invalid vectors and aggregate privacy.
+Run via `python3 scripts/run_isolated_test.py broker/tests/test_nonllm_voice_drift.py`.
+These fixtures demonstrate mechanics, not real voice accuracy or a false-alarm rate.
