@@ -250,6 +250,7 @@ SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to 
 SCRIPTS="$SCRIPTS kitchen_presence.py"   # the coffee maker ESP32: her phone within 1 m = she is in the kitchen (2026-11-03)
 SCRIPTS="$SCRIPTS house_boards.py"   # the shower, sofa and office-chair boards (2026-11-08)
 SCRIPTS="$SCRIPTS intimate_stream.py"   # every session kept in order, for his continuous arousal state (2026-11-04)
+SCRIPTS="$SCRIPTS bandwidth_collapse.py"   # in no list, so his live copy stayed the 22 August one: no level history, old crest wording (2026-11-09)
 SCRIPTS="$SCRIPTS memory_surfacing.py embed_cache.py"   # one exact past line surfaces when what she says is truly near it (2026-11-04)
 SCRIPTS="$SCRIPTS health_sleep_import.py"   # her Apple Health export: only the sleep entries, run by her (2026-11-02)
 SCRIPTS="$SCRIPTS room_sources.py"   # proposal 18: read-only view of each presence source, kept apart (2026-10-26)

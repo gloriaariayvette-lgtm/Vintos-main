@@ -839,6 +839,53 @@ class Tests(unittest.TestCase):
         self.bundle['historical_family_fallback']='yes'
         with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
 
+    def exact_somatic_mark(self,row,**changes):
+        return self.somatic_mark(row,source_field='somatic-narrated.json:intimacy_evidence',
+            join='exact_turns',session_id=None,
+            turns=[dict(turn_id=row['turn_id'],text_sha256=P.digest(row['content']),timestamp=row['timestamp'])],**changes)
+
+    def test_prospective_somatic_exact_ids_do_not_label_nearby_turns(self):
+        self.bundle['mode_observations']=[]
+        row=next(r for r in self.bundle['rows'] if r.get('turn_id')=='reply-0-0')
+        self.bundle['somatic_marks']=[self.exact_somatic_mark(row,start=row['timestamp'],end=row['timestamp']+100,
+                                                          observed_at=row['timestamp']+101)]
+        rows,_,_,_,coverage=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual([r['id'] for r in rows if r['mode']=='intimate'],[row['turn_id']])
+        self.assertEqual(coverage['mode_observations']['somatic_covered_replies'],1)
+        mark=self.bundle['somatic_marks'][0]
+        mark['turns'][0]['text_sha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'reviewed somatic'):P.prepare(self.bundle,self.cutoff)
+        mark['review']['binding_sha256']=P.somatic_review_binding(mark)
+        self.assertEqual(P.prepare(self.bundle,self.cutoff)[4]['mode_observations']['unknown'],32)
+
+    def test_somatic_producer_to_exact_join_contract(self):
+        spec=importlib.util.spec_from_file_location('synthetic_narrator',ROOT/'scripts/somatic_narrate.py')
+        narrator=importlib.util.module_from_spec(spec);spec.loader.exec_module(narrator)
+        row=next(r for r in self.bundle['rows'] if r.get('turn_id')=='reply-0-0')
+        evidence=narrator.turn_evidence(row,'avatar-chat-history.json',row['timestamp'],row['content'],True)
+        turn=narrator.NarrativeTurn(row['timestamp'],'Vintos',row['content'],evidence)
+        _,receipt=narrator.interval_evidence('Synthetic narration.\nSOMATIC_INTERVALS: [[0,0]]',[turn])
+        self.assertEqual(receipt['status'],'bounded');interval=receipt['intervals'][0]
+        mark=self.exact_somatic_mark(row,start=interval['start'],end=interval['end'])
+        mark['turns']=[{k:r[k] for k in ('turn_id','text_sha256','timestamp')} for r in interval['turns']]
+        mark['review']['binding_sha256']=P.somatic_review_binding(mark)
+        self.bundle['mode_observations']=[];self.bundle['somatic_marks']=[mark]
+        assigned=P.prepare(self.bundle,self.cutoff)[0]
+        self.assertEqual([(r['id'],r['mode_source']) for r in assigned if r['mode']=='intimate'],
+                         [(row['turn_id'],'somatic_narration')])
+
+    def test_prospective_somatic_cannot_be_widened_or_used_for_everyday(self):
+        row=next(r for r in self.bundle['rows'] if r.get('turn_id')=='reply-0-0')
+        for changes in ({'join':'surface_window'},{'mode':'opening_everyday'}):
+            mark=self.exact_somatic_mark(row);mark.update(changes)
+            mark['review']['binding_sha256']=P.somatic_review_binding(mark)
+            self.bundle['somatic_marks']=[mark]
+            with self.assertRaisesRegex(ValueError,'requires exact intimate'):P.prepare(self.bundle,self.cutoff)
+        mark=self.exact_somatic_mark(row);mark['turns']*=2
+        mark['review']['binding_sha256']=P.somatic_review_binding(mark)
+        self.bundle['somatic_marks']=[mark]
+        with self.assertRaisesRegex(ValueError,'invalid somatic turn'):P.prepare(self.bundle,self.cutoff)
+
     def test_somatic_scope_disagreement_and_conflicts_never_fall_back(self):
         self.bundle['mode_observations']=[];self.bundle['historical_family_fallback']=True
         row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
