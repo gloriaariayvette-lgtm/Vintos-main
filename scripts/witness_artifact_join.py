@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation, validate_forecast_encoding_link
+from witness_self_artifacts import bound_source, availability_receipt, validate_context_baseline, validate_selected_feature_inputs, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
 
 
 def fingerprint(value):
@@ -53,6 +53,19 @@ def claims(packet):
         if not isinstance(refs, list) or not 1 <= len(refs) <= 6:
             raise ValueError('invalid forecast input references')
         manifest = artifacts.get('checkpoint')
+        if 'context_baseline' in artifacts:
+            validate_context_baseline(artifacts['context_baseline'])
+        if 'feature_inputs' in artifacts:
+            feature_inputs = artifacts['feature_inputs']
+            validate_selected_feature_inputs(feature_inputs)
+            if any(not isinstance(r,dict) for r in refs):
+                raise ValueError('invalid selected own references')
+            own = [{'sha256':r.get('encoder_input_sha256'),'chars':r.get('encoder_input_chars')}
+                   for r in refs if isinstance(r,dict)]
+            if (feature_inputs['selection']['own'] != own
+                    or feature_inputs['features'][0]['values_sha256'] != _vector(refs[-1].get('emb'))
+                    or feature_inputs['features'][0]['dimensions'] != len(refs[-1]['emb'])):
+                raise ValueError('selected own features disagree with retained embeddings')
         values = []
         for ref in refs:
             if not isinstance(ref, dict) or ref.get('transform') != 'normalized_exchange_his_first_400_codepoints':
@@ -62,6 +75,7 @@ def claims(packet):
         raise ValueError('unsupported self artifact packet')
     if not isinstance(manifest, dict) or not _hash(manifest.get('checkpoint_id')):
         raise ValueError('invalid retained checkpoint identity')
+    checkpoint_observed_fields(manifest)
     for ref, value in values:
         if (not isinstance(ref, dict) or not _hash(value.get('encoder_input_sha256'))
                 or type(value.get('encoder_input_chars')) is not int
@@ -185,7 +199,13 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
             'encoding_consistency': encoding_consistency(encodings),
+            'runtime_consistency': runtime_consistency(encodings),
+            'entrypoint_consistency': entrypoint_consistency(encodings),
+            'encoder_call_cost': encoder_call_cost(list(unique.values())),
+            'selected_feature_states': selected_feature_coverage(list(unique.values()), forecasts, cutoff),
+            'context_baseline_states': context_baseline_coverage(list(unique.values()), forecasts, cutoff),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
+            'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
             'encoder_parameter_observation_states': dict(sorted(Counter(
                 validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
                 if p.get('schema') == 'self-audit-embedding-v1' else forecast_parameter_state(p)
@@ -193,6 +213,67 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'bound_unique_replies': len({item['turn_id'] for item in matched}),
             'admission_effect': 'none', 'scoring_effect': 'none', 'encoder_identity': 'unverified',
             'artifact_observation_time': 'unverified', 'forecast_target_selection': 'not_evaluated'}, details
+
+
+CONTEXT_BASELINE_STATES = ('not_forecast','unobserved','conflicting_observations',
+                           'exact_forecast_row_missing','forecast_identity_mismatch',
+                           'forecast_clock_mismatch','outside_cutoff','baseline_vector_mismatch','bound_to_forecast')
+
+
+SELECTED_FEATURE_STATES = ('not_forecast','unobserved','conflicting_observations',
+                          'exact_forecast_row_missing','forecast_identity_mismatch',
+                          'forecast_clock_mismatch','outside_cutoff','selected_clock_not_before_arrival','bound_to_forecast')
+
+
+def _forecast_observation_coverage(packets, forecasts, cutoff, field, validate, compare):
+    """Compare exact supplied versions; conflicts include all supplied peers."""
+    cutoff=instant(cutoff)
+    rows={fingerprint(f):f for f in forecasts if isinstance(f,dict)}
+    variants=defaultdict(set)
+    for packet in packets:
+        if packet.get('schema')=='self-forecast-artifacts-v1' and field in packet['artifacts']:
+            value=packet['artifacts'][field];validate(value)
+            variants[packet.get('forecast_row_sha256')].add(fingerprint(value))
+    states=Counter()
+    for packet in packets:
+        if packet.get('schema')!='self-forecast-artifacts-v1':state='not_forecast'
+        elif field not in packet['artifacts']:state='unobserved'
+        elif len(variants[packet.get('forecast_row_sha256')])>1:state='conflicting_observations'
+        else:
+            row=rows.get(packet.get('forecast_row_sha256'))
+            if row is None:state='exact_forecast_row_missing'
+            elif (row.get('mode')!='on_message' or not isinstance(row.get('self'),dict)
+                    or row['self'].get('mode')!='on_message'
+                    or row['self'].get('checkpoint_id')!=packet['artifacts']['checkpoint']['checkpoint_id']):
+                state='forecast_identity_mismatch'
+            else:
+                try:
+                    made,arrived=instant(row['ts']),instant(row['arrived_at'])
+                    if made!=instant(packet['forecast_at']) or arrived!=instant(packet['arrived_at']) or arrived>made:
+                        raise ValueError('forecast observation clocks')
+                except (ValueError,TypeError,KeyError,OverflowError):state='forecast_clock_mismatch'
+                else:
+                    state='outside_cutoff' if made>=cutoff else compare(row,packet['artifacts'][field])
+        states[state]+=1
+    return dict(sorted(states.items()))
+
+
+def context_baseline_coverage(packets, forecasts, cutoff):
+    def compare(row,value):
+        try:
+            matched=(_vector(row.get('context_emb'))==value['normalized_vector_sha256']
+                     and len(row['context_emb'])==value['dimensions'])
+        except (ValueError,TypeError,KeyError):matched=False
+        return 'bound_to_forecast' if matched else 'baseline_vector_mismatch'
+    return _forecast_observation_coverage(packets,forecasts,cutoff,'context_baseline',validate_context_baseline,compare)
+
+
+def selected_feature_coverage(packets, forecasts, cutoff):
+    """Attachment/time consistency only; hashes do not certify full source ancestry."""
+    def compare(row,value):
+        return ('bound_to_forecast' if instant(value['exchange_at'])<instant(row['arrived_at'])
+                else 'selected_clock_not_before_arrival')
+    return _forecast_observation_coverage(packets,forecasts,cutoff,'feature_inputs',validate_selected_feature_inputs,compare)
 
 
 def checkpoint_availability(packets, forecasts, cutoff):
@@ -285,3 +366,182 @@ def encoding_consistency(groups):
             counts[axis][state] += 1
     return {'groups': len(groups), 'references': references,
             **{axis: dict(sorted(values.items())) for axis, values in counts.items()}}
+
+
+RUNTIME_CONSISTENCY_STATES = ('changed_during_call', 'different_partial_snapshots',
+                              'incomplete', 'single_call', 'matching_partial_snapshots')
+
+
+def runtime_consistency(groups):
+    """Compare validated partial stored-field observations in exact content groups."""
+    states = dict.fromkeys(RUNTIME_CONSISTENCY_STATES,0)
+    references = 0
+    for observations in groups.values():
+        references += len(observations)
+        calls = [o for o in observations if o is not None]
+        runtimes = [o['runtime'] for o in calls if o.get('runtime') is not None]
+        snapshots = {fingerprint(o[k]) for o in runtimes for k in ('before','after')
+                     if o[k]['state']=='observed'}
+        if any(o['state']=='observed_changed' for o in runtimes): state='changed_during_call'
+        elif len(snapshots)>1: state='different_partial_snapshots'
+        elif len(runtimes)!=len(observations) or any(o['state']!='observed_equal' for o in runtimes):
+            state='incomplete'
+        elif len({o['invocation'] for o in calls})<2: state='single_call'
+        else: state='matching_partial_snapshots'
+        states[state]+=1
+    return {'scope':'content_bound_partial_runtime_observations_only', 'groups':len(groups),
+            'references':references, 'states':states, 'encoder_identity':'unverified','scoring_effect':'none'}
+
+
+def validate_runtime_consistency(value, references, groups=None):
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid runtime consistency count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','groups','references','states','encoder_identity','scoring_effect'}
+            or value['scope']!='content_bound_partial_runtime_observations_only'
+            or value['encoder_identity']!='unverified' or value['scoring_effect']!='none'):
+        raise ValueError('invalid runtime consistency contract')
+    n,r = count(value['groups']),count(value['references'])
+    states=value['states']
+    if not isinstance(states,dict) or set(states)!=set(RUNTIME_CONSISTENCY_STATES):
+        raise ValueError('invalid runtime consistency states')
+    if (sum(count(v) for v in states.values())!=n or r!=count(references) or n>r
+            or bool(n)!=bool(r) or (groups is not None and n!=count(groups))
+            or n+states['matching_partial_snapshots']+states['different_partial_snapshots']>r):
+        raise ValueError('inconsistent runtime consistency totals')
+
+
+def entrypoint_consistency(groups):
+    projected = {key:[None if o is None else dict(o,runtime=o.get('entrypoint')) for o in rows]
+                 for key,rows in groups.items()}
+    value = runtime_consistency(projected)
+    value['scope'] = 'content_bound_python_entrypoint_observations_only'
+    return value
+
+
+def validate_entrypoint_consistency(value, references, groups=None):
+    if not isinstance(value,dict) or value.get('scope')!='content_bound_python_entrypoint_observations_only':
+        raise ValueError('invalid entrypoint consistency contract')
+    validate_runtime_consistency(dict(value,scope='content_bound_partial_runtime_observations_only'),references,groups)
+
+
+def encoder_call_cost(packets):
+    """Aggregate validated retained calls, including unbound inputs; no identities out."""
+    from witness_self_artifacts import TIMING_STAGES
+    calls = defaultdict(dict)
+    unidentified = observations = 0
+    for packet in packets:
+        for index,(_,value,_,_) in enumerate(claims(packet)):
+            # An audit packet can carry several source references for one encoding.
+            if packet['schema']=='self-audit-embedding-v1':
+                if index: continue
+                call = value.get('encoding_observation')
+            else:
+                link = value.get('encoding_link')
+                call = link.get('call') if isinstance(link,dict) else None
+            observations += 1
+            if call is None:
+                unidentified += 1
+                continue
+            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256','runtime','entrypoint')}
+            calls[call['invocation']][fingerprint(signature)] = signature
+    conflicts = sum(len(values)>1 for values in calls.values())
+    valid = [next(iter(values.values())) for values in calls.values() if len(values)==1]
+    legacy = sum(v['timing'] is None for v in valid)
+    stages = {}
+    for key in TIMING_STAGES:
+        samples = [v['timing'][key] for v in valid if v['timing'] is not None and v['timing'][key] is not None]
+        stages[key] = {'measured_calls':len(samples),'unavailable_calls':len(valid)-len(samples),
+                       'total_seconds':math.fsum(samples),'max_seconds':max(samples,default=0)}
+    sizes = [v[k]['bytes'] for v in valid for k in ('parameter_before','parameter_after')
+             if v[k]['state']=='observed']
+    return {'scope':'supplied_retained_calls_only','observations':observations,
+            'unidentified_observations':unidentified,'calls':len(calls),
+            'conflicting_calls':conflicts,'legacy_calls':legacy,'timed_calls':len(valid)-legacy,
+            'stages':stages,'parameter_snapshots':{'observed':len(sizes),
+                       'total_bytes':sum(sizes),'max_bytes':max(sizes,default=0)}}
+
+
+def validate_encoder_call_cost(value, references):
+    """Fixed aggregate fields and conserved counts; never render arbitrary labels."""
+    from witness_self_artifacts import TIMING_STAGES, MAX_ENCODER_STATE_BYTES
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid encoder cost count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','observations','unidentified_observations',
+            'calls','conflicting_calls','legacy_calls','timed_calls','stages','parameter_snapshots'}
+            or value['scope']!='supplied_retained_calls_only'):
+        raise ValueError('invalid encoder cost scope')
+    obs,missing,calls,conflicts,legacy,timed = [count(value[k]) for k in
+        ('observations','unidentified_observations','calls','conflicting_calls','legacy_calls','timed_calls')]
+    if (obs>count(references) or missing>obs or calls>obs-missing
+            or bool(calls)!=bool(obs-missing) or conflicts+legacy+timed!=calls):
+        raise ValueError('invalid encoder cost totals')
+    stages=value['stages']
+    if not isinstance(stages,dict) or set(stages)!=set(TIMING_STAGES): raise ValueError('invalid cost stages')
+    for stage in stages.values():
+        if not isinstance(stage,dict) or set(stage)!={'measured_calls','unavailable_calls','total_seconds','max_seconds'}:
+            raise ValueError('invalid cost stage')
+        measured,unavailable=count(stage['measured_calls']),count(stage['unavailable_calls'])
+        total,peak=stage['total_seconds'],stage['max_seconds']
+        if (measured+unavailable!=calls-conflicts or measured>timed
+                or any(type(n) not in (int,float) or not math.isfinite(n) or n<0 for n in (total,peak))
+                or peak>86400 or total<peak or (not measured and (total!=0 or peak!=0))
+                or total>peak*measured+max(1e-12,abs(total)*1e-12)):
+            raise ValueError('invalid cost duration')
+    sizes=value['parameter_snapshots']
+    if not isinstance(sizes,dict) or set(sizes)!={'observed','total_bytes','max_bytes'}: raise ValueError('invalid cost sizes')
+    n,total,peak=(count(sizes[k]) for k in ('observed','total_bytes','max_bytes'))
+    if (n>2*(calls-conflicts) or peak>MAX_ENCODER_STATE_BYTES or bool(n)!=bool(peak)
+            or not peak<=total<=peak*n): raise ValueError('invalid cost size totals')
+
+
+CHECKPOINT_CONSISTENCY_STATES = ('consistent_observed_fields','conflicting_observations',
+                                 'incomplete_observations','legacy_only')
+
+
+def checkpoint_consistency(packets):
+    """Compare fields carried by the same checkpoint hash, never certify its lineage."""
+    groups = defaultdict(list)
+    observed = legacy = 0
+    for packet in packets:
+        manifest = (packet['checkpoint'] if packet['schema']=='self-audit-embedding-v1'
+                    else packet['artifacts']['checkpoint'])
+        fields = checkpoint_observed_fields(manifest)
+        groups[manifest['checkpoint_id']].append(fields)
+        if fields is None: legacy += 1
+        else: observed += 1
+    states = dict.fromkeys(CHECKPOINT_CONSISTENCY_STATES,0)
+    for copies in groups.values():
+        known={fingerprint(v) for v in copies if v is not None}
+        if len(known)>1: state='conflicting_observations'
+        elif not known: state='legacy_only'
+        elif any(v is None for v in copies): state='incomplete_observations'
+        else: state='consistent_observed_fields'
+        states[state] += 1
+    return {'scope':'supplied_checkpoint_observations_only','manifest_copies':len(packets),
+            'checkpoint_groups':len(groups),'observed_manifests':observed,'legacy_manifests':legacy,
+            'states':states,'lineage':'unverified','scoring_effect':'none'}
+
+
+def validate_checkpoint_consistency(value, packets):
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid checkpoint consistency count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','manifest_copies','checkpoint_groups',
+            'observed_manifests','legacy_manifests','states','lineage','scoring_effect'}
+            or value['scope']!='supplied_checkpoint_observations_only'
+            or value['lineage']!='unverified' or value['scoring_effect']!='none'):
+        raise ValueError('invalid checkpoint consistency scope')
+    copies,groups,observed,legacy=(count(value[k]) for k in
+        ('manifest_copies','checkpoint_groups','observed_manifests','legacy_manifests'))
+    states=value['states']
+    if not isinstance(states,dict) or set(states)!=set(CHECKPOINT_CONSISTENCY_STATES):
+        raise ValueError('invalid checkpoint consistency states')
+    consistent,conflicts,incomplete,old=(count(states[k]) for k in CHECKPOINT_CONSISTENCY_STATES)
+    if (copies!=count(packets) or observed+legacy!=copies or groups>copies or bool(groups)!=bool(copies)
+            or consistent+conflicts+incomplete+old!=groups
+            or consistent+2*conflicts+incomplete>observed or incomplete+old>legacy
+            or (not (consistent+conflicts+incomplete) and observed)
+            or (not (conflicts+incomplete+old) and legacy)):
+        raise ValueError('invalid checkpoint consistency totals')

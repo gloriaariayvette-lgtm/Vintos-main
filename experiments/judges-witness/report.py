@@ -11,6 +11,8 @@ import sys
 # Import without initializing any serving organ or model.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import replay
+from forecast_handoffs import validate_coverage as validate_handoffs, STATES as HANDOFF_STATES
+from fit_completions import validate_coverage as validate_fits, STATES as FIT_STATES, COUNTS as FIT_COUNTS
 
 
 def invalid():
@@ -87,6 +89,26 @@ def artifact_coverage(section, eligible):
             or bound > full + excerpt or bool(bound) != bool(full + excerpt)):
         invalid()
     timing = []
+    if 'context_baseline_states' in section:
+        from witness_artifact_join import CONTEXT_BASELINE_STATES
+        values=section['context_baseline_states']
+        if (not isinstance(values,dict) or set(values)-set(CONTEXT_BASELINE_STATES)
+                or sum(count(n) for n in values.values())!=unique
+                or values.get('conflicting_observations',0)==1):invalid()
+        timing += ['Context-baseline receipt bindings (exact saved forecast rows):']
+        timing += [f'- {name}: {values.get(name,0)}.' for name in CONTEXT_BASELINE_STATES]
+        timing += ['', 'These are hash-only observations. Encoder identity, full source ancestry, raw-vector reconstruction and baseline-call cost remain unobserved. Binding does not admit a target or certify delivery.', '']
+    if 'selected_feature_states' in section:
+        from witness_artifact_join import SELECTED_FEATURE_STATES
+        values=section['selected_feature_states']
+        if (not isinstance(values,dict) or set(values)-set(SELECTED_FEATURE_STATES)
+                or sum(count(n) for n in values.values())!=unique
+                or values.get('conflicting_observations',0)==1
+                or ('context_baseline_states' in section and
+                    values.get('not_forecast',0)!=section['context_baseline_states'].get('not_forecast',0))):invalid()
+        timing += ['Selected-feature receipt bindings (unique artifact packets):']
+        timing += [f'- {name}: {values.get(name,0)}.' for name in SELECTED_FEATURE_STATES]
+        timing += ['', 'Binding checks the exact saved forecast version, retained own-input agreement and a selected exchange clock before arrival. Counterpart/arriving source identity, feature derivation, full ancestry and encoder identity remain unverified. These packet counts do not admit turns or change scores.', '']
     if 'checkpoint_availability_states' in section:
         values = section['checkpoint_availability_states']
         if not isinstance(values,dict) or sum(count(n) for n in values.values()) != unique: invalid()
@@ -103,6 +125,30 @@ def artifact_coverage(section, eligible):
         if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
         timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
         timing += ['', 'Matching CPU parameter snapshots and retained feature-call links are partial observations. Tokenizer, execution code and training lineage remain unverified; missing call links are not inferred.', '']
+    if 'checkpoint_consistency' in section:
+        from witness_artifact_join import validate_checkpoint_consistency, CHECKPOINT_CONSISTENCY_STATES
+        c=section['checkpoint_consistency']
+        validate_checkpoint_consistency(c,unique)
+        timing += [f"- Checkpoint observation copies: {c['manifest_copies']}; checkpoint groups: {c['checkpoint_groups']}; validated observation shapes: {c['observed_manifests']}; legacy shapes: {c['legacy_manifests']}."]
+        timing += [f"- Checkpoint consistency {key}: {c['states'][key]} groups." for key in CHECKPOINT_CONSISTENCY_STATES]
+        timing += ['', 'These compare supplied fields grouped by checkpoint hash. Read-availability clocks are separate; missing legacy fields stay unknown. Consistent fields do not authenticate checkpoint bytes, encoder identity or fitting lineage, and reported dates remain reported. Content joins and scoring permission are unchanged.', '']
+    else:
+        timing += ['Checkpoint field-consistency coverage is unavailable in this legacy report.', '']
+    if 'encoder_call_cost' in section:
+        from witness_artifact_join import validate_encoder_call_cost
+        from witness_self_artifacts import TIMING_STAGES
+        c=section['encoder_call_cost']
+        validate_encoder_call_cost(c,refs)
+        timing += [f"- Retained encoder calls: {c['calls']}; with timing fields: {c['timed_calls']}; legacy without timing: {c['legacy_calls']}; conflicting cost receipts excluded: {c['conflicting_calls']}.",
+                   f"- Encoding observations without call identity: {c['unidentified_observations']} of {c['observations']}."]
+        for key in TIMING_STAGES:
+            stage=c['stages'][key]
+            timing += [f"- {key}: {stage['measured_calls']} measured calls, {stage['unavailable_calls']} unavailable; total {stage['total_seconds']:.6f} s, max {stage['max_seconds']:.6f} s."]
+        sizes=c['parameter_snapshots']
+        timing += [f"- Retained CPU parameter snapshots: {sizes['observed']}; bytes scanned {sizes['total_bytes']}; maximum snapshot bytes {sizes['max_bytes']}.",
+                   '', 'Costs cover supplied retained calls, including unbound inputs, deduplicated by invocation. Conflicting cost copies are excluded. Durations are monotonic wall time, not CPU time, whole-job latency or complete-stream coverage. Missing stages are unavailable, not zero. Snapshot bytes are repeated scan volume, not resident model size. No encoder identity, delivery or training admission is inferred.', '']
+    else:
+        timing += ['Retained encoder call-cost coverage is unavailable in this legacy report.', '']
     if 'encoding_consistency' in section:
         from witness_artifact_join import ENCODING_CONSISTENCY_LABELS
         c = section['encoding_consistency']
@@ -116,6 +162,25 @@ def artifact_coverage(section, eligible):
             if not isinstance(values, dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != groups: invalid()
             timing += [f'- Encoding consistency {axis} {label}: {count(values.get(label, 0))} groups.' for label in labels]
         timing += ['', 'Each axis counts exact content groups independently, before representation-conflict classification. Differences remain visible with incomplete peers; matching requires every reference and at least two distinct call markers. Raw outputs are compared only through validated call receipts, never by converting legacy vectors. Matching is partial evidence, not encoder identity, forecast-target selection or scoring permission.', '']
+    if 'runtime_consistency' in section:
+        from witness_artifact_join import validate_runtime_consistency, RUNTIME_CONSISTENCY_STATES
+        runtime=section['runtime_consistency']
+        expected_groups=section.get('encoding_consistency',{}).get('groups')
+        validate_runtime_consistency(runtime,full+excerpt+conflicts+mixed+unobserved,expected_groups)
+        timing += [f'- Stored runtime content groups: {runtime["groups"]}; references: {runtime["references"]}.']
+        timing += [f'- Stored runtime {state}: {runtime["states"][state]} groups.' for state in RUNTIME_CONSISTENCY_STATES]
+        timing += ['', 'Runtime snapshots cover selected stored fields and loaded package versions only. Missing observations remain incomplete, while observed differences survive missing peers. Matching requires every reference observed and two distinct call markers; it does not establish tokenizer content, code identity, deeper runtime state, fitting lineage or source authenticity. This comparison does not change scoring or eligibility.', '']
+    else:
+        timing += ['Stored runtime comparison is unavailable in this legacy report.', '']
+    if 'entrypoint_consistency' in section:
+        from witness_artifact_join import validate_entrypoint_consistency, RUNTIME_CONSISTENCY_STATES
+        entry=section['entrypoint_consistency']
+        validate_entrypoint_consistency(entry,full+excerpt+conflicts+mixed+unobserved,
+                                       section.get('encoding_consistency',{}).get('groups'))
+        timing += [f'- Python encode entrypoint {state}: {entry["states"][state]} groups.' for state in RUNTIME_CONSISTENCY_STATES]
+        timing += ['', 'Entrypoint observations cover loaded Python code objects only. Native/callable-object implementations and legacy receipts stay incomplete. Globals, defaults, closures, helper/native code and full implementation identity remain unverified. No scoring or eligibility change.', '']
+    else:
+        timing += ['Python encode entrypoint comparison is unavailable in this legacy report.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
@@ -161,6 +226,24 @@ def render(report):
             other = copies - positive_n - unevaluated
             lines.append(f'- {field}: {positive}={positive_n}; not evaluated={unevaluated}; other recorded states={other}.')
         lines += ['', 'Coverage fields count copies independently, including excluded acts. A positive field does not admit a reply.', '']
+        if 'forecast_handoffs' in report:
+            handoffs=report['forecast_handoffs']
+            validate_handoffs(handoffs)
+            lines += ['## Forecast pending handoffs', '']
+            for name in ('forecast_rows','unique_receipts','launch_receipts','job_receipts','launch_receipts_without_job','job_receipts_without_row'):
+                lines.append(f'- {name}: {handoffs[name]}.')
+            for state in HANDOFF_STATES:
+                lines.append(f'- {state}: {handoffs["states"][state]}.')
+            lines += ['', 'These compare supplied launcher, pending-file and forecast-log observations. A join does not authenticate the caller, establish forecast-to-delivered-reply association or grant training eligibility. Missing origin markers remain unknown; scoring is unchanged.', '']
+        if 'fit_completion_observations' in report:
+            fits=report['fit_completion_observations']
+            validate_fits(fits)
+            lines += ['## Fitting completion observations', '']
+            for name in FIT_COUNTS:
+                lines.append(f'- {name}: {fits[name]}.')
+            for state in FIT_STATES:
+                lines.append(f'- {state}: {fits["states"][state]}.')
+            lines += ['', 'Counts compare supplied local fit receipts with exact checkpoint observations. They do not authenticate sources, establish encoder ancestry, reconstruct historical training dates or grant eligibility. Multiple distinct receipts are held without choosing one; scoring is unchanged.', '']
         if 'historical_attribution' in report:
             historical = report['historical_attribution']
             if (not isinstance(historical, dict)
@@ -191,6 +274,18 @@ def render(report):
             lines += [f'- Outside cutoff: {excluded}.',
                       f"- Without a usable cutoff clock: {missing_clock}.", '',
                       'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
+            if 'matched_methods' in historical:
+                methods = historical['matched_methods']
+                labels = {'generation_completion_id':'selected completion key',
+                          'provider_request_id':'provider request key', 'nearest_time':'bounded nearest time'}
+                if (not isinstance(methods, dict) or set(methods) != set(labels)
+                        or sum(count(n) for n in methods.values()) != count(joins.get('matched',0))):
+                    invalid()
+                lines += [f'- Retained ledger matches by {label}: {count(methods[key])} source copies.'
+                          for key,label in labels.items()]
+                lines += ['', 'This breakdown overlaps the attribution tiers: an observed reply can also have a ledger match. It counts source copies after ambiguity and reuse checks, not unique calls or training turns. Exact correlation keys do not prove delivery or clean ancestry. The optional 30-second view remains separate.', '']
+            else:
+                lines += ['Match-method coverage not supplied; exact-key counts cannot be inferred from the aggregate tier totals.', '']
             if 'window30' in historical:
                 extension = historical['window30']
                 names = ('observed','ledger_attributed','recorded_label','unknown','ledger_attributed_window30')

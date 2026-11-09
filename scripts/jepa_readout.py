@@ -137,11 +137,24 @@ def correlation(x,y):
     return float(np.corrcoef(_ranks(x),_ranks(y))[0,1])
 
 
+def _self_fit_witness(mode, name, *args):
+    """Observe self fitting only when explicitly enabled; never affect the fitter."""
+    if mode not in ('self_ahead', 'self_on_message') or not (
+            os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+        return None
+    try:
+        import witness_self_artifacts
+        return getattr(witness_self_artifacts, name)(*args)
+    except Exception:
+        return None
+
+
 def train_mode(rows, cache, mode, out, old=None, steps=200):
     a=arrays(rows,cache); y=np.asarray([cache.get(r['target']) for r in rows])
     sp=np.asarray([split(r['day']) for r in rows]); ids=[np.flatnonzero(sp==k) for k in range(4)]
     if any(len(i)<3 for i in ids):raise ValueError('each chronological block needs >=3 targets: '+str([len(i) for i in ids]))
     tr,va,ca,te=ids; candidates=[]
+    fit_observation = _self_fit_witness(mode, 'begin_fit', mode, rows, a, y, ids)
     from latent_stream_linear import fit_text
     for dz in (16,32):
         _,_,vt=np.linalg.svd(y[tr]-y[tr].mean(0),full_matrices=False); p=vt[:min(dz,len(tr)-1)].T
@@ -191,15 +204,29 @@ def train_mode(rows, cache, mode, out, old=None, steps=200):
                 'recent_mean':metrics(at[1][ix],y[te][ix])[0]}
     meta={'schema':SCHEMA,'mode':mode,'boundaries':BOUNDARIES,'selected':name,'report':report,
           'trained_through':rows[tr[-1]]['day'],'calibrated_through':rows[ca[-1]]['day']}
+    fit_observation = _self_fit_witness(mode, 'prepare_fit', fit_observation, meta, m)
     np.savez_compressed(Path(out)/(mode+'.npz'),meta=json.dumps(meta),**m)
+    _self_fit_witness(mode, 'publish_fit', fit_observation, Path(out)/(mode+'.npz'))
     return report
 
 
-def load(path, retain=False):
+def load(path, retain=False, bind_identity=False):
     raw = None
     checkpoint_clock = None
     source = path
-    if retain:
+    if bind_identity:
+        import io
+        if retain:
+            try:
+                from witness_self_artifacts import begin_checkpoint_read
+                checkpoint_clock = begin_checkpoint_read()
+            except Exception:
+                pass
+        # The self forecast's identity names the exact buffer parsed below. A
+        # later path replacement must not relabel the already loaded parameters.
+        raw = Path(path).read_bytes()
+        source = io.BytesIO(raw)
+    elif retain:
         try:
             import io
             from witness_self_artifacts import MAX_CHECKPOINT, begin_checkpoint_read
@@ -216,7 +243,9 @@ def load(path, retain=False):
         model={k:z[k] for k in z.files if k!='meta'}; meta=json.loads(str(z['meta']))
     if meta['schema']!=SCHEMA:raise ValueError('unsupported readout schema')
     model['meta']=meta
-    if raw is not None:
+    if bind_identity:
+        model['_loaded_checkpoint_id'] = hashlib.sha256(raw).hexdigest()
+    if retain and raw is not None:
         try:
             from witness_self_artifacts import checkpoint, finish_checkpoint_read
             availability = finish_checkpoint_read(checkpoint_clock) if checkpoint_clock is not None else None
@@ -255,7 +284,15 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
             pass
     cache = Embeddings(feature_encoder)
     a=arrays([r],cache)
-    m=load(path, retain=True) if retain else load(path)
+    feature_inputs = None
+    if retain:
+        try:
+            from witness_self_artifacts import selected_feature_inputs
+            feature_inputs = selected_feature_inputs(r, a)
+        except Exception:
+            pass
+    self_mode = mode in ('self_ahead','self_on_message')
+    m=load(path, retain=retain, bind_identity=True) if self_mode else load(path)
     if m['meta']['mode'] != mode:raise ValueError('checkpoint is for a different head or mode')
     p=predict(m,a)
     from jepa_predictor import format_context
@@ -264,16 +301,27 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
         if e['her']:turns.append({'role':'user','content':e['her']})
         if e['his']:turns.append({'role':'assistant','content':e['his']})
     if mode=='self_on_message':turns.append({'role':'user','content':her})
-    copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
+    context_baseline = None
+    if retain:
+        rendered = format_context(turns[-6:])
+        raw_context = enc.encode([rendered],show_progress_bar=False)
+        copied = units(raw_context)[0]
+        try:
+            from witness_self_artifacts import context_baseline_receipt
+            context_baseline = context_baseline_receipt(turns[-6:], rendered, raw_context[0], copied)
+        except Exception:
+            pass
+    else:
+        copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
     result = {'her_key':sh.her_key(her), 'context_emb':copied.tolist(),'emb':p[0].astype('float32'),'confidence':float(confidence(m,p,a)[0]),'qualification':'qualified',
-            'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':hashlib.sha256(path.read_bytes()).hexdigest(),
+            'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':m['_loaded_checkpoint_id'] if self_mode else hashlib.sha256(path.read_bytes()).hexdigest(),
             'context_last_ts':exs[-1]['ts'],'context_last_turn_id':exs[-1].get('turn_id',''),
             'coherence':float(a[0][0]@a[1][0]),'confidence_evaluation':m['meta']['report']['confidence']}
     if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
         try:
             sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
             sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result,
-                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None)
+                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None, feature_inputs, context_baseline)
         except Exception:
             pass
     return result
@@ -295,6 +343,22 @@ def presence_forecast(enc, exs=None, model_dir=None):
             'evaluation':report,'source':SCHEMA}
 
 
+def _self_audit_checkpoint(path):
+    """Read bytes and the existing filesystem cutoff from one stable open file."""
+    import stat
+    with path.open('rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError('self audit checkpoint is not a regular file')
+        raw = stream.read()
+        after = os.fstat(stream.fileno())
+    fields = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+    if (any(getattr(before,key)!=getattr(after,key) for key in fields)
+            or len(raw)!=after.st_size):
+        raise ValueError('self audit checkpoint changed during read')
+    return raw, before.st_mtime
+
+
 def audit(enc, memory=None):
     """Keep each replacement's prospective evidence separate from the shared checkpoint.
     Neither model selection nor historical replay rows count as live outcomes here.
@@ -314,7 +378,10 @@ def audit(enc, memory=None):
                 checkpoint_clock = begin_checkpoint_read()
             except Exception:
                 pass
-        checkpoint_raw=path.read_bytes()
+        if mode in ('self_ahead','self_on_message'):
+            checkpoint_raw, checkpoint_mtime = _self_audit_checkpoint(path)
+        else:
+            checkpoint_raw=path.read_bytes()
         ck=hashlib.sha256(checkpoint_raw).hexdigest();head='gloria' if mode=='gloria' else 'self'; adapted=[]
         for row in history:
             triple=row.get(head) or {}
@@ -342,7 +409,8 @@ def audit(enc, memory=None):
                     audit_enc = audit_encoder(enc, ledger, manifest)
             except Exception:
                 pass
-        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=path.stat().st_mtime)
+        cutoff = checkpoint_mtime if head == 'self' else path.stat().st_mtime
+        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=cutoff)
         report[mode]={'checkpoint':ck,'ranking':ra._summary(measured,head)}
     ra._atomic(str(mem/'jepa-readout-audit.json'),report)
     return report

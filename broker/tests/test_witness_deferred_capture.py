@@ -81,9 +81,61 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(self.packets()),S.DEFERRED_SLOTS+1)
         self.assertEqual(S.COUNTERS['deferred_full'],1)
         status=self.fixture.status()['deferred']
-        self.assertEqual(status['counts'],{'enqueued':9,'written':9,'full':1})
+        self.assertEqual(status['counts'],{'enqueued':S.DEFERRED_SLOTS+1,'written':S.DEFERRED_SLOTS+1,'full':1})
         self.assertIsNone(status['restart_loss'])
         self.assertIn('lower bounds',status['coverage'])
+
+    def test_thirty_small_packets_survive_a_fully_stalled_writer(self):
+        entered,release,stub=self.stalled()
+        with stub:
+            self.assertTrue(self.submit({'n':0,'content':'x'*24000}));self.assertTrue(entered.wait(1))
+            for n in range(1,30):self.assertTrue(self.submit({'n':n,'content':'x'*24000}))
+            self.assertEqual(S._writer[1].qsize(),29)
+            self.assertEqual(self.packets(),[])
+            release.set();self.wait_done()
+        self.assertEqual(sorted(json.loads(p.read_text())['n'] for p in self.packets()),list(range(30)))
+        self.assertEqual(self.fixture.status()['deferred']['counts'],{'enqueued':30,'written':30})
+
+    def test_byte_budget_refuses_without_eviction_and_releases_after_get(self):
+        pending=S.CaptureQueue()
+        payload=b'x'*S.MAX_PACKET
+        for _ in range(8):pending.put_nowait((self.sink,payload,'capture-',{}))
+        with self.assertRaises(queue.Full):pending.put_nowait((self.sink,b'x','capture-',{}))
+        self.assertEqual(pending.qsize(),8)
+        self.assertEqual(pending.queued_bytes,S.DEFERRED_BYTES)
+        self.assertEqual(pending.get_nowait()[1],payload);pending.task_done()
+        pending.put_nowait((self.sink,payload,'capture-',{}))
+        while not pending.empty():pending.get_nowait();pending.task_done()
+        self.assertEqual(pending.queued_bytes,0)
+        pending.put_nowait(None);self.assertIsNone(pending.get_nowait());pending.task_done()
+        self.assertEqual(pending.queued_bytes,0)
+
+    def test_byte_limit_rejection_uses_full_counter_and_does_not_block_next_packet(self):
+        entered,release,stub=self.stalled()
+        with patch.object(S,'DEFERRED_BYTES',64),stub:
+            self.assertTrue(self.submit({'n':0}));self.assertTrue(entered.wait(1))
+            self.assertTrue(self.submit({'content':'x'*30}))
+            self.assertFalse(self.submit({'content':'x'*30}))
+            self.assertEqual(S._writer[1].qsize(),1)
+            release.set();self.wait_done()
+        self.assertEqual(S.COUNTERS['deferred_full'],1)
+        self.assertTrue(self.submit());self.wait_done()
+        self.assertEqual(len(self.packets()),3)
+
+    def test_concurrent_byte_reservations_cannot_exceed_budget(self):
+        pending=S.CaptureQueue()
+        accepted=[]
+        def put():
+            try:
+                pending.put_nowait((self.sink,b'x'*S.MAX_PACKET,'capture-',{}))
+                accepted.append(True)
+            except queue.Full:accepted.append(False)
+        threads=[threading.Thread(target=put) for _ in range(16)]
+        for thread in threads:thread.start()
+        for thread in threads:thread.join(1);self.assertFalse(thread.is_alive())
+        self.assertEqual(sum(accepted),8)
+        self.assertEqual(pending.queued_bytes,S.DEFERRED_BYTES)
+        self.assertEqual(pending.qsize(),8)
 
     def test_hot_disable_drops_queued_packets_without_disk_mutation(self):
         entered,release,stub=self.stalled()
@@ -224,6 +276,7 @@ class Tests(unittest.TestCase):
             self.assertTrue(self.submit());self.assertTrue(self.submit());self.wait_done()
         self.assertEqual(S.COUNTERS['deferred_not_confirmed'],1)
         self.assertEqual(S.COUNTERS['deferred_written'],1)
+        self.assertEqual(S._writer[1].queued_bytes,0)
         self.assertEqual(self.packets(),[])
         self.assertTrue(self.submit());self.wait_done();self.assertEqual(len(self.packets()),1)
 

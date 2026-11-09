@@ -88,3 +88,109 @@ projection 31), including real scratch CLI/output permissions and cutoff/privacy
 checks. One invocation used an incorrect merged-suite filename; the correctly
 named suite passed. No real-data rerun or full host suite is claimed. Review owns
 the full isolated host suite and private counts; production remains unchanged.
+
+
+## Historical test-origin candidate found in source
+
+Follow-up source review on 9 November, after the initial coverage handoff. There
+is now a concrete alternative to a stopped production-chat logger; it remains a
+candidate until checked against the retained private rows and runtime evidence.
+
+- At `d335de720b1501bc8f04ea2aa93ffb5b971d11df`,
+  `broker/tests/test_shim_result_contract.py:163` defines a helper passing its
+  surface argument directly to `route_reply_result`. Line 187 calls that helper
+  with `surface="chat"` and a fake response. This exercises the lower-level result
+  entry point, so searching only `route_reply(` misses the caller.
+- The same snapshot's `bin/model_router.py:_ledger` prefixes that argument with
+  `router:` and records it as foreground. The surface fallback calls `_ledger`
+  with stage `grok`. Its fake response has normalized usage of 7 prompt tokens,
+  3 completion tokens and 10 total tokens. These are public synthetic fixture
+  values, not measurements from his conversations.
+- That suite redirected usage, mode and key-file paths, but did not redirect HOME
+  or the compute ledger. `scripts/compute_admission.py` defaulted to the user's
+  memory directory and appended to `compute-ledger.jsonl`. Consequently a direct
+  run with the accounting module importable and that store writable could append
+  synthetic foreground router rows. A fake HTTP client does not isolate disk.
+- This is conditional: the old suite added only `bin` to its import path;
+  accounting import failures were swallowed by `_ledger`. Source alone cannot
+  establish which installed module or import path a historical invocation used.
+- `e9000f2d` (11 September, 03:27 CDT author timestamp) changed the deploy runner
+  to use `run_isolated_test.py`. `19232935447763e408cd3020e30dc2fdeb42e140`
+  (11 September, 10:56 CDT author timestamp) additionally isolated this suite's
+  home, cleared its inherited scratch setting, added the scripts import path,
+  and asserted the accounting path is under its temporary directory. Commit times
+  are source chronology, not proof of when either fix was installed or executed.
+
+This provides a plausible source-level explanation for early router-chat records
+ending on the day test isolation changed. It does **not** establish that any
+particular retained row is synthetic, that all early avatar records are clean,
+or that no other caller existed. Do not change historical attribution mappings,
+exclude records or accept them for training based on this lead alone. The current
+suite already contains the isolation checks; no new production repair is proposed.
+
+### Check against the already-copied evidence
+
+Review can use the existing private bundle, with the original cutoff and timezone.
+No recollection or live-store read is needed. Count retained `router:chat` records
+with foreground class, the fixture stage/provider/model tuple from the historical
+source, and the exact three-field normalized usage object above. Separately count
+other rows and rows with missing/malformed metadata. Report counts only, not raw
+rows, identities, private times or model names. Do not round latency into an origin
+label; a real request can be fast and can share small token totals.
+
+Compare candidate rows to retained suite/deploy execution evidence if available.
+Inspect nearby router-avatar rows privately for the ordered fixture sequence from
+lines 163–212 of that historical suite; report only whether such execution evidence
+exists and aggregate consistency. A matching tuple/sequence supports the candidate
+but is not a unique test-run identifier. No match weakens this specific fixture
+explanation and leaves other origins unresolved. Without execution evidence, keep
+origin unconfirmed; caller names and source dates alone cannot authenticate a run.
+
+Validation here was read-only: nine assertions over historical source syntax and
+paths passed, including the explicit chat invocation and the before/after isolation
+checks. Historical modules were not executed, and no model/private inputs were
+loaded. There was no private-data measurement or host-suite rerun in this follow-up.
+
+
+### Reproducible metadata comparison
+
+`codex/judges-historical-fixture-counts` adds `historical_fixture_coverage` to the
+existing `coverage.py` aggregate. Run the same documented command against the
+already-admitted private bundle in a fresh output directory. No new collection,
+source remapping or private record disclosure is required. The run manifest hashes
+the diagnostic code, input and outputs as before.
+
+The fixed profile `router_result_contract_20260910` is taken from source commit
+`d335de720b1501bc8f04ea2aa93ffb5b971d11df`: the explicit chat result-contract
+invocation, its foreground stage, provider/model tuple and three-field normalized
+usage object. The source definition is static; no runtime config or learned
+pattern selects it. Its metadata values are public synthetic fixture values.
+
+The aggregate partitions unique supplied ledger records into six fixed counts:
+other callers; matching metadata; other structurally complete metadata; incomplete
+metadata; unavailable clocks; and at/after-cutoff records. Exact caller identity
+is required. Other callers count across the whole supplied bundle; the remaining
+five states cover only the fixture's exact caller. Only clocked records strictly
+before the existing cutoff can enter either metadata-comparison category. The
+configured explicit timezone is reused; ambiguous naive local times stay unknown.
+Exact duplicate rows count once, while distinct rows with the same pattern remain
+separate. These are record counts, not unique test executions or independent turns.
+
+A match requires all four class/stage/provider/model strings plus the exact usage
+object. Boolean, float, negative or missing token counts are malformed, not matches.
+Extra usage fields or different complete values are comparisons that do not match.
+Latency, source date, neighboring records and provider IDs never substitute for
+this rule. Arbitrary labels, IDs, actual times and provider/model names are absent
+from this new aggregate. Existing private caller summaries remain private.
+
+The result always says origin is unconfirmed and attribution/training effects are
+none. Equality is a lead for source review; a real request may share these counts.
+No matching records weakens this specific fixture candidate but proves no general
+origin. Execution provenance is still needed before classifying any retained row.
+The main attribution and window-sensitivity data structures are unchanged.
+
+Validation: 55 isolated synthetic checks (coverage 29, attribution 26), including
+the actual CLI, output permissions and run hashes. Five additional read-only
+assertions checked the archived fixture/caller source without executing historical
+modules. No private counts or host execution evidence were available in this batch;
+review retains that work on the existing private copy.

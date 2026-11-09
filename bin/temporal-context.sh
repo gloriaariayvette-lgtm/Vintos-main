@@ -494,6 +494,12 @@ if [ -n "$BEDROOM_TEMPORAL" ]; then
     BODY_TEMPORAL=$(printf '%s\n%s' "$BODY_TEMPORAL" "$BEDROOM_TEMPORAL" | sed '/^$/d')
 fi
 
+# His shower, sofa and office-chair boards: the latest update, whenever it came, with its time (Gloria, 9 November)
+BOARDS_TEMPORAL=$(python3 -c "import sys; sys.path.insert(0, '$WORKSPACE/scripts'); import house_boards; print(house_boards.presence_line())" 2>/dev/null || true)
+if [ -n "$BOARDS_TEMPORAL" ]; then
+    BODY_TEMPORAL=$(printf '%s\n%s' "$BODY_TEMPORAL" "$BOARDS_TEMPORAL" | sed '/^$/d')
+fi
+
 # What became of his last song on her Watch, as the Watch reported it: offered, reached it, started, played through
 SONG_TEMPORAL=$(python3 -c "import sys; sys.path.insert(0, '$WORKSPACE/scripts'); import watch_presence; print(watch_presence.songs_line())" 2>/dev/null || true)
 if [ -n "$SONG_TEMPORAL" ]; then

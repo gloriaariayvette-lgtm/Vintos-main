@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from witness_receipts import digest, instant, joined_identity, normalize_receipt, final_response
 
 TIERS = ('observed', 'ledger_attributed', 'recorded_label', 'unknown')
+MATCH_METHODS = ('generation_completion_id', 'provider_request_id', 'nearest_time')
 
 
 def _name(value):
@@ -209,7 +210,7 @@ def attribution(rows, ledger, config, cutoff):
         if len(matched)>1 and (len(identities)!=1 or None in identities or len(versions)!=1 or None in versions):
             for d in matched:
                 d.update(join_state='call_reused_by_distinct_or_unknown_replies',ledger_sha256=None,ledger_model=None,ledger_provider=None)
-    tiers, joins, agreement, exclusions = Counter(), Counter(), Counter(), Counter()
+    tiers, joins, agreement, exclusions, methods = Counter(), Counter(), Counter(), Counter(), Counter()
     for d in details:
         d['tier'] = ('observed' if d['observed_model'] else 'ledger_attributed' if d['ledger_model']
                      else 'recorded_label' if d['recorded_label'] else 'unknown')
@@ -218,8 +219,10 @@ def attribution(rows, ledger, config, cutoff):
         if d['outside_cutoff']:
             exclusions['outside_cutoff'] += 1; continue
         tiers[d['tier']] += 1; joins[d['join_state']] += 1; agreement[d['label_ledger_agreement']] += 1
+        if d['join_state'] == 'matched': methods[d['join']] += 1
     report = {'scope':'per_assistant_source_copy_not_unique_training_turns',
             'tiers':{tier:tiers[tier] for tier in TIERS},'join_states':dict(joins),
+            'matched_methods':{method:methods[method] for method in MATCH_METHODS},
             'label_ledger_agreement':dict(agreement),'excluded':dict(exclusions),
             'assistant_copies':len(details),'copies_without_cutoff_clock':sum(not d['reply_clock_known'] for d in details),
             'unique_ledger_records_supplied':len(calls),'naive_timezone_explicitly_supplied':timezone is not None,

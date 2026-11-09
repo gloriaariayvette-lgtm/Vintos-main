@@ -1811,19 +1811,30 @@ for ledger matching or change historical eligibility.
 13-by-768 output and already allocated CPU arrays. It makes no real model calls,
 loads no checkpoint, reads no input store and publishes no capture packets. Receipt
 helpers and parameter-array allocation are outside the timer. Each iteration uses
-a fresh wrapper: bare stub, first observed call (two parameter scans), then a repeat
-without new snapshots. Reports include wall/process-CPU medians and maxima, call
-counts, array byte counts and code hashes; no vectors, parameter values, messages
-or identifiers are written. Each first call must retain observed-equal snapshots
-and the exact return object/call counts, or the run fails without a report.
+a fresh wrapper: bare stub, first observed call (two parameter scans), a same-input
+repeat without parameter snapshots, then a fresh-input repeat without parameter
+snapshots. The last phase exercises new receipt retention; the same-input phase
+keeps the first bank entry and cannot prove a new receipt. Both first/fresh-input
+calls must retain equal before/after runtime and Python-entrypoint observations.
+First-call parameter bytes/counts and repeat unavailability are checked separately.
+A missing observation, changed synthetic state, stale invocation or unexpected
+component count fails the run before any report is written.
+
+Version 2 reports include wall/process-CPU medians and maxima, call counts, array
+byte counts, code hashes and fixed observation-coverage counts. No vectors,
+parameter values, messages, invocation IDs or settings are written. The default
+minimal profile observes the root and its code. `--runtime-profile configured`
+adds four synthetic modules across two child levels, four stored module settings,
+one config and one tokenizer-settings object. This is a bounded fixture, not a
+measurement or reconstruction of the real encoder or tokenizer.
 
 Run from the reviewed checkout with an existing CPU Python environment containing
 numpy. No install is needed:
 
 ```sh
 BENCH_SCRATCH="$(python3 -c 'from pathlib import Path; import tempfile; print(Path(tempfile.mkdtemp(prefix="judges-cost-")).resolve())')"
-SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3
-SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/contiguous" --mib 64 --tensors 8 --iterations 3 --runtime-profile configured
+SPARK_WORKSPACE="$BENCH_SCRATCH" PYTHONDONTWRITEBYTECODE=1 python3 experiments/judges-witness/benchmark_encoder.py --scratch "$BENCH_SCRATCH" --output "$BENCH_SCRATCH/strided" --mib 64 --tensors 8 --iterations 3 --layout strided --runtime-profile configured
 ```
 
 The CLI refuses live/repository/symlinked roots, existing outputs and paths outside
@@ -1833,10 +1844,685 @@ logical arrays, 1/8/64/128 tensors and 1–10 iterations. Strided arrays allocat
 the logical parameter bytes and hashing makes temporary contiguous copies; the
 reported allocation is not peak RSS. Default is 64 MiB, eight tensors, three runs.
 
-Local synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
+Earlier version 1 synthetic measurement (three repetitions, 64 MiB logical state, eight tensors):
 first observed-call wall median/max 42.219/43.999 ms contiguous and 49.465/54.537 ms
 strided; repeated-call medians 1.886/1.918 ms respectively. These are measurement
 observations, not performance tests with thresholds. They do not establish real
 encoder cost, tensor-runtime compatibility, end-to-end response latency or Aegis
 acceptance. The benchmark uses numpy buffers, not the loaded tensor library; real
 CPU-runtime overhead and packet/sink behavior remain separate reviewer checks.
+
+
+### Historical match-method coverage
+
+The historical aggregate now includes `matched_methods`, a fixed three-key count
+of source copies matched by `generation_completion_id`, `provider_request_id`, or
+`nearest_time`. It is computed after conflicting-ledger and call-reuse checks and
+excludes copies outside the cutoff. Its sum equals `join_states.matched`.
+
+This is a second view of the same copies, not another attribution tier or a count
+of unique requests. An `observed` copy may also match a ledger row. Duplicate
+source copies count individually; duplicate identical ledger records do not create
+extra matches. Optional window30 additions remain in their separate partition.
+The public formatter prints fixed labels and numbers only, validates the exact
+keys/counts/total, and marks legacy reports without this field as unavailable.
+Exact keys establish correlation, not delivery, clean ancestry or training
+eligibility. Matching, strict admission and all runtime producers are unchanged.
+
+
+### Cost of retained encoder calls
+
+Optional audit/forecast call observations now include `timing` with schema
+`encoder-call-timing-v1`: parameter-before, existing encode, and parameter-after
+elapsed seconds, read from the monotonic performance clock. Each is a finite
+nonnegative duration up to one day, or null when unmeasured/unavailable. Unspent
+snapshot stages stay null. Clock errors/reversals/nonfinite readings cannot change
+encoding or cause retries. Backend exceptions propagate unchanged; a failed call
+has no successful-output receipt. Capture-off paths remain unchanged. No model
+loads, additional encodes, GPU transfers or new parameter scans are introduced.
+
+The before/after scan budget remains one pair per wrapper. Times are monotonic
+wall time, not process CPU, GPU completion, whole-wrapper overhead or job latency.
+They omit serialization, private publication and caller work. Successful snapshot
+byte counts describe tensors actually hashed, not full resident model size. An
+unsupported/over-limit snapshot may still have measured attempted-scan time while
+its byte count remains unavailable. Retention keeps the existing selection and
+value-deduplication rules, so these observations are not all runtime calls.
+
+The offline artifact summary adds `encoder_call_cost` over validated supplied
+packets, including inputs that do not bind an admitted reply. Packet duplicates
+are removed; multiple source references or batch outputs do not multiply a call's
+cost. The opaque invocation marker joins copies only within this supplied set.
+Different timing, settings or parameter-snapshot metadata under one marker makes that call
+conflicting and excludes all its copies from duration/size statistics. Legacy
+copies without timing remain valid; mixing missing and present timing for the same
+marker is conservatively conflicting. Missing call identity is counted separately.
+
+The report prints fixed stage labels, measured/unavailable call counts, total and
+maximum seconds, and observed snapshot count/total/max bytes. Totals are repeated
+scan volume, not distinct model bytes. It emits no invocation IDs, parameter
+hashes, text, vectors or source labels. Strict validation checks count partitions,
+finite bounds and size/duration conservation before rendering. A legacy report
+without this section explicitly says cost coverage is unavailable. These numbers
+do not establish encoder identity, delivery, fitting lineage, target association
+or scoring/training eligibility.
+
+Fourteen isolated synthetic tests cover exact staged clock values, unmeasured
+stages, clock failures, backend exceptions, source-observer failure, unchanged
+calls/results, batch deduplication, conflicting copies, missing/legacy fields,
+forecast links, aggregate validation and public-output privacy. Existing encoder,
+audit, join, report and synthetic benchmark suites also pass. No real encoder was
+loaded for this change. Real host cost remains unmeasured until the operator enables
+capture and ordinary background work retains these observations; no user-generated
+test conversation or paid call is needed to collect them.
+
+
+### Historical fixture metadata diagnostic
+
+`coverage.py` now emits `historical_fixture_coverage` alongside its existing
+aggregate fields. The fixed public source profile compares the exact historical
+chat-result fixture's caller, class, stage, provider/model tuple and usage object.
+It partitions unique supplied ledger rows into fixed counts, retaining cutoff and
+unknown-clock exclusions. It does not identify test executions, remap sources,
+backfill models or alter attribution/training admission. Existing baseline and
+window diagnostics are unchanged. See [the source evidence and comparison contract](../../docs/judges-source-coverage.md#reproducible-metadata-comparison).
+
+Use the existing copied bundle and coverage command with a fresh private output
+directory. Report only the fixed aggregate section; keep private caller records,
+IDs and timestamps private. A matching pattern requires independent execution
+provenance before it can establish origin. The new contract has 55 passing
+isolated coverage/attribution checks; no live source was read or model called.
+
+
+### Checkpoint observation consistency
+
+The offline artifact reader now validates `self-checkpoint-observation-v1`
+manifests before using their content references. It requires the producer's
+bounded byte count, hash fields, supported mode, bounded reported strings and
+explicitly unobserved training/encoder identity. Invented verified identities,
+weights-retained flags, malformed current-version fields and unsupported schemas
+are rejected; they cannot disappear behind a good copy. Older observations without
+availability are accepted. Schemaless legacy manifests with a valid checkpoint
+hash remain legacy evidence and never acquire missing identity fields.
+
+The `checkpoint_consistency` aggregate groups one manifest per unique supplied
+artifact packet by checkpoint hash. Repeated source references do not multiply it.
+It compares the metadata hash, byte count, mode, source and reported fields, while
+validating read-availability clocks separately. Different read times for the same
+bytes are expected and do not create metadata conflicts. Groups are classified
+as consistent observed fields, conflicting observations, incomplete observations,
+or legacy only. Observed conflicts remain visible even with missing legacy peers.
+Consistent fields may come from a single observation; they do not mean independent
+confirmation. These counts describe supplied copies, not unique physical loads.
+
+Only fixed labels/counts are published: manifest copies, checkpoint groups,
+validated observation shapes, legacy shapes and the four group states. Hashes,
+reported labels/dates, paths and vectors are absent. The formatter checks count
+conservation and possible minimum group sizes. Older reports lacking this section
+explicitly say consistency coverage is unavailable.
+
+This is an internal consistency check, not authentication of the underlying bytes.
+It does not reconstruct weights, certify a training completion date, establish
+encoder/tokenizer/runtime identity, choose a forecast target or admit a record for
+scoring. Valid conflicting manifests remain visible alongside the separate content
+joins; content equality is still a separate question. Existing runtime capture,
+forecasts and training/evaluation rules are unchanged. Full fitting-lineage and
+forecast-target association remain unresolved.
+
+111 affected local isolated checks pass: consistency 13, artifact joins 30,
+checkpoint availability 12, report 22, retained-call cost 14, self artifacts 20.
+All inputs are synthetic; no real checkpoint, private snapshot, model or live
+store was accessed. Host integration and private retained-data checks remain with
+review. No capture is enabled by this change.
+
+
+### Prospective pending-file handoff receipts
+
+The optional self-forecast capture observes the existing launcher after its runner
+returns, and observes the decoded pending record consumed by the background job.
+It never reopens that pending file. `self-forecast-launch-v1` records a digest of
+the pending locator and canonical decoded value, a message digest, arrival time,
+and optional surface/turn marker digests. After the existing forecast-log close,
+`self-forecast-handoff-v1` binds that observation to the exact saved forecast-row
+digest. Raw text, paths and turn IDs are absent from these new private sidecars.
+These hashes still belong in the private snapshot, not public documentation.
+
+No field is added to the pending record or forecast log. Existing process launch,
+reply flow, model selection and forecast/feed content remain unchanged. Capture
+off produces no sidecars. Observer failure is swallowed; no retry, extra model
+load or encoding is introduced. Capture on adds one bounded launcher publication
+and one background sidecar. Launcher cost uses the configured queue/spool path and
+needs isolated host measurement; earlier latency numbers do not cover it.
+
+Supply both sidecar kinds unchanged in a new explicit `self_forecast_handoffs`
+list in the existing replay bundle, alongside the exact original `forecasts`.
+The normal replay command and public formatter then report fixed counts for
+launches/jobs and their missing peers, plus per-unique-forecast states. Duplicate
+copies do not multiply witnesses. Pending content/locator disagreements, multiple
+job observations, absent launches, absent origin markers and row-field mismatches
+stay separate. Every receipt is validated before cutoff filtering. Cutoff is
+exclusive on the supplied forecast time; absent peers do not establish failure or
+loss. The new offline module is included in the private run's code hashes.
+
+A `joined` state only establishes supplied-record consistency between these
+boundaries. It does not authenticate a source, prove the subprocess executed the
+claimed code, prove that her input was fully represented, or associate the
+forecast with a delivered reply. No receipt fills in a missing chat turn ID, and
+no historical marker is invented. Scoring and strict training admission are
+unchanged. Tokenizer/runtime/fitting lineage, caller identity, reply delivery and
+complete influence ancestry remain separate work.
+
+307 affected isolated synthetic checks pass (handoffs 19, forecast inputs 15,
+source clocks 12, census/innovation 109, existing on-message head 32, public report
+22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25). The legacy synthetic head suite emits numerical runtime
+warnings while all 32 checks pass; no live encoder or checkpoint was loaded.
+
+
+### Main-chat prospective forecast key
+
+The existing coordinator's event-key calculation now has one shared pure helper.
+For `chat/full` only, the early self-forecast hook can reserve that key from the
+current validated HTTP request marker, before the bilateral wrapper opens the
+actual turn later. The coordinator uses exactly the same pre-existing mapping;
+its no-event random fallback, barrier/capsule ordering and duplicate behavior are
+unchanged. The early hook does not open a turn, fetch a capsule or move the
+forecast's arrival time. Missing/malformed request markers stay empty. Explicit
+turn IDs, other surfaces and test-mode behavior are preserved.
+
+This is prospective metadata active even when optional witness capture is off:
+ordinary main-chat pending/forecast rows can now carry the event-derived turn key.
+It does not alter history rows or merge/deduplication selection, post-turn feeds,
+model routing, reply text, forecast vectors or the existing evaluator. It cannot
+backfill historical markers or establish that a future target reply was produced
+or delivered. A reserved key is not authenticated evidence or training admission.
+Existing exact target/source/lineage/clock requirements still apply.
+
+105 affected isolated synthetic checks pass: new key propagation 11, coordinator
+33, handoff capture 19, existing on-message head 32 and completion joins 10. The
+new tests exercise concurrent request contexts, shared coordinator key parity,
+missing/malformed input, exception behavior and the actual launcher, pending file
+and forecast log (including the full 66-character ID). No live inputs, models or
+services are used. Full integrated host validation remains with review.
+
+
+### Handoff cardinality
+
+The offline handoff diagnostic also checks the reverse relation: one pending
+resource cannot certify multiple distinct saved forecast rows. All valid supplied
+job receipts participate, including references to absent rows and rows outside
+the forecast cutoff. A competing row cannot disappear through filtering and make
+the remaining one look unambiguous. Such records report `conflicting_receipts`.
+Exact copies remain duplicates; separate pending resources sharing a request/turn
+marker remain separate observations. This does not alter innovation's existing
+earliest-forecast policy or any runtime producer.
+
+Four new synthetic regressions cover conflicting vectors, later/outside-cutoff
+peers, missing row peers, order/duplicate invariance and distinct-resource controls.
+The first three reproduced the prior false joined results before the fix. All
+165 affected isolated checks pass: handoffs 23, chat keys 11, report 22 and
+census/innovation 109. No private data or new capture is required for the fix.
+
+
+## 9 November — observe stored encoder runtime settings
+
+`codex/judges-loaded-runtime` descends from 3d022fb8. Optional self artifact
+capture now records before/after fingerprints around each existing encode call
+for bounded fields already stored on the encoder and two child-module levels:
+training/truncation/prompt settings, primitive stored model configuration,
+selected stored tokenizer settings and already-loaded package versions. Child
+order is retained. No config/tokenizer methods, vocabulary reads, imports for
+version discovery, file loads, device transfers or extra encoding calls are used.
+Receipts retain hashes and counts, never the underlying setting values.
+
+These are partial observations, not complete encoder identity. Tokenizer backend
+bytes/vocabulary, dynamic properties, deeper module state, executable code,
+hardware and fitting lineage remain unobserved. Unsupported components are marked
+inside the fingerprint; bounds or observer failures leave evidence unavailable.
+Equality means only equality of observed stored fields. Snapshots are not atomic
+attestations and do not prove immutability between boundaries. `encoder_identity`
+remains unverified; scoring and training admission are unchanged.
+
+Capture-off behavior remains unchanged. With capture on, this adds bounded work
+around every wrapped background encode (64 modules, two child levels, 4096 plain
+value visits, 65536 string characters, 131072 serialized bytes per snapshot).
+It does not change outputs, exception propagation, call arguments or the existing
+one-pair parameter sampling limit. Observation cost on the real encoder remains
+unmeasured, and existing parameter/encode stage timings exclude this new runtime
+observation overhead. The full host cost check remains open.
+
+Legacy receipts without the optional `runtime` field remain valid and unknown on
+this axis. Audit retention includes runtime changes even when outputs repeat;
+conflicting runtime copies of one invocation are excluded from call-cost totals.
+The existing public `encoding_consistency.settings` axis still describes explicit
+call arguments only; it does not summarize the new runtime snapshots. Keep the
+artifact producer and reader versions together when integrating.
+
+221 isolated synthetic checks pass: runtime 16, parameters 19, costs 14,
+self artifacts 20, joins 30, review report 22, encoder benchmark 6, checkpoint
+consistency 13, forecast inputs 15, handoffs 23, entry owners 11 and store guard 32.
+Tests cover changed settings despite identical parameters/vectors, module order,
+loaded versions, unsupported/oversized/cyclic values, forbidden dynamic reads,
+legacy/malformed receipts, exceptions, capture off and exact call/result parity.
+Generated reports refreshed. No private records, real encoder, model calls,
+live writes, enabling, merge or deployment. Full host integration remains open.
+
+
+## 9 November — local self-fitting completion receipts
+
+`codex/judges-fit-completion` descends from 4353b824. The anchored readout's two
+self modes now optionally observe their existing fitting boundaries: ordered
+rows, numeric feature/target arrays and index assignments are fingerprinted per
+train/validation/calibration/test block before fitting; completed parameters and
+metadata are fingerprinted before the unchanged checkpoint save. After save
+returns, a bounded readback must match both fingerprints before an immutable
+private `self-fit-completion-v1` receipt is published. The receipt includes exact
+checkpoint-byte identity, byte count and wall-clock boundary observations. It
+contains no row text, raw turn IDs, paths, vectors, weights or raw settings. The existing
+private sink whitelist/retention rules cover the new packet type.
+
+Capture off performs no observation imports/reads/writes. With capture enabled,
+this adds bounded background hashing and checkpoint readback: at most 4096 rows,
+8 MiB serialized row text, 16 feature arrays plus targets, 64 MiB total numeric
+input bytes, and a 64 MiB compressed/decompressed checkpoint bound. Runtime cost
+on real records is unmeasured. No encoder invocation, training invocation or
+checkpoint schema is added; selection, fitting, calibration, reports, save format
+and existing consumers remain unchanged. The other head bypasses these hooks.
+No existing training run was started; tests use synthetic arrays and stub encoders.
+
+This is a local observation, not source authentication, proof of cache/encoder
+origin, a complete dependency graph, atomic checkpoint publication, disk durability
+or evidence about an old checkpoint. Exact output readback can be observed even
+if a separate writer later replaces the file. Clock reversal makes the receipt
+unavailable. Observer failures are passive and save failures still propagate.
+Historical training dates remain unknown. The separate offline completion-receipt
+reader/join remains to be added; current scoring/admission does not consume or
+promote these receipts. Full source/encoder lineage and host integration stay open.
+
+124 isolated checks pass: fitting receipts 14, existing readout acceptance 5,
+self artifacts 20, sink 26, runtime 16, entry owners 11 and store guard 32. Actual
+fitter tests confirm identical reports/parameters/encoder call counts with capture
+off/on, each observer failure is passive, and a failed save cannot publish a
+completion. Other tests cover exact metadata/shape/dtype/value binding, separate
+test-block changes, partition conflicts, private output, object arrays, symlinks,
+size bounds, clocks, dedicated-sink permissions and hot disable. Existing synthetic
+numeric code emits matrix-operation warnings; all asserted checks pass. Generated
+reports refreshed. No private data, real model, live write, enabling, merge or deploy.
+
+
+## 9 November — offline fitting-receipt reader
+
+`codex/judges-fit-receipt-reader` descends from 48b29f6a. Replay accepts an optional
+`self_fit_completions` list containing retained `self-fit-completion-v1` packets.
+It compares these with the existing explicitly supplied `self_artifact_packets`
+and adds `fit_completion_observations` to the aggregate. No directory discovery,
+checkpoint loading, encoder calls, training or receipt synthesis occurs. The new
+reader is included in the private run's scoring-code hash manifest. The existing
+review renderer projects only fixed counters and states after validation.
+
+Every supplied receipt and artifact is validated before cutoff filtering. Exact
+receipt copies and exact checkpoint-manifest copies collapse, while supplied-copy
+counts remain visible. States count unique checkpoint-manifest observations, not
+training runs, source replies or unique checkpoints: two reads of the same bytes
+at different clocks are separate observations. Orphan receipts are counted
+separately and do not prove a failed fit or absent forecast.
+
+Matching requires exact checkpoint digest, metadata digest, mode and byte count.
+Legacy manifests, missing receipts, unknown read clocks, mismatch and cutoff states
+stay separate. Multiple distinct fitting receipts for one checkpoint are held;
+the reader does not select an earlier or preferred one. This includes differing
+clock observations that could represent legitimate repeated fits; it is ambiguity,
+not a claim of fabrication. Conflicting manifest peers also hold the join. All
+supplied peers participate, including outside-cutoff peers, so filtering cannot
+hide an alternative claim. These conservative comparisons have no scoring effect.
+
+A single matching completion is classified as observed before the checkpoint read
+(start boundary), overlapping the read interval, or observed after parsing. Only
+parameter-loaded read clocks qualify for this temporal comparison. Neither a match
+nor its timing authenticates sources, establishes encoder/cache ancestry, proves
+disk durability, rewrites a historical fitting date or grants training eligibility.
+Current census, behaviour, innovation and checkpoint metadata remain unchanged.
+Full lineage, real-host cost, delivery evidence and host integration remain open.
+
+178 isolated checks pass: fitting reader 17, review report 22, artifact joins 30
+and census/innovation 109. Tests cover exact binding, clock intervals, missing and
+legacy evidence, duplicate/order invariance, receipt/manifest conflicts including
+future peers, malformed evidence, orphan counts, strict public projection, actual
+producer compatibility and the real scratch replay CLI. The CLI verifies private
+file permissions/code binding and exact unchanged nonempty census/innovation.
+An initial test used the wrong existing run-manifest filename; corrected to
+`private-run.json`. Generated reports refreshed. No runtime producer changes,
+private records, model calls, live writes, enabling, merge or deployment.
+
+
+## 9 November — compare retained partial runtime settings
+
+`codex/judges-runtime-comparison` descends from 5283d12b. Existing artifact replay
+now adds `runtime_consistency` beside the unchanged call-argument/parameter/vector
+axes. It compares the optional stored-runtime snapshots already retained in
+forecast and audit encoding receipts, within the existing exact content/checkpoint
+groups. The review renderer validates and projects fixed counts only. No new
+capture, model load, encoder call or runtime producer behavior is added.
+
+States distinguish changed during a call, different partial snapshots across
+calls, incomplete evidence, a single call and matching partial snapshots. Observed
+differences survive missing peers. Matching requires every reference to have an
+observed equal before/after pair and at least two distinct invocation markers.
+Copies of one invocation do not establish repeatability; different checkpoints
+remain separate. Legacy receipts/reports stay incomplete/unavailable. Unbound
+sources do not enter these content-group counts.
+
+The fingerprints remain partial: selected stored fields and loaded versions are
+observed; tokenizer content, executable code, deeper runtime state, fitting and
+source authenticity are not established. Equal outputs/arguments/parameters do
+not hide a runtime difference, and equal partial snapshots do not establish full
+encoder identity. No census, content admission, forecast selection or innovation
+score changes. Real-host cost and the remaining evidence/integration work stay open.
+
+187 isolated checks pass: runtime comparison 12, artifact joins 30, review report
+22, encoder costs 14 and census/innovation 109. Tests cover differing snapshots
+with identical vectors/arguments/parameters, missing peers, changed boundaries,
+legacy/unavailable data, duplicate and invocation semantics, cross-representation
+comparison, checkpoint partitioning, public-field validation and actual scratch
+CLI parity for census/innovation. Generated reports refreshed without changes.
+No private input, live writes, model calls, enabling, merge or deployment.
+
+
+## 9 November — observe and compare the loaded encode entrypoint
+
+`codex/judges-encode-entrypoint` descends from b683b7ce. Optional artifact capture
+now fingerprints the already resolved Python encode function before and after its
+single existing invocation. Bounded code-object traversal includes bytecode,
+constants and nested code, excluding file/line locations. Only hashes and counts
+are retained. No source files, model loads or additional encoder calls are used.
+The encode attribute is resolved once; its original result or exception survives.
+Observer failures remain passive, and native/callable-object implementations stay
+unavailable. Legacy receipts remain valid without invented implementation identity.
+
+Audit retention and invocation-conflict checks include the optional observation.
+Offline artifact replay and review add fixed entrypoint-consistency counts within
+exact content/checkpoint groups. Matching requires all references observed and two
+distinct calls; incomplete evidence never conceals an observed difference. These
+are partial Python-code observations: globals, defaults, closure contents, helper
+functions, native code, tokenizer contents and full encoder identity remain open.
+Scoring, eligibility, forecast choice, fitting and all existing feeds are unchanged.
+
+Capture off is unchanged. Capture on adds bounded background inspection whose
+real-encoder cost remains unmeasured. With this observer, encode_seconds measures
+the resolved callable execution; attribute resolution and runtime/entrypoint
+inspection are outside that timer. It is not a total observation/job cost.
+
+Validation covers synthetic Python code changes with unchanged vectors, nested
+code, relocation invariance, unsupported/oversized constants, single property
+resolution, mutation during the call, original exceptions, observer failures,
+legacy receipts, audit retention, cost conflicts and aggregate report validation.
+Two fixture issues were corrected: a nested fixture changed the capture root, and
+receipt selection depended on directory order. Production failures were not found.
+Full encoder ancestry, real-host costs, phone delivery and host integration remain
+open. No private records, real model calls, live writes, enabling, merge or deploy.
+
+211 isolated checks pass: entrypoint 14, runtime producer 16, parameters 19,
+encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
+self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
+store guard 32. Generated ownership/coverage/store reports refreshed without
+changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — benchmark observation coverage, version 2
+
+`codex/judges-benchmark-observation-coverage` descends from 7b82f337. The offline
+cost tool previously verified parameter snapshots only, allowing runtime/code
+observation failures to yield optimistic timing reports. It now refuses results
+unless first and fresh-input repeat calls retain the expected runtime/code pairs
+and exact synthetic component counts. A separate fourth phase exercises fresh
+receipt retention without another parameter scan; the existing same-input repeat
+retains first-call bank entries and is not claimed as fresh receipt evidence.
+Schema is judges-encoder-cost-v2; version 1 results remain historical measurements.
+
+The configured profile adds four synthetic modules, stored settings, one config
+and one tokenizer-settings object, without loading a model or tokenizer. The
+minimal profile remains default. Both profiles measure the entire wrapper call,
+including inspection and vector/receipt construction, with allocation and receipt
+helper preload excluded. Neither includes sink publication or serving latency.
+
+Local configured-profile measurement: 64 MiB logical arrays, eight tensors, three
+iterations. First-call wall median/max is 42.572/43.139 ms contiguous and
+50.118/51.026 ms strided. Same-input repeat medians are 2.019/1.996 ms; new-input
+receipt-retaining repeat medians are 4.415/4.406 ms. Each run makes twelve stub
+encodes and six parameter snapshots, checking six distinct retained calls. These
+are synthetic observations without pass thresholds, not real-host acceptance.
+No production code, encoder behavior, capture defaults, scoring or admission changed.
+Real encoder compatibility/cost, full ancestry, delivery and integration remain open.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.
+
+
+## 9 November — conserve launch support in aggregate handoff reports
+
+`codex/judges-handoff-count-conservation` descends from 32c27b20. The underlying
+handoff join already refuses one pending resource certifying several distinct
+forecast rows. Its aggregate validator previously accepted impossible summaries:
+several launch-backed rows with only one paired launch, orphan launches counted as
+support, or more paired launches than job receipts. The review renderer used that
+validator and could display these inconsistent supplied counts.
+
+Validation now requires the sum of joined, origin-markers-missing and
+pending-row-mismatch rows to fit within paired launches (launches minus those
+without a job), and paired launches cannot exceed all job receipts. These are
+necessary count-conservation checks, not authentication of the receipts. Missing
+markers, mismatches and conflicts keep their existing meanings. Valid aggregate
+outputs, runtime capture, joins, census, innovation and training admission are
+unchanged. No real-data result is inferred from the synthetic regression.
+
+Three regression cases produced six assertion failures before the fix, including
+rejection through the actual review renderer. They now pass; the positive case
+retains two independent paired launches plus an orphan, and existing duplicate,
+conflict, out-of-window and scratch CLI tests remain valid. No private records,
+model calls, live writes, enabling, merge or deployment. Full evidence and host
+integration requirements remain open.
+
+59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
+Generated ownership, untested and store reports refreshed without changes; diff
+check clean. Regression evidence was captured before applying the validator fix.
+
+
+## 9 November — self forecasts name the checkpoint bytes they parsed
+
+`codex/judges-loaded-checkpoint-binding` descends from 905881ba. The anchored self
+forecast previously parsed a checkpoint, computed a prediction, then reopened the
+path to label the result. An atomic replacement in between labelled old parameters
+with the new file hash; deletion caused an unnecessary late failure. With capture
+on, the manifest mismatch correctly suppressed artifacts, but the saved forecast
+still carried the wrong checkpoint identity.
+
+Both self modes now ask the loader to parse and hash one in-memory byte buffer.
+Their results use that loaded identity; the later path read is gone. The optional
+manifest uses the same buffer. This prospective identity correction is active with
+capture OFF too. Stable-file output, prediction/confidence and encoder-call counts
+are unchanged. Replacement/deletion after parsing no longer relabels or discards a
+valid result. The default loader contract and the other head's path are unchanged.
+The optional observation size limit still controls retention, not model loading.
+
+This does not certify atomic publication, fitting/source ancestry or durability.
+Bytes describe exactly what was parsed; a concurrently modified/corrupt read can
+still fail parsing as before. The compressed byte buffer overlaps parsing instead
+of being allocated for a later hash; real-host peak memory/latency is unmeasured.
+No checkpoint format, parameter value, model selection, loop/feed or eligibility
+policy changes. No private input, model calls, live writes, enabling, merge or deploy.
+
+106 isolated checks pass: new binding 8, artifacts 20, checkpoint availability 12,
+existing readout 5, forecast inputs 15, handoffs 26, forecast clocks 9, owners 11.
+Before the fix, replacement regressions showed wrong IDs and missing artifacts,
+and deletion caused a late file error. New tests use valid atomic replacements,
+compare predictions/confidence/call counts, and cover capture off without observer
+imports, retention limits, malformed inputs and unchanged other-head loading.
+The existing replacement test was updated from artifact suppression to exact
+loaded binding; the artifact mismatch guard itself remains unchanged. Existing
+synthetic matrix-operation warnings in readout tests persist; all assertions pass.
+
+
+## 9 November — self-audit checkpoint bytes and filesystem cutoff stay together
+
+`codex/judges-audit-checkpoint-clock`, on e9e3221a, fixes a related audit race:
+audit hashed checkpoint bytes and later obtained its scoring cutoff from the path.
+A replacement could pair the old hash with the new file's modification time;
+deletion caused a late exception. Both were reproduced before the fix.
+
+Self audits now read bytes and modification time through one open file descriptor.
+The read is rejected before scoring/report publication if observed device, inode,
+size, modification or change time differs across it, or the byte count disagrees.
+Nonregular observations are rejected. Replacement or deletion after the snapshot
+cannot change its cutoff. These checks detect observable mutation; they do not
+certify atomic publication or defend against all concurrent filesystem changes.
+The existing modification-time cutoff remains a filesystem estimate, not an
+attested fitting-completion time or evidence for strict training eligibility.
+
+Active with capture OFF as well as on; stable-file results and encoder-call counts
+remain unchanged. The other head retains its existing path. No new model call,
+checkpoint format, model selection, feed, admission, enablement, merge or deploy.
+80 isolated checks pass: new audit races 6, artifacts 20, checkpoint availability
+12, existing readout 5, ranking 26 and entry owners 11. Synthetic tests cover
+replacement, deletion, capture off/on, observed metadata mutations, short reads,
+nonregular observations, and the unchanged other-head path. Existing synthetic
+numerical warnings occur with passing assertions. Real-host integration, source
+ancestry and delivery evidence remain open.
+
+
+## 9 November — record counterpart and arriving forecast inputs
+
+`codex/judges-selected-feature-inputs`, on 2e3962a3, extends optional forecast
+artifacts with `feature_inputs` (`self-selected-features-v1`). Previous receipts
+covered selected recent-own replies, leaving the counterpart and arriving inputs
+unrecorded. The new observation is made directly from the existing selected context
+and six computed arrays before prediction; no encoder call or prediction changes.
+
+The receipt preserves ordered input hashes/character counts for up to six own,
+six counterpart and one arriving prefix (400 codepoints each), including duplicate
+occurrences. It hashes all six numeric arrays: last/mean own, last/mean counterpart,
+arriving and clock. It records their dimensions and selected exchange epoch.
+Values use canonical float-list JSON hashing, not a dtype/byte representation;
+zero arrays are valid. The clock array is the existing host-local computation.
+Its hash records the computed values, not a portable timezone/reconstruction proof.
+The added receipt contains no message text, private IDs, paths or numeric arrays.
+
+Capture OFF adds no observation work. Capture ON hashes at most 40,963 numeric
+values (five arrays of dimension 8,192 plus three clock values); its maximal test
+receipt is under 4 KiB. This is bounded additional background CPU/serialization
+work; real-host latency remains unmeasured. A failed observation leaves the old
+artifact path available, with the new receipt absent. Existing row, payload join,
+encoder calls, sink caps and defaults remain unchanged.
+
+Offline artifact readers strictly validate optional receipts and require their
+ordered own-prefix hashes, last-own array hash and dimensions to agree with retained
+own embeddings. Legacy absence stays unknown; malformed present data is rejected.
+These hashes do not prove encoder identity, feature derivation, complete source
+ancestry, fitting, final target selection or client delivery. They do not include
+the separate context-baseline encoding. Existing `complete_forecast_context` and
+`upstream_complete` remain false. No admission/scoring upgrade or historical inference.
+
+148 isolated checks pass: selected features 8, artifacts 20, forecast inputs 15,
+artifact joins 30, runtime comparison 12, loaded checkpoint 8, availability 12,
+entry owners 11 and store guard 32. Tests exercise actual predictor inputs,
+capture parity, truncation/order/repeats, future exclusion, absent counterpart
+zero features, failure isolation, malformed claims, legacy data and maximum bounds.
+All inputs synthetic and encoders/sends stubbed. No new model calls, private input,
+live writes, enabling, merge or deployment. Host integration and remaining ancestry
+and delivery evidence are still open.
+
+
+## 9 November — existing context-baseline call gets a bounded receipt
+
+`codex/judges-context-baseline-binding`, on 204e369f, observes the separate existing
+context-baseline encoding when optional self forecast artifact capture is enabled.
+It adds `context_baseline` (`self-context-baseline-v1`) to the exact-row-bound
+artifact packet. There is no new encode, retry, parameter scan or model load.
+The original capture-off and other-head encoding paths remain unchanged.
+
+The receipt records ordered role/prefix hashes for the six selected turns,
+checks the actual legacy rendering (300 codepoints per turn, joined by a space
+and newline; at most 1,810 codepoints), and hashes the exact rendered input.
+It records dimension and canonical float-list hashes of the existing raw result
+and normalized context vector. The producer checks the normalization and saved
+forecast vector agree. No text, private IDs, paths or vectors are added by this
+receipt. Maximum vector dimension is 8,192; its maximal text-selection fixture
+receipt is under 2 KiB. Zero/nonfinite/out-of-bounds observations are unavailable.
+A formatter change also leaves this receipt absent rather than mislabelling it.
+
+Observation failure leaves the existing forecast and artifact path intact.
+Encoder failure still propagates the original exception without retry. The
+baseline's encoder identity, parameters/runtime, source ancestry and cost remain
+unobserved; existing cost totals still concern the separately instrumented calls.
+This is bounded extra background hashing/normalization, with real-host latency
+unmeasured. It does not certify feature derivation or full upstream completeness.
+
+Offline replay validates any present receipt and reports fixed counts per unique
+artifact packet: missing observation, missing exact forecast version, conflicting
+receipt variants, identity/clock/vector disagreement, outside cutoff, or bound to
+the exact saved forecast. All supplied peers participate in conflict checks.
+Binding requires the same checkpoint/mode, exact saved-row hash, matching packet
+clocks, an in-window forecast and the exact normalized baseline vector/dimension.
+These are packet counts, not unique turns or eligible training examples. The
+public renderer emits only fixed aggregate states. Legacy absence stays unknown.
+No admission/scoring, target-selection or delivery claim changes.
+
+175 isolated checks pass: context baseline 10, artifacts 20, inputs 15, selected
+features 8, artifact joins 30, review report 22, encoder cost 14, loaded checkpoint
+8, existing readout 5, entry owners 11, store guard 32. Tests exercise the actual
+formatter/predictor path, capture parity and unchanged scan counts, ordered repeated
+prefixes, failure isolation, exact-version/conflict/cutoff handling, malformed and
+legacy receipts, bounded output and aggregate rendering. Synthetic numerical
+warnings in the existing readout suite persist with all assertions passing.
+Generated reports refreshed; no new files need deployment manifest entries.
+No private input, real model calls, live writes, enabling, merge or deployment.
+Host integration, complete ancestry and phone delivery remain open.
+
+
+## 9 November — selected-input observations become visible in offline coverage
+
+`codex/judges-selected-feature-coverage`, on 71081e44, adds the optional public
+`selected_feature_states` aggregate alongside context-baseline bindings. Selected
+input receipts were already retained and validated, but their coverage was absent
+from the aggregate review. This change is offline only: no producer, capture,
+encoder, model, feed, scoring or admission behavior changes.
+
+Counts are per unique supplied artifact packet, not unique turns or training
+examples. Exact duplicates collapse. States distinguish non-forecast packets,
+legacy/missing observation, conflicting receipt variants, missing exact saved
+forecast version, mode/checkpoint or clock mismatch, outside cutoff, a selected
+exchange clock that is not strictly before arrival, and binding to the forecast.
+All supplied receipt variants participate in conflicts before cutoff/row matching;
+a future-dated or unmatched peer cannot hide behind a usable copy. Present malformed
+receipts or disagreement with retained own embeddings reject the input bundle.
+
+Binding means exact saved-row hash, checkpoint/mode and packet clocks agree, the
+forecast precedes cutoff and the observed selected-exchange clock precedes arrival.
+It does not reconstruct counterpart/arriving source identity, prove derivation,
+certify encoder identity or complete ancestry, select a target, or admit training.
+The shared exact-row checker preserves existing context-baseline behavior.
+
+The renderer accepts only fixed labels and nonnegative integer counts summing to
+unique packets, rejects a lone conflict, and cross-checks non-forecast counts with
+context-baseline coverage when both are present. Older reports without this field
+remain accepted. Private hashes, text, vectors and IDs are not rendered.
+
+90 isolated checks pass: new coverage 9, selected features 8, context baseline 10,
+artifact joins 30, review report 22, entry owners 11. Tests include actual synthetic
+producer receipts, duplicate collapse, missing versions, conflict order/future
+peers, malformed claims, cutoff and selected-clock boundaries, renderer bounds,
+legacy reports and the actual scratch replay CLI with 0600 aggregate output.
+Generated ownership/coverage/store reports refreshed without changes; diff clean.
+No real data, new encoding, live writes, enabling, merge or deployment. Host
+integration and full source/encoder/delivery evidence remain open.
+
+
+## 9 November — character instrument is the active next slice
+
+Coordination note #29 redirects work from additional receipt refinements to the
+[offline character-reference prototype](../character-reference/README.md). The
+instrument now exists with historical-tier admission separate from strict witness
+eligibility, held-out-day facets/controls and uncertainty. It consumes explicit
+private frozen caches; actual-history results are not yet available. New receipt
+work is paused except required review fixes. No production behavior changes.

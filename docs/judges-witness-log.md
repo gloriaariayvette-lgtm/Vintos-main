@@ -1885,3 +1885,652 @@ suite, occupied sink throughput/retention, CPU observation cost/compatibility,
 private source/attribution counts and future artifact coverage. No historical
 training decision or full encoder identity is inferred. No live inputs, sends,
 model calls, enabling, merge or deployment. Previous submitted tips remain fixed.
+
+
+## 9 November — historical exact-key coverage exposed
+
+`codex/judges-attribution-match-methods` adds an offline-only matched-method count
+and public fixed-label rendering. Exact completion keys, provider request keys and
+bounded timestamp matches no longer disappear inside one aggregate matched count.
+Counts are source copies after ambiguity/reuse/cutoff checks and overlap the
+attribution tiers; observed copies may also have a ledger match. Legacy aggregates
+remain readable with coverage explicitly unavailable. Window30 stays separate.
+
+79 isolated checks pass: completion joins 10, report 22, attribution 26, coverage
+21. New regressions first reproduced two missing-field errors and seven validation
+failures. Synthetic fixtures cover mixed methods, duplicate copies/ledger records,
+conflicting completion records, reused keys, cutoffs, observed-tier overlap,
+legacy reports, privacy and nonmutation. No matching algorithm, live producer,
+training permission, model call, live input, enablement, merge or deployment
+changed. Full integrated Aegis suite and private-data runs remain with review.
+
+
+## 9 November — historical router-chat test-origin lead
+
+Read-only source tracing found an explicit lower-level router invocation with
+chat surface in the old result-contract suite. At d335de72 it faked network calls
+but did not isolate the compute ledger. Source commits e9000f2d and 19232935 added
+OS-runner and direct-suite isolation on September 11. This is a conditional
+source-level contamination path, not confirmed provenance of retained rows.
+Accounting had to be importable and the store writable; source timestamps do not
+prove deployment. docs/judges-source-coverage.md records exact source pointers,
+synthetic fixture discriminators and the bounded check on the existing private
+copy. Nine historical source assertions passed; no old module execution, private
+inputs or test sends. No production code, matching, admission or stores changed.
+
+
+## 9 November — byte-bounded burst capacity
+
+Read reviewer note 28: reported integration c499460e, full suites 633/633 deploy
+and 636/636 live; host burst still retained 9/30 with the eight-slot queue.
+`codex/judges-burst-capacity` raises slots to 64 but independently caps queued
+serialized bytes at 8 MiB, plus at most one 1 MiB in-flight packet. Reservations
+and releases use the existing queue mutex; overflow skips without eviction or a
+storage wait. No disk-format/config/counter-key change. Queue remains volatile.
+
+66 affected isolated checks pass: deferred queue 26, sink 19, hooks 21. New
+regressions first failed the thirty-packet burst plus two missing byte-bound APIs.
+The stalled-writer fixture now retains all thirty roughly 24 KB packets; concurrent
+large submissions hold the 8 MiB bound, and failures/drains release capacity.
+These are local synthetic contracts, not host latency acceptance. Durable spool,
+restart replay and host cost tests remain open; no claim of restart survival.
+No live inputs, enabling, sends, model calls, merge or deployment.
+
+
+## 9 November — stable packet publication for recovery
+
+`codex/judges-replay-publication` adds optional stable IDs to the internal publisher.
+Matching retries verify owner-private exact bytes under the sink lock and sync the
+file/directory; conflicts are refused rather than overwritten. Existing producers
+omit the new argument, so their publication semantics are unchanged. Replays do
+not reset retention age or reapply diagnostic/persisted status counters.
+
+73 isolated checks pass: sink 26, deferred queue 26, hooks 21. The new child-process
+crash fixture exits immediately after linking the packet and retries without a
+second packet; concurrent writers, malformed IDs, unsafe files, config changes,
+capacity and fsync failure are also covered. No hardware power-loss claim. This
+is the first restart-recovery prerequisite only: ingress spool, startup replay,
+bounded expiry and acknowledgement remain unfinished. No live writes, enabling,
+model calls, sends, merge or deployment; full host checks remain with review.
+
+
+## 9 November — durable ingress and startup replay
+
+`codex/judges-durable-spool` completes optional synchronous private staging plus
+background replay, stacked on 272b2d0b. Records preserve exact bytes, config identity
+and age; stable publication and acknowledgement handle process exits without
+another final packet. 64 spool entry names/8 MiB logical bytes are bounded separately
+from final packet count; final capacity reserves the spool budget. New startup
+hook recovers enabled durable capture without a new turn. Default memory mode,
+reply text/routing and delivery/admission semantics remain unchanged.
+
+25 synthetic spool checks pass, plus sink 26, queue 26 and hooks 21. Includes real
+process termination, config/age retention, capacity, privacy, busy locks, immutable
+bytes, 30 roughly 24 KB packets and fail-open hook behavior. This is not hardware
+power-loss or host latency acceptance. Durable ingress introduces foreground scans
+and fsync; the earlier memory-queue latency does not apply. Diagnostics remain
+lower bounds and restart loss unknown. No private input/config change, enabling,
+sends, model calls, merge or deployment. Host integration and acceptance remain
+with review; work continues on independent branches.
+
+
+## 9 November — retained encoder call costs
+
+`codex/judges-encoder-call-cost` continues from 0c9c42cf while prior tips remain
+fixed for review. Optional capture now records monotonic durations for the existing
+parameter-before, encode and parameter-after stages. Null denotes unmeasured or
+invalid clock evidence, not zero. Existing output objects, exception behavior,
+encoder-call counts and once-per-wrapper snapshot budget are preserved. The
+capture-off path is unchanged. No real encoder is loaded or timed by this batch.
+
+Offline cost aggregates deduplicate invocation markers across batch outputs and
+source references. Conflicting cost/snapshot copies exclude that call; legacy
+receipts remain valid and unknown call identity is counted separately. Fixed
+numbers-only reports keep partial cost evidence separate from identity/admission.
+111 isolated checks pass: new cost 14, parameter receipts 19, artifact joins 30,
+review report 22, self artifacts 20, synthetic benchmark 6. Report validation and
+fixtures cover malformed counts/durations, privacy and nonmutation. Host cost and
+full integration remain reviewer work. No enabling, live inputs/writes, model or
+paid calls, merge or deployment.
+
+
+## 9 November — fixed historical fixture counts
+
+`codex/judges-historical-fixture-counts` follows 3260aa77. The existing offline
+coverage report gains a fixed source-fixture metadata comparison, partitioned by
+exact caller, complete/missing metadata, clock availability and cutoff. Identical
+rows deduplicate; distinct matching records are not collapsed into one imagined
+test run. Output contains only fixed labels/counts and the public source revision.
+Origin stays unconfirmed and baseline attribution remains unchanged.
+
+55 isolated synthetic checks pass (coverage 29, attribution 26); five additional
+source assertions verify the archived fixture and accounting call without running
+historical code. Tests cover strict token types, extra fields, all tuple changes,
+clock ambiguity, cutoff, duplicate rows, nonmutation, private-label exclusion and
+the actual CLI's permissions/hashes. No real-data census or execution evidence was
+read. Reviewer owns that check using the already-copied evidence. No live writes,
+new model calls, enablement, merge or deployment; heartbeat continues.
+
+
+## 9 November — checkpoint field consistency
+
+`codex/judges-checkpoint-consistency` follows 2895b42f. Offline artifact ingestion
+now validates the existing versioned checkpoint observation contract, rejecting
+malformed fields or invented verified identities. Schemaless legacy records with
+valid hashes remain unknown. The aggregate compares manifests sharing a checkpoint
+hash, excluding separately validated read clocks, and preserves conflicts with
+incomplete peers. It emits only fixed counts, not labels, dates, hashes or vectors.
+
+111 affected isolated checks pass: new consistency 13, joins 30, availability 12,
+report 22, cost 14, self artifacts 20. Tests cover current and older producer shapes,
+read-clock differences, all metadata conflict fields, malformed/forged copies,
+legacy mixing, duplicate references/packets, forecast/audit grouping, nonmutation
+and public formatter conservation/privacy. Consistency is not authentication or
+fitting-lineage verification; content joins and scoring permission stay separate.
+No runtime producers, capture flags, private inputs, model calls, live writes,
+merge or deployment changed. Host integration remains with review.
+
+
+## 9 November — pending-to-forecast handoff observations
+
+Continued from fixed submitted c6829c80 on a new branch. Optional capture now
+hashes the existing pending value/locator at launcher return and job consumption,
+then binds job observation to the exact unchanged saved row. The offline replay
+and formatter report only fixed states/counts, with code included in run hashes.
+No new origin markers enter the historical or runtime forecast log. Missing or
+conflicting evidence never becomes a joined observation or training admission.
+
+307 affected isolated checks pass: new handoffs 19, existing forecast inputs 15,
+source clocks 12, census/innovation 109, existing on-message head 32, public report
+22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25. New tests use stub process launches/encoders/senders and
+synthetic files, including the actual replay CLI and private output permissions.
+Observer failures preserve output and previous sidecars. Full integration, real
+cost, source authenticity and delivery association remain unverified. No live
+writes, model calls, enabling, merge or deployment.
+
+
+## 9 November — shared main-chat forecast event key
+
+Continued on a new branch from f5dd8728. Main chat previously launched its forecast
+before the later bilateral coordinator existed and passed no turn ID. Both can
+use the already-existing deterministic request-event mapping without moving any
+coordinator or forecast call. The early hook now reserves that key only for a
+validated current HTTP marker, only on chat/full and only when the explicit turn
+argument is the default empty string. Missing context and observer/helper failures
+remain unknown; test mode still exits before either correlation or launch.
+
+105 affected isolated checks pass: key propagation 11, coordinator 33, forecast
+handoffs 19, existing on-message head 32 and completion joins 10. The existing
+synthetic head suite emits numerical warnings but all 32 checks pass. Tests
+include actual pending/log propagation, two interleaved request contexts and
+unchanged no-event random coordinator fallback. This metadata operates with
+capture off. No history/merge/post-turn feed, model, scoring or training changes;
+no private data, live calls/writes, enabling, merge or deployment.
+
+
+## 9 November — reverse handoff cardinality correction
+
+Source review found that forward uniqueness did not prevent one pending resource
+from being claimed by two distinct saved forecast rows. Three new synthetic
+regressions reproduced false joined states. The offline index now retains every
+supplied job row hash per pending resource before filtering; conflicting, absent
+or outside-cutoff peers cannot be hidden. Distinct pending resources sharing a
+turn remain separate. No runtime producer, forecast selection or admission change.
+
+165 isolated checks pass: handoffs 23, chat forecast keys 11, report 22 and
+census/innovation 109. Fixtures remain synthetic and sender/encoder/launcher
+boundaries stubbed. No private data, new capture, model calls, live writes, merge
+or deployment. Submitted predecessor branches remain fixed for review.
+
+
+## 9 November — stored runtime fields around existing encodes
+
+Optional artifact receipts now fingerprint bounded stored settings before/after
+each existing encode; no extra encoding, tokenizer calls, configuration methods,
+file loads or version-discovery imports. Partial scope and unknown tokenizer/code/
+fitting identity are explicit. Runtime changes survive audit deduplication, while
+conflicting copies of one call are excluded from cost aggregation. Legacy receipts
+remain valid. Capture off is unchanged; capture-on real-host overhead is unmeasured.
+
+221 isolated checks pass: runtime 16, parameters 19, costs 14, artifacts 20, joins
+30, report 22, benchmark 6, checkpoint consistency 13, forecast inputs 15, handoffs
+23, entry owners 11 and store guard 32. One initial new-test fixture attempted to
+assign a read-only namespace dictionary; corrected to clear/update its synthetic
+contents. All final tests pass. No private input, model calls, live writes, merge
+or deployment. Submitted predecessor tips remain fixed for independent review.
+
+
+## 9 November — fitting-boundary observations
+
+Source tracing confirmed the anchored readout is preferred by the existing self
+forecast entrance. Its self-only optional observer now binds existing ordered
+input partitions to completed parameters/metadata and exact matching checkpoint
+readback after save returns. No extra encoder calls, training runs or schema
+changes. Failures remain passive; source/encoder identity and durability stay
+unverified. Historical dates are not reconstructed. The offline completion-reader
+is still open and current scoring/admission ignores these receipts.
+
+124 isolated checks pass: new fitting 14, existing readout 5, artifacts 20, sink 26,
+runtime 16, owners 11 and store guard 32. Synthetic numerical warnings persist in
+existing matrix operations, without assertion failures. Generated reports refreshed.
+No private input, real model, live writes, enabling, merge or deployment.
+
+
+## 9 November — fitting receipts reach the offline review
+
+Added strict offline receipt validation, exact checkpoint/metadata/mode/byte
+comparison, conservative conflict handling and before/during/after-read counts.
+Replay accepts an explicit optional self_fit_completions list and binds the reader
+code in its private run manifest; report renders fixed aggregate fields only.
+Malformed peers fail before filtering. Multiple distinct receipts remain ambiguous;
+legacy/missing evidence is never upgraded. Census and innovation stay unchanged.
+
+178 isolated checks pass: reader 17, report 22, artifact joins 30, census/innovation
+109. Actual CLI checks private permissions, code hashes and unchanged nonempty
+scores. Initial fixture filename corrected to the existing private-run.json.
+Generated reports refreshed. No private data, runtime producer change, model call,
+live write, enabling, merge or deployment. Full evidence and host integration open.
+
+
+## 9 November — partial runtime comparison reaches the review
+
+Retained forecast/audit runtime snapshots now have their own content-group count
+in replay and the public review. Observed changes survive incomplete peers;
+matching needs every reference and two distinct calls. Legacy data is unavailable,
+not reconstructed. Census and innovation remain exactly unchanged in CLI tests.
+187 isolated checks pass: comparison 12, joins 30, report 22, costs 14, census and
+innovation 109. Generated reports refreshed without changes. No private input, new
+capture, runtime producer change, model call, live write, enabling, merge or deploy.
+
+
+## 9 November — bounded encode entrypoint observation
+
+Loaded Python code now has optional before/after fingerprints, audit retention,
+invocation conflict handling and fixed offline consistency counts. The original
+encode method is resolved once and called once. Missing/native implementations
+remain unavailable; no source reads or extra model calls. Full implementation and
+source identity are not claimed. Two fixture issues (capture-root nesting and
+unordered receipt selection) corrected. Real-host cost and integration remain open.
+
+211 isolated checks pass: entrypoint 14, runtime producer 16, parameters 19,
+encoder costs 14, artifact joins 30, runtime comparison 12, review report 22,
+self artifacts 20, forecast inputs 15, encoder benchmark 6, entry owners 11 and
+store guard 32. Generated ownership/coverage/store reports refreshed without
+changes; diff check clean. All inputs synthetic, sends and encoders stubbed.
+
+
+## 9 November — coverage-checked synthetic cost measurement
+
+Version 2 verifies runtime/entrypoint observations as well as parameter snapshots,
+checks fresh repeat invocations and separately measures new receipt retention.
+Configured synthetic runtime profile measured at 64 MiB/eight tensors/three runs:
+first-call medians 42.572/50.118 ms contiguous/strided; new-input repeat medians
+4.415/4.406 ms. No real model or tokenizer load, live store, send or deployment.
+No production behavior change. Real-host costs remain unmeasured.
+
+21 isolated checks pass: benchmark 10 and entry owners 11. Tests include both
+layouts/profiles, observation failure on first and fresh repeat calls, invalid
+profile/options before allocation, private aggregate output, no overwrite, and
+scratch/network/process boundaries. Generated reports refreshed without changes;
+diff check clean. Two additional CLI measurements used only synthetic arrays.
+
+
+## 9 November — aggregate handoff support cannot reuse a launch
+
+Reproduced six failed assertions in three synthetic regression cases: impossible
+launch support counts passed the validator and renderer. Added paired-launch and
+job conservation bounds. The producer already refused pending-resource reuse;
+this change brings its public aggregate validation into line. Valid duplicate,
+orphan and conflict cases remain accepted. No production or admission change.
+
+59 isolated checks pass: forecast handoffs 26, review report 22 and entry owners 11.
+Generated ownership, untested and store reports refreshed without changes; diff
+check clean. Regression evidence was captured before applying the validator fix.
+
+
+## 9 November — correct self-forecast checkpoint replacement race
+
+Reproduced old prediction/new checkpoint-ID mismatch, artifact suppression and
+late deletion failure. Self modes now parse/hash the same buffer and use its
+identity, including capture off. The other head and default loader are unchanged.
+106 isolated checks pass (binding 8, artifacts 20, availability 12, readout 5,
+inputs 15, handoffs 26, clocks 9, owners 11). Existing replacement expectation now
+requires a retained matching artifact. Synthetic numerical warnings persist with
+all assertions passing. Host costs and integration remain open; no deployment.
+
+
+## 9 November — self-audit checkpoint replacement regression
+
+Before the fix, synthetic replacement paired old bytes with a new cutoff (failure)
+and deletion after hashing raised a late FileNotFoundError. Self audits now use
+one descriptor's bytes/time and reject observable changes during the read.
+80 isolated checks pass: audit races 6, artifacts 20, availability 12, readout 5,
+ranking 26, owners 11. Capture-off behavior is included; mtime remains an estimate,
+not an attested fitting date. No live data, real encoding, enabling or deployment.
+
+
+## 9 November — counterpart and arriving inputs no longer omitted from observation
+
+Optional artifacts now record ordered selected-input hashes and six computed array
+hashes before prediction, without additional encoding. Existing artifacts remain
+available when the new observer fails. The offline reader validates optional data
+and cross-checks retained own inputs; no complete-ancestry claim or admission change.
+148 isolated checks pass: selected 8, artifacts 20, inputs 15, joins 30, runtime 12,
+loaded checkpoint 8, availability 12, owners 11, store guard 32. Maximum bounded
+receipt is under 4 KiB. Source and host evidence remains open; no deployment.
+
+
+## 9 November — baseline receipt bound to the exact forecast version
+
+Added bounded hash-only receipt for the existing rendered context and raw/normalized
+baseline output. Offline states separate absent, conflicting, mismatched and bound
+observations; packet counts do not become eligible turns. 175 isolated checks pass:
+baseline 10, artifacts 20, inputs 15, selected 8, joins 30, report 22, cost 14,
+loaded checkpoint 8, readout 5, owners 11, store guard 32. Encodes/scans unchanged.
+Formatter/observer failure preserves old artifacts; encode failure propagates
+without retry. Full source/encoder/delivery evidence and host costs remain open.
+
+
+## 9 November — selected-input coverage no longer absent from reports
+
+Added offline packet states for selected-feature receipts, preserving duplicates,
+conflicts, missing versions and arrival/cutoff distinctions. Shared exact-row
+validation leaves baseline semantics unchanged. 90 isolated checks pass: coverage
+9, selected 8, baseline 10, joins 30, report 22, owners 11. Actual scratch replay
+CLI writes 0600 aggregate-only output. No producer or admission change; full
+source/encoder/delivery evidence and host integration remain open.
+
+
+## 9 November — character-reference prototype, not another receipt batch
+
+Implemented day-held-out reference familiarity, interpretable style, exact-linked
+positive-feedback reference, paired controls, model-family strata and day-level
+intervals. Reuses historical attribution with a distinct 30-second sensitivity
+view. Input vectors are explicitly supplied frozen caches; no encoder calls.
+49 isolated checks pass: prototype 12, attribution 26, owners 11. Private CLI writes
+0600 aggregate/evaluation/run files in new 0700 scratch output. Synthetic fixture
+results are labelled; actual-history results and candidate dates await the private
+bundle/run. Full scope and limits are in the new instrument README.
+
+
+## 9 November — context-matched character-family comparisons
+
+`codex/judges-character-context-comparison` follows d9ab262c without changing its
+review tip. Adds outcome-independent same-day/context/language/length matching,
+one-to-one family pairs, four percentile differences, uncertainty and explicit
+unmatched counts. 26 isolated checks pass (prototype 15, owners 11). Topic-disjoint
+shared-day fixtures correctly report no comparable pairs, not model invariance.
+Private copied-history evaluation remains Claude's next step. No new model calls,
+live changes, deployment or merge; see the character-reference README.
+
+
+## 9 November — character evaluator reuses fold statistics
+
+`codex/judges-character-fold-reuse` follows c779cbf0 while Claude reviews/runs that
+fixed tip (note #31). Reference statistics are reused within each evaluation fold,
+including calibration and witnessed-positive references; controls use an exact-ID
+index. Complete output parity with the original scorer is tested. 29 isolated
+checks pass (prototype 18, owners 11); the synthetic build count remains 92 under
+multiplied evaluation/control load. No persistent cache or new encoding. Actual
+private results and host timing are still outstanding; no deployment or merge.
+
+
+## 9 November — character evaluation groups from the accepted review
+
+`codex/judges-character-evaluation-groups` follows 06a18d75. Optional exact-reply
+annotations expose novelty/refusal/opposite-stance/humor/surface-shift percentile
+summaries, separate declared owner/reviewer sources and missing/unscored coverage.
+They do not alter selection, admission, scoring or witnessed-positive references.
+32 isolated checks pass (prototype 21, owners 11). No threshold or identity verdict.
+Actual private-history groups remain unmeasured; no new encoding, live writes,
+merge or deployment. Claude's concurrent private run is not duplicated.
+
+
+## 9 November — readable aggregate character results
+
+`codex/judges-character-summary` follows 40b4f416. The private scratch CLI adds
+0600 `summary.md` with aggregate coverage, candidate dates/counts, measurement
+intervals, family comparisons and optional groups. Unknown stays unknown and
+synthetic inputs cannot be presented as real-history findings by the renderer.
+36 isolated checks pass (prototype 25, owners 11). Private fields are omitted;
+no scoring, model or live changes. Claude's actual copied-history run remains
+outstanding; this adds a reviewable artifact for its results without duplicating it.
+
+
+## Note #32 — private exploratory results and family-balance follow-up
+
+Claude reports primary insufficient (38 replies on one day); window30 has 123
+replies across 36 days, zero reviewed controls and unverified encoder revision.
+Surface-complete engagement counts, reviewed controls and encoder pinning remain
+open. Added reference-family composition by candidate day and actual held-out
+fold, with primary/sensitivity separation and zero-coverage handling, to expose
+rather than silently correct imbalance. Synthetic tests pass; real composition
+counts will come from the next private run. No identity conclusion or frozen dates.
+
+
+## Notes #33–34 — mode-specific character references
+
+`codex/judges-character-mode-strata` follows 97917df6. The missing-surface hypothesis
+is withdrawn after Gloria's clarification; preserve avatar/ReelRoom separately and
+the ten provisional dates. Mode is bound from independent exact-linked local
+observations, never serving family. Unknown/conflicting modes remain unscored;
+reference/calibration/positive subsets match both mode and surface. Cross-family
+comparisons run within known modes and label absent overlap not identifiable.
+Schema v2 and its summary expose mode coverage and omit pooled family effects.
+42 isolated checks pass (prototype 31, owners 11), including no cross-mode/surface
+influence. Next: actual local mode export, provenance-reviewed controls, encoder
+revision/hash pinning, and Claude's private rerun. No model calls or live effects.
+
+
+## 9 November — explicit encoder identity retained in the private manifest
+
+`codex/judges-character-encoder-pin` follows bc5d784d. The exact declared encoder
+contract is preserved; optional bounded hashing reads one supplied regular scratch
+artifact without loading it. Expected/observed hashes must agree when both exist;
+unknowns remain unknown and raw identity is excluded from aggregate outputs.
+45 isolated checks pass (prototype 34, owners 11). A hash does not authenticate
+cached-vector derivation, runtime, multi-file completeness or revision labels.
+Real identity observation and reviewed control data remain with the private run.
+No inference, download, live write, merge or deployment.
+
+
+## 9 November — reviewed control pools and deterministic matching
+
+`codex/judges-character-reviewed-controls` follows dd811da0. Schema v3 adds a
+local reviewed control pool, context-only greedy matching without replacement,
+primary-first target order, and explicit review bindings for pooled and paired
+controls. Foreign candidates must be non-subject and surface-matched; his own
+other-surface text is a separate comparison, never an authenticity negative.
+Missing reviews remain excluded. All input assistant text is barred as a control,
+including unattributed rows; mode, language, length and context gates still apply.
+Public reports contain only aggregate coverage; private-controls.json retains all
+selected pairs, including those lacking scorable reference folds. Review/source
+claims remain supplied, not independently authenticated. No real controls were
+collected here; private data collection and rerun remain with the reviewer.
+53 isolated checks pass (prototype 42, owners 11), using synthetic non-intimate
+fixtures. Generated reports refreshed unchanged. No encoder/model calls, network
+collection, live writes, merge or deployment. Prior review branch tips stay fixed.
+
+
+## 9 November — source contract aligned with the private control collection
+
+`codex/judges-character-control-sources` follows 80486b4b. Note #35 identifies
+Slack, MoltBook and journal controls and store-authorship evidence; the prior
+validator would reject those fixed source labels. Controls now admit `slack`,
+`moltbook`, `journal` and a separate `store_authorship` reviewer class. This does
+not expand engagement/reference surfaces or owner/reviewer evaluation annotations.
+The same exact source binding, evidence hash, explicit author/mode, timestamp and
+matching constraints remain required. No provider/filename/missing-mode inference.
+Selected counts retain source surface and evidence class; private pair records do
+too. Source authorship remains explicitly unverified, and store evidence is not
+represented as a human review. Private collection/rerun belongs to the reviewer.
+The short plain-language results page requested in #35 remains pending actual
+mode-by-surface coverage; no new real-data results are asserted here.
+Validation: 45 isolated prototype tests; ownership checks recorded in the dated
+coordination handoff. No live writes, calls, merge or deployment.
+
+
+## 9 November — plain-language reader page prepared for returned aggregates
+
+`codex/judges-character-reader-summary` follows a50959ad. The offline CLI now
+writes reader-summary.md alongside its detailed report, using only fixed labels
+and aggregate numbers. The page explains familiarity, rank versus identity
+probability, measured versus selected controls, provisional reference days,
+positive-feedback limits and supplied source/encoder evidence. Primary and
+sensitivity views stay separate; unscored primary evidence is never replaced by
+a sensitivity finding. Unknown mode and missing measurements remain explicit.
+Synthetic runs are prominently labelled; no real rerun coverage is claimed.
+Three new tests plus the actual CLI check cover missing primary coverage, true
+zero versus unknown, unsafe metadata exclusion and malformed numeric rejection.
+48 isolated prototype checks pass; ownership result is in the dated handoff.
+The final real-data summary remains pending Claude's mode-by-surface aggregates
+from note #35. No private data collection, live changes, model calls or deployment.
+
+
+## 9 November — prevent private input values from leaking through CLI failures
+
+`codex/judges-character-private-errors` follows ce4c6e00. A focused privacy review
+reproduced two leaks with synthetic markers: an invalid timestamp appeared in a
+parser traceback and a missing source filename/path appeared in stderr. The CLI
+now exits nonzero with a fixed JSON failure label and allowlisted exception class,
+without exception text or traceback. Imported functions keep normal exceptions for
+private local debugging. Failed writes may leave partial private artifacts and are
+not successful reports; this is documented. Standard argument usage errors remain
+unchanged, so secrets do not belong in CLI arguments.
+50 isolated prototype checks pass after both new regressions failed on the old
+entrypoint; ownership results are recorded in the dated handoff. No real private
+records were accessed. Real coverage is still pending the independent rerun.
+Notification delivery remains rate-limited until the recorded 11:43:46 CST retry
+window; no early retry, new destination, live writes, merge or deployment.
+
+
+## 9 November — prospective mode decision receipts and honest character2 summary
+
+`codex/judges-prospective-mode-receipt` follows 97ea9e09, implementing note #36.
+Existing gate decisions now produce content-free request-local metadata with turn,
+request and evaluated/selected completion IDs. Exact YES/NO provide mode; skipped,
+failed or ambiguous gates remain unknown. Refusal-guard reroute decisions have
+separate times/causes and do not claim a replacement succeeded. No extra gate,
+provider call or routing mutation. Metadata is retained beside generation_join
+in history/canonical records and via the existing background ledger environment;
+receipt construction performs no file/network I/O. Existing history write timing
+is unchanged. Both ledger twins agree; merged chat retains the new field.
+50 isolated checks pass: mode receipts 9, completion joins 10, router completions
+7, device marks 13, ownership 11. All sends/providers are stubbed and stores are
+scratch. Six changed Python sources compile without execution. Generated reports
+refreshed unchanged. The plain-language status page uses only reviewer-reported
+character2 aggregates: 0/123 mode coverage, zero controls, and no stability verdict.
+These code changes are for review, not deployed. Gate-bypassing routes will still
+be unknown; a provider toggle is not an independent intimacy decision.
+New note #37 authorizes historical somatic marks first and an explicitly labelled
+owner family rule second; that is next work on a separate branch, with the private
+character3 run left to the reviewer. The reported latent-feed flake remains a
+separate follow-up. Completion ntfy alerts are cancelled under the user's new rule;
+only new unresolved issues may use ntfy. No live writes, merge or deployment.
+
+
+## 9 November — historical mode priority and family-derived comparison exclusions
+
+`codex/judges-historical-mode-evidence` follows 2dccf7f0 for note #37.
+The offline prototype consumes bound prospective mode receipts first, preserving
+unknown/invalid receipts as unknown, then independent exact observations, reviewed
+somatic intervals, and an explicitly enabled owner family rule. Final mode_source
+is retained with private evidence hashes; public reports show only source counts,
+somatic coverage and disagreement with the family rule. Reference folds expose
+source composition. Family-labelled targets and targets whose reference folds
+include family-labelled replies are excluded from independent family comparisons.
+No remaining overlap means not_identifiable, never invariant.
+
+Source inspection found the narrator persists through/at/narration and a somatic
+thread, without the detected interval. Its current 24-hour scan is not a session
+label. The private importer must review a bounded interval from retained evidence;
+join is same surface plus optional exact session, inclusive start/end, zero padding,
+maximum 7200 seconds. Unbounded marks contribute no mode. Overlapping disagreement
+stays unknown; stale review bindings fail. Original records and input bundle must
+remain private. No real messages/stores were opened here and no encoder/model calls
+were added. This is not a character3 result or a change to provisional golden days.
+
+Validation: 57 isolated prototype checks and 11 ownership checks pass (68 total);
+new cases cover opt-in fallback, somatic priority/bounds/session/review/conflicts,
+receipt binding/unknown priority, reference contamination and aggregate privacy.
+Generated reports are refreshed unchanged. Source documents give the exact private
+import contract. Claude owns the private character3 run and full-suite review;
+Gloria owns deployment. The latent-feed flake is still a separate follow-up.
+No live writes, merge or deployment; no completion ntfy under the revised policy.
+Heartbeat remains ACTIVE.
+
+
+## 9 November — retain private mode assignments before scoring
+
+`codex/judges-private-mode-assignments` follows 94dca59e. Inspection found that
+private-evaluation.json records only scored primary replies. For an unscorable
+primary set it is empty, even when historical mode labels exist. The CLI now
+writes private-mode-assignments.json (0600) for all admitted/deduplicated replies,
+including unknown, sensitivity-only and insufficient-reference cases. It retains
+normalized mode/source/evidence hashes plus reply identity, time, surface, family
+and admission basis; no content, vectors or session IDs. The file remains private.
+Retain original input/evidence bytes for reconstruction; hashes are not independent
+authentication. The optional run collector leaves scoring and aggregate returns
+unchanged. Excluded input replies do not enter this file.
+
+Both new regressions failed before implementation; all 59 isolated prototype
+checks pass afterward, including real CLI permissions and public-output exclusion.
+Ownership check results are recorded in the coordination handoff. This changes no
+mode decisions, references, controls, thresholds or public scores. No private
+collection, encoding/model call, live write, merge or deployment. Claude owns the
+private character3 run; its aggregates have not arrived. The latent-feed failure
+trace remains requested; no speculative fix or repeated alert. Heartbeat ACTIVE.
+
+
+## 9 November — distinguish absent mode measurements from measured zeros
+
+`codex/judges-mode-coverage-unknown` follows 32beae6f. Review found that both
+summary renderers treated absent source counters in older schema-v3 reports as
+zero, although those reports never measured source-labelled mode coverage. They
+now state not recorded/not measured when the recording-state field is absent.
+New sparse-counter reports still preserve measured zeros. Somatic disagreement
+is not measured when no labels are comparable; zero disagreements with a positive
+denominator remains zero. Invalid state flags/counts fail without echoing metadata.
+
+Both new regressions reproduced the issue before the fix; 61 isolated prototype
+checks pass afterward. Ownership validation is recorded in the coordination handoff.
+This is a presentation correction only: no mode/source assignment, scoring,
+reference/control selection or input admission change. No private data, model calls,
+live writes, merge or deployment. Character3 and the latent-feed failure trace
+remain with the reviewer. No repeated status alert; heartbeat remains ACTIVE.
+
+
+## 9 November — aggregate-only summary command for character3
+
+`codex/judges-aggregate-summary-cli` follows f6647451 for note #38. The existing
+reader and detailed renderers can now run through --aggregate-report, with no
+private bundle, scoring or encoder/artifact access. It reads a bounded schema-v3
+aggregate file inside explicit private scratch and writes only the two pages plus
+a source-byte/renderer hash manifest into a new 0700 directory, files 0600. Both
+pages validate before writing; arbitrary input metadata is not echoed. Source
+bytes are unchanged. No scoring or result values are regenerated.
+
+Mixed evaluation/artifact options, symlinks, outside-scratch paths, oversized input
+and overwrites are rejected. Existing evaluation CLI behavior remains intact.
+64 isolated prototype checks pass, including actual aggregate CLI success without
+private inputs, exact renderer parity, permissions, error privacy and refusal cases.
+The success and sanitized-error regressions failed before implementation. Required
+report/ownership results are in the coordination handoff. README gives the exact
+command for the private character3 report. Actual character3 aggregates and the
+latent-feed failure trace remain pending with the reviewer; this is not new data.
+No private reads, model/encoder calls, live writes, merge or deployment.
+Heartbeat remains ACTIVE; no completion/routine ntfy under the revised policy.
+
+
+## 2026-11-09 — Exact-exchange control mode inheritance
+
+Coordination #39–40: foreign controls can inherit the mode of their explicitly
+reviewed adjacent subject reply, with source surface and both text hashes bound.
+There is no timestamp-nearest or control-author-family guess. Invalid links stay
+unknown. Pool matching retains the source exchange assignment when choosing a
+target. Private pair outputs retain the anchor/source evidence; public output is
+counts only. Family-derived mode remains an assumption and cross-family exclusions
+are unchanged. 69 isolated prototype checks pass; ownership validation and exact
+review commit are recorded in the coordination reply. No new private data run,
+model call, live write, merge or deployment. Prospective somatic metadata is next;
+full suites and private character rerun remain with the reviewer. Heartbeat ACTIVE.

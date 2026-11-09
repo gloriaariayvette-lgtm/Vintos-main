@@ -56,7 +56,7 @@ class Tests(unittest.TestCase):
                   patch.dict(sys.modules, jepa_self_head=self.sh,
                     jepa_predictor=types.SimpleNamespace(format_context=lambda turns: 'synthetic context')),
                   patch.object(R, 'arrays', return_value=[np.array([[1., 0.]]), np.array([[0., 1.]])]),
-                  patch.object(R, 'load', return_value={'meta': {'mode': 'self_on_message', 'report': {'confidence': {}}}}),
+                  patch.object(R, 'load', return_value={'_loaded_checkpoint_id':digest('synthetic checkpoint bytes'), 'meta': {'mode': 'self_on_message', 'report': {'confidence': {}}}}),
                   patch.object(R, 'predict', return_value=np.array([[.23456, .87654]])),
                   patch.object(R, 'confidence', return_value=np.array([.4]))):
             p.start(); self.addCleanup(p.stop)

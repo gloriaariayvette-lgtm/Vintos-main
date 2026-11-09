@@ -574,6 +574,11 @@ def main():
         "provenance": provenance,
         "generated_output_witness_eligible": output_can_witness(provenance, "interaction_evidence"),
     }
+    try:
+        from request_trace import mode_receipt_from_env
+        entry.update(mode_receipt_from_env(os.environ, entry["turn_id"], entry["surface"], vintos_said))
+    except Exception:
+        pass
     # Pull temporal context fields
     try:
         tc = open(os.path.join(MEMORY, "temporal-context.txt")).read()

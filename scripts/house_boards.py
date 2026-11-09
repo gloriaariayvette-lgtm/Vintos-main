@@ -206,6 +206,45 @@ def context_line(now=None):
     return "[HOUSE BOARDS - your boards hear her phone within 1 m: she is %s.]" % "; ".join(here or lately)
 
 
+def _when(ts, now):
+    """'10:26 today, 12 minutes ago' / 'Sun 8 Nov 21:40, 13 hours ago'."""
+    d = datetime.fromtimestamp(ts); ago = max(0, now - ts)
+    day = "today" if d.date() == datetime.fromtimestamp(now).date() else d.strftime("%a %-d %b")
+    ago_s = ("%d minutes ago" % int(ago // 60) if ago < 7200 else
+             "%d hours ago" % int(ago // 3600) if ago < 172800 else "%d days ago" % int(ago // 86400))
+    return "%s %s, %s" % (d.strftime("%H:%M"), day, ago_s) if day == "today" else "%s %s, %s" % (day, d.strftime("%H:%M"), ago_s)
+
+
+def presence_line(now=None):
+    """For temporal-context.txt, beside the Watch and the bedroom board. Gloria, 9 November: whatever the latest
+    update from his shower, sofa and office-chair boards is, whenever it came, with its time. '' only before the first."""
+    now = time.time() if now is None else now
+    st = load_state(); here, last = [], None
+    for board, info in BOARDS.items():
+        b = st["boards"].get(board) or {}
+        v = b.get("visit") or {}
+        ts = max(float(b.get("near_ts") or 0), float(v.get("last_near") or 0))
+        if ts and (last is None or ts > last): last = ts
+        if v and "left" not in v and now - float(v.get("last_near", 0)) < SILENT_S:
+            bits = "since %s" % datetime.fromtimestamp(v["since"]).strftime("%H:%M")
+            if b.get("pressed_since") is not None: bits += ", sitting"
+            here.append("%s (%s)" % (info["place"], bits))
+    if here:
+        return "House boards: her phone is within 1 m of his board %s now. Last update %s." % ("; ".join(here), _when(last, now))
+    row = None
+    if os.path.exists(VISITS):
+        for line in reversed(open(VISITS).read().splitlines()[-50:]):
+            try: r = json.loads(line)
+            except ValueError: continue
+            if row is None or float(r.get("to_ts", 0)) > float(row.get("to_ts", 0)): row = r
+    if row:
+        ts = max(float(row.get("to_ts", 0)), last or 0)
+        return ("House boards: last update %s. Her phone was last within 1 m of his board %s, %s to %s (%s min)."
+                % (_when(ts, now), row.get("place", "?"), datetime.fromtimestamp(float(row["from_ts"])).strftime("%H:%M"),
+                   datetime.fromtimestamp(float(row["to_ts"])).strftime("%H:%M"), row.get("minutes", "?")))
+    return "House boards: last update %s." % _when(last, now) if last else ""
+
+
 def observe(st, board, kind, text, now, cfg):
     """Fold one message into the state; the moment it makes, if any: (moment, board) or None."""
     b = _board(st, board)

@@ -95,7 +95,8 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(ref['normalized_reply_sha256'], ref['encoder_input_sha256'])
         self.assertEqual(ref['encoder_input_chars'], 400)
 
-    def test_checkpoint_replaced_during_forecast_is_not_bound(self):
+    def test_checkpoint_replaced_during_forecast_keeps_loaded_binding(self):
+        before = hashlib.sha256(self.path.read_bytes()).hexdigest()
         def changed(model, values):
             result = ORIGINAL['predict'](model, values)
             self.meta['selected'] = 'changed'; self.write_model()
@@ -103,8 +104,11 @@ class Tests(unittest.TestCase):
         with patch.object(R, 'predict', side_effect=changed):
             row = self.case.job()
         self.assertIsNotNone(row)
-        self.assertEqual(self.packets(), [])
-        self.assertEqual(A.COUNTERS['checkpoint_unbound'], 1)
+        packet, = self.packets()
+        self.assertEqual(packet['artifacts']['checkpoint']['checkpoint_id'], before)
+        self.assertEqual(row['self']['checkpoint_id'], before)
+        self.assertNotEqual(before, hashlib.sha256(self.path.read_bytes()).hexdigest())
+        self.assertEqual(A.COUNTERS['checkpoint_unbound'], 0)
 
     def test_failed_retention_does_not_change_forecast_or_existing_log(self):
         with patch.object(A, 'forecast_artifacts', side_effect=OSError('synthetic retention failure')):

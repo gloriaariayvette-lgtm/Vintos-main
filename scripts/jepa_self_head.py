@@ -1010,8 +1010,9 @@ def launch_on_message(her, surface="", turn_id="", now=None):
         name = "%d-%s.json" % (int(at * 1000), hashlib.sha1(os.urandom(8)).hexdigest()[:6])
         path = os.path.join(PENDING_DIR, name)
         tmp = path + ".tmp"
+        pending = {"her": her[:4000], "arrived_at": at, "surface": str(surface)[:40], "turn_id": str(turn_id)[:80]}
         with open(tmp, "w") as f:
-            json.dump({"her": her[:4000], "arrived_at": at, "surface": str(surface)[:40], "turn_id": str(turn_id)[:80]}, f)
+            json.dump(pending, f)
         os.replace(tmp, path)
         argv = [VENV_PYTHON, os.path.abspath(__file__), "on-message", path]
         import shutil
@@ -1019,6 +1020,7 @@ def launch_on_message(her, surface="", turn_id="", now=None):
             argv = ["nice", "-n", "15"] + argv
         with open(ON_MESSAGE_LOGFILE, "a") as logf:      # the child keeps its own copy; the server keeps none
             RUNNER(argv, stdin=subprocess.DEVNULL, stdout=logf, stderr=logf, close_fds=True, start_new_session=True)
+        _forecast_witness("publish_self_forecast_launch", path, pending)
         return path
     except Exception as e:
         log("on-message forecast not launched: %s" % e)
@@ -1051,6 +1053,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
             p = json.load(f)
     except Exception:
         return None
+    pending_observation = _forecast_witness("self_forecast_pending", pending_path, p)
     try:
         os.remove(pending_path)
     except Exception:
@@ -1070,7 +1073,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
         if load_model(model_path) is None and not os.path.exists(os.path.join(MEMORY, "jepa-readouts", "self_on_message.npz")):
             log("no self checkpoint; no on-message forecast"); return None
         enc = enc or _jp().encoder()
-        token = _forecast_witness("begin_self_forecast")
+        token = _forecast_witness("begin_self_forecast", pending_observation)
         try:
             fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
         finally:
