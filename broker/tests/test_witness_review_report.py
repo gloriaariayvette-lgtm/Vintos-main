@@ -45,6 +45,54 @@ class Tests(unittest.TestCase):
         self.assertNotIn('fixture-',text)
         self.assertNotIn(self.row['content'],text)
 
+    def historical_report(self):
+        import witness_attribution as A
+        historical, _ = A.attribution([self.row], [], {'surface_callers':{},'window_seconds':5}, 1000)
+        report = copy.deepcopy(self.report)
+        report['historical_attribution'] = historical
+        return report
+
+    def test_historical_attribution_valid_producer_is_descriptive_and_private(self):
+        report = self.historical_report()
+        original = copy.deepcopy(report)
+        text = M.render(report)
+        self.assertEqual(report, original)
+        self.assertIn('Historical model attribution',text)
+        self.assertIn('not unique training turns',text)
+        self.assertNotIn(self.row['content'],text)
+        self.assertNotIn(self.row['turn_id'],text)
+
+    def test_historical_cutoff_exclusions_and_receipt_clock_are_not_lost(self):
+        import witness_attribution as A
+        report = self.historical_report()
+        self.assertEqual(report['historical_attribution']['copies_without_cutoff_clock'],0)
+        self.assertIn('Without a usable cutoff clock: 0',M.render(report))
+        historical, _ = A.attribution([self.row], [], {'surface_callers':{},'window_seconds':5}, 100)
+        report['historical_attribution'] = historical
+        self.assertEqual(historical['excluded'],{'outside_cutoff':1})
+        self.assertEqual(historical['join_states'],{})
+        text = M.render(report)
+        self.assertIn('Outside cutoff: 1',text)
+        self.assertIn('Without a usable cutoff clock: 0',text)
+
+    def test_historical_attribution_requires_no_admission_or_training_effect(self):
+        for key,value in (('scope','unique_training_turns'),('admission_effect','admit'),('training_effect','train')):
+            report = self.historical_report()
+            report['historical_attribution'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):M.render(report)
+
+    def test_historical_attribution_counter_conservation_and_bounds(self):
+        for field,value in (
+            ('label_ledger_agreement',{}), ('label_ledger_agreement',{'agree':2}),
+            ('label_ledger_agreement',{'private-label':1}), ('label_ledger_agreement',{'agree':True}),
+            ('join_states',{}), ('join_states',{'matched':2}),
+            ('excluded',{'outside_cutoff':0,'other_private_exclusion':1}),
+            ('copies_without_cutoff_clock',2), ('copies_without_cutoff_clock',True),
+            ('tiers',{'observed':1,'ledger_attributed':0,'recorded_label':0,'unknown':0,'private-tier':1})):
+            report = self.historical_report()
+            report['historical_attribution'][field] = value
+            with self.subTest(field=field,value_type=type(value).__name__), self.assertRaises(ValueError):M.render(report)
+
     def test_zero_eligible_is_insufficient_not_zero_accuracy(self):
         self.report['census']['eligible_replies']=0
         self.report['innovation']['groups']=[]

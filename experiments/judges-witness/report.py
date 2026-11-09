@@ -163,18 +163,33 @@ def render(report):
         lines += ['', 'Coverage fields count copies independently, including excluded acts. A positive field does not admit a reply.', '']
         if 'historical_attribution' in report:
             historical = report['historical_attribution']
+            if (not isinstance(historical, dict)
+                    or historical['scope'] != 'per_assistant_source_copy_not_unique_training_turns'
+                    or historical['admission_effect'] != 'none' or historical['training_effect'] != 'none'):
+                invalid()
             tiers = historical['tiers']
-            counts = {tier:count(tiers[tier]) for tier in ('observed','ledger_attributed','recorded_label','unknown')}
-            excluded = count(historical['excluded'].get('outside_cutoff',0))
-            if sum(counts.values()) + excluded != copies or count(historical['assistant_copies']) != copies:
+            tier_names = ('observed','ledger_attributed','recorded_label','unknown')
+            if not isinstance(tiers, dict) or set(tiers) != set(tier_names): invalid()
+            counts = {tier:count(tiers[tier]) for tier in tier_names}
+            exclusions = historical['excluded']
+            if not isinstance(exclusions, dict) or set(exclusions) - {'outside_cutoff'}: invalid()
+            excluded = count(exclusions.get('outside_cutoff',0))
+            agreement = historical['label_ledger_agreement']
+            agreement_names = ('agree','disagree','label_conflict','label_missing','ledger_unavailable')
+            joins = historical['join_states']
+            missing_clock = count(historical['copies_without_cutoff_clock'])
+            if (sum(counts.values()) + excluded != copies or count(historical['assistant_copies']) != copies
+                    or missing_clock > copies
+                    or not isinstance(agreement, dict) or set(agreement) - set(agreement_names)
+                    or sum(count(n) for n in agreement.values()) != sum(counts.values())
+                    or not isinstance(joins, dict) or sum(count(n) for n in joins.values()) != sum(counts.values())):
                 invalid()
             lines += ['## Historical model attribution', '']
             for tier, n in counts.items(): lines.append(f'- {tier}: {n} assistant source copies.')
-            agreement = historical['label_ledger_agreement']
-            for state in ('agree','disagree','label_conflict','label_missing','ledger_unavailable'):
+            for state in agreement_names:
                 lines.append(f'- Label/ledger {state}: {count(agreement.get(state,0))}.')
             lines += [f'- Outside cutoff: {excluded}.',
-                      f"- Without a usable cutoff clock: {count(historical['copies_without_cutoff_clock'])}.", '',
+                      f"- Without a usable cutoff clock: {missing_clock}.", '',
                       'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
             if 'window30' in historical:
                 extension = historical['window30']

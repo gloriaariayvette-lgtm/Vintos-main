@@ -1791,3 +1791,15 @@ use the census to adjudicate source copies first. The percentile history minimum
 is a positive integer (booleans and floating-point values are not counts). Invalid
 container/identity/minimum contracts raise ValueError before scoring. This does not
 replace census eligibility checks or change scores for valid census outputs.
+
+
+### Historical summary validation
+
+The renderer requires the historical section to declare per-source-copy scope and
+no admission/training effect. Tier totals plus cutoff exclusions must equal source
+copies; label-agreement and join-state totals each equal the included-copy count.
+Unknown tiers, agreement categories or exclusion categories are rejected, and the
+missing cutoff-clock count cannot exceed supplied copies. A retained finalized
+receipt can establish cutoff membership even without a usable legacy timestamp;
+this is correctly counted as a known cutoff clock. It does not create a timestamp
+for ledger matching or change historical eligibility.

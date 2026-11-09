@@ -6796,3 +6796,12 @@ The census already supplies unique admitted replies, so this closes a standalone
 function boundary without changing valid report results. Full Aegis suite remains
 with review. Earlier private coverage, sink cost and encoder-lineage work remains
 open; no enabling, merge or deployment.
+
+
+## 9 November — historical attribution formatter ready for review
+
+`codex/judges-attribution-report-contract` validates historical summary scope,
+effects and count conservation before rendering; 46 isolated checks pass. It also
+checks receipt-based cutoff exclusion without changing producer fields or matching.
+Full Aegis suite and prior private coverage/cost checks remain with review. No
+admission/training decision, live-feed change, enabling, merge or deployment.

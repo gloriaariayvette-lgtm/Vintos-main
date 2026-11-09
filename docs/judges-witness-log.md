@@ -1826,3 +1826,23 @@ causal percentile/control tests pass unchanged. This is a defensive function-inp
 fix, not evidence that census-produced historical reports had duplicate targets.
 Generated reports refreshed. No producers, feeds, model calls, live data, sends,
 enabling, merge or deployment changed; full host suite remains reviewer work.
+
+
+## 9 November — historical attribution report contract
+
+`codex/judges-attribution-report-contract` makes the formatter validate the
+historical section's per-copy scope, no-admission/no-training declarations, fixed
+tier/agreement/exclusion categories, counter conservation and timestamp-count bound.
+Previously it could render contradictory effect declarations or agreement totals
+as descriptive evidence. New synthetic regressions reproduced 11 failing subcases
+before the repair. No attribution producer or selection rule changed.
+
+A proposed clock-label change was rejected by the added positive-control test:
+the producer already includes receipt-based cutoff clocks. Kept the original label
+and fixed that test expectation before submission; no producer semantics changed.
+The positive control verifies receipt-based exclusions and zero missing clocks.
+
+46 isolated checks pass: report 20, historical attribution 26, including scratch
+CLI with the optional 30-second view. Generated reports refreshed. Only synthetic
+fixtures and fixed prose/count validation changed; full host suite remains with
+review. No live reads/writes, model calls, sends, enabling, merge or deployment.
